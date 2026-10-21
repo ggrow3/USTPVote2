@@ -9,6 +9,11 @@ updates:
         patterns: ["@nestjs/*"]
       vue-quasar:
         patterns: ["vue", "vue-router", "vue-tsc", "@vitejs/*", "vite", "quasar", "@quasar/*"]
+    ignore:
+      # vue-tsc 3.x cannot run on TypeScript 7 (it loads typescript/lib/tsc, which 7 no longer exports).
+      # Remove once vue-tsc supports TypeScript 7; see the closed PR #1.
+      - dependency-name: typescript
+        update-types: ["version-update:semver-major"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
