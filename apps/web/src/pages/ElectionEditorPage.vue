@@ -242,10 +242,13 @@ onMounted(load);
             <div v-if="detail.roll" class="text-caption text-grey-7">
               {{ detail.roll.count }} Active members as of {{ new Date(detail.roll.asOf).toLocaleString() }} · Merkle root
               <code>{{ detail.roll.merkleRoot.slice(0, 16) }}…</code>
+              <template v-if="detail.roll.signature"> · signed by the audit key</template>
+              <template v-else-if="detail.roll.status === 'approved'"> · signature follows within a minute</template>
             </div>
             <div v-else class="text-caption text-grey-7">No roll yet.</div>
           </div>
           <q-badge v-if="detail.roll" :label="detail.roll.status" class="q-mr-sm" />
+          <q-badge v-if="detail.roll?.signature" color="positive" label="signed" class="q-mr-sm" />
           <q-btn v-if="canEdit" outline no-caps color="primary" label="Request roll snapshot" @click="requestRoll" />
         </q-card-section>
         <q-expansion-item v-if="detail.roll" dense label="Members on this roll" @show="loadRoll">

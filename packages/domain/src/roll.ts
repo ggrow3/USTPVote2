@@ -1,4 +1,4 @@
-import { hashCanonical, inclusionProofHex, merkleRootHex, type InclusionProof } from 'ustp-audit';
+import { canonicalBytes, hashCanonical, inclusionProofHex, merkleRootHex, type InclusionProof } from 'ustp-audit';
 
 /**
  * Voter rolls (design §6.3). A roll is the sorted list of eligible accountIds; its Merkle root commits to exactly
@@ -17,6 +17,30 @@ export function sortRoll(accountIds: readonly string[]): string[] {
 
 export function rollMerkleRoot(electionId: string, sortedAccountIds: readonly string[]): string {
   return merkleRootHex(sortedAccountIds.map((id) => rollLeaf(electionId, id)));
+}
+
+/** What the `audit-signing` key signs for an approved roll: JCS of this statement. */
+export interface RollStatement {
+  readonly v: 1;
+  readonly type: 'roll';
+  readonly electionId: string;
+  readonly snapshotId: string;
+  readonly criteria: { readonly status: 'active' };
+  readonly asOf: string;
+  readonly count: number;
+  readonly merkleRoot: string;
+  /** The two-person request under which an Auditor approved it. */
+  readonly approvalId: string;
+}
+
+export function rollStatement(snapshot: Omit<RollStatement, 'v' | 'type'>): RollStatement {
+  const { electionId, snapshotId, criteria, asOf, count, merkleRoot, approvalId } = snapshot;
+  return { v: 1, type: 'roll', electionId, snapshotId, criteria, asOf, count, merkleRoot, approvalId };
+}
+
+/** The bytes a roll signature covers: JCS(rollStatement(snapshot)). */
+export function rollSigningInput(snapshot: Omit<RollStatement, 'v' | 'type'>): Uint8Array {
+  return canonicalBytes(rollStatement(snapshot));
 }
 
 export function rollInclusionProof(electionId: string, sortedAccountIds: readonly string[], accountId: string): InclusionProof | null {

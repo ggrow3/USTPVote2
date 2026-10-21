@@ -1,6 +1,7 @@
 import { hashCanonical } from 'ustp-audit';
 import { validateContestSpec, type ContestSpec } from 'ustp-tally';
 import type { ElectionState } from './election-state.js';
+import type { SignatureRecord } from './ledger.js';
 import type { ApprovalRequestRecord } from './records.js';
 
 /** Election definitions (design §6). Editable while `draft`; frozen by its hash when scheduled (M2b). */
@@ -57,6 +58,8 @@ export interface RollSnapshotRecord {
   readonly approvalId: string;
   readonly decidedBy: string | null;
   readonly decidedAt: string | null;
+  /** Signature over `rollStatement(snapshot)`, added by the worker shortly after approval. */
+  readonly signature: SignatureRecord | null;
 }
 
 /** Two-person request payloads for election actions (design §10.2); the approver approves exactly these. */

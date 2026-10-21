@@ -1,6 +1,6 @@
-import { verifyInclusionHex } from 'ustp-audit';
+import { canonicalBytes, verifyInclusionHex } from 'ustp-audit';
 import { describe, expect, it } from 'vitest';
-import { rollInclusionProof, rollLeaf, rollMerkleRoot, sortRoll } from './roll.js';
+import { rollInclusionProof, rollLeaf, rollMerkleRoot, rollSigningInput, rollStatement, sortRoll } from './roll.js';
 
 describe('voter roll', () => {
   const members = sortRoll(['c-3', 'a-1', 'b-2', 'a-1']);
@@ -21,5 +21,29 @@ describe('voter roll', () => {
     expect(verifyInclusionHex(rollLeaf('e1', 'b-2'), proof)).toBe(true);
     expect(verifyInclusionHex(rollLeaf('e1', 'c-3'), proof)).toBe(false);
     expect(rollInclusionProof('e1', members, 'z-9')).toBeNull();
+  });
+
+  it('signs a statement of exactly the approved roll, not the stored record', () => {
+    const snapshot = {
+      snapshotId: 's1',
+      electionId: 'e1',
+      criteria: { status: 'active' as const },
+      asOf: '2026-10-21T12:00:00.000Z',
+      count: 3,
+      merkleRoot: rollMerkleRoot('e1', members),
+      approvalId: 'a1',
+      // Stored alongside, but not part of what is signed:
+      accountIds: members,
+      status: 'approved',
+      signature: null,
+    };
+    const statement = rollStatement(snapshot);
+    expect(Object.keys(statement).sort()).toEqual(
+      ['approvalId', 'asOf', 'count', 'criteria', 'electionId', 'merkleRoot', 'snapshotId', 'type', 'v'].sort(),
+    );
+    expect(rollSigningInput(snapshot)).toEqual(canonicalBytes(statement));
+    const superseded = { ...snapshot, status: 'superseded' };
+    expect(rollSigningInput(superseded)).toEqual(rollSigningInput(snapshot));
+    expect(rollSigningInput({ ...snapshot, count: 4 })).not.toEqual(rollSigningInput(snapshot));
   });
 });

@@ -16,9 +16,11 @@
     "dev:worker": "node --watch-path=dist dist/main-worker.js",
     "emulators": "firebase emulators:start --config ../../infra/firebase/firebase.json --project demo-ustpvote --only auth,firestore,storage",
     "dev:api:emulators": "node scripts/dev-api-emulators.mjs",
-    "dev:api:emulators:mfa": "node scripts/dev-api-emulators.mjs --require-mfa"
+    "dev:api:emulators:mfa": "node scripts/dev-api-emulators.mjs --require-mfa",
+    "dev:worker:emulators": "node scripts/dev-worker-emulators.mjs"
   },
   "dependencies": {
+    "@google-cloud/kms": "^6.2.1",
     "@google-cloud/secret-manager": "^7.2.0",
     "@google-cloud/vision": "^6.2.0",
     "@nestjs/common": "^12.2.0",

@@ -38,8 +38,9 @@ describe('worker', () => {
   });
   afterAll(() => app.close());
 
-  it('knows the design §13 tasks but has not implemented them yet', async () => {
-    expect((await app.inject({ method: 'POST', url: '/tasks/tick' })).statusCode).toBe(501);
+  // `tick` needs Firestore, so it is covered by the integration tests (ledger.int.test.ts).
+  it('knows the design §13 tasks; those after tick come with tallying and email', async () => {
+    expect((await app.inject({ method: 'POST', url: '/tasks/tally' })).statusCode).toBe(501);
     expect((await app.inject({ method: 'POST', url: '/tasks/nope' })).statusCode).toBe(404);
   });
 });

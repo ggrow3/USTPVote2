@@ -15,6 +15,12 @@ export interface ServerConfig {
   readonly photoChecker: 'vision' | 'local';
   /** Where tie-break seeds are kept: Secret Manager, or the emulator-only Firestore stand-in. */
   readonly secretStore: 'secret-manager' | 'emulator';
+  /** Who signs ledger blocks and rolls (worker only): Cloud KMS, or the emulator-only local key. */
+  readonly auditSigner: 'kms' | 'emulator';
+  /** `projects/.../cryptoKeys/audit-signing/cryptoKeyVersions/N`; signing fails until it is set. */
+  readonly auditSigningKeyVersion: string | null;
+  /** Bucket with a retention policy for ledger anchors (design §8.4); anchoring is skipped until it is set. */
+  readonly anchorsBucket: string | null;
 }
 
 export const CONFIG = Symbol('ServerConfig');
@@ -38,6 +44,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     throw new Error('SECRET_STORE must be "secret-manager" or "emulator"');
   }
   if (secretStore === 'emulator' && !usingEmulators) throw new Error('SECRET_STORE=emulator is only allowed with the Firebase emulators');
+  const auditSigner = (env.AUDIT_SIGNER ?? (usingEmulators ? 'emulator' : 'kms')) as ServerConfig['auditSigner'];
+  if (auditSigner !== 'kms' && auditSigner !== 'emulator') throw new Error('AUDIT_SIGNER must be "kms" or "emulator"');
+  if (auditSigner === 'emulator' && !usingEmulators) throw new Error('AUDIT_SIGNER=emulator is only allowed with the Firebase emulators');
 
   const projectId = env.GOOGLE_CLOUD_PROJECT || env.GCLOUD_PROJECT || undefined;
   return {
@@ -52,5 +61,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     photosBucket: env.PHOTOS_BUCKET || (usingEmulators && projectId ? `${projectId}-profile-photos` : null),
     photoChecker,
     secretStore,
+    auditSigner,
+    auditSigningKeyVersion: env.AUDIT_SIGNING_KEY_VERSION || null,
+    anchorsBucket: env.ANCHORS_BUCKET || (usingEmulators && projectId ? `${projectId}-anchors` : null),
   };
 }

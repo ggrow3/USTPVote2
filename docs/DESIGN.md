@@ -173,6 +173,8 @@ Builds use the committed lockfile with `npm ci --ignore-scripts` (spec §7).
   roles with `@Roles(...)`, which also requires MFA and verifies with `checkRevoked` (as will casting a ballot).
 - **Safety switches.** `APP_CHECK_ENFORCED=false` and `ADMIN_MFA_REQUIRED=false` exist for local development and
   integration tests; the server refuses to start with either unless the Firestore and Auth emulators are configured.
+  The emulator stand-ins `PHOTO_CHECKER=local`, `SECRET_STORE=emulator` and `AUDIT_SIGNER=emulator` (a local P-256
+  key kept in Firestore) are refused the same way.
 - **Bootstrap.** Emails listed in `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` become System Admins once their account exists and
   the email is verified (checked on every `POST /v1/accounts`, which the web app calls on each sign-in and after
   verification; ledgered with actor `bootstrap`). An account that has ever held the role is never re-granted, so a
@@ -301,8 +303,13 @@ Every roll entry carries equal weight.
 
 The snapshot document holds the whole sorted list, about 25,000 members within Firestore's 1 MiB document limit (the
 spec's scale is 1,000–5,000); the casting check in M3 reads it once per instance (it never changes), so a separate
-`roll_entries` collection is not needed until rolls outgrow one document. Signing the snapshot with KMS arrives with
-ledger block signing in M2c.
+`roll_entries` collection is not needed until rolls outgrow one document.
+
+**Signature** (implemented in M2c): on its next tick after approval, the worker signs
+`rollStatement = {v, type: 'roll', electionId, snapshotId, criteria, asOf, count, merkleRoot, approvalId}` with the
+`audit-signing` key ([§8.3](#83-ledger-blocks-blocksindex)) and stores it as the snapshot's `signature`. The api never
+signs, so signing waits for the worker (≤ 1 minute); scheduling does not wait for it. A roll superseded before the
+worker got to it is still signed, since it was approved.
 
 ### 6.4 Proposals and positions
 
@@ -436,21 +443,52 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   in `ustp-domain`.
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
   entries are public. A public verifier checks a public entry by Merkle inclusion in its ledger block (§8.3) without
-  seeing the private entries in that block.
+  seeing the private entries in that block. Public types (`PUBLIC_LEDGER_EVENT_TYPES`): `bylaws.published`,
+  `roll.approved`, `election.scheduled`, `election.cancelled`, and the election and results types as they arrive.
+  `GET /v1/public/ledger/entries/{seq}` returns a public entry with its block and inclusion proof; anything else, or an
+  entry not yet in a block, is 404.
 
 ### 8.3 Ledger blocks (`blocks/{index}`)
 
-On each tick, if entries exist beyond the last block: build an RFC 9162 Merkle tree over their entry hashes and write
-`block = {v, index, prevBlockHash, firstSeq, lastSeq, merkleRoot, headEntryHash, createdAt}`,
-`blockHash = H(JCS(block))`, plus a KMS signature over `blockHash` (`audit-signing`, EC P-256 / SHA-256).
+Implemented in M2c. On each tick, if entries exist beyond the last block, the worker builds an RFC 9162 Merkle tree
+over their 32-byte entry hashes and writes
+`block = {v, index, prevBlockHash, firstSeq, lastSeq, merkleRoot, headEntryHash, createdAt}`, `blockHash = H(JCS(block))`
+and `signature = {keyVersion, signature}`. Blocks and entries are numbered from 1; block 1's `prevBlockHash` is 64 zeros.
+A block covers at most 500 entries and a tick seals at most 20 blocks, so a backlog clears over several ticks.
+
+- **Signature:** ECDSA P-256 / SHA-256 over the bytes `JCS(block)`, DER-encoded, base64. Cloud KMS signs digests, and
+  the digest of those bytes is `blockHash`, so KMS signs `blockHash`; anyone can check the signature with
+  `openssl dgst -sha256 -verify key.pem -signature sig.der block.json` or Web Crypto (`verifyEcdsaP256` in
+  `ustp-audit`). The key is `audit-signing` (`EC_SIGN_P256_SHA256`), named by `AUDIT_SIGNING_KEY_VERSION`.
+- **Only the worker signs.** Its service account alone holds `cloudkms.signer` on the key; the api, which faces the
+  internet, cannot sign, so compromising it cannot produce validly signed blocks. The worker records each key version's
+  public key in `signing_keys/{keyId}` (keyId = first 16 hex digits of SHA-256(keyVersion)) and in the anchors bucket
+  as `v1/keys/{keyId}.pem` on first use; the api serves them at `GET /v1/public/ledger/keys`.
+- **Never sign a broken chain:** before sealing, the worker checks that the new entries are numbered without gaps and
+  that their hashes and links verify onto the previous block's `headEntryHash`. If not, the tick fails loudly and
+  nothing is signed.
+- **Idempotent:** `blocks/{index}` is created, never overwritten. Two overlapping ticks compute the same index and only
+  one create succeeds, so the `locks/tick` lease (§13) is not needed for blocks; it arrives with pool sealing in M3.
+- **Verification** (`GET /v1/admin/audit/verify`, Auditors): the entry chain and head, then `verifyBlocks` (numbering,
+  contiguity, links, Merkle roots, block hashes), every signature against `signing_keys`, and every anchor (§8.4).
+  The Auditor console also checks each published block's link, hash and signature in the browser, without relying on
+  the server's verdict; Merkle roots need the private entries, so that part is the server's.
+
+A rewrite of sealed history by someone with database access, even one that re-links every later entry and the head,
+fails the block's Merkle root; re-hashing the block too fails its signature.
 
 Merkle trees follow RFC 9162 §2.1 exactly — leaf `H(0x00 ‖ d)`, node `H(0x01 ‖ l ‖ r)`, split at the largest
 power of two below n, inclusion proof verification per §2.1.3.2 — so third parties can use existing tooling.
 
 ### 8.4 Anchors (spec §4 "External Anchoring")
 
-- Each new block is written as `gs://<project>-anchors/v1/blocks/<index, 10 digits>.json` (JCS of block, hash,
-  signature, key version) to a bucket with a retention policy. `anchors/{index}` records the object URI and generation.
+- Implemented in M2c. Each new block is written as `gs://<bucket>/v1/blocks/<index, 12 digits>.json`, the JCS of
+  `{v, block, blockHash, signature}`, to a bucket with a retention policy (`ANCHORS_BUCKET`), with
+  `ifGenerationMatch: 0` so an object is only ever created. `anchors/{index}` records the URI and object generation.
+  Blocks are anchored in order; if an object already exists (a retried tick), it must hold the same bytes.
+- Verification downloads each anchor object and checks its content against the block and its generation against the
+  record. `GET /v1/public/anchors/latest` returns the newest anchor record.
+- Until `ANCHORS_BUCKET` is set, blocks are still sealed and signed, and the worker logs that it is not anchoring.
 - **Smart anchoring** (spec §8): only when a new block exists — at most one object per minute, usually far fewer.
 - The bucket's retention policy is **locked in production only**. Locking is irreversible: no object (or the bucket)
   can be deleted before retention expires. dev/staging use an unlocked policy. The retention period is Q11.
@@ -578,8 +616,9 @@ registration collections are top-level and election data lives under each electi
 | **audit & admin** | | | |
 | `audit_events/{seq}` | zero-padded integer | append-only | ledger entries |
 | `ledger_head/main` | — | updated per append | seq, hash *(added)* |
-| `blocks/{index}` | integer | immutable | ledger blocks |
-| `anchors/{index}` | integer | immutable | GCS URI, generation |
+| `blocks/{index}` | zero-padded integer | immutable | ledger blocks, hash, signature |
+| `anchors/{index}` | zero-padded integer | immutable | GCS URI, generation |
+| `signing_keys/{keyId}` | hash of key version | immutable | key version, public key PEM *(added)* |
 | `role_assignments/{accountId}_{role}` | composite | grant/revoke | grantedBy, approvalId |
 | `approval_requests/{id}` | auto | status only | two-person requests *(added)* |
 
@@ -609,7 +648,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /elections/{id}/participation/me` | V | "have I voted?" |
 | `GET /public/elections/{id}` · `.../sealed-blocks` · `.../results` | P | published record |
 | `GET /public/elections/{id}/proofs/{commitment}` | P | inclusion proof for a receipt |
-| `GET /public/ledger/blocks/{index}` · `GET /public/anchors/latest` | P | ledger and anchors |
+| `GET /public/ledger/blocks` (paged) · `.../blocks/{index}` · `.../keys` · `GET /public/anchors/latest` | P | signed ledger blocks, signing keys, anchors |
+| `GET /public/ledger/entries/{seq}` | P | a public entry with its block and inclusion proof |
 | `POST /admin/bylaws` | Membership Admin | publish a bylaws version |
 | `GET /admin/applications` · `POST /admin/applications/{id}/decision` | Membership Admin | registration triage |
 | `GET /admin/members` · `GET /admin/members/{accountId}/history` | Membership Admin | member list (paged), status history |
@@ -620,7 +660,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /admin/elections/{id}/roll` · `.../schedule` · `.../cancel` (`.../certify` in M4) | Election Admin | roll snapshot, scheduling and cancellation requests (draft cancel is immediate) |
 | `GET /admin/elections/{id}/roll` | Election Admin, Auditor | latest roll with member names, for review |
 | `GET /admin/approvals` · `POST /admin/approvals/{id}/decision` | per action | two-person decisions |
-| `GET /admin/audit/events` · `GET /admin/audit/verify` | Auditor | ledger (paged by seq), full chain verification |
+| `GET /admin/audit/events` · `GET /admin/audit/verify` | Auditor | ledger (paged by seq); verification of chain, blocks, signatures and anchors |
 | `GET\|PUT /admin/sign-in-methods` · `POST /admin/roles` | System Admin | auth switches, roles (→ approval) |
 
 Errors use RFC 9457 problem details. Request bodies are validated against schemas shared with the web app.
@@ -629,20 +669,25 @@ Errors use RFC 9457 problem details. Request bodies are validated against schema
 
 | Endpoint | Trigger | Work |
 |---|---|---|
-| `POST /tasks/tick` | Cloud Scheduler, every minute | open/close elections on time; seal pools; build ledger block; anchor; schedule tally on close |
+| `POST /tasks/tick` | Cloud Scheduler, every minute | *M2c:* seal ledger blocks, sign approved rolls, anchor blocks (returns what it did). *M3+:* open/close elections on time; seal pools; schedule tally on close |
 | `POST /tasks/tally` | Cloud Task after close | reveal seed, run `ustp-tally`, write provisional results bundle |
 | `POST /tasks/email` | Cloud Task | send via Amazon SES |
 | `POST /tasks/destroy-pool-key` | Cloud Task after certify | destroy the election's ballot-pool key version |
 
-The worker accepts only OIDC tokens from the Scheduler/Tasks service accounts (Cloud Run IAM invoker). Every task is
-idempotent; `tick` takes a lease (`locks/tick` with expiry) so overlapping ticks cannot double-seal.
+The worker accepts only OIDC tokens from the Scheduler/Tasks service accounts (Cloud Run IAM invoker), so its routes
+have no sign-in of their own. Every task is idempotent; from M3, `tick` takes a lease (`locks/tick` with expiry) so
+overlapping ticks cannot double-seal ballot pools. Each tick step runs even if an earlier one failed; any failure makes
+the tick answer 500, so Cloud Scheduler records it. Locally, `npm run dev:worker:emulators -w apps/server` runs the
+worker against the emulators and ticks every 15 seconds in place of Cloud Scheduler.
 
 ## 14. Security controls
 
 - **Rules:** Firestore and Storage `allow read, write: if false;` (spec §7). Clients use the API and signed URLs only.
 - **App Check** enforced on every API route (reCAPTCHA Enterprise provider for web).
 - **IAM:** separate service accounts for api and worker; no human has Firestore data access or KMS
-  encrypt/decrypt in production; break-glass group with alerting.
+  encrypt/decrypt in production; break-glass group with alerting. Only the worker's account holds
+  `cloudkms.signer` and `cloudkms.publicKeyViewer` on `audit-signing`; it also writes to the anchors bucket, which
+  nobody may delete from.
 - **Logging:** structured logs with redaction; no request bodies on cast; Firestore Data Access audit logs off in
   production (they would record write paths and times; pool encryption makes them harmless, but there is no need for
   them); KMS Data Access audit logs on.
@@ -691,6 +736,8 @@ idempotent; `tick` takes a lease (`locks/tick` with expiry) so overlapping ticks
 | §9 privacy claims | Hold under the trusted-API assumption stated in §2 | Honest scope of V1 secrecy |
 | §6 `roll_entries` collection | The roll lives in its `eligibility_snapshots` document (sorted list + Merkle root) | One immutable document per roll fits ~25k members, is cached for the casting check, and avoids thousands of writes inside the approval transaction |
 | §3/§5.3 photos via signed upload URL, checked by the worker | Upload through the API, normalized (metadata stripped) and checked inline | Server-side decoding and metadata removal; works with the emulators; no URL-signing permission; one Vision call needs no task queue |
+| §6 roll snapshot "signed" | Signed by the worker on its next tick after approval, not inside the approval | Keeps signing rights off the internet-facing api; a compromised api cannot sign |
+| §6 collections | + `signing_keys` | Public keys of every key version that signed, for verification across key rotation |
 
 ## 18. Open questions
 
@@ -719,7 +766,7 @@ Decisions for USTP; the design's proposed default is in brackets.
 |---|---|
 | **M0 — Foundations** *(this commit)* | Design; monorepo; `ustp-tally`, `ustp-audit`, `ustp-domain` with tests; server and web skeletons; CI |
 | **M1 — Identity & registration** | *Done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes via two-person approvals, auth switches, Auditor ledger verification; web sign-in (Google, Microsoft, Apple, email/password, email link), registration, account and admin console. admin two-step verification (authenticator-app setup, code step at sign-in, re-authentication for approvals, typed MFA/re-auth problems); profile photos (normalized upload, automatic checks, admin review). *Still to exercise against a real project:* authenticator-app setup and sign-in (TOTP), and Cloud Vision photo checks — neither has an emulator |
-| **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c:* ledger blocks, KMS signing (blocks and roll snapshots), anchors |
+| **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | Ballot UI with client-side commitments; cast endpoint; pool encryption; sealer; receipts; `/verify` |
 | **M4 — Tally & certification** | Tally task, results bundle, certification, position terms, key destruction; `ustp-verify` CLI |
 | **M5 — Hardening & launch gates** | Terraform; Binary Authorization; PWA; accessibility audit; load test; external review; mock election |

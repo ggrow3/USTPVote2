@@ -157,6 +157,7 @@ export class ElectionsService {
         approvalId,
         decidedBy: null,
         decidedAt: null,
+        signature: null,
       };
       tx.create(snapshotRef, snapshot);
       return withoutList(snapshot);
