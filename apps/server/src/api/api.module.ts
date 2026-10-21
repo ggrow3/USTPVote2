@@ -13,6 +13,8 @@ import { AuthGuard } from '../auth/auth.guard.js';
 import { HealthController } from '../common/health.controller.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { CoreModule } from '../core.module.js';
+import { ElectionsController, ProposalsController } from '../elections/elections.controller.js';
+import { ElectionsService } from '../elections/elections.service.js';
 import { MembershipAdminController, RegistrationController } from '../membership/membership.controller.js';
 import { MembershipService } from '../membership/membership.service.js';
 import { LocalPhotoChecker, PHOTO_CHECKER, VisionPhotoChecker } from '../photos/checker.js';
@@ -32,6 +34,8 @@ import { PhotosService } from '../photos/photos.service.js';
     MembershipAdminController,
     MyPhotoController,
     PhotoReviewController,
+    ElectionsController,
+    ProposalsController,
     ApprovalsController,
     PublicSignInMethodsController,
     SignInMethodsController,
@@ -41,6 +45,7 @@ import { PhotosService } from '../photos/photos.service.js';
     AccountsService,
     MembershipService,
     PhotosService,
+    ElectionsService,
     ApprovalsService,
     {
       provide: PHOTO_CHECKER,

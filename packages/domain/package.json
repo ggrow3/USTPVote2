@@ -19,6 +19,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "ustp-audit": "^0.1.0",
+    "ustp-tally": "^0.1.0",
     "zod": "^4.6.7"
   }
 }
