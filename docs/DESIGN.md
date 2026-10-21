@@ -538,6 +538,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /me` · `POST /accounts` | M | current account; first-sign-in account creation |
 | `POST /me/identities` · `DELETE /me/identities/{uid}` | M | link / unlink a login method |
 | `GET /bylaws/current` | P | current bylaws version and hash |
+| `GET /sign-in-methods` | P | which sign-in providers are switched on (sign-in buttons) |
 | `POST /registration/applications` · `GET /registration/applications/me` | M | apply; status |
 | `POST /me/resign` | M | resign membership |
 | `POST /registration/photo-upload-url` · `POST /registration/photos` | M | photo upload |
@@ -652,7 +653,7 @@ Decisions for USTP; the design's proposed default is in brackets.
 | Milestone | Content |
 |---|---|
 | **M0 — Foundations** *(this commit)* | Design; monorepo; `ustp-tally`, `ustp-audit`, `ustp-domain` with tests; server and web skeletons; CI |
-| **M1 — Identity & registration** | *Backend done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes via two-person approvals, auth switches, Auditor ledger verification. *Remaining:* photo pipeline; web sign-in, registration and admin triage UI |
+| **M1 — Identity & registration** | *Done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes via two-person approvals, auth switches, Auditor ledger verification; web sign-in (Google, Microsoft, Apple, email/password, email link), registration, account and admin console. *Remaining:* photo pipeline; admin MFA (TOTP) enrollment and sign-in UI, required before admins can work outside the emulators |
 | **M2 — Election setup & ledger** | Elections, contests, candidates, proposals; roll snapshots; approval requests; ledger, blocks, KMS signing, anchors |
 | **M3 — Casting & secrecy** | Ballot UI with client-side commitments; cast endpoint; pool encryption; sealer; receipts; `/verify` |
 | **M4 — Tally & certification** | Tally task, results bundle, certification, position terms, key destruction; `ustp-verify` CLI |

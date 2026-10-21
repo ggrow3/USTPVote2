@@ -115,6 +115,14 @@ export interface ApprovalRequestRecord {
   readonly decisionReason: string | null;
 }
 
+/** `GET /v1/me` */
+export interface MeResponse {
+  readonly account: AccountRecord | null;
+  readonly identities: readonly IdentityRecord[];
+  readonly member: MemberRecord | null;
+  readonly roles: readonly Role[];
+}
+
 /** `sign_in_methods/{provider}`; a missing document means enabled. */
 export interface SignInMethodRecord {
   readonly provider: SignInProvider;

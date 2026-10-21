@@ -5,6 +5,16 @@ import { ROLES } from './roles.js';
 
 /** Request bodies (design §12), shared by the API (validation) and the web app (forms, types). */
 
+/** Every API error body (RFC 9457). */
+export interface ProblemDetails {
+  readonly type: string;
+  readonly title: string;
+  readonly status: number;
+  readonly detail?: string;
+  /** Field-level validation problems; `path` is the dotted field path. */
+  readonly errors?: readonly { readonly path: string; readonly message: string }[];
+}
+
 const reason = z.string().trim().min(1, 'a written reason is required').max(2000);
 const hex32 = z.string().regex(/^[0-9a-f]{64}$/, 'expected 64 lowercase hex digits');
 const uuidV7 = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/, 'expected a UUIDv7');
@@ -14,9 +24,9 @@ export const createApplicationSchema = z.strictObject({
   bylawsVersion: z.string().min(1).max(64),
   /** Hash of the bylaws text the applicant was shown and agreed to. */
   bylawsHash: hex32,
-  legalName: z.string().trim().min(1).max(200),
+  legalName: z.string().trim().min(1, 'enter your legal name').max(200),
   preferredName: optionalText(200),
-  state: z.string().regex(/^[A-Z]{2}$/, 'expected a two-letter state code'),
+  state: z.string().regex(/^[A-Z]{2}$/, 'choose your state or territory (two-letter code)'),
   statement: optionalText(5000),
 });
 export type CreateApplicationInput = z.infer<typeof createApplicationSchema>;

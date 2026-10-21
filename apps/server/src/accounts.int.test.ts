@@ -112,6 +112,9 @@ describe('sign-in method switches', () => {
 
     const off = await api.call('PUT', '/v1/admin/sign-in-methods', sa1, { 'google.com': false, 'apple.com': false });
     expect(off.body).toEqual({ 'google.com': false, 'microsoft.com': true, 'apple.com': false, password: true });
+    // The web app reads the same switches without signing in, to decide which buttons to show.
+    expect((await api.call('GET', '/v1/sign-in-methods')).body).toEqual(off.body);
+
     expect((await api.call('PUT', '/v1/admin/sign-in-methods', sa1, { password: false })).body.detail).toMatch(
       /the sign-in method you are using/,
     );

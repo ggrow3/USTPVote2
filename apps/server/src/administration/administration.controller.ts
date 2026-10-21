@@ -12,7 +12,7 @@ import {
   type SignInMethodsInput,
 } from 'ustp-domain';
 import { z } from 'zod';
-import { Ctx, requireAccount, Roles } from '../auth/decorators.js';
+import { Ctx, Public, requireAccount, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { SignInMethodsService } from '../auth/sign-in-methods.service.js';
 import { parseQuery, ZodPipe } from '../common/validation.js';
@@ -42,6 +42,18 @@ export class ApprovalsController {
   @Roles(...ROLES)
   decide(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(decisionSchema)) body: DecisionInput) {
     return this.approvals.decide(ctx, id, body);
+  }
+}
+
+/** Which sign-in buttons the web app should offer. */
+@Controller('v1/sign-in-methods')
+export class PublicSignInMethodsController {
+  constructor(private readonly signInMethods: SignInMethodsService) {}
+
+  @Public()
+  @Get()
+  current() {
+    return this.signInMethods.current();
   }
 }
 

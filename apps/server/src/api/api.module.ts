@@ -2,7 +2,12 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { AccountsController } from '../accounts/accounts.controller.js';
 import { AccountsService } from '../accounts/accounts.service.js';
-import { ApprovalsController, AuditController, SignInMethodsController } from '../administration/administration.controller.js';
+import {
+  ApprovalsController,
+  AuditController,
+  PublicSignInMethodsController,
+  SignInMethodsController,
+} from '../administration/administration.controller.js';
 import { ApprovalsService } from '../administration/approvals.service.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { HealthController } from '../common/health.controller.js';
@@ -22,6 +27,7 @@ import { MembershipService } from '../membership/membership.service.js';
     RegistrationController,
     MembershipAdminController,
     ApprovalsController,
+    PublicSignInMethodsController,
     SignInMethodsController,
     AuditController,
   ],

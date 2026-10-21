@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "emulators",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "emulators", "-w", "apps/server"],
+      "port": 4000
+    },
+    {
+      "name": "api",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:api:emulators", "-w", "apps/server"],
+      "port": 8080
+    },
+    {
+      "name": "web",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:emulators", "-w", "apps/web"],
+      "port": 5173
+    }
+  ]
+}
