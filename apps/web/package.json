@@ -8,14 +8,18 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "typecheck": "vue-tsc -p tsconfig.json --noEmit"
+    "typecheck": "vue-tsc -p tsconfig.json --noEmit",
+    "dev:emulators": "vite --mode emulators"
   },
   "dependencies": {
     "@quasar/extras": "^2.1.0",
+    "firebase": "^13.0.0",
     "quasar": "^2.35.2",
     "ustp-audit": "^0.1.0",
+    "ustp-domain": "^0.1.0",
     "vue": "^3.5.44",
-    "vue-router": "^5.4.0"
+    "vue-router": "^5.4.0",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@quasar/vite-plugin": "^2.0.2",

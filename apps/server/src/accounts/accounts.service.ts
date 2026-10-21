@@ -6,7 +6,7 @@ import {
   type AccountRecord,
   type IdentityRecord,
   type MemberRecord,
-  type Role,
+  type MeResponse,
   type RoleAssignmentRecord,
 } from 'ustp-domain';
 import { requireAccount } from '../auth/decorators.js';
@@ -19,13 +19,6 @@ import { LedgerService } from '../ledger/ledger.service.js';
 
 /** A second sign-in used to link a login method must be this fresh. */
 const LINK_MAX_AUTH_AGE_SECONDS = 5 * 60;
-
-export interface MeResponse {
-  readonly account: AccountRecord | null;
-  readonly identities: readonly IdentityRecord[];
-  readonly member: MemberRecord | null;
-  readonly roles: readonly Role[];
-}
 
 /** USTP accounts and the logins linked to them (design §4). */
 @Injectable()

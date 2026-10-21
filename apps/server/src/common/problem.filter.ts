@@ -1,14 +1,6 @@
 import { Catch, HttpException, HttpStatus, Logger, type ArgumentsHost, type ExceptionFilter } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
-
-export interface ProblemDetails {
-  readonly type: string;
-  readonly title: string;
-  readonly status: number;
-  readonly detail?: string;
-  /** Field-level validation problems. */
-  readonly errors?: readonly { readonly path: string; readonly message: string }[];
-}
+import type { ProblemDetails } from 'ustp-domain';
 
 /** Every error leaves the API as RFC 9457 problem details; unexpected errors never leak internals. */
 @Catch()
