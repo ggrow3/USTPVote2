@@ -9,12 +9,17 @@ import {
   SignInMethodsController,
 } from '../administration/administration.controller.js';
 import { ApprovalsService } from '../administration/approvals.service.js';
+import { RoleApprovals } from '../administration/role-approvals.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { HealthController } from '../common/health.controller.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { CoreModule } from '../core.module.js';
+import { ElectionApprovals } from '../elections/election-approvals.js';
+import { ElectionReader } from '../elections/election-reader.js';
 import { ElectionsController, ProposalsController } from '../elections/elections.controller.js';
 import { ElectionsService } from '../elections/elections.service.js';
+import { Firebase } from '../infra/firebase.js';
+import { EmulatorSecretStore, SECRET_STORE, SecretManagerStore } from '../infra/secret-store.js';
 import { MembershipAdminController, RegistrationController } from '../membership/membership.controller.js';
 import { MembershipService } from '../membership/membership.service.js';
 import { LocalPhotoChecker, PHOTO_CHECKER, VisionPhotoChecker } from '../photos/checker.js';
@@ -46,7 +51,16 @@ import { PhotosService } from '../photos/photos.service.js';
     MembershipService,
     PhotosService,
     ElectionsService,
+    ElectionReader,
+    ElectionApprovals,
+    RoleApprovals,
     ApprovalsService,
+    {
+      provide: SECRET_STORE,
+      inject: [CONFIG, Firebase],
+      useFactory: (config: ServerConfig, firebase: Firebase) =>
+        config.secretStore === 'emulator' ? new EmulatorSecretStore(firebase.db) : new SecretManagerStore(config.projectId),
+    },
     {
       provide: PHOTO_CHECKER,
       inject: [CONFIG],

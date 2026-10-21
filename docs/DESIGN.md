@@ -262,11 +262,19 @@ stateDiagram-v2
 Spec §4 lists Draft → Scheduled → Open → Closed → Certified. This design adds **Cancelled** and makes
 **scheduling** a two-person action, because freezing the contest rules matters as much as freezing the roll.
 
-**Draft → Scheduled** requires: every contest passes `ustp-tally` spec validation; every proposal snapshot is
-reviewed; an approved roll snapshot is attached; the definition is frozen as `definitionHash = H(JCS(definition))`;
-a fresh 32-byte tie-break seed is generated into Secret Manager and only its hash `tieBreakSeedCommitment` is
-published; a new version of the ballot-pool KMS key is created for this election. All of that is one ledger entry.
-Scheduling warns if the roll is too small for the anonymity threshold (roll < 3k).
+**Draft → Scheduled** (implemented in M2b): the Election Admin's request carries the current `definitionHash` and the
+approved roll. When the Auditor approves, the server **recomputes the hash from the stored contests, candidates and
+proposal texts** and refuses if anything changed since the request (the Auditor approves only what they saw), re-runs
+`validateDefinition` (voting must still open in the future), and checks the roll is still the approved one. A fresh
+32-byte tie-break seed is generated and stored in Secret Manager under a new secret per attempt (Secret Manager is not
+transactional; the election records `tieBreakSeedRef`, the secret's ID, for the attempt that committed). Only its hash
+`tieBreakSeedCommitment` is published. One ledger entry, `election.scheduled`, records the definition hash, roll
+root and count, seed commitment and voting window. From then on nothing in the definition or roll can be edited.
+Creating the ballot-pool KMS key version moves to M3, when casting needs it. Planned: warn when the roll is too small
+for the anonymity threshold (roll < 3k).
+
+**Cancelling** a draft is a single Election Admin action; cancelling a scheduled or open election is two-person
+(`election.cancel`, approved only if the election is still in the state it was requested from). Both are ledgered.
 
 ### 6.2 Contests
 
@@ -282,11 +290,19 @@ Voters may skip a contest (undervote). Rules are in [§9](#9-tallying-ustp-tally
 
 ### 6.3 Roll snapshots
 
-An Election Admin requests a snapshot: eligibility criteria (default: status `Active` at `asOf`; see Q3), the sorted
-list of eligible `accountId`s, its count and a Merkle root over `H(JCS({electionId, accountId}))`. An Auditor
-(≠ requester) reviews and approves; on approval the worker KMS-signs the snapshot header, writes
-`eligibility_snapshots/{snapshotId}` and `elections/{id}/roll_entries/{accountId}`, and appends a ledger entry. The
-roll is frozen from then on: later status changes do not alter it (Q4). Every roll entry carries equal weight.
+An Election Admin requests a snapshot (implemented in M2b): eligibility criteria (default: status `Active` at
+`asOf`; see Q3), the sorted list of eligible `accountId`s, its count and a Merkle root over
+`H(JCS({v: 1, electionId, accountId}))` (`rollMerkleRoot` in `ustp-domain`; a member can be given their own inclusion
+proof). The snapshot is written to `eligibility_snapshots/{snapshotId}` as `pending` with a `roll.approve` request.
+An Auditor (≠ requester, and not a candidate in the election) reviews the names and approves; the snapshot becomes
+`approved`, the election points at it, any previously approved roll is `superseded`, and `roll.approved` is ledgered.
+A rejected snapshot is marked `rejected`. The roll is frozen from then on: later status changes do not alter it (Q4).
+Every roll entry carries equal weight.
+
+The snapshot document holds the whole sorted list, about 25,000 members within Firestore's 1 MiB document limit (the
+spec's scale is 1,000–5,000); the casting check in M3 reads it once per instance (it never changes), so a separate
+`roll_entries` collection is not needed until rolls outgrow one document. Signing the snapshot with KMS arrives with
+ledger block signing in M2c.
 
 ### 6.4 Proposals and positions
 
@@ -512,7 +528,10 @@ decidedBy, decidedAt, reason, expiresAt}`.
   precondition and acting on exactly that payload. Statuses: `pending` → `executed` | `rejected`.
 - Requests expire after 7 days (checked at decision time). Request and decision are ledgered, plus the executed
   effect (e.g. `role.granted`) in the same transaction.
-- Implemented in M1 for role changes, so administrators can be appointed; election actions reuse it in M2.
+- Implemented in M1 for role changes and generalized in M2b: each action has a handler that re-checks its
+  preconditions inside the decision transaction and returns its ledger entries and writes. Only one request per
+  action and subject can be pending at a time. For election actions the approver must not be a candidate in that
+  election.
 
 | Action | Requested by | Approved by |
 |---|---|---|
@@ -598,7 +617,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/photos` · `GET /admin/photos/{id}/image` · `POST /admin/photos/{id}/decision` | Membership Admin | photo review |
 | `GET /admin/elections` · `GET /admin/elections/{id}` (detail, definition hash, problems) · `GET /admin/proposals` | Election Admin, Auditor | read election setup |
 | `POST /admin/elections` · `PATCH /admin/elections/{id}` · `POST\|PUT\|DELETE …/contests[/{cid}]` · `POST\|DELETE …/contests/{cid}/candidates[/{kid}]` · `POST /admin/proposals` | Election Admin | edit drafts |
-| `POST /admin/elections/{id}/roll-snapshots` · `.../schedule` · `.../certify` · `.../cancel` | Election Admin | create approval requests |
+| `POST /admin/elections/{id}/roll` · `.../schedule` · `.../cancel` (`.../certify` in M4) | Election Admin | roll snapshot, scheduling and cancellation requests (draft cancel is immediate) |
+| `GET /admin/elections/{id}/roll` | Election Admin, Auditor | latest roll with member names, for review |
 | `GET /admin/approvals` · `POST /admin/approvals/{id}/decision` | per action | two-person decisions |
 | `GET /admin/audit/events` · `GET /admin/audit/verify` | Auditor | ledger (paged by seq), full chain verification |
 | `GET\|PUT /admin/sign-in-methods` · `POST /admin/roles` | System Admin | auth switches, roles (→ approval) |
@@ -669,6 +689,7 @@ idempotent; `tick` takes a lease (`locks/tick` with expiry) so overlapping ticks
 | §4 "1-minute anchors" | Anchor only when a new block exists, ≤ 1/min | Matches spec §8 "smart anchoring" |
 | §7 "Binary Authorization: reproducible builds" | Lockfile + `--ignore-scripts` **and** an actual Binary Authorization policy on Cloud Run | They are separate controls |
 | §9 privacy claims | Hold under the trusted-API assumption stated in §2 | Honest scope of V1 secrecy |
+| §6 `roll_entries` collection | The roll lives in its `eligibility_snapshots` document (sorted list + Merkle root) | One immutable document per roll fits ~25k members, is cached for the casting check, and avoids thousands of writes inside the approval transaction |
 | §3/§5.3 photos via signed upload URL, checked by the worker | Upload through the API, normalized (metadata stripped) and checked inline | Server-side decoding and metadata removal; works with the emulators; no URL-signing permission; one Vision call needs no task queue |
 
 ## 18. Open questions
@@ -698,7 +719,7 @@ Decisions for USTP; the design's proposed default is in brackets.
 |---|---|
 | **M0 — Foundations** *(this commit)* | Design; monorepo; `ustp-tally`, `ustp-audit`, `ustp-domain` with tests; server and web skeletons; CI |
 | **M1 — Identity & registration** | *Done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes via two-person approvals, auth switches, Auditor ledger verification; web sign-in (Google, Microsoft, Apple, email/password, email link), registration, account and admin console. admin two-step verification (authenticator-app setup, code step at sign-in, re-authentication for approvals, typed MFA/re-auth problems); profile photos (normalized upload, automatic checks, admin review). *Still to exercise against a real project:* authenticator-app setup and sign-in (TOTP), and Cloud Vision photo checks — neither has an emulator |
-| **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b:* roll snapshots, two-person scheduling and cancellation (seed commitment, pool key). *M2c:* ledger blocks, KMS signing, anchors |
+| **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c:* ledger blocks, KMS signing (blocks and roll snapshots), anchors |
 | **M3 — Casting & secrecy** | Ballot UI with client-side commitments; cast endpoint; pool encryption; sealer; receipts; `/verify` |
 | **M4 — Tally & certification** | Tally task, results bundle, certification, position terms, key destruction; `ustp-verify` CLI |
 | **M5 — Hardening & launch gates** | Terraform; Binary Authorization; PWA; accessibility audit; load test; external review; mock election |

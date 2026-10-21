@@ -28,6 +28,9 @@ const election: ElectionRecord = {
   definitionHash: null,
   rollSnapshotId: null,
   tieBreakSeedCommitment: null,
+  tieBreakSeedRef: null,
+  scheduledAt: null,
+  cancelledAt: null,
 };
 
 const proposal: ProposalSnapshotRecord = {

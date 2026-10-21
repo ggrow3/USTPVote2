@@ -40,7 +40,13 @@ export type {
   ProposalSnapshotRecord,
   ElectionDefinition,
   ElectionDetail,
+  RollSnapshotRecord,
+  RollView,
+  RollApprovalPayload,
+  SchedulePayload,
+  CancelPayload,
 } from './elections.js';
+export { rollLeaf, sortRoll, rollMerkleRoot, rollInclusionProof } from './roll.js';
 export * from './election-api.js';
 export type { Likelihood, PhotoSignals, PhotoVerdict } from './photos.js';
 export type { ProblemCode } from './problems.js';

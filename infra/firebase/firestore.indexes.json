@@ -33,6 +33,14 @@
       ]
     },
     {
+      "collectionGroup": "eligibility_snapshots",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "electionId", "order": "ASCENDING" },
+        { "fieldPath": "requestedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "approval_requests",
       "queryScope": "COLLECTION",
       "fields": [

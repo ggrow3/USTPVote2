@@ -4,11 +4,13 @@ import {
   contestInputSchema,
   createElectionSchema,
   proposalInputSchema,
+  reasonInputSchema,
   updateElectionSchema,
   type CandidateInput,
   type ContestInput,
   type CreateElectionInput,
   type ProposalInput,
+  type ReasonInput,
   type UpdateElectionInput,
 } from 'ustp-domain';
 import { Ctx, Roles } from '../auth/decorators.js';
@@ -42,6 +44,30 @@ export class ElectionsController {
   @Patch(':id')
   update(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(updateElectionSchema)) body: UpdateElectionInput) {
     return this.elections.update(ctx, id, body);
+  }
+
+  @Get(':id/roll')
+  @Roles('election_admin', 'auditor')
+  roll(@Param('id') id: string) {
+    return this.elections.roll(id);
+  }
+
+  /** Snapshot every Active member now; an Auditor must approve it. */
+  @Post(':id/roll')
+  requestRoll(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(reasonInputSchema)) body: ReasonInput) {
+    return this.elections.requestRoll(ctx, id, body.reason);
+  }
+
+  /** Ask an Auditor to freeze the current definition and roll. */
+  @Post(':id/schedule')
+  requestSchedule(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(reasonInputSchema)) body: ReasonInput) {
+    return this.elections.requestSchedule(ctx, id, body.reason);
+  }
+
+  /** Drafts are cancelled at once; scheduled and open elections need an Auditor's approval. */
+  @Post(':id/cancel')
+  cancel(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(reasonInputSchema)) body: ReasonInput) {
+    return this.elections.cancel(ctx, id, body.reason);
   }
 
   @Post(':id/contests')

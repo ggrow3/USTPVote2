@@ -13,6 +13,8 @@ export interface ServerConfig {
   readonly photosBucket: string | null;
   /** `vision`: Cloud Vision. `local`: the emulator-only stand-in (no face detection). */
   readonly photoChecker: 'vision' | 'local';
+  /** Where tie-break seeds are kept: Secret Manager, or the emulator-only Firestore stand-in. */
+  readonly secretStore: 'secret-manager' | 'emulator';
 }
 
 export const CONFIG = Symbol('ServerConfig');
@@ -31,6 +33,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const photoChecker = (env.PHOTO_CHECKER ?? (usingEmulators ? 'local' : 'vision')) as ServerConfig['photoChecker'];
   if (photoChecker !== 'vision' && photoChecker !== 'local') throw new Error('PHOTO_CHECKER must be "vision" or "local"');
   if (photoChecker === 'local' && !usingEmulators) throw new Error('PHOTO_CHECKER=local is only allowed with the Firebase emulators');
+  const secretStore = (env.SECRET_STORE ?? (usingEmulators ? 'emulator' : 'secret-manager')) as ServerConfig['secretStore'];
+  if (secretStore !== 'secret-manager' && secretStore !== 'emulator') {
+    throw new Error('SECRET_STORE must be "secret-manager" or "emulator"');
+  }
+  if (secretStore === 'emulator' && !usingEmulators) throw new Error('SECRET_STORE=emulator is only allowed with the Firebase emulators');
 
   const projectId = env.GOOGLE_CLOUD_PROJECT || env.GCLOUD_PROJECT || undefined;
   return {
@@ -44,5 +51,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       .filter(Boolean),
     photosBucket: env.PHOTOS_BUCKET || (usingEmulators && projectId ? `${projectId}-profile-photos` : null),
     photoChecker,
+    secretStore,
   };
 }

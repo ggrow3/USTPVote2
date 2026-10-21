@@ -5,82 +5,115 @@ import {
   APPROVAL_TTL_DAYS,
   checkCanApprove,
   checkCanRequest,
-  checkRoleChange,
   Collections,
   TWO_PERSON_ACTIONS,
+  type Actor,
   type ApprovalRequestRecord,
   type ApprovalStatus,
   type DecisionInput,
-  type Role,
-  type RoleAssignmentRecord,
   type RoleChangeInput,
+  type TwoPersonAction,
 } from 'ustp-domain';
 import { requireAccount } from '../auth/decorators.js';
-import { DirectoryService, roleAssignmentId } from '../auth/directory.service.js';
 import { actorOf, type RequestContext } from '../auth/principal.js';
 import { assertCheck } from '../common/validation.js';
 import { CONFIG, type ServerConfig } from '../config.js';
+import { ElectionApprovals } from '../elections/election-approvals.js';
 import { Firebase } from '../infra/firebase.js';
-import { LedgerService, type LedgerEvent } from '../ledger/ledger.service.js';
+import { LedgerService } from '../ledger/ledger.service.js';
+import { NO_EFFECT, type ApprovalHandler } from './approval-handler.js';
+import { RoleApprovals, type RoleChangePayload } from './role-approvals.js';
 
-interface RoleChangePayload {
-  readonly accountId: string;
-  readonly role: Role;
-  readonly change: 'grant' | 'revoke';
+export interface NewRequest {
+  readonly action: TwoPersonAction;
+  /** The account or election the action affects. */
+  readonly subject: string;
+  readonly payload: object;
+  readonly reason: string;
+  readonly requestedBy: string;
+  /** Pre-allocated request ID, when the caller needs it before the request exists. */
+  readonly id?: string;
 }
 
-
 /**
- * The two-person rule (design §10.2): one admin requests, a different admin with the approving role decides,
- * and the action executes on exactly the payload that was approved. Role changes are the first actions;
- * election actions arrive in M2.
+ * The two-person rule (design §10.2): one admin requests, a different admin with the approving role decides, and
+ * the action executes on exactly the payload that was approved. Each action's effect lives in its handler.
  */
 @Injectable()
 export class ApprovalsService {
   constructor(
     private readonly firebase: Firebase,
     private readonly ledger: LedgerService,
-    private readonly directory: DirectoryService,
     @Inject(CONFIG) private readonly config: ServerConfig,
+    private readonly roles: RoleApprovals,
+    private readonly elections: ElectionApprovals,
   ) {}
+
+  /** Checks the caller may request `action` about `subject`; call before opening the request's transaction. */
+  assertCanRequest(ctx: RequestContext, action: TwoPersonAction, subject?: string): Actor {
+    const actor = actorOf(ctx, this.config.adminMfaRequired);
+    assertCheck(checkCanRequest(action, actor, subject), ForbiddenException);
+    return actor;
+  }
+
+  /**
+   * Records a request inside the caller's transaction. Refuses a second pending request for the same action and
+   * subject. Call after the transaction's own reads and before its writes.
+   */
+  async createRequest(tx: Transaction, input: NewRequest): Promise<ApprovalRequestRecord> {
+    const db = this.firebase.db;
+    const duplicate = await tx.get(
+      db
+        .collection(Collections.approvalRequests)
+        .where('action', '==', input.action)
+        .where('subject', '==', input.subject)
+        .where('status', '==', 'pending')
+        .limit(1),
+    );
+    if (!duplicate.empty) throw new ConflictException('a request for this is already waiting for a decision');
+
+    const ref = input.id ? db.collection(Collections.approvalRequests).doc(input.id) : db.collection(Collections.approvalRequests).doc();
+    const now = new Date();
+    const record: ApprovalRequestRecord = {
+      id: ref.id,
+      action: input.action,
+      subject: input.subject,
+      payload: { ...input.payload },
+      payloadHash: hashCanonical(input.payload),
+      reason: input.reason,
+      requestedBy: input.requestedBy,
+      requestedAt: now.toISOString(),
+      approverRole: TWO_PERSON_ACTIONS[input.action].approver,
+      status: 'pending',
+      expiresAt: new Date(now.getTime() + APPROVAL_TTL_DAYS * 86_400_000).toISOString(),
+      decidedBy: null,
+      decidedAt: null,
+      decisionReason: null,
+    };
+    await this.ledger.record(tx, [
+      {
+        type: 'approval.requested',
+        actor: input.requestedBy,
+        subject: input.subject,
+        payload: { approvalId: record.id, action: input.action, payloadHash: record.payloadHash, reason: input.reason },
+      },
+    ]);
+    tx.create(ref, record);
+    return record;
+  }
+
+  allocateId(): string {
+    return this.firebase.db.collection(Collections.approvalRequests).doc().id;
+  }
 
   async requestRoleChange(ctx: RequestContext, input: RoleChangeInput): Promise<ApprovalRequestRecord> {
     const requestedBy = requireAccount(ctx);
     const action = input.change === 'grant' ? 'role.grant' : 'role.revoke';
-    assertCheck(checkCanRequest(action, actorOf(ctx, this.config.adminMfaRequired), input.accountId), ForbiddenException);
+    this.assertCanRequest(ctx, action, input.accountId);
     const payload: RoleChangePayload = { accountId: input.accountId, role: input.role, change: input.change };
-    const db = this.firebase.db;
-
-    return db.runTransaction(async (tx) => {
-      await this.assertRoleChangeAllowed(tx, payload);
-      const ref = db.collection(Collections.approvalRequests).doc();
-      const now = new Date();
-      const record: ApprovalRequestRecord = {
-        id: ref.id,
-        action,
-        subject: input.accountId,
-        payload: { ...payload },
-        payloadHash: hashCanonical(payload),
-        reason: input.reason,
-        requestedBy,
-        requestedAt: now.toISOString(),
-        approverRole: TWO_PERSON_ACTIONS[action].approver,
-        status: 'pending',
-        expiresAt: new Date(now.getTime() + APPROVAL_TTL_DAYS * 86_400_000).toISOString(),
-        decidedBy: null,
-        decidedAt: null,
-        decisionReason: null,
-      };
-      await this.ledger.record(tx, [
-        {
-          type: 'approval.requested',
-          actor: requestedBy,
-          subject: record.subject,
-          payload: { approvalId: record.id, action, payloadHash: record.payloadHash, reason: record.reason },
-        },
-      ]);
-      tx.create(ref, record);
-      return record;
+    return this.firebase.db.runTransaction(async (tx) => {
+      await this.roles.assertAllowed(tx, payload);
+      return this.createRequest(tx, { action, subject: input.accountId, payload, reason: input.reason, requestedBy });
     });
   }
 
@@ -97,53 +130,39 @@ export class ApprovalsService {
   async decide(ctx: RequestContext, id: string, input: DecisionInput): Promise<ApprovalRequestRecord> {
     const actor = actorOf(ctx, this.config.adminMfaRequired);
     const db = this.firebase.db;
+    const ref = db.collection(Collections.approvalRequests).doc(id);
+
+    // Authorize before any side effect a handler performs outside the transaction.
+    const before = (await ref.get()).data() as ApprovalRequestRecord | undefined;
+    if (!before) throw new NotFoundException('no such approval request');
+    this.assertCanDecide(before, actor);
+    const handler = this.handlerFor(before.action);
+    const prepared = input.decision === 'approve' && handler.beforeApprove ? await handler.beforeApprove(before) : undefined;
 
     return db.runTransaction(async (tx) => {
-      const ref = db.collection(Collections.approvalRequests).doc(id);
       const snap = await tx.get(ref);
-      if (!snap.exists) throw new NotFoundException('no such approval request');
       const request = snap.data() as ApprovalRequestRecord;
-      assertCheck(
-        checkCanApprove(
-          {
-            action: request.action,
-            requestedBy: request.requestedBy,
-            status: request.status,
-            expiresAt: new Date(request.expiresAt),
-            subject: request.subject,
-          },
-          actor,
-        ),
-        ForbiddenException,
-      );
+      this.assertCanDecide(request, actor);
       if (hashCanonical(request.payload) !== request.payloadHash) {
         throw new ConflictException('the request payload no longer matches what was requested');
       }
 
-      const events: LedgerEvent[] = [
+      const effect =
+        input.decision === 'approve'
+          ? await handler.approve(tx, request, actor, prepared)
+          : handler.reject
+            ? await handler.reject(tx, request)
+            : NO_EFFECT;
+      await this.ledger.record(tx, [
         {
           type: 'approval.decided',
           actor: actor.accountId,
           subject: request.subject,
           payload: { approvalId: id, action: request.action, decision: input.decision, reason: input.reason },
         },
-      ];
-      let execute: (() => void) | null = null;
-      if (input.decision === 'approve') {
-        // Re-check preconditions at execution time: roles may have changed since the request.
-        const payload = request.payload as unknown as RoleChangePayload;
-        await this.assertRoleChangeAllowed(tx, payload);
-        events.push({
-          type: payload.change === 'grant' ? 'role.granted' : 'role.revoked',
-          actor: actor.accountId,
-          subject: payload.accountId,
-          payload: { role: payload.role, approvalId: id, requestedBy: request.requestedBy },
-        });
-        execute = () => this.applyRoleChange(tx, payload, request, actor.accountId);
-      }
-
-      await this.ledger.record(tx, events);
-      execute?.();
+        ...effect.events,
+      ]);
+      effect.apply();
       const decided: ApprovalRequestRecord = {
         ...request,
         status: input.decision === 'approve' ? 'executed' : 'rejected',
@@ -156,30 +175,25 @@ export class ApprovalsService {
     });
   }
 
-  private async assertRoleChangeAllowed(tx: Transaction, payload: RoleChangePayload): Promise<void> {
-    const account = await tx.get(this.firebase.db.collection(Collections.accounts).doc(payload.accountId));
-    if (!account.exists) throw new NotFoundException('no such account');
-    const held = await this.directory.activeRoles(payload.accountId, tx);
-    assertCheck(checkRoleChange(held, payload.change, payload.role));
+  private assertCanDecide(request: ApprovalRequestRecord, actor: Actor): void {
+    assertCheck(
+      checkCanApprove(
+        {
+          action: request.action,
+          requestedBy: request.requestedBy,
+          status: request.status,
+          expiresAt: new Date(request.expiresAt),
+          subject: request.subject,
+        },
+        actor,
+      ),
+      ForbiddenException,
+    );
   }
 
-  private applyRoleChange(tx: Transaction, payload: RoleChangePayload, request: ApprovalRequestRecord, approvedBy: string) {
-    const ref = this.firebase.db.collection(Collections.roleAssignments).doc(roleAssignmentId(payload.accountId, payload.role));
-    const now = new Date().toISOString();
-    if (payload.change === 'grant') {
-      const record: RoleAssignmentRecord = {
-        accountId: payload.accountId,
-        role: payload.role,
-        grantedAt: now,
-        grantedBy: request.requestedBy,
-        approvedBy,
-        approvalId: request.id,
-        revokedAt: null,
-        revokedBy: null,
-      };
-      tx.set(ref, record);
-    } else {
-      tx.update(ref, { revokedAt: now, revokedBy: request.requestedBy });
-    }
+  private handlerFor(action: TwoPersonAction): ApprovalHandler {
+    if (action === 'role.grant' || action === 'role.revoke') return this.roles;
+    if (action === 'roll.approve' || action === 'election.schedule' || action === 'election.cancel') return this.elections;
+    throw new ConflictException(`${action} is not supported yet`);
   }
 }
