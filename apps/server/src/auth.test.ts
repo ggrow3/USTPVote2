@@ -1,6 +1,9 @@
+import { ForbiddenException, type HttpException } from '@nestjs/common';
 import type { DecodedIdToken } from 'firebase-admin/auth';
+import { PROBLEM_TYPES, type Check } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
 import { actorOf, principalFromToken } from './auth/principal.js';
+import { assertCheck } from './common/validation.js';
 import { loadConfig } from './config.js';
 
 const emulators = { FIRESTORE_EMULATOR_HOST: '127.0.0.1:8085', FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099' };
@@ -24,6 +27,25 @@ describe('loadConfig', () => {
       'a@example.org',
       'b@example.org',
     ]);
+  });
+});
+
+describe('assertCheck', () => {
+  it('passes a rule code through as the problem type', () => {
+    const run = (check: Check) => {
+      try {
+        assertCheck(check, ForbiddenException);
+        return null;
+      } catch (e) {
+        return (e as HttpException).getResponse();
+      }
+    };
+    expect(run({ ok: true })).toBeNull();
+    expect(run({ ok: false, reason: 'nope' })).toEqual({ message: 'nope' });
+    expect(run({ ok: false, reason: 'sign in again', code: 'reauthRequired' })).toEqual({
+      message: 'sign in again',
+      type: PROBLEM_TYPES.reauthRequired,
+    });
   });
 });
 

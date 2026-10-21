@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, type HttpException, type PipeTransform } from '@nestjs/common';
-import type { Check } from 'ustp-domain';
+import { PROBLEM_TYPES, type Check } from 'ustp-domain';
 import type { z } from 'zod';
 
 /** Validates a request body against a schema shared with the web app (ustp-domain). */
@@ -23,7 +23,10 @@ export function parseQuery<S extends z.ZodType>(schema: S, value: unknown, name:
   return result.data;
 }
 
-/** Turns a failed domain rule into an HTTP error (409 by default). */
-export function assertCheck(check: Check, toError: (reason: string) => HttpException = (r) => new ConflictException(r)): void {
-  if (!check.ok) throw toError(check.reason);
+/**
+ * Turns a failed domain rule into an HTTP error (409 by default). A rule's `code` becomes the problem `type`, so
+ * clients can react (e.g. prompt for re-authentication) without parsing the message.
+ */
+export function assertCheck(check: Check, Exception: new (body: object) => HttpException = ConflictException): void {
+  if (!check.ok) throw new Exception({ message: check.reason, ...(check.code && { type: PROBLEM_TYPES[check.code] }) });
 }

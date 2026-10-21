@@ -7,7 +7,7 @@ import AuditPanel from '../components/admin/AuditPanel.vue';
 import BylawsPanel from '../components/admin/BylawsPanel.vue';
 import MembersPanel from '../components/admin/MembersPanel.vue';
 import SignInMethodsPanel from '../components/admin/SignInMethodsPanel.vue';
-import { hasRole } from '../session.js';
+import { hasRole, session } from '../session.js';
 
 interface Tab {
   readonly name: string;
@@ -26,12 +26,17 @@ const ALL_TABS: readonly Tab[] = [
 ];
 
 const tabs = computed(() => ALL_TABS.filter((t) => hasRole(...t.roles)));
+const needsMfa = computed(() => !!session.me?.mfa.required && !session.me.mfa.signedInWithMfa);
 const tab = ref(tabs.value[0]?.name ?? 'approvals');
 </script>
 
 <template>
   <q-page padding>
     <div class="text-h5 q-mb-md">Administration</div>
+    <q-banner v-if="needsMfa" class="bg-orange-2 text-black q-mb-md" rounded>
+      Admin tools need two-step verification. Set up an authenticator app on your
+      <router-link to="/account">Account page</router-link>, then sign out and sign back in with its code.
+    </q-banner>
     <q-tabs v-model="tab" dense align="left" class="text-primary" no-caps>
       <q-tab v-for="t in tabs" :key="t.name" :name="t.name" :label="t.label" />
     </q-tabs>

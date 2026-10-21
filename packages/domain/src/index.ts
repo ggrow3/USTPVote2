@@ -21,4 +21,6 @@ export type { SignInProvider } from './identity.js';
 export { LEDGER_EVENT_TYPES } from './ledger-events.js';
 export type { LedgerEventType, LedgerEntry } from './ledger-events.js';
 export type * from './records.js';
+export { PROBLEM_TYPES } from './problems.js';
+export type { ProblemCode } from './problems.js';
 export * from './api.js';

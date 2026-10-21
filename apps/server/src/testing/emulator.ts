@@ -65,9 +65,23 @@ export class TestApi {
     return { email, uid, token: await signIn(email) };
   }
 
+  /**
+   * A user with an enrolled second factor, signed in through the full two-step flow. The Auth emulator supports
+   * SMS factors but not TOTP; the server only checks that a second factor was used, so either proves the path.
+   */
+  async userWithMfa(email: string): Promise<User> {
+    const { uid } = await this.firebase.auth.createUser({
+      email,
+      password: PASSWORD,
+      emailVerified: true,
+      multiFactor: { enrolledFactors: [{ factorId: 'phone', phoneNumber: '+15555550100', displayName: 'test phone' }] },
+    });
+    return { email, uid, token: await signInWithMfa(email) };
+  }
+
   /** A user with a USTP account. */
-  async member(email: string): Promise<User & { accountId: string }> {
-    const user = await this.user(email);
+  async member(email: string, { mfa = false } = {}): Promise<User & { accountId: string }> {
+    const user = mfa ? await this.userWithMfa(email) : await this.user(email);
     const res = await this.call('POST', '/v1/accounts', user);
     if (res.status !== 201) throw new Error(`account creation failed: ${res.status} ${JSON.stringify(res.body)}`);
     return { ...user, accountId: res.body.accountId };
@@ -105,6 +119,45 @@ export async function signIn(email: string): Promise<string> {
   );
   if (!res.ok) throw new Error(`emulator sign-in failed: ${res.status} ${await res.text()}`);
   return ((await res.json()) as { idToken: string }).idToken;
+}
+
+async function authEmulator<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`http://${AUTH_HOST}/identitytoolkit.googleapis.com/${path}?key=fake-api-key`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) throw new Error(`${path} failed: ${res.status} ${await res.text()}`);
+  return (await res.json()) as T;
+}
+
+/** Password, then the SMS challenge, using the code the emulator records instead of sending. */
+export async function signInWithMfa(email: string): Promise<string> {
+  const first = await authEmulator<{ mfaPendingCredential?: string; mfaInfo?: { mfaEnrollmentId: string }[] }>(
+    'v1/accounts:signInWithPassword',
+    { email, password: PASSWORD, returnSecureToken: true },
+  );
+  const { mfaPendingCredential } = first;
+  const mfaEnrollmentId = first.mfaInfo?.[0]?.mfaEnrollmentId;
+  if (!mfaPendingCredential || !mfaEnrollmentId) throw new Error('expected a second-factor challenge');
+
+  const start = await authEmulator<{ phoneResponseInfo: { sessionInfo: string } }>('v2/accounts/mfaSignIn:start', {
+    mfaPendingCredential,
+    mfaEnrollmentId,
+    phoneSignInInfo: {},
+  });
+  const { sessionInfo } = start.phoneResponseInfo;
+  const codes = (await (
+    await fetch(`http://${AUTH_HOST}/emulator/v1/projects/${PROJECT}/verificationCodes`)
+  ).json()) as { verificationCodes: { sessionInfo: string; code: string }[] };
+  const code = codes.verificationCodes.find((c) => c.sessionInfo === sessionInfo)?.code;
+  if (!code) throw new Error('the emulator recorded no verification code');
+
+  const done = await authEmulator<{ idToken: string }>('v2/accounts/mfaSignIn:finalize', {
+    mfaPendingCredential,
+    phoneVerificationInfo: { sessionInfo, code },
+  });
+  return done.idToken;
 }
 
 /** Empties Firestore and Auth in the emulators. */

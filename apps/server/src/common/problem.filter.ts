@@ -10,6 +10,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
   catch(exception: unknown, host: ArgumentsHost): void {
     const reply = host.switchToHttp().getResponse<FastifyReply>();
     let status: number = HttpStatus.INTERNAL_SERVER_ERROR;
+    let type = 'about:blank';
     let detail: string | undefined;
     let errors: ProblemDetails['errors'];
 
@@ -19,8 +20,9 @@ export class ProblemDetailsFilter implements ExceptionFilter {
       if (typeof body === 'string') {
         detail = body;
       } else if (typeof body === 'object' && body !== null) {
-        const b = body as { message?: unknown; errors?: ProblemDetails['errors'] };
+        const b = body as { message?: unknown; type?: unknown; errors?: ProblemDetails['errors'] };
         detail = Array.isArray(b.message) ? b.message.join('; ') : typeof b.message === 'string' ? b.message : undefined;
+        if (typeof b.type === 'string') type = b.type;
         errors = b.errors;
       }
     } else {
@@ -28,7 +30,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
     }
 
     const problem: ProblemDetails = {
-      type: 'about:blank',
+      type,
       title: HttpStatus[status]?.toString().replaceAll('_', ' ').toLowerCase() ?? 'error',
       status,
       ...(detail !== undefined && { detail }),

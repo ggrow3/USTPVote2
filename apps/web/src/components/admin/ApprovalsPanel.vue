@@ -7,6 +7,8 @@ import { apiFieldErrors, validate, type FieldErrors } from '../../forms.js';
 import { hasRole, session } from '../../session.js';
 
 const pending = ref<ApprovalRequestRecord[]>([]);
+/** An empty list only means "nothing pending" once a load has succeeded. */
+const listState = ref<'loading' | 'ready' | 'failed'>('loading');
 const me = computed(() => session.me?.account?.accountId);
 const isSystemAdmin = computed(() => hasRole('system_admin'));
 const request = reactive({ accountId: '', role: 'membership_admin' as Role, change: 'grant' as 'grant' | 'revoke', reason: '' });
@@ -26,9 +28,10 @@ function describe(r: ApprovalRequestRecord): string {
 }
 
 async function load() {
-  await attempt(async () => {
+  const ok = await attempt(async () => {
     pending.value = await api<ApprovalRequestRecord[]>('GET', '/v1/admin/approvals?status=pending');
   });
+  listState.value = ok ? 'ready' : 'failed';
 }
 
 async function decide(r: ApprovalRequestRecord, decision: 'approve' | 'reject') {
@@ -73,7 +76,8 @@ onMounted(load);
         <div class="text-subtitle1">Pending two-person requests</div>
         <q-btn flat dense icon="refresh" aria-label="Refresh" @click="load" />
       </div>
-      <div v-if="!pending.length" class="text-grey-7">Nothing waiting for a decision.</div>
+      <div v-if="listState === 'failed'" class="text-grey-7">Could not load requests.</div>
+      <div v-else-if="listState === 'ready' && !pending.length" class="text-grey-7">Nothing waiting for a decision.</div>
       <q-list v-else bordered separator>
         <q-item v-for="r in pending" :key="r.id">
           <q-item-section>

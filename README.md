@@ -7,8 +7,8 @@ deterministic tally library.
 
 **Status:** M1 nearly done. The core libraries are done and tested. Identity and registration work end to end
 against the Firebase emulators: sign-in, accounts, bylaws, applications, membership administration, two-person role
-changes and the audit ledger, in the API (emulator integration tests) and the web app. Profile photos and admin MFA
-enrollment are next. Nothing is deployed.
+changes, admin two-step verification and the audit ledger, in the API (emulator integration tests) and the web app.
+Profile photos are next. Nothing is deployed.
 
 ## Documents
 
@@ -69,7 +69,8 @@ npm run dev:emulators -w apps/web
 ```
 
 Open http://localhost:5173. Everything runs against the emulator-only project `demo-ustpvote` with App Check and
-admin MFA off. Accounts for `admin1@example.test` and `admin2@example.test` become System Admins once their email is
+admin MFA off. Use `npm run dev:api:emulators:mfa -w apps/server` instead to keep the production admin MFA policy on;
+note that the Auth emulator cannot do authenticator-app (TOTP) factors, only SMS ones. Accounts for `admin1@example.test` and `admin2@example.test` become System Admins once their email is
 verified. The Auth emulator does not send email: it prints verification and sign-in links in the `emulators`
 terminal (they are also listed at `http://127.0.0.1:9099/emulator/v1/projects/demo-ustpvote/oobCodes`).
 `.claude/launch.json` defines the same three servers for Claude Code's preview.

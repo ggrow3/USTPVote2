@@ -43,7 +43,7 @@ export interface PendingApproval {
 
 export function checkCanRequest(action: TwoPersonAction, requester: Actor, subject?: string): Check {
   const rule: ApprovalRule = TWO_PERSON_ACTIONS[action];
-  if (!requester.mfa) return deny('admin actions require multi-factor sign-in');
+  if (!requester.mfa) return deny('admin actions require multi-factor sign-in', 'mfaRequired');
   if (!rule.requesters.some((r) => requester.roles.includes(r))) {
     return deny(`${action} must be requested by ${rule.requesters.join(' or ')}`);
   }
@@ -60,7 +60,7 @@ export function checkCanApprove(request: PendingApproval, approver: Actor, now: 
     return deny('you cannot approve an action on your own account');
   }
   if (!approver.roles.includes(rule.approver)) return deny(`${request.action} must be approved by ${rule.approver}`);
-  if (!approver.mfa) return deny('approvals require multi-factor sign-in');
-  if (approver.authAgeSeconds > APPROVAL_MAX_AUTH_AGE_SECONDS) return deny('sign in again to approve');
+  if (!approver.mfa) return deny('approvals require multi-factor sign-in', 'mfaRequired');
+  if (approver.authAgeSeconds > APPROVAL_MAX_AUTH_AGE_SECONDS) return deny('sign in again to approve', 'reauthRequired');
   return OK;
 }

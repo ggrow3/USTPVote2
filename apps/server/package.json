@@ -15,7 +15,8 @@
     "dev:api": "node --watch-path=dist dist/main-api.js",
     "dev:worker": "node --watch-path=dist dist/main-worker.js",
     "emulators": "firebase emulators:start --config ../../infra/firebase/firebase.json --project demo-ustpvote --only auth,firestore",
-    "dev:api:emulators": "node scripts/dev-api-emulators.mjs"
+    "dev:api:emulators": "node scripts/dev-api-emulators.mjs",
+    "dev:api:emulators:mfa": "node scripts/dev-api-emulators.mjs --require-mfa"
   },
   "dependencies": {
     "@nestjs/common": "^12.2.0",

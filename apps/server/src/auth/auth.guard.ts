@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
-import type { Role } from 'ustp-domain';
+import { PROBLEM_TYPES, type Role } from 'ustp-domain';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { PUBLIC_KEY, ROLES_KEY } from './decorators.js';
@@ -64,7 +64,7 @@ export class AuthGuard implements CanActivate {
     if (required.length > 0) {
       if (!accountId) throw new ForbiddenException('no account');
       if (this.config.adminMfaRequired && !principal.mfa) {
-        throw new ForbiddenException('admin actions require multi-factor sign-in');
+        throw new ForbiddenException({ message: 'admin actions require multi-factor sign-in', type: PROBLEM_TYPES.mfaRequired });
       }
       roles = await this.directory.activeRoles(accountId);
       if (!required.some((r) => roles.includes(r))) throw new ForbiddenException(`requires role ${required.join(' or ')}`);

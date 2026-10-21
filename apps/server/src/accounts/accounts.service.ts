@@ -33,7 +33,8 @@ export class AccountsService {
 
   async me(ctx: RequestContext): Promise<MeResponse> {
     const accountId = ctx.accountId;
-    if (!accountId) return { account: null, identities: [], member: null, roles: [] };
+    const signedInWithMfa = ctx.principal.mfa;
+    if (!accountId) return { account: null, identities: [], member: null, roles: [], mfa: { required: false, signedInWithMfa } };
     const db = this.firebase.db;
     const [account, identities, member, roles] = await Promise.all([
       db.collection(Collections.accounts).doc(accountId).get(),
@@ -46,6 +47,7 @@ export class AccountsService {
       identities: identities.docs.map((d) => d.data() as IdentityRecord),
       member: (member.data() as MemberRecord | undefined) ?? null,
       roles,
+      mfa: { required: this.config.adminMfaRequired && roles.length > 0, signedInWithMfa },
     };
   }
 

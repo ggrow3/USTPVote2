@@ -1,16 +1,22 @@
 <script setup lang="ts">
-import type { Auth, UserCredential } from 'firebase/auth';
+import type { Auth, MultiFactorInfo, UserCredential } from 'firebase/auth';
 import { useQuasar } from 'quasar';
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, shallowRef } from 'vue';
 import type { IdentityRecord, SignInProvider } from 'ustp-domain';
 import { api, errorMessage } from '../api.js';
-import { secondaryAuth } from '../firebase.js';
+import AuthenticatorSetupDialog from '../components/AuthenticatorSetupDialog.vue';
+import { confirmIdentity } from '../dialogs.js';
+import { auth, secondaryAuth } from '../firebase.js';
+import { enrolledFactors, removeFactor } from '../mfa.js';
 import { refreshMe, session } from '../session.js';
 import { PROVIDER_LABELS, signInWithPassword, signInWithProvider, type FederatedProvider } from '../sign-in.js';
 
 const $q = useQuasar();
 const enabled = ref<Record<SignInProvider, boolean> | null>(null);
 const busy = ref(false);
+const factors = shallowRef<MultiFactorInfo[]>(enrolledFactors(auth.currentUser));
+const settingUp = ref(false);
+const mfa = computed(() => session.me?.mfa);
 
 const me = computed(() => session.me);
 const identities = computed<readonly IdentityRecord[]>(() => me.value?.identities ?? []);
@@ -84,6 +90,33 @@ function resign() {
   }).onOk((reason: string) => act(() => api('POST', '/v1/me/resign', reason.trim() ? { reason } : {}), 'You have resigned'));
 }
 
+async function onEnrolled() {
+  factors.value = enrolledFactors(auth.currentUser);
+  await refreshMe();
+  $q.notify({ type: 'positive', message: 'Two-step verification is on. You will be asked for a code when you sign in.' });
+}
+
+function removeDevice(factor: MultiFactorInfo) {
+  const losesAdmin = mfa.value?.required && factors.value.length === 1;
+  $q.dialog({
+    title: 'Remove two-step device',
+    message: `Remove "${factor.displayName ?? 'authenticator app'}"?${losesAdmin ? ' Your admin role requires two-step verification, so you will lose access to the admin tools.' : ''}`,
+    cancel: true,
+  }).onOk(() =>
+    act(async () => {
+      const user = auth.currentUser;
+      if (!user) return;
+      try {
+        await removeFactor(user, factor);
+      } catch (e) {
+        if ((e as { code?: unknown }).code !== 'auth/requires-recent-login' || !(await confirmIdentity())) throw e;
+        await removeFactor(user, factor);
+      }
+      factors.value = enrolledFactors(auth.currentUser);
+    }, 'Two-step device removed'),
+  );
+}
+
 function copyId() {
   void navigator.clipboard?.writeText(me.value?.account?.accountId ?? '');
   $q.notify({ message: 'Account ID copied' });
@@ -123,6 +156,36 @@ function copyId() {
           <q-btn flat color="negative" label="Resign" :disable="busy" @click="resign" />
         </q-card-actions>
       </q-card>
+
+      <q-card flat bordered>
+        <q-card-section>
+          <div class="text-subtitle1">Two-step verification</div>
+          <div class="text-caption text-grey-7">
+            A code from an authenticator app, asked for each time you sign in. Required for admin roles.
+          </div>
+        </q-card-section>
+        <q-banner v-if="mfa?.required && !factors.length" class="bg-orange-2 text-black q-mx-md q-mb-sm" rounded>
+          Your admin role requires two-step verification. Set it up to use the admin tools.
+        </q-banner>
+        <q-banner v-else-if="mfa?.required && !mfa.signedInWithMfa" class="bg-orange-2 text-black q-mx-md q-mb-sm" rounded>
+          Sign out and sign back in with your authenticator code to use the admin tools.
+        </q-banner>
+        <q-list v-if="factors.length" separator>
+          <q-item v-for="f in factors" :key="f.uid">
+            <q-item-section>
+              <q-item-label>{{ f.displayName ?? 'Authenticator app' }}</q-item-label>
+              <q-item-label caption>added {{ new Date(f.enrollmentTime).toLocaleDateString() }}</q-item-label>
+            </q-item-section>
+            <q-item-section side>
+              <q-btn flat dense color="negative" label="Remove" :disable="busy" @click="removeDevice(f)" />
+            </q-item-section>
+          </q-item>
+        </q-list>
+        <q-card-actions>
+          <q-btn outline no-caps color="primary" label="Set up an authenticator app" :disable="busy" @click="settingUp = true" />
+        </q-card-actions>
+      </q-card>
+      <AuthenticatorSetupDialog v-model="settingUp" @enrolled="onEnrolled" />
 
       <q-card flat bordered>
         <q-card-section>

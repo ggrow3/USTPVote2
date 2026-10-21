@@ -154,9 +154,20 @@ Builds use the committed lockfile with `npm ci --ignore-scripts` (spec §7).
   allowed, no composition rules, no forced rotation, breached-password screening, rate-limited attempts. Identity Platform
   enforces length; the browser screens against breached passwords before submission (see open question Q9), because
   Identity Platform never exposes the password to our code.
-- **MFA.** Required for every admin role: admin endpoints reject tokens without `firebase.sign_in_second_factor`, and
-  approvals additionally require `auth_time` within the last 15 minutes. `account_factors` mirrors enrolled factor
-  types for policy and reporting; no secrets are stored.
+- **MFA.** Required for every admin role: admin endpoints reject tokens without `firebase.sign_in_second_factor`
+  (problem type `/problems/mfa-required`), and approvals additionally require `auth_time` within the last 15 minutes
+  (`/problems/reauth-required`; the web app re-authenticates and retries once). `GET /v1/me` reports `mfa.required`
+  (holds a role and the policy is on) and `mfa.signedInWithMfa`.
+  - The second factor offered is an **authenticator app (TOTP)**: set up on the Account page from a QR code (or typed
+    key), then a 6-digit code after the first step of every sign-in and re-authentication. **SMS is not offered**:
+    NIST SP 800-63B-4 treats it as a restricted authenticator, and Identity Platform bills per message.
+  - **Deployment prerequisite:** TOTP must be enabled in each Identity Platform project, e.g. with the Admin SDK
+    `projectConfigManager().updateProjectConfig({ multiFactorConfig: { providerConfigs: [{ state: 'ENABLED',
+    totpProviderConfig: { adjacentIntervals: 5 } }] } })` (to be captured in Terraform, M5).
+  - The Auth emulator does not support TOTP, so integration tests use SMS factors enrolled directly in the emulator to
+    obtain real second-factor tokens; the server only checks that a second factor was used. The TOTP-specific browser
+    steps can only be exercised against a real project.
+  - An `account_factors` mirror for reporting is not built; Identity Platform holds the enrollments.
 - **Request authentication.** `Authorization: Bearer <ID token>` and `X-Firebase-AppCheck: <token>`, both verified
   with the Firebase Admin SDK by a global guard; routes opt out only with `@Public()`. Admin routes declare their
   roles with `@Roles(...)`, which also requires MFA and verifies with `checkRevoked` (as will casting a ballot).
@@ -653,7 +664,7 @@ Decisions for USTP; the design's proposed default is in brackets.
 | Milestone | Content |
 |---|---|
 | **M0 — Foundations** *(this commit)* | Design; monorepo; `ustp-tally`, `ustp-audit`, `ustp-domain` with tests; server and web skeletons; CI |
-| **M1 — Identity & registration** | *Done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes via two-person approvals, auth switches, Auditor ledger verification; web sign-in (Google, Microsoft, Apple, email/password, email link), registration, account and admin console. *Remaining:* photo pipeline; admin MFA (TOTP) enrollment and sign-in UI, required before admins can work outside the emulators |
+| **M1 — Identity & registration** | *Done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes via two-person approvals, auth switches, Auditor ledger verification; web sign-in (Google, Microsoft, Apple, email/password, email link), registration, account and admin console. admin two-step verification (authenticator-app setup, code step at sign-in, re-authentication for approvals, typed MFA/re-auth problems). *Remaining:* photo pipeline; exercising authenticator-app setup and sign-in against a real Identity Platform project with TOTP enabled |
 | **M2 — Election setup & ledger** | Elections, contests, candidates, proposals; roll snapshots; approval requests; ledger, blocks, KMS signing, anchors |
 | **M3 — Casting & secrecy** | Ballot UI with client-side commitments; cast endpoint; pool encryption; sealer; receipts; `/verify` |
 | **M4 — Tally & certification** | Tally task, results bundle, certification, position terms, key destruction; `ustp-verify` CLI |
