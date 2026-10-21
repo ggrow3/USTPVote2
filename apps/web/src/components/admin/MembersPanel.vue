@@ -18,6 +18,8 @@ const $q = useQuasar();
 const filter = ref<MemberStatus | null>('active');
 const rows = ref<MemberRecord[]>([]);
 const more = ref(false);
+/** An empty table only means "no members" once a load has succeeded. */
+const listState = ref<'loading' | 'ready' | 'failed'>('loading');
 const history = ref<{ member: MemberRecord; entries: StatusHistoryRecord[] } | null>(null);
 
 async function load(reset = true) {
@@ -25,11 +27,12 @@ async function load(reset = true) {
   const query = new URLSearchParams({ limit: String(PAGE) });
   if (filter.value) query.set('status', filter.value);
   if (after) query.set('after', after);
-  await attempt(async () => {
+  const ok = await attempt(async () => {
     const page = await api<MemberRecord[]>('GET', `/v1/admin/members?${query}`);
     rows.value = reset ? page : [...rows.value, ...page];
     more.value = page.length === PAGE;
   });
+  listState.value = ok ? 'ready' : 'failed';
 }
 
 async function change(member: MemberRecord, to: MemberStatus) {
@@ -104,7 +107,10 @@ onMounted(() => load());
             </q-btn-dropdown>
           </td>
         </tr>
-        <tr v-if="!rows.length">
+        <tr v-if="listState === 'failed'">
+          <td colspan="5" class="text-grey-7">Could not load members.</td>
+        </tr>
+        <tr v-else-if="listState === 'ready' && !rows.length">
           <td colspan="5" class="text-grey-7">No members{{ filter ? ` with status ${filter}` : '' }}.</td>
         </tr>
       </tbody>

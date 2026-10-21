@@ -1,8 +1,11 @@
 import {
   createUserWithEmailAndPassword,
+  EmailAuthProvider,
   GoogleAuthProvider,
   isSignInWithEmailLink,
   OAuthProvider,
+  reauthenticateWithCredential,
+  reauthenticateWithPopup,
   sendEmailVerification,
   sendSignInLinkToEmail,
   signInWithEmailAndPassword,
@@ -10,6 +13,7 @@ import {
   signInWithPopup,
   type Auth,
   type AuthProvider,
+  type User,
 } from 'firebase/auth';
 import type { SignInProvider } from 'ustp-domain';
 
@@ -35,6 +39,17 @@ function providerFor(id: FederatedProvider): AuthProvider {
 
 export function signInWithProvider(auth: Auth, id: FederatedProvider) {
   return signInWithPopup(auth, providerFor(id));
+}
+
+export function isFederatedProvider(id: string): id is FederatedProvider {
+  return id === 'google.com' || id === 'microsoft.com' || id === 'apple.com';
+}
+
+/** Proves the signed-in user is still present, refreshing `auth_time` (design §10.2: approvals need ≤ 15 minutes). */
+export function reauthenticate(user: User, method: { provider: FederatedProvider } | { password: string }) {
+  return 'provider' in method
+    ? reauthenticateWithPopup(user, providerFor(method.provider))
+    : reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email ?? '', method.password));
 }
 
 /** Returns a problem with the password, or null if it meets the policy. */

@@ -108,8 +108,11 @@ describe('two-person rule', () => {
     expect(checkCanRequest('election.certify', auditor).ok).toBe(false);
     expect(checkCanRequest('election.certify', { ...electionAdmin, mfa: false }).ok).toBe(false);
     expect(checkCanApprove(request, { ...auditor, roles: ['membership_admin'] }, now).ok).toBe(false);
-    expect(checkCanApprove(request, { ...auditor, mfa: false }, now).ok).toBe(false);
-    expect(checkCanApprove(request, { ...auditor, authAgeSeconds: 3600 }, now).ok).toBe(false);
+    expect(checkCanApprove(request, { ...auditor, mfa: false }, now)).toMatchObject({ ok: false, code: 'mfaRequired' });
+    expect(checkCanApprove(request, { ...auditor, authAgeSeconds: 3600 }, now)).toMatchObject({
+      ok: false,
+      code: 'reauthRequired',
+    });
     expect(checkCanApprove(request, auditor, new Date('2026-10-28T00:00:00Z')).ok).toBe(false);
     expect(checkCanApprove({ ...request, status: 'approved' }, auditor, now).ok).toBe(false);
   });

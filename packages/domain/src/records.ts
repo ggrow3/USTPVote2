@@ -121,6 +121,12 @@ export interface MeResponse {
   readonly identities: readonly IdentityRecord[];
   readonly member: MemberRecord | null;
   readonly roles: readonly Role[];
+  readonly mfa: {
+    /** This caller's admin routes need a multi-factor sign-in (they hold a role and the policy is on). */
+    readonly required: boolean;
+    /** The current ID token was issued after a second factor. */
+    readonly signedInWithMfa: boolean;
+  };
 }
 
 /** `sign_in_methods/{provider}`; a missing document means enabled. */

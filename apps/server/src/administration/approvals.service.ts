@@ -29,7 +29,6 @@ interface RoleChangePayload {
   readonly change: 'grant' | 'revoke';
 }
 
-const forbidden = (reason: string) => new ForbiddenException(reason);
 
 /**
  * The two-person rule (design §10.2): one admin requests, a different admin with the approving role decides,
@@ -48,7 +47,7 @@ export class ApprovalsService {
   async requestRoleChange(ctx: RequestContext, input: RoleChangeInput): Promise<ApprovalRequestRecord> {
     const requestedBy = requireAccount(ctx);
     const action = input.change === 'grant' ? 'role.grant' : 'role.revoke';
-    assertCheck(checkCanRequest(action, actorOf(ctx, this.config.adminMfaRequired), input.accountId), forbidden);
+    assertCheck(checkCanRequest(action, actorOf(ctx, this.config.adminMfaRequired), input.accountId), ForbiddenException);
     const payload: RoleChangePayload = { accountId: input.accountId, role: input.role, change: input.change };
     const db = this.firebase.db;
 
@@ -115,7 +114,7 @@ export class ApprovalsService {
           },
           actor,
         ),
-        forbidden,
+        ForbiddenException,
       );
       if (hashCanonical(request.payload) !== request.payloadHash) {
         throw new ConflictException('the request payload no longer matches what was requested');

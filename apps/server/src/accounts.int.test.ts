@@ -26,7 +26,13 @@ describe('authentication', () => {
 describe('accounts', () => {
   it('creates an account on first sign-in, idempotently', async () => {
     const user = await api.user('alex@example.test');
-    expect((await api.call('GET', '/v1/me', user)).body).toEqual({ account: null, identities: [], member: null, roles: [] });
+    expect((await api.call('GET', '/v1/me', user)).body).toEqual({
+      account: null,
+      identities: [],
+      member: null,
+      roles: [],
+      mfa: { required: false, signedInWithMfa: false },
+    });
 
     const first = await api.call('POST', '/v1/accounts', user);
     expect(first.status).toBe(201);

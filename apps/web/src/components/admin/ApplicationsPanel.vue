@@ -8,12 +8,16 @@ import { session } from '../../session.js';
 const status = ref<ApplicationStatus>('pending');
 const rows = ref<ApplicationRecord[]>([]);
 const loading = ref(false);
+/** An empty list only means "none" once a load has succeeded. */
+const listState = ref<'loading' | 'ready' | 'failed'>('loading');
 
 async function load() {
   loading.value = true;
-  await attempt(async () => {
+  const ok = await attempt(async () => {
     rows.value = await api<ApplicationRecord[]>('GET', `/v1/admin/applications?status=${status.value}`);
-  }).finally(() => (loading.value = false));
+  });
+  listState.value = ok ? 'ready' : 'failed';
+  loading.value = false;
 }
 
 async function decide(app: ApplicationRecord, decision: 'approve' | 'reject') {
@@ -50,8 +54,9 @@ onMounted(load);
       />
       <q-btn flat dense icon="refresh" aria-label="Refresh" :loading="loading" @click="load" />
     </div>
-    <div v-if="!rows.length" class="text-grey-7">No {{ status }} applications.</div>
-    <q-list v-else bordered separator>
+    <div v-if="listState === 'failed'" class="text-grey-7">Could not load applications.</div>
+    <div v-else-if="listState === 'ready' && !rows.length" class="text-grey-7">No {{ status }} applications.</div>
+    <q-list v-else-if="rows.length" bordered separator>
       <q-item v-for="a in rows" :key="a.applicationId">
         <q-item-section>
           <q-item-label>
