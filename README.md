@@ -5,8 +5,9 @@ member onboarding, secret or roll-call ballots, proposal and candidate contests 
 instant-runoff), and an audit trail anyone can check — hash chains, Merkle receipts, WORM anchors and a public,
 deterministic tally library.
 
-**Status:** M0 — foundations. Design is in review; the pure core libraries are implemented and tested; the server and
-web app are skeletons. Nothing is deployed.
+**Status:** M1 in progress. The core libraries are done and tested. The API's identity and registration backend
+(accounts, bylaws, applications, membership administration, two-person role changes, audit ledger) is implemented
+and covered by emulator integration tests; photos and the web UI for these flows are next. Nothing is deployed.
 
 ## Documents
 
@@ -26,7 +27,8 @@ web app are skeletons. Nothing is deployed.
 
 ## Development
 
-Requires Node.js 24 or newer (production target: Node 26 LTS, see `.nvmrc`) and npm 11.
+Requires Node.js 24 or newer (production target: Node 26 LTS, see `.nvmrc`) and npm 11. The server's integration
+tests also need Java 21 for the Firebase emulators.
 
 ```bash
 npm ci --ignore-scripts
@@ -40,7 +42,8 @@ npm test
 |---|---|
 | `npm run build` | Builds the packages, then the server and web app, in dependency order |
 | `npm run typecheck` | Type-checks every workspace, tests included |
-| `npm test` | Runs every workspace's Vitest suite |
+| `npm test` | Runs every workspace's Vitest suite (unit tests) |
+| `npm run test:int -w apps/server` | Starts the Auth and Firestore emulators (project `demo-ustpvote`) and runs the API integration tests |
 | `npm run watch -w apps/server` | Recompiles the server on change (run alongside a `dev:*` command) |
 | `npm run dev:api` / `npm run dev:worker` | Runs the compiled api (port 8080) / worker, restarting on rebuild |
 | `npm run dev:web` | Vite dev server; proxies `/v1` to the local api |

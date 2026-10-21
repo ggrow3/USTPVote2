@@ -9,6 +9,7 @@
     "watch": "tsc -p tsconfig.build.json --watch",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:int": "firebase emulators:exec --config ../../infra/firebase/firebase.json --project demo-ustpvote --only auth,firestore \"vitest run --config vitest.int.config.ts\"",
     "start:api": "node dist/main-api.js",
     "start:worker": "node dist/main-worker.js",
     "dev:api": "node --watch-path=dist dist/main-api.js",
@@ -18,8 +19,17 @@
     "@nestjs/common": "^12.2.0",
     "@nestjs/core": "^12.2.0",
     "@nestjs/platform-fastify": "^12.2.0",
+    "fastify": "^5.12.7",
+    "firebase-admin": "^14.5.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
-    "ustp-tally": "^0.1.0"
+    "ustp-audit": "^0.1.0",
+    "ustp-domain": "^0.1.0",
+    "ustp-tally": "^0.1.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "^12.2.0",
+    "firebase-tools": "^15.34.0"
   }
 }

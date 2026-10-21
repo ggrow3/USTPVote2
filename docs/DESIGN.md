@@ -139,12 +139,17 @@ Builds use the committed lockfile with `npm ci --ignore-scripts` (spec §7).
   resolves in one read. One account may have several identities; an identity belongs to exactly one account.
 - **Providers.** Google, Microsoft, Apple, passwordless email link, and email/password. The admin "auth switches"
   (`sign_in_methods`) are enforced by the API: a token whose `firebase.sign_in_provider` is switched off is refused,
-  which takes effect immediately without changing Identity Platform configuration.
+  which takes effect within a minute (switches are cached for 60 s per instance) without changing Identity Platform
+  configuration. Email link and email/password both report the provider `password`, so the API switch covers both;
+  choosing between those two is Identity Platform configuration. Tokens from any other provider (custom, anonymous,
+  phone) are always refused. At least one provider must stay on, and an admin cannot switch off the provider they are
+  signed in with (self-lockout).
 - **First sign-in.** `POST /v1/accounts` creates `accounts/{accountId}` and `account_identities/{uid}` in one
   transaction (`create`, so a race cannot mint two accounts for one uid).
 - **Portability.** To add a login method the member, while signed in, also signs in with the new method and the client
-  sends both ID tokens; the API links the second uid to the same account. Losing every login method requires
-  Membership-Admin-assisted relinking with a written reason, recorded in the ledger.
+  sends both ID tokens; the API links the second uid to the same account if that sign-in is under 5 minutes old and the
+  uid has no account of its own. The last login method cannot be unlinked. Linking and unlinking are ledgered. Losing
+  every login method requires Membership-Admin-assisted relinking with a written reason (not yet built).
 - **Passwords (NIST SP 800-63B-4).** Minimum 15 characters (the single-factor minimum, applied to everyone), at least 64
   allowed, no composition rules, no forced rotation, breached-password screening, rate-limited attempts. Identity Platform
   enforces length; the browser screens against breached passwords before submission (see open question Q9), because
@@ -153,7 +158,15 @@ Builds use the committed lockfile with `npm ci --ignore-scripts` (spec §7).
   approvals additionally require `auth_time` within the last 15 minutes. `account_factors` mirrors enrolled factor
   types for policy and reporting; no secrets are stored.
 - **Request authentication.** `Authorization: Bearer <ID token>` and `X-Firebase-AppCheck: <token>`, both verified
-  with the Firebase Admin SDK. Casting a ballot and every admin action verify with `checkRevoked`.
+  with the Firebase Admin SDK by a global guard; routes opt out only with `@Public()`. Admin routes declare their
+  roles with `@Roles(...)`, which also requires MFA and verifies with `checkRevoked` (as will casting a ballot).
+- **Safety switches.** `APP_CHECK_ENFORCED=false` and `ADMIN_MFA_REQUIRED=false` exist for local development and
+  integration tests; the server refuses to start with either unless the Firestore and Auth emulators are configured.
+- **Bootstrap.** Emails listed in `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` become System Admins once their account exists and
+  the email is verified (checked on every `POST /v1/accounts`, which the web app calls on each sign-in and after
+  verification; ledgered with actor `bootstrap`). An account that has ever held the role is never re-granted, so a
+  revocation sticks. List at least two, because role changes need a second System Admin; remove the setting once real
+  admins exist.
 
 ## 5. Registration
 
@@ -182,7 +195,12 @@ Every transition writes, in one transaction, the new status on `members/{account
 ### 5.2 Applications, bylaws, address
 
 - `applications/{applicationId}` stores the answers, the bylaws version accepted and that version's content hash
-  (`bylaws_versions/{version}`), so it is provable which text the applicant agreed to.
+  (`bylaws_versions/{version}`), so it is provable which text the applicant agreed to. An application is accepted
+  only against the *current* bylaws (version and hash must both match) and only from a verified email address.
+  Bylaws versions are published by a Membership Admin, are immutable, and are ledgered.
+- Separation of duties within membership: an admin cannot decide their own application or change their own status.
+  Status changes other than application decisions (suspend, reinstate, lapse) use a separate endpoint so an
+  application can never be bypassed.
 - **Address minimization:** the street address is used once to look up state/district, then discarded — never
   written to Firestore, logs or task payloads. Only the derived `state` / `district` are stored. The lookup provider is
   open (Q8).
@@ -352,10 +370,12 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   under Firestore's per-document write rate. **Ballot casts never touch the ledger** — that would serialize voting
   and re-create the timing link the sealer removes.
 - Genesis `prevHash` is 64 zeros.
-- Entry types (initial): `member.status_changed`, `application.decided`, `photo.decided`, `account.relinked`,
-  `role.granted`, `role.revoked`, `approval.requested`, `approval.decided`, `signin_method.changed`,
-  `roll.approved`, `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled`,
-  `ballots.sealed`, `results.computed`, `results.certified`, `position_term.created`.
+- Entry types implemented in M1: `member.status_changed` (an application decision is a status change carrying the
+  `applicationId`), `identity.linked`, `identity.unlinked`, `bylaws.published`, `role.granted`, `role.revoked`,
+  `approval.requested`, `approval.decided`, `signin_method.changed`. Planned: `photo.decided`, `roll.approved`,
+  `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled`, `ballots.sealed`,
+  `results.computed`, `results.certified`, `position_term.created`. The authoritative list is `LEDGER_EVENT_TYPES`
+  in `ustp-domain`.
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
   entries are public. A public verifier checks a public entry by Merkle inclusion in its ledger block (§8.3) without
   seeing the private entries in that block.
@@ -445,8 +465,12 @@ configuration and ledgered.
 decidedBy, decidedAt, reason, expiresAt}`.
 
 - Approver ≠ requester (by `accountId`), holds `approverRole` at decision time, signed in with MFA within 15 minutes.
-- The approver approves `payloadHash`; execution re-checks every precondition and acts on exactly that payload.
-- Requests expire after 7 days. Request, decision and execution are each ledgered.
+- The account an action affects (`subject`, e.g. the person gaining a role) may be neither requester nor approver.
+- The approver approves `payloadHash`; approval executes immediately (status `executed`), re-checking every
+  precondition and acting on exactly that payload. Statuses: `pending` → `executed` | `rejected`.
+- Requests expire after 7 days (checked at decision time). Request and decision are ledgered, plus the executed
+  effect (e.g. `role.granted`) in the same transaction.
+- Implemented in M1 for role changes, so administrators can be appointed; election actions reuse it in M2.
 
 | Action | Requested by | Approved by |
 |---|---|---|
@@ -499,7 +523,10 @@ registration collections are top-level and election data lives under each electi
 | `approval_requests/{id}` | auto | status only | two-person requests *(added)* |
 
 The spec places `role_assignments` and `audit_events` in the voting namespace; they serve both modules, so the
-design treats them as a shared audit/admin module. Path constants live in `ustp-domain` as the single source of truth.
+design treats them as a shared audit/admin module. Path constants and document shapes live in `ustp-domain`
+(`Collections`, `records.ts`) as the single source of truth. Timestamps are ISO 8601 strings from the server clock:
+they sort lexically, survive JSON unchanged and can be JCS-hashed. Member status history is ordered by ledger sequence
+number, not time.
 
 ## 12. API surface (`/v1`)
 
@@ -512,6 +539,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /me/identities` · `DELETE /me/identities/{uid}` | M | link / unlink a login method |
 | `GET /bylaws/current` | P | current bylaws version and hash |
 | `POST /registration/applications` · `GET /registration/applications/me` | M | apply; status |
+| `POST /me/resign` | M | resign membership |
 | `POST /registration/photo-upload-url` · `POST /registration/photos` | M | photo upload |
 | `GET /elections` | M | elections the caller is eligible for |
 | `GET /elections/{id}/ballot` | V | ballot definition and hash |
@@ -520,12 +548,14 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /public/elections/{id}` · `.../sealed-blocks` · `.../results` | P | published record |
 | `GET /public/elections/{id}/proofs/{commitment}` | P | inclusion proof for a receipt |
 | `GET /public/ledger/blocks/{index}` · `GET /public/anchors/latest` | P | ledger and anchors |
+| `POST /admin/bylaws` | Membership Admin | publish a bylaws version |
 | `GET /admin/applications` · `POST /admin/applications/{id}/decision` | Membership Admin | registration triage |
+| `GET /admin/members` · `GET /admin/members/{accountId}/history` | Membership Admin | member list (paged), status history |
 | `POST /admin/members/{accountId}/status` · `POST /admin/photos/{id}/decision` | Membership Admin | status, photos |
 | `POST /admin/elections` · `PATCH /admin/elections/{id}` · contests, candidates, proposals | Election Admin | election setup |
 | `POST /admin/elections/{id}/roll-snapshots` · `.../schedule` · `.../certify` · `.../cancel` | Election Admin | create approval requests |
 | `GET /admin/approvals` · `POST /admin/approvals/{id}/decision` | per action | two-person decisions |
-| `GET /admin/audit/events` · `GET /admin/audit/verify` | Auditor | ledger, verification run |
+| `GET /admin/audit/events` · `GET /admin/audit/verify` | Auditor | ledger (paged by seq), full chain verification |
 | `GET\|PUT /admin/sign-in-methods` · `POST /admin/roles` | System Admin | auth switches, roles (→ approval) |
 
 Errors use RFC 9457 problem details. Request bodies are validated against schemas shared with the web app.
@@ -574,7 +604,8 @@ idempotent; `tick` takes a lease (`locks/tick` with expiry) so overlapping ticks
 
 - **Pure packages:** Vitest unit tests, RFC 8785 test vectors, Merkle trees cross-checked against an independent
   implementation, worked examples for every tally rule, property-based tests (planned).
-- **Server:** integration tests against the Firestore emulator (requires Java + firebase-tools).
+- **Server:** integration tests against the Firestore and Auth emulators (`npm run test:int -w apps/server`; needs
+  Java 21). They use the emulator-only project `demo-ustpvote`, real ID tokens from the Auth emulator, and run in CI.
 - **Election simulation:** build a roll, cast N ballots through the API, seal, tally, certify, then run every
   [§2 invariant](#2-threat-model-and-trust-assumptions) — in CI.
 - **Web:** component tests; Playwright end-to-end for register → vote → verify.
@@ -621,7 +652,7 @@ Decisions for USTP; the design's proposed default is in brackets.
 | Milestone | Content |
 |---|---|
 | **M0 — Foundations** *(this commit)* | Design; monorepo; `ustp-tally`, `ustp-audit`, `ustp-domain` with tests; server and web skeletons; CI |
-| **M1 — Identity & registration** | Firebase Admin auth guard + App Check; Firestore repositories; emulator harness; accounts, identities, applications, member status, photo pipeline; admin triage UI |
+| **M1 — Identity & registration** | *Backend done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes via two-person approvals, auth switches, Auditor ledger verification. *Remaining:* photo pipeline; web sign-in, registration and admin triage UI |
 | **M2 — Election setup & ledger** | Elections, contests, candidates, proposals; roll snapshots; approval requests; ledger, blocks, KMS signing, anchors |
 | **M3 — Casting & secrecy** | Ballot UI with client-side commitments; cast endpoint; pool encryption; sealer; receipts; `/verify` |
 | **M4 — Tally & certification** | Tally task, results bundle, certification, position terms, key destruction; `ustp-verify` CLI |

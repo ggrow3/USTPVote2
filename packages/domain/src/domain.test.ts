@@ -4,7 +4,7 @@ import { electionDocPath, sequenceId } from './collections.js';
 import { electionTransitionAuthority, isTerminal } from './election-state.js';
 import { isUuidV7, uuidv7, uuidv7Timestamp } from './ids.js';
 import { checkStatusChange } from './member-status.js';
-import { conflictingRoles } from './roles.js';
+import { checkRoleChange, conflictingRoles } from './roles.js';
 
 describe('uuidv7', () => {
   it('produces RFC 9562 version 7 IDs that embed the timestamp', () => {
@@ -73,6 +73,14 @@ describe('roles', () => {
     expect(conflictingRoles(['auditor'], 'membership_admin')).toEqual(['auditor']);
     expect(conflictingRoles(['membership_admin'], 'election_admin')).toEqual([]);
   });
+
+  it('validates grants and revocations against the roles already held', () => {
+    expect(checkRoleChange([], 'grant', 'auditor').ok).toBe(true);
+    expect(checkRoleChange(['auditor'], 'grant', 'auditor')).toMatchObject({ ok: false, reason: /already holds/ });
+    expect(checkRoleChange(['election_admin'], 'grant', 'auditor')).toMatchObject({ ok: false, reason: /election_admin/ });
+    expect(checkRoleChange(['auditor'], 'revoke', 'auditor').ok).toBe(true);
+    expect(checkRoleChange([], 'revoke', 'auditor')).toMatchObject({ ok: false, reason: /does not hold/ });
+  });
 });
 
 describe('two-person rule', () => {
@@ -109,9 +117,17 @@ describe('two-person rule', () => {
   it('requires a second System Admin for role changes', () => {
     const sa1: Actor = { accountId: 'sa1', roles: ['system_admin'], mfa: true, authAgeSeconds: 10 };
     const sa2: Actor = { ...sa1, accountId: 'sa2' };
-    const grant: PendingApproval = { ...request, action: 'role.grant', requestedBy: 'sa1' };
+    const grant: PendingApproval = { ...request, action: 'role.grant', requestedBy: 'sa1', subject: 'someone' };
     expect(checkCanApprove(grant, sa2, now).ok).toBe(true);
     expect(checkCanApprove(grant, auditor, now).ok).toBe(false);
+  });
+
+  it('keeps the affected person out of both sides of the request', () => {
+    const sa1: Actor = { accountId: 'sa1', roles: ['system_admin'], mfa: true, authAgeSeconds: 10 };
+    const sa2: Actor = { ...sa1, accountId: 'sa2' };
+    expect(checkCanRequest('role.grant', sa1, 'sa1')).toMatchObject({ ok: false, reason: /own account/ });
+    const grantToSa2: PendingApproval = { ...request, action: 'role.grant', requestedBy: 'sa1', subject: 'sa2' };
+    expect(checkCanApprove(grantToSa2, sa2, now)).toMatchObject({ ok: false, reason: /own account/ });
   });
 });
 

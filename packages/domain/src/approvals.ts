@@ -37,14 +37,17 @@ export interface PendingApproval {
   readonly requestedBy: string;
   readonly status: 'pending' | 'approved' | 'rejected' | 'expired' | 'executed';
   readonly expiresAt: Date;
+  /** The account the action affects, when it affects one (e.g. the person gaining a role). */
+  readonly subject?: string;
 }
 
-export function checkCanRequest(action: TwoPersonAction, requester: Actor): Check {
+export function checkCanRequest(action: TwoPersonAction, requester: Actor, subject?: string): Check {
   const rule: ApprovalRule = TWO_PERSON_ACTIONS[action];
   if (!requester.mfa) return deny('admin actions require multi-factor sign-in');
   if (!rule.requesters.some((r) => requester.roles.includes(r))) {
     return deny(`${action} must be requested by ${rule.requesters.join(' or ')}`);
   }
+  if (subject !== undefined && subject === requester.accountId) return deny('you cannot request this for your own account');
   return OK;
 }
 
@@ -53,6 +56,9 @@ export function checkCanApprove(request: PendingApproval, approver: Actor, now: 
   if (request.status !== 'pending') return deny(`request is ${request.status}`);
   if (now >= request.expiresAt) return deny('request has expired');
   if (approver.accountId === request.requestedBy) return deny('the approver must be a different person than the requester');
+  if (request.subject !== undefined && approver.accountId === request.subject) {
+    return deny('you cannot approve an action on your own account');
+  }
   if (!approver.roles.includes(rule.approver)) return deny(`${request.action} must be approved by ${rule.approver}`);
   if (!approver.mfa) return deny('approvals require multi-factor sign-in');
   if (approver.authAgeSeconds > APPROVAL_MAX_AUTH_AGE_SECONDS) return deny('sign in again to approve');

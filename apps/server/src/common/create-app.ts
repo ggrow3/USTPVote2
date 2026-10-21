@@ -2,6 +2,7 @@ import 'reflect-metadata';
 import { NestFactory, type IEntryNestModule } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { loggerOptions } from './logging.js';
+import { ProblemDetailsFilter } from './problem.filter.js';
 
 export interface CreateAppOptions {
   /** Disable request logging (tests). */
@@ -16,6 +17,7 @@ export async function createFastifyApp(
   const app = await NestFactory.create<NestFastifyApplication>(module, adapter, {
     logger: options.quiet ? false : ['log', 'warn', 'error'],
   });
+  app.useGlobalFilters(new ProblemDetailsFilter());
   app.enableShutdownHooks();
   return app;
 }
