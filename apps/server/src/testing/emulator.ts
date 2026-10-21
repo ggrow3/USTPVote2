@@ -3,6 +3,7 @@ import type { Role } from 'ustp-domain';
 import { ApiModule } from '../api/api.module.js';
 import { createFastifyApp } from '../common/create-app.js';
 import { Firebase } from '../infra/firebase.js';
+import { WorkerModule } from '../worker/worker.module.js';
 
 /** Helpers for integration tests that run against the Firebase emulators (`npm run test:int`). */
 
@@ -125,6 +126,27 @@ export class TestApi {
       reason: 'test',
     });
     if (dec.status !== 201) throw new Error(`role approval failed: ${dec.status} ${JSON.stringify(dec.body)}`);
+  }
+
+  async close(): Promise<void> {
+    await this.app.close();
+  }
+}
+
+/** The worker against the same emulators, as Cloud Scheduler would call it. */
+export class TestWorker {
+  private constructor(readonly app: NestFastifyApplication) {}
+
+  static async start(): Promise<TestWorker> {
+    const app = await createFastifyApp(WorkerModule, { quiet: true });
+    await app.init();
+    await app.getHttpAdapter().getInstance().ready();
+    return new TestWorker(app);
+  }
+
+  async tick(): Promise<Response> {
+    const res = await this.app.inject({ method: 'POST', url: '/tasks/tick' });
+    return { status: res.statusCode, body: JSON.parse(res.body), contentType: res.headers['content-type']?.toString() };
   }
 
   async close(): Promise<void> {

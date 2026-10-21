@@ -24,6 +24,7 @@ export const Collections = {
   ledgerHead: 'ledger_head',
   blocks: 'blocks',
   anchors: 'anchors',
+  signingKeys: 'signing_keys',
   roleAssignments: 'role_assignments',
   approvalRequests: 'approval_requests',
   locks: 'locks',

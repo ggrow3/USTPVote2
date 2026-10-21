@@ -18,4 +18,9 @@ export function hashCanonical(value: unknown): string {
   return sha256Hex(canonicalize(value));
 }
 
+/** The UTF-8 bytes of the RFC 8785 canonical form: what is hashed, and what signatures cover. */
+export function canonicalBytes(value: unknown): Uint8Array {
+  return utf8ToBytes(canonicalize(value));
+}
+
 export { bytesToHex, hexToBytes };

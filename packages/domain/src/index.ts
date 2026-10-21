@@ -20,6 +20,17 @@ export { SIGN_IN_PROVIDERS, isSignInProvider } from './identity.js';
 export type { SignInProvider } from './identity.js';
 export { LEDGER_EVENT_TYPES } from './ledger-events.js';
 export type { LedgerEventType, LedgerEntry } from './ledger-events.js';
+export { PUBLIC_LEDGER_EVENT_TYPES, isPublicLedgerEvent, signingKeyId } from './ledger.js';
+export type {
+  SignatureRecord,
+  LedgerBlockRecord,
+  AnchorDocument,
+  AnchorRecord,
+  SigningKeyRecord,
+  PublicLedgerEntry,
+  LedgerVerification,
+  TickResult,
+} from './ledger.js';
 export type * from './records.js';
 export { PROBLEM_TYPES } from './problems.js';
 export { LIKELIHOODS, MIN_FACE_CONFIDENCE, photoVerdict, isLikelihood } from './photos.js';
@@ -46,7 +57,8 @@ export type {
   SchedulePayload,
   CancelPayload,
 } from './elections.js';
-export { rollLeaf, sortRoll, rollMerkleRoot, rollInclusionProof } from './roll.js';
+export { rollLeaf, sortRoll, rollMerkleRoot, rollInclusionProof, rollStatement, rollSigningInput } from './roll.js';
+export type { RollStatement } from './roll.js';
 export * from './election-api.js';
 export type { Likelihood, PhotoSignals, PhotoVerdict } from './photos.js';
 export type { ProblemCode } from './problems.js';

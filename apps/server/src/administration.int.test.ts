@@ -70,7 +70,14 @@ describe('audit ledger', () => {
     await api.grant(pat.accountId, 'auditor', sa1, sa2);
     const verify = await api.call('GET', '/v1/admin/audit/verify', pat);
     // bootstrap ×2, approval.requested, approval.decided, role.granted
-    expect(verify.body).toEqual({ ok: true, entries: 5, head: expect.stringMatching(/^[0-9a-f]{64}$/) });
+    expect(verify.body).toEqual({
+      ok: true,
+      entries: 5,
+      head: expect.stringMatching(/^[0-9a-f]{64}$/),
+      blocks: 0,
+      unblocked: 5,
+      anchored: 0,
+    });
     expect((await api.call('GET', '/v1/admin/audit/verify', sa1)).status).toBe(403);
 
     const events = (await api.call('GET', '/v1/admin/audit/events?after=2&limit=2', pat)).body;
@@ -80,6 +87,6 @@ describe('audit ledger', () => {
     ]);
 
     await api.firebase.db.collection('audit_events').doc('000000000003').update({ 'payload.reason': 'edited later' });
-    expect((await api.call('GET', '/v1/admin/audit/verify', pat)).body).toMatchObject({ ok: false, seq: 3 });
+    expect((await api.call('GET', '/v1/admin/audit/verify', pat)).body).toMatchObject({ ok: false, part: 'entry', at: 3 });
   });
 });

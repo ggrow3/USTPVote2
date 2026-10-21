@@ -20,6 +20,7 @@ import { ElectionsController, ProposalsController } from '../elections/elections
 import { ElectionsService } from '../elections/elections.service.js';
 import { Firebase } from '../infra/firebase.js';
 import { EmulatorSecretStore, SECRET_STORE, SecretManagerStore } from '../infra/secret-store.js';
+import { PublicLedgerController } from '../ledger/ledger.controller.js';
 import { MembershipAdminController, RegistrationController } from '../membership/membership.controller.js';
 import { MembershipService } from '../membership/membership.service.js';
 import { LocalPhotoChecker, PHOTO_CHECKER, VisionPhotoChecker } from '../photos/checker.js';
@@ -29,6 +30,7 @@ import { PhotosService } from '../photos/photos.service.js';
 /**
  * Client-facing API (design §12). Every route requires a verified sign-in unless marked @Public().
  * M1: accounts, registration, membership administration, profile photos, roles and approvals, auth switches, ledger.
+ * M2: election setup, rolls, scheduling and cancellation; the published ledger (blocks, keys, proofs, anchors).
  */
 @Module({
   imports: [CoreModule],
@@ -45,6 +47,7 @@ import { PhotosService } from '../photos/photos.service.js';
     PublicSignInMethodsController,
     SignInMethodsController,
     AuditController,
+    PublicLedgerController,
   ],
   providers: [
     AccountsService,
