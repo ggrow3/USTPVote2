@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      # Spec §7: locked dependencies, no install scripts.
+      - run: npm ci --ignore-scripts
+      - run: npm audit signatures
+      # Packages build first: the server and web app consume their compiled output.
+      - run: npm run build
+      - run: npm run typecheck
+      - run: npm test
