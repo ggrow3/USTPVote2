@@ -1,6 +1,6 @@
 export type { Check } from './check.js';
 export { uuidv7, isUuidV7, uuidv7Timestamp } from './ids.js';
-export { ROLES, conflictingRoles, isRole } from './roles.js';
+export { ROLES, conflictingRoles, isRole, checkRoleChange } from './roles.js';
 export type { Role } from './roles.js';
 export { MEMBER_STATUSES, checkStatusChange } from './member-status.js';
 export type { MemberStatus, StatusChange } from './member-status.js';
@@ -16,3 +16,9 @@ export {
 export type { TwoPersonAction, Actor, PendingApproval } from './approvals.js';
 export { Collections, ElectionCollections, electionDocPath, sequenceId } from './collections.js';
 export type { ElectionCollection } from './collections.js';
+export { SIGN_IN_PROVIDERS, isSignInProvider } from './identity.js';
+export type { SignInProvider } from './identity.js';
+export { LEDGER_EVENT_TYPES } from './ledger-events.js';
+export type { LedgerEventType, LedgerEntry } from './ledger-events.js';
+export type * from './records.js';
+export * from './api.js';
