@@ -5,6 +5,7 @@ import ApplicationsPanel from '../components/admin/ApplicationsPanel.vue';
 import ApprovalsPanel from '../components/admin/ApprovalsPanel.vue';
 import AuditPanel from '../components/admin/AuditPanel.vue';
 import BylawsPanel from '../components/admin/BylawsPanel.vue';
+import ElectionsPanel from '../components/admin/ElectionsPanel.vue';
 import MembersPanel from '../components/admin/MembersPanel.vue';
 import PhotosPanel from '../components/admin/PhotosPanel.vue';
 import SignInMethodsPanel from '../components/admin/SignInMethodsPanel.vue';
@@ -22,6 +23,7 @@ const ALL_TABS: readonly Tab[] = [
   { name: 'members', label: 'Members', roles: ['membership_admin'] },
   { name: 'photos', label: 'Photos', roles: ['membership_admin'] },
   { name: 'bylaws', label: 'Bylaws', roles: ['membership_admin'] },
+  { name: 'elections', label: 'Elections', roles: ['election_admin', 'auditor'] },
   { name: 'approvals', label: 'Approvals', roles: ['membership_admin', 'election_admin', 'auditor', 'system_admin'] },
   { name: 'signin', label: 'Sign-in methods', roles: ['system_admin'] },
   { name: 'audit', label: 'Audit ledger', roles: ['auditor'] },
@@ -48,6 +50,7 @@ const tab = ref(tabs.value[0]?.name ?? 'approvals');
       <q-tab-panel name="members"><MembersPanel /></q-tab-panel>
       <q-tab-panel name="photos"><PhotosPanel /></q-tab-panel>
       <q-tab-panel name="bylaws"><BylawsPanel /></q-tab-panel>
+      <q-tab-panel name="elections"><ElectionsPanel /></q-tab-panel>
       <q-tab-panel name="approvals"><ApprovalsPanel /></q-tab-panel>
       <q-tab-panel name="signin"><SignInMethodsPanel /></q-tab-panel>
       <q-tab-panel name="audit"><AuditPanel /></q-tab-panel>

@@ -33,6 +33,11 @@ export const router = createRouter({
           component: () => import('./pages/AdminPage.vue'),
           meta: { requiresAuth: true, roles: ADMIN_ROLES },
         },
+        {
+          path: 'admin/elections/:id',
+          component: () => import('./pages/ElectionEditorPage.vue'),
+          meta: { requiresAuth: true, roles: ['election_admin', 'auditor'] },
+        },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },

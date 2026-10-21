@@ -290,8 +290,21 @@ roll is frozen from then on: later status changes do not alter it (Q4). Every ro
 
 ### 6.4 Proposals and positions
 
-- `proposal_snapshots` freeze the exact title and text of a proposal with its content hash; `proposal_reviews` record
-  the review that admits it to a ballot. V1 enters proposals in the admin console; an external source is Q6.
+- `proposal_snapshots` freeze the exact title and text of a proposal with its content hash
+  `H(JCS({v: 1, title, body}))`; they are immutable, and a proposal contest points at one. V1 enters proposals in the
+  admin console; an external source is Q6. The review that admits a text to the ballot is the Auditor's approval of
+  the scheduling request, which covers the whole definition including every proposal's content hash; a separate
+  `proposal_reviews` collection is not used.
+
+### 6.5 The election definition (implemented in M2a)
+
+Drafts are edited piecewise (election, contests, candidates). `buildDefinition` in `ustp-domain` assembles them into
+one canonical object: election fields, then contests in order, each with its `ustp-tally` spec, its proposal's
+snapshot ID and content hash, and its candidates in the order the spec lists them. `definitionHash = H(JCS(definition))`
+is shown live in the editor and to Auditors, and `validateDefinition` lists what blocks scheduling (no contests,
+voting not in the future, missing proposal text or candidates, any `ustp-tally` spec problem such as more seats than
+candidates). Scheduling (M2b) freezes exactly this hash. Contest and candidate IDs are random Firestore IDs, which
+fit the `ustp-tally` ID pattern. Only drafts can be edited.
 - `positions` define offices (title, seats, term length). Certifying an election that fills an office creates
   `position_terms` that reference the certified results hash. Any other change to an office or term is a two-person
   action.
@@ -485,7 +498,7 @@ sealedBlocks [{index, sealedHash}], tally {library: "ustp-tally", version}, tieB
 | Grant/revoke roles (two-person between System Admins), sign-in switches, operations | | | | ● |
 
 **Incompatible role pairs:** Auditor with any other role. An Election Admin who is a candidate in an election may not
-act on that election (Q12). All admin roles require MFA. The first System Admin is bootstrapped once from deployment
+act on that election (Q12; enforced on every edit, and nobody can add themselves as a candidate). All admin roles require MFA. The first System Admin is bootstrapped once from deployment
 configuration and ledgered.
 
 ### 10.2 Two-person rule
@@ -583,7 +596,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/members` · `GET /admin/members/{accountId}/history` | Membership Admin | member list (paged), status history |
 | `POST /admin/members/{accountId}/status` | Membership Admin | status changes |
 | `GET /admin/photos` · `GET /admin/photos/{id}/image` · `POST /admin/photos/{id}/decision` | Membership Admin | photo review |
-| `POST /admin/elections` · `PATCH /admin/elections/{id}` · contests, candidates, proposals | Election Admin | election setup |
+| `GET /admin/elections` · `GET /admin/elections/{id}` (detail, definition hash, problems) · `GET /admin/proposals` | Election Admin, Auditor | read election setup |
+| `POST /admin/elections` · `PATCH /admin/elections/{id}` · `POST\|PUT\|DELETE …/contests[/{cid}]` · `POST\|DELETE …/contests/{cid}/candidates[/{kid}]` · `POST /admin/proposals` | Election Admin | edit drafts |
 | `POST /admin/elections/{id}/roll-snapshots` · `.../schedule` · `.../certify` · `.../cancel` | Election Admin | create approval requests |
 | `GET /admin/approvals` · `POST /admin/approvals/{id}/decision` | per action | two-person decisions |
 | `GET /admin/audit/events` · `GET /admin/audit/verify` | Auditor | ledger (paged by seq), full chain verification |
@@ -684,7 +698,7 @@ Decisions for USTP; the design's proposed default is in brackets.
 |---|---|
 | **M0 — Foundations** *(this commit)* | Design; monorepo; `ustp-tally`, `ustp-audit`, `ustp-domain` with tests; server and web skeletons; CI |
 | **M1 — Identity & registration** | *Done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes via two-person approvals, auth switches, Auditor ledger verification; web sign-in (Google, Microsoft, Apple, email/password, email link), registration, account and admin console. admin two-step verification (authenticator-app setup, code step at sign-in, re-authentication for approvals, typed MFA/re-auth problems); profile photos (normalized upload, automatic checks, admin review). *Still to exercise against a real project:* authenticator-app setup and sign-in (TOTP), and Cloud Vision photo checks — neither has an emulator |
-| **M2 — Election setup & ledger** | Elections, contests, candidates, proposals; roll snapshots; approval requests; ledger, blocks, KMS signing, anchors |
+| **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b:* roll snapshots, two-person scheduling and cancellation (seed commitment, pool key). *M2c:* ledger blocks, KMS signing, anchors |
 | **M3 — Casting & secrecy** | Ballot UI with client-side commitments; cast endpoint; pool encryption; sealer; receipts; `/verify` |
 | **M4 — Tally & certification** | Tally task, results bundle, certification, position terms, key destruction; `ustp-verify` CLI |
 | **M5 — Hardening & launch gates** | Terraform; Binary Authorization; PWA; accessibility audit; load test; external review; mock election |

@@ -9,7 +9,8 @@ deterministic tally library.
 bylaws, applications, membership administration, profile photos, two-person role changes, admin two-step verification
 and the audit ledger work end to end against the Firebase emulators, in the API (emulator integration tests) and the
 web app. Authenticator-app (TOTP) setup and Cloud Vision photo checks have no emulator and still need a real project.
-Nothing is deployed; elections (M2) are next.
+Elections (M2) have started: Election Admins can build draft elections (proposal, choose-N and ranked-choice
+contests) with live validation and a definition hash; rolls and scheduling come next. Nothing is deployed.
 
 ## Documents
 

@@ -12,7 +12,7 @@ export class ApiError extends Error {
   }
 }
 
-type Method = 'GET' | 'POST' | 'PUT' | 'DELETE';
+type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
 /** The current ID token and App Check token. */
 async function authHeaders(): Promise<Record<string, string>> {

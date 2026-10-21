@@ -23,6 +23,25 @@ export type { LedgerEventType, LedgerEntry } from './ledger-events.js';
 export type * from './records.js';
 export { PROBLEM_TYPES } from './problems.js';
 export { LIKELIHOODS, MIN_FACE_CONFIDENCE, photoVerdict, isLikelihood } from './photos.js';
+export {
+  SECRECY_MODES,
+  MIN_K_ANONYMITY,
+  DEFAULT_K_ANONYMITY,
+  proposalContentHash,
+  buildDefinition,
+  definitionHash,
+  validateDefinition,
+} from './elections.js';
+export type {
+  Secrecy,
+  ElectionRecord,
+  ContestRecord,
+  CandidateRecord,
+  ProposalSnapshotRecord,
+  ElectionDefinition,
+  ElectionDetail,
+} from './elections.js';
+export * from './election-api.js';
 export type { Likelihood, PhotoSignals, PhotoVerdict } from './photos.js';
 export type { ProblemCode } from './problems.js';
 export * from './api.js';

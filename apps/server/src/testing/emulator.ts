@@ -48,7 +48,7 @@ export class TestApi {
     return this.app.get(Firebase);
   }
 
-  async call(method: 'GET' | 'POST' | 'PUT' | 'DELETE', url: string, user?: User, body?: unknown): Promise<Response> {
+  async call(method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE', url: string, user?: User, body?: unknown): Promise<Response> {
     const res = await this.app.inject({
       method,
       url,

@@ -1,0 +1,177 @@
+import { hashCanonical } from 'ustp-audit';
+import { validateContestSpec, type ContestSpec } from 'ustp-tally';
+import type { ElectionState } from './election-state.js';
+
+/** Election definitions (design §6). Editable while `draft`; frozen by its hash when scheduled (M2b). */
+
+export const SECRECY_MODES = ['secret', 'open'] as const;
+export type Secrecy = (typeof SECRECY_MODES)[number];
+
+/** Smallest sealed block allowed for secret ballots (design §7.2). */
+export const MIN_K_ANONYMITY = 2;
+export const DEFAULT_K_ANONYMITY = 10;
+
+/** `elections/{electionId}` */
+export interface ElectionRecord {
+  readonly electionId: string;
+  readonly title: string;
+  readonly description: string;
+  readonly secrecy: Secrecy;
+  readonly opensAt: string;
+  readonly closesAt: string;
+  /** Minimum ballots per sealed block (secret ballots). */
+  readonly kAnonymity: number;
+  readonly state: ElectionState;
+  readonly createdBy: string;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  /** Set when scheduled: H(JCS(definition)). */
+  readonly definitionHash: string | null;
+  readonly rollSnapshotId: string | null;
+  readonly tieBreakSeedCommitment: string | null;
+}
+
+/** `elections/{id}/contests/{contestId}`. `spec.id` equals `contestId`; candidate contests list candidate IDs. */
+export interface ContestRecord {
+  readonly contestId: string;
+  readonly order: number;
+  readonly title: string;
+  readonly description: string;
+  readonly spec: ContestSpec;
+  /** Proposal contests: the frozen text being voted on. */
+  readonly proposalSnapshotId: string | null;
+}
+
+/** `elections/{id}/candidates/{candidateId}`. Their order is the contest spec's `candidates` list. */
+export interface CandidateRecord {
+  readonly candidateId: string;
+  readonly contestId: string;
+  readonly name: string;
+  readonly statement: string | null;
+  /** The member standing, when the candidate is a person with an account (used for recusal checks). */
+  readonly accountId: string | null;
+}
+
+/** `proposal_snapshots/{snapshotId}` — immutable: the exact text put to a vote. */
+export interface ProposalSnapshotRecord {
+  readonly snapshotId: string;
+  readonly title: string;
+  /** Markdown. */
+  readonly body: string;
+  /** Where it came from (URL, forum post, minutes), if anywhere. */
+  readonly source: string | null;
+  /** H(JCS({v: 1, title, body})). */
+  readonly contentHash: string;
+  readonly capturedAt: string;
+  readonly capturedBy: string;
+}
+
+export function proposalContentHash(title: string, body: string): string {
+  return hashCanonical({ v: 1, title, body });
+}
+
+/** Everything a voter's ballot and the tally depend on, in canonical order. Its hash is what scheduling freezes. */
+export interface ElectionDefinition {
+  readonly v: 1;
+  readonly electionId: string;
+  readonly title: string;
+  readonly description: string;
+  readonly secrecy: Secrecy;
+  readonly opensAt: string;
+  readonly closesAt: string;
+  readonly kAnonymity: number;
+  readonly contests: readonly {
+    readonly contestId: string;
+    readonly title: string;
+    readonly description: string;
+    readonly spec: ContestSpec;
+    readonly proposal: { readonly snapshotId: string; readonly title: string; readonly contentHash: string } | null;
+    readonly candidates: readonly { readonly candidateId: string; readonly name: string; readonly statement: string | null }[];
+  }[];
+}
+
+export function buildDefinition(
+  election: ElectionRecord,
+  contests: readonly ContestRecord[],
+  candidates: readonly CandidateRecord[],
+  proposals: readonly ProposalSnapshotRecord[],
+): ElectionDefinition {
+  const byOrder = (a: ContestRecord, b: ContestRecord) => a.order - b.order;
+  return {
+    v: 1,
+    electionId: election.electionId,
+    title: election.title,
+    description: election.description,
+    secrecy: election.secrecy,
+    opensAt: election.opensAt,
+    closesAt: election.closesAt,
+    kAnonymity: election.kAnonymity,
+    contests: [...contests].sort(byOrder).map((c) => {
+      const proposal = proposals.find((p) => p.snapshotId === c.proposalSnapshotId);
+      const listed = c.spec.kind === 'proposal' ? [] : c.spec.candidates;
+      const position = (k: CandidateRecord) => (listed.includes(k.candidateId) ? listed.indexOf(k.candidateId) : listed.length);
+      return {
+        contestId: c.contestId,
+        title: c.title,
+        description: c.description,
+        spec: c.spec,
+        proposal: proposal ? { snapshotId: proposal.snapshotId, title: proposal.title, contentHash: proposal.contentHash } : null,
+        candidates: candidates
+          .filter((k) => k.contestId === c.contestId)
+          .sort((a, b) => position(a) - position(b) || a.candidateId.localeCompare(b.candidateId))
+          .map((k) => ({ candidateId: k.candidateId, name: k.name, statement: k.statement })),
+      };
+    }),
+  };
+}
+
+/** `GET /v1/admin/elections/{id}`: the editable parts plus what scheduling would freeze. */
+export interface ElectionDetail {
+  readonly election: ElectionRecord;
+  readonly contests: readonly ContestRecord[];
+  readonly candidates: readonly CandidateRecord[];
+  readonly proposals: readonly ProposalSnapshotRecord[];
+  /** Hash of the definition as it stands; scheduling freezes exactly this. */
+  readonly definitionHash: string;
+  /** What must be fixed before scheduling; empty when ready. */
+  readonly problems: readonly string[];
+}
+
+export function definitionHash(definition: ElectionDefinition): string {
+  return hashCanonical(definition);
+}
+
+/**
+ * Problems that must be fixed before the election can be scheduled; empty when ready. `now` enforces that voting
+ * opens in the future.
+ */
+export function validateDefinition(def: ElectionDefinition, now: Date = new Date()): string[] {
+  const problems: string[] = [];
+  if (!def.title.trim()) problems.push('the election needs a title');
+  const opens = Date.parse(def.opensAt);
+  const closes = Date.parse(def.closesAt);
+  if (Number.isNaN(opens) || Number.isNaN(closes)) problems.push('opening and closing times must be valid dates');
+  else {
+    if (closes <= opens) problems.push('voting must close after it opens');
+    if (opens <= now.getTime()) problems.push('voting must open in the future');
+  }
+  if (def.secrecy === 'secret' && def.kAnonymity < MIN_K_ANONYMITY) {
+    problems.push(`secret ballots need an anonymity threshold of at least ${MIN_K_ANONYMITY}`);
+  }
+  if (def.contests.length === 0) problems.push('add at least one contest');
+
+  for (const c of def.contests) {
+    const label = `“${c.title || c.contestId}”`;
+    if (c.spec.id !== c.contestId) problems.push(`${label}: contest id mismatch`);
+    if (c.spec.kind === 'proposal') {
+      if (!c.proposal) problems.push(`${label}: attach the proposal text being voted on`);
+    } else {
+      const ids = c.candidates.map((k) => k.candidateId);
+      if (ids.length === 0) problems.push(`${label}: add candidates`);
+      if (ids.join() !== c.spec.candidates.join()) problems.push(`${label}: candidate list is out of sync`);
+    }
+    if (c.spec.kind !== 'proposal' && c.spec.candidates.length === 0) continue;
+    for (const p of validateContestSpec(c.spec)) problems.push(`${label}: ${p}`);
+  }
+  return problems;
+}
