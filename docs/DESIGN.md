@@ -81,14 +81,14 @@ flowchart LR
   WEB -- "ID token + App Check" --> API["server: api<br/>Cloud Run"]
   API --> FS[("Firestore (default)")]
   API -- "encrypt ballots" --> KMS[Cloud KMS]
-  API -- signed upload URLs --> GCSP[("GCS: photos (private)")]
+  API -- "normalized photos" --> GCSP[("GCS: photos (private)")]
+  API -- "photo checks" --> VIS[Cloud Vision]
   API -- enqueue --> CT[Cloud Tasks]
   SCH["Cloud Scheduler<br/>tick / 1 min"] --> WK["server: worker<br/>Cloud Run"]
   CT --> WK
   WK --> FS
   WK -- "decrypt pool, sign blocks" --> KMS
   WK --> GCSA[("GCS: anchors<br/>Bucket Lock (WORM)")]
-  WK --> VIS[Cloud Vision]
   WK --> SM[Secret Manager]
   WK --> SES[Amazon SES]
 ```
@@ -218,12 +218,30 @@ Every transition writes, in one transaction, the new status on `members/{account
 
 ### 5.3 Profile photos
 
-1. API issues a signed upload URL to the private photos bucket (5 MB limit, JPEG/PNG only, 15-minute expiry).
-2. The client confirms the upload; the API records `profile_photos/{photoId}` (`pending_check`) and enqueues a task.
-3. Worker calls Cloud Vision `SAFE_SEARCH_DETECTION` and `FACE_DETECTION` and records `photo_checks/{checkId}`:
-   face count, blur/under-exposure likelihoods, SafeSearch likelihoods → verdict `pass` or `flag`.
-4. **The machine never rejects.** Flagged photos go to the Membership Admin queue; only a human can reject, with a
-   reason. No face recognition or matching is performed and no face embeddings are stored.
+Optional, for members with a membership record (applicants included).
+
+1. **Upload through the API:** `PUT /v1/me/photo` with the raw image as the body (`image/jpeg`, `image/png` or
+   `image/webp`, at most 5 MB; anything else is 415/413).
+2. **Normalize:** the API decodes it with `sharp` (rejecting anything that is not really an image of those formats, or
+   smaller than 200×200), applies EXIF orientation, shrinks it to at most 1024 px, and re-encodes it as JPEG. This
+   drops all metadata: GPS location, camera serials, embedded thumbnails, anything hidden in the original bytes.
+3. **Check, inline:** Cloud Vision `FACE_DETECTION` (face count, detection confidence, blur and under-exposure
+   likelihoods) and `SAFE_SEARCH_DETECTION`. `photoVerdict` in `ustp-domain` turns the signals into `pass` or `flag`
+   with plain-language reasons (no face / more than one face / face not clearly visible / blurry / too dark / may be
+   inappropriate, at `LIKELY` or above). Recorded in `photo_checks/{checkId}`.
+4. **Store:** the normalized JPEG goes to the private photos bucket (`PHOTOS_BUCKET`) at
+   `profile-photos/{accountId}/{photoId}.jpg`; `profile_photos/{photoId}` is `accepted` (passed) or `needs_review`
+   (flagged). A new upload marks the previous photo `superseded` and deletes its image.
+5. **The machine never rejects.** Flagged photos go to the Membership Admin queue (`GET /v1/admin/photos`); only a
+   person accepts or rejects, with a written reason, ledgered as `photo.decided`. Rejecting deletes the image; the
+   member sees the reason. Admins cannot decide their own photo. Members can remove their photo at any time.
+6. No face recognition or matching is performed, no face embeddings are stored, and images are only ever served to
+   the member and Membership Admins through authenticated API routes (never public URLs).
+
+With the emulators there is no Vision API, so a local stand-in (`PHOTO_CHECKER=local`, refused outside the emulators)
+assumes one clear face and flags only dark images, so the review flow can be exercised. Deployment needs: the
+`PHOTOS_BUCKET` (private, uniform bucket-level access), the Vision API enabled, and the api service account allowed
+to read, write and delete objects in that bucket.
 
 ## 6. Elections
 
@@ -552,7 +570,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /sign-in-methods` | P | which sign-in providers are switched on (sign-in buttons) |
 | `POST /registration/applications` · `GET /registration/applications/me` | M | apply; status |
 | `POST /me/resign` | M | resign membership |
-| `POST /registration/photo-upload-url` · `POST /registration/photos` | M | photo upload |
+| `PUT /me/photo` · `GET /me/photo` · `GET /me/photo/image` · `DELETE /me/photo` | M (member record) | profile photo |
 | `GET /elections` | M | elections the caller is eligible for |
 | `GET /elections/{id}/ballot` | V | ballot definition and hash |
 | `POST /elections/{id}/ballots` | V | cast (409 if already voted) |
@@ -563,7 +581,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /admin/bylaws` | Membership Admin | publish a bylaws version |
 | `GET /admin/applications` · `POST /admin/applications/{id}/decision` | Membership Admin | registration triage |
 | `GET /admin/members` · `GET /admin/members/{accountId}/history` | Membership Admin | member list (paged), status history |
-| `POST /admin/members/{accountId}/status` · `POST /admin/photos/{id}/decision` | Membership Admin | status, photos |
+| `POST /admin/members/{accountId}/status` | Membership Admin | status changes |
+| `GET /admin/photos` · `GET /admin/photos/{id}/image` · `POST /admin/photos/{id}/decision` | Membership Admin | photo review |
 | `POST /admin/elections` · `PATCH /admin/elections/{id}` · contests, candidates, proposals | Election Admin | election setup |
 | `POST /admin/elections/{id}/roll-snapshots` · `.../schedule` · `.../certify` · `.../cancel` | Election Admin | create approval requests |
 | `GET /admin/approvals` · `POST /admin/approvals/{id}/decision` | per action | two-person decisions |
@@ -578,7 +597,6 @@ Errors use RFC 9457 problem details. Request bodies are validated against schema
 |---|---|---|
 | `POST /tasks/tick` | Cloud Scheduler, every minute | open/close elections on time; seal pools; build ledger block; anchor; schedule tally on close |
 | `POST /tasks/tally` | Cloud Task after close | reveal seed, run `ustp-tally`, write provisional results bundle |
-| `POST /tasks/photo-check` | Cloud Task | Cloud Vision checks |
 | `POST /tasks/email` | Cloud Task | send via Amazon SES |
 | `POST /tasks/destroy-pool-key` | Cloud Task after certify | destroy the election's ballot-pool key version |
 
@@ -637,6 +655,7 @@ idempotent; `tick` takes a lease (`locks/tick` with expiry) so overlapping ticks
 | §4 "1-minute anchors" | Anchor only when a new block exists, ≤ 1/min | Matches spec §8 "smart anchoring" |
 | §7 "Binary Authorization: reproducible builds" | Lockfile + `--ignore-scripts` **and** an actual Binary Authorization policy on Cloud Run | They are separate controls |
 | §9 privacy claims | Hold under the trusted-API assumption stated in §2 | Honest scope of V1 secrecy |
+| §3/§5.3 photos via signed upload URL, checked by the worker | Upload through the API, normalized (metadata stripped) and checked inline | Server-side decoding and metadata removal; works with the emulators; no URL-signing permission; one Vision call needs no task queue |
 
 ## 18. Open questions
 
@@ -664,7 +683,7 @@ Decisions for USTP; the design's proposed default is in brackets.
 | Milestone | Content |
 |---|---|
 | **M0 — Foundations** *(this commit)* | Design; monorepo; `ustp-tally`, `ustp-audit`, `ustp-domain` with tests; server and web skeletons; CI |
-| **M1 — Identity & registration** | *Done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes via two-person approvals, auth switches, Auditor ledger verification; web sign-in (Google, Microsoft, Apple, email/password, email link), registration, account and admin console. admin two-step verification (authenticator-app setup, code step at sign-in, re-authentication for approvals, typed MFA/re-auth problems). *Remaining:* photo pipeline; exercising authenticator-app setup and sign-in against a real Identity Platform project with TOTP enabled |
+| **M1 — Identity & registration** | *Done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes via two-person approvals, auth switches, Auditor ledger verification; web sign-in (Google, Microsoft, Apple, email/password, email link), registration, account and admin console. admin two-step verification (authenticator-app setup, code step at sign-in, re-authentication for approvals, typed MFA/re-auth problems); profile photos (normalized upload, automatic checks, admin review). *Still to exercise against a real project:* authenticator-app setup and sign-in (TOTP), and Cloud Vision photo checks — neither has an emulator |
 | **M2 — Election setup & ledger** | Elections, contests, candidates, proposals; roll snapshots; approval requests; ledger, blocks, KMS signing, anchors |
 | **M3 — Casting & secrecy** | Ballot UI with client-side commitments; cast endpoint; pool encryption; sealer; receipts; `/verify` |
 | **M4 — Tally & certification** | Tally task, results bundle, certification, position terms, key destruction; `ustp-verify` CLI |

@@ -9,13 +9,17 @@ export interface ServerConfig {
   readonly adminMfaRequired: boolean;
   /** Verified emails that receive System Admin when their account is created (design §10.1). Lowercase. */
   readonly bootstrapSystemAdmins: readonly string[];
+  /** Private bucket for profile photos (design §5.3); photo endpoints answer 503 until it is set. */
+  readonly photosBucket: string | null;
+  /** `vision`: Cloud Vision. `local`: the emulator-only stand-in (no face detection). */
+  readonly photoChecker: 'vision' | 'local';
 }
 
 export const CONFIG = Symbol('ServerConfig');
 
 /**
- * Reads configuration from the environment. The two safety switches can only be turned off against the
- * emulators: in a real project the server refuses to start rather than run without App Check or admin MFA.
+ * Reads configuration from the environment. The safety switches can only be relaxed against the emulators: in a real
+ * project the server refuses to start rather than run without App Check, admin MFA or real photo checks.
  */
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const usingEmulators = Boolean(env.FIRESTORE_EMULATOR_HOST && env.FIREBASE_AUTH_EMULATOR_HOST);
@@ -24,8 +28,13 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   if (!usingEmulators && (!appCheckEnforced || !adminMfaRequired)) {
     throw new Error('APP_CHECK_ENFORCED=false and ADMIN_MFA_REQUIRED=false are only allowed with the Firebase emulators');
   }
+  const photoChecker = (env.PHOTO_CHECKER ?? (usingEmulators ? 'local' : 'vision')) as ServerConfig['photoChecker'];
+  if (photoChecker !== 'vision' && photoChecker !== 'local') throw new Error('PHOTO_CHECKER must be "vision" or "local"');
+  if (photoChecker === 'local' && !usingEmulators) throw new Error('PHOTO_CHECKER=local is only allowed with the Firebase emulators');
+
+  const projectId = env.GOOGLE_CLOUD_PROJECT || env.GCLOUD_PROJECT || undefined;
   return {
-    projectId: env.GOOGLE_CLOUD_PROJECT || env.GCLOUD_PROJECT || undefined,
+    projectId,
     usingEmulators,
     appCheckEnforced,
     adminMfaRequired,
@@ -33,5 +42,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       .split(',')
       .map((e) => e.trim().toLowerCase())
       .filter(Boolean),
+    photosBucket: env.PHOTOS_BUCKET || (usingEmulators && projectId ? `${projectId}-profile-photos` : null),
+    photoChecker,
   };
 }

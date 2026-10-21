@@ -4,6 +4,7 @@ import { deleteApp, initializeApp, type App } from 'firebase-admin/app';
 import { getAppCheck, type AppCheck } from 'firebase-admin/app-check';
 import { getAuth, type Auth } from 'firebase-admin/auth';
 import { getFirestore, type Firestore } from 'firebase-admin/firestore';
+import { getStorage, type Storage } from 'firebase-admin/storage';
 import { CONFIG, type ServerConfig } from '../config.js';
 
 /**
@@ -17,6 +18,7 @@ export class Firebase implements OnApplicationShutdown {
   readonly db: Firestore;
   readonly auth: Auth;
   readonly appCheck: AppCheck;
+  readonly storage: Storage;
 
   constructor(@Inject(CONFIG) config: ServerConfig) {
     this.app = initializeApp(config.projectId ? { projectId: config.projectId } : {}, `ustp-${randomUUID()}`);
@@ -24,6 +26,7 @@ export class Firebase implements OnApplicationShutdown {
     this.db.settings({ ignoreUndefinedProperties: true });
     this.auth = getAuth(this.app);
     this.appCheck = getAppCheck(this.app);
+    this.storage = getStorage(this.app);
   }
 
   async onApplicationShutdown(): Promise<void> {

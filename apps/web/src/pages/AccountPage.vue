@@ -5,6 +5,7 @@ import { computed, onMounted, ref, shallowRef } from 'vue';
 import type { IdentityRecord, SignInProvider } from 'ustp-domain';
 import { api, errorMessage } from '../api.js';
 import AuthenticatorSetupDialog from '../components/AuthenticatorSetupDialog.vue';
+import ProfilePhotoCard from '../components/ProfilePhotoCard.vue';
 import { confirmIdentity } from '../dialogs.js';
 import { auth, secondaryAuth } from '../firebase.js';
 import { enrolledFactors, removeFactor } from '../mfa.js';
@@ -156,6 +157,8 @@ function copyId() {
           <q-btn flat color="negative" label="Resign" :disable="busy" @click="resign" />
         </q-card-actions>
       </q-card>
+
+      <ProfilePhotoCard v-if="me.member" />
 
       <q-card flat bordered>
         <q-card-section>

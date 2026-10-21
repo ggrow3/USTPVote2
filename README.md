@@ -5,10 +5,11 @@ member onboarding, secret or roll-call ballots, proposal and candidate contests 
 instant-runoff), and an audit trail anyone can check — hash chains, Merkle receipts, WORM anchors and a public,
 deterministic tally library.
 
-**Status:** M1 nearly done. The core libraries are done and tested. Identity and registration work end to end
-against the Firebase emulators: sign-in, accounts, bylaws, applications, membership administration, two-person role
-changes, admin two-step verification and the audit ledger, in the API (emulator integration tests) and the web app.
-Profile photos are next. Nothing is deployed.
+**Status:** M1 (identity and registration) is built. The core libraries are done and tested. Sign-in, accounts,
+bylaws, applications, membership administration, profile photos, two-person role changes, admin two-step verification
+and the audit ledger work end to end against the Firebase emulators, in the API (emulator integration tests) and the
+web app. Authenticator-app (TOTP) setup and Cloud Vision photo checks have no emulator and still need a real project.
+Nothing is deployed; elections (M2) are next.
 
 ## Documents
 
@@ -44,7 +45,7 @@ npm test
 | `npm run build` | Builds the packages, then the server and web app, in dependency order |
 | `npm run typecheck` | Type-checks every workspace, tests included |
 | `npm test` | Runs every workspace's Vitest suite (unit tests) |
-| `npm run test:int -w apps/server` | Starts the Auth and Firestore emulators (project `demo-ustpvote`) and runs the API integration tests |
+| `npm run test:int -w apps/server` | Starts the Auth, Firestore and Storage emulators (project `demo-ustpvote`) and runs the API integration tests |
 | `npm run watch -w apps/server` | Recompiles the server on change (run alongside a `dev:*` command) |
 | `npm run dev:api` / `npm run dev:worker` | Runs the compiled api (port 8080) / worker, restarting on rebuild |
 | `npm run dev:web` | Vite dev server; proxies `/v1` to the local api |
