@@ -162,9 +162,11 @@ Builds use the committed lockfile with `npm ci --ignore-scripts` (spec §7).
   roles with `@Roles(...)`, which also requires MFA and verifies with `checkRevoked` (as will casting a ballot).
 - **Safety switches.** `APP_CHECK_ENFORCED=false` and `ADMIN_MFA_REQUIRED=false` exist for local development and
   integration tests; the server refuses to start with either unless the Firestore and Auth emulators are configured.
-- **Bootstrap.** Verified emails listed in `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` become System Admins when their account is
-  created (ledgered with actor `bootstrap`). List at least two, because role changes need a second System Admin; remove
-  the setting once real admins exist.
+- **Bootstrap.** Emails listed in `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` become System Admins once their account exists and
+  the email is verified (checked on every `POST /v1/accounts`, which the web app calls on each sign-in and after
+  verification; ledgered with actor `bootstrap`). An account that has ever held the role is never re-granted, so a
+  revocation sticks. List at least two, because role changes need a second System Admin; remove the setting once real
+  admins exist.
 
 ## 5. Registration
 

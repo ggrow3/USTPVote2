@@ -56,19 +56,25 @@ export class AccountsService {
     };
   }
 
-  /** Mints the caller's account on first sign-in. Idempotent: a uid that already has an account gets it back. */
+  /**
+   * Mints the caller's account on first sign-in. Idempotent: a uid that already has an account gets it back.
+   * Each call also applies the bootstrap System Admin grant once the email is verified (password sign-ups start
+   * unverified), but only to an account that has never held the role, so a revocation is never undone.
+   */
   async create(ctx: RequestContext): Promise<{ readonly created: boolean; readonly accountId: string }> {
     const { principal } = ctx;
     const db = this.firebase.db;
-    const bootstrap =
+    const bootstrapEligible =
       principal.emailVerified && principal.email !== null && this.config.bootstrapSystemAdmins.includes(principal.email);
 
     return db.runTransaction(async (tx) => {
       const identityRef = db.collection(Collections.accountIdentities).doc(principal.uid);
       const existing = await tx.get(identityRef);
-      if (existing.exists) return { created: false, accountId: (existing.data() as IdentityRecord).accountId };
+      const accountId = existing.exists ? (existing.data() as IdentityRecord).accountId : uuidv7();
+      const roleRef = db.collection(Collections.roleAssignments).doc(roleAssignmentId(accountId, 'system_admin'));
+      const bootstrap = bootstrapEligible && !(existing.exists && (await tx.get(roleRef)).exists);
+      if (existing.exists && !bootstrap) return { created: false, accountId };
 
-      const accountId = uuidv7();
       const now = new Date().toISOString();
       if (bootstrap) {
         await this.ledger.record(tx, [
@@ -80,15 +86,17 @@ export class AccountsService {
           },
         ]);
       }
-      const account: AccountRecord = {
-        accountId,
-        displayName: principal.name,
-        primaryEmail: principal.email,
-        emailVerified: principal.emailVerified,
-        createdAt: now,
-      };
-      tx.create(db.collection(Collections.accounts).doc(accountId), account);
-      tx.create(identityRef, identityRecord(principal, accountId, now));
+      if (!existing.exists) {
+        const account: AccountRecord = {
+          accountId,
+          displayName: principal.name,
+          primaryEmail: principal.email,
+          emailVerified: principal.emailVerified,
+          createdAt: now,
+        };
+        tx.create(db.collection(Collections.accounts).doc(accountId), account);
+        tx.create(identityRef, identityRecord(principal, accountId, now));
+      }
       if (bootstrap) {
         const role: RoleAssignmentRecord = {
           accountId,
@@ -100,9 +108,9 @@ export class AccountsService {
           revokedAt: null,
           revokedBy: null,
         };
-        tx.create(db.collection(Collections.roleAssignments).doc(roleAssignmentId(accountId, 'system_admin')), role);
+        tx.create(roleRef, role);
       }
-      return { created: true, accountId };
+      return { created: !existing.exists, accountId };
     });
   }
 

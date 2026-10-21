@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { signIn, TestApi, resetEmulators } from './testing/emulator.js';
+import { resetEmulators, SA1_EMAIL, signIn, TestApi } from './testing/emulator.js';
 
 let api: TestApi;
 beforeAll(async () => {
@@ -76,6 +76,26 @@ describe('accounts', () => {
     );
   });
 
+  it('applies the bootstrap grant once a password sign-up verifies its email, but never re-grants a revoked role', async () => {
+    const sa = await api.user(SA1_EMAIL, { emailVerified: false });
+    const created = await api.call('POST', '/v1/accounts', sa);
+    expect(created.status).toBe(201);
+    expect((await api.call('GET', '/v1/me', sa)).body.roles).toEqual([]);
+
+    await api.firebase.auth.updateUser(sa.uid, { emailVerified: true });
+    const verified = { ...sa, token: await signIn(SA1_EMAIL) };
+    expect((await api.call('POST', '/v1/accounts', verified)).body).toEqual({ created: false, accountId: created.body.accountId });
+    expect((await api.call('GET', '/v1/me', verified)).body.roles).toEqual(['system_admin']);
+
+    // Revoked (seeded directly here; normally a two-person action): a later sign-in must not restore it.
+    await api.firebase.db
+      .collection('role_assignments')
+      .doc(`${created.body.accountId}_system_admin`)
+      .update({ revokedAt: new Date().toISOString(), revokedBy: 'someone' });
+    await api.call('POST', '/v1/accounts', verified);
+    expect((await api.call('GET', '/v1/me', verified)).body.roles).toEqual([]);
+  });
+
   it('validates request bodies field by field', async () => {
     const alex = await api.member('alex@example.test');
     const res = await api.call('POST', '/v1/me/identities', alex, { idToken: '', extra: true });
@@ -92,7 +112,6 @@ describe('sign-in method switches', () => {
 
     const off = await api.call('PUT', '/v1/admin/sign-in-methods', sa1, { 'google.com': false, 'apple.com': false });
     expect(off.body).toEqual({ 'google.com': false, 'microsoft.com': true, 'apple.com': false, password: true });
-
     expect((await api.call('PUT', '/v1/admin/sign-in-methods', sa1, { password: false })).body.detail).toMatch(
       /the sign-in method you are using/,
     );
