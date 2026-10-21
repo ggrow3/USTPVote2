@@ -1,0 +1,15 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      nestjs:
+        patterns: ["@nestjs/*"]
+      vue-quasar:
+        patterns: ["vue", "vue-router", "vue-tsc", "@vitejs/*", "vite", "quasar", "@quasar/*"]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly

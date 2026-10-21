@@ -1,0 +1,29 @@
+{
+  "name": "ustpvote2",
+  "private": true,
+  "description": "USTP voter registration and verifiable voting system",
+  "type": "module",
+  "workspaces": [
+    "packages/tally",
+    "packages/audit",
+    "packages/domain",
+    "apps/server",
+    "apps/web"
+  ],
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "npm run build -w packages/tally -w packages/audit -w packages/domain -w apps/server -w apps/web",
+    "typecheck": "npm run typecheck --workspaces",
+    "test": "npm run test --workspaces --if-present",
+    "dev:api": "npm run dev:api -w apps/server",
+    "dev:worker": "npm run dev:worker -w apps/server",
+    "dev:web": "npm run dev -w apps/web"
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.2",
+    "typescript": "~6.0.3",
+    "vitest": "^5.0.5"
+  }
+}

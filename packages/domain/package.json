@@ -1,0 +1,21 @@
+{
+  "name": "ustp-domain",
+  "version": "0.1.0",
+  "description": "Shared USTPVote2 domain rules: identifiers, state machines, roles, two-person approvals, Firestore paths",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  }
+}

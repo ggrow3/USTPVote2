@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    // Web Crypto's getRandomValues (UUIDv7) is the only platform API used.
+    "lib": ["es2024", "dom"]
+  },
+  "include": ["src"]
+}

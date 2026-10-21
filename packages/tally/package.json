@@ -1,0 +1,21 @@
+{
+  "name": "ustp-tally",
+  "version": "0.1.0",
+  "description": "Deterministic, dependency-free ballot validation and tallying for USTP elections",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  }
+}

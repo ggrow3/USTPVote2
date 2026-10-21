@@ -1,0 +1,27 @@
+{
+  "name": "ustp-web",
+  "version": "0.1.0",
+  "description": "USTPVote2 web app: registration, ballot, verification and admin (Vue 3 + Quasar 2)",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "vue-tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@quasar/extras": "^2.1.0",
+    "quasar": "^2.35.2",
+    "ustp-audit": "^0.1.0",
+    "vue": "^3.5.44",
+    "vue-router": "^5.4.0"
+  },
+  "devDependencies": {
+    "@quasar/vite-plugin": "^2.0.2",
+    "@vitejs/plugin-vue": "^6.0.10",
+    "sass-embedded": "^1.105.2",
+    "vite": "^8.3.4",
+    "vue-tsc": "^3.3.13"
+  }
+}

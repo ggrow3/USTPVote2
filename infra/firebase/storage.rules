@@ -1,0 +1,11 @@
+rules_version = '2';
+
+// Design §5.3 / §14: clients never access Storage directly. Photo uploads use short-lived signed URLs
+// issued by the API; anchors are written only by the worker service account.
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
