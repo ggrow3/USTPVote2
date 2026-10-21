@@ -37,6 +37,12 @@ export const decisionSchema = z.strictObject({
 });
 export type DecisionInput = z.infer<typeof decisionSchema>;
 
+export const photoDecisionSchema = z.strictObject({
+  decision: z.enum(['accept', 'reject']),
+  reason,
+});
+export type PhotoDecisionInput = z.infer<typeof photoDecisionSchema>;
+
 export const memberStatusSchema = z.strictObject({
   to: z.enum(MEMBER_STATUSES),
   reason,

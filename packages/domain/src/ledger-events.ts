@@ -9,6 +9,7 @@ export const LEDGER_EVENT_TYPES = [
   'approval.requested',
   'approval.decided',
   'signin_method.changed',
+  'photo.decided',
 ] as const;
 export type LedgerEventType = (typeof LEDGER_EVENT_TYPES)[number];
 

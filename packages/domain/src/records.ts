@@ -1,6 +1,7 @@
 import type { TwoPersonAction } from './approvals.js';
 import type { SignInProvider } from './identity.js';
 import type { MemberStatus } from './member-status.js';
+import type { PhotoSignals } from './photos.js';
 import type { Role } from './roles.js';
 
 /**
@@ -113,6 +114,40 @@ export interface ApprovalRequestRecord {
   readonly decidedBy: string | null;
   readonly decidedAt: string | null;
   readonly decisionReason: string | null;
+}
+
+/**
+ * `profile_photos/{photoId}`. `accepted`: passed the automatic check or accepted by an admin. `needs_review`: flagged
+ * for a Membership Admin. `rejected`: rejected by an admin, with a reason. `superseded`: replaced or removed by the
+ * member. The image itself is deleted once a photo is rejected or superseded.
+ */
+export interface ProfilePhotoRecord {
+  readonly photoId: string;
+  readonly accountId: string;
+  readonly status: 'accepted' | 'needs_review' | 'rejected' | 'superseded';
+  /** Object path in the photos bucket; null once the image has been deleted. */
+  readonly storagePath: string | null;
+  readonly width: number;
+  readonly height: number;
+  readonly uploadedAt: string;
+  readonly checkId: string;
+  /** Reasons the automatic check flagged it (empty if it passed). */
+  readonly flags: readonly string[];
+  readonly decidedBy: string | null;
+  readonly decidedAt: string | null;
+  readonly decisionReason: string | null;
+}
+
+/** `photo_checks/{checkId}` — immutable. */
+export interface PhotoCheckRecord {
+  readonly checkId: string;
+  readonly photoId: string;
+  /** `vision` in real projects; `local` is the emulator-only stand-in. */
+  readonly checker: 'vision' | 'local';
+  readonly signals: PhotoSignals;
+  readonly verdict: 'pass' | 'flag';
+  readonly reasons: readonly string[];
+  readonly checkedAt: string;
 }
 
 /** `GET /v1/me` */

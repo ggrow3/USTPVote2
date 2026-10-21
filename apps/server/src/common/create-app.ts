@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory, type IEntryNestModule } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
+import { ACCEPTED_TYPES, MAX_PHOTO_BYTES } from '../photos/image.js';
 import { loggerOptions } from './logging.js';
 import { ProblemDetailsFilter } from './problem.filter.js';
 
@@ -19,6 +20,13 @@ export async function createFastifyApp(
   });
   app.useGlobalFilters(new ProblemDetailsFilter());
   app.enableShutdownHooks();
+  // Profile photo uploads arrive as the raw image body (design §5.3); anything else image-typed gets 415.
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .addContentTypeParser([...ACCEPTED_TYPES], { parseAs: 'buffer', bodyLimit: MAX_PHOTO_BYTES }, (_req, body, done) =>
+      done(null, body),
+    );
   return app;
 }
 

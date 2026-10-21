@@ -4,6 +4,7 @@
 const defaults = {
   FIRESTORE_EMULATOR_HOST: '127.0.0.1:8085',
   FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099',
+  FIREBASE_STORAGE_EMULATOR_HOST: '127.0.0.1:9199',
   GCLOUD_PROJECT: 'demo-ustpvote',
   APP_CHECK_ENFORCED: 'false',
   ADMIN_MFA_REQUIRED: process.argv.includes('--require-mfa') ? 'true' : 'false',

@@ -8,13 +8,16 @@ import { Firebase } from '../infra/firebase.js';
 
 const AUTH_HOST = process.env.FIREBASE_AUTH_EMULATOR_HOST;
 const FIRESTORE_HOST = process.env.FIRESTORE_EMULATOR_HOST;
+const STORAGE_HOST = process.env.FIREBASE_STORAGE_EMULATOR_HOST;
 const PROJECT = process.env.GCLOUD_PROJECT ?? 'demo-ustpvote';
 
 export const SA1_EMAIL = 'sa1@example.test';
 export const SA2_EMAIL = 'sa2@example.test';
 const PASSWORD = 'correct horse battery staple';
 
-if (!AUTH_HOST || !FIRESTORE_HOST) throw new Error('integration tests must run via `npm run test:int` (Firebase emulators)');
+if (!AUTH_HOST || !FIRESTORE_HOST || !STORAGE_HOST) {
+  throw new Error('integration tests must run via `npm run test:int` (Firebase emulators)');
+}
 process.env.APP_CHECK_ENFORCED = 'false';
 process.env.ADMIN_MFA_REQUIRED = 'false';
 process.env.BOOTSTRAP_SYSTEM_ADMIN_EMAILS = `${SA1_EMAIL},${SA2_EMAIL}`;
@@ -54,9 +57,30 @@ export class TestApi {
     });
     return {
       status: res.statusCode,
-      body: res.body ? JSON.parse(res.body) : undefined,
+      body: res.body && res.headers['content-type']?.toString().includes('json') ? JSON.parse(res.body) : undefined,
       contentType: res.headers['content-type']?.toString(),
     };
+  }
+
+  /** Sends raw bytes (an image upload) with the given content type. */
+  async upload(url: string, user: User, bytes: Buffer, contentType: string): Promise<Response> {
+    const res = await this.app.inject({
+      method: 'PUT',
+      url,
+      headers: { authorization: `Bearer ${user.token}`, 'content-type': contentType },
+      payload: bytes,
+    });
+    return {
+      status: res.statusCode,
+      body: res.headers['content-type']?.toString().includes('json') ? JSON.parse(res.body) : undefined,
+      contentType: res.headers['content-type']?.toString(),
+    };
+  }
+
+  /** Raw response bytes (image endpoints). */
+  async bytes(url: string, user: User): Promise<{ status: number; data: Buffer; contentType: string | undefined }> {
+    const res = await this.app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${user.token}` } });
+    return { status: res.statusCode, data: res.rawPayload, contentType: res.headers['content-type']?.toString() };
   }
 
   /** Creates an email/password user in the Auth emulator and signs them in. */

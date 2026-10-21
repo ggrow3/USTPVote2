@@ -1,7 +1,7 @@
 import { Controller, HttpCode, NotFoundException, NotImplementedException, Param, Post } from '@nestjs/common';
 
 /** Worker task endpoints (design §13), invoked by Cloud Scheduler and Cloud Tasks with OIDC tokens. */
-export const WORKER_TASKS = ['tick', 'tally', 'photo-check', 'email', 'destroy-pool-key'] as const;
+export const WORKER_TASKS = ['tick', 'tally', 'email', 'destroy-pool-key'] as const;
 export type WorkerTask = (typeof WORKER_TASKS)[number];
 
 @Controller('tasks')

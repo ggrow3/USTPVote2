@@ -22,5 +22,7 @@ export { LEDGER_EVENT_TYPES } from './ledger-events.js';
 export type { LedgerEventType, LedgerEntry } from './ledger-events.js';
 export type * from './records.js';
 export { PROBLEM_TYPES } from './problems.js';
+export { LIKELIHOODS, MIN_FACE_CONFIDENCE, photoVerdict, isLikelihood } from './photos.js';
+export type { Likelihood, PhotoSignals, PhotoVerdict } from './photos.js';
 export type { ProblemCode } from './problems.js';
 export * from './api.js';
