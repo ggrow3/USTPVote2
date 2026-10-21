@@ -1,6 +1,7 @@
 import { hashCanonical } from 'ustp-audit';
 import { validateContestSpec, type ContestSpec } from 'ustp-tally';
 import type { ElectionState } from './election-state.js';
+import type { ApprovalRequestRecord } from './records.js';
 
 /** Election definitions (design §6). Editable while `draft`; frozen by its hash when scheduled (M2b). */
 
@@ -27,8 +28,56 @@ export interface ElectionRecord {
   readonly updatedAt: string;
   /** Set when scheduled: H(JCS(definition)). */
   readonly definitionHash: string | null;
+  /** The approved voter roll (an `eligibility_snapshots` document). */
   readonly rollSnapshotId: string | null;
+  /** Set when scheduled: SHA-256 of the secret tie-break seed, which is revealed at tally (design §9). */
   readonly tieBreakSeedCommitment: string | null;
+  /** Where the seed is kept (a secret's ID, not the seed itself). */
+  readonly tieBreakSeedRef: string | null;
+  readonly scheduledAt: string | null;
+  readonly cancelledAt: string | null;
+}
+
+/**
+ * `eligibility_snapshots/{snapshotId}` — a voter roll (design §6.3): every Active member at `asOf`, sorted. Holds
+ * the full list, which fits about 25,000 members in Firestore's 1 MiB document limit (spec: 1,000–5,000).
+ */
+export interface RollSnapshotRecord {
+  readonly snapshotId: string;
+  readonly electionId: string;
+  readonly criteria: { readonly status: 'active' };
+  readonly asOf: string;
+  readonly accountIds: readonly string[];
+  readonly count: number;
+  /** `rollMerkleRoot(electionId, accountIds)`. */
+  readonly merkleRoot: string;
+  readonly status: 'pending' | 'approved' | 'rejected' | 'superseded';
+  readonly requestedBy: string;
+  readonly requestedAt: string;
+  readonly approvalId: string;
+  readonly decidedBy: string | null;
+  readonly decidedAt: string | null;
+}
+
+/** Two-person request payloads for election actions (design §10.2); the approver approves exactly these. */
+export interface RollApprovalPayload {
+  readonly electionId: string;
+  readonly snapshotId: string;
+  readonly merkleRoot: string;
+  readonly count: number;
+}
+
+export interface SchedulePayload {
+  readonly electionId: string;
+  /** The definition as it stood at request time; approval fails if it has changed since. */
+  readonly definitionHash: string;
+  readonly rollSnapshotId: string;
+  readonly rollMerkleRoot: string;
+}
+
+export interface CancelPayload {
+  readonly electionId: string;
+  readonly fromState: ElectionState;
 }
 
 /** `elections/{id}/contests/{contestId}`. `spec.id` equals `contestId`; candidate contests list candidate IDs. */
@@ -135,6 +184,16 @@ export interface ElectionDetail {
   readonly definitionHash: string;
   /** What must be fixed before scheduling; empty when ready. */
   readonly problems: readonly string[];
+  /** The latest voter roll (pending or approved), without the member list. */
+  readonly roll: Omit<RollSnapshotRecord, 'accountIds'> | null;
+  /** Two-person requests about this election awaiting a decision. */
+  readonly pending: readonly ApprovalRequestRecord[];
+}
+
+/** `GET /v1/admin/elections/{id}/roll`: the latest roll with names, for review before approval. */
+export interface RollView {
+  readonly snapshot: Omit<RollSnapshotRecord, 'accountIds'>;
+  readonly entries: readonly { readonly accountId: string; readonly legalName: string; readonly state: string }[];
 }
 
 export function definitionHash(definition: ElectionDefinition): string {

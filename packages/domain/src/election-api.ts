@@ -60,6 +60,12 @@ export const candidateInputSchema = z.strictObject({
 });
 export type CandidateInput = z.infer<typeof candidateInputSchema>;
 
+/** Body of requests that only carry the written reason (roll, schedule, cancel). */
+export const reasonInputSchema = z.strictObject({
+  reason: z.string().trim().min(1, 'a written reason is required').max(2000),
+});
+export type ReasonInput = z.infer<typeof reasonInputSchema>;
+
 export const proposalInputSchema = z.strictObject({
   title,
   body: z.string().trim().min(1, 'enter the proposal text').max(100_000),

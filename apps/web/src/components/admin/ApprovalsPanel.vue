@@ -2,6 +2,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { ROLES, roleChangeSchema, type ApprovalRequestRecord, type Role } from 'ustp-domain';
 import { api } from '../../api.js';
+import { aRole, describeRequest, reviewLink } from '../../approval-text.js';
 import { askReason, attempt } from '../../dialogs.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../../forms.js';
 import { hasRole, session } from '../../session.js';
@@ -18,14 +19,11 @@ const errors = ref<FieldErrors>({});
 function blocker(r: ApprovalRequestRecord): string | null {
   if (r.requestedBy === me.value) return 'You requested this; another admin must decide.';
   if (r.subject === me.value) return 'This affects your own account.';
-  if (!hasRole(r.approverRole)) return `Needs a ${r.approverRole.replace('_', ' ')} to decide.`;
+  if (!hasRole(r.approverRole)) return `Needs ${aRole(r.approverRole)} to decide.`;
   return null;
 }
 
-function describe(r: ApprovalRequestRecord): string {
-  const p = r.payload as { role?: string; change?: string };
-  return r.action.startsWith('role.') ? `${p.change} ${p.role?.replace('_', ' ')}` : r.action;
-}
+const describe = describeRequest;
 
 async function load() {
   const ok = await attempt(async () => {
@@ -81,7 +79,10 @@ onMounted(load);
       <q-list v-else bordered separator>
         <q-item v-for="r in pending" :key="r.id">
           <q-item-section>
-            <q-item-label>{{ describe(r) }} for <code>{{ r.subject }}</code></q-item-label>
+            <q-item-label>
+              {{ describe(r) }} for <code>{{ r.subject }}</code>
+              <router-link v-if="reviewLink(r)" :to="reviewLink(r)!" class="q-ml-sm">Review</router-link>
+            </q-item-label>
             <q-item-label caption>
               Requested {{ new Date(r.requestedAt).toLocaleString() }} by <code>{{ r.requestedBy }}</code> · expires
               {{ new Date(r.expiresAt).toLocaleDateString() }}

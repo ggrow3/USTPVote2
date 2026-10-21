@@ -5,16 +5,19 @@ import { useRoute } from 'vue-router';
 import {
   candidateInputSchema,
   updateElectionSchema,
+  type ApprovalRequestRecord,
   type ContestRecord,
   type ElectionDetail,
   type ProposalSnapshotRecord,
+  type RollView,
 } from 'ustp-domain';
 import { api } from '../api.js';
+import { aRole, describeRequest } from '../approval-text.js';
 import ContestDialog from '../components/admin/ContestDialog.vue';
-import { attempt } from '../dialogs.js';
+import { askReason, attempt } from '../dialogs.js';
 import { fromLocalInput, KIND_LABELS, rulesText, toLocalInput } from '../election-text.js';
 import { validate } from '../forms.js';
-import { hasRole } from '../session.js';
+import { hasRole, session } from '../session.js';
 
 const $q = useQuasar();
 const route = useRoute();
@@ -101,6 +104,77 @@ function copyHash() {
   $q.notify({ message: 'Definition hash copied' });
 }
 
+// --- roll, scheduling, cancellation -------------------------------------------------------------------------
+
+const me = computed(() => session.me?.account?.accountId);
+const state = computed(() => detail.value?.election.state);
+const rollApproved = computed(() => detail.value?.roll?.status === 'approved' && !!detail.value.election.rollSnapshotId);
+const canCancel = computed(() => hasRole('election_admin') && ['draft', 'scheduled', 'open'].includes(state.value ?? ''));
+const roll = ref<RollView | null>(null);
+
+async function loadRoll() {
+  await attempt(async () => {
+    roll.value = await api<RollView>('GET', `${url}/roll`);
+  });
+}
+
+async function requestWithReason(path: string, title: string, message: string, success: string) {
+  const reason = await askReason(title, message);
+  if (reason === null) return;
+  if (await attempt(() => api('POST', `${url}/${path}`, { reason }), success)) await load();
+}
+
+function requestRoll() {
+  return requestWithReason(
+    'roll',
+    'Request a voter roll',
+    'Snapshots every Active member now. An Auditor must approve it before the election can be scheduled.',
+    'Roll requested; waiting for an Auditor',
+  );
+}
+
+function requestSchedule() {
+  return requestWithReason(
+    'schedule',
+    'Request scheduling',
+    'Freezes this exact definition and roll once an Auditor approves. Any edit after this request voids it.',
+    'Scheduling requested; waiting for an Auditor',
+  );
+}
+
+async function cancelElection() {
+  const reason = await askReason(
+    'Cancel election',
+    state.value === 'draft' ? 'The draft is cancelled immediately.' : 'An Auditor must approve cancelling a scheduled or open election.',
+  );
+  if (reason === null) return;
+  let result: { cancelled: boolean } | null = null;
+  const ok = await attempt(async () => {
+    result = await api<{ cancelled: boolean }>('POST', `${url}/cancel`, { reason });
+  });
+  if (!ok || !result) return;
+  $q.notify({
+    type: 'positive',
+    message: (result as { cancelled: boolean }).cancelled ? 'Election cancelled' : 'Cancellation requested; waiting for an Auditor',
+  });
+  await load();
+}
+
+/** An approver reviewing this page can decide pending requests here. */
+function canDecide(r: ApprovalRequestRecord): boolean {
+  return hasRole(r.approverRole) && r.requestedBy !== me.value;
+}
+
+async function decide(r: ApprovalRequestRecord, decision: 'approve' | 'reject') {
+  const reason = await askReason(`${decision === 'approve' ? 'Approve' : 'Reject'}: ${describeRequest(r)}`, r.reason);
+  if (reason === null) return;
+  const ok = await attempt(
+    () => api('POST', `/v1/admin/approvals/${r.id}/decision`, { decision, reason }),
+    decision === 'approve' ? 'Approved' : 'Rejected',
+  );
+  if (ok) await load();
+}
+
 onMounted(load);
 </script>
 
@@ -113,20 +187,91 @@ onMounted(load);
     </div>
 
     <div v-if="detail" class="column q-gutter-md" style="max-width: 900px">
-      <q-banner v-if="detail.problems.length" class="bg-orange-2 text-black" rounded>
-        <div class="text-weight-medium q-mb-xs">Not ready to schedule yet:</div>
-        <ul class="q-my-none">
-          <li v-for="p in detail.problems" :key="p">{{ p }}</li>
-        </ul>
+      <template v-if="state === 'draft'">
+        <q-banner v-if="detail.problems.length" class="bg-orange-2 text-black" rounded>
+          <div class="text-weight-medium q-mb-xs">Not ready to schedule yet:</div>
+          <ul class="q-my-none">
+            <li v-for="p in detail.problems" :key="p">{{ p }}</li>
+          </ul>
+        </q-banner>
+        <q-banner v-else-if="!rollApproved" class="bg-orange-2 text-black" rounded>
+          The definition is complete. Next: get a voter roll approved, then request scheduling.
+        </q-banner>
+        <q-banner v-else class="bg-positive text-white" rounded>Ready to schedule.</q-banner>
+      </template>
+      <q-banner v-else-if="state === 'scheduled'" class="bg-primary text-white" rounded>
+        Scheduled {{ new Date(detail.election.scheduledAt!).toLocaleString() }}. Voting opens
+        {{ new Date(detail.election.opensAt).toLocaleString() }}. The definition and roll are frozen.
       </q-banner>
-      <q-banner v-else class="bg-positive text-white" rounded>
-        Ready to schedule. Scheduling (two-person: Election Admin request, Auditor approval) arrives next.
+      <q-banner v-else-if="state === 'cancelled'" class="bg-grey-7 text-white" rounded>
+        Cancelled {{ new Date(detail.election.cancelledAt!).toLocaleString() }}.
       </q-banner>
       <div class="text-caption text-grey-7">
         Definition hash <code>{{ detail.definitionHash.slice(0, 16) }}…</code>
         <q-btn flat dense round size="xs" icon="content_copy" aria-label="Copy definition hash" @click="copyHash" />
-        — changes with any edit; scheduling freezes exactly this.
+        <template v-if="state === 'draft'"> — changes with any edit; scheduling freezes exactly this.</template>
+        <template v-else-if="detail.election.tieBreakSeedCommitment">
+          · tie-break seed commitment <code>{{ detail.election.tieBreakSeedCommitment.slice(0, 16) }}…</code>
+        </template>
       </div>
+
+      <q-card v-if="detail.pending.length" flat bordered>
+        <q-card-section class="text-subtitle1">Waiting for a decision</q-card-section>
+        <q-list separator>
+          <q-item v-for="r in detail.pending" :key="r.id">
+            <q-item-section>
+              <q-item-label>{{ describeRequest(r) }}</q-item-label>
+              <q-item-label caption>
+                Requested {{ new Date(r.requestedAt).toLocaleString() }} · “{{ r.reason }}” · needs {{ aRole(r.approverRole) }}
+              </q-item-label>
+            </q-item-section>
+            <q-item-section v-if="canDecide(r)" side>
+              <div class="row q-gutter-xs">
+                <q-btn dense color="positive" label="Approve" @click="decide(r, 'approve')" />
+                <q-btn dense flat color="negative" label="Reject" @click="decide(r, 'reject')" />
+              </div>
+            </q-item-section>
+          </q-item>
+        </q-list>
+      </q-card>
+
+      <q-card flat bordered>
+        <q-card-section class="row items-center">
+          <div class="col">
+            <div class="text-subtitle1">Voter roll</div>
+            <div v-if="detail.roll" class="text-caption text-grey-7">
+              {{ detail.roll.count }} Active members as of {{ new Date(detail.roll.asOf).toLocaleString() }} · Merkle root
+              <code>{{ detail.roll.merkleRoot.slice(0, 16) }}…</code>
+            </div>
+            <div v-else class="text-caption text-grey-7">No roll yet.</div>
+          </div>
+          <q-badge v-if="detail.roll" :label="detail.roll.status" class="q-mr-sm" />
+          <q-btn v-if="canEdit" outline no-caps color="primary" label="Request roll snapshot" @click="requestRoll" />
+        </q-card-section>
+        <q-expansion-item v-if="detail.roll" dense label="Members on this roll" @show="loadRoll">
+          <q-list v-if="roll" dense separator>
+            <q-item v-for="e in roll.entries" :key="e.accountId">
+              <q-item-section>{{ e.legalName }}</q-item-section>
+              <q-item-section side>{{ e.state }}</q-item-section>
+            </q-item>
+          </q-list>
+        </q-expansion-item>
+      </q-card>
+
+      <q-card v-if="hasRole('election_admin')" flat bordered>
+        <q-card-section class="row items-center q-gutter-sm">
+          <div class="col text-subtitle1">Scheduling</div>
+          <q-btn
+            v-if="canEdit"
+            color="primary"
+            no-caps
+            label="Request scheduling"
+            :disable="detail.problems.length > 0 || !rollApproved"
+            @click="requestSchedule"
+          />
+          <q-btn v-if="canCancel" flat no-caps color="negative" label="Cancel election" @click="cancelElection" />
+        </q-card-section>
+      </q-card>
 
       <q-card flat bordered>
         <q-card-section class="text-subtitle1">Details</q-card-section>

@@ -2,13 +2,17 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import type { DocumentReference, Transaction } from 'firebase-admin/firestore';
 import type { ContestSpec } from 'ustp-tally';
 import {
-  buildDefinition,
   Collections,
   definitionHash,
   ElectionCollections,
+  electionTransitionAuthority,
   proposalContentHash,
+  rollMerkleRoot,
+  sortRoll,
   uuidv7,
   validateDefinition,
+  type ApprovalRequestRecord,
+  type CancelPayload,
   type CandidateInput,
   type CandidateRecord,
   type ContestInput,
@@ -16,21 +20,34 @@ import {
   type CreateElectionInput,
   type ElectionDetail,
   type ElectionRecord,
+  type MemberRecord,
   type ProposalInput,
   type ProposalSnapshotRecord,
+  type RollApprovalPayload,
+  type RollSnapshotRecord,
+  type RollView,
+  type SchedulePayload,
   type UpdateElectionInput,
 } from 'ustp-domain';
+import { ApprovalsService } from '../administration/approvals.service.js';
 import { requireAccount } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { Firebase } from '../infra/firebase.js';
+import { LedgerService } from '../ledger/ledger.service.js';
+import { ElectionReader } from './election-reader.js';
 
 /**
- * Election setup (design §6): drafts are freely editable by Election Admins; scheduling (M2b) freezes the
- * definition by its hash. An Election Admin who is a candidate may not edit that election (open question Q12).
+ * Election setup (design §6): drafts are freely editable by Election Admins until scheduling, a two-person action
+ * that freezes the definition by its hash. An Election Admin who is a candidate may not act on that election (Q12).
  */
 @Injectable()
 export class ElectionsService {
-  constructor(private readonly firebase: Firebase) {}
+  constructor(
+    private readonly firebase: Firebase,
+    private readonly ledger: LedgerService,
+    private readonly approvals: ApprovalsService,
+    private readonly reader: ElectionReader,
+  ) {}
 
   // --- proposals --------------------------------------------------------------------------------------------
 
@@ -74,6 +91,9 @@ export class ElectionsService {
       definitionHash: null,
       rollSnapshotId: null,
       tieBreakSeedCommitment: null,
+      tieBreakSeedRef: null,
+      scheduledAt: null,
+      cancelledAt: null,
     };
     await this.db.collection(Collections.elections).doc(record.electionId).create(record);
     return record;
@@ -85,31 +105,148 @@ export class ElectionsService {
   }
 
   async detail(electionId: string): Promise<ElectionDetail> {
-    const electionRef = this.electionRef(electionId);
-    const [electionSnap, contestSnap, candidateSnap] = await Promise.all([
-      electionRef.get(),
-      electionRef.collection(ElectionCollections.contests).get(),
-      electionRef.collection(ElectionCollections.candidates).get(),
+    const [loaded, roll, pending] = await Promise.all([
+      this.reader.load(electionId),
+      this.latestRoll(electionId),
+      this.db
+        .collection(Collections.approvalRequests)
+        .where('subject', '==', electionId)
+        .where('status', '==', 'pending')
+        .get(),
     ]);
-    if (!electionSnap.exists) throw new NotFoundException('no such election');
-    const election = electionSnap.data() as ElectionRecord;
-    const contests = contestSnap.docs.map((d) => d.data() as ContestRecord).sort((a, b) => a.order - b.order);
-    const candidates = candidateSnap.docs.map((d) => d.data() as CandidateRecord);
-    const snapshotIds = [...new Set(contests.map((c) => c.proposalSnapshotId).filter((id): id is string => !!id))];
-    const proposals = snapshotIds.length
-      ? (await this.db.getAll(...snapshotIds.map((id) => this.db.collection(Collections.proposalSnapshots).doc(id))))
-          .filter((s) => s.exists)
-          .map((s) => s.data() as ProposalSnapshotRecord)
-      : [];
-    const definition = buildDefinition(election, contests, candidates, proposals);
+    const { election, contests, candidates, proposals, definition } = loaded;
     return {
       election,
       contests,
       candidates,
       proposals,
       definitionHash: definitionHash(definition),
-      problems: validateDefinition(definition),
+      problems: election.state === 'draft' ? validateDefinition(definition) : [],
+      roll: roll && withoutList(roll),
+      pending: pending.docs.map((d) => d.data() as ApprovalRequestRecord),
     };
+  }
+
+  // --- roll, scheduling, cancellation (design §6.1, §6.3) ----------------------------------------------------
+
+  /** Snapshots every Active member now and asks an Auditor to approve the resulting roll. */
+  async requestRoll(ctx: RequestContext, electionId: string, reason: string): Promise<Omit<RollSnapshotRecord, 'accountIds'>> {
+    const requestedBy = requireAccount(ctx);
+    this.approvals.assertCanRequest(ctx, 'roll.approve');
+    return this.db.runTransaction(async (tx) => {
+      await this.editable(tx, ctx, electionId);
+      const active = await tx.get(this.db.collection(Collections.members).where('status', '==', 'active'));
+      const accountIds = sortRoll(active.docs.map((d) => d.id));
+      if (accountIds.length === 0) throw new ConflictException('there are no Active members to put on the roll');
+      const merkleRoot = rollMerkleRoot(electionId, accountIds);
+      const snapshotRef = this.db.collection(Collections.eligibilitySnapshots).doc();
+      const approvalId = this.approvals.allocateId();
+      const payload: RollApprovalPayload = { electionId, snapshotId: snapshotRef.id, merkleRoot, count: accountIds.length };
+      await this.approvals.createRequest(tx, { id: approvalId, action: 'roll.approve', subject: electionId, payload, reason, requestedBy });
+      const snapshot: RollSnapshotRecord = {
+        snapshotId: snapshotRef.id,
+        electionId,
+        criteria: { status: 'active' },
+        asOf: new Date().toISOString(),
+        accountIds,
+        count: accountIds.length,
+        merkleRoot,
+        status: 'pending',
+        requestedBy,
+        requestedAt: new Date().toISOString(),
+        approvalId,
+        decidedBy: null,
+        decidedAt: null,
+      };
+      tx.create(snapshotRef, snapshot);
+      return withoutList(snapshot);
+    });
+  }
+
+  /** The latest roll with names, for the Auditor deciding whether to approve it. */
+  async roll(electionId: string): Promise<RollView> {
+    const snapshot = await this.latestRoll(electionId);
+    if (!snapshot) throw new NotFoundException('no voter roll yet');
+    const entries: { accountId: string; legalName: string; state: string }[] = [];
+    for (let i = 0; i < snapshot.accountIds.length; i += 300) {
+      const refs = snapshot.accountIds.slice(i, i + 300).map((id) => this.db.collection(Collections.members).doc(id));
+      for (const s of await this.db.getAll(...refs)) {
+        const m = s.data() as MemberRecord | undefined;
+        entries.push({ accountId: s.id, legalName: m?.legalName ?? '(no member record)', state: m?.state ?? '' });
+      }
+    }
+    return { snapshot: withoutList(snapshot), entries };
+  }
+
+  /** Asks an Auditor to freeze exactly the current definition and approved roll. */
+  async requestSchedule(ctx: RequestContext, electionId: string, reason: string): Promise<ApprovalRequestRecord> {
+    const requestedBy = requireAccount(ctx);
+    this.approvals.assertCanRequest(ctx, 'election.schedule');
+    return this.db.runTransaction(async (tx) => {
+      await this.editable(tx, ctx, electionId);
+      const { election, definition } = await this.reader.load(electionId, tx);
+      const problems = validateDefinition(definition);
+      if (problems.length) throw new ConflictException(`not ready to schedule: ${problems.join('; ')}`);
+      if (!election.rollSnapshotId) throw new ConflictException('get a voter roll approved first');
+      const roll = (await tx.get(this.db.collection(Collections.eligibilitySnapshots).doc(election.rollSnapshotId))).data() as
+        | RollSnapshotRecord
+        | undefined;
+      if (roll?.status !== 'approved') throw new ConflictException('get a voter roll approved first');
+      const payload: SchedulePayload = {
+        electionId,
+        definitionHash: definitionHash(definition),
+        rollSnapshotId: roll.snapshotId,
+        rollMerkleRoot: roll.merkleRoot,
+      };
+      return this.approvals.createRequest(tx, { action: 'election.schedule', subject: electionId, payload, reason, requestedBy });
+    });
+  }
+
+  /** A draft is cancelled at once; a scheduled or open election needs an Auditor's approval. */
+  async cancel(
+    ctx: RequestContext,
+    electionId: string,
+    reason: string,
+  ): Promise<{ readonly cancelled: boolean; readonly request: ApprovalRequestRecord | null }> {
+    const actor = requireAccount(ctx);
+    const current = (await this.electionRef(electionId).get()).data() as ElectionRecord | undefined;
+    if (!current) throw new NotFoundException('no such election');
+    const authority = electionTransitionAuthority(current.state, 'cancelled');
+    if (!authority || authority === 'system') throw new ConflictException(`a ${current.state} election cannot be cancelled`);
+
+    if (authority === 'single') {
+      await this.db.runTransaction(async (tx) => {
+        await this.editable(tx, ctx, electionId);
+        await this.ledger.record(tx, [
+          { type: 'election.cancelled', actor, subject: electionId, payload: { electionId, fromState: 'draft', reason } },
+        ]);
+        const now = new Date().toISOString();
+        tx.update(this.electionRef(electionId), { state: 'cancelled', cancelledAt: now, updatedAt: now });
+      });
+      return { cancelled: true, request: null };
+    }
+
+    this.approvals.assertCanRequest(ctx, 'election.cancel');
+    const request = await this.db.runTransaction(async (tx) => {
+      const election = (await tx.get(this.electionRef(electionId))).data() as ElectionRecord;
+      if (election.state !== current.state) throw new ConflictException('the election changed state; try again');
+      if (await this.reader.isCandidate(tx, electionId, actor)) {
+        throw new ForbiddenException('you are a candidate in this election, so you cannot administer it');
+      }
+      const payload: CancelPayload = { electionId, fromState: election.state };
+      return this.approvals.createRequest(tx, { action: 'election.cancel', subject: electionId, payload, reason, requestedBy: actor });
+    });
+    return { cancelled: false, request };
+  }
+
+  private async latestRoll(electionId: string): Promise<RollSnapshotRecord | null> {
+    const snap = await this.db
+      .collection(Collections.eligibilitySnapshots)
+      .where('electionId', '==', electionId)
+      .orderBy('requestedAt', 'desc')
+      .limit(1)
+      .get();
+    return (snap.docs[0]?.data() as RollSnapshotRecord | undefined) ?? null;
   }
 
   async update(ctx: RequestContext, electionId: string, input: UpdateElectionInput): Promise<ElectionRecord> {
@@ -228,10 +365,9 @@ export class ElectionsService {
     if (!snap.exists) throw new NotFoundException('no such election');
     const election = snap.data() as ElectionRecord;
     if (election.state !== 'draft') throw new ConflictException(`the election is ${election.state}; only drafts can be edited`);
-    const standing = await tx.get(
-      this.electionRef(electionId).collection(ElectionCollections.candidates).where('accountId', '==', actor).limit(1),
-    );
-    if (!standing.empty) throw new ForbiddenException('you are a candidate in this election, so you cannot administer it');
+    if (await this.reader.isCandidate(tx, electionId, actor)) {
+      throw new ForbiddenException('you are a candidate in this election, so you cannot administer it');
+    }
     return election;
   }
 
@@ -246,6 +382,11 @@ export class ElectionsService {
       throw new BadRequestException('no such proposal text');
     }
   }
+}
+
+function withoutList(snapshot: RollSnapshotRecord): Omit<RollSnapshotRecord, 'accountIds'> {
+  const { accountIds: _list, ...rest } = snapshot;
+  return rest;
 }
 
 function assertWindow(opensAt: string, closesAt: string): void {
