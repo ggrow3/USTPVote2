@@ -28,7 +28,7 @@ variable "firestore_location" {
 # --- Release ---------------------------------------------------------------------------------------------------------
 
 variable "server_image" {
-  description = "The server image, pinned by digest (…/server@sha256:<64 hex>), run by both api and worker. Null skips the Cloud Run services and the Scheduler job, for the first apply before any image exists."
+  description = "The server image, pinned by digest (…/server@sha256:<64 hex>), that the api and worker are created with; later releases come from the release workflow and Terraform ignores the image. Null skips the Cloud Run services and the Scheduler job, for the first apply before any image exists."
   type        = string
   default     = null
 
@@ -45,9 +45,26 @@ variable "bootstrap_system_admin_emails" {
 }
 
 variable "image_publishers" {
-  description = "IAM members allowed to push images to the Artifact Registry repository (the build pipeline)."
+  description = "IAM members allowed to push images to the Artifact Registry repository, besides the release workflow's ustp-release."
   type        = list(string)
   default     = []
+}
+
+variable "github_repository" {
+  description = "owner/name of the GitHub repository whose release workflow may act as ustp-release (release.tf)."
+  type        = string
+  default     = "ggrow3/USTPVote2"
+}
+
+variable "github_repository_id" {
+  description = "Numeric ID of that repository (gh api repos/<owner>/<name> --jq .id). Matched instead of the name alone, since a name can be taken over after a rename or deletion."
+  type        = string
+  default     = "1427761058"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_id))
+    error_message = "github_repository_id is the repository's numeric ID."
+  }
 }
 
 # --- Ledger anchors (design §8.4) ------------------------------------------------------------------------------------
@@ -125,7 +142,7 @@ variable "binauthz_dry_run" {
 }
 
 variable "attestation_signers" {
-  description = "IAM members (the release pipeline after review) allowed to sign attestations for the ustpvote-reviewed attestor."
+  description = "IAM members allowed to sign attestations for the ustpvote-reviewed attestor, besides the release workflow's ustp-release."
   type        = list(string)
   default     = []
 }

@@ -1,0 +1,114 @@
+name: Release
+
+# Builds the server image from main, pushes it to the chosen environment's Artifact Registry, attests it for Binary
+# Authorization and rolls the api and worker onto it (design §14, §15). Run it from the Actions tab or with
+#   gh workflow run release.yml --ref main -f environment=dev
+# The job runs in the GitHub environment of the same name, whose variables come from that environment's Terraform
+# output github_environment_variables, and whose protection rules decide who may release (infra/terraform/README.md,
+# "Release workflow"). Google Cloud accepts its token only from this file on main, in that environment.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Environment to release to (dev, staging or prod)
+        type: environment
+        required: true
+      roll_out:
+        description: Roll the api and worker onto the image. Off for an environment's first image, which Terraform's second apply creates the services with.
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ inputs.environment }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      PROJECT: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      IMAGE: ${{ vars.GCP_IMAGE }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_RELEASE_SERVICE_ACCOUNT }}
+      - uses: google-github-actions/setup-gcloud@v3
+        with:
+          install_components: beta
+      - run: gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
+
+      - uses: docker/setup-buildx-action@v4
+      # A clean build (no cache) of exactly this commit. Tags are immutable in the repository, so each run gets its own.
+      # No provenance or SBOM manifests: the pushed digest is the plain image Cloud Run runs and Binary Authorization
+      # checks.
+      - id: build
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          push: true
+          tags: ${{ vars.GCP_IMAGE }}:${{ github.sha }}-${{ github.run_id }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+          provenance: false
+          sbom: false
+
+      - name: Attest the image for Binary Authorization
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          KEY_VERSION: ${{ vars.GCP_ATTESTOR_KEY_VERSION }}
+        run: |
+          gcloud beta container binauthz attestations sign-and-create \
+            --project="$PROJECT" \
+            --artifact-url="$IMAGE@$DIGEST" \
+            --attestor=ustpvote-reviewed \
+            --attestor-project="$PROJECT" \
+            --keyversion="$KEY_VERSION"
+
+      # The worker first: a newer worker reading what the older api wrote is the usual direction of compatibility.
+      - name: Roll the worker and api onto the image
+        if: inputs.roll_out
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          for service in worker api; do
+            gcloud run services update "$service" --project="$PROJECT" --region="$REGION" --image="$IMAGE@$DIGEST" --quiet
+          done
+
+      - name: Check the api answers
+        if: inputs.roll_out
+        run: |
+          url=$(gcloud run services describe api --project="$PROJECT" --region="$REGION" --format='value(status.url)')
+          curl -fsS --retry 5 --retry-all-errors "$url/healthz"
+
+      - name: Summary
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          RELEASE_ENVIRONMENT: ${{ inputs.environment }}
+          ROLLED_OUT: ${{ inputs.roll_out }}
+        run: |
+          {
+            echo "### $RELEASE_ENVIRONMENT"
+            echo
+            echo "- Commit: \`$GITHUB_SHA\`"
+            echo "- Image (attested): \`$IMAGE@$DIGEST\`"
+            if [ "$ROLLED_OUT" = true ]; then
+              echo "- The api and worker run it."
+            else
+              echo "- Not rolled out. For a first image: \`terraform apply -var=\"server_image=$IMAGE@$DIGEST\"\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

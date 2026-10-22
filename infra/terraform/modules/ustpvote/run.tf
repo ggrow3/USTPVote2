@@ -1,5 +1,8 @@
 # The api and worker Cloud Run services: one image, two entrypoints, two service accounts (design §3.1, §15).
 #
+# server_image is the image the services are created with. After that the release workflow (release.tf) rolls them
+# onto each new attested image, and Terraform leaves the image alone, so an apply never rolls a release back.
+#
 # Environment variables are named exactly as apps/server/src/config.ts reads them; each service gets the ones it
 # uses. Nothing here sets APP_CHECK_ENFORCED, ADMIN_MFA_REQUIRED, PHOTO_CHECKER, SECRET_STORE, AUDIT_SIGNER,
 # BALLOT_POOL or an emulator host, so every safety switch keeps its production default (design §4).
@@ -97,7 +100,7 @@ resource "google_cloud_run_v2_service" "api" {
   depends_on = [google_binary_authorization_policy.this, google_firestore_database.default]
 
   lifecycle {
-    ignore_changes = [client, client_version]
+    ignore_changes = [client, client_version, template[0].containers[0].image]
   }
 }
 
@@ -182,7 +185,7 @@ resource "google_cloud_run_v2_service" "worker" {
   depends_on = [google_binary_authorization_policy.this, google_firestore_database.default]
 
   lifecycle {
-    ignore_changes = [client, client_version]
+    ignore_changes = [client, client_version, template[0].containers[0].image]
   }
 }
 
@@ -194,4 +197,21 @@ resource "google_cloud_run_v2_service_iam_member" "worker_invoker" {
   name     = google_cloud_run_v2_service.worker[0].name
   role     = "roles/run.invoker"
   member   = google_service_account.invoker.member
+}
+
+# --- Releases ----------------------------------------------------------------------------------------------------------
+
+# ustp-release (release.tf) rolls both services onto each new attested image. run.developer on a service cannot change
+# who may invoke it; Binary Authorization still refuses any image without an attestation.
+resource "google_cloud_run_v2_service_iam_member" "release" {
+  for_each = local.deploy ? {
+    api    = google_cloud_run_v2_service.api[0].name
+    worker = google_cloud_run_v2_service.worker[0].name
+  } : {}
+
+  project  = var.project_id
+  location = var.region
+  name     = each.value
+  role     = "roles/run.developer"
+  member   = google_service_account.release.member
 }

@@ -35,3 +35,35 @@ jobs:
       - run: npm test
       - name: Integration tests (Firebase emulators)
         run: npm run test:int -w apps/server
+
+  # The server image as the release workflow builds it, started the way Cloud Run starts it.
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: docker/setup-buildx-action@v4
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          tags: ustp-server:ci
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - run: bash apps/server/scripts/smoke-image.sh ustp-server:ci
+
+  terraform:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_wrapper: false
+      - run: terraform fmt -check -recursive infra/terraform
+      # No backend and no credentials: checks syntax, types and the module's validations against the locked provider.
+      - name: Validate each environment
+        run: |
+          for env in dev staging prod; do
+            terraform -chdir="infra/terraform/envs/$env" init -backend=false -input=false -lockfile=readonly
+            terraform -chdir="infra/terraform/envs/$env" validate
+          done

@@ -18,3 +18,22 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  # The server image's base, pinned by digest (apps/server/Dockerfile). Node stays on the LTS line in .nvmrc.
+  - package-ecosystem: docker
+    directory: /apps/server
+    schedule:
+      interval: weekly
+    ignore:
+      - dependency-name: node
+        update-types: ["version-update:semver-major"]
+  # The Google provider in each environment's .terraform.lock.hcl, in one pull request.
+  - package-ecosystem: terraform
+    directories:
+      - /infra/terraform/envs/dev
+      - /infra/terraform/envs/staging
+      - /infra/terraform/envs/prod
+    schedule:
+      interval: weekly
+    groups:
+      terraform-providers:
+        patterns: ["*"]

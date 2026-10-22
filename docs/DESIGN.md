@@ -54,6 +54,7 @@ marks it; decisions that belong to USTP (bylaws, policy) are collected in [§18 
 | Single administrator | Act within their role | Approve their own request; certify, freeze a roll or change an office alone | Two-person rule ([§10](#10-administration-and-separation-of-duties)) |
 | Anyone with write access to the DB | Edit documents out of band | Do so undetected | Ledger hash chain, KMS-signed blocks, WORM anchors in Bucket Lock ([§8](#8-audit-ledger-hash-chain-merkle-blocks-anchors)) |
 | GCP project owner / deployer | Deploy new code, change IAM | Rewrite already-anchored history | Bucket Lock; recommended public mirroring of anchors; Binary Authorization; reviewed deploys |
+| Release workflow (GitHub Actions as `ustp-release`) | Build, attest and run any code on `main` | Change IAM, read Firestore, use the signing or ballot-pool keys; run from another branch or workflow | Workload Identity Federation bound to `release.yml` on `main` in one GitHub environment; required reviewers on staging and production; pull-request review of `main` ([§15](#15-environments-deployment-cost)) |
 | **Compromised API service** | **See ballot contents with voter identity at cast time; cast for eligible non-voters** | — | Code review, reproducible builds, Binary Authorization, minimal human access, post-election participation check |
 
 **Residual trust, stated plainly:** in V1 the API process sees the voter's identity and the ballot in the same request.
@@ -847,8 +848,12 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
   - Both services *read* the anchors bucket: the api for the Auditor's anchor check (§8.4), the worker to compare the
     stored bytes when a write is retried. Only the worker may create objects, and nobody may delete or overwrite them.
   - The api needs `roles/firebaseauth.viewer` for `verifyIdToken(…, checkRevoked)` on admin routes and casting.
-  - The worker may also destroy `ballot-pool` versions, for `destroy-pool-key` (§13); destroyed versions stay
-    restorable for 24 hours.
+  - The worker may also destroy `ballot-pool` versions, after certification or cancellation (§13); destroyed versions
+    stay restorable for 24 hours.
+  - The release workflow's `ustp-release` may push to the image repository, sign attestations for
+    `ustpvote-reviewed`, and update the two Cloud Run services (`run.developer` on each, acting as their accounts). It
+    has no key and is reachable only through Workload Identity Federation from `release.yml` on `main`, in the GitHub
+    environment of the same name as the project's environment.
   - The api can create `tiebreak-seed-*` secrets and add versions to them, but cannot read any.
   - The worker's Cloud Run service takes internal traffic only, and only the `ustp-worker-invoker` account (Scheduler,
     Tasks) may call it.
@@ -860,8 +865,11 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
   production (they would record write paths and times; pool encryption makes them harmless, but there is no need for
   them); KMS Data Access audit logs on.
 - **Supply chain (spec §7 "Binary Authorization"):** committed lockfile, `npm ci --ignore-scripts` (also set in
-  `.npmrc`), Dependabot, base images pinned by digest, Cloud Build provenance, and a Binary Authorization policy that
-  lets Cloud Run run only attested images.
+  `.npmrc` and the Dockerfile), Dependabot (npm, Actions, the base image's digest, the Terraform provider), the base
+  image pinned by digest, the server image built only by the release workflow from `main` and attested by digest, and
+  a Binary Authorization policy that lets Cloud Run run only attested images. Build provenance (SLSA) is not recorded
+  yet: the image is built in GitHub Actions rather than Cloud Build (§17), and GitHub's artifact attestations need a
+  public repository or GitHub Enterprise.
 - **Abuse:** per-account rate limits on registration and casting, in addition to Identity Platform's limits.
 - **Hosting headers:** HSTS, `frame-ancestors 'none'`, `nosniff`, strict referrer policy; CSP tightened once the
   sign-in providers' origins are final.
@@ -870,11 +878,20 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
 
 - Projects `ustp-voting-dev`, `ustp-voting-staging`, `ustp-voting-prod` (spec §2.1). Infrastructure as code with
   Terraform in [`infra/terraform`](../infra/terraform) (Q13, adopted pending USTP's confirmation): one module, one
-  root per environment, state in a `ustp-voting-<env>-tfstate` bucket. The api and worker are deployed by image digest
-  through Terraform. Written but not yet applied or validated (`terraform fmt`/`validate` have not run; run them and
-  commit the `.terraform.lock.hcl` files before the first apply). Still missing before a first deploy: a Dockerfile
-  (the image runs `node dist/main-api.js` / `node dist/main-worker.js` and listens on `$PORT`) and a CI identity that
-  builds, attests and applies.
+  root per environment, state in a `ustp-voting-<env>-tfstate` bucket, provider versions locked. CI runs
+  `terraform fmt` and `validate` on every pull request; nothing has been planned or applied against a real project.
+- **Server image:** [`apps/server/Dockerfile`](../apps/server/Dockerfile), built from the repository root. A build
+  stage installs the server's workspaces from the lockfile with `--ignore-scripts` and compiles them; the runtime
+  stage holds only the compiled packages and the server's production dependencies, owned by root and run as the
+  unprivileged `node` user, on `node:26-trixie-slim` pinned by digest. CI builds it on every pull request and starts
+  both entrypoints in production mode.
+- **Releases:** [`.github/workflows/release.yml`](../.github/workflows/release.yml), run by hand per environment from
+  `main`, builds the image, pushes it, attests its digest and rolls the worker and then the api onto it. It acts as
+  `ustp-release` through Workload Identity Federation, which accepts only that workflow on `main` in the GitHub
+  environment named after the project's environment; staging and production add required reviewers there. Terraform
+  creates the services with a first image and then ignores the image, so releases and infrastructure changes are
+  separate: the release identity cannot change IAM, and `terraform apply` stays with a person holding Owner rights.
+  Setup per environment: [`infra/terraform/README.md`](../infra/terraform/README.md#release-workflow).
 - Web → Firebase Hosting, which rewrites `/v1/**` to the api Cloud Run service so the API is same-origin (no CORS).
   api and worker → Cloud Run from one image (`node dist/main-api.js` / `node dist/main-worker.js`).
   Config: [`infra/firebase`](../infra/firebase).
@@ -923,6 +940,8 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
 | (design) §13 tally as a Cloud Task after close | A step of the minute tick, right after the sealer | No queue to run or secure, results within a tick of close, and the next tick retries a failed tally |
 | (added) §13 `destroy-pool-key` Cloud Task after certification | A tick step for certified and cancelled elections | Same idempotent pattern as sealing and tallying; no Cloud Tasks queue or enqueue permission needed |
 | §6 position terms | Terms start at certification and last the office's `termMonths` | The bylaws' term dates are Q1; a later start date can be added to the office if USTP needs one |
+| (design) §14 "Cloud Build provenance" | The image is built by a GitHub Actions workflow and attested there; no provenance yet | One workflow builds, attests and deploys with a keyless identity; Cloud Build would add a build service account, a source bucket and its IAM. Provenance can come from Cloud Build or GitHub's artifact attestations later |
+| (design) §15 deploys through `terraform apply -var=server_image=…` | Terraform creates the services with a first image; the release workflow rolls them onto later images and Terraform ignores the image | Deploying through Terraform would need an identity able to refresh everything, including IAM and Firestore metadata; the release identity needs only the two services |
 | (added) §7.3 pool encryption with a symmetric key the api may only encrypt with | Asymmetric key, one version per election; the api encrypts locally to its public key (RSA-OAEP wrapping an AES-GCM data key) | Symmetric KMS encryption always uses the primary version, so concurrent elections could not each have their own; the api then holds no decrypt permission at all and makes no KMS call per ballot |
 
 ## 18. Open questions
@@ -955,4 +974,4 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *Still to exercise against a real project:* Cloud KMS key destruction |
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (written, not yet validated or applied; §15) including the Binary Authorization policy; installable PWA (manifest, icons, a service worker that caches only the app shell and never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`). *Still to do:* Dockerfile and a CI identity that builds, attests and applies; the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, not yet applied; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell and never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`). *Still to do:* bring up dev for real (first apply, Identity Platform, first release); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |

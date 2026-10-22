@@ -101,3 +101,20 @@ output "attestor_key_version" {
   description = "KMS key version for gcloud container binauthz attestations sign-and-create --keyversion."
   value       = data.google_kms_crypto_key_version.attestor.name
 }
+
+output "release_service_account" {
+  description = "ustp-release, the identity of the release workflow."
+  value       = google_service_account.release.email
+}
+
+output "github_environment_variables" {
+  description = "Variables for this environment's GitHub environment, read by .github/workflows/release.yml."
+  value = {
+    GCP_PROJECT_ID                 = var.project_id
+    GCP_REGION                     = var.region
+    GCP_IMAGE                      = "${var.region}-docker.pkg.dev/${var.project_id}/${google_artifact_registry_repository.server.repository_id}/server"
+    GCP_WORKLOAD_IDENTITY_PROVIDER = google_iam_workload_identity_pool_provider.github.name
+    GCP_RELEASE_SERVICE_ACCOUNT    = google_service_account.release.email
+    GCP_ATTESTOR_KEY_VERSION       = data.google_kms_crypto_key_version.attestor.name
+  }
+}

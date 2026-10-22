@@ -1,0 +1,19 @@
+# Build context of apps/server/Dockerfile, which is built from the repository root. The image is built from sources
+# and the lockfile only: no local installs or builds, no secrets, nothing the server does not compile.
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+**/*.log
+**/.env
+**/.env.*
+.git
+.github
+docs
+infra
+
+# npm ci needs these workspaces' package.json, nothing else of them.
+apps/web/*
+!apps/web/package.json
+packages/verify/*
+!packages/verify/package.json
