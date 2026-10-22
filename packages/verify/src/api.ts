@@ -4,6 +4,7 @@ import type {
   LedgerBlockRecord,
   PublicElection,
   PublicLedgerEntry,
+  ResultsRecord,
   SealedBlockRecord,
   SigningKeyRecord,
 } from 'ustp-domain';
@@ -100,8 +101,8 @@ export class PublicApi {
     return this.get(`/v1/public/elections/${encodeURIComponent(electionId)}/proofs/${encodeURIComponent(commitment || '-')}`, [400, 404]);
   }
 
-  /** The results bundle (M4a); null until published (404, or 409 before tally). Not checked yet (`results.ts`). */
-  results(electionId: string): Promise<unknown> {
+  /** The results bundle (M4a); null until published (404, or 409 before tally). */
+  results(electionId: string): Promise<ResultsRecord | null> {
     return this.get(`/v1/public/elections/${encodeURIComponent(electionId)}/results`, [404, 409]);
   }
 }

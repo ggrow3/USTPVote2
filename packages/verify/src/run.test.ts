@@ -22,14 +22,18 @@ describe('verify against an api', () => {
     expect(titles(sections)).toEqual(['Ledger', 'Public ledger entries', 'Election: Committee Elections', 'Results']);
     expect(hasFailures(sections)).toBe(false);
     expect(find(sections, 'Ledger').findings[0]!.label).toBe(`${w.blocks.length} ledger blocks covering entries 1-${w.entries.length}`);
-    expect(find(sections, 'Results').findings).toEqual([{ status: 'info', label: 'Results', detail: 'results not published' }]);
+    expect(find(sections, 'Results').findings).toEqual([
+      { status: 'info', label: 'Results', detail: expect.stringMatching(/^not published yet/) },
+    ]);
     expect(find(sections, 'Election').findings.some((f) => f.status === 'pending')).toBe(false);
   });
 
-  it('reports a published results bundle without claiming to have checked it', async () => {
+  // A genuine bundle is checked end to end by apps/server's tally tests and by running the CLI against a stack.
+  it('fails on a results bundle it cannot check, without crashing', async () => {
     const w = await buildWorld();
     const sections = await verify(new PublicApi('http://api.test', fakeFetch(w, { results: { v: 1 } })), { electionId: ELECTION_ID });
-    expect(find(sections, 'Results').findings[0]).toMatchObject({ status: 'info', label: 'Results bundle published' });
+    expect(find(sections, 'Results').findings.some((f) => f.status === 'fail')).toBe(true);
+    expect(hasFailures(sections)).toBe(true);
   });
 
   it('fails when the api serves tampered sealed blocks', async () => {

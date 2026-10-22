@@ -35,6 +35,13 @@ export function problemsFinding(label: string, problems: readonly string[], pass
   return fail(label, listed.join('\n'));
 }
 
+/** A step of one of ustp-domain's checks (`checkReceiptPart`, `checkResults`) as a finding: null means not yet. */
+export function stepFinding(step: { readonly label: string; readonly ok: boolean | null; readonly detail?: string }): Finding {
+  if (step.ok === true) return pass(step.label, step.detail);
+  if (step.ok === false) return fail(step.label, step.detail);
+  return pending(step.label, step.detail);
+}
+
 export function hasFailures(sections: readonly Section[]): boolean {
   return sections.some((s) => s.findings.some((f) => f.status === 'fail'));
 }

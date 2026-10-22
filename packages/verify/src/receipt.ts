@@ -1,12 +1,5 @@
-import {
-  checkReceiptPart,
-  type BallotReceipt,
-  type CheckStep,
-  type LedgerBlockRecord,
-  type PartEvidence,
-  type PublicElection,
-} from 'ustp-domain';
-import { fail, pass, pending, problemsFinding, type Finding, type Section } from './report.js';
+import { checkReceiptPart, type BallotReceipt, type LedgerBlockRecord, type PartEvidence, type PublicElection } from 'ustp-domain';
+import { fail, pass, problemsFinding, stepFinding, type Section } from './report.js';
 import { count } from './util.js';
 
 /** Reads a receipt file the way the /verify page does: JSON, version 1, with an election, parts and commitments. */
@@ -68,10 +61,4 @@ export async function checkReceipt(input: {
     sections.push({ title: `Receipt part: ${title} (${check.status})`, findings });
   }
   return sections;
-}
-
-function stepFinding(step: CheckStep): Finding {
-  if (step.ok === true) return pass(step.label, step.detail);
-  if (step.ok === false) return fail(step.label, step.detail);
-  return pending(step.label, step.detail);
 }

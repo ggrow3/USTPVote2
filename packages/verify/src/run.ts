@@ -64,7 +64,16 @@ export async function verify(api: PublicApi, options: VerifyOptions = {}): Promi
     title: `Election: ${record.election.title}`,
     findings: await checkElection({ record, entries: scan.entries, lastBlock, keys, sealedBlocks }),
   });
-  sections.push({ title: 'Results', findings: resultsFindings(results) });
+  const resultsEntry = Number.isSafeInteger(results?.ledgerSeq) ? await api.ledgerEntry(results!.ledgerSeq) : null;
+  sections.push({
+    title: 'Results',
+    findings: await resultsFindings({
+      evidence: { election: record, keys, ledger: resultsEntry, anchor },
+      results,
+      blocks: sealedBlocks,
+      verified: ledger.verified,
+    }),
+  });
 
   const { receipt } = options;
   if (receipt) {
