@@ -1,0 +1,19 @@
+# Terraform working directories, state and plans (state lives in each environment's GCS bucket)
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+
+# Variable files hold people's addresses; only the examples are committed
+*.tfvars
+*.tfvars.json
+
+# Local overrides
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
