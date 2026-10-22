@@ -18,7 +18,7 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
       # The Firestore and Auth emulators run on the JVM.
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '21'
