@@ -20,6 +20,12 @@
       "port": 8080
     },
     {
+      "name": "worker",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:worker:emulators", "-w", "apps/server"],
+      "port": 8081
+    },
+    {
       "name": "web",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev:emulators", "-w", "apps/web"],
