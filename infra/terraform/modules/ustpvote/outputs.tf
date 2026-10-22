@@ -47,7 +47,7 @@ output "worker_env" {
 # --- Services ----------------------------------------------------------------------------------------------------------
 
 output "api_service" {
-  description = "Firebase Hosting rewrite target for /v1/** (infra/firebase/firebase.json: run.serviceId and run.region)."
+  description = "Firebase Hosting rewrite target for /v1/** (firebase.json: run.serviceId and run.region)."
   value = {
     serviceId = "api"
     region    = var.region

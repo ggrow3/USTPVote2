@@ -14,7 +14,7 @@ variable "environment" {
 }
 
 variable "region" {
-  description = "Region for Cloud Run, KMS, buckets, Scheduler and Tasks (design Q16). Must match the Hosting rewrite in infra/firebase/firebase.json."
+  description = "Region for Cloud Run, KMS, buckets, Scheduler and Tasks (design Q16). Must match the Hosting rewrite in firebase.json."
   type        = string
   default     = "us-central1"
 }

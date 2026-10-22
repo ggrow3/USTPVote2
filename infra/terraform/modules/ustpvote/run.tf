@@ -33,7 +33,7 @@ locals {
 resource "google_cloud_run_v2_service" "api" {
   count = local.deploy ? 1 : 0
 
-  # Firebase Hosting rewrites /v1/** to the service ID `api` in this region (infra/firebase/firebase.json), and
+  # Firebase Hosting rewrites /v1/** to the service ID `api` in this region (firebase.json), and
   # reaches it over the internet, so ingress is open.
   project             = var.project_id
   name                = "api"

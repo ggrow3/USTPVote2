@@ -5,7 +5,7 @@ variable "project_id" {
 }
 
 variable "region" {
-  description = "Design Q16. Must match infra/firebase/firebase.json."
+  description = "Design Q16. Must match firebase.json."
   type        = string
   default     = "us-central1"
 }

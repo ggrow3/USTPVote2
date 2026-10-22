@@ -112,7 +112,7 @@ or an emulator host. Every safety switch then keeps its production default (§4)
 
 | Consumer | Output |
 |---|---|
-| Firebase Hosting (`infra/firebase/firebase.json` rewrite `run.serviceId` / `run.region`) | `api_service` (`api`, `us-central1`) |
+| Firebase Hosting (`firebase.json` rewrite `run.serviceId` / `run.region`) | `api_service` (`api`, `us-central1`) |
 | Web build (`apps/web/.env.example`) | `VITE_FIREBASE_PROJECT_ID` = the project; the other values come from the Firebase web app and reCAPTCHA key (below) |
 | Release workflow (GitHub environment variables) | `github_environment_variables` (also `image_repository`, `attestor`, `attestor_key_version`, `release_service_account`) |
 | Mirrors and verifiers | `anchors_public_url` |
@@ -177,7 +177,7 @@ Examples use dev; replace `dev` throughout for the others. Run Terraform with an
    (see [Firebase Hosting](#firebase-hosting)):
 
    ```bash
-   npx firebase deploy --config infra/firebase/firebase.json --project ustpvote2-dev --only firestore,hosting
+   npx firebase deploy --project ustpvote2-dev --only firestore,hosting
    ```
 
 7. **Check.** `curl "$(terraform output -raw api_url)/v1/health"` answers, and so does
@@ -272,9 +272,11 @@ factors with `adjacentIntervals: 5` and no SMS (design §4), and the authorized 
 
 ### Firebase Hosting
 
-`infra/firebase/firebase.json` serves `apps/web/dist` and rewrites `/v1/**` to the Cloud Run service `api` in
-`us-central1`. Build the web app with that environment's `.env.<mode>.local` (above) before deploying. If `region`
-ever changes, change the rewrite with it. Deploy `firestore` and `hosting` only: the deny-all Storage rules apply
+`firebase.json` at the repository root serves `apps/web/dist` and rewrites `/v1/**` to the Cloud Run service `api` in
+`us-central1`; it sits at the root because the Firebase CLI only publishes folders inside the one holding
+`firebase.json`. Build the web app for the environment first: write `apps/web/.env.<env>.local` (git-ignored) with the
+web app's config and the `recaptcha_site_key` output (above), then `npm run build -w apps/web -- --mode <env>`. If
+`region` ever changes, change the rewrite with it. Deploy `firestore` and `hosting` only: the deny-all Storage rules apply
 only to buckets linked to Firebase Storage, and the anchors and photos buckets are plain Cloud Storage buckets governed
 by IAM alone.
 
