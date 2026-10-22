@@ -114,6 +114,22 @@ async function member(email, legalName, current) {
   await call('POST', `/v1/admin/applications/${application.applicationId}/decision`, ELECTION_ADMIN, { decision: 'approve', reason: 'dev seed' });
 }
 
+// --- offices ------------------------------------------------------------------------------------------------------
+
+/** Offices that seeded contests fill; certifying their results gives the winners terms. */
+const OFFICES = [
+  { positionId: 'chair', title: 'Chair', seats: 1, termMonths: 24, description: 'Chairs the party and its conventions.' },
+  { positionId: 'outreach-coordinator', title: 'Outreach Coordinator', seats: 1, termMonths: 12, description: '' },
+];
+
+/** Defines an office through the two-person flow (Election Admin asks, Auditor approves), unless it exists. */
+async function defineOffice(office) {
+  const { positions } = await call('GET', '/v1/admin/positions', AUDITOR);
+  if (positions.some((p) => p.positionId === office.positionId)) return;
+  const req = await call('POST', '/v1/admin/positions', ELECTION_ADMIN, { ...office, reason: 'dev seed' });
+  await call('POST', `/v1/admin/approvals/${req.id}/decision`, AUDITOR, { decision: 'approve', reason: 'dev seed' });
+}
+
 // --- elections ----------------------------------------------------------------------------------------------------
 
 const SECOND = 1000;
@@ -137,7 +153,7 @@ const ELECTIONS = [
         body: 'The party supports the right to repair.\n\nOwners of devices should be able to repair them or have them repaired by anyone they choose.',
         passRule: MAJORITY,
       },
-      { kind: 'irv', title: 'Chair', candidates: ['Alex Rivera', 'Blair Chen', 'Casey Okafor'] },
+      { kind: 'irv', title: 'Chair', positionId: 'chair', candidates: ['Alex Rivera', 'Blair Chen', 'Casey Okafor'] },
       { kind: 'choose_n', title: 'Board (2 seats)', seats: 2, maxSelections: 2, candidates: ['Dana Ito', 'Eli Moreno', 'Fran Novak'] },
     ],
   },
@@ -163,7 +179,14 @@ const ELECTIONS = [
     opensIn: 40 * SECOND,
     closesIn: 15 * MINUTE,
     contests: [
-      { kind: 'choose_n', title: 'Outreach Coordinator', seats: 1, maxSelections: 1, candidates: ['Mira Hale', 'Noor Aziz', 'Owen Park'] },
+      {
+        kind: 'choose_n',
+        title: 'Outreach Coordinator',
+        positionId: 'outreach-coordinator',
+        seats: 1,
+        maxSelections: 1,
+        candidates: ['Mira Hale', 'Noor Aziz', 'Owen Park'],
+      },
       {
         kind: 'choose_n',
         title: 'Policy Committee (approve any)',
@@ -306,6 +329,9 @@ await grant(ELECTION_ADMIN, 'election_admin');
 await grant(ELECTION_ADMIN, 'membership_admin');
 await grant(AUDITOR, 'auditor');
 console.log(`staff: ${SYSTEM_ADMINS.join(', ')} (System Admins), ${ELECTION_ADMIN} (Election + Membership Admin), ${AUDITOR} (Auditor)`);
+
+for (const office of OFFICES) await defineOffice(office);
+console.log(`offices: ${OFFICES.map((o) => o.title).join(', ')}`);
 
 const current = await bylaws();
 for (const [i, email] of VOTERS.entries()) {

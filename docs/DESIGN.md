@@ -286,7 +286,16 @@ window, pool key version) or `election.closed`, with actor `system`.
 
 **Closed → results** (implemented in M4a): once every ballot is sealed (`sealedAt`, §7.2), the worker tallies the
 election on the same tick and publishes provisional, signed results ([§9](#9-tallying-ustp-tally)). The election stays
-Closed until certification (M4b) moves it to Certified.
+Closed until certification moves it to Certified.
+
+**Closed → Certified** (implemented in M4b, two-person `election.certify`): an Election Admin who is not a candidate
+requests certification of a closed election's provisional results; the request names their `resultsHash`, and is
+refused before the results exist or when an office its contests fill does not exist. An Auditor who is not a candidate
+approves; in the decision's transaction the server re-checks that the election is still Closed and the results are
+still provisional with exactly that hash, marks the results `certified` (`certifiedAt`, `certifiedLedgerSeq`), moves
+the election to Certified (`certifiedAt`), creates a term of office for every winner of a contest tied to an office
+(§6.4), and ledgers `results.certified` (`electionId, resultsHash, approvalId, terms`) and one `position_term.created`
+per term. On its next tick the worker destroys the election's ballot-pool key version (§7.3).
 
 **Cancelling** a draft is a single Election Admin action; cancelling a scheduled or open election is two-person
 (`election.cancel`, approved only if the election is still in the state it was requested from). Both are ledgered.
@@ -343,7 +352,21 @@ candidates). Scheduling (M2b) freezes exactly this hash. Contest and candidate I
 fit the `ustp-tally` ID pattern. Only drafts can be edited.
 - `positions` define offices (title, seats, term length). Certifying an election that fills an office creates
   `position_terms` that reference the certified results hash. Any other change to an office or term is a two-person
-  action.
+  action. Implemented in M4b:
+  - **Offices** (`positions/{positionId}`, a slug: `{title, description, seats, termMonths, definedAt, approvalId}`)
+    are defined or changed only through `position.modify` with `{change: 'define', position}` (Membership or Election
+    Admin requests, Auditor approves; `position.defined` ledgered). Changing an office does not touch terms already
+    running.
+  - **Contests fill offices:** a candidate contest may name a `positionId` while the election is a draft (it must
+    exist); it is part of the frozen definition, so the Auditor scheduling the election sees which office each contest
+    fills. Proposals cannot fill an office.
+  - **Terms** (`position_terms/{termId}`: holder name and account if the candidate had one, contest, election,
+    `startsAt`, `endsAt`, `resultsHash`, `status`) are created only by certification: one per winner, starting at
+    certification and lasting the office's `termMonths` (same day of the month, or its last day). Ending one early
+    (resignation, removal) is `position.modify` with `{change: 'end_term', termId}`; the holder may neither request
+    nor approve it (`position_term.ended` ledgered).
+  - **Public:** `GET /v1/public/positions` lists the offices and their active terms; office holders are public, like
+    the results they come from. Administrators see every term in the console's Offices tab.
 
 ## 7. Ballot casting and secrecy
 
@@ -453,8 +476,13 @@ Implemented in M3a:
   per ballot. The **worker** alone may create versions and decrypt (`cloudkms.cryptoKeyVersions.create`, `.get`,
   `.useToDecrypt`); the sealer (M3b) unwraps each data key through KMS. No human holds decrypt in production. KMS Data
   Access audit logs are on, so any decrypt is visible.
-- After certification (M4) the election's key version is **destroyed**, and so are the versions of cancelled
+- After certification the election's key version is **destroyed**, and so are the versions of cancelled
   elections. Any copy of the pool in backups or PITR becomes permanently unreadable — forward secrecy for past elections.
+  Implemented in M4b as a tick step (not a separate task): for every Certified or Cancelled election with a pool key
+  and no `poolKeyDestroyedAt`, the worker destroys the version (Cloud KMS schedules it, restorable for the key's 24-hour
+  window; a version already scheduled or destroyed counts as done), then sets `poolKeyDestroyedAt` and ledgers
+  `election.pool_key_destroyed`. A Certified election's ballots are all sealed by then; a Cancelled one's are never
+  counted. The public record shows `poolKeyDestroyedAt`.
 - With the emulators, `BALLOT_POOL=emulator` keeps RSA-3072 key pairs in Firestore instead; the server refuses it
   elsewhere.
 - Cost: one key version per election while it exists (a few cents a month), plus one KMS decrypt per ballot at sealing.
@@ -510,13 +538,15 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   `applicationId`), `identity.linked`, `identity.unlinked`, `bylaws.published`, `role.granted`, `role.revoked`,
   `approval.requested`, `approval.decided`, `signin_method.changed`. Added since: `photo.decided`, `roll.approved`,
   `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled` (M2–M3a), `ballots.sealed`,
-  `election.sealed` (M3b), `results.computed` (M4a). Planned: `results.certified`, `position_term.created`. The
-  authoritative list is `LEDGER_EVENT_TYPES` in `ustp-domain`.
+  `election.sealed` (M3b), `results.computed` (M4a), `results.certified`, `election.pool_key_destroyed`,
+  `position.defined`, `position_term.created`, `position_term.ended` (M4b). The authoritative list is
+  `LEDGER_EVENT_TYPES` in `ustp-domain`.
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
   entries are public. A public verifier checks a public entry by Merkle inclusion in its ledger block (§8.3) without
   seeing the private entries in that block. Public types (`PUBLIC_LEDGER_EVENT_TYPES`): `bylaws.published`,
   `roll.approved`, `election.scheduled`, `election.opened`, `election.closed`, `ballots.sealed`, `election.sealed`,
-  `election.cancelled`, `results.computed`, and the certification types as they arrive.
+  `election.cancelled`, `results.computed`, `results.certified`, `election.pool_key_destroyed`, `position.defined`,
+  `position_term.created`, `position_term.ended`.
   `GET /v1/public/ledger/entries/{seq}` returns a public entry with its block and inclusion proof; anything else, or an
   entry not yet in a block, is 404.
 
@@ -648,8 +678,11 @@ seed matches the published commitment; that every published sealed block is coun
 full re-tally with the page's own `ustp-tally` that must reproduce `resultsHash`; then the `results.computed` entry
 through its signed ledger block to an anchor.
 
-Certification (two-person, M4b) ledgers `results.certified` referencing the same hash and marks the record
-`certified`.
+Certification (two-person, implemented in M4b, §6.1) ledgers `results.certified` referencing the same hash and marks
+the record `certified` with `certifiedAt` and `certifiedLedgerSeq`; the bundle, its hash and its signature are
+unchanged. For certified results `checkResults` adds the certification: a `results.certified` entry at
+`certifiedLedgerSeq` naming this hash, its inclusion in a ledger block, that block's signature and an anchor. The
+results page, the CLI and the tests pass it that entry.
 
 ## 10. Administration and separation of duties
 
@@ -712,8 +745,8 @@ registration collections are top-level and election data lives under each electi
 | `bylaws_versions/{version}` | version | immutable | text, content hash *(added)* |
 | `profile_photos/{photoId}` | auto | status only | storage path, status |
 | `photo_checks/{checkId}` | auto | immutable | Vision signals, verdict |
-| `positions/{positionId}` | slug | two-person | title, seats, term length |
-| `position_terms/{termId}` | auto | two-person | holder, start/end, results hash |
+| `positions/{positionId}` | slug | two-person | title, description, seats, term months, approval (§6.4) |
+| `position_terms/{termId}` | auto | created by certification; ended two-person | holder, contest, start/end, results hash, status |
 | `eligibility_snapshots/{snapshotId}` | auto | immutable once approved | criteria, count, Merkle root, signature |
 | **voting** | | | |
 | `elections/{electionId}` | UUIDv7 | state transitions | definition, definitionHash, seed commitment, k |
@@ -770,7 +803,9 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/photos` · `GET /admin/photos/{id}/image` · `POST /admin/photos/{id}/decision` | Membership Admin | photo review |
 | `GET /admin/elections` · `GET /admin/elections/{id}` (detail, definition hash, problems) · `GET /admin/proposals` | Election Admin, Auditor | read election setup |
 | `POST /admin/elections` · `PATCH /admin/elections/{id}` · `POST\|PUT\|DELETE …/contests[/{cid}]` · `POST\|DELETE …/contests/{cid}/candidates[/{kid}]` · `POST /admin/proposals` | Election Admin | edit drafts |
-| `POST /admin/elections/{id}/roll` · `.../schedule` · `.../cancel` (`.../certify` in M4) | Election Admin | roll snapshot, scheduling and cancellation requests (draft cancel is immediate) |
+| `POST /admin/elections/{id}/roll` · `.../schedule` · `.../cancel` · `.../certify` | Election Admin | roll snapshot, scheduling, cancellation and certification requests (draft cancel is immediate) |
+| `GET /admin/positions` · `POST /admin/positions` · `POST /admin/positions/{id}/terms/{termId}/end` | any admin (read); Membership or Election Admin | offices and terms; define or change an office, end a term (→ approval) |
+| `GET /public/positions` | P | offices and who holds them now |
 | `GET /admin/elections/{id}/roll` | Election Admin, Auditor | latest roll with member names, for review |
 | `GET /admin/approvals` · `POST /admin/approvals/{id}/decision` | per action | two-person decisions |
 | `GET /admin/audit/events` · `GET /admin/audit/verify` | Auditor | ledger (paged by seq); verification of chain, blocks, signatures and anchors |
@@ -784,7 +819,7 @@ Errors use RFC 9457 problem details. Request bodies are validated against schema
 |---|---|---|
 | `POST /tasks/tick` | Cloud Scheduler, every minute | Prepare pool keys, open/close elections on time, seal ballots (M3), tally sealed elections into signed provisional results (M4a), then seal ledger blocks, sign approved rolls and anchor (M2c). Returns what it did |
 | `POST /tasks/email` | Cloud Task | send via Amazon SES |
-| `POST /tasks/destroy-pool-key` | Cloud Task after certify | destroy the election's ballot-pool key version |
+| *(tick step, M4b)* | every tick | destroy the ballot-pool key version of certified and cancelled elections (§7.3); planned as a `destroy-pool-key` Cloud Task, which the tick made unnecessary |
 
 Tallying is a step of the tick, not the `POST /tasks/tally` Cloud Task planned earlier: the tick already runs every
 minute right after sealing, the tally is a small in-memory count, a failed tally is retried by the next tick for free,
@@ -886,6 +921,8 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
 | §6 collections | + `signing_keys` | Public keys of every key version that signed, for verification across key rotation |
 | §4 sealed blocks published as sealed | Contents published once voting closes; summaries and inclusion proofs while open | Publishing contents during voting would show a running tally |
 | (design) §13 tally as a Cloud Task after close | A step of the minute tick, right after the sealer | No queue to run or secure, results within a tick of close, and the next tick retries a failed tally |
+| (added) §13 `destroy-pool-key` Cloud Task after certification | A tick step for certified and cancelled elections | Same idempotent pattern as sealing and tallying; no Cloud Tasks queue or enqueue permission needed |
+| §6 position terms | Terms start at certification and last the office's `termMonths` | The bylaws' term dates are Q1; a later start date can be added to the office if USTP needs one |
 | (added) §7.3 pool encryption with a symmetric key the api may only encrypt with | Asymmetric key, one version per election; the api encrypts locally to its public key (RSA-OAEP wrapping an AES-GCM data key) | Symmetric KMS encryption always uses the primary version, so concurrent elections could not each have their own; the api then holds no decrypt permission at all and makes no KMS call per ballot |
 
 ## 18. Open questions
@@ -917,5 +954,5 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M1 — Identity & registration** | *Done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes via two-person approvals, auth switches, Auditor ledger verification; web sign-in (Google, Microsoft, Apple, email/password, email link), registration, account and admin console. admin two-step verification (authenticator-app setup, code step at sign-in, re-authentication for approvals, typed MFA/re-auth problems); profile photos (normalized upload, automatic checks, admin review). *Still to exercise against a real project:* authenticator-app setup and sign-in (TOTP), and Cloud Vision photo checks — neither has an emulator |
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
-| **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b:* two-person certification (`results.certified`), position terms, ballot-pool key destruction |
+| **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *Still to exercise against a real project:* Cloud KMS key destruction |
 | **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (written, not yet validated or applied; §15) including the Binary Authorization policy; installable PWA (manifest, icons, a service worker that caches only the app shell and never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`). *Still to do:* Dockerfile and a CI identity that builds, attests and applies; the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |

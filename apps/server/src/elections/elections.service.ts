@@ -7,12 +7,14 @@ import {
   ElectionCollections,
   electionTransitionAuthority,
   proposalContentHash,
+  resultsSummary,
   rollMerkleRoot,
   sortRoll,
   uuidv7,
   validateDefinition,
   type ApprovalRequestRecord,
   type CancelPayload,
+  type CertifyPayload,
   type CandidateInput,
   type CandidateRecord,
   type ContestInput,
@@ -23,6 +25,7 @@ import {
   type MemberRecord,
   type ProposalInput,
   type ProposalSnapshotRecord,
+  type ResultsRecord,
   type RollApprovalPayload,
   type RollSnapshotRecord,
   type RollView,
@@ -98,6 +101,8 @@ export class ElectionsService {
       openedAt: null,
       closedAt: null,
       sealedAt: null,
+      certifiedAt: null,
+      poolKeyDestroyedAt: null,
     };
     await this.db.collection(Collections.elections).doc(record.electionId).create(record);
     return record;
@@ -109,7 +114,7 @@ export class ElectionsService {
   }
 
   async detail(electionId: string): Promise<ElectionDetail> {
-    const [loaded, roll, pending] = await Promise.all([
+    const [loaded, roll, pending, resultsSnap] = await Promise.all([
       this.reader.load(electionId),
       this.latestRoll(electionId),
       this.db
@@ -117,9 +122,12 @@ export class ElectionsService {
         .where('subject', '==', electionId)
         .where('status', '==', 'pending')
         .get(),
+      this.db.collection(Collections.results).doc(electionId).get(),
     ]);
     const { election, contests, candidates, proposals, definition } = loaded;
+    const results = resultsSnap.data() as ResultsRecord | undefined;
     return {
+      results: results ? resultsSummary(results) : null,
       election,
       contests,
       candidates,
@@ -207,6 +215,33 @@ export class ElectionsService {
     });
   }
 
+  /**
+   * Asks an Auditor to certify exactly the provisional results computed for a closed election (design §6.1, §9). The
+   * offices its contests fill must exist, or certification could not create their terms.
+   */
+  async requestCertify(ctx: RequestContext, electionId: string, reason: string): Promise<ApprovalRequestRecord> {
+    const requestedBy = requireAccount(ctx);
+    this.approvals.assertCanRequest(ctx, 'election.certify');
+    return this.db.runTransaction(async (tx) => {
+      const { election, definition } = await this.reader.load(electionId, tx);
+      if (election.state !== 'closed') throw new ConflictException(`the election is ${election.state}; only closed elections are certified`);
+      if (await this.reader.isCandidate(tx, electionId, requestedBy)) {
+        throw new ForbiddenException('you are a candidate in this election, so you cannot administer it');
+      }
+      const results = (await tx.get(this.db.collection(Collections.results).doc(electionId))).data() as ResultsRecord | undefined;
+      if (!results) throw new ConflictException('the results have not been computed yet; they follow within a minute of sealing');
+      if (results.status !== 'provisional') throw new ConflictException('the results are already certified');
+      const offices = [...new Set(definition.contests.map((c) => c.positionId).filter((id): id is string => !!id))];
+      for (const id of offices) {
+        if (!(await tx.get(this.db.collection(Collections.positions).doc(id))).exists) {
+          throw new ConflictException(`the office ${id} this election fills does not exist; define it first`);
+        }
+      }
+      const payload: CertifyPayload = { electionId, resultsHash: results.resultsHash };
+      return this.approvals.createRequest(tx, { action: 'election.certify', subject: electionId, payload, reason, requestedBy });
+    });
+  }
+
   /** A draft is cancelled at once; a scheduled or open election needs an Auditor's approval. */
   async cancel(
     ctx: RequestContext,
@@ -271,6 +306,7 @@ export class ElectionsService {
       await this.editable(tx, ctx, electionId);
       const contests = await tx.get(this.electionRef(electionId).collection(ElectionCollections.contests));
       if (input.kind === 'proposal') await this.assertProposalExists(tx, input.proposalSnapshotId);
+      else if (input.positionId) await this.assertPositionExists(tx, input.positionId);
       const ref = this.electionRef(electionId).collection(ElectionCollections.contests).doc();
       const order = Math.max(0, ...contests.docs.map((d) => (d.data() as ContestRecord).order)) + 1;
       const record = contestRecord(ref.id, order, input, []);
@@ -289,6 +325,7 @@ export class ElectionsService {
         throw new ConflictException('remove the candidates before turning this into a proposal contest');
       }
       if (input.kind === 'proposal') await this.assertProposalExists(tx, input.proposalSnapshotId);
+      else if (input.positionId) await this.assertPositionExists(tx, input.positionId);
       const record = contestRecord(contestId, current.order, input, [...candidateIds]);
       tx.set(ref, record);
       return record;
@@ -387,6 +424,12 @@ export class ElectionsService {
       throw new BadRequestException('no such proposal text');
     }
   }
+
+  private async assertPositionExists(tx: Transaction, positionId: string): Promise<void> {
+    if (!(await tx.get(this.db.collection(Collections.positions).doc(positionId))).exists) {
+      throw new BadRequestException('no such office');
+    }
+  }
 }
 
 function withoutList(snapshot: RollSnapshotRecord): Omit<RollSnapshotRecord, 'accountIds'> {
@@ -426,5 +469,6 @@ function contestRecord(contestId: string, order: number, input: ContestInput, ca
     description: input.description,
     spec,
     proposalSnapshotId: input.kind === 'proposal' ? input.proposalSnapshotId : null,
+    positionId: input.kind === 'proposal' ? null : (input.positionId ?? null),
   };
 }

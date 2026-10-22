@@ -50,13 +50,15 @@ onMounted(async () => {
     record.value = publicRecord;
     results.value = published;
     if (!published) return;
-    const [blocks, keys, ledger, anchor] = await Promise.all([
+    const certifiedSeq = published.certifiedLedgerSeq;
+    const [blocks, keys, ledger, anchor, certification] = await Promise.all([
       api<SealedBlockRecord[]>('GET', `${base}/sealed-blocks`),
       api<SigningKeyRecord[]>('GET', '/v1/public/ledger/keys'),
       orNull(api<PublicLedgerEntry>('GET', `/v1/public/ledger/entries/${published.ledgerSeq}`)),
       orNull(api<AnchorRecord>('GET', '/v1/public/anchors/latest')),
+      certifiedSeq ? orNull(api<PublicLedgerEntry>('GET', `/v1/public/ledger/entries/${certifiedSeq}`)) : Promise.resolve(null),
     ]);
-    check.value = await checkResults({ election: publicRecord, results: published, blocks, keys, ledger, anchor });
+    check.value = await checkResults({ election: publicRecord, results: published, blocks, keys, ledger, anchor, certification });
   } catch (e) {
     error.value = errorMessage(e);
   } finally {
@@ -144,6 +146,10 @@ const summary = computed(() => {
       <div v-else class="column q-gutter-md" style="max-width: 860px">
         <q-banner v-if="results.status === 'provisional'" class="bg-grey-3 text-black" rounded>
           Provisional: these results are signed and in the audit ledger, but not yet certified.
+        </q-banner>
+        <q-banner v-else class="bg-positive text-white" rounded>
+          Certified {{ results.certifiedAt ? new Date(results.certifiedAt).toLocaleString() : '' }} by an Election Admin and an
+          Auditor.
         </q-banner>
         <q-banner v-if="summary" :class="summary.cls" rounded>{{ summary.text }}</q-banner>
 

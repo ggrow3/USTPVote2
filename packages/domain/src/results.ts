@@ -47,10 +47,27 @@ export interface ResultsRecord {
   readonly computedAt: string;
   /** The `results.computed` ledger entry. */
   readonly ledgerSeq: number;
+  /** Set by two-person certification (M4b), with the `results.certified` ledger entry. */
+  readonly certifiedAt?: string | null;
+  readonly certifiedLedgerSeq?: number | null;
 }
 
 /** What the published election record says about its results. */
-export type ResultsSummary = Pick<ResultsRecord, 'status' | 'resultsHash' | 'computedAt' | 'ledgerSeq'>;
+export type ResultsSummary = Pick<
+  ResultsRecord,
+  'status' | 'resultsHash' | 'computedAt' | 'ledgerSeq' | 'certifiedAt' | 'certifiedLedgerSeq'
+>;
+
+export function resultsSummary(record: ResultsRecord): ResultsSummary {
+  return {
+    status: record.status,
+    resultsHash: record.resultsHash,
+    computedAt: record.computedAt,
+    ledgerSeq: record.ledgerSeq,
+    certifiedAt: record.certifiedAt ?? null,
+    certifiedLedgerSeq: record.certifiedLedgerSeq ?? null,
+  };
+}
 
 /**
  * The tie-break order of every candidate contest (design §9): candidates sorted by

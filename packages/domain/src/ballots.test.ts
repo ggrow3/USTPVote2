@@ -22,6 +22,7 @@ const definition: ElectionDefinition = {
       spec: { kind: 'proposal', id: 'plank', passRule: MAJORITY },
       proposal: { snapshotId: 'p1', title: 'Plank 12', contentHash: '0'.repeat(64) },
       candidates: [],
+      positionId: null,
     },
     {
       contestId: 'board',
@@ -30,6 +31,7 @@ const definition: ElectionDefinition = {
       spec: { kind: 'choose_n', id: 'board', candidates: ['a', 'b', 'c'], seats: 2, maxSelections: 2 },
       proposal: null,
       candidates: [],
+      positionId: null,
     },
     {
       contestId: 'chair',
@@ -38,6 +40,7 @@ const definition: ElectionDefinition = {
       spec: { kind: 'irv', id: 'chair', candidates: ['x', 'y'] },
       proposal: null,
       candidates: [],
+      positionId: null,
     },
   ],
 };

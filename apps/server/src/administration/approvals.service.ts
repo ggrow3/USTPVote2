@@ -21,6 +21,7 @@ import { CONFIG, type ServerConfig } from '../config.js';
 import { ElectionApprovals } from '../elections/election-approvals.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { PositionApprovals } from '../positions/position-approvals.js';
 import { NO_EFFECT, type ApprovalHandler } from './approval-handler.js';
 import { RoleApprovals, type RoleChangePayload } from './role-approvals.js';
 
@@ -47,6 +48,7 @@ export class ApprovalsService {
     @Inject(CONFIG) private readonly config: ServerConfig,
     private readonly roles: RoleApprovals,
     private readonly elections: ElectionApprovals,
+    private readonly positions: PositionApprovals,
   ) {}
 
   /** Checks the caller may request `action` about `subject`; call before opening the request's transaction. */
@@ -153,7 +155,7 @@ export class ApprovalsService {
           : handler.reject
             ? await handler.reject(tx, request)
             : NO_EFFECT;
-      await this.ledger.record(tx, [
+      const seqs = await this.ledger.record(tx, [
         {
           type: 'approval.decided',
           actor: actor.accountId,
@@ -162,7 +164,7 @@ export class ApprovalsService {
         },
         ...effect.events,
       ]);
-      effect.apply();
+      effect.apply(seqs.slice(1));
       const decided: ApprovalRequestRecord = {
         ...request,
         status: input.decision === 'approve' ? 'executed' : 'rejected',
@@ -193,7 +195,7 @@ export class ApprovalsService {
 
   private handlerFor(action: TwoPersonAction): ApprovalHandler {
     if (action === 'role.grant' || action === 'role.revoke') return this.roles;
-    if (action === 'roll.approve' || action === 'election.schedule' || action === 'election.cancel') return this.elections;
-    throw new ConflictException(`${action} is not supported yet`);
+    if (action === 'position.modify') return this.positions;
+    return this.elections; // roll.approve, election.schedule, election.certify, election.cancel
   }
 }

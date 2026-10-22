@@ -92,6 +92,8 @@ describe('tallying', () => {
       resultsHash: results.resultsHash,
       computedAt: results.computedAt,
       ledgerSeq: results.ledgerSeq,
+      certifiedAt: null,
+      certifiedLedgerSeq: null,
     });
     expect((await ledgerTypes(api, election.electionId)).at(-1)).toBe('results.computed');
     const entry = (await api.call('GET', `/v1/public/ledger/entries/${results.ledgerSeq}`)).body;

@@ -7,8 +7,10 @@ import AuditPanel from '../components/admin/AuditPanel.vue';
 import BylawsPanel from '../components/admin/BylawsPanel.vue';
 import ElectionsPanel from '../components/admin/ElectionsPanel.vue';
 import MembersPanel from '../components/admin/MembersPanel.vue';
+import OfficesPanel from '../components/admin/OfficesPanel.vue';
 import PhotosPanel from '../components/admin/PhotosPanel.vue';
 import SignInMethodsPanel from '../components/admin/SignInMethodsPanel.vue';
+import { useRoute } from 'vue-router';
 import { usePageTitle } from '../a11y.js';
 import { hasRole, session } from '../session.js';
 
@@ -25,6 +27,7 @@ const PANELS: Record<string, Component> = {
   photos: PhotosPanel,
   bylaws: BylawsPanel,
   elections: ElectionsPanel,
+  offices: OfficesPanel,
   approvals: ApprovalsPanel,
   signin: SignInMethodsPanel,
   audit: AuditPanel,
@@ -36,6 +39,7 @@ const ALL_TABS: readonly Tab[] = [
   { name: 'photos', label: 'Photos', roles: ['membership_admin'] },
   { name: 'bylaws', label: 'Bylaws', roles: ['membership_admin'] },
   { name: 'elections', label: 'Elections', roles: ['election_admin', 'auditor'] },
+  { name: 'offices', label: 'Offices', roles: ['membership_admin', 'election_admin', 'auditor'] },
   { name: 'approvals', label: 'Approvals', roles: ['membership_admin', 'election_admin', 'auditor', 'system_admin'] },
   { name: 'signin', label: 'Sign-in methods', roles: ['system_admin'] },
   { name: 'audit', label: 'Audit ledger', roles: ['auditor'] },
@@ -44,7 +48,8 @@ const ALL_TABS: readonly Tab[] = [
 usePageTitle('Administration');
 const tabs = computed(() => ALL_TABS.filter((t) => hasRole(...t.roles)));
 const needsMfa = computed(() => !!session.me?.mfa.required && !session.me.mfa.signedInWithMfa);
-const tab = ref(tabs.value[0]?.name ?? 'approvals');
+const requested = String(useRoute().query.tab ?? '');
+const tab = ref(tabs.value.some((t) => t.name === requested) ? requested : (tabs.value[0]?.name ?? 'approvals'));
 </script>
 
 <template>

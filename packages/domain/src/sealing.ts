@@ -168,6 +168,8 @@ export interface PublicElection {
     | 'openedAt'
     | 'closedAt'
     | 'sealedAt'
+    | 'certifiedAt'
+    | 'poolKeyDestroyedAt'
     | 'cancelledAt'
   >;
   readonly definition: ElectionDefinition;

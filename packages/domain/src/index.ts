@@ -73,9 +73,18 @@ export {
 } from './sealing.js';
 export type { SealedPart, SealedBlock, SealedBlockRecord, SealableBallot, SealedBlockSummary, PublicElection } from './sealing.js';
 export { checkReceiptPart } from './receipt-check.js';
-export { buildResultsBundle, resultsHash, resultsSigningInput, tieBreakOrders, matchesCommitment } from './results.js';
+export { buildResultsBundle, resultsHash, resultsSigningInput, tieBreakOrders, matchesCommitment, resultsSummary } from './results.js';
 export type { ResultsBundle, ResultsRecord, ResultsSummary, ContestOutcome } from './results.js';
 export { checkResults } from './results-check.js';
+export { positionInputSchema, addMonths, winnersOf, termsFromResults } from './positions.js';
+export type {
+  PositionInput,
+  PositionRecord,
+  PositionTermRecord,
+  PositionModifyPayload,
+  CertifyPayload,
+  PositionsView,
+} from './positions.js';
 export type { ResultsEvidence, ResultsCheck } from './results-check.js';
 export type { BallotProof, PartEvidence, CheckStep, PartCheck } from './receipt-check.js';
 export type {

@@ -3,6 +3,7 @@ import { validateContestSpec, type ContestSpec } from 'ustp-tally';
 import type { ElectionState } from './election-state.js';
 import type { SignatureRecord } from './ledger.js';
 import type { ApprovalRequestRecord } from './records.js';
+import type { ResultsSummary } from './results.js';
 
 /** Election definitions (design §6). Editable while `draft`; frozen by its hash when scheduled (M2b). */
 
@@ -47,6 +48,10 @@ export interface ElectionRecord {
   readonly closedAt: string | null;
   /** Set once the election is closed and every ballot is in a sealed block (design §7.2). */
   readonly sealedAt: string | null;
+  /** Set when an Auditor certifies its results (two-person, design §6.1). */
+  readonly certifiedAt: string | null;
+  /** Set once the worker has destroyed the ballot-pool key version (certified or cancelled, design §7.3). */
+  readonly poolKeyDestroyedAt: string | null;
 }
 
 /**
@@ -102,6 +107,8 @@ export interface ContestRecord {
   readonly spec: ContestSpec;
   /** Proposal contests: the frozen text being voted on. */
   readonly proposalSnapshotId: string | null;
+  /** Candidate contests that fill an office: its `positions` ID. Certification creates a term per winner. */
+  readonly positionId?: string | null;
 }
 
 /** `elections/{id}/candidates/{candidateId}`. Their order is the contest spec's `candidates` list. */
@@ -149,6 +156,8 @@ export interface ElectionDefinition {
     readonly spec: ContestSpec;
     readonly proposal: { readonly snapshotId: string; readonly title: string; readonly contentHash: string } | null;
     readonly candidates: readonly { readonly candidateId: string; readonly name: string; readonly statement: string | null }[];
+    /** The office the contest fills, frozen with the rest (design §6.4); null when none. */
+    readonly positionId: string | null;
   }[];
 }
 
@@ -182,6 +191,7 @@ export function buildDefinition(
           .filter((k) => k.contestId === c.contestId)
           .sort((a, b) => position(a) - position(b) || a.candidateId.localeCompare(b.candidateId))
           .map((k) => ({ candidateId: k.candidateId, name: k.name, statement: k.statement })),
+        positionId: c.positionId ?? null,
       };
     }),
   };
@@ -201,6 +211,8 @@ export interface ElectionDetail {
   readonly roll: Omit<RollSnapshotRecord, 'accountIds'> | null;
   /** Two-person requests about this election awaiting a decision. */
   readonly pending: readonly ApprovalRequestRecord[];
+  /** Once tallied: the results' status and hash, which certification approves. */
+  readonly results: ResultsSummary | null;
 }
 
 /** `GET /v1/admin/elections/{id}/roll`: the latest roll with names, for review before approval. */
@@ -237,6 +249,7 @@ export function validateDefinition(def: ElectionDefinition, now: Date = new Date
     if (c.spec.id !== c.contestId) problems.push(`${label}: contest id mismatch`);
     if (c.spec.kind === 'proposal') {
       if (!c.proposal) problems.push(`${label}: attach the proposal text being voted on`);
+      if (c.positionId) problems.push(`${label}: a proposal cannot fill an office`);
     } else {
       const ids = c.candidates.map((k) => k.candidateId);
       if (ids.length === 0) problems.push(`${label}: add candidates`);

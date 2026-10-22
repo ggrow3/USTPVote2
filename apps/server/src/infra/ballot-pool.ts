@@ -29,6 +29,11 @@ export interface BallotPoolKeys {
   publicKey(keyVersion: string): Promise<string>;
   /** Worker, when sealing (M3b): recovers one ballot's data key. */
   unwrap(keyVersion: string, wrappedKey: Buffer): Promise<Buffer>;
+  /**
+   * Worker, once an election is certified or cancelled (M4b): destroys the version, so no copy of its pool can ever be
+   * decrypted again. Idempotent.
+   */
+  destroy(keyVersion: string): Promise<void>;
 }
 
 export const BALLOT_POOL_KEYS = Symbol('BallotPoolKeys');
@@ -120,6 +125,15 @@ export class KmsBallotPoolKeys implements BallotPoolKeys {
     return Buffer.from(result.plaintext as Uint8Array);
   }
 
+  /** Schedules destruction (Cloud KMS keeps the version restorable for the key's destroy window, 24 hours here). */
+  async destroy(keyVersion: string): Promise<void> {
+    const name = this.own(keyVersion);
+    const [version] = await this.client.getCryptoKeyVersion({ name });
+    if (version.state === 'DESTROY_SCHEDULED' || version.state === 'DESTROYED') return;
+    await this.client.destroyCryptoKeyVersion({ name });
+    this.publicKeys.delete(name);
+  }
+
   /** Only versions of the configured key, so an altered election document cannot point the api at another key. */
   private own(keyVersion: string): string {
     if (!keyVersion.startsWith(`${this.requireKey()}/cryptoKeyVersions/`)) {
@@ -169,6 +183,10 @@ export class EmulatorBallotPoolKeys implements BallotPoolKeys {
 
   async unwrap(keyVersion: string, wrappedKey: Buffer): Promise<Buffer> {
     return privateDecrypt({ key: (await this.key(keyVersion)).privateKeyPem, ...OAEP }, wrappedKey);
+  }
+
+  async destroy(keyVersion: string): Promise<void> {
+    await this.ref(keyVersion).delete();
   }
 
   private async key(keyVersion: string): Promise<EmulatorPoolKey> {

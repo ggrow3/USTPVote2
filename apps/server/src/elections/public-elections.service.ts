@@ -3,6 +3,7 @@ import { isHex32 } from 'ustp-audit';
 import {
   Collections,
   ElectionCollections,
+  resultsSummary,
   sealedInclusionProof,
   type BallotProof,
   type ElectionRecord,
@@ -63,6 +64,8 @@ export class PublicElectionsService {
         openedAt: e.openedAt ?? null,
         closedAt: e.closedAt ?? null,
         sealedAt: e.sealedAt ?? null,
+        certifiedAt: e.certifiedAt ?? null,
+        poolKeyDestroyedAt: e.poolKeyDestroyedAt ?? null,
         cancelledAt: e.cancelledAt,
       },
       definition,
@@ -72,7 +75,7 @@ export class PublicElectionsService {
       sealedBlocks,
       ballotsSealed: sealedBlocks.reduce((sum, b) => sum + b.ballotCount, 0),
       results: results
-        ? { status: results.status, resultsHash: results.resultsHash, computedAt: results.computedAt, ledgerSeq: results.ledgerSeq }
+        ? resultsSummary(results)
         : null,
     };
   }

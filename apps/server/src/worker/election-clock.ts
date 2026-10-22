@@ -89,6 +89,38 @@ export class ElectionClock {
     return closed;
   }
 
+  /**
+   * Destroys the ballot-pool key version of every certified or cancelled election (design §7.3), so no copy of its
+   * pool, backups included, can be decrypted again. A certified election's ballots are all sealed by then; a cancelled
+   * one's are never counted.
+   */
+  async destroyPoolKeys(): Promise<number> {
+    const snap = await this.firebase.db.collection(Collections.elections).where('state', 'in', ['certified', 'cancelled']).get();
+    let destroyed = 0;
+    for (const doc of snap.docs) {
+      const election = doc.data() as ElectionRecord;
+      if (!election.poolKeyVersion || election.poolKeyDestroyedAt) continue;
+      await this.keys.destroy(election.poolKeyVersion);
+      const recorded = await this.firebase.db.runTransaction(async (tx) => {
+        const current = (await tx.get(doc.ref)).data() as ElectionRecord;
+        if (current.poolKeyDestroyedAt) return false; // another tick recorded it
+        await this.ledger.record(tx, [
+          {
+            type: 'election.pool_key_destroyed',
+            actor: 'system',
+            subject: election.electionId,
+            payload: { electionId: election.electionId, poolKeyVersion: election.poolKeyVersion, state: current.state },
+          },
+        ]);
+        const now = new Date().toISOString();
+        tx.update(doc.ref, { poolKeyDestroyedAt: now, updatedAt: now });
+        return true;
+      });
+      if (recorded) destroyed++;
+    }
+    return destroyed;
+  }
+
   private async transition(
     ref: DocumentReference,
     from: 'scheduled' | 'open',

@@ -15,6 +15,7 @@ const keys: BallotPoolKeys = {
   publicKey: async () => publicKey,
   unwrap: async (_version, wrapped) =>
     privateDecrypt({ key: privateKey, padding: constants.RSA_PKCS1_OAEP_PADDING, oaepHash: 'sha256' }, wrapped),
+  destroy: async () => {},
 };
 
 const ballot = Buffer.from('[{"contestId":"chair","electionId":"e1","salt":"00","selection":["x"],"v":1}]');

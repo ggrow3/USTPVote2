@@ -26,6 +26,14 @@ export function describeRequest(r: ApprovalRequestRecord): string {
       return `schedule the election (definition ${String(p.definitionHash).slice(0, 12)}…)`;
     case 'election.cancel':
       return `cancel the election (currently ${p.fromState})`;
+    case 'election.certify':
+      return `certify the results (${String(p.resultsHash).slice(0, 12)}…)`;
+    case 'position.modify': {
+      const position = p.position as { title?: string; seats?: number; termMonths?: number } | undefined;
+      return p.change === 'define'
+        ? `define the office ${position?.title} (${position?.seats} ${position?.seats === 1 ? 'seat' : 'seats'}, ${position?.termMonths}-month term)`
+        : `end a term in the office ${String(p.positionId)}`;
+    }
     default:
       return r.action;
   }
@@ -34,5 +42,6 @@ export function describeRequest(r: ApprovalRequestRecord): string {
 /** Where an approver can review what a request is about, if it has a page. */
 export function reviewLink(r: ApprovalRequestRecord): string | null {
   const electionId = (r.payload as { electionId?: unknown }).electionId;
-  return typeof electionId === 'string' ? `/admin/elections/${electionId}` : null;
+  if (typeof electionId === 'string') return `/admin/elections/${electionId}`;
+  return r.action === 'position.modify' ? '/admin?tab=offices' : null;
 }
