@@ -35,7 +35,8 @@ function status(e: VoterElection): { label: string; color: string } {
       up.
     </q-banner>
     <q-list v-else-if="elections" bordered separator style="max-width: 720px">
-      <q-item v-for="e in elections" :key="e.electionId" clickable :to="`/ballot/${e.electionId}`">
+      <template v-for="e in elections" :key="e.electionId">
+      <q-item clickable :to="`/ballot/${e.electionId}`">
         <q-item-section>
           <q-item-label>{{ e.title }}</q-item-label>
           <q-item-label caption>
@@ -47,6 +48,11 @@ function status(e: VoterElection): { label: string; color: string } {
           <q-badge :color="status(e).color" :label="status(e).label" />
         </q-item-section>
       </q-item>
+      <q-item v-if="e.state === 'closed' || e.state === 'certified'" clickable dense :inset-level="0.25" :to="`/results/${e.electionId}`">
+        <q-item-section avatar><q-icon name="leaderboard" /></q-item-section>
+        <q-item-section>Results of {{ e.title }}</q-item-section>
+      </q-item>
+      </template>
     </q-list>
   </q-page>
 </template>

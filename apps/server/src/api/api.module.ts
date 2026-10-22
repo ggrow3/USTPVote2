@@ -23,8 +23,7 @@ import { PublicElectionsService } from '../elections/public-elections.service.js
 import { VotingController } from '../elections/voting.controller.js';
 import { VotingService } from '../elections/voting.service.js';
 import { ballotPoolKeysProvider } from '../infra/ballot-pool.js';
-import { Firebase } from '../infra/firebase.js';
-import { EmulatorSecretStore, SECRET_STORE, SecretManagerStore } from '../infra/secret-store.js';
+import { secretStoreProvider } from '../infra/secret-store.js';
 import { PublicLedgerController } from '../ledger/ledger.controller.js';
 import { MembershipAdminController, RegistrationController } from '../membership/membership.controller.js';
 import { MembershipService } from '../membership/membership.service.js';
@@ -36,7 +35,7 @@ import { PhotosService } from '../photos/photos.service.js';
  * Client-facing API (design §12). Every route requires a verified sign-in unless marked @Public().
  * M1: accounts, registration, membership administration, profile photos, roles and approvals, auth switches, ledger.
  * M2: election setup, rolls, scheduling and cancellation; the published ledger (blocks, keys, proofs, anchors).
- * M3: voting.
+ * M3: voting. M4: results.
  */
 @Module({
   imports: [CoreModule],
@@ -69,12 +68,7 @@ import { PhotosService } from '../photos/photos.service.js';
     ballotPoolKeysProvider,
     RoleApprovals,
     ApprovalsService,
-    {
-      provide: SECRET_STORE,
-      inject: [CONFIG, Firebase],
-      useFactory: (config: ServerConfig, firebase: Firebase) =>
-        config.secretStore === 'emulator' ? new EmulatorSecretStore(firebase.db) : new SecretManagerStore(config.projectId),
-    },
+    secretStoreProvider,
     {
       provide: PHOTO_CHECKER,
       inject: [CONFIG],

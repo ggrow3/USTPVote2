@@ -150,8 +150,11 @@ export class LedgerSealer {
     return (await createOnce(db.collection(Collections.blocks).doc(sequenceId(block.index)), record)) ? record : null;
   }
 
-  /** Publishes the signing key's public half (Firestore for the api, the anchors bucket for everyone) on first use. */
-  private async recordKey(): Promise<void> {
+  /**
+   * Publishes the signing key's public half (Firestore for the api, the anchors bucket for everyone) on first use. Call
+   * it after anything the key signs (blocks, rolls, results), so every signature can be checked.
+   */
+  async recordKey(): Promise<void> {
     const { keyVersion, publicKeyPem } = await this.signer.currentKey();
     const keyId = signingKeyId(keyVersion);
     const ref = this.firebase.db.collection(Collections.signingKeys).doc(keyId);

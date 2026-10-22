@@ -73,6 +73,10 @@ export {
 } from './sealing.js';
 export type { SealedPart, SealedBlock, SealedBlockRecord, SealableBallot, SealedBlockSummary, PublicElection } from './sealing.js';
 export { checkReceiptPart } from './receipt-check.js';
+export { buildResultsBundle, resultsHash, resultsSigningInput, tieBreakOrders, matchesCommitment } from './results.js';
+export type { ResultsBundle, ResultsRecord, ResultsSummary, ContestOutcome } from './results.js';
+export { checkResults } from './results-check.js';
+export type { ResultsEvidence, ResultsCheck } from './results-check.js';
 export type { BallotProof, PartEvidence, CheckStep, PartCheck } from './receipt-check.js';
 export type {
   CastBallotInput,

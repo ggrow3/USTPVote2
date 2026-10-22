@@ -2,7 +2,7 @@ import { newSalt, type BallotPart } from 'ustp-audit';
 import { commitmentsOf, type ElectionRecord, type PoolEntryRecord, type Secrecy } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { BALLOT_POOL_KEYS, decryptBallot, type BallotPoolKeys } from './infra/ballot-pool.js';
-import { ledgerTypes as typesOf, minutes, seedElection as seedFixture, seededBallot } from './testing/elections.js';
+import { closeNow, ledgerTypes as typesOf, minutes, seedElection as seedFixture, seededBallot } from './testing/elections.js';
 import { resetEmulators, TestApi, TestWorker, type User } from './testing/emulator.js';
 
 let api: TestApi;
@@ -51,11 +51,11 @@ describe('election clock', () => {
     expect((await later.ref.get()).data()).toMatchObject({ state: 'scheduled', poolKeyVersion: expect.any(String) });
     expect(await ledgerTypes(due.electionId)).toEqual(['election.opened']);
 
-    await due.ref.update({ closesAt: minutes(-1) });
+    await closeNow(api, due);
     expect((await worker.tick()).body).toMatchObject({ poolKeysCreated: 0, electionsOpened: 0, electionsClosed: 1 });
     expect((await due.ref.get()).data()).toMatchObject({ state: 'closed', closedAt: expect.any(String) });
-    // Nobody voted, so the same tick finds nothing to seal and records the election as sealed.
-    expect(await ledgerTypes(due.electionId)).toEqual(['election.opened', 'election.closed', 'election.sealed']);
+    // Nobody voted, so the same tick finds nothing to seal, records the election as sealed and tallies it.
+    expect(await ledgerTypes(due.electionId)).toEqual(['election.opened', 'election.closed', 'election.sealed', 'results.computed']);
   });
 
   it('opens roll-call elections without a pool key', async () => {

@@ -1,4 +1,5 @@
-import { newSalt, type BallotPart } from 'ustp-audit';
+import { randomBytes } from 'node:crypto';
+import { newSalt, seedCommitment, type BallotPart } from 'ustp-audit';
 import {
   buildDefinition,
   definitionHash,
@@ -15,6 +16,8 @@ import {
   type Secrecy,
 } from 'ustp-domain';
 import type { DocumentReference } from 'firebase-admin/firestore';
+import { ElectionReader } from '../elections/election-reader.js';
+import { EmulatorSecretStore } from '../infra/secret-store.js';
 import type { TestApi } from './emulator.js';
 
 /** Election fixtures for integration tests that vote and seal. */
@@ -27,6 +30,8 @@ export interface SeededElection {
   /** `/v1/elections/{id}` */
   readonly url: string;
   readonly ref: DocumentReference;
+  /** Kept in the emulator secret store, as scheduling keeps it; the worker reveals it at tally. */
+  readonly tieBreakSeed: string;
 }
 
 /**
@@ -43,11 +48,15 @@ export async function seedElection(
     readonly opensAt?: string;
     readonly closesAt?: string;
     readonly kAnonymity?: number;
+    /** Defaults to the stored seed's; set it to publish a commitment the seed does not match. */
+    readonly tieBreakSeedCommitment?: string;
   },
 ): Promise<SeededElection> {
   const db = api.firebase.db;
   const electionId = uuidv7();
   const now = new Date().toISOString();
+  const tieBreakSeed = randomBytes(32).toString('hex');
+  const tieBreakSeedRef = await new EmulatorSecretStore(db).create(`tiebreak-seed-${electionId}`, tieBreakSeed);
   const body = 'The party supports the right to repair.';
   const proposal: ProposalSnapshotRecord = {
     snapshotId: `p-${electionId}`,
@@ -111,8 +120,8 @@ export async function seedElection(
     updatedAt: now,
     definitionHash: null,
     rollSnapshotId: roll.snapshotId,
-    tieBreakSeedCommitment: '0'.repeat(64),
-    tieBreakSeedRef: null,
+    tieBreakSeedCommitment: opts.tieBreakSeedCommitment ?? seedCommitment(tieBreakSeed),
+    tieBreakSeedRef,
     scheduledAt: now,
     cancelledAt: null,
     poolKeyVersion: null,
@@ -129,14 +138,29 @@ export async function seedElection(
     ...contests.map((c) => ref.collection('contests').doc(c.contestId).set(c)),
     ...candidates.map((k) => ref.collection('candidates').doc(k.candidateId).set(k)),
   ]);
-  return { electionId, url: `/v1/elections/${electionId}`, ref };
+  return { electionId, url: `/v1/elections/${electionId}`, ref, tieBreakSeed };
 }
 
-/** A complete ballot for a seeded election: yes on the plank, Blair then Alex for chair. */
-export function seededBallot(electionId: string, plank: 'yes' | 'no' | 'abstain' = 'yes'): BallotPart[] {
+/**
+ * Ends voting now, for tests that do not wait for `closesAt`. The window is part of the frozen definition, so the hash
+ * is re-frozen over the new one, as if the election had been scheduled to close now; the tally refuses a definition
+ * that no longer hashes to `definitionHash`.
+ */
+export async function closeNow(api: TestApi, election: SeededElection): Promise<void> {
+  await election.ref.update({ closesAt: minutes(-1) });
+  const { definition } = await new ElectionReader(api.firebase).load(election.electionId);
+  await election.ref.update({ definitionHash: definitionHash(definition) });
+}
+
+/** A complete ballot for a seeded election: yes on the plank, Blair then Alex for chair (unless `chair` says otherwise). */
+export function seededBallot(
+  electionId: string,
+  plank: 'yes' | 'no' | 'abstain' = 'yes',
+  chair: readonly string[] = ['blair', 'alex'],
+): BallotPart[] {
   return [
     { v: 1, electionId, contestId: 'plank', selection: plank, salt: newSalt() },
-    { v: 1, electionId, contestId: 'chair', selection: ['blair', 'alex'], salt: newSalt() },
+    { v: 1, electionId, contestId: 'chair', selection: chair, salt: newSalt() },
   ];
 }
 
