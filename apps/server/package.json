@@ -21,7 +21,7 @@
     "seed:emulators": "node scripts/seed-emulators.mjs"
   },
   "dependencies": {
-    "@google-cloud/kms": "^6.2.1",
+    "@google-cloud/kms": "^6.3.0",
     "@google-cloud/secret-manager": "^7.2.0",
     "@google-cloud/vision": "^6.2.0",
     "@nestjs/common": "^12.2.0",
