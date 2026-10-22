@@ -1,4 +1,4 @@
-# Development: ustp-voting-dev. Unlocked anchors retention, Binary Authorization in dry run, developers may be given
+# Development: ustpvote2-dev. Unlocked anchors retention, Binary Authorization in dry run, developers may be given
 # Firestore data access.
 
 module "ustpvote" {
@@ -11,6 +11,7 @@ module "ustpvote" {
   server_image                  = var.server_image
   bootstrap_system_admin_emails = var.bootstrap_system_admin_emails
   image_publishers              = var.image_publishers
+  firebase_web_app_id           = var.firebase_web_app_id
 
   anchors_retention_days   = var.anchors_retention_days
   anchors_retention_locked = false

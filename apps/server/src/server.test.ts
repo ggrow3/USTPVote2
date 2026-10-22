@@ -20,9 +20,11 @@ describe('api', () => {
   afterAll(() => app.close());
 
   it('answers health checks with the tally library version', async () => {
-    const res = await app.inject({ method: 'GET', url: '/healthz' });
-    expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ status: 'ok', tally: '0.1.0' });
+    for (const url of ['/healthz', '/v1/health']) {
+      const res = await app.inject({ method: 'GET', url });
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toEqual({ status: 'ok', tally: '0.1.0' });
+    }
   });
 
   it('does not expose worker tasks', async () => {

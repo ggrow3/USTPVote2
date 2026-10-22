@@ -78,6 +78,7 @@ resource "google_project_iam_custom_role" "ballot_pool_worker" {
     "cloudkms.cryptoKeyVersions.get",
     "cloudkms.cryptoKeyVersions.useToDecrypt",
   ]
+  depends_on = [google_project_service.this]
 }
 
 resource "google_kms_crypto_key_iam_member" "worker_ballot_pool" {

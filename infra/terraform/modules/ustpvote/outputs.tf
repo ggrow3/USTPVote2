@@ -78,6 +78,11 @@ output "tasks_queue" {
   value       = google_cloud_tasks_queue.worker.id
 }
 
+output "recaptcha_site_key" {
+  description = "VITE_RECAPTCHA_ENTERPRISE_SITE_KEY for the web build (App Check)."
+  value       = google_recaptcha_enterprise_key.web.name
+}
+
 # --- Public record (design §8.4) -------------------------------------------------------------------------------------
 
 output "anchors_public_url" {

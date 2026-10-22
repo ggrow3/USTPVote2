@@ -164,9 +164,10 @@ Builds use the committed lockfile with `npm ci --ignore-scripts` (spec §7).
   - The second factor offered is an **authenticator app (TOTP)**: set up on the Account page from a QR code (or typed
     key), then a 6-digit code after the first step of every sign-in and re-authentication. **SMS is not offered**:
     NIST SP 800-63B-4 treats it as a restricted authenticator, and Identity Platform bills per message.
-  - **Deployment prerequisite:** TOTP must be enabled in each Identity Platform project, e.g. with the Admin SDK
-    `projectConfigManager().updateProjectConfig({ multiFactorConfig: { providerConfigs: [{ state: 'ENABLED',
-    totpProviderConfig: { adjacentIntervals: 5 } }] } })` (to be captured in Terraform, M5).
+  - **Deployment prerequisite:** TOTP must be enabled in each Identity Platform project with
+    `adjacentIntervals: 5`. Terraform does this (`infra/terraform/modules/ustpvote/identity.tf`), together with the
+    sign-in methods and authorized domains; the password policy and the Google, Microsoft and Apple providers stay
+    manual (infra README "Identity Platform").
   - The Auth emulator does not support TOTP, so integration tests use SMS factors enrolled directly in the emulator to
     obtain real second-factor tokens; the server only checks that a second factor was used. The TOTP-specific browser
     steps can only be exercised against a real project.
@@ -781,7 +782,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 
 | Method & path | Auth | Purpose |
 |---|---|---|
-| `GET /healthz` | P | liveness |
+| `GET /healthz` · `GET /v1/health` | P | liveness: `/healthz` for startup probes; `/v1/health` from outside, since Cloud Run's front end reserves some paths ending in "z" |
 | `GET /me` · `POST /accounts` | M | current account; first-sign-in account creation |
 | `POST /me/identities` · `DELETE /me/identities/{uid}` | M | link / unlink a login method |
 | `GET /bylaws/current` | P | current bylaws version and hash |
@@ -876,9 +877,10 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
 
 ## 15. Environments, deployment, cost
 
-- Projects `ustp-voting-dev`, `ustp-voting-staging`, `ustp-voting-prod` (spec §2.1). Infrastructure as code with
+- Projects `ustpvote2-dev`, `ustpvote2-staging`, `ustpvote2-prod` (spec §2.1 names `ustp-voting-*`; see §17).
+  Infrastructure as code with
   Terraform in [`infra/terraform`](../infra/terraform) (Q13, adopted pending USTP's confirmation): one module, one
-  root per environment, state in a `ustp-voting-<env>-tfstate` bucket, provider versions locked. CI runs
+  root per environment, state in a `ustpvote2-<env>-tfstate` bucket, provider versions locked. CI runs
   `terraform fmt` and `validate` on every pull request; nothing has been planned or applied against a real project.
 - **Server image:** [`apps/server/Dockerfile`](../apps/server/Dockerfile), built from the repository root. A build
   stage installs the server's workspaces from the lockfile with `--ignore-scripts` and compiles them; the runtime
@@ -940,6 +942,7 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
 | (design) §13 tally as a Cloud Task after close | A step of the minute tick, right after the sealer | No queue to run or secure, results within a tick of close, and the next tick retries a failed tally |
 | (added) §13 `destroy-pool-key` Cloud Task after certification | A tick step for certified and cancelled elections | Same idempotent pattern as sealing and tallying; no Cloud Tasks queue or enqueue permission needed |
 | §6 position terms | Terms start at certification and last the office's `termMonths` | The bylaws' term dates are Q1; a later start date can be added to the office if USTP needs one |
+| §2.1 projects `ustp-voting-dev`, `-staging`, `-prod` | `ustpvote2-dev`, `-staging`, `-prod` | Project IDs are global, and the `ustp-voting-*` IDs already belong to the separate USTP Hub system in the vernalfuture.com organization (its own voting app); USTPVote2 stays out of those projects |
 | (design) §14 "Cloud Build provenance" | The image is built by a GitHub Actions workflow and attested there; no provenance yet | One workflow builds, attests and deploys with a keyless identity; Cloud Build would add a build service account, a source bucket and its IAM. Provenance can come from Cloud Build or GitHub's artifact attestations later |
 | (design) §15 deploys through `terraform apply -var=server_image=…` | Terraform creates the services with a first image; the release workflow rolls them onto later images and Terraform ignores the image | Deploying through Terraform would need an identity able to refresh everything, including IAM and Firestore metadata; the release identity needs only the two services |
 | (added) §7.3 pool encryption with a symmetric key the api may only encrypt with | Asymmetric key, one version per election; the api encrypts locally to its public key (RSA-OAEP wrapping an AES-GCM data key) | Symmetric KMS encryption always uses the primary version, so concurrent elections could not each have their own; the api then holds no decrypt permission at all and makes no KMS call per ballot |

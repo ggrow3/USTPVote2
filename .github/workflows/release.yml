@@ -93,7 +93,8 @@ jobs:
         if: inputs.roll_out
         run: |
           url=$(gcloud run services describe api --project="$PROJECT" --region="$REGION" --format='value(status.url)')
-          curl -fsS --retry 5 --retry-all-errors "$url/healthz"
+          # Not /healthz: Cloud Run's front end reserves some paths ending in "z".
+          curl -fsS --retry 5 --retry-all-errors "$url/v1/health"
 
       - name: Summary
         env:

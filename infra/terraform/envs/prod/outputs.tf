@@ -49,6 +49,10 @@ output "tasks_queue" {
   value = module.ustpvote.tasks_queue
 }
 
+output "recaptcha_site_key" {
+  value = module.ustpvote.recaptcha_site_key
+}
+
 output "anchors_public_url" {
   value = module.ustpvote.anchors_public_url
 }

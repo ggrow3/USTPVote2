@@ -5,11 +5,9 @@
 # infrastructure changes stay with whoever runs Terraform.
 
 locals {
-  # Built from strings rather than from the resource, so that for_each keys are known on the first plan.
-  release_member = "serviceAccount:ustp-release@${var.project_id}.iam.gserviceaccount.com"
-
-  image_publishers    = merge({ for m in var.image_publishers : m => m }, { release = local.release_member })
-  attestation_signers = merge({ for m in var.attestation_signers : m => m }, { release = local.release_member })
+  # Static keys, so for_each is known on the first plan; the value refers to the account, so its grants wait for it.
+  image_publishers    = merge({ for m in var.image_publishers : m => m }, { release = google_service_account.release.member })
+  attestation_signers = merge({ for m in var.attestation_signers : m => m }, { release = google_service_account.release.member })
 }
 
 resource "google_service_account" "release" {
