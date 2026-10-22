@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars (ignored by git: it holds people's addresses). The release pipeline passes server_image
+# with -var on each deploy.
+
+# server_image = "us-central1-docker.pkg.dev/ustp-voting-staging/ustpvote/server@sha256:<64 hex digits>"
+
+bootstrap_system_admin_emails = ["first.admin@example.org", "second.admin@example.org"]
+
+image_publishers    = ["serviceAccount:release@ustp-voting-staging.iam.gserviceaccount.com"]
+attestation_signers = ["serviceAccount:release@ustp-voting-staging.iam.gserviceaccount.com"]
+
+operator_members       = ["group:ustp-voting-operators@example.org"]
+developer_data_members = []
+alert_emails           = ["ustp-voting-alerts@example.org"]

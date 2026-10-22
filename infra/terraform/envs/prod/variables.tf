@@ -1,0 +1,71 @@
+variable "project_id" {
+  description = "The production project."
+  type        = string
+  default     = "ustp-voting-prod"
+}
+
+variable "region" {
+  description = "Design Q16. Must match infra/firebase/firebase.json."
+  type        = string
+  default     = "us-central1"
+}
+
+variable "server_image" {
+  description = "Server image by digest, attested by ustpvote-reviewed; null on the first apply (no Cloud Run services yet)."
+  type        = string
+  default     = null
+}
+
+variable "bootstrap_system_admin_emails" {
+  description = "At least two verified emails that become System Admins; [] once real admins exist."
+  type        = list(string)
+  default     = []
+}
+
+variable "image_publishers" {
+  description = "IAM members that push images (the build pipeline)."
+  type        = list(string)
+  default     = []
+}
+
+variable "anchors_retention_days" {
+  description = "Anchor retention in days (design Q11). Once locked it can only be increased."
+  type        = number
+  default     = 3653
+}
+
+# No default: production has to state the decision. true locks the policy IRREVERSIBLY on the next apply.
+variable "anchors_retention_locked" {
+  description = "Lock the anchors retention policy (Bucket Lock, design §8.4). Irreversible; see README \"Bucket Lock\"."
+  type        = bool
+}
+
+variable "anchors_public_read" {
+  description = "Publicly readable anchor objects (design §8.4 recommendation)."
+  type        = bool
+  default     = true
+}
+
+variable "attestation_signers" {
+  description = "IAM members that sign Binary Authorization attestations."
+  type        = list(string)
+  default     = []
+}
+
+variable "task_enqueuers" {
+  description = "Services that enqueue worker tasks: \"api\", \"worker\"."
+  type        = set(string)
+  default     = []
+}
+
+variable "operator_members" {
+  description = "People with read-only operations roles (no Firestore data, no key use)."
+  type        = list(string)
+  default     = []
+}
+
+variable "alert_emails" {
+  description = "Addresses for the KMS break-glass alert."
+  type        = list(string)
+  default     = []
+}
