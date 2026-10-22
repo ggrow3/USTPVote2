@@ -85,19 +85,22 @@ onMounted(() => load());
         <tr v-for="m in rows" :key="m.accountId">
           <td>
             {{ m.legalName }}
-            <q-btn flat dense round size="xs" icon="content_copy" aria-label="Copy account ID" @click="copy(m.accountId)" />
+            <q-btn flat dense round size="sm" icon="content_copy" :aria-label="`Copy account ID of ${m.legalName}`" @click="copy(m.accountId)" />
           </td>
           <td>{{ m.state }}</td>
           <td><q-badge :label="m.status" /></td>
           <td>{{ m.memberSince ? new Date(m.memberSince).toLocaleDateString() : '—' }}</td>
           <td class="text-right">
-            <q-btn flat dense no-caps label="History" @click="showHistory(m)" />
+            <q-btn flat dense no-caps label="History" @click="showHistory(m)">
+              <span class="sr-only"> of {{ m.legalName }}</span>
+            </q-btn>
             <q-btn-dropdown
               v-if="NEXT[m.status] && m.accountId !== session.me?.account?.accountId"
               flat
               dense
               no-caps
               label="Change"
+              :aria-label="`Change status of ${m.legalName}`"
             >
               <q-list dense>
                 <q-item v-for="to in NEXT[m.status]" :key="to" v-close-popup clickable @click="change(m, to)">
@@ -117,9 +120,11 @@ onMounted(() => load());
     </q-markup-table>
     <q-btn v-if="more" flat no-caps class="q-mt-sm" label="Load more" @click="load(false)" />
 
-    <q-dialog :model-value="!!history" @update:model-value="history = null">
+    <q-dialog :model-value="!!history" aria-labelledby="history-title" @update:model-value="history = null">
       <q-card v-if="history" style="min-width: 420px">
-        <q-card-section class="text-h6">{{ history.member.legalName }} — status history</q-card-section>
+        <q-card-section>
+          <h2 id="history-title" class="text-h6">{{ history.member.legalName }} — status history</h2>
+        </q-card-section>
         <q-list separator>
           <q-item v-for="h in history.entries" :key="h.ledgerSeq">
             <q-item-section>

@@ -3,16 +3,18 @@ import type { Auth, MultiFactorInfo, UserCredential } from 'firebase/auth';
 import { useQuasar } from 'quasar';
 import { computed, onMounted, ref, shallowRef } from 'vue';
 import type { IdentityRecord, SignInProvider } from 'ustp-domain';
+import { usePageTitle } from '../a11y.js';
 import { api, errorMessage } from '../api.js';
 import AuthenticatorSetupDialog from '../components/AuthenticatorSetupDialog.vue';
 import ProfilePhotoCard from '../components/ProfilePhotoCard.vue';
-import { confirmIdentity } from '../dialogs.js';
+import { confirmIdentity, dialog } from '../dialogs.js';
 import { auth, secondaryAuth } from '../firebase.js';
 import { enrolledFactors, removeFactor } from '../mfa.js';
 import { refreshMe, session } from '../session.js';
 import { PROVIDER_LABELS, signInWithPassword, signInWithProvider, type FederatedProvider } from '../sign-in.js';
 
 const $q = useQuasar();
+usePageTitle('Your account');
 const enabled = ref<Record<SignInProvider, boolean> | null>(null);
 const busy = ref(false);
 const factors = shallowRef<MultiFactorInfo[]>(enrolledFactors(auth.currentUser));
@@ -61,32 +63,33 @@ function linkProvider(p: FederatedProvider) {
 }
 
 function linkPassword() {
-  $q.dialog({
+  dialog({
     title: 'Link an email & password login',
     message: 'Sign in with the existing email & password login you want to add to this account.',
     html: false,
     prompt: { model: '', type: 'email', label: 'Email' },
     cancel: true,
   }).onOk((email: string) => {
-    $q.dialog({ title: 'Password', prompt: { model: '', type: 'password', label: 'Password' }, cancel: true }).onOk(
+    dialog({ title: 'Password', prompt: { model: '', type: 'password', label: 'Password' }, cancel: true }).onOk(
       (password: string) => act(() => link((a) => signInWithPassword(a, email, password)), 'Email login linked'),
     );
   });
 }
 
 function unlink(identity: IdentityRecord) {
-  $q.dialog({
+  dialog({
     title: 'Remove login method',
     message: `Remove ${PROVIDER_LABELS[identity.provider]} (${identity.email ?? identity.uid}) from your account?`,
     cancel: true,
+    focus: 'cancel',
   }).onOk(() => act(() => api('DELETE', `/v1/me/identities/${encodeURIComponent(identity.uid)}`), 'Login removed'));
 }
 
 function resign() {
-  $q.dialog({
+  dialog({
     title: 'Resign membership',
     message: 'You can re-apply later. Optionally tell us why:',
-    prompt: { model: '', type: 'textarea' },
+    prompt: { model: '', type: 'textarea', label: 'Reason (optional)' },
     cancel: true,
   }).onOk((reason: string) => act(() => api('POST', '/v1/me/resign', reason.trim() ? { reason } : {}), 'You have resigned'));
 }
@@ -99,10 +102,11 @@ async function onEnrolled() {
 
 function removeDevice(factor: MultiFactorInfo) {
   const losesAdmin = mfa.value?.required && factors.value.length === 1;
-  $q.dialog({
+  dialog({
     title: 'Remove two-step device',
     message: `Remove "${factor.displayName ?? 'authenticator app'}"?${losesAdmin ? ' Your admin role requires two-step verification, so you will lose access to the admin tools.' : ''}`,
     cancel: true,
+    focus: 'cancel',
   }).onOk(() =>
     act(async () => {
       const user = auth.currentUser;
@@ -126,12 +130,12 @@ function copyId() {
 
 <template>
   <q-page padding>
-    <div class="text-h5 q-mb-md">Your account</div>
+    <h1 class="text-h5 q-mb-md">Your account</h1>
     <div v-if="!me?.account" class="text-grey-7">Loading…</div>
     <div v-else class="column q-gutter-md" style="max-width: 720px">
       <q-card flat bordered>
         <q-card-section>
-          <div class="text-subtitle1">{{ me.account.displayName || me.account.primaryEmail }}</div>
+          <h2 class="text-subtitle1">{{ me.account.displayName || me.account.primaryEmail }}</h2>
           <div class="text-caption text-grey-7">
             Account ID <code>{{ me.account.accountId }}</code>
             <q-btn flat dense round size="sm" icon="content_copy" aria-label="Copy account ID" @click="copyId" />
@@ -144,7 +148,7 @@ function copyId() {
 
       <q-card flat bordered>
         <q-card-section>
-          <div class="text-subtitle1 q-mb-sm">Membership</div>
+          <h2 class="text-subtitle1 q-mb-sm">Membership</h2>
           <template v-if="me.member">
             <q-badge :label="me.member.status" color="primary" />
             <span v-if="me.member.memberSince" class="q-ml-sm text-grey-7">
@@ -162,7 +166,7 @@ function copyId() {
 
       <q-card flat bordered>
         <q-card-section>
-          <div class="text-subtitle1">Two-step verification</div>
+          <h2 class="text-subtitle1">Two-step verification</h2>
           <div class="text-caption text-grey-7">
             A code from an authenticator app, asked for each time you sign in. Required for admin roles.
           </div>
@@ -180,7 +184,9 @@ function copyId() {
               <q-item-label caption>added {{ new Date(f.enrollmentTime).toLocaleDateString() }}</q-item-label>
             </q-item-section>
             <q-item-section side>
-              <q-btn flat dense color="negative" label="Remove" :disable="busy" @click="removeDevice(f)" />
+              <q-btn flat dense color="negative" label="Remove" :disable="busy" @click="removeDevice(f)">
+                <span class="sr-only"> {{ f.displayName ?? 'authenticator app' }}</span>
+              </q-btn>
             </q-item-section>
           </q-item>
         </q-list>
@@ -192,7 +198,7 @@ function copyId() {
 
       <q-card flat bordered>
         <q-card-section>
-          <div class="text-subtitle1">Login methods</div>
+          <h2 class="text-subtitle1">Login methods</h2>
           <div class="text-caption text-grey-7">
             Your account and voting record stay the same whichever of these you sign in with.
           </div>
@@ -204,7 +210,9 @@ function copyId() {
               <q-item-label caption>{{ i.email ?? i.uid }} · linked {{ new Date(i.linkedAt).toLocaleDateString() }}</q-item-label>
             </q-item-section>
             <q-item-section side>
-              <q-btn flat dense color="negative" label="Remove" :disable="busy || identities.length <= 1" @click="unlink(i)" />
+              <q-btn flat dense color="negative" label="Remove" :disable="busy || identities.length <= 1" @click="unlink(i)">
+                <span class="sr-only"> {{ PROVIDER_LABELS[i.provider] }} login {{ i.email ?? '' }}</span>
+              </q-btn>
             </q-item-section>
           </q-item>
         </q-list>

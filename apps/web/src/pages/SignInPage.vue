@@ -3,6 +3,7 @@ import type { MultiFactorError, UserCredential } from 'firebase/auth';
 import { computed, onMounted, ref, shallowRef } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { SignInProvider } from 'ustp-domain';
+import { usePageTitle } from '../a11y.js';
 import { api, errorMessage } from '../api.js';
 import { auth } from '../firebase.js';
 import { CODE_PATTERN, hasAuthenticatorHint, isSecondFactorChallenge, resolveWithAuthenticator } from '../mfa.js';
@@ -22,6 +23,7 @@ import {
 
 const route = useRoute();
 const router = useRouter();
+usePageTitle('Sign in');
 
 const enabled = ref<Record<SignInProvider, boolean> | null>(null);
 const federated = computed(() =>
@@ -102,13 +104,13 @@ function submitEmail() {
 <template>
   <q-page padding class="row justify-center">
     <div style="width: 100%; max-width: 440px">
-      <div class="text-h5 q-mb-md">Sign in</div>
+      <h1 class="text-h5 q-mb-md">Sign in</h1>
       <q-banner v-if="error" class="bg-negative text-white q-mb-md" rounded>{{ error }}</q-banner>
-      <q-banner v-if="notice" class="bg-positive text-white q-mb-md" rounded>{{ notice }}</q-banner>
+      <q-banner v-if="notice" class="bg-positive text-white q-mb-md" rounded role="status">{{ notice }}</q-banner>
 
       <q-card v-if="challenge" flat bordered>
         <q-form class="q-pa-md q-gutter-md" @submit.prevent="submitCode">
-          <div class="text-subtitle1">Two-step verification</div>
+          <h2 class="text-subtitle1">Two-step verification</h2>
           <div class="text-grey-7">Enter the 6-digit code from your authenticator app.</div>
           <q-input
             v-model="code"
@@ -130,7 +132,7 @@ function submitEmail() {
       <template v-else>
         <q-card v-if="emailLink.isLink && !emailLink.email" flat bordered class="q-mb-md">
           <q-card-section>
-            <div class="text-subtitle1 q-mb-sm">Finish signing in with your email link</div>
+            <h2 class="text-subtitle1 q-mb-sm">Finish signing in with your email link</h2>
             <q-input v-model="email" type="email" label="The email address the link was sent to" outlined dense />
           </q-card-section>
           <q-card-actions align="right">
@@ -152,13 +154,19 @@ function submitEmail() {
         </div>
 
         <q-card v-if="enabled?.password" flat bordered>
-          <q-tabs v-model="mode" dense align="justify" class="text-primary">
-            <q-tab name="signin" label="Email & password" no-caps />
-            <q-tab name="signup" label="Create account" no-caps />
-            <q-tab name="link" label="Email me a link" no-caps />
+          <q-tabs v-model="mode" dense align="justify" mobile-arrows class="text-primary">
+            <q-tab id="signin-tab-signin" name="signin" label="Email & password" no-caps aria-controls="signin-panel" />
+            <q-tab id="signin-tab-signup" name="signup" label="Create account" no-caps aria-controls="signin-panel" />
+            <q-tab id="signin-tab-link" name="link" label="Email me a link" no-caps aria-controls="signin-panel" />
           </q-tabs>
           <q-separator />
-          <q-form class="q-pa-md q-gutter-md" @submit.prevent="submitEmail">
+          <q-form
+            id="signin-panel"
+            role="tabpanel"
+            :aria-labelledby="`signin-tab-${mode}`"
+            class="q-pa-md q-gutter-md"
+            @submit.prevent="submitEmail"
+          >
             <q-input v-model="email" type="email" label="Email" outlined dense autocomplete="email" />
             <q-input
               v-if="mode !== 'link'"

@@ -3,6 +3,7 @@ import { useQuasar } from 'quasar';
 import { onMounted, ref } from 'vue';
 import type { ProfilePhotoRecord } from 'ustp-domain';
 import { api, ApiError, apiUpload, errorMessage } from '../api.js';
+import { dialog } from '../dialogs.js';
 import { photoFileProblem, PHOTO_TYPES, STATUS_LABELS, useAuthenticatedImages } from '../photos.js';
 
 const $q = useQuasar();
@@ -49,7 +50,7 @@ async function onFile(event: Event) {
 }
 
 function remove() {
-  $q.dialog({ title: 'Remove photo', message: 'Remove your profile photo? The image is deleted.', cancel: true }).onOk(
+  dialog({ title: 'Remove photo', message: 'Remove your profile photo? The image is deleted.', cancel: true, focus: 'cancel' }).onOk(
     async () => {
       busy.value = true;
       try {
@@ -70,7 +71,7 @@ onMounted(refresh);
 <template>
   <q-card flat bordered>
     <q-card-section>
-      <div class="text-subtitle1">Profile photo</div>
+      <h2 class="text-subtitle1">Profile photo</h2>
       <div class="text-caption text-grey-7">
         Optional; helps Membership Admins recognise members. Photos are checked automatically for quality, never with
         face recognition, and location and camera data are removed. Only a person can turn a photo down.
@@ -84,7 +85,11 @@ onMounted(refresh);
         style="width: 128px; height: 128px; object-fit: cover; border-radius: 8px"
       />
       <div v-if="photo">
-        <q-badge :label="STATUS_LABELS[photo.status] ?? photo.status" :color="photo.status === 'accepted' ? 'positive' : photo.status === 'rejected' ? 'negative' : 'warning'" />
+        <q-badge
+          :label="STATUS_LABELS[photo.status] ?? photo.status"
+          :color="photo.status === 'accepted' ? 'positive' : photo.status === 'rejected' ? 'negative' : 'warning'"
+          :text-color="photo.status === 'needs_review' ? 'black' : 'white'"
+        />
         <div v-if="photo.status === 'needs_review'" class="text-caption q-mt-xs">Flagged: {{ photo.flags.join(', ') }}</div>
         <div v-if="photo.status === 'rejected'" class="text-caption q-mt-xs">
           {{ photo.decisionReason }} — please upload a new photo.

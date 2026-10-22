@@ -39,7 +39,7 @@ onMounted(load);
 <template>
   <q-card v-if="draft" flat bordered style="max-width: 520px">
     <q-card-section>
-      <div class="text-subtitle1">Sign-in methods</div>
+      <h2 class="text-subtitle1">Sign-in methods</h2>
       <div class="text-caption text-grey-7">
         Turning a method off blocks every sign-in that uses it. "Email" covers both password and email-link sign-in.
       </div>
@@ -51,7 +51,7 @@ onMounted(load);
           <q-item-label v-if="p === myProvider" caption>You are signed in with this method.</q-item-label>
         </q-item-section>
         <q-item-section side>
-          <q-toggle v-model="draft[p]" :disable="p === myProvider && draft[p]" />
+          <q-toggle v-model="draft[p]" :aria-label="PROVIDER_LABELS[p]" :disable="p === myProvider && draft[p]" />
         </q-item-section>
       </q-item>
     </q-list>

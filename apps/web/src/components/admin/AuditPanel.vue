@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue';
 import { blockHash, blockSigningInput, GENESIS_HASH, verifyEcdsaP256 } from 'ustp-audit';
 import type { AnchorRecord, LedgerBlockRecord, LedgerEntry, LedgerVerification, SigningKeyRecord } from 'ustp-domain';
 import { api } from '../../api.js';
+import { announce } from '../../a11y.js';
 import { attempt } from '../../dialogs.js';
 
 const PAGE = 50;
@@ -80,6 +81,8 @@ async function verify() {
   await attempt(async () => {
     verification.value = await api<LedgerVerification>('GET', '/v1/admin/audit/verify');
   }).finally(() => (verifying.value = false));
+  const v = verification.value;
+  if (v) announce(v.ok ? `All ${v.entries} ledger entries verify.` : `Ledger verification failed: ${v.reason}`, v.ok ? 'polite' : 'assertive');
 }
 
 onMounted(() => Promise.all([load(), loadBlocks()]));
@@ -90,7 +93,7 @@ onMounted(() => Promise.all([load(), loadBlocks()]));
     <q-card flat bordered style="max-width: 860px">
       <q-card-section class="row items-center q-gutter-md">
         <div class="col">
-          <div class="text-subtitle1">Ledger verification</div>
+          <h2 class="text-subtitle1">Ledger verification</h2>
           <div class="text-caption text-grey-7">
             Recomputes every entry's hash and link, every block's Merkle root and signature, and every anchor on the
             server.
@@ -113,7 +116,7 @@ onMounted(() => Promise.all([load(), loadBlocks()]));
     <q-card flat bordered>
       <q-card-section class="row items-center q-gutter-md">
         <div class="col">
-          <div class="text-subtitle1">Ledger blocks</div>
+          <h2 class="text-subtitle1">Ledger blocks</h2>
           <div class="text-caption text-grey-7">
             Sealed and signed by the worker every minute when there are new entries.
             <template v-if="blocks.length">
@@ -125,9 +128,12 @@ onMounted(() => Promise.all([load(), loadBlocks()]));
             </template>
           </div>
         </div>
-        <q-btn flat no-caps icon="refresh" label="Refresh" @click="loadBlocks" />
+        <q-btn flat no-caps icon="refresh" label="Refresh" @click="loadBlocks">
+          <span class="sr-only"> ledger blocks</span>
+        </q-btn>
       </q-card-section>
       <q-markup-table v-if="blocks.length" flat dense>
+        <caption class="sr-only">Ledger blocks, newest first</caption>
         <thead>
           <tr>
             <th class="text-left">Block</th>
@@ -159,6 +165,7 @@ onMounted(() => Promise.all([load(), loadBlocks()]));
     </q-card>
 
     <q-markup-table flat bordered dense>
+      <caption class="sr-only">Ledger entries</caption>
       <thead>
         <tr>
           <th class="text-left">#</th>

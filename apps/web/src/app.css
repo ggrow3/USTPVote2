@@ -1,0 +1,110 @@
+/* Accessibility fixes on top of Quasar's styles; docs/ACCESSIBILITY.md has the contrast figures. */
+
+:root {
+  --ustp-focus: #1976d2;
+  --ustp-link: #1565c0;
+}
+.body--dark {
+  --ustp-focus: #90caf9;
+  --ustp-link: #90caf9;
+}
+.q-header,
+.q-notification,
+.ustp-skip-link,
+.bg-primary,
+.bg-positive,
+.bg-negative {
+  --ustp-focus: #fff;
+}
+
+/* Visible focus (WCAG 2.4.7): Quasar's own indicator is a faint tint, so add a ring with 3:1 on every surface. */
+:focus-visible {
+  outline: 2px solid var(--ustp-focus) !important;
+  outline-offset: 2px;
+}
+/* Fields draw their own focused border; rows, tabs and expansion headers sit edge to edge, so their ring goes inside. */
+.q-field__native:focus-visible,
+.q-field__input:focus-visible,
+.q-field__control:focus-visible {
+  outline: none !important;
+}
+.q-item:focus-visible,
+.q-tab:focus-visible {
+  outline-offset: -2px;
+}
+/* Headings and results focused by script (a11y.ts focusElement) are not controls. */
+.ustp-focus-target:focus {
+  outline: none !important;
+}
+
+/* Semantic headings keep Quasar's text-h* / text-subtitle* sizes and the spacing classes next to them. */
+h1,
+h2,
+h3 {
+  margin: 0;
+}
+
+.sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.ustp-skip-link {
+  position: fixed;
+  top: -100px;
+  left: 8px;
+  z-index: 3000;
+  padding: 8px 16px;
+  border-radius: 4px;
+  background: #fff;
+  color: #0d47a1;
+  font-weight: 500;
+}
+.ustp-skip-link:focus {
+  top: 8px;
+}
+
+/*
+ * Reflow (WCAG 1.4.10): pages stack their cards in `.column` wrappers, and Quasar's columns wrap, which sizes every
+ * card to its widest content, so a long value (a receipt title, a hash) pushed the page past a 320px screen.
+ */
+.q-page .column {
+  flex-wrap: nowrap;
+}
+
+/* Links in page content: 4.5:1 in both themes (the browser's default blue is 2:1 on the dark background). */
+.q-page a:not([class*='q-']) {
+  color: var(--ustp-link);
+}
+
+/* Contrast (WCAG 1.4.3): the palette classes used for text are too dark for the dark theme. */
+.body--dark .text-primary {
+  color: #90caf9 !important;
+}
+.body--dark .text-positive {
+  color: #81c784 !important;
+}
+.body--dark .text-negative {
+  color: #ef9a9a !important;
+}
+.body--dark .text-grey-7 {
+  color: #b0b0b0 !important;
+}
+.body--dark .text-orange-10 {
+  color: #ffb74d !important;
+}
+
+/* Non-text contrast (WCAG 1.4.11): outlined field borders and the toggle track at 3:1 or better. */
+.q-field--outlined:not(.q-field--dark) .q-field__control:before {
+  border-color: rgba(0, 0, 0, 0.54);
+}
+.q-toggle__track {
+  opacity: 0.54;
+}

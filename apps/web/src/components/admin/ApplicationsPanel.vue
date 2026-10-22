@@ -45,6 +45,8 @@ onMounted(load);
         no-caps
         dense
         toggle-color="primary"
+        role="group"
+        aria-label="Show applications"
         :options="[
           { label: 'Pending', value: 'pending' },
           { label: 'Approved', value: 'approved' },
@@ -52,7 +54,7 @@ onMounted(load);
         ]"
         @update:model-value="load"
       />
-      <q-btn flat dense icon="refresh" aria-label="Refresh" :loading="loading" @click="load" />
+      <q-btn flat dense icon="refresh" aria-label="Refresh applications" :loading="loading" @click="load" />
     </div>
     <div v-if="listState === 'failed'" class="text-grey-7">Could not load applications.</div>
     <div v-else-if="listState === 'ready' && !rows.length" class="text-grey-7">No {{ status }} applications.</div>
@@ -77,7 +79,9 @@ onMounted(load);
               label="Approve"
               :disable="a.accountId === session.me?.account?.accountId"
               @click="decide(a, 'approve')"
-            />
+            >
+              <span class="sr-only"> {{ a.legalName }}</span>
+            </q-btn>
             <q-btn
               dense
               flat
@@ -85,7 +89,9 @@ onMounted(load);
               label="Reject"
               :disable="a.accountId === session.me?.account?.accountId"
               @click="decide(a, 'reject')"
-            />
+            >
+              <span class="sr-only"> {{ a.legalName }}</span>
+            </q-btn>
           </div>
         </q-item-section>
       </q-item>
