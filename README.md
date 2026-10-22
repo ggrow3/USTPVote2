@@ -5,17 +5,23 @@ member onboarding, secret or roll-call ballots, proposal and candidate contests 
 instant-runoff), and an audit trail anyone can check — hash chains, Merkle receipts, WORM anchors and a public,
 deterministic tally library.
 
-**Status:** M1 (identity and registration), M2 (election setup and the signed, anchored ledger) and M3 (casting and
-secrecy) are built. Sign-in, accounts, bylaws, applications, membership administration, profile photos, two-person role
-changes, admin two-step verification, election setup with Auditor-approved rolls and scheduling, ledger blocks signed
-by the worker and anchored, casting secret (encrypted) or roll-call ballots, sealing them into k-anonymous published
-blocks, and checking a receipt in the browser all work end to end against the Firebase emulators, in the API
-(emulator integration tests) and the web app. Tallying and certification (M4) come next. Authenticator-app (TOTP)
-setup, Cloud Vision photo checks and Cloud KMS have no emulator and still need a real project. Nothing is deployed.
+**Status:** M1 (identity and registration), M2 (election setup and the signed, anchored ledger), M3 (casting and
+secrecy) and the first part of M4 are built. Sign-in, accounts, bylaws, applications, membership administration,
+profile photos, two-person role changes, admin two-step verification, election setup with Auditor-approved rolls and
+scheduling, ledger blocks signed by the worker and anchored, casting secret (encrypted) or roll-call ballots, sealing
+them into k-anonymous published blocks, tallying them into signed results, and checking a receipt or the results in
+the browser all work end to end against the Firebase emulators, in the API (emulator integration tests) and the web
+app. The `ustp-verify` CLI checks all of it independently from public data. The web app is an installable PWA and has
+had an accessibility pass. Terraform for dev, staging and prod is written but not yet applied. Two-person
+certification (M4b) comes next. Authenticator-app (TOTP) setup, Cloud Vision photo checks and Cloud KMS have no
+emulator and still need a real project. Nothing is deployed.
 
 ## Documents
 
 - [System design](docs/DESIGN.md) — architecture, threat model, data model, algorithms, open questions, roadmap
+- [Accessibility](docs/ACCESSIBILITY.md) — what was checked and fixed, known gaps, the manual screen-reader pass still due
+- [Infrastructure](infra/terraform/README.md) — Terraform layout, IAM per service account, bringing an environment up
+- [Independent verifier](packages/verify/README.md) — `ustp-verify` usage and what each check proves
 - [Source specification](docs/spec/USTP-Standalone-Technical-Specification.docx) ([text extraction](docs/spec/technical-specification.md))
 
 ## Layout
@@ -24,10 +30,12 @@ setup, Cloud Vision photo checks and Cloud KMS have no emulator and still need a
 |---|---|
 | [`packages/tally`](packages/tally) | `ustp-tally` — ballot validation and deterministic counting (proposal, choose-N with support floor, IRV). Zero dependencies. |
 | [`packages/audit`](packages/audit) | `ustp-audit` — RFC 8785 canonical JSON, SHA-256, hash chains, RFC 9162 Merkle proofs, ballot commitments, tie-break ordering. Runs in Node and the browser. |
-| [`packages/domain`](packages/domain) | `ustp-domain` — UUIDv7, membership and election state machines, roles, two-person rule, Firestore paths. |
+| [`packages/domain`](packages/domain) | `ustp-domain` — UUIDv7, membership and election state machines, roles, two-person rule, Firestore paths, sealed blocks, results bundles, receipt and results checks. |
+| [`packages/verify`](packages/verify) | `ustp-verify` — independent verifier CLI over public artifacts only. |
 | [`apps/server`](apps/server) | NestJS 12 on Fastify: `main-api.ts` (Cloud Run api) and `main-worker.ts` (Cloud Run worker). |
 | [`apps/web`](apps/web) | Vue 3 + Quasar 2 SPA: `/register`, `/ballot`, `/verify`, `/admin`. |
 | [`infra/firebase`](infra/firebase) | Firestore/Storage rules (deny all), indexes, Hosting config, emulator ports. |
+| [`infra/terraform`](infra/terraform) | Terraform for dev, staging and prod: service accounts, KMS, buckets, Firestore, Cloud Run, Scheduler, Binary Authorization. |
 
 ## Development
 
@@ -51,6 +59,7 @@ npm test
 | `npm run watch -w apps/server` | Recompiles the server on change (run alongside a `dev:*` command) |
 | `npm run dev:api` / `npm run dev:worker` | Runs the compiled api (port 8080) / worker, restarting on rebuild |
 | `npm run seed:emulators -w apps/server` | Fills the local emulators with test users, elections and ballots (see below) |
+| `node packages/verify/dist/cli.js --election <id>` | Verifies the local stack's ledger and an election from public data ([details](packages/verify/README.md)) |
 | `npm run dev:web` | Vite dev server; proxies `/v1` to the local api |
 
 The server uses NestJS decorators with emitted metadata, so it is compiled with `tsc` rather than run through a

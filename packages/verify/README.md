@@ -119,16 +119,25 @@ the block is recorded in a `ballots.sealed` entry, that entry is in a ledger blo
 key, and an anchor covers it. The CLI also checks that this ledger block is one the ledger check verified. A part still
 in the pool is `wait`.
 
-*Does not prove:* that the vote was counted as cast. Results are not checked yet. A receipt shows how its holder voted,
-so keep it private.
+*Does not prove:* that the vote was counted as cast on its own; the results check below closes that loop, since the
+re-tally runs over exactly the sealed parts the receipt was found in. A receipt shows how its holder voted, so keep it
+private.
 
-### Results
+### Results (with `--election`, once published)
 
-**Not checked yet.** This is an extension point for M4a (`src/results.ts`). The CLI requests
-`/v1/public/elections/{id}/results` and reports "results not published" on 404 (or 409). A published bundle is reported
-as `info`, with nothing claimed about it. Once the bundle's shape is settled, check that the revealed tie-break seed
-matches `tieBreakSeedCommitment`, that `ustp-tally` over the sealed parts reproduces each result, and that the bundle's
-hash is the one ledgered (design §2 invariant 4).
+Runs `checkResults` from ustp-domain, the same check the results page runs (design §2 invariant 4, §9):
+- the bundle hashes to the published `resultsHash`, and the audit key signed it;
+- it is for the frozen definition and the approved roll;
+- the revealed tie-break seed hashes to the election's `tieBreakSeedCommitment`;
+- the sealed blocks verify, and re-tallying them with `ustp-tally` and that seed reproduces the bundle byte for byte;
+- the `results.computed` ledger entry records that hash, in a signed and anchored ledger block, which must be one the
+  ledger check verified.
+
+Before the tally the section says the results are not published yet (404, or 409 while the sealed contents are
+withheld). A bundle that cannot be read is a failure.
+
+*Does not prove:* that the results are certified (two-person certification arrives with M4b), or anything the receipt
+and election checks above do not.
 
 ## Cost
 

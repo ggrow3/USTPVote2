@@ -64,7 +64,7 @@ verifiable without trusting the operators. Spec §9's "fully consistent" privacy
 Ballot stuffing by a compromised API is bounded by the roll and is detectable: after close, auditors (and, if USTP
 chooses, members) can see the participation list and any member can report "I did not vote but am listed".
 
-**Invariants an auditor can check from the record** (implemented by the future `ustp-verify` CLI):
+**Invariants an auditor can check from the record** (checked by the `ustp-verify` CLI, §16, as far as public data allows):
 1. ballots in sealed blocks = participation records ≤ roll entries, and every participant is on the roll;
 2. every sealed block's Merkle root and hash recompute, and each appears in the ledger;
 3. the ledger hash chain is unbroken, every ledger block's signature verifies, and the anchors match;
@@ -99,10 +99,11 @@ flowchart LR
 |---|---|---|
 | `apps/web` | Vue 3 + Quasar 2 on Vite, Firebase Hosting | Member, voter, verifier and admin UI. Computes ballot commitments and verifies Merkle proofs client-side with `ustp-audit`. |
 | `apps/server` → **api** | Node 26 LTS, NestJS 12 on Fastify 5, Cloud Run service | All client-facing endpoints. Stateless. |
-| `apps/server` → **worker** | Same image, different entrypoint, Cloud Run service (IAM-only ingress) | Election clock, pool sealing, ledger blocks, anchoring, tally, photo checks, email. |
+| `apps/server` → **worker** | Same image, different entrypoint, Cloud Run service (internal ingress, callable only by the Scheduler/Tasks invoker account) | Election clock, pool sealing, tally, ledger blocks, anchoring, email. |
 | `packages/tally` (`ustp-tally`) | Pure TypeScript, zero dependencies | Ballot validation and deterministic counting for every contest type. Published publicly (spec §1.1). |
 | `packages/audit` (`ustp-audit`) | Pure TypeScript, depends only on `@noble/hashes` | JCS, SHA-256, hash chains, RFC 9162 Merkle trees and proofs, ballot commitments, tie-break ordering. Isomorphic (Node + browser). Published publicly. |
-| `packages/domain` (`ustp-domain`) | Pure TypeScript | Shared types, state machines, role rules, two-person checks, Firestore path constants. |
+| `packages/domain` (`ustp-domain`) | Pure TypeScript | Shared types, state machines, role rules, two-person checks, Firestore path constants, sealed blocks, results bundles, and the receipt and results checks the browser, the CLI and the tests share. |
+| `packages/verify` (`ustp-verify`) | Node CLI, depends only on `ustp-audit` and `ustp-domain` | Independent verification from public artifacts only (§16). |
 
 **Why one server package with two entrypoints:** the API and worker share Firestore repositories, KMS adapters and
 domain logic. One package and one container image keep them in lockstep; two Cloud Run services with different
@@ -122,8 +123,9 @@ apps/web           Vue 3 + Quasar 2 SPA/PWA
 packages/tally     ustp-tally   (public)
 packages/audit     ustp-audit   (public)
 packages/domain    ustp-domain  (internal)
+packages/verify    ustp-verify  independent verifier CLI (public)
 infra/firebase     firestore.rules, storage.rules, indexes, hosting config
-infra/terraform    (M5) project, IAM, KMS, buckets, scheduler, Binary Authorization
+infra/terraform    project, IAM, KMS, buckets, Cloud Run, scheduler, Binary Authorization (see its README)
 docs/              this design, the source spec, ADRs
 ```
 
@@ -805,6 +807,20 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
   nobody may delete from. On `ballot-pool` the worker may create versions and decrypt; the api may only read public
   keys (§7.3). Tie-break seeds: the api creates their secrets at scheduling; only the worker may read them back
   (`secretmanager.versions.access`), to reveal them at tally.
+- **IAM as implemented in [`infra/terraform`](../infra/terraform)** (its README lists every binding), which settles
+  points this section left open:
+  - Both services *read* the anchors bucket: the api for the Auditor's anchor check (§8.4), the worker to compare the
+    stored bytes when a write is retried. Only the worker may create objects, and nobody may delete or overwrite them.
+  - The api needs `roles/firebaseauth.viewer` for `verifyIdToken(…, checkRevoked)` on admin routes and casting.
+  - The worker may also destroy `ballot-pool` versions, for `destroy-pool-key` (§13); destroyed versions stay
+    restorable for 24 hours.
+  - The api can create `tiebreak-seed-*` secrets and add versions to them, but cannot read any.
+  - The worker's Cloud Run service takes internal traffic only, and only the `ustp-worker-invoker` account (Scheduler,
+    Tasks) may call it.
+  - "No human has Firestore data access" in production means no human holds a basic role (Owner, Editor and even Viewer
+    include data access) there; access goes through the break-glass group, with an alert.
+  - Cloud Vision appears to need only the enabled API, no role (to confirm in a real project).
+  - An optional alert fires when anyone but the worker uses the signing or ballot-pool keys.
 - **Logging:** structured logs with redaction; no request bodies on cast; Firestore Data Access audit logs off in
   production (they would record write paths and times; pool encryption makes them harmless, but there is no need for
   them); KMS Data Access audit logs on.
@@ -818,7 +834,12 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
 ## 15. Environments, deployment, cost
 
 - Projects `ustp-voting-dev`, `ustp-voting-staging`, `ustp-voting-prod` (spec §2.1). Infrastructure as code with
-  Terraform (proposed; Q13).
+  Terraform in [`infra/terraform`](../infra/terraform) (Q13, adopted pending USTP's confirmation): one module, one
+  root per environment, state in a `ustp-voting-<env>-tfstate` bucket. The api and worker are deployed by image digest
+  through Terraform. Written but not yet applied or validated (`terraform fmt`/`validate` have not run; run them and
+  commit the `.terraform.lock.hcl` files before the first apply). Still missing before a first deploy: a Dockerfile
+  (the image runs `node dist/main-api.js` / `node dist/main-worker.js` and listens on `$PORT`) and a CI identity that
+  builds, attests and applies.
 - Web → Firebase Hosting, which rewrites `/v1/**` to the api Cloud Run service so the API is same-origin (no CORS).
   api and worker → Cloud Run from one image (`node dist/main-api.js` / `node dist/main-worker.js`).
   Config: [`infra/firebase`](../infra/firebase).
@@ -835,7 +856,15 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
 - **Election simulation:** build a roll, cast N ballots through the API, seal, tally, certify, then run every
   [§2 invariant](#2-threat-model-and-trust-assumptions) — in CI.
 - **Web:** component tests; Playwright end-to-end for register → vote → verify.
-- **Independent verification:** `ustp-verify` CLI (M4) consumes only public artifacts.
+- **Independent verification:** the `ustp-verify` CLI (`packages/verify`, M4) consumes only public artifacts: the
+  `/v1/public/...` endpoints and, optionally, anchor objects downloaded from the bucket. It checks the ledger chain,
+  every block signature and the anchors; an election's frozen definition hash, roll signature, every public ledger entry
+  about it, its sealed blocks against their summaries and ledger entries, and sealed ballots ≤ roll; a receipt with
+  `checkReceiptPart`; and published results with `checkResults` (full re-tally). Every later check trusts only the
+  ledger blocks the ledger check verified. Exit code 1 on any failure; steps the next tick will complete are reported
+  as waiting, not failed. See [`packages/verify/README.md`](../packages/verify/README.md).
+- **Accessibility:** WCAG 2.2 AA pass over every page, with what was checked, fixed and still needs a manual
+  screen-reader pass in [`docs/ACCESSIBILITY.md`](ACCESSIBILITY.md).
 - **Before the first real election:** external review of the cast path and sealer, and a mock election with members.
 
 ## 17. Deviations from and clarifications of the spec
@@ -888,5 +917,5 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M1 — Identity & registration** | *Done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes via two-person approvals, auth switches, Auditor ledger verification; web sign-in (Google, Microsoft, Apple, email/password, email link), registration, account and admin console. admin two-step verification (authenticator-app setup, code step at sign-in, re-authentication for approvals, typed MFA/re-auth problems); profile photos (normalized upload, automatic checks, admin review). *Still to exercise against a real project:* authenticator-app setup and sign-in (TOTP), and Cloud Vision photo checks — neither has an emulator |
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
-| **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *M4b:* two-person certification (`results.certified`), position terms, ballot-pool key destruction. Also: `ustp-verify` CLI |
-| **M5 — Hardening & launch gates** | Terraform; Binary Authorization; PWA; accessibility audit; load test; external review; mock election |
+| **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b:* two-person certification (`results.certified`), position terms, ballot-pool key destruction |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (written, not yet validated or applied; §15) including the Binary Authorization policy; installable PWA (manifest, icons, a service worker that caches only the app shell and never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`). *Still to do:* Dockerfile and a CI identity that builds, attests and applies; the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
