@@ -45,6 +45,8 @@ export interface ElectionRecord {
   /** Set by the worker on its clock (design §6.1). */
   readonly openedAt: string | null;
   readonly closedAt: string | null;
+  /** Set once the election is closed and every ballot is in a sealed block (design §7.2). */
+  readonly sealedAt: string | null;
 }
 
 /**

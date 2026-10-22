@@ -61,6 +61,19 @@ export { rollLeaf, sortRoll, rollMerkleRoot, rollInclusionProof, rollStatement, 
 export type { RollStatement } from './roll.js';
 export * from './election-api.js';
 export { castBallotSchema, ballotProblems, commitmentsOf } from './ballots.js';
+export {
+  buildSealedBlock,
+  sealedBlockBody,
+  sealedBlockHash,
+  sealedCommitments,
+  sealedInclusionProof,
+  sealedBlockProblems,
+  evenChunks,
+  MAX_BALLOTS_PER_SEALED_BLOCK,
+} from './sealing.js';
+export type { SealedPart, SealedBlock, SealedBlockRecord, SealableBallot, SealedBlockSummary, PublicElection } from './sealing.js';
+export { checkReceiptPart } from './receipt-check.js';
+export type { BallotProof, PartEvidence, CheckStep, PartCheck } from './receipt-check.js';
 export type {
   CastBallotInput,
   Commitment,

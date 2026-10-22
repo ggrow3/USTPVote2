@@ -5,14 +5,13 @@ member onboarding, secret or roll-call ballots, proposal and candidate contests 
 instant-runoff), and an audit trail anyone can check — hash chains, Merkle receipts, WORM anchors and a public,
 deterministic tally library.
 
-**Status:** M1 (identity and registration) is built. The core libraries are done and tested. Sign-in, accounts,
-bylaws, applications, membership administration, profile photos, two-person role changes, admin two-step verification
-and the audit ledger work end to end against the Firebase emulators, in the API (emulator integration tests) and the
-web app. Authenticator-app (TOTP) setup and Cloud Vision photo checks have no emulator and still need a real project.
-Elections (M2) are under way: Election Admins build draft elections (proposal, choose-N and ranked-choice contests)
-with live validation and a definition hash, take a voter roll, and schedule the election; each of those last steps
-needs an Auditor's approval and freezes exactly what was approved. Ledger publication (M2c) and voting (M3) come next.
-Nothing is deployed.
+**Status:** M1 (identity and registration), M2 (election setup and the signed, anchored ledger) and M3 (casting and
+secrecy) are built. Sign-in, accounts, bylaws, applications, membership administration, profile photos, two-person role
+changes, admin two-step verification, election setup with Auditor-approved rolls and scheduling, ledger blocks signed
+by the worker and anchored, casting secret (encrypted) or roll-call ballots, sealing them into k-anonymous published
+blocks, and checking a receipt in the browser all work end to end against the Firebase emulators, in the API
+(emulator integration tests) and the web app. Tallying and certification (M4) come next. Authenticator-app (TOTP)
+setup, Cloud Vision photo checks and Cloud KMS have no emulator and still need a real project. Nothing is deployed.
 
 ## Documents
 

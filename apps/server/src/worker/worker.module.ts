@@ -6,6 +6,7 @@ import { ElectionReader } from '../elections/election-reader.js';
 import { AUDIT_SIGNER, EmulatorAuditSigner, KmsAuditSigner } from '../infra/audit-signer.js';
 import { ballotPoolKeysProvider } from '../infra/ballot-pool.js';
 import { Firebase } from '../infra/firebase.js';
+import { BallotSealer } from './ballot-sealer.js';
 import { ElectionClock } from './election-clock.js';
 import { LedgerSealer } from './ledger-sealer.js';
 import { TasksController } from './tasks.controller.js';
@@ -17,6 +18,7 @@ import { TasksController } from './tasks.controller.js';
   providers: [
     ElectionReader,
     ElectionClock,
+    BallotSealer,
     LedgerSealer,
     ballotPoolKeysProvider,
     {

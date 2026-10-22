@@ -97,6 +97,7 @@ export class ElectionsService {
       poolKeyVersion: null,
       openedAt: null,
       closedAt: null,
+      sealedAt: null,
     };
     await this.db.collection(Collections.elections).doc(record.electionId).create(record);
     return record;
