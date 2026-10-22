@@ -106,8 +106,9 @@ resource "google_artifact_registry_repository" "server" {
   depends_on = [google_project_service.this]
 }
 
+# ustp-release (release.tf) and any further image_publishers.
 resource "google_artifact_registry_repository_iam_member" "publishers" {
-  for_each = toset(var.image_publishers)
+  for_each = local.image_publishers
 
   project    = var.project_id
   location   = google_artifact_registry_repository.server.location

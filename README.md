@@ -13,15 +13,17 @@ roll-call ballots, sealing them into k-anonymous published blocks, tallying them
 certification that seats the winners in their offices and destroys the ballot key, and checking a receipt or the
 results in the browser all work end to end against the Firebase emulators, in the API (emulator integration tests)
 and the web app. The `ustp-verify` CLI checks all of it independently from public data. The web app is an installable
-PWA and has had an accessibility pass. Terraform for dev, staging and prod is written but not yet applied. The
-remaining M5 launch work is next. Authenticator-app (TOTP) setup, Cloud Vision photo checks and Cloud KMS have no
-emulator and still need a real project. Nothing is deployed.
+PWA and has had an accessibility pass. For deployment there are Terraform for dev, staging and prod (validated, not yet
+applied), the server image (`apps/server/Dockerfile`) and a release workflow that builds, attests and rolls it out
+with a keyless CI identity; CI builds and starts the image on every pull request. The rest of M5 (bringing up dev, the
+"you voted" email, load test, reviews) is next. Authenticator-app (TOTP) setup, Cloud Vision photo checks and Cloud KMS
+have no emulator and still need a real project. Nothing is deployed.
 
 ## Documents
 
 - [System design](docs/DESIGN.md) — architecture, threat model, data model, algorithms, open questions, roadmap
 - [Accessibility](docs/ACCESSIBILITY.md) — what was checked and fixed, known gaps, the manual screen-reader pass still due
-- [Infrastructure](infra/terraform/README.md) — Terraform layout, IAM per service account, bringing an environment up
+- [Infrastructure](infra/terraform/README.md) — Terraform layout, IAM per service account, bringing an environment up, releasing
 - [Independent verifier](packages/verify/README.md) — `ustp-verify` usage and what each check proves
 - [Source specification](docs/spec/USTP-Standalone-Technical-Specification.docx) ([text extraction](docs/spec/technical-specification.md))
 
@@ -62,6 +64,7 @@ npm test
 | `npm run seed:emulators -w apps/server` | Fills the local emulators with test users, elections and ballots (see below) |
 | `node packages/verify/dist/cli.js --election <id>` | Verifies the local stack's ledger and an election from public data ([details](packages/verify/README.md)) |
 | `npm run dev:web` | Vite dev server; proxies `/v1` to the local api |
+| `docker build -f apps/server/Dockerfile -t ustp-server .` | Builds the server image (api by default; `node dist/main-worker.js` for the worker), as CI and the [release workflow](infra/terraform/README.md#release-workflow) do |
 
 The server uses NestJS decorators with emitted metadata, so it is compiled with `tsc` rather than run through a
 type-stripping loader.

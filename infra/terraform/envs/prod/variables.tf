@@ -11,7 +11,7 @@ variable "region" {
 }
 
 variable "server_image" {
-  description = "Server image by digest, attested by ustpvote-reviewed; null on the first apply (no Cloud Run services yet)."
+  description = "Image by digest that the services are created with, attested by ustpvote-reviewed; null on the first apply (no Cloud Run services yet). Releases come from the release workflow."
   type        = string
   default     = null
 }
@@ -23,7 +23,7 @@ variable "bootstrap_system_admin_emails" {
 }
 
 variable "image_publishers" {
-  description = "IAM members that push images (the build pipeline)."
+  description = "IAM members that push images, besides the release workflow's ustp-release."
   type        = list(string)
   default     = []
 }
@@ -47,7 +47,7 @@ variable "anchors_public_read" {
 }
 
 variable "attestation_signers" {
-  description = "IAM members that sign Binary Authorization attestations."
+  description = "IAM members that sign Binary Authorization attestations, besides ustp-release."
   type        = list(string)
   default     = []
 }

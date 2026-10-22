@@ -3,7 +3,8 @@
 Everything USTPVote2 needs in one GCP project per environment (design §15): APIs, the `api`, `worker` and invoker
 service accounts with least-privilege IAM (§14), the Cloud KMS keys (§7.3, §8.3), the anchors and photos buckets (§5.3,
 §8.4), Firestore, both Cloud Run services, the Cloud Scheduler tick and a Cloud Tasks queue (§13), Binary Authorization
-(§14), KMS audit logs and a break-glass alert. Design open question Q13 (Terraform) and Q16 (`us-central1`) are assumed.
+(§14), the release workflow's identity, KMS audit logs and a break-glass alert. Design open question Q13 (Terraform)
+and Q16 (`us-central1`) are assumed.
 
 Not managed here, and described [below](#manual-steps): Identity Platform (providers, MFA, password policy), adding
 Firebase to the project, the App Check web registration, Firestore rules and indexes, and Firebase Hosting deploys.
@@ -13,20 +14,24 @@ Nothing has been applied to a real project yet.
 
 | Path | What |
 |---|---|
-| [`modules/ustpvote`](modules/ustpvote) | One environment. `main.tf` (APIs), `iam.tf`, `kms.tf`, `storage.tf`, `firestore.tf`, `run.tf`, `scheduling.tf`, `binauthz.tf`, `logging.tf`, `outputs.tf` |
+| [`modules/ustpvote`](modules/ustpvote) | One environment. `main.tf` (APIs), `iam.tf`, `kms.tf`, `storage.tf`, `firestore.tf`, `run.tf`, `scheduling.tf`, `binauthz.tf`, `release.tf`, `logging.tf`, `outputs.tf` |
 | [`envs/dev`](envs/dev) | `ustp-voting-dev`: anchors retention unlocked, Binary Authorization in dry run |
 | [`envs/staging`](envs/staging) | `ustp-voting-staging`: production settings except the retention lock |
 | [`envs/prod`](envs/prod) | `ustp-voting-prod`: Binary Authorization enforced, no human data access, retention lock stated explicitly |
 
 Each root keeps its state in the GCS bucket `ustp-voting-<env>-tfstate` and needs Terraform 1.9 or newer and the
-`hashicorp/google` provider 8.x. Copy `terraform.tfvars.example` to `terraform.tfvars` (git-ignored: it holds people's
-addresses). Commit the `.terraform.lock.hcl` that `terraform init` writes in each root. Before applying a change, run:
+`hashicorp/google` provider 8.x. Each root's `.terraform.lock.hcl` pins the provider, with hashes for Linux, macOS and
+Windows; Dependabot updates the three together. Copy `terraform.tfvars.example` to `terraform.tfvars` (git-ignored: it
+holds people's addresses). CI runs these on every pull request, without a backend or credentials:
 
 ```bash
 terraform fmt -check -recursive
-terraform init -backend=false
+terraform init -backend=false -lockfile=readonly
 terraform validate
 ```
+
+Nothing has been planned or applied against a real project, so IAM conditions, the identity provider's condition and
+API-side limits are only checked by Google on the first apply.
 
 ## What each identity may do
 
@@ -45,11 +50,15 @@ terraform validate
 | | Create and read objects in the anchors bucket; never delete | Write-once anchors; overwriting needs delete, which it lacks (§8.4) |
 | | Access secrets | Tie-break seeds at tally (§9), later the email provider's credentials |
 | `ustp-worker-invoker` | Invoke the worker | Identity of the Scheduler tick and of Cloud Tasks; nothing else |
+| `ustp-release` | Push to the `ustpvote` Artifact Registry repository | The release workflow builds the server image |
+| | Sign attestations for `ustpvote-reviewed` (attestor key, note, occurrences) | Binary Authorization lets only attested images run |
+| | `run.developer` on `api` and `worker`; act as `ustp-api` and `ustp-worker` | Rolls the services onto a new image. It cannot change IAM, invokers or keys, nor read Firestore |
+| | Only reachable from GitHub Actions: `release.yml` on `main`, in the GitHub environment named after this environment, in this repository (by ID) | Workload Identity Federation; there is no key |
 | everyone | Invoke the api; read anchors if `anchors_public_read` | Hosting proxies unauthenticated; the api checks ID and App Check tokens itself |
 | `operator_members` | View services, logs (including KMS Data Access logs), metrics, schedules, key metadata, IAM | Operations without Firestore data or key use (§14) |
 | `developer_data_members` | Firestore data access | Debugging; refused in prod by a validation |
-| `image_publishers` | Push to the `ustpvote` Artifact Registry repository | Build pipeline |
-| `attestation_signers` | Sign attestations for `ustpvote-reviewed` | Release pipeline after review |
+| `image_publishers` | Push to the `ustpvote` Artifact Registry repository | Anyone besides `ustp-release`, usually nobody |
+| `attestation_signers` | Sign attestations for `ustpvote-reviewed` | Anyone besides `ustp-release`, usually nobody |
 
 The worker has internal-only ingress and only the invoker account may call it, so its `/tasks` routes need no sign-in of
 their own. Basic roles (Viewer, Editor, Owner) all include Firestore data access, so in production no person should hold
@@ -64,12 +73,12 @@ Set in each root's `terraform.tfvars` (or with `-var`):
 
 | Variable | dev | staging | prod | Meaning |
 |---|---|---|---|---|
-| `server_image` | | | | Server image by digest; null (default) skips the Cloud Run services and the tick |
+| `server_image` | | | | Image by digest the services are created with; null (default) skips the Cloud Run services and the tick. Keep it set: later releases come from the release workflow, and Terraform ignores the image once a service exists |
 | `bootstrap_system_admin_emails` | | | | `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` (§4): at least two; `[]` once real admins exist |
 | `anchors_retention_days` | 3653 | 3653 | 3653 | Q11; 10 years |
 | `anchors_retention_locked` | false (fixed) | false (fixed) | **required** | Bucket Lock, irreversible; see [Bucket Lock](#bucket-lock-production) |
 | `anchors_public_read` | false | true | true | §8.4 recommendation: outsiders keep copies, browsers can fetch them |
-| `image_publishers`, `attestation_signers` | | | | Pipeline identities, e.g. `serviceAccount:release@…` |
+| `image_publishers`, `attestation_signers` | | | | Further identities that may push or attest; `ustp-release` always may |
 | `operator_members` | | | | `user:…` / `group:…` with read-only operations roles |
 | `developer_data_members` | yes | yes | (absent) | People with Firestore data access |
 | `alert_emails` | | | | Recipients of the KMS break-glass alert; empty means no alert policy |
@@ -78,7 +87,8 @@ Set in each root's `terraform.tfvars` (or with `-var`):
 
 Fixed per root: Binary Authorization is a dry run in dev and enforced elsewhere. The module has further knobs with
 sensible defaults (`kms_protection_level`, `audit_signing_key_version` for rotation,
-`ballot_pool_destroy_scheduled_duration` = 24 h, `binauthz_extra_attestors`, sizing, `deletion_protection`); see
+`ballot_pool_destroy_scheduled_duration` = 24 h, `binauthz_extra_attestors`, sizing, `deletion_protection`,
+`github_repository` and `github_repository_id` for a fork or a moved repository); see
 [`modules/ustpvote/variables.tf`](modules/ustpvote/variables.tf).
 
 ## Outputs and the server's environment
@@ -103,7 +113,7 @@ or an emulator host. Every safety switch then keeps its production default (§4)
 |---|---|
 | Firebase Hosting (`infra/firebase/firebase.json` rewrite `run.serviceId` / `run.region`) | `api_service` (`api`, `us-central1`) |
 | Web build (`apps/web/.env.example`) | `VITE_FIREBASE_PROJECT_ID` = the project; the other values come from the Firebase web app and reCAPTCHA key (below) |
-| Release pipeline | `image_repository`, `attestor`, `attestor_key_version` |
+| Release workflow (GitHub environment variables) | `github_environment_variables` (also `image_repository`, `attestor`, `attestor_key_version`, `release_service_account`) |
 | Mirrors and verifiers | `anchors_public_url` |
 | Checks | `api_url`, `worker_url`, `service_accounts`, `tasks_queue` |
 
@@ -123,7 +133,8 @@ Examples use dev; replace `dev` throughout for the others. Run Terraform with an
    ```
 
 2. **First apply, without an image.** Creates everything except the Cloud Run services and the tick: APIs, accounts,
-   keys, buckets, Firestore, the image repository, the Tasks queue, Binary Authorization, audit logs.
+   keys, buckets, Firestore, the image repository, the Tasks queue, Binary Authorization, the release workflow's
+   identity, audit logs.
 
    ```bash
    cd infra/terraform/envs/dev
@@ -138,19 +149,19 @@ Examples use dev; replace `dev` throughout for the others. Run Terraform with an
 3. **Identity Platform and App Check**, by hand: see [Identity Platform](#identity-platform) and
    [App Check and the web build](#app-check-and-the-web-build).
 
-4. **Image.** Build the server image, push it to `image_repository` as `…/server`, note its digest, and attest it (needed
-   wherever Binary Authorization is enforced; harmless in dev):
+4. **GitHub environment and first image.** Set up the GitHub environment `dev` as in
+   [Release workflow](#release-workflow), then run the workflow with roll-out off: the services do not exist yet.
 
    ```bash
-   gcloud beta container binauthz attestations sign-and-create --project=ustp-voting-dev --artifact-url="us-central1-docker.pkg.dev/ustp-voting-dev/ustpvote/server@sha256:<digest>" --attestor=ustpvote-reviewed --attestor-project=ustp-voting-dev --keyversion="<attestor_key_version>"
+   gh workflow run release.yml --ref main -f environment=dev -f roll_out=false
    ```
 
-   The repository has no Dockerfile yet. The image must start the services with `node dist/main-api.js` and
-   `node dist/main-worker.js` from its working directory (design §15; Terraform sets that command) and listen on
-   `$PORT`.
+   It builds the image from `main`, pushes it to `image_repository` as `…/server`, attests it, and prints the digest in
+   the run's summary.
 
 5. **Second apply, with the image.** Creates `api` (public), `worker` (internal, invoker-only) and the `worker-tick`
-   job.
+   job. Put `server_image` in `terraform.tfvars` rather than passing it once: without it, a later apply would try to
+   delete the services.
 
    ```bash
    terraform apply -var="server_image=us-central1-docker.pkg.dev/ustp-voting-dev/ustpvote/server@sha256:<digest>"
@@ -163,7 +174,8 @@ Examples use dev; replace `dev` throughout for the others. Run Terraform with an
    npx firebase deploy --config infra/firebase/firebase.json --project ustp-voting-dev --only firestore,hosting
    ```
 
-7. **Check.** `https://ustp-voting-dev.web.app/v1/healthz` answers through Hosting; Cloud Scheduler shows
+7. **Check.** `curl "$(terraform output -raw api_url)/healthz"` answers, and so does a public route through Hosting,
+   for example `https://ustp-voting-dev.web.app/v1/public/positions`; Cloud Scheduler shows
    `worker-tick` succeeding every minute; the worker's log shows ticks and, once a ledger entry exists, a signed block
    and an anchor under `v1/` in the anchors bucket.
 
@@ -174,10 +186,49 @@ Examples use dev; replace `dev` throughout for the others. Run Terraform with an
 
 ### Releasing
 
-Build, push and attest a new image as in step 4, then `terraform apply -var="server_image=…@sha256:<digest>"`. Both
-services move to the same digest in one apply. Deploy through Terraform rather than `gcloud run deploy`, which would
-drift from the configuration. To promote one build from staging to production, copy the image by digest into the
-production repository (the digest does not change) and attest it there with the production attestor.
+Run the release workflow for the environment, from `main`:
+
+```bash
+gh workflow run release.yml --ref main -f environment=staging
+```
+
+It builds the server image from that commit (`apps/server/Dockerfile`), pushes it, attests the digest, rolls the
+`worker` and then the `api` onto it with `gcloud run services update`, and checks that the api answers. Terraform
+ignores the services' image, so a later apply neither reverts a release nor needs to know about it; infrastructure
+changes still go through `terraform apply` by someone with Owner rights. To roll back, revert the change on `main` and
+release again, or move both services to an earlier attested digest with
+`gcloud run services update <service> --image=…@sha256:<digest>`.
+
+Each environment builds its own image from the same commit, so staging and production run the same code but not
+byte-identical images (builds are not reproducible). Promoting one digest from staging to production, by copying it
+into the production repository and attesting it there, is not automated yet.
+
+## Release workflow
+
+[`.github/workflows/release.yml`](../../.github/workflows/release.yml) runs in GitHub Actions and reaches Google Cloud
+as `ustp-release` through Workload Identity Federation: GitHub's OIDC token for the job is exchanged for short-lived
+credentials, and no service account key exists. The identity provider (`release.tf`) accepts a token only from
+`release.yml` as it is on `main`, from a job running in the GitHub environment named after the Terraform environment
+(`dev`, `staging`, `prod`), in this repository matched by its numeric ID.
+
+Per environment, once Terraform has been applied (step 2 above):
+
+1. **Create the GitHub environment** with the same name (repository Settings → Environments, or
+   `gh api -X PUT repos/ggrow3/USTPVote2/environments/dev`). Limit its deployment branches to `main`. For staging and
+   production, add required reviewers, so that a second person approves each release (§2 "reviewed deploys").
+   GitHub offers environments in private repositories only on paid plans, and required reviewers in private
+   repositories only on GitHub Enterprise; on a public repository both are free (design Q14).
+2. **Set its variables** from the Terraform output:
+
+   ```bash
+   terraform output -json github_environment_variables | jq -r 'to_entries[] | "\(.key) \(.value)"' | while read -r name value; do gh variable set "$name" --env dev --body "$value"; done
+   ```
+
+   `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_IMAGE`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_RELEASE_SERVICE_ACCOUNT` and
+   `GCP_ATTESTOR_KEY_VERSION`. None is secret.
+
+CI builds the same image on every pull request and starts both entrypoints (`apps/server/scripts/smoke-image.sh`), so
+a broken Dockerfile shows up before a release.
 
 ## Manual steps
 
@@ -234,7 +285,7 @@ The production root has no default for `anchors_retention_locked`, so the decisi
   `prevent_destroy`; Firestore is only forgotten on destroy; Cloud Run services and Firestore have deletion protection.
   `terraform destroy` therefore stops at the keys by design.
 - **Custom roles** (`ustpSecretCreator`, `ustpBallotPoolWorker`) keep their IDs reserved for weeks after deletion;
-  undelete them rather than recreate them.
+  undelete them rather than recreate them. So does the `github` workload identity pool (30 days).
 - **Firestore's location** is fixed at creation (default: the region; `firestore_location = "nam5"` for the
   multi-region).
 - **Key rotation:** create a new `audit-signing` version, raise `audit_signing_key_version` and apply; the worker

@@ -73,9 +73,10 @@ resource "google_binary_authorization_policy" "this" {
 }
 
 # --- Who may attest (gcloud container binauthz attestations sign-and-create) -----------------------------------------
+# ustp-release (release.tf) and any further attestation_signers.
 
 resource "google_kms_crypto_key_iam_member" "attestation_signers" {
-  for_each = toset(var.attestation_signers)
+  for_each = local.attestation_signers
 
   crypto_key_id = google_kms_crypto_key.attestor.id
   role          = "roles/cloudkms.signerVerifier"
@@ -83,7 +84,7 @@ resource "google_kms_crypto_key_iam_member" "attestation_signers" {
 }
 
 resource "google_container_analysis_note_iam_member" "attestation_signers" {
-  for_each = toset(var.attestation_signers)
+  for_each = local.attestation_signers
 
   project = var.project_id
   note    = google_container_analysis_note.reviewed.name
@@ -92,7 +93,7 @@ resource "google_container_analysis_note_iam_member" "attestation_signers" {
 }
 
 resource "google_project_iam_member" "attestation_signers" {
-  for_each = toset(var.attestation_signers)
+  for_each = local.attestation_signers
 
   project = var.project_id
   role    = "roles/containeranalysis.occurrences.editor"
@@ -100,7 +101,7 @@ resource "google_project_iam_member" "attestation_signers" {
 }
 
 resource "google_binary_authorization_attestor_iam_member" "attestation_signers" {
-  for_each = toset(var.attestation_signers)
+  for_each = local.attestation_signers
 
   project  = var.project_id
   attestor = google_binary_authorization_attestor.reviewed.name

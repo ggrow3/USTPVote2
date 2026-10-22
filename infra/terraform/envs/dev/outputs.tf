@@ -64,3 +64,12 @@ output "attestor" {
 output "attestor_key_version" {
   value = module.ustpvote.attestor_key_version
 }
+
+output "release_service_account" {
+  value = module.ustpvote.release_service_account
+}
+
+output "github_environment_variables" {
+  description = "Variables for the GitHub environment dev (infra/terraform/README.md, Release workflow)."
+  value       = module.ustpvote.github_environment_variables
+}
