@@ -34,6 +34,7 @@ const definition: ElectionDefinition = {
       spec: { kind: 'proposal', id: 'plank', passRule: MAJORITY },
       proposal: { snapshotId: 'p1', title: 'Plank 12', contentHash: '0'.repeat(64) },
       candidates: [],
+      positionId: null,
     },
     {
       contestId: 'chair',
@@ -45,6 +46,7 @@ const definition: ElectionDefinition = {
         { candidateId: 'alex', name: 'Alex', statement: null },
         { candidateId: 'blair', name: 'Blair', statement: null },
       ],
+      positionId: 'chair',
     },
   ],
 };
@@ -219,6 +221,8 @@ describe('the results check', async () => {
       openedAt: AT,
       closedAt: AT,
       sealedAt: AT,
+      certifiedAt: null,
+      poolKeyDestroyedAt: null,
       cancelledAt: null,
     },
     definition,

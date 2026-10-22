@@ -18,6 +18,8 @@ export interface ResultsEvidence {
   /** The `results.computed` entry; null until it is in a ledger block (404). */
   readonly ledger: PublicLedgerEntry | null;
   readonly anchor: AnchorRecord | null;
+  /** Certified results: the `results.certified` entry (`certifiedLedgerSeq`); null until it is in a ledger block. */
+  readonly certification?: PublicLedgerEntry | null;
 }
 
 export interface ResultsCheck {
@@ -114,5 +116,28 @@ export async function checkResults(e: ResultsEvidence): Promise<ResultsCheck> {
       recordHash(entry) === entry.hash,
   });
   steps.push(...(await ledgerBlockSteps(ledger, e.keys, e.anchor)));
+  if (e.results.status === 'certified') steps.push(...(await certificationSteps(e)));
   return { status: stepsStatus(steps), steps };
+}
+
+/** Certified results (M4b): a `results.certified` entry naming this hash, in a signed, anchored ledger block. */
+async function certificationSteps(e: ResultsEvidence): Promise<CheckStep[]> {
+  const cert = e.certification;
+  if (!cert) {
+    return [{ label: 'Certification recorded in the signed audit ledger', ok: null, detail: 'Not yet: the next ledger block is sealed within a minute.' }];
+  }
+  const payload = cert.entry.payload as Record<string, unknown>;
+  const steps: CheckStep[] = [
+    {
+      label: `Certified by two people: audit ledger entry ${cert.entry.seq}`,
+      ok:
+        cert.entry.seq === e.results.certifiedLedgerSeq &&
+        cert.entry.type === 'results.certified' &&
+        payload.electionId === e.results.electionId &&
+        payload.resultsHash === e.results.resultsHash &&
+        recordHash(cert.entry) === cert.entry.hash,
+    },
+  ];
+  for (const step of await ledgerBlockSteps(cert, e.keys, e.anchor)) steps.push({ ...step, label: `Certification: ${step.label}` });
+  return steps;
 }

@@ -4,6 +4,7 @@ import {
   contestInputSchema,
   proposalInputSchema,
   type ContestRecord,
+  type PositionsView,
   type ProposalSnapshotRecord,
 } from 'ustp-domain';
 import type { ProposalContest } from 'ustp-tally';
@@ -31,7 +32,10 @@ const form = reactive({
   maxSelections: 1,
   floorPct: null as number | null,
   maxRanks: null as number | null,
+  /** Candidate contests: the office the winners take up when the results are certified. */
+  positionId: null as string | null,
 });
+const officeOptions = ref<{ label: string; value: string | null }[]>([]);
 /** A pass rule that matches no preset (kept as is unless a preset is chosen). */
 const customPassRule = ref<ProposalContest['passRule'] | null>(null);
 const writingText = ref(false);
@@ -60,7 +64,16 @@ watch(open, (isOpen) => {
     maxSelections: 1,
     floorPct: null,
     maxRanks: null,
+    positionId: c?.positionId ?? null,
   });
+  void api<PositionsView>('GET', '/v1/admin/positions')
+    .then(({ positions }) => {
+      officeOptions.value = [
+        { label: 'No office', value: null },
+        ...positions.map((p) => ({ label: `${p.title} (${p.seats} ${p.seats === 1 ? 'seat' : 'seats'}, ${p.termMonths}-month term)`, value: p.positionId })),
+      ];
+    })
+    .catch(() => (officeOptions.value = []));
   if (c?.spec.kind === 'proposal') {
     const index = PASS_RULE_PRESETS.findIndex((p) => JSON.stringify(p.value) === JSON.stringify(c.spec.kind === 'proposal' && c.spec.passRule));
     form.passPreset = index >= 0 ? index : null;
@@ -94,10 +107,11 @@ function body() {
         seats: Number(form.seats),
         maxSelections: Number(form.maxSelections),
         ...(floor && { supportFloor: { ratio: floor, comparison: 'gte' } }),
+        positionId: form.positionId,
       };
     }
     case 'irv':
-      return { kind: 'irv', ...base, ...(form.maxRanks ? { maxRanks: Number(form.maxRanks) } : {}) };
+      return { kind: 'irv', ...base, ...(form.maxRanks ? { maxRanks: Number(form.maxRanks) } : {}), positionId: form.positionId };
   }
 }
 
@@ -225,6 +239,20 @@ async function save() {
         <template v-else>
           <q-input v-model.number="form.maxRanks" outlined dense type="number" min="1" label="Most candidates a voter may rank (optional)" />
         </template>
+
+        <q-select
+          v-if="form.kind !== 'proposal' && officeOptions.length"
+          v-model="form.positionId"
+          outlined
+          dense
+          emit-value
+          map-options
+          :options="officeOptions"
+          label="Office this contest fills (optional)"
+          hint="When the results are certified, each winner starts a term in this office."
+          :error="!!errors.positionId"
+          :error-message="errors.positionId"
+        />
         <q-banner v-if="errors._" class="bg-negative text-white" rounded>{{ errors._ }}</q-banner>
       </q-card-section>
       <q-card-actions align="right">

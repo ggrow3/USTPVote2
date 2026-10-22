@@ -6,8 +6,8 @@ import type { LedgerEvent } from '../ledger/ledger.service.js';
 export interface PreparedDecision {
   /** Ledger entries recording the effect, appended after `approval.decided`. */
   readonly events: readonly LedgerEvent[];
-  /** The writes; called after the ledger append. */
-  readonly apply: () => void;
+  /** The writes; called after the ledger append with the sequence numbers `events` received, in order. */
+  readonly apply: (seqs: readonly number[]) => void;
 }
 
 export const NO_EFFECT: PreparedDecision = { events: [], apply: () => {} };

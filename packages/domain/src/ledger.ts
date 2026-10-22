@@ -65,6 +65,11 @@ export const PUBLIC_LEDGER_EVENT_TYPES = [
   'election.sealed',
   'election.cancelled',
   'results.computed',
+  'results.certified',
+  'election.pool_key_destroyed',
+  'position.defined',
+  'position_term.created',
+  'position_term.ended',
 ] as const satisfies readonly LedgerEventType[];
 
 export function isPublicLedgerEvent(type: LedgerEventType): boolean {
@@ -107,6 +112,8 @@ export interface TickResult {
   readonly ballotsSealed: number;
   /** Sealed elections tallied into a signed results bundle. */
   readonly resultsComputed: number;
+  /** Ballot-pool key versions destroyed (certified or cancelled elections). */
+  readonly poolKeysDestroyed: number;
   readonly blocksSealed: number;
   readonly rollsSigned: number;
   readonly anchored: number;

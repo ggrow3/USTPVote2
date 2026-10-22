@@ -35,6 +35,8 @@ const election: ElectionRecord = {
   openedAt: null,
   closedAt: null,
   sealedAt: null,
+  certifiedAt: null,
+  poolKeyDestroyedAt: null,
 };
 
 const proposal: ProposalSnapshotRecord = {

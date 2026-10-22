@@ -50,6 +50,10 @@ export async function seedElection(
     readonly kAnonymity?: number;
     /** Defaults to the stored seed's; set it to publish a commitment the seed does not match. */
     readonly tieBreakSeedCommitment?: string;
+    /** The office the `chair` contest fills, if any (it must exist for certification). */
+    readonly chairPositionId?: string;
+    /** Candidate `blair`'s account, if any (a candidate may not decide on their own election). */
+    readonly blairAccountId?: string;
   },
 ): Promise<SeededElection> {
   const db = api.firebase.db;
@@ -83,11 +87,12 @@ export async function seedElection(
       description: '',
       spec: { kind: 'irv', id: 'chair', candidates: ['alex', 'blair'] },
       proposalSnapshotId: null,
+      positionId: opts.chairPositionId ?? null,
     },
   ];
   const candidates: CandidateRecord[] = [
     { candidateId: 'alex', contestId: 'chair', name: 'Alex Rivera', statement: null, accountId: null },
-    { candidateId: 'blair', contestId: 'chair', name: 'Blair Chen', statement: null, accountId: null },
+    { candidateId: 'blair', contestId: 'chair', name: 'Blair Chen', statement: null, accountId: opts.blairAccountId ?? null },
   ];
   const accountIds = sortRoll(opts.voters);
   const roll: RollSnapshotRecord = {
@@ -128,6 +133,8 @@ export async function seedElection(
     openedAt: null,
     closedAt: null,
     sealedAt: null,
+    certifiedAt: null,
+    poolKeyDestroyedAt: null,
   };
   const election = { ...unhashed, definitionHash: definitionHash(buildDefinition(unhashed, contests, candidates, [proposal])) };
   const ref = db.collection('elections').doc(electionId);

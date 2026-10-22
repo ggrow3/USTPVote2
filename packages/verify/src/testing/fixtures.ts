@@ -122,6 +122,7 @@ export async function buildWorld(options: WorldOptions = {}): Promise<World> {
         spec: { kind: 'proposal', id: 'plank', passRule: { threshold: { ratio: { num: 1, den: 2 }, comparison: 'gt' }, base: 'yes_no' } },
         proposal: { snapshotId: 'proposal-1', title: 'Plank 12', contentHash: sha256Hex('plank 12') },
         candidates: [],
+        positionId: null,
       },
       {
         contestId: 'chair',
@@ -130,6 +131,7 @@ export async function buildWorld(options: WorldOptions = {}): Promise<World> {
         spec: { kind: 'choose_n', id: 'chair', candidates: ['ca', 'cb', 'cc'], seats: 1, maxSelections: 1 },
         proposal: null,
         candidates: ['ca', 'cb', 'cc'].map((candidateId) => ({ candidateId, name: candidateId.toUpperCase(), statement: null })),
+        positionId: null,
       },
     ],
   };
@@ -246,6 +248,8 @@ export async function buildWorld(options: WorldOptions = {}): Promise<World> {
       openedAt: at(10),
       closedAt: closed ? at(25) : null,
       sealedAt: closed ? at(26) : null,
+      certifiedAt: null,
+      poolKeyDestroyedAt: null,
       cancelledAt: null,
     },
     definition,

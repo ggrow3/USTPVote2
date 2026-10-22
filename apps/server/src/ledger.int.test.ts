@@ -62,6 +62,7 @@ describe('ledger blocks and anchors', () => {
       electionsClosed: 0,
       ballotsSealed: 0,
       resultsComputed: 0,
+      poolKeysDestroyed: 0,
       blocksSealed: 0,
       rollsSigned: 0,
       anchored: 0,

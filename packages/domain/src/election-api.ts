@@ -28,6 +28,8 @@ export const updateElectionSchema = createElectionSchema
 export type UpdateElectionInput = z.infer<typeof updateElectionSchema>;
 
 const contestBase = { title, description: description.default('') };
+/** The office a candidate contest fills (design §6.4); omit or null for none. */
+const officeId = z.string().min(1).max(48).nullable().optional();
 
 /** The rules of a contest; candidates are managed separately and fill in the candidate list. */
 export const contestInputSchema = z.discriminatedUnion('kind', [
@@ -44,11 +46,13 @@ export const contestInputSchema = z.discriminatedUnion('kind', [
     seats: z.number().int().min(1),
     maxSelections: z.number().int().min(1),
     supportFloor: threshold.optional(),
+    positionId: officeId,
   }),
   z.strictObject({
     kind: z.literal('irv'),
     ...contestBase,
     maxRanks: z.number().int().min(1).optional(),
+    positionId: officeId,
   }),
 ]);
 export type ContestInput = z.infer<typeof contestInputSchema>;

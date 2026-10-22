@@ -64,6 +64,12 @@ export class ElectionsController {
     return this.elections.requestSchedule(ctx, id, body.reason);
   }
 
+  /** Ask an Auditor to certify the provisional results of a closed election. */
+  @Post(':id/certify')
+  requestCertify(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(reasonInputSchema)) body: ReasonInput) {
+    return this.elections.requestCertify(ctx, id, body.reason);
+  }
+
   /** Drafts are cancelled at once; scheduled and open elections need an Auditor's approval. */
   @Post(':id/cancel')
   cancel(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(reasonInputSchema)) body: ReasonInput) {

@@ -144,6 +144,24 @@ function requestSchedule() {
   );
 }
 
+/** Closed, with provisional results not yet sent for certification. */
+const canCertify = computed(
+  () =>
+    hasRole('election_admin') &&
+    state.value === 'closed' &&
+    detail.value?.results?.status === 'provisional' &&
+    !detail.value.pending.some((r) => r.action === 'election.certify'),
+);
+
+function requestCertify() {
+  return requestWithReason(
+    'certify',
+    'Request certification',
+    'An Auditor certifies exactly these provisional results. Winners of contests that fill an office then start their terms.',
+    'Certification requested; waiting for an Auditor',
+  );
+}
+
 async function cancelElection() {
   const reason = await askReason(
     'Cancel election',
@@ -214,6 +232,15 @@ onMounted(load);
       </q-banner>
       <q-banner v-else-if="state === 'closed'" class="bg-grey-7 text-white" rounded>
         Voting closed {{ new Date(detail.election.closedAt!).toLocaleString() }}.
+        {{
+          detail.results
+            ? 'Provisional results are published; they need certifying.'
+            : 'The results are computed once every ballot is sealed, usually within a minute.'
+        }}
+      </q-banner>
+      <q-banner v-else-if="state === 'certified'" class="bg-positive text-white" rounded>
+        Results certified {{ new Date(detail.election.certifiedAt!).toLocaleString() }}.
+        {{ detail.election.poolKeyDestroyedAt ? 'The ballot encryption key has been destroyed.' : '' }}
       </q-banner>
       <q-banner v-else-if="state === 'cancelled'" class="bg-grey-7 text-white" rounded>
         Cancelled {{ new Date(detail.election.cancelledAt!).toLocaleString() }}.
@@ -277,7 +304,21 @@ onMounted(load);
         </q-expansion-item>
       </q-card>
 
-      <q-card v-if="hasRole('election_admin')" flat bordered>
+      <q-card v-if="detail.results" flat bordered>
+        <q-card-section class="row items-center q-gutter-sm">
+          <div class="col">
+            <h2 class="text-subtitle1 q-my-none">Results</h2>
+            <div class="text-caption text-grey-7">
+              {{ detail.results.status === 'certified' ? 'Certified' : 'Provisional' }} · results hash
+              <code>{{ detail.results.resultsHash.slice(0, 16) }}…</code>
+            </div>
+          </div>
+          <q-btn flat no-caps icon="leaderboard" label="View results" :to="`/results/${detail.election.electionId}`" />
+          <q-btn v-if="canCertify" color="primary" no-caps label="Request certification" @click="requestCertify" />
+        </q-card-section>
+      </q-card>
+
+      <q-card v-if="canEdit || canCancel" flat bordered>
         <q-card-section class="row items-center q-gutter-sm">
           <h2 class="col text-subtitle1">Scheduling</h2>
           <q-btn

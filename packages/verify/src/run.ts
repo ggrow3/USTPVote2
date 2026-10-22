@@ -65,10 +65,11 @@ export async function verify(api: PublicApi, options: VerifyOptions = {}): Promi
     findings: await checkElection({ record, entries: scan.entries, lastBlock, keys, sealedBlocks }),
   });
   const resultsEntry = Number.isSafeInteger(results?.ledgerSeq) ? await api.ledgerEntry(results!.ledgerSeq) : null;
+  const certification = Number.isSafeInteger(results?.certifiedLedgerSeq) ? await api.ledgerEntry(results!.certifiedLedgerSeq!) : null;
   sections.push({
     title: 'Results',
     findings: await resultsFindings({
-      evidence: { election: record, keys, ledger: resultsEntry, anchor },
+      evidence: { election: record, keys, ledger: resultsEntry, anchor, certification },
       results,
       blocks: sealedBlocks,
       verified: ledger.verified,
