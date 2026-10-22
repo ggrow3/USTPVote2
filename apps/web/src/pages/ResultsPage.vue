@@ -14,6 +14,7 @@ import {
   type SigningKeyRecord,
 } from 'ustp-domain';
 import type { TieBreakRecord } from 'ustp-tally';
+import { usePageTitle } from '../a11y.js';
 import { api, ApiError, errorMessage } from '../api.js';
 import { rulesText } from '../election-text.js';
 
@@ -26,6 +27,7 @@ const error = ref<string | null>(null);
 const record = ref<PublicElection | null>(null);
 const results = ref<ResultsRecord | null>(null);
 const check = ref<ResultsCheck | null>(null);
+usePageTitle(() => (record.value ? `Results: ${record.value.definition.title}` : 'Results'));
 
 const orNull = <T,>(request: Promise<T>): Promise<T | null> =>
   request.catch((e: unknown) => {
@@ -121,7 +123,7 @@ const summary = computed(() => {
     </div>
 
     <template v-else-if="record">
-      <div class="text-h5">{{ record.definition.title }} — results</div>
+      <h1 class="text-h5 q-my-none">{{ record.definition.title }} — results</h1>
       <div class="text-caption text-grey-7 q-mb-md">
         Voting closed {{ new Date(record.election.closesAt).toLocaleString() }} ·
         {{ record.election.secrecy === 'secret' ? 'secret ballot' : 'roll-call' }}
@@ -148,7 +150,7 @@ const summary = computed(() => {
         <q-card v-for="{ contest, outcome } in outcomes" :key="contest.contestId" flat bordered>
           <q-card-section>
             <div class="row items-center">
-              <div class="text-subtitle1 col">{{ contest.title }}</div>
+              <h2 class="text-subtitle1 col q-my-none">{{ contest.title }}</h2>
               <q-badge
                 v-if="outcome.result.kind === 'proposal'"
                 :color="PROPOSAL_OUTCOME[outcome.result.outcome].color"
@@ -251,7 +253,7 @@ const summary = computed(() => {
 
         <q-card v-if="check" flat bordered>
           <q-card-section>
-            <div class="text-subtitle1">How these results were checked</div>
+            <h2 class="text-subtitle1 q-my-none">How these results were checked</h2>
             <div class="text-caption text-grey-7">
               In this browser, from the published record only. Results hash <code>{{ results.resultsHash }}</code>; revealed
               tie-break seed <code>{{ results.bundle.tieBreakSeed }}</code>.

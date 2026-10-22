@@ -76,10 +76,13 @@ async function finish() {
 </script>
 
 <template>
-  <q-dialog v-model="open" persistent>
+  <q-dialog v-model="open" persistent aria-labelledby="authenticator-setup-title">
     <q-card style="width: 420px; max-width: 95vw">
-      <q-card-section class="text-h6">Set up an authenticator app</q-card-section>
-      <q-card-section v-if="busy && !setup" class="row justify-center"><q-spinner size="lg" /></q-card-section>
+      <q-card-section><h2 id="authenticator-setup-title" class="text-h6">Set up an authenticator app</h2></q-card-section>
+      <q-card-section v-if="busy && !setup" class="row justify-center">
+        <q-spinner size="lg" />
+        <span class="sr-only" role="status">Preparing the setup…</span>
+      </q-card-section>
       <q-card-section v-if="setup" class="q-gutter-md">
         <div>
           1. In an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, …), scan this code.

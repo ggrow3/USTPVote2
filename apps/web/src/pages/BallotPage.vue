@@ -1,16 +1,19 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import type { VoterElection } from 'ustp-domain';
+import { usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
 import { attempt } from '../dialogs.js';
 
+usePageTitle('Your ballots');
 const elections = ref<VoterElection[] | null>(null);
+const failed = ref(false);
 
-onMounted(() =>
-  attempt(async () => {
+onMounted(async () => {
+  failed.value = !(await attempt(async () => {
     elections.value = await api<VoterElection[]>('GET', '/v1/elections');
-  }),
-);
+  }));
+});
 
 const when = (iso: string) => new Date(iso).toLocaleString();
 
@@ -29,30 +32,38 @@ function status(e: VoterElection): { label: string; color: string } {
 
 <template>
   <q-page padding>
-    <div class="text-h5 q-mb-md">Your ballots</div>
+    <h1 class="text-h5 q-mb-md">Your ballots</h1>
     <q-banner v-if="elections && elections.length === 0" class="bg-grey-3 text-black" rounded>
       You are not on the voter roll of any current election. Rolls are taken from Active members when an election is set
       up.
     </q-banner>
-    <q-list v-else-if="elections" bordered separator style="max-width: 720px">
+    <q-list v-else-if="elections" bordered separator style="max-width: 720px" aria-label="Elections you can vote in">
       <template v-for="e in elections" :key="e.electionId">
-      <q-item clickable :to="`/ballot/${e.electionId}`">
-        <q-item-section>
-          <q-item-label>{{ e.title }}</q-item-label>
-          <q-item-label caption>
-            Voting {{ when(e.opensAt) }} – {{ when(e.closesAt) }} ·
-            {{ e.secrecy === 'secret' ? 'secret ballot' : 'roll-call (votes are public)' }}
-          </q-item-label>
-        </q-item-section>
-        <q-item-section side>
-          <q-badge :color="status(e).color" :label="status(e).label" />
-        </q-item-section>
-      </q-item>
-      <q-item v-if="e.state === 'closed' || e.state === 'certified'" clickable dense :inset-level="0.25" :to="`/results/${e.electionId}`">
-        <q-item-section avatar><q-icon name="leaderboard" /></q-item-section>
-        <q-item-section>Results of {{ e.title }}</q-item-section>
-      </q-item>
+        <q-item clickable :to="`/ballot/${e.electionId}`">
+          <q-item-section>
+            <q-item-label>{{ e.title }}</q-item-label>
+            <q-item-label caption>
+              Voting {{ when(e.opensAt) }} – {{ when(e.closesAt) }} ·
+              {{ e.secrecy === 'secret' ? 'secret ballot' : 'roll-call (votes are public)' }}
+            </q-item-label>
+          </q-item-section>
+          <q-item-section side>
+            <q-badge :color="status(e).color" :label="status(e).label" />
+          </q-item-section>
+        </q-item>
+        <q-item
+          v-if="e.state === 'closed' || e.state === 'certified'"
+          clickable
+          dense
+          :inset-level="0.25"
+          :to="`/results/${e.electionId}`"
+        >
+          <q-item-section avatar><q-icon name="leaderboard" /></q-item-section>
+          <q-item-section>Results of {{ e.title }}</q-item-section>
+        </q-item>
       </template>
     </q-list>
+    <div v-else-if="failed" class="text-grey-7">Could not load your ballots.</div>
+    <div v-else class="text-grey-7">Loading…</div>
   </q-page>
 </template>
