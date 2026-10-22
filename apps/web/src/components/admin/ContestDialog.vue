@@ -8,6 +8,7 @@ import {
 } from 'ustp-domain';
 import type { ProposalContest } from 'ustp-tally';
 import { api } from '../../api.js';
+import { focusFirstInvalid } from '../../a11y.js';
 import { attempt } from '../../dialogs.js';
 import { KIND_LABELS, PASS_RULE_PRESETS } from '../../election-text.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../../forms.js';
@@ -119,6 +120,7 @@ async function save() {
   const checked = validate(contestInputSchema, body());
   if (!checked.ok) {
     errors.value = checked.errors;
+    await focusFirstInvalid();
     return;
   }
   const url = `/v1/admin/elections/${props.electionId}/contests`;
@@ -138,9 +140,11 @@ async function save() {
 </script>
 
 <template>
-  <q-dialog v-model="open" persistent>
+  <q-dialog v-model="open" persistent aria-labelledby="contest-dialog-title">
     <q-card style="width: 560px; max-width: 95vw">
-      <q-card-section class="text-h6">{{ contest ? 'Edit contest' : 'Add a contest' }}</q-card-section>
+      <q-card-section>
+        <h2 id="contest-dialog-title" class="text-h6">{{ contest ? 'Edit contest' : 'Add a contest' }}</h2>
+      </q-card-section>
       <q-card-section class="q-gutter-md">
         <q-select v-model="form.kind" outlined dense emit-value map-options :options="kinds" label="Kind" />
         <q-input v-model="form.title" outlined dense label="Title" :error="!!errors.title" :error-message="errors.title" />

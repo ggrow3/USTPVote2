@@ -50,6 +50,8 @@ onMounted(load);
         no-caps
         dense
         toggle-color="primary"
+        role="group"
+        aria-label="Show photos"
         :options="[
           { label: 'Needs review', value: 'needs_review' },
           { label: 'Accepted', value: 'accepted' },
@@ -57,7 +59,7 @@ onMounted(load);
         ]"
         @update:model-value="load"
       />
-      <q-btn flat dense icon="refresh" aria-label="Refresh" @click="load" />
+      <q-btn flat dense icon="refresh" aria-label="Refresh photos" @click="load" />
     </div>
     <div class="text-caption text-grey-7 q-mb-md">
       Automatic checks only flag photos (no face, several faces, blurry, too dark, possibly inappropriate). Only a
@@ -71,17 +73,17 @@ onMounted(load);
           <img
             v-if="urls[p.photoId]"
             :src="urls[p.photoId]"
-            alt="Member photo"
+            :alt="`Photo uploaded by account ${p.accountId}`"
             style="width: 96px; height: 96px; object-fit: cover; border-radius: 6px"
           />
-          <q-icon v-else name="image_not_supported" size="48px" color="grey-6" />
+          <q-icon v-else name="image_not_supported" size="48px" color="grey-6" role="img" aria-label="Image not available" />
         </q-item-section>
         <q-item-section>
           <q-item-label>Account <code>{{ p.accountId }}</code></q-item-label>
           <q-item-label caption>
             Uploaded {{ new Date(p.uploadedAt).toLocaleString() }} · {{ p.width }}×{{ p.height }}
           </q-item-label>
-          <q-item-label v-if="p.flags.length" class="text-orange-9">Flagged: {{ p.flags.join(', ') }}</q-item-label>
+          <q-item-label v-if="p.flags.length" class="text-orange-10">Flagged: {{ p.flags.join(', ') }}</q-item-label>
           <q-item-label v-if="p.decisionReason" caption>Decision: {{ p.decisionReason }}</q-item-label>
         </q-item-section>
         <q-item-section v-if="p.status !== 'rejected'" side>
@@ -93,7 +95,9 @@ onMounted(load);
               label="Accept"
               :disable="p.accountId === session.me?.account?.accountId"
               @click="decide(p, 'accept')"
-            />
+            >
+              <span class="sr-only"> photo from {{ p.accountId }}</span>
+            </q-btn>
             <q-btn
               dense
               flat
@@ -101,7 +105,9 @@ onMounted(load);
               label="Reject"
               :disable="p.accountId === session.me?.account?.accountId"
               @click="decide(p, 'reject')"
-            />
+            >
+              <span class="sr-only"> photo from {{ p.accountId }}</span>
+            </q-btn>
           </div>
         </q-item-section>
       </q-item>

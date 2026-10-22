@@ -11,6 +11,7 @@ import {
   type CastResult,
   type ElectionDefinition,
 } from 'ustp-domain';
+import { announce, focusSoon, usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
 import { attempt } from '../dialogs.js';
 import { rulesText } from '../election-text.js';
@@ -29,6 +30,7 @@ const receipt = ref<BallotReceipt | null>(savedReceipt(electionId));
 const kept = ref(!!receipt.value);
 /** The server's commitments equal the ones this browser computed before sending. */
 const commitmentsMatch = ref<boolean | null>(null);
+usePageTitle(() => view.value?.definition.title ?? 'Ballot');
 
 async function load() {
   await attempt(async () => {
@@ -67,18 +69,50 @@ function choiceOptions(c: Contest) {
   return c.candidates.map((k) => ({ label: k.name, value: k.candidateId, disable: full && !list(c).includes(k.candidateId) }));
 }
 
+const unranked = (c: Contest) => c.candidates.filter((k) => !list(c).includes(k.candidateId));
+
+// Ranked choice works from the keyboard: each change is announced, and focus moves to a control that still exists
+// (the button just pressed may have gone, or moved with its row).
+const addButton = (c: Contest, id: string) => `[data-rank-add="${CSS.escape(`${c.contestId}/${id}`)}"]`;
+const rowButton = (c: Contest, id: string, action: 'up' | 'down' | 'remove') =>
+  `[data-rank-row="${CSS.escape(`${c.contestId}/${id}/${action}`)}"]`;
+const rankingText = (c: Contest) => list(c).map((id, i) => `${i + 1}. ${nameOf(c, id)}`).join(', ');
+
 function rank(c: Contest, candidateId: string) {
+  const from = unranked(c).findIndex((k) => k.candidateId === candidateId);
   answers[c.contestId] = [...list(c), candidateId];
+  const full = list(c).length >= maxFor(c);
+  announce(`${nameOf(c, candidateId)} added as choice ${list(c).length}.${full ? ' That is the most you can rank.' : ''}`);
+  const rest = unranked(c);
+  const next = full ? undefined : rest[Math.min(from, rest.length - 1)];
+  void focusSoon(next ? addButton(c, next.candidateId) : rowButton(c, candidateId, 'remove'));
 }
 function unrank(c: Contest, i: number) {
+  const id = list(c)[i]!;
   answers[c.contestId] = list(c).filter((_, j) => j !== i);
+  announce(`${nameOf(c, id)} removed. ${list(c).length ? `Your ranking: ${rankingText(c)}.` : 'Nobody is ranked.'}`);
+  const neighbour = list(c)[Math.min(i, list(c).length - 1)];
+  void focusSoon(neighbour ? rowButton(c, neighbour, 'remove') : addButton(c, id));
 }
 function move(c: Contest, i: number, by: -1 | 1) {
   const next = [...list(c)];
+  const id = next[i]!;
   [next[i], next[i + by]] = [next[i + by]!, next[i]!];
   answers[c.contestId] = next;
+  announce(`${nameOf(c, id)} is now choice ${i + by + 1}, ${nameOf(c, next[i]!)} choice ${i + 1}.`);
+  const atEnd = by < 0 ? i + by === 0 : i + by === next.length - 1;
+  void focusSoon(rowButton(c, id, atEnd ? (by < 0 ? 'down' : 'up') : by < 0 ? 'up' : 'down'));
 }
-const unranked = (c: Contest) => c.candidates.filter((k) => !list(c).includes(k.candidateId));
+
+function choose(c: Contest, chosen: string[]) {
+  if (chosen.length === maxFor(c)) announce(`${chosen.length} chosen, the most allowed. Untick one to choose another.`);
+}
+
+function clear(c: Contest) {
+  answers[c.contestId] = c.spec.kind === 'proposal' ? null : [];
+  announce(`${c.title}: cleared. This contest will be skipped unless you answer it.`);
+  void focusSoon(`#contest-${CSS.escape(c.contestId)}`);
+}
 
 function answerText(c: Contest, selection: unknown): string {
   if (c.spec.kind === 'proposal') return { yes: 'Yes', no: 'No', abstain: 'Abstain' }[selection as string] ?? String(selection);
@@ -99,6 +133,7 @@ async function cast() {
     .map((c) => ({ v: 1, electionId, contestId: c.contestId, selection: answers[c.contestId], salt: newSalt() }));
   // Computed before sending, so the receipt does not depend on what the server says back.
   const commitments = commitmentsOf(parts);
+  announce('Casting your ballot…');
   const ok = await attempt(async () => {
     const result = await api<CastResult>('POST', `/v1/elections/${electionId}/ballots`, { definitionHash: v.definitionHash, parts });
     commitmentsMatch.value = JSON.stringify(result.commitments) === JSON.stringify(commitments);
@@ -107,7 +142,10 @@ async function cast() {
   }, 'Your ballot was cast');
   casting.value = false;
   reviewing.value = false;
-  if (ok) await load();
+  if (!ok) return;
+  await load();
+  // The button that opened the dialog is gone; the receipt takes its place.
+  await focusSoon('#receipt-heading');
 }
 
 function toggleKeep(keep: boolean) {
@@ -125,8 +163,8 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
 <template>
   <q-page padding>
     <q-btn flat no-caps icon="arrow_back" label="Your ballots" to="/ballot" class="q-mb-sm" />
+    <h1 class="text-h5">{{ view?.definition.title ?? 'Ballot' }}</h1>
     <template v-if="view">
-      <div class="text-h5">{{ view.definition.title }}</div>
       <div class="text-caption text-grey-7 q-mb-md">
         Voting {{ new Date(view.election.opensAt).toLocaleString() }} – {{ new Date(view.election.closesAt).toLocaleString() }}
         · {{ view.election.secrecy === 'secret' ? 'Secret ballot' : 'Roll-call: how you vote is published with your name' }}
@@ -142,9 +180,17 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
       </div>
 
       <!-- Receipt after casting, or the record that this voter already voted. -->
-      <q-card v-if="view.election.castAt" flat bordered class="q-mb-md" style="max-width: 860px">
+      <q-card
+        v-if="view.election.castAt"
+        tag="section"
+        aria-labelledby="receipt-heading"
+        flat
+        bordered
+        class="q-mb-md"
+        style="max-width: 860px"
+      >
         <q-card-section>
-          <div class="text-subtitle1">You voted on {{ new Date(view.election.castAt).toLocaleString() }}</div>
+          <h2 id="receipt-heading" class="text-subtitle1">You voted on {{ new Date(view.election.castAt).toLocaleString() }}</h2>
           <div v-if="commitmentsMatch === true" class="text-positive">
             The server's commitments match the ones this browser computed before sending.
           </div>
@@ -160,6 +206,12 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
               full receipt can tell how you voted, so keep it to yourself.
             </div>
             <q-markup-table flat dense>
+              <thead>
+                <tr>
+                  <th class="text-left">Contest</th>
+                  <th class="text-left">Commitment</th>
+                </tr>
+              </thead>
               <tbody>
                 <tr v-for="c in receipt.commitments" :key="c.contestId">
                   <td>{{ contestTitle(c.contestId) }}</td>
@@ -172,7 +224,9 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
             <q-btn color="primary" no-caps icon="download" label="Download receipt" @click="downloadReceipt(receipt)" />
             <q-toggle :model-value="kept" label="Keep a copy in this browser" @update:model-value="toggleKeep" />
             <q-space />
-            <q-btn flat no-caps icon="fact_check" label="Verify" :to="`/verify?election=${electionId}`" />
+            <q-btn flat no-caps icon="fact_check" label="Verify" :to="`/verify?election=${electionId}`">
+              <span class="sr-only"> this receipt</span>
+            </q-btn>
           </q-card-actions>
         </template>
         <q-card-section v-else class="q-pt-none text-caption text-grey-7">
@@ -188,9 +242,9 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
       </q-banner>
 
       <div class="column q-gutter-md" style="max-width: 860px">
-        <q-card v-for="c in contests" :key="c.contestId" flat bordered>
+        <q-card v-for="c in contests" :key="c.contestId" tag="section" :aria-labelledby="`contest-${c.contestId}`" flat bordered>
           <q-card-section>
-            <div class="text-subtitle1">{{ c.title }}</div>
+            <h2 :id="`contest-${c.contestId}`" class="text-subtitle1">{{ c.title }}</h2>
             <div v-if="c.description" class="text-body2" style="white-space: pre-wrap">{{ c.description }}</div>
             <div v-for="line in rulesText(c.spec)" :key="line" class="text-caption text-grey-7">{{ line }}</div>
           </q-card-section>
@@ -202,6 +256,7 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
             <q-option-group
               v-if="c.spec.kind === 'proposal'"
               v-model="answers[c.contestId]"
+              :aria-labelledby="`contest-${c.contestId}`"
               inline
               :options="[
                 { label: 'Yes', value: 'yes' },
@@ -210,33 +265,65 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
               ]"
             />
             <template v-else-if="c.spec.kind === 'choose_n'">
-              <div class="text-caption q-mb-xs">Choose up to {{ maxFor(c) }}.</div>
-              <q-option-group v-model="answers[c.contestId]" type="checkbox" :options="choiceOptions(c)" />
+              <div :id="`contest-${c.contestId}-how`" class="text-caption q-mb-xs">Choose up to {{ maxFor(c) }}.</div>
+              <q-option-group
+                v-model="answers[c.contestId]"
+                type="checkbox"
+                :options="choiceOptions(c)"
+                :aria-labelledby="`contest-${c.contestId}`"
+                :aria-describedby="`contest-${c.contestId}-how`"
+                @update:model-value="(v: string[]) => choose(c, v)"
+              />
             </template>
             <template v-else>
               <div class="text-caption q-mb-xs">Rank up to {{ maxFor(c) }}, most preferred first.</div>
-              <q-list v-if="list(c).length" dense bordered separator class="q-mb-sm">
+              <q-list
+                v-if="list(c).length"
+                dense
+                bordered
+                separator
+                class="q-mb-sm"
+                :aria-label="`Your ranking for ${c.title}`"
+              >
                 <q-item v-for="(id, i) in list(c)" :key="id">
-                  <q-item-section avatar>{{ i + 1 }}</q-item-section>
+                  <q-item-section avatar><span><span class="sr-only">Choice</span> {{ i + 1 }}</span></q-item-section>
                   <q-item-section>{{ nameOf(c, id) }}</q-item-section>
                   <q-item-section side>
                     <div class="row no-wrap">
-                      <q-btn flat dense round icon="arrow_upward" :disable="i === 0" aria-label="Move up" @click="move(c, i, -1)" />
+                      <q-btn
+                        flat
+                        dense
+                        round
+                        icon="arrow_upward"
+                        :disable="i === 0"
+                        :aria-label="`Move ${nameOf(c, id)} up`"
+                        :data-rank-row="`${c.contestId}/${id}/up`"
+                        @click="move(c, i, -1)"
+                      />
                       <q-btn
                         flat
                         dense
                         round
                         icon="arrow_downward"
                         :disable="i === list(c).length - 1"
-                        aria-label="Move down"
+                        :aria-label="`Move ${nameOf(c, id)} down`"
+                        :data-rank-row="`${c.contestId}/${id}/down`"
                         @click="move(c, i, 1)"
                       />
-                      <q-btn flat dense round icon="close" aria-label="Remove" @click="unrank(c, i)" />
+                      <q-btn
+                        flat
+                        dense
+                        round
+                        icon="close"
+                        :aria-label="`Remove ${nameOf(c, id)} from your ranking`"
+                        :data-rank-row="`${c.contestId}/${id}/remove`"
+                        @click="unrank(c, i)"
+                      />
                     </div>
                   </q-item-section>
                 </q-item>
               </q-list>
-              <div class="row q-gutter-sm">
+              <div v-if="unranked(c).length" class="row q-gutter-sm" role="group" :aria-label="`Not yet ranked in ${c.title}`">
                 <q-btn
                   v-for="k in unranked(c)"
                   :key="k.candidateId"
@@ -244,6 +331,8 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
                   no-caps
                   icon="add"
                   :label="k.name"
+                  :aria-label="`Add ${k.name} as choice ${list(c).length + 1}`"
+                  :data-rank-add="`${c.contestId}/${k.candidateId}`"
                   :disable="list(c).length >= maxFor(c)"
                   @click="rank(c, k.candidateId)"
                 />
@@ -254,11 +343,12 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
               flat
               dense
               no-caps
-              size="sm"
               label="Clear (skip this contest)"
               class="q-mt-sm"
-              @click="answers[c.contestId] = c.spec.kind === 'proposal' ? null : []"
-            />
+              @click="clear(c)"
+            >
+              <span class="sr-only">: {{ c.title }}</span>
+            </q-btn>
           </q-card-section>
         </q-card>
       </div>
@@ -269,14 +359,18 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
           size="lg"
           label="Review and cast"
           :disable="skipped.length === contests.length || integrity === false"
+          aria-describedby="cast-hint"
           @click="reviewing = true"
         />
-        <span v-if="skipped.length === contests.length" class="q-ml-md text-grey-7">Answer at least one contest.</span>
+        <span v-if="skipped.length === contests.length" id="cast-hint" class="q-ml-md text-grey-7">Answer at least one contest.</span>
       </div>
 
-      <q-dialog v-model="reviewing">
-        <q-card style="min-width: 360px; max-width: 640px">
-          <q-card-section class="text-h6">Cast this ballot?</q-card-section>
+      <q-dialog v-model="reviewing" aria-labelledby="review-title">
+        <q-card style="min-width: min(360px, 95vw); max-width: 640px">
+          <!-- Focus starts at the title, so a screen reader reads the summary from the top. -->
+          <q-card-section>
+            <h2 id="review-title" class="text-h6 ustp-focus-target" tabindex="-1" data-autofocus>Cast this ballot?</h2>
+          </q-card-section>
           <q-card-section class="q-pt-none">
             <q-list dense separator>
               <q-item v-for="c in contests" :key="c.contestId">

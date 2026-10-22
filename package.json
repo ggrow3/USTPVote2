@@ -7,6 +7,7 @@
     "packages/tally",
     "packages/audit",
     "packages/domain",
+    "packages/verify",
     "apps/server",
     "apps/web"
   ],
@@ -14,7 +15,7 @@
     "node": ">=24"
   },
   "scripts": {
-    "build": "npm run build -w packages/tally -w packages/audit -w packages/domain -w apps/server -w apps/web",
+    "build": "npm run build -w packages/tally -w packages/audit -w packages/domain -w packages/verify -w apps/server -w apps/web",
     "typecheck": "npm run typecheck --workspaces",
     "test": "npm run test --workspaces --if-present",
     "dev:api": "npm run dev:api -w apps/server",

@@ -9,6 +9,7 @@ import {
 } from 'ustp-audit';
 import type { ElectionDefinition, ElectionRecord } from './elections.js';
 import type { SignatureRecord } from './ledger.js';
+import type { ResultsSummary } from './results.js';
 
 /**
  * Sealed blocks (design §7.2, §7.4): ballots taken out of the pool (or, for roll-call elections, out of the
@@ -148,7 +149,8 @@ export type SealedBlockSummary = Pick<SealedBlockRecord, 'index' | 'ballotCount'
 
 /**
  * `GET /v1/public/elections/{id}`: what anyone may see of an election past its draft. Block contents (the parts
- * themselves) are published only once voting has closed, so nobody sees a running tally (`.../sealed-blocks`).
+ * themselves) are published only once voting has closed, so nobody sees a running tally (`.../sealed-blocks`); the
+ * results follow once every ballot is sealed (`.../results`).
  */
 export interface PublicElection {
   readonly election: Pick<
@@ -170,6 +172,7 @@ export interface PublicElection {
   >;
   readonly definition: ElectionDefinition;
   readonly roll: {
+    readonly snapshotId: string;
     readonly count: number;
     readonly merkleRoot: string;
     readonly asOf: string;
@@ -177,4 +180,6 @@ export interface PublicElection {
   } | null;
   readonly sealedBlocks: readonly SealedBlockSummary[];
   readonly ballotsSealed: number;
+  /** Null until the worker has tallied the sealed election. */
+  readonly results: ResultsSummary | null;
 }

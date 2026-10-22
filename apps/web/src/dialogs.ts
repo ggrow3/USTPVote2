@@ -1,4 +1,4 @@
-import { Dialog, Notify } from 'quasar';
+import { Dialog, Notify, type QDialogOptions } from 'quasar';
 import { PROBLEM_TYPES } from 'ustp-domain';
 import { ApiError, errorMessage } from './api.js';
 import { auth } from './firebase.js';
@@ -8,20 +8,31 @@ import { isFederatedProvider, reauthenticate } from './sign-in.js';
 
 /** Asks for the written reason every admin decision requires (design §5.1). Resolves null if cancelled. */
 export function askReason(title: string, message: string): Promise<string | null> {
-  return ask(title, message, 'textarea', (v) => v.trim().length > 0).then((v) => v?.trim() ?? null);
+  return ask(title, message, 'Reason', 'textarea', (v) => v.trim().length > 0).then((v) => v?.trim() ?? null);
 }
 
 /** Asks for a 6-digit authenticator code. Resolves null if cancelled. */
 export function askCode(message = 'Enter the 6-digit code from your authenticator app.'): Promise<string | null> {
-  return ask('Authenticator code', message, 'text', (v) => CODE_PATTERN.test(v.trim()));
+  return ask('Authenticator code', message, 'Code', 'text', (v) => CODE_PATTERN.test(v.trim()));
 }
 
-function ask(title: string, message: string, type: 'text' | 'textarea' | 'password', isValid: (v: string) => boolean) {
+function ask(
+  title: string,
+  message: string,
+  label: string,
+  type: 'text' | 'textarea' | 'password',
+  isValid: (v: string) => boolean,
+) {
   return new Promise<string | null>((resolve) => {
-    Dialog.create({ title, message, prompt: { model: '', type, isValid }, cancel: true, persistent: true })
+    dialog({ title, message, prompt: { model: '', type, label, isValid }, cancel: true, persistent: true })
       .onOk((value: string) => resolve(value))
       .onCancel(() => resolve(null));
   });
+}
+
+/** Quasar's Dialog plugin, with the title as the dialog's accessible name (the plugin leaves the dialog unnamed). */
+export function dialog(options: QDialogOptions) {
+  return Dialog.create({ ...options, ...(options.title ? { 'aria-label': options.title } : {}) });
 }
 
 /**
@@ -40,6 +51,7 @@ export async function confirmIdentity(): Promise<boolean> {
         const password = await ask(
           'Confirm it is you',
           `Enter the password for ${user.email}. (If you sign in with email links, sign out and sign in again instead.)`,
+          'Password',
           'password',
           (v) => v.length > 0,
         );

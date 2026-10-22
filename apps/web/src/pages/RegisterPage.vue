@@ -3,12 +3,14 @@ import { sendEmailVerification } from 'firebase/auth';
 import { useQuasar } from 'quasar';
 import { computed, reactive, ref, watch } from 'vue';
 import { createApplicationSchema, type ApplicationRecord, type BylawsRecord } from 'ustp-domain';
+import { focusFirstInvalid, focusSoon, usePageTitle } from '../a11y.js';
 import { api, errorMessage } from '../api.js';
 import { auth } from '../firebase.js';
 import { apiFieldErrors, STATES, validate, type FieldErrors } from '../forms.js';
 import { refreshMe, refreshUser, session } from '../session.js';
 
 const $q = useQuasar();
+usePageTitle('Register');
 const bylaws = ref<BylawsRecord | null>(null);
 const bylawsError = ref<string | null>(null);
 const applications = ref<ApplicationRecord[]>([]);
@@ -69,6 +71,7 @@ async function submit() {
   });
   if (!checked.ok) {
     errors.value = checked.errors;
+    await focusFirstInvalid();
     return;
   }
   busy.value = true;
@@ -78,8 +81,10 @@ async function submit() {
     await refreshMe();
     applications.value = await api<ApplicationRecord[]>('GET', '/v1/registration/applications/me');
     $q.notify({ type: 'positive', message: 'Application submitted' });
+    await focusSoon('#application-status');
   } catch (e) {
     errors.value = { _: errorMessage(e), ...apiFieldErrors(e) };
+    await focusFirstInvalid();
   } finally {
     busy.value = false;
   }
@@ -88,7 +93,7 @@ async function submit() {
 
 <template>
   <q-page padding>
-    <div class="text-h5 q-mb-md">Register as a member</div>
+    <h1 class="text-h5 q-mb-md">Register as a member</h1>
     <div style="max-width: 760px">
       <div v-if="!session.ready" class="text-grey-7">Loading…</div>
 
@@ -101,7 +106,7 @@ async function submit() {
 
       <q-card v-else-if="status === 'applicant'" flat bordered>
         <q-card-section>
-          <div class="text-subtitle1">Your application is being reviewed</div>
+          <h2 id="application-status" class="text-subtitle1">Your application is being reviewed</h2>
           <div class="text-grey-7">
             Submitted {{ applications[0] ? new Date(applications[0].submittedAt).toLocaleString() : '' }}. A Membership
             Admin will decide it; you will see the outcome here.
@@ -118,7 +123,7 @@ async function submit() {
 
       <q-card v-else-if="!session.user.emailVerified" flat bordered>
         <q-card-section>
-          <div class="text-subtitle1">Verify your email address</div>
+          <h2 class="text-subtitle1">Verify your email address</h2>
           <div class="text-grey-7">
             We need a verified address for {{ session.user.email }} before you can apply. Check your inbox for the
             verification link.
@@ -131,22 +136,27 @@ async function submit() {
       </q-card>
 
       <template v-else>
-        <q-banner v-if="lastDecision?.status === 'rejected'" class="bg-orange-1 q-mb-md" rounded>
+        <q-banner v-if="lastDecision?.status === 'rejected'" class="bg-orange-1 text-black q-mb-md" rounded>
           Your previous application was not approved: {{ lastDecision.decisionReason }}
         </q-banner>
         <q-banner v-if="bylawsError" class="bg-negative text-white q-mb-md" rounded>{{ bylawsError }}</q-banner>
 
         <q-card v-if="bylaws" flat bordered class="q-mb-md">
           <q-card-section>
-            <div class="text-subtitle1">{{ bylaws.title }}</div>
+            <h2 id="bylaws-title" class="text-subtitle1">{{ bylaws.title }}</h2>
             <div class="text-caption text-grey-7">
               Version {{ bylaws.version }} · SHA-256 <code>{{ bylaws.contentHash.slice(0, 16) }}…</code>
             </div>
           </q-card-section>
           <q-separator />
-          <q-scroll-area style="height: 260px">
-            <div class="q-pa-md" style="white-space: pre-wrap">{{ bylaws.text }}</div>
-          </q-scroll-area>
+          <!-- A focusable region, so the text can be scrolled with the keyboard too (WCAG 2.1.1). -->
+          <div
+            class="q-pa-md"
+            style="height: 260px; overflow-y: auto; white-space: pre-wrap"
+            tabindex="0"
+            role="region"
+            aria-labelledby="bylaws-title"
+          >{{ bylaws.text }}</div>
           <q-separator />
           <q-card-section>
             <q-checkbox v-model="agreed" label="I have read these bylaws and agree to abide by them." />

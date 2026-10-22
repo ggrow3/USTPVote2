@@ -18,6 +18,11 @@ export class PublicElectionsController {
     return this.elections.sealedBlocks(id);
   }
 
+  @Get(':id/results')
+  results(@Param('id') id: string) {
+    return this.elections.results(id);
+  }
+
   @Get(':id/proofs/:commitment')
   proof(@Param('id') id: string, @Param('commitment') commitment: string) {
     return this.elections.proof(id, commitment);

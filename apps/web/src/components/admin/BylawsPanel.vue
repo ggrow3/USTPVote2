@@ -2,6 +2,7 @@
 import { onMounted, reactive, ref } from 'vue';
 import { publishBylawsSchema, type BylawsRecord } from 'ustp-domain';
 import { api } from '../../api.js';
+import { focusFirstInvalid } from '../../a11y.js';
 import { attempt } from '../../dialogs.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../../forms.js';
 
@@ -17,6 +18,7 @@ async function publish() {
   const checked = validate(publishBylawsSchema, form);
   if (!checked.ok) {
     errors.value = checked.errors;
+    await focusFirstInvalid();
     return;
   }
   errors.value = {};
@@ -42,7 +44,7 @@ onMounted(load);
   <div class="column q-gutter-md" style="max-width: 760px">
     <q-card flat bordered>
       <q-card-section>
-        <div class="text-subtitle1">Current bylaws</div>
+        <h2 class="text-subtitle1">Current bylaws</h2>
         <div v-if="current" class="text-grey-7">
           {{ current.title }} · version {{ current.version }} · published
           {{ new Date(current.publishedAt).toLocaleDateString() }} · SHA-256 <code>{{ current.contentHash }}</code>
@@ -53,7 +55,7 @@ onMounted(load);
 
     <q-card flat bordered>
       <q-card-section>
-        <div class="text-subtitle1">Publish a new version</div>
+        <h2 class="text-subtitle1">Publish a new version</h2>
         <div class="text-caption text-grey-7">
           Versions are permanent and recorded in the audit ledger. New applications must agree to the newest version.
         </div>

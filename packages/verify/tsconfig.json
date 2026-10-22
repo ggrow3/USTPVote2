@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    // A Node CLI: global fetch, node:fs and node:util come from @types/node.
+    "types": ["node"]
+  },
+  "include": ["src"]
+}

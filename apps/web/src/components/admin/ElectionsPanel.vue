@@ -3,6 +3,7 @@ import { onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { createElectionSchema, type ElectionRecord } from 'ustp-domain';
 import { api } from '../../api.js';
+import { focusFirstInvalid } from '../../a11y.js';
 import { attempt } from '../../dialogs.js';
 import { fromLocalInput, toLocalInput } from '../../election-text.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../../forms.js';
@@ -32,6 +33,7 @@ async function create() {
   });
   if (!checked.ok) {
     errors.value = checked.errors;
+    await focusFirstInvalid();
     return;
   }
   let created: ElectionRecord | null = null;
@@ -56,7 +58,7 @@ onMounted(load);
   <div>
     <div class="row items-center q-gutter-sm q-mb-md">
       <q-btn v-if="hasRole('election_admin')" color="primary" no-caps label="New election" @click="creating = true" />
-      <q-btn flat dense icon="refresh" aria-label="Refresh" @click="load" />
+      <q-btn flat dense icon="refresh" aria-label="Refresh elections" @click="load" />
     </div>
     <div v-if="listState === 'failed'" class="text-grey-7">Could not load elections.</div>
     <div v-else-if="listState === 'ready' && !rows.length" class="text-grey-7">No elections yet.</div>
@@ -73,15 +75,17 @@ onMounted(load);
       </q-item>
     </q-list>
 
-    <q-dialog v-model="creating">
+    <q-dialog v-model="creating" aria-labelledby="new-election-title">
       <q-card style="width: 480px; max-width: 95vw">
-        <q-card-section class="text-h6">New election</q-card-section>
+        <q-card-section><h2 id="new-election-title" class="text-h6">New election</h2></q-card-section>
         <q-form class="q-px-md q-gutter-md" @submit.prevent="create">
           <q-input v-model="form.title" outlined dense label="Title" :error="!!errors.title" :error-message="errors.title" />
           <q-btn-toggle
             v-model="form.secrecy"
             no-caps
             toggle-color="primary"
+            role="group"
+            aria-label="Ballot secrecy"
             :options="[
               { label: 'Secret ballot', value: 'secret' },
               { label: 'Open roll-call', value: 'open' },

@@ -8,6 +8,7 @@ import {
   type ElectionRecord,
   type ElectionState,
   type PublicElection,
+  type ResultsRecord,
   type RollSnapshotRecord,
   type SealedBlockRecord,
   type SealedBlockSummary,
@@ -19,9 +20,9 @@ import { ElectionReader } from './election-reader.js';
 const CONTENTS_PUBLIC: readonly ElectionState[] = ['closed', 'certified'];
 
 /**
- * The published record of an election (design §7.5, §12), readable by anyone once it is past its draft: the frozen
+ * The published record of an election (design §7.5, §9, §12), readable by anyone once it is past its draft: the frozen
  * definition, the roll's size and root, sealed block summaries, the contents of sealed blocks once voting has closed,
- * and the inclusion proof for any sealed commitment.
+ * the inclusion proof for any sealed commitment, and the signed results once the worker has tallied them.
  */
 @Injectable()
 export class PublicElectionsService {
@@ -33,7 +34,7 @@ export class PublicElectionsService {
   async record(electionId: string): Promise<PublicElection> {
     const { election, definition } = await this.reader.load(electionId);
     if (election.state === 'draft') throw new NotFoundException('no such election');
-    const [rollSnap, blocksSnap] = await Promise.all([
+    const [rollSnap, blocksSnap, resultsSnap] = await Promise.all([
       election.rollSnapshotId
         ? this.firebase.db.collection(Collections.eligibilitySnapshots).doc(election.rollSnapshotId).get()
         : Promise.resolve(null),
@@ -41,9 +42,11 @@ export class PublicElectionsService {
         .select('index', 'ballotCount', 'merkleRoot', 'sealedHash', 'sealedAt', 'ledgerSeq')
         .orderBy('index')
         .get(),
+      this.resultsRef(electionId).get(),
     ]);
     const roll = rollSnap?.data() as RollSnapshotRecord | undefined;
     const sealedBlocks = blocksSnap.docs.map((d) => d.data() as SealedBlockSummary);
+    const results = resultsSnap.data() as ResultsRecord | undefined;
     const e = election;
     return {
       election: {
@@ -63,10 +66,23 @@ export class PublicElectionsService {
         cancelledAt: e.cancelledAt,
       },
       definition,
-      roll: roll ? { count: roll.count, merkleRoot: roll.merkleRoot, asOf: roll.asOf, signature: roll.signature ?? null } : null,
+      roll: roll
+        ? { snapshotId: roll.snapshotId, count: roll.count, merkleRoot: roll.merkleRoot, asOf: roll.asOf, signature: roll.signature ?? null }
+        : null,
       sealedBlocks,
       ballotsSealed: sealedBlocks.reduce((sum, b) => sum + b.ballotCount, 0),
+      results: results
+        ? { status: results.status, resultsHash: results.resultsHash, computedAt: results.computedAt, ledgerSeq: results.ledgerSeq }
+        : null,
     };
+  }
+
+  /** The signed results bundle; 404 until the worker has tallied the sealed election. */
+  async results(electionId: string): Promise<ResultsRecord> {
+    await this.state(electionId);
+    const snap = await this.resultsRef(electionId).get();
+    if (!snap.exists) throw new NotFoundException('results are published once every ballot is sealed and counted');
+    return snap.data() as ResultsRecord;
   }
 
   /** Every sealed block with its parts, once voting has closed. */
@@ -103,6 +119,10 @@ export class PublicElectionsService {
     const state = (snap.data() as ElectionRecord | undefined)?.state;
     if (!state || state === 'draft') throw new NotFoundException('no such election');
     return state;
+  }
+
+  private resultsRef(electionId: string) {
+    return this.firebase.db.collection(Collections.results).doc(electionId);
   }
 
   private blocks(electionId: string) {

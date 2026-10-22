@@ -13,10 +13,12 @@ import {
   type SealedBlockRecord,
   type SigningKeyRecord,
 } from 'ustp-domain';
+import { announce, usePageTitle } from '../a11y.js';
 import { api, ApiError, errorMessage } from '../api.js';
 import { savedReceipts } from '../receipts.js';
 
 const route = useRoute();
+usePageTitle('Verify a receipt');
 const saved = savedReceipts();
 const chosen = ref<string | null>(null);
 const pasted = ref('');
@@ -60,6 +62,7 @@ async function check(source: 'saved' | 'file' | 'paste') {
   results.value = null;
   blocksCheck.value = null;
   checking.value = true;
+  announce('Checking your receipt…');
   try {
     const receipt =
       source === 'saved'
@@ -102,6 +105,8 @@ const STATUS = {
   pending: { label: 'not yet', color: 'grey-7' },
   failed: { label: 'failed', color: 'negative' },
 } as const;
+/** Said before each step, since its icon alone does not say whether it passed. */
+const stepStatus = (ok: boolean | null | undefined) => (ok === true ? 'Passed:' : ok === false ? 'Failed:' : 'Not checked yet:');
 const summary = computed(() => {
   const r = results.value;
   if (!r) return null;
@@ -113,7 +118,7 @@ const summary = computed(() => {
 
 <template>
   <q-page padding>
-    <div class="text-h5 q-mb-sm">Verify a receipt</div>
+    <h1 class="text-h5 q-mb-sm">Verify a receipt</h1>
     <p style="max-width: 760px">
       Checks, in this browser and from public data only, that each part of your ballot was sealed into the election's
       published record, that the sealed block is in the signed audit ledger, and that the ledger is anchored outside the
@@ -123,19 +128,25 @@ const summary = computed(() => {
     <div class="column q-gutter-md" style="max-width: 760px">
       <q-card v-if="saved.length" flat bordered>
         <q-card-section class="row items-center q-gutter-md">
-          <q-select v-model="chosen" :options="receiptOptions" emit-value map-options outlined dense label="Saved in this browser" class="col" />
-          <q-btn color="primary" label="Check" :loading="checking" :disable="!chosen" @click="check('saved')" />
+          <q-select v-model="chosen" :options="receiptOptions" emit-value map-options outlined dense label="Saved in this browser" class="col-12 col-sm" />
+          <q-btn color="primary" label="Check" :loading="checking" :disable="!chosen" @click="check('saved')">
+            <span class="sr-only"> the saved receipt</span>
+          </q-btn>
         </q-card-section>
       </q-card>
       <q-card flat bordered>
         <q-card-section class="row items-center q-gutter-md">
-          <q-file v-model="file" outlined dense accept=".json,application/json" label="Open a downloaded receipt" class="col" />
-          <q-btn color="primary" label="Check" :loading="checking" :disable="!file" @click="check('file')" />
+          <q-file v-model="file" outlined dense accept=".json,application/json" label="Open a downloaded receipt" class="col-12 col-sm" />
+          <q-btn color="primary" label="Check" :loading="checking" :disable="!file" @click="check('file')">
+            <span class="sr-only"> the receipt file</span>
+          </q-btn>
         </q-card-section>
         <q-expansion-item dense label="…or paste one" class="q-px-sm">
           <div class="q-pa-sm">
             <q-input v-model="pasted" type="textarea" outlined autogrow label="Receipt (JSON)" />
-            <q-btn class="q-mt-sm" color="primary" label="Check" :loading="checking" :disable="!pasted.trim()" @click="check('paste')" />
+            <q-btn class="q-mt-sm" color="primary" label="Check" :loading="checking" :disable="!pasted.trim()" @click="check('paste')">
+              <span class="sr-only"> the pasted receipt</span>
+            </q-btn>
           </div>
         </q-expansion-item>
       </q-card>
@@ -144,7 +155,7 @@ const summary = computed(() => {
 
       <template v-if="results && record">
         <div>
-          <div class="text-h6">{{ record.election.title }}</div>
+          <h2 class="text-h6">{{ record.election.title }}</h2>
           <div class="text-caption text-grey-7">
             {{ record.election.state }} · {{ record.ballotsSealed }} ballots sealed in {{ record.sealedBlocks.length }}
             {{ record.sealedBlocks.length === 1 ? 'block' : 'blocks' }}
@@ -157,7 +168,7 @@ const summary = computed(() => {
         <q-card v-for="r in results" :key="r.contestId" flat bordered>
           <q-card-section class="row items-center">
             <div class="col">
-              <div class="text-subtitle1">{{ titleOf(r.contestId) }}</div>
+              <h3 class="text-subtitle1">{{ titleOf(r.contestId) }}</h3>
               <div class="text-caption text-grey-7"><code>{{ r.commitment }}</code></div>
             </div>
             <q-badge :color="STATUS[r.status].color" :label="STATUS[r.status].label" />
@@ -171,7 +182,7 @@ const summary = computed(() => {
                 />
               </q-item-section>
               <q-item-section>
-                <q-item-label>{{ s.label }}</q-item-label>
+                <q-item-label><span class="sr-only">{{ stepStatus(s.ok) }}</span> {{ s.label }}</q-item-label>
                 <q-item-label v-if="s.detail" caption>{{ s.detail }}</q-item-label>
               </q-item-section>
             </q-item>

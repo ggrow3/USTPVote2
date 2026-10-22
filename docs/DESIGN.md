@@ -64,7 +64,7 @@ verifiable without trusting the operators. Spec §9's "fully consistent" privacy
 Ballot stuffing by a compromised API is bounded by the roll and is detectable: after close, auditors (and, if USTP
 chooses, members) can see the participation list and any member can report "I did not vote but am listed".
 
-**Invariants an auditor can check from the record** (implemented by the future `ustp-verify` CLI):
+**Invariants an auditor can check from the record** (checked by the `ustp-verify` CLI, §16, as far as public data allows):
 1. ballots in sealed blocks = participation records ≤ roll entries, and every participant is on the roll;
 2. every sealed block's Merkle root and hash recompute, and each appears in the ledger;
 3. the ledger hash chain is unbroken, every ledger block's signature verifies, and the anchors match;
@@ -99,10 +99,11 @@ flowchart LR
 |---|---|---|
 | `apps/web` | Vue 3 + Quasar 2 on Vite, Firebase Hosting | Member, voter, verifier and admin UI. Computes ballot commitments and verifies Merkle proofs client-side with `ustp-audit`. |
 | `apps/server` → **api** | Node 26 LTS, NestJS 12 on Fastify 5, Cloud Run service | All client-facing endpoints. Stateless. |
-| `apps/server` → **worker** | Same image, different entrypoint, Cloud Run service (IAM-only ingress) | Election clock, pool sealing, ledger blocks, anchoring, tally, photo checks, email. |
+| `apps/server` → **worker** | Same image, different entrypoint, Cloud Run service (internal ingress, callable only by the Scheduler/Tasks invoker account) | Election clock, pool sealing, tally, ledger blocks, anchoring, email. |
 | `packages/tally` (`ustp-tally`) | Pure TypeScript, zero dependencies | Ballot validation and deterministic counting for every contest type. Published publicly (spec §1.1). |
 | `packages/audit` (`ustp-audit`) | Pure TypeScript, depends only on `@noble/hashes` | JCS, SHA-256, hash chains, RFC 9162 Merkle trees and proofs, ballot commitments, tie-break ordering. Isomorphic (Node + browser). Published publicly. |
-| `packages/domain` (`ustp-domain`) | Pure TypeScript | Shared types, state machines, role rules, two-person checks, Firestore path constants. |
+| `packages/domain` (`ustp-domain`) | Pure TypeScript | Shared types, state machines, role rules, two-person checks, Firestore path constants, sealed blocks, results bundles, and the receipt and results checks the browser, the CLI and the tests share. |
+| `packages/verify` (`ustp-verify`) | Node CLI, depends only on `ustp-audit` and `ustp-domain` | Independent verification from public artifacts only (§16). |
 
 **Why one server package with two entrypoints:** the API and worker share Firestore repositories, KMS adapters and
 domain logic. One package and one container image keep them in lockstep; two Cloud Run services with different
@@ -122,8 +123,9 @@ apps/web           Vue 3 + Quasar 2 SPA/PWA
 packages/tally     ustp-tally   (public)
 packages/audit     ustp-audit   (public)
 packages/domain    ustp-domain  (internal)
+packages/verify    ustp-verify  independent verifier CLI (public)
 infra/firebase     firestore.rules, storage.rules, indexes, hosting config
-infra/terraform    (M5) project, IAM, KMS, buckets, scheduler, Binary Authorization
+infra/terraform    project, IAM, KMS, buckets, Cloud Run, scheduler, Binary Authorization (see its README)
 docs/              this design, the source spec, ADRs
 ```
 
@@ -281,6 +283,10 @@ candidates and proposal texts still hash to the frozen `definitionHash` (otherwi
 stays scheduled). At `closesAt` it closes it. Each transition re-reads the election in a transaction (an election
 cancelled meanwhile is left alone, and overlapping ticks move it once) and ledgers `election.opened` (definition hash,
 window, pool key version) or `election.closed`, with actor `system`.
+
+**Closed → results** (implemented in M4a): once every ballot is sealed (`sealedAt`, §7.2), the worker tallies the
+election on the same tick and publishes provisional, signed results ([§9](#9-tallying-ustp-tally)). The election stays
+Closed until certification (M4b) moves it to Certified.
 
 **Cancelling** a draft is a single Election Admin action; cancelling a scheduled or open election is two-person
 (`election.cancel`, approved only if the election is still in the state it was requested from). Both are ledgered.
@@ -502,15 +508,15 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
 - Genesis `prevHash` is 64 zeros.
 - Entry types implemented in M1: `member.status_changed` (an application decision is a status change carrying the
   `applicationId`), `identity.linked`, `identity.unlinked`, `bylaws.published`, `role.granted`, `role.revoked`,
-  `approval.requested`, `approval.decided`, `signin_method.changed`. Planned: `photo.decided`, `roll.approved`,
-  `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled`, `ballots.sealed`,
-  `results.computed`, `results.certified`, `position_term.created`. The authoritative list is `LEDGER_EVENT_TYPES`
-  in `ustp-domain`.
+  `approval.requested`, `approval.decided`, `signin_method.changed`. Added since: `photo.decided`, `roll.approved`,
+  `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled` (M2–M3a), `ballots.sealed`,
+  `election.sealed` (M3b), `results.computed` (M4a). Planned: `results.certified`, `position_term.created`. The
+  authoritative list is `LEDGER_EVENT_TYPES` in `ustp-domain`.
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
   entries are public. A public verifier checks a public entry by Merkle inclusion in its ledger block (§8.3) without
   seeing the private entries in that block. Public types (`PUBLIC_LEDGER_EVENT_TYPES`): `bylaws.published`,
   `roll.approved`, `election.scheduled`, `election.opened`, `election.closed`, `ballots.sealed`, `election.sealed`,
-  `election.cancelled`, and the results types as they arrive.
+  `election.cancelled`, `results.computed`, and the certification types as they arrive.
   `GET /v1/public/ledger/entries/{seq}` returns a public entry with its block and inclusion proof; anything else, or an
   entry not yet in a block, is 404.
 
@@ -595,14 +601,55 @@ ratio bounds, tie-break order is a permutation of the candidates).
   earlier rounds, most recent first, and eliminate the one with fewer; if tied in every round, eliminate the one
   latest in tie-break order. Every round, elimination and tie-break is in the output.
 
-**Tie-break order.** At close the seed is revealed. For each contest, `ustp-audit` orders candidates by
-`H(JCS({v:1, seed, contestId, candidateId}))` ascending; earlier is favoured. Anyone can check
-`H(seed) = tieBreakSeedCommitment` from the scheduled definition and recompute the order.
+**Tie-break order.** The seed is revealed at tally. For each candidate contest, `ustp-audit` orders candidates by
+`H(JCS({v:1, seed, contestId, candidateId}))` ascending; earlier is favoured (`tieBreakOrders` in `ustp-domain`).
+Anyone can check `H(seed) = tieBreakSeedCommitment` from the scheduled election (its record and its
+`election.scheduled` entry) and recompute the order.
 
-**Results bundle.** `{v, electionId, definitionHash, roll {snapshotId, merkleRoot, count}, participationCount,
-sealedBlocks [{index, sealedHash}], tally {library: "ustp-tally", version}, tieBreakSeed, contests [...]}`.
-`resultsHash = H(JCS(bundle))`, KMS-signed, ledgered as `results.computed`; certification (two-person) ledgers
-`results.certified` referencing the same hash.
+**Results bundle** (implemented in M4a):
+
+```
+bundle = {v, electionId, definitionHash, roll {snapshotId, merkleRoot, count}, participationCount,
+          sealedBlocks [{index, sealedHash, ballotCount}], tally {library: "ustp-tally", version},
+          tieBreakSeed, tieBreakSeedCommitment, contests [{contestId, tieBreakOrder, result}]}
+resultsHash = H(JCS(bundle))
+```
+
+- `buildResultsBundle` in `ustp-domain` builds it from public data only (the frozen definition, the roll's root and
+  count, every sealed block, the revealed seed) and it holds no timestamps, so anyone can rebuild it byte for byte.
+  Contests are in definition order; `result` is the `ustp-tally` output with every round, elimination and tie-break
+  record; `tieBreakOrder` is null for proposals. `participationCount` is the ballots in the sealed blocks, which the
+  sealer has checked equal the participation records.
+- It refuses (throws) rather than count anything when the definition no longer hashes to `definitionHash`, the seed
+  does not match its commitment, the sealed blocks do not verify (`sealedBlockProblems`), or a block holds parts of a
+  contest the definition does not have.
+
+**The tally** (implemented in M4a, `Tallier`, a step of every tick right after the sealer, §13):
+
+- For each Closed election with `sealedAt` and no results yet, the worker reads the seed from the secret store by
+  `tieBreakSeedRef`, refuses if `seedCommitment(seed) ≠ tieBreakSeedCommitment`, re-checks that the sealed ballots
+  equal the participation count, builds the bundle and signs `JCS(bundle)` with the `audit-signing` key. Cloud KMS
+  signs digests, and that digest is `resultsHash`, exactly as for ledger blocks (§8.3); the key is published in
+  `signing_keys` on first use.
+- One transaction re-reads the election and `results/{electionId}`, creates
+  `results/{electionId} = {electionId, status: "provisional", bundle, resultsHash, signature, computedAt, ledgerSeq}`
+  and ledgers the public `results.computed` entry (`electionId, resultsHash, definitionHash, participationCount,
+  tallyVersion, tieBreakSeed`), so the reveal of the seed is itself in the signed, anchored ledger. Overlapping ticks
+  record one result; a losing tick's signature is discarded.
+- A refusal fails the tick (500) on every tick until someone fixes the cause, so Cloud Scheduler records it; other
+  elections are still tallied. Sealing completes on the tick that closes an election, so results normally follow on
+  that same tick, and the same tick's ledger block covers `results.computed`.
+- `GET /v1/public/elections/{id}/results` returns the record (404 until computed); the public election record carries
+  its status, hash, time and ledger entry (`results`).
+
+**Checking results** (`checkResults` in `ustp-domain`, run by the results page `/results/{id}` and by the integration
+tests): the bundle's hash and signature; that it names the frozen definition and the approved roll; that the revealed
+seed matches the published commitment; that every published sealed block is counted and recomputes from its parts; a
+full re-tally with the page's own `ustp-tally` that must reproduce `resultsHash`; then the `results.computed` entry
+through its signed ledger block to an anchor.
+
+Certification (two-person, M4b) ledgers `results.certified` referencing the same hash and marks the record
+`certified`.
 
 ## 10. Administration and separation of duties
 
@@ -678,7 +725,7 @@ registration collections are top-level and election data lives under each electi
 | `elections/{id}/sealed_blocks/{index}` | zero-padded integer | immutable | parts by contest, Merkle root, `sealedHash`, sorted commitments, ledger seq |
 | `proposal_snapshots/{snapshotId}` | auto | immutable | text, content hash, source |
 | `proposal_reviews/{reviewId}` | auto | immutable | decision, reviewer |
-| `results/{electionId}` | electionId | provisional → certified | bundle, hash, signature |
+| `results/{electionId}` | electionId | provisional → certified | bundle, hash, signature, ledger seq |
 | **audit & admin** | | | |
 | `audit_events/{seq}` | zero-padded integer | append-only | ledger entries |
 | `ledger_head/main` | — | updated per append | seq, hash *(added)* |
@@ -712,7 +759,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /elections/{id}/ballot` | V | ballot definition and hash |
 | `POST /elections/{id}/ballots` | V | cast (409 if already voted) |
 | `GET /elections/{id}/participation/me` | V | "have I voted?" |
-| `GET /public/elections/{id}` · `.../sealed-blocks` · `.../results` | P | published record (non-draft): definition, roll size and root, block summaries; block contents once closed; results in M4 |
+| `GET /public/elections/{id}` · `.../sealed-blocks` · `.../results` | P | published record (non-draft): definition, roll size and root, block summaries, results status; block contents once closed; the signed results bundle once tallied (404 until then) |
 | `GET /public/elections/{id}/proofs/{commitment}` | P | inclusion proof for a receipt |
 | `GET /public/ledger/blocks` (paged) · `.../blocks/{index}` · `.../keys` · `GET /public/anchors/latest` | P | signed ledger blocks, signing keys, anchors |
 | `GET /public/ledger/entries/{seq}` | P | a public entry with its block and inclusion proof |
@@ -735,10 +782,13 @@ Errors use RFC 9457 problem details. Request bodies are validated against schema
 
 | Endpoint | Trigger | Work |
 |---|---|---|
-| `POST /tasks/tick` | Cloud Scheduler, every minute | Prepare pool keys, open/close elections on time, seal ballots (M3), then seal ledger blocks, sign approved rolls and anchor (M2c). Returns what it did. *M4:* schedule the tally once an election is sealed |
-| `POST /tasks/tally` | Cloud Task after close | reveal seed, run `ustp-tally`, write provisional results bundle |
+| `POST /tasks/tick` | Cloud Scheduler, every minute | Prepare pool keys, open/close elections on time, seal ballots (M3), tally sealed elections into signed provisional results (M4a), then seal ledger blocks, sign approved rolls and anchor (M2c). Returns what it did |
 | `POST /tasks/email` | Cloud Task | send via Amazon SES |
 | `POST /tasks/destroy-pool-key` | Cloud Task after certify | destroy the election's ballot-pool key version |
+
+Tallying is a step of the tick, not the `POST /tasks/tally` Cloud Task planned earlier: the tick already runs every
+minute right after sealing, the tally is a small in-memory count, a failed tally is retried by the next tick for free,
+and no Cloud Tasks queue is needed for it.
 
 The worker accepts only OIDC tokens from the Scheduler/Tasks service accounts (Cloud Run IAM invoker), so its routes
 have no sign-in of their own. Every task is idempotent. Overlapping ticks cannot double-seal: every sealed block,
@@ -755,7 +805,22 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
   encrypt/decrypt in production; break-glass group with alerting. Only the worker's account holds
   `cloudkms.signer` and `cloudkms.publicKeyViewer` on `audit-signing`; it also writes to the anchors bucket, which
   nobody may delete from. On `ballot-pool` the worker may create versions and decrypt; the api may only read public
-  keys (§7.3).
+  keys (§7.3). Tie-break seeds: the api creates their secrets at scheduling; only the worker may read them back
+  (`secretmanager.versions.access`), to reveal them at tally.
+- **IAM as implemented in [`infra/terraform`](../infra/terraform)** (its README lists every binding), which settles
+  points this section left open:
+  - Both services *read* the anchors bucket: the api for the Auditor's anchor check (§8.4), the worker to compare the
+    stored bytes when a write is retried. Only the worker may create objects, and nobody may delete or overwrite them.
+  - The api needs `roles/firebaseauth.viewer` for `verifyIdToken(…, checkRevoked)` on admin routes and casting.
+  - The worker may also destroy `ballot-pool` versions, for `destroy-pool-key` (§13); destroyed versions stay
+    restorable for 24 hours.
+  - The api can create `tiebreak-seed-*` secrets and add versions to them, but cannot read any.
+  - The worker's Cloud Run service takes internal traffic only, and only the `ustp-worker-invoker` account (Scheduler,
+    Tasks) may call it.
+  - "No human has Firestore data access" in production means no human holds a basic role (Owner, Editor and even Viewer
+    include data access) there; access goes through the break-glass group, with an alert.
+  - Cloud Vision appears to need only the enabled API, no role (to confirm in a real project).
+  - An optional alert fires when anyone but the worker uses the signing or ballot-pool keys.
 - **Logging:** structured logs with redaction; no request bodies on cast; Firestore Data Access audit logs off in
   production (they would record write paths and times; pool encryption makes them harmless, but there is no need for
   them); KMS Data Access audit logs on.
@@ -769,7 +834,12 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
 ## 15. Environments, deployment, cost
 
 - Projects `ustp-voting-dev`, `ustp-voting-staging`, `ustp-voting-prod` (spec §2.1). Infrastructure as code with
-  Terraform (proposed; Q13).
+  Terraform in [`infra/terraform`](../infra/terraform) (Q13, adopted pending USTP's confirmation): one module, one
+  root per environment, state in a `ustp-voting-<env>-tfstate` bucket. The api and worker are deployed by image digest
+  through Terraform. Written but not yet applied or validated (`terraform fmt`/`validate` have not run; run them and
+  commit the `.terraform.lock.hcl` files before the first apply). Still missing before a first deploy: a Dockerfile
+  (the image runs `node dist/main-api.js` / `node dist/main-worker.js` and listens on `$PORT`) and a CI identity that
+  builds, attests and applies.
 - Web → Firebase Hosting, which rewrites `/v1/**` to the api Cloud Run service so the API is same-origin (no CORS).
   api and worker → Cloud Run from one image (`node dist/main-api.js` / `node dist/main-worker.js`).
   Config: [`infra/firebase`](../infra/firebase).
@@ -786,7 +856,15 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
 - **Election simulation:** build a roll, cast N ballots through the API, seal, tally, certify, then run every
   [§2 invariant](#2-threat-model-and-trust-assumptions) — in CI.
 - **Web:** component tests; Playwright end-to-end for register → vote → verify.
-- **Independent verification:** `ustp-verify` CLI (M4) consumes only public artifacts.
+- **Independent verification:** the `ustp-verify` CLI (`packages/verify`, M4) consumes only public artifacts: the
+  `/v1/public/...` endpoints and, optionally, anchor objects downloaded from the bucket. It checks the ledger chain,
+  every block signature and the anchors; an election's frozen definition hash, roll signature, every public ledger entry
+  about it, its sealed blocks against their summaries and ledger entries, and sealed ballots ≤ roll; a receipt with
+  `checkReceiptPart`; and published results with `checkResults` (full re-tally). Every later check trusts only the
+  ledger blocks the ledger check verified. Exit code 1 on any failure; steps the next tick will complete are reported
+  as waiting, not failed. See [`packages/verify/README.md`](../packages/verify/README.md).
+- **Accessibility:** WCAG 2.2 AA pass over every page, with what was checked, fixed and still needs a manual
+  screen-reader pass in [`docs/ACCESSIBILITY.md`](ACCESSIBILITY.md).
 - **Before the first real election:** external review of the cast path and sealer, and a mock election with members.
 
 ## 17. Deviations from and clarifications of the spec
@@ -807,6 +885,7 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
 | §6 roll snapshot "signed" | Signed by the worker on its next tick after approval, not inside the approval | Keeps signing rights off the internet-facing api; a compromised api cannot sign |
 | §6 collections | + `signing_keys` | Public keys of every key version that signed, for verification across key rotation |
 | §4 sealed blocks published as sealed | Contents published once voting closes; summaries and inclusion proofs while open | Publishing contents during voting would show a running tally |
+| (design) §13 tally as a Cloud Task after close | A step of the minute tick, right after the sealer | No queue to run or secure, results within a tick of close, and the next tick retries a failed tally |
 | (added) §7.3 pool encryption with a symmetric key the api may only encrypt with | Asymmetric key, one version per election; the api encrypts locally to its public key (RSA-OAEP wrapping an AES-GCM data key) | Symmetric KMS encryption always uses the primary version, so concurrent elections could not each have their own; the api then holds no decrypt permission at all and makes no KMS call per ballot |
 
 ## 18. Open questions
@@ -838,5 +917,5 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M1 — Identity & registration** | *Done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes via two-person approvals, auth switches, Auditor ledger verification; web sign-in (Google, Microsoft, Apple, email/password, email link), registration, account and admin console. admin two-step verification (authenticator-app setup, code step at sign-in, re-authentication for approvals, typed MFA/re-auth problems); profile photos (normalized upload, automatic checks, admin review). *Still to exercise against a real project:* authenticator-app setup and sign-in (TOTP), and Cloud Vision photo checks — neither has an emulator |
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
-| **M4 — Tally & certification** | Tally task, results bundle, certification, position terms, key destruction; `ustp-verify` CLI |
-| **M5 — Hardening & launch gates** | Terraform; Binary Authorization; PWA; accessibility audit; load test; external review; mock election |
+| **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b:* two-person certification (`results.certified`), position terms, ballot-pool key destruction |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (written, not yet validated or applied; §15) including the Binary Authorization policy; installable PWA (manifest, icons, a service worker that caches only the app shell and never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`). *Still to do:* Dockerfile and a CI identity that builds, attests and applies; the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
