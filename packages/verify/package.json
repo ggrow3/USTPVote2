@@ -1,0 +1,28 @@
+{
+  "name": "ustp-verify",
+  "version": "0.1.0",
+  "description": "Independent verifier for USTP elections: checks the signed ledger, anchors, election records and receipts from public artifacts only",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "ustp-verify": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "ustp-audit": "^0.1.0",
+    "ustp-domain": "^0.1.0"
+  }
+}
