@@ -1,23 +1,8 @@
 import { newSalt, type BallotPart } from 'ustp-audit';
-import {
-  buildDefinition,
-  commitmentsOf,
-  definitionHash,
-  proposalContentHash,
-  rollMerkleRoot,
-  sortRoll,
-  uuidv7,
-  type CandidateRecord,
-  type ContestRecord,
-  type ElectionRecord,
-  type ElectionState,
-  type PoolEntryRecord,
-  type ProposalSnapshotRecord,
-  type RollSnapshotRecord,
-  type Secrecy,
-} from 'ustp-domain';
+import { commitmentsOf, type ElectionRecord, type PoolEntryRecord, type Secrecy } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { BALLOT_POOL_KEYS, decryptBallot, type BallotPoolKeys } from './infra/ballot-pool.js';
+import { ledgerTypes as typesOf, minutes, seedElection as seedFixture, seededBallot } from './testing/elections.js';
 import { resetEmulators, TestApi, TestWorker, type User } from './testing/emulator.js';
 
 let api: TestApi;
@@ -31,85 +16,10 @@ type Member = User & { accountId: string };
 let voter: Member;
 let outsider: Member;
 
-const minutes = (n: number) => new Date(Date.now() + n * 60_000).toISOString();
-const MAJORITY = { threshold: { ratio: { num: 1, den: 2 }, comparison: 'gt' as const }, base: 'yes_no' as const };
-
-/**
- * Writes an election as scheduling would leave it (frozen definition hash, approved roll), in any state. Scheduling
- * itself is covered in scheduling.int.test.ts; this lets tests choose the voting window freely.
- */
-async function seedElection(opts: { secrecy?: Secrecy; state?: ElectionState; opensAt?: string; closesAt?: string }) {
-  const db = api.firebase.db;
-  const electionId = uuidv7();
-  const now = new Date().toISOString();
-  const body = 'The party supports the right to repair.';
-  const proposal: ProposalSnapshotRecord = {
-    snapshotId: `p-${electionId}`,
-    title: 'Plank 12',
-    body,
-    source: null,
-    contentHash: proposalContentHash('Plank 12', body),
-    capturedAt: now,
-    capturedBy: 'seed',
-  };
-  const contests: ContestRecord[] = [
-    { contestId: 'plank', order: 1, title: 'Plank 12', description: '', spec: { kind: 'proposal', id: 'plank', passRule: MAJORITY }, proposalSnapshotId: proposal.snapshotId },
-    { contestId: 'chair', order: 2, title: 'Chair', description: '', spec: { kind: 'irv', id: 'chair', candidates: ['alex', 'blair'] }, proposalSnapshotId: null },
-  ];
-  const candidates: CandidateRecord[] = [
-    { candidateId: 'alex', contestId: 'chair', name: 'Alex Rivera', statement: null, accountId: null },
-    { candidateId: 'blair', contestId: 'chair', name: 'Blair Chen', statement: null, accountId: null },
-  ];
-  const accountIds = sortRoll([voter.accountId]);
-  const roll: RollSnapshotRecord = {
-    snapshotId: `r-${electionId}`,
-    electionId,
-    criteria: { status: 'active' },
-    asOf: now,
-    accountIds,
-    count: accountIds.length,
-    merkleRoot: rollMerkleRoot(electionId, accountIds),
-    status: 'approved',
-    requestedBy: 'seed',
-    requestedAt: now,
-    approvalId: 'seed',
-    decidedBy: 'seed',
-    decidedAt: now,
-    signature: null,
-  };
-  const unhashed: ElectionRecord = {
-    electionId,
-    title: 'Officers',
-    description: '',
-    secrecy: opts.secrecy ?? 'secret',
-    opensAt: opts.opensAt ?? minutes(-1),
-    closesAt: opts.closesAt ?? minutes(60),
-    kAnonymity: 2,
-    state: opts.state ?? 'scheduled',
-    createdBy: 'seed',
-    createdAt: now,
-    updatedAt: now,
-    definitionHash: null,
-    rollSnapshotId: roll.snapshotId,
-    tieBreakSeedCommitment: '0'.repeat(64),
-    tieBreakSeedRef: null,
-    scheduledAt: now,
-    cancelledAt: null,
-    poolKeyVersion: null,
-    openedAt: null,
-    closedAt: null,
-  };
-  const election = { ...unhashed, definitionHash: definitionHash(buildDefinition(unhashed, contests, candidates, [proposal])) };
-  const ref = db.collection('elections').doc(electionId);
-  await Promise.all([
-    db.collection('proposal_snapshots').doc(proposal.snapshotId).set(proposal),
-    db.collection('eligibility_snapshots').doc(roll.snapshotId).set(roll),
-    ref.set(election),
-    ...contests.map((c) => ref.collection('contests').doc(c.contestId).set(c)),
-    ...candidates.map((k) => ref.collection('candidates').doc(k.candidateId).set(k)),
-  ]);
-  return { electionId, url: `/v1/elections/${electionId}`, ref };
-}
+/** A seeded election whose roll is just `voter`. */
+const seedElection = (opts: Omit<Parameters<typeof seedFixture>[1], 'voters'>) => seedFixture(api, { voters: [voter.accountId], ...opts });
+const ledgerTypes = (electionId: string) => typesOf(api, electionId);
+const ballot = (electionId: string) => seededBallot(electionId);
 
 /** A scheduled election whose opening time has passed, opened by a worker tick. */
 async function openElection(secrecy: Secrecy = 'secret') {
@@ -118,23 +28,11 @@ async function openElection(secrecy: Secrecy = 'secret') {
   return seeded;
 }
 
-function ballot(electionId: string): BallotPart[] {
-  return [
-    { v: 1, electionId, contestId: 'plank', selection: 'yes', salt: newSalt() },
-    { v: 1, electionId, contestId: 'chair', selection: ['blair', 'alex'], salt: newSalt() },
-  ];
-}
-
 const cast = async (who: User, url: string, parts: BallotPart[], hash?: string) =>
   api.call('POST', `${url}/ballots`, who, {
     definitionHash: hash ?? (await api.call('GET', `${url}/ballot`, voter)).body.definitionHash,
     parts,
   });
-
-async function ledgerTypes(electionId: string) {
-  const snap = await api.firebase.db.collection('audit_events').where('subject', '==', electionId).orderBy('seq').get();
-  return snap.docs.map((d) => d.data().type);
-}
 
 beforeEach(async () => {
   await resetEmulators();
@@ -156,7 +54,8 @@ describe('election clock', () => {
     await due.ref.update({ closesAt: minutes(-1) });
     expect((await worker.tick()).body).toMatchObject({ poolKeysCreated: 0, electionsOpened: 0, electionsClosed: 1 });
     expect((await due.ref.get()).data()).toMatchObject({ state: 'closed', closedAt: expect.any(String) });
-    expect(await ledgerTypes(due.electionId)).toEqual(['election.opened', 'election.closed']);
+    // Nobody voted, so the same tick finds nothing to seal and records the election as sealed.
+    expect(await ledgerTypes(due.electionId)).toEqual(['election.opened', 'election.closed', 'election.sealed']);
   });
 
   it('opens roll-call elections without a pool key', async () => {

@@ -61,6 +61,8 @@ export const PUBLIC_LEDGER_EVENT_TYPES = [
   'election.scheduled',
   'election.opened',
   'election.closed',
+  'ballots.sealed',
+  'election.sealed',
   'election.cancelled',
 ] as const satisfies readonly LedgerEventType[];
 
@@ -100,6 +102,8 @@ export interface TickResult {
   readonly poolKeysCreated: number;
   readonly electionsOpened: number;
   readonly electionsClosed: number;
+  /** Ballots moved from pools (or roll-call participation) into sealed blocks. */
+  readonly ballotsSealed: number;
   readonly blocksSealed: number;
   readonly rollsSigned: number;
   readonly anchored: number;

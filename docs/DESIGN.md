@@ -400,6 +400,25 @@ seal(entries):
   one transaction: create sealed_blocks/{index}; delete the sealed pool entries; append ledger entry
 ```
 
+Implemented in M3b (`BallotSealer`, every tick after the clock):
+
+- Each block is one transaction: it re-reads the chosen pool entries (if a concurrent tick sealed any of them, this
+  one gives up), creates `sealed_blocks/{index}` (once per index), deletes those entries and ledgers `ballots.sealed`
+  (`electionId, index, ballotCount, merkleRoot, sealedHash, prevSealedHash`). Overlapping ticks therefore cannot
+  seal a ballot twice, and the `locks/tick` lease is not needed.
+- Decryption (one Cloud KMS unwrap per ballot, 16 at a time) happens before the transaction.
+- The stored record adds `sealedHash`, the sorted `commitments` (the Merkle leaves, kept so a receipt's block can be
+  found with one `array-contains` query) and `ledgerSeq`.
+- A batch larger than the cap is split evenly into blocks of at most `max(400, 2k)` ballots, so every block still
+  holds at least k.
+- When a closed election's pool is empty and the sealed ballots equal its participation count, the sealer ledgers
+  `election.sealed` (blocks, ballots, last `sealedHash`) and sets `sealedAt`. An election nobody voted in is sealed
+  with no blocks. A mismatch for a secret election would mean a lost ballot: it is logged as an error and the election
+  is not marked sealed.
+- **Contents are published only after close.** While voting is open, only block summaries (index, count, Merkle root,
+  hash) and inclusion proofs are public, so nobody sees a running tally; `GET /v1/public/elections/{id}/sealed-blocks`
+  answers 409 until the election is closed.
+
 - Leaving k entries behind while open guarantees every block — including the last — holds ≥ k ballots, so a block's
   commit time narrows a voter down to no fewer than k candidates.
 - **Ordering by commitment** instead of shuffling: commitments are salted hashes, so the order is unrelated to cast
@@ -439,7 +458,9 @@ Implemented in M3a:
 For `secrecy: "open"` elections the API writes the plaintext parts with the `accountId` into the participation
 record (implemented in M3a); no pool key, no pool, no encryption. The ballot page tells voters their vote is published
 with their name. The sealer still produces sealed blocks — parts carry `accountId` and are sorted by it
-— so tallying, publication and verification follow one path for both modes.
+— so tallying, publication and verification follow one path for both modes. Nothing is secret, so roll-call ballots
+are sealed once, at close (M3b): participation is frozen by then, so the chunks are the same on every attempt and blocks
+already created are skipped.
 
 ### 7.5 Receipts and voter verification
 
@@ -449,7 +470,14 @@ with their name. The sealer still produces sealed blocks — parts carry `accoun
   if the voter switches that on (implemented in M3a). It is never sent back to the server.
 - After the ballot is sealed, `/verify` fetches an inclusion proof for each commitment and checks, in the browser:
   RFC 9162 inclusion in the sealed block's Merkle root → the block's hash in the ledger → the ledger block's signature
-  → the anchor object in the Bucket Lock bucket.
+  → the anchor object in the Bucket Lock bucket. Implemented in M3b: the receipt comes from browser storage, a
+  downloaded file or a paste and never leaves the browser; only commitments are looked up
+  (`GET /v1/public/elections/{id}/proofs/{commitment}`, then the `ballots.sealed` entry through
+  `GET /v1/public/ledger/entries/{seq}`, the signing keys and the latest anchor). The checks themselves are
+  `checkReceiptPart` in `ustp-domain`, so the integration tests run exactly what the page runs. Each step is shown as
+  passed, failed or not yet possible (still in the pool; ledger block or anchor not written yet). The browser checks
+  that the anchor *record* covers the ledger block; fetching the anchor object itself needs the bucket to be public
+  (§8.4). Once voting has closed it also recomputes every published sealed block (`sealedBlockProblems`).
 - **Trade-off:** salt + selection lets a voter *prove* to someone else how they voted (vote selling / coercion).
   This is inherent to this receipt design and accepted for V1, as in most organizational systems with receipts.
   Commitments are never emailed or stored with the voter's identity.
@@ -481,8 +509,8 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
   entries are public. A public verifier checks a public entry by Merkle inclusion in its ledger block (§8.3) without
   seeing the private entries in that block. Public types (`PUBLIC_LEDGER_EVENT_TYPES`): `bylaws.published`,
-  `roll.approved`, `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled`, and the sealing
-  and results types as they arrive.
+  `roll.approved`, `election.scheduled`, `election.opened`, `election.closed`, `ballots.sealed`, `election.sealed`,
+  `election.cancelled`, and the results types as they arrive.
   `GET /v1/public/ledger/entries/{seq}` returns a public entry with its block and inclusion proof; anything else, or an
   entry not yet in a block, is 404.
 
@@ -647,7 +675,7 @@ registration collections are top-level and election data lives under each electi
 | `elections/{id}/roll_entries/{accountId}` | accountId | immutable | snapshotId |
 | `elections/{id}/participation/{accountId}` | accountId | create-only | castAt; open mode: parts |
 | `elections/{id}/ballot_pool/{randomId}` | random | create, delete by sealer | ciphertext only |
-| `elections/{id}/sealed_blocks/{index}` | integer | immutable | parts by contest, Merkle root, hashes |
+| `elections/{id}/sealed_blocks/{index}` | zero-padded integer | immutable | parts by contest, Merkle root, `sealedHash`, sorted commitments, ledger seq |
 | `proposal_snapshots/{snapshotId}` | auto | immutable | text, content hash, source |
 | `proposal_reviews/{reviewId}` | auto | immutable | decision, reviewer |
 | `results/{electionId}` | electionId | provisional → certified | bundle, hash, signature |
@@ -684,7 +712,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /elections/{id}/ballot` | V | ballot definition and hash |
 | `POST /elections/{id}/ballots` | V | cast (409 if already voted) |
 | `GET /elections/{id}/participation/me` | V | "have I voted?" |
-| `GET /public/elections/{id}` · `.../sealed-blocks` · `.../results` | P | published record |
+| `GET /public/elections/{id}` · `.../sealed-blocks` · `.../results` | P | published record (non-draft): definition, roll size and root, block summaries; block contents once closed; results in M4 |
 | `GET /public/elections/{id}/proofs/{commitment}` | P | inclusion proof for a receipt |
 | `GET /public/ledger/blocks` (paged) · `.../blocks/{index}` · `.../keys` · `GET /public/anchors/latest` | P | signed ledger blocks, signing keys, anchors |
 | `GET /public/ledger/entries/{seq}` | P | a public entry with its block and inclusion proof |
@@ -707,14 +735,15 @@ Errors use RFC 9457 problem details. Request bodies are validated against schema
 
 | Endpoint | Trigger | Work |
 |---|---|---|
-| `POST /tasks/tick` | Cloud Scheduler, every minute | *M3a:* prepare pool keys, open/close elections on time. *M2c:* seal ledger blocks, sign approved rolls, anchor blocks. Returns what it did. *M3b+:* seal pools; schedule tally on close |
+| `POST /tasks/tick` | Cloud Scheduler, every minute | Prepare pool keys, open/close elections on time, seal ballots (M3), then seal ledger blocks, sign approved rolls and anchor (M2c). Returns what it did. *M4:* schedule the tally once an election is sealed |
 | `POST /tasks/tally` | Cloud Task after close | reveal seed, run `ustp-tally`, write provisional results bundle |
 | `POST /tasks/email` | Cloud Task | send via Amazon SES |
 | `POST /tasks/destroy-pool-key` | Cloud Task after certify | destroy the election's ballot-pool key version |
 
 The worker accepts only OIDC tokens from the Scheduler/Tasks service accounts (Cloud Run IAM invoker), so its routes
-have no sign-in of their own. Every task is idempotent; from M3, `tick` takes a lease (`locks/tick` with expiry) so
-overlapping ticks cannot double-seal ballot pools. Each tick step runs even if an earlier one failed; any failure makes
+have no sign-in of their own. Every task is idempotent. Overlapping ticks cannot double-seal: every sealed block,
+ledger block and anchor is created once per index, and each ballot block's transaction re-reads the pool entries it
+removes (§7.2), so the planned `locks/tick` lease turned out unnecessary. Each tick step runs even if an earlier one failed; any failure makes
 the tick answer 500, so Cloud Scheduler records it. Locally, `npm run dev:worker:emulators -w apps/server` runs the
 worker against the emulators and ticks every 15 seconds in place of Cloud Scheduler.
 
@@ -777,6 +806,7 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
 | §3/§5.3 photos via signed upload URL, checked by the worker | Upload through the API, normalized (metadata stripped) and checked inline | Server-side decoding and metadata removal; works with the emulators; no URL-signing permission; one Vision call needs no task queue |
 | §6 roll snapshot "signed" | Signed by the worker on its next tick after approval, not inside the approval | Keeps signing rights off the internet-facing api; a compromised api cannot sign |
 | §6 collections | + `signing_keys` | Public keys of every key version that signed, for verification across key rotation |
+| §4 sealed blocks published as sealed | Contents published once voting closes; summaries and inclusion proofs while open | Publishing contents during voting would show a running tally |
 | (added) §7.3 pool encryption with a symmetric key the api may only encrypt with | Asymmetric key, one version per election; the api encrypts locally to its public key (RSA-OAEP wrapping an AES-GCM data key) | Symmetric KMS encryption always uses the primary version, so concurrent elections could not each have their own; the api then holds no decrypt permission at all and makes no KMS call per ballot |
 
 ## 18. Open questions
@@ -807,6 +837,6 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M0 — Foundations** *(this commit)* | Design; monorepo; `ustp-tally`, `ustp-audit`, `ustp-domain` with tests; server and web skeletons; CI |
 | **M1 — Identity & registration** | *Done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes via two-person approvals, auth switches, Auditor ledger verification; web sign-in (Google, Microsoft, Apple, email/password, email link), registration, account and admin console. admin two-step verification (authenticator-app setup, code step at sign-in, re-authentication for approvals, typed MFA/re-auth problems); profile photos (normalized upload, automatic checks, admin review). *Still to exercise against a real project:* authenticator-app setup and sign-in (TOTP), and Cloud Vision photo checks — neither has an emulator |
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
-| **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *Still to exercise against a real project:* Cloud KMS pool keys. *M3b:* sealer (k-anonymous sealed blocks), published election record and inclusion proofs, `/verify` fetching proofs for a saved receipt; "you voted" email |
+| **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | Tally task, results bundle, certification, position terms, key destruction; `ustp-verify` CLI |
 | **M5 — Hardening & launch gates** | Terraform; Binary Authorization; PWA; accessibility audit; load test; external review; mock election |

@@ -155,9 +155,9 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
         <template v-if="receipt">
           <q-card-section class="q-pt-none">
             <div class="text-caption text-grey-7 q-mb-sm">
-              Your receipt: one commitment per contest. After voting closes you can check on the Verify page that each
-              one is in the published record. Anyone who sees the full receipt can tell how you voted, so keep it to
-              yourself.
+              Your receipt: one commitment per contest. Once your ballot is sealed — when enough others have voted, or
+              when voting closes — the Verify page checks that each one is in the published record. Anyone who sees the
+              full receipt can tell how you voted, so keep it to yourself.
             </div>
             <q-markup-table flat dense>
               <tbody>
@@ -171,6 +171,8 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
           <q-card-actions>
             <q-btn color="primary" no-caps icon="download" label="Download receipt" @click="downloadReceipt(receipt)" />
             <q-toggle :model-value="kept" label="Keep a copy in this browser" @update:model-value="toggleKeep" />
+            <q-space />
+            <q-btn flat no-caps icon="fact_check" label="Verify" :to="`/verify?election=${electionId}`" />
           </q-card-actions>
         </template>
         <q-card-section v-else class="q-pt-none text-caption text-grey-7">

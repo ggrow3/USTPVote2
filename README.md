@@ -5,14 +5,13 @@ member onboarding, secret or roll-call ballots, proposal and candidate contests 
 instant-runoff), and an audit trail anyone can check — hash chains, Merkle receipts, WORM anchors and a public,
 deterministic tally library.
 
-**Status:** M1 (identity and registration) is built. The core libraries are done and tested. Sign-in, accounts,
-bylaws, applications, membership administration, profile photos, two-person role changes, admin two-step verification
-and the audit ledger work end to end against the Firebase emulators, in the API (emulator integration tests) and the
-web app. Authenticator-app (TOTP) setup and Cloud Vision photo checks have no emulator and still need a real project.
-Elections (M2) are under way: Election Admins build draft elections (proposal, choose-N and ranked-choice contests)
-with live validation and a definition hash, take a voter roll, and schedule the election; each of those last steps
-needs an Auditor's approval and freezes exactly what was approved. Ledger publication (M2c) and voting (M3) come next.
-Nothing is deployed.
+**Status:** M1 (identity and registration), M2 (election setup and the signed, anchored ledger) and M3 (casting and
+secrecy) are built. Sign-in, accounts, bylaws, applications, membership administration, profile photos, two-person role
+changes, admin two-step verification, election setup with Auditor-approved rolls and scheduling, ledger blocks signed
+by the worker and anchored, casting secret (encrypted) or roll-call ballots, sealing them into k-anonymous published
+blocks, and checking a receipt in the browser all work end to end against the Firebase emulators, in the API
+(emulator integration tests) and the web app. Tallying and certification (M4) come next. Authenticator-app (TOTP)
+setup, Cloud Vision photo checks and Cloud KMS have no emulator and still need a real project. Nothing is deployed.
 
 ## Documents
 
@@ -51,6 +50,7 @@ npm test
 | `npm run test:int -w apps/server` | Starts the Auth, Firestore and Storage emulators (project `demo-ustpvote`) and runs the API integration tests |
 | `npm run watch -w apps/server` | Recompiles the server on change (run alongside a `dev:*` command) |
 | `npm run dev:api` / `npm run dev:worker` | Runs the compiled api (port 8080) / worker, restarting on rebuild |
+| `npm run seed:emulators -w apps/server` | Fills the local emulators with test users, elections and ballots (see below) |
 | `npm run dev:web` | Vite dev server; proxies `/v1` to the local api |
 
 The server uses NestJS decorators with emitted metadata, so it is compiled with `tsc` rather than run through a
@@ -58,7 +58,7 @@ type-stripping loader.
 
 ### Running the whole stack locally
 
-Three terminals, after `npm run build` (needs Java 21):
+Four terminals, after `npm run build` (needs Java 21):
 
 ```bash
 npm run emulators -w apps/server
@@ -69,15 +69,35 @@ npm run dev:api:emulators -w apps/server
 ```
 
 ```bash
+npm run dev:worker:emulators -w apps/server
+```
+
+```bash
 npm run dev:emulators -w apps/web
 ```
+
+The worker ticks every 15 seconds in place of Cloud Scheduler: it opens and closes elections on time and seals,
+signs and anchors the ledger.
+
+The emulators start empty. To fill them with test data, run this once the api and worker are up (about a minute):
+
+```bash
+npm run seed:emulators -w apps/server
+```
+
+It creates, through the api as people would: System Admins `admin1@` and `admin2@example.test`, an Election and
+Membership Admin `elections@example.test`, an Auditor `auditor@example.test`, and twelve Active members
+`v1@` … `v12@example.test`, all with the password in
+[`seed-emulators.mjs`](apps/server/scripts/seed-emulators.mjs). It then sets up five elections (two open secret ballots,
+one of which closes after 15 minutes, an open roll-call vote, one scheduled for later and a draft) and casts random
+ballots for every voter except `v1@example.test`, so you can vote as v1. Running it again reuses what is there.
 
 Open http://localhost:5173. Everything runs against the emulator-only project `demo-ustpvote` with App Check and
 admin MFA off. Use `npm run dev:api:emulators:mfa -w apps/server` instead to keep the production admin MFA policy on;
 note that the Auth emulator cannot do authenticator-app (TOTP) factors, only SMS ones. Accounts for `admin1@example.test` and `admin2@example.test` become System Admins once their email is
 verified. The Auth emulator does not send email: it prints verification and sign-in links in the `emulators`
 terminal (they are also listed at `http://127.0.0.1:9099/emulator/v1/projects/demo-ustpvote/oobCodes`).
-`.claude/launch.json` defines the same three servers for Claude Code's preview.
+`.claude/launch.json` defines the same servers for Claude Code's preview.
 
 ## License
 

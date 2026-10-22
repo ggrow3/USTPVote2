@@ -18,6 +18,8 @@ import { ElectionApprovals } from '../elections/election-approvals.js';
 import { ElectionReader } from '../elections/election-reader.js';
 import { ElectionsController, ProposalsController } from '../elections/elections.controller.js';
 import { ElectionsService } from '../elections/elections.service.js';
+import { PublicElectionsController } from '../elections/public-elections.controller.js';
+import { PublicElectionsService } from '../elections/public-elections.service.js';
 import { VotingController } from '../elections/voting.controller.js';
 import { VotingService } from '../elections/voting.service.js';
 import { ballotPoolKeysProvider } from '../infra/ballot-pool.js';
@@ -48,6 +50,7 @@ import { PhotosService } from '../photos/photos.service.js';
     ElectionsController,
     ProposalsController,
     VotingController,
+    PublicElectionsController,
     ApprovalsController,
     PublicSignInMethodsController,
     SignInMethodsController,
@@ -62,6 +65,7 @@ import { PhotosService } from '../photos/photos.service.js';
     ElectionReader,
     ElectionApprovals,
     VotingService,
+    PublicElectionsService,
     ballotPoolKeysProvider,
     RoleApprovals,
     ApprovalsService,
