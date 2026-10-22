@@ -1,5 +1,5 @@
 variable "project_id" {
-  description = "GCP project of this environment: ustp-voting-dev, -staging or -prod (design §15)."
+  description = "GCP project of this environment: ustpvote2-dev, -staging or -prod (design §15)."
   type        = string
 }
 
@@ -65,6 +65,14 @@ variable "github_repository_id" {
     condition     = can(regex("^[0-9]+$", var.github_repository_id))
     error_message = "github_repository_id is the repository's numeric ID."
   }
+}
+
+# --- Sign-in (design §4) ---------------------------------------------------------------------------------------------
+
+variable "firebase_web_app_id" {
+  description = "App ID of the project's Firebase web app (1:<number>:web:<hex>), registered once outside Terraform. Null until then; it registers the reCAPTCHA Enterprise key with App Check."
+  type        = string
+  default     = null
 }
 
 # --- Ledger anchors (design §8.4) ------------------------------------------------------------------------------------
@@ -201,6 +209,12 @@ variable "api_max_instances" {
 
 variable "api_memory" {
   description = "Memory per api instance; photo normalization with sharp decodes images up to 5 MB."
+  type        = string
+  default     = "1Gi"
+}
+
+variable "worker_memory" {
+  description = "Memory per worker instance. At 512Mi the first worker never finished loading its modules within the 60 s startup probe (the api took 11.5 s with 1Gi)."
   type        = string
   default     = "1Gi"
 }

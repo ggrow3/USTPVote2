@@ -15,11 +15,11 @@ Nothing has been applied to a real project yet.
 | Path | What |
 |---|---|
 | [`modules/ustpvote`](modules/ustpvote) | One environment. `main.tf` (APIs), `iam.tf`, `kms.tf`, `storage.tf`, `firestore.tf`, `run.tf`, `scheduling.tf`, `binauthz.tf`, `release.tf`, `logging.tf`, `outputs.tf` |
-| [`envs/dev`](envs/dev) | `ustp-voting-dev`: anchors retention unlocked, Binary Authorization in dry run |
-| [`envs/staging`](envs/staging) | `ustp-voting-staging`: production settings except the retention lock |
-| [`envs/prod`](envs/prod) | `ustp-voting-prod`: Binary Authorization enforced, no human data access, retention lock stated explicitly |
+| [`envs/dev`](envs/dev) | `ustpvote2-dev`: anchors retention unlocked, Binary Authorization in dry run |
+| [`envs/staging`](envs/staging) | `ustpvote2-staging`: production settings except the retention lock |
+| [`envs/prod`](envs/prod) | `ustpvote2-prod`: Binary Authorization enforced, no human data access, retention lock stated explicitly |
 
-Each root keeps its state in the GCS bucket `ustp-voting-<env>-tfstate` and needs Terraform 1.9 or newer and the
+Each root keeps its state in the GCS bucket `ustpvote2-<env>-tfstate` and needs Terraform 1.9 or newer and the
 `hashicorp/google` provider 8.x. Each root's `.terraform.lock.hcl` pins the provider, with hashes for Linux, macOS and
 Windows; Dependabot updates the three together. Copy `terraform.tfvars.example` to `terraform.tfvars` (git-ignored: it
 holds people's addresses). CI runs these on every pull request, without a backend or credentials:
@@ -75,6 +75,7 @@ Set in each root's `terraform.tfvars` (or with `-var`):
 |---|---|---|---|---|
 | `server_image` | | | | Image by digest the services are created with; null (default) skips the Cloud Run services and the tick. Keep it set: later releases come from the release workflow, and Terraform ignores the image once a service exists |
 | `bootstrap_system_admin_emails` | | | | `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` (§4): at least two; `[]` once real admins exist |
+| `firebase_web_app_id` | | | | The Firebase web app's ID; registers the reCAPTCHA key with App Check ([App Check](#app-check-and-the-web-build)) |
 | `anchors_retention_days` | 3653 | 3653 | 3653 | Q11; 10 years |
 | `anchors_retention_locked` | false (fixed) | false (fixed) | **required** | Bucket Lock, irreversible; see [Bucket Lock](#bucket-lock-production) |
 | `anchors_public_read` | false | true | true | §8.4 recommendation: outsiders keep copies, browsers can fetch them |
@@ -122,14 +123,14 @@ or an emulator host. Every safety switch then keeps its production default (§4)
 Examples use dev; replace `dev` throughout for the others. Run Terraform with an account that is Owner of the project
 (`gcloud auth application-default login`).
 
-1. **Project.** Create `ustp-voting-dev` with billing, then add Firebase to it, create the state bucket and enable the
+1. **Project.** Create `ustpvote2-dev` with billing, then add Firebase to it, create the state bucket and enable the
    two APIs Terraform needs before it can enable the rest:
 
    ```bash
-   npx firebase projects:addfirebase ustp-voting-dev
-   gcloud services enable serviceusage.googleapis.com cloudresourcemanager.googleapis.com --project=ustp-voting-dev
-   gcloud storage buckets create gs://ustp-voting-dev-tfstate --project=ustp-voting-dev --location=us-central1 --uniform-bucket-level-access --public-access-prevention
-   gcloud storage buckets update gs://ustp-voting-dev-tfstate --versioning
+   npx firebase projects:addfirebase ustpvote2-dev
+   gcloud services enable serviceusage.googleapis.com cloudresourcemanager.googleapis.com --project=ustpvote2-dev
+   gcloud storage buckets create gs://ustpvote2-dev-tfstate --project=ustpvote2-dev --location=us-central1 --uniform-bucket-level-access --public-access-prevention
+   gcloud storage buckets update gs://ustpvote2-dev-tfstate --versioning
    ```
 
 2. **First apply, without an image.** Creates everything except the Cloud Run services and the tick: APIs, accounts,
@@ -142,11 +143,16 @@ Examples use dev; replace `dev` throughout for the others. Run Terraform with an
    terraform apply
    ```
 
-   If it fails creating the attestor because the new `attestor-signing` key version is still being generated, apply
-   again. If Firestore already exists (created in the console), import it first:
-   `terraform import module.ustpvote.google_firestore_database.default "projects/ustp-voting-dev/databases/(default)"`.
+   Freshly enabled APIs and new service accounts take minutes to propagate, so the first apply usually stops on errors
+   such as "IAM API has not been used in project … before" or "Service account … does not exist": plan and apply
+   again. A resource created by a failed apply is marked tainted; if `terraform plan` then wants to replace it, check it
+   matches the configuration and `terraform untaint` it instead (custom role IDs stay reserved for weeks after
+   deletion, and Cloud Run services have deletion protection). If Firestore already exists (created in the console),
+   import it first:
+   `terraform import module.ustpvote.google_firestore_database.default "projects/ustpvote2-dev/databases/(default)"`.
 
-3. **Identity Platform and App Check**, by hand: see [Identity Platform](#identity-platform) and
+3. **Sign-in and App Check.** Register the Firebase web app, set `firebase_web_app_id` and apply again; set the
+   password policy and the sign-in providers by hand: see [Identity Platform](#identity-platform) and
    [App Check and the web build](#app-check-and-the-web-build).
 
 4. **GitHub environment and first image.** Set up the GitHub environment `dev` as in
@@ -164,18 +170,19 @@ Examples use dev; replace `dev` throughout for the others. Run Terraform with an
    delete the services.
 
    ```bash
-   terraform apply -var="server_image=us-central1-docker.pkg.dev/ustp-voting-dev/ustpvote/server@sha256:<digest>"
+   terraform apply -var="server_image=us-central1-docker.pkg.dev/ustpvote2-dev/ustpvote/server@sha256:<digest>"
    ```
 
 6. **Firestore rules and indexes, then Hosting**, from the repository root once the web app is built for this project
    (see [Firebase Hosting](#firebase-hosting)):
 
    ```bash
-   npx firebase deploy --config infra/firebase/firebase.json --project ustp-voting-dev --only firestore,hosting
+   npx firebase deploy --config infra/firebase/firebase.json --project ustpvote2-dev --only firestore,hosting
    ```
 
-7. **Check.** `curl "$(terraform output -raw api_url)/healthz"` answers, and so does a public route through Hosting,
-   for example `https://ustp-voting-dev.web.app/v1/public/positions`; Cloud Scheduler shows
+7. **Check.** `curl "$(terraform output -raw api_url)/v1/health"` answers, and so does
+   `https://ustpvote2-dev.web.app/v1/health` through Hosting (not `/healthz`: Cloud Run's front end reserves some paths
+   ending in "z", so that one only works for probes inside the container); Cloud Scheduler shows
    `worker-tick` succeeding every minute; the worker's log shows ticks and, once a ledger entry exists, a signed block
    and an anchor under `v1/` in the anchors bucket.
 
@@ -234,24 +241,32 @@ a broken Dockerfile shows up before a release.
 
 ### Identity Platform
 
-Per project, in the console (Identity Platform) or with the Admin SDK:
+Terraform (`identity.tf`) enables Identity Platform (it upgrades Firebase Authentication, which cannot be undone) and
+sets email sign-in with a password or an email link, phone and anonymous sign-in off, authenticator-app (TOTP) second
+factors with `adjacentIntervals: 5` and no SMS (design §4), and the authorized domains: `ustpvote2-<env>.web.app`,
+`ustpvote2-<env>.firebaseapp.com`, and `localhost` outside production. Per project, by hand:
 
-- **Enable** Identity Platform (it upgrades Firebase Authentication).
-- **Providers** (design §4): Google, Microsoft, Apple, and Email/Password with email link (passwordless) sign-in on.
-  Leave phone and anonymous off (the api refuses those tokens anyway). The admin sign-in switches turn a provider off
-  in the api without touching this configuration.
-- **Authorized domains:** `ustp-voting-<env>.web.app`, `ustp-voting-<env>.firebaseapp.com` and any custom domain.
-- **Password policy** (§4, NIST SP 800-63B-4): minimum length 15, at least 64 allowed, no composition rules, enforced.
-- **MFA:** enable TOTP (authenticator apps) with `adjacentIntervals: 5`, using the Admin SDK call in design §4. Do not
-  enable SMS.
+- **Password policy** (§4, NIST SP 800-63B-4): minimum length 15, up to 4096, no composition rules, enforced. The
+  provider cannot set it; with an Owner's credentials:
+
+  ```bash
+  curl -X PATCH "https://identitytoolkit.googleapis.com/admin/v2/projects/ustpvote2-dev/config?updateMask=passwordPolicyConfig" -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "x-goog-user-project: ustpvote2-dev" -H "Content-Type: application/json" -d '{"passwordPolicyConfig":{"passwordPolicyEnforcementState":"ENFORCE","forceUpgradeOnSignin":false,"passwordPolicyVersions":[{"customStrengthOptions":{"minPasswordLength":15,"maxPasswordLength":4096}}]}}'
+  ```
+
+- **Google, Microsoft and Apple sign-in** (§4): each needs an OAuth client registered with that company. Google's is
+  one click in the Firebase console (Authentication → Sign-in method → Google), which creates the client. The admin
+  sign-in switches turn a provider off in the api without touching this configuration.
 - **Email sender** and templates once the sender domain is decided (Q15).
 
 ### App Check and the web build
 
-- Register a web app in the Firebase project (console, or `firebase apps:create web`); its config gives `VITE_FIREBASE_API_KEY`,
-  `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID` and `VITE_FIREBASE_APP_ID`.
-- Create a reCAPTCHA Enterprise key for the Hosting domains and register it as the web app's App Check provider; its
-  site key is `VITE_RECAPTCHA_ENTERPRISE_SITE_KEY`.
+- Register a web app in the Firebase project once (console, `firebase apps:create web`, or the Firebase Management
+  API's `webApps.create`), and set its app ID as `firebase_web_app_id` in `terraform.tfvars`. Its config
+  (`webApps/<id>/config`) gives `VITE_FIREBASE_API_KEY`, `VITE_FIREBASE_AUTH_DOMAIN`, `VITE_FIREBASE_PROJECT_ID` and
+  `VITE_FIREBASE_APP_ID`.
+- Terraform creates a reCAPTCHA Enterprise key for the Hosting domains and, once `firebase_web_app_id` is set, registers
+  it as the web app's App Check provider. Its site key is the output `recaptcha_site_key`
+  (`VITE_RECAPTCHA_ENTERPRISE_SITE_KEY`).
 - The api enforces App Check itself on every route; console enforcement only affects Firebase products clients call
   directly, and there are none.
 
@@ -275,7 +290,7 @@ remove it.
    writing anchors under `v1/blocks/` and `v1/keys/`.
 3. Set `anchors_retention_days` to the confirmed period and `anchors_retention_locked = true`. `terraform plan` must
    show only the anchors bucket's `retention_policy.is_locked` changing from `false` to `true`.
-4. Apply, then check that `gcloud storage buckets describe gs://ustp-voting-prod-anchors` reports the policy as locked.
+4. Apply, then check that `gcloud storage buckets describe gs://ustpvote2-prod-anchors` reports the policy as locked.
 
 The production root has no default for `anchors_retention_locked`, so the decision is always written down.
 

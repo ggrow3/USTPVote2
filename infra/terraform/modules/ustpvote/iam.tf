@@ -52,6 +52,7 @@ resource "google_project_iam_custom_role" "secret_creator" {
   title       = "USTPVote secret creator"
   description = "Create (empty) secrets; adding and reading versions is granted separately (design §6.1)."
   permissions = ["secretmanager.secrets.create"]
+  depends_on  = [google_project_service.this]
 }
 
 resource "google_project_iam_member" "api_secret_creator" {

@@ -1,7 +1,7 @@
 # Copy to terraform.tfvars (ignored by git: it holds people's addresses). server_image is the first image, which the
 # services are created with; keep it set. Later releases come from the release workflow (README "Release workflow").
 
-# server_image = "us-central1-docker.pkg.dev/ustp-voting-staging/ustpvote/server@sha256:<64 hex digits>"
+# server_image = "us-central1-docker.pkg.dev/ustpvote2-staging/ustpvote/server@sha256:<64 hex digits>"
 
 bootstrap_system_admin_emails = ["first.admin@example.org", "second.admin@example.org"]
 

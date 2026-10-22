@@ -1,7 +1,7 @@
 variable "project_id" {
   description = "The production project."
   type        = string
-  default     = "ustp-voting-prod"
+  default     = "ustpvote2-prod"
 }
 
 variable "region" {
@@ -26,6 +26,12 @@ variable "image_publishers" {
   description = "IAM members that push images, besides the release workflow's ustp-release."
   type        = list(string)
   default     = []
+}
+
+variable "firebase_web_app_id" {
+  description = "App ID of the Firebase web app (README \"App Check and the web build\"); null until it exists."
+  type        = string
+  default     = null
 }
 
 variable "anchors_retention_days" {

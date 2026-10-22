@@ -10,7 +10,7 @@ terraform {
 
   # Created by hand once per environment (README "Bringing an environment up").
   backend "gcs" {
-    bucket = "ustp-voting-dev-tfstate"
+    bucket = "ustpvote2-dev-tfstate"
     prefix = "terraform"
   }
 }

@@ -12,10 +12,8 @@ resource "google_cloud_scheduler_job" "tick" {
   time_zone        = "Etc/UTC"
   attempt_deadline = "120s"
 
-  # A failed tick answers 500 and Scheduler records it; the next tick, a minute later, retries everything.
-  retry_config {
-    retry_count = 0
-  }
+  # No retry_config: Scheduler's default is no retries, and an explicit retry_count = 0 is dropped by the API, which
+  # left a permanent diff. A failed tick answers 500 and Scheduler records it; the next tick retries everything.
 
   http_target {
     http_method = "POST"
