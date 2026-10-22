@@ -54,12 +54,7 @@ export interface PartCheck {
  */
 export async function checkReceiptPart(e: PartEvidence): Promise<PartCheck> {
   const steps: CheckStep[] = [];
-  const done = (): PartCheck => ({
-    contestId: e.part.contestId,
-    commitment: e.commitment,
-    status: steps.some((s) => s.ok === false) ? 'failed' : steps.some((s) => s.ok === null) ? 'pending' : 'verified',
-    steps,
-  });
+  const done = (): PartCheck => ({ contestId: e.part.contestId, commitment: e.commitment, status: stepsStatus(steps), steps });
 
   let recomputed: string | null = null;
   try {
@@ -103,11 +98,25 @@ export async function checkReceiptPart(e: PartEvidence): Promise<PartCheck> {
       payload.sealedHash === proof.sealedHash &&
       recordHash(entry) === entry.hash,
   });
+  steps.push(...(await ledgerBlockSteps(ledger, e.keys, e.anchor)));
+  return done();
+}
+
+/**
+ * From a public ledger entry onwards: its inclusion in its ledger block, that block's signature, and an anchor covering
+ * it. Shared by every check that ends in the ledger (receipts, results).
+ */
+export async function ledgerBlockSteps(
+  ledger: PublicLedgerEntry,
+  keys: readonly SigningKeyRecord[],
+  anchor: AnchorRecord | null,
+): Promise<CheckStep[]> {
+  const steps: CheckStep[] = [];
   steps.push({
     label: `Included in ledger block ${ledger.block.index}`,
-    ok: ledger.proof.root === ledger.block.merkleRoot && verifyInclusionHex(entry.hash, ledger.proof),
+    ok: ledger.proof.root === ledger.block.merkleRoot && verifyInclusionHex(ledger.entry.hash, ledger.proof),
   });
-  const key = e.keys.find((k) => k.keyVersion === ledger.block.signature.keyVersion);
+  const key = keys.find((k) => k.keyVersion === ledger.block.signature.keyVersion);
   steps.push({
     label: 'Ledger block signed by the audit key',
     ok:
@@ -116,11 +125,16 @@ export async function checkReceiptPart(e: PartEvidence): Promise<PartCheck> {
       (await verifyEcdsaP256(key.publicKeyPem, blockSigningInput(ledger.block), ledger.block.signature.signature)),
     detail: key ? `key ${key.keyId}` : 'unknown signing key',
   });
-  const anchored = !!e.anchor && e.anchor.index >= ledger.block.index;
+  const anchored = !!anchor && anchor.index >= ledger.block.index;
   steps.push({
     label: 'Anchored outside the database',
     ok: anchored ? true : null,
-    detail: anchored ? `through ledger block ${e.anchor!.index}, ${e.anchor!.uri}` : 'Not yet: anchoring follows within a minute.',
+    detail: anchored ? `through ledger block ${anchor!.index}, ${anchor!.uri}` : 'Not yet: anchoring follows within a minute.',
   });
-  return done();
+  return steps;
+}
+
+/** Overall status of a list of steps: any failure fails, anything not yet checkable is pending. */
+export function stepsStatus(steps: readonly CheckStep[]): PartCheck['status'] {
+  return steps.some((s) => s.ok === false) ? 'failed' : steps.some((s) => s.ok === null) ? 'pending' : 'verified';
 }

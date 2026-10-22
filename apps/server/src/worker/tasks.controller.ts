@@ -12,12 +12,13 @@ import type { TickResult } from 'ustp-domain';
 import { BallotSealer } from './ballot-sealer.js';
 import { ElectionClock } from './election-clock.js';
 import { LedgerSealer } from './ledger-sealer.js';
+import { Tallier } from './tallier.js';
 
 /**
  * Worker task endpoints (design §13), invoked by Cloud Scheduler and Cloud Tasks. The worker's Cloud Run service only
  * admits their OIDC tokens (IAM invoker), so these routes have no sign-in of their own.
  */
-export const WORKER_TASKS = ['tick', 'tally', 'email', 'destroy-pool-key'] as const;
+export const WORKER_TASKS = ['tick', 'email', 'destroy-pool-key'] as const;
 export type WorkerTask = (typeof WORKER_TASKS)[number];
 
 @Controller('tasks')
@@ -27,13 +28,14 @@ export class TasksController {
   constructor(
     private readonly clock: ElectionClock,
     private readonly ballots: BallotSealer,
+    private readonly tallier: Tallier,
     private readonly sealer: LedgerSealer,
   ) {}
 
   /**
-   * Every minute: prepare ballot-pool keys, open and close elections on time, seal ballots, then seal new ledger
-   * entries (including those) into a signed block, sign approved rolls and anchor new blocks. Each step runs even if an
-   * earlier one failed.
+   * Every minute: prepare ballot-pool keys, open and close elections on time, seal ballots, tally elections that are
+   * now fully sealed, then seal new ledger entries (including those) into a signed block, sign approved rolls and anchor
+   * new blocks. Each step runs even if an earlier one failed.
    */
   @Post('tick')
   @HttpCode(200)
@@ -54,6 +56,7 @@ export class TasksController {
       electionsOpened: await step('open elections', () => this.clock.openDue(), 0),
       electionsClosed: await step('close elections', () => this.clock.closeDue(), 0),
       ballotsSealed: await step('seal ballots', () => this.ballots.sealAll(), 0),
+      resultsComputed: await step('tally results', () => this.tallier.tallyAll(), 0),
       blocksSealed: (await step('seal blocks', () => this.sealer.sealBlocks(), [])).length,
       rollsSigned: await step('sign rolls', () => this.sealer.signRolls(), 0),
       anchored: await step('anchor blocks', () => this.sealer.anchorBlocks(), 0),

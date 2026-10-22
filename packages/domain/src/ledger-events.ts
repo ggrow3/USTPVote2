@@ -17,6 +17,7 @@ export const LEDGER_EVENT_TYPES = [
   'ballots.sealed',
   'election.sealed',
   'election.cancelled',
+  'results.computed',
 ] as const;
 export type LedgerEventType = (typeof LEDGER_EVENT_TYPES)[number];
 

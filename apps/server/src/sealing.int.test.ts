@@ -7,7 +7,7 @@ import {
   type SealedBlockRecord,
 } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { ledgerTypes, minutes, seedElection, seededBallot, type SeededElection } from './testing/elections.js';
+import { closeNow, ledgerTypes, seedElection, seededBallot, type SeededElection } from './testing/elections.js';
 import { resetEmulators, TestApi, TestWorker, type User } from './testing/emulator.js';
 
 let api: TestApi;
@@ -44,7 +44,7 @@ async function castFor(who: readonly Member[], election: SeededElection): Promis
   return ballots;
 }
 
-const close = (election: SeededElection) => election.ref.update({ closesAt: minutes(-1) });
+const close = (election: SeededElection) => closeNow(api, election);
 const publicUrl = (election: SeededElection) => `/v1/public/elections/${election.electionId}`;
 const poolSize = async (election: SeededElection) => (await election.ref.collection('ballot_pool').get()).size;
 
@@ -95,6 +95,7 @@ describe('sealing secret ballots', () => {
       'election.closed',
       'ballots.sealed',
       'election.sealed',
+      'results.computed',
     ]);
 
     const blocks = (await api.call('GET', `${publicUrl(election)}/sealed-blocks`)).body as SealedBlockRecord[];
@@ -123,7 +124,12 @@ describe('sealing secret ballots', () => {
     await worker.tick();
     expect(((await election.ref.get()).data() as ElectionRecord).sealedAt).toEqual(expect.any(String));
     expect((await api.call('GET', `${publicUrl(election)}/sealed-blocks`)).body).toEqual([]);
-    expect(await ledgerTypes(api, election.electionId)).toEqual(['election.opened', 'election.closed', 'election.sealed']);
+    expect(await ledgerTypes(api, election.electionId)).toEqual([
+      'election.opened',
+      'election.closed',
+      'election.sealed',
+      'results.computed',
+    ]);
   });
 });
 

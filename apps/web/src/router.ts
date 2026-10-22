@@ -29,6 +29,7 @@ export const router = createRouter({
         { path: 'ballot', component: () => import('./pages/BallotPage.vue'), meta: { requiresAuth: true } },
         { path: 'ballot/:id', component: () => import('./pages/VotePage.vue'), meta: { requiresAuth: true } },
         { path: 'verify', component: () => import('./pages/VerifyPage.vue') },
+        { path: 'results/:id', component: () => import('./pages/ResultsPage.vue') },
         {
           path: 'admin',
           component: () => import('./pages/AdminPage.vue'),

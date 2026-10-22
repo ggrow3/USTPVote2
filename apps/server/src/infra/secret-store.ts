@@ -1,5 +1,7 @@
 import { SecretManagerServiceClient } from '@google-cloud/secret-manager';
 import type { Firestore } from 'firebase-admin/firestore';
+import { CONFIG, type ServerConfig } from '../config.js';
+import { Firebase } from './firebase.js';
 
 /** Small secrets the server must keep but never publish early, such as an election's tie-break seed (design §9). */
 export interface SecretStore {
@@ -10,7 +12,20 @@ export interface SecretStore {
 
 export const SECRET_STORE = Symbol('SecretStore');
 
-/** Google Secret Manager, one secret per value. Needs `projectId` and secretmanager admin rights for the api account. */
+/**
+ * The api creates seeds when an election is scheduled; the worker reads them back to reveal them at tally (design §9).
+ */
+export const secretStoreProvider = {
+  provide: SECRET_STORE,
+  inject: [CONFIG, Firebase],
+  useFactory: (config: ServerConfig, firebase: Firebase): SecretStore =>
+    config.secretStore === 'emulator' ? new EmulatorSecretStore(firebase.db) : new SecretManagerStore(config.projectId),
+};
+
+/**
+ * Google Secret Manager, one secret per value. Needs `projectId`; the api account creates secrets, and the worker
+ * account may access their versions (to read seeds back at tally).
+ */
 export class SecretManagerStore implements SecretStore {
   private readonly client = new SecretManagerServiceClient();
 
