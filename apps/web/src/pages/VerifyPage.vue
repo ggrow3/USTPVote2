@@ -92,7 +92,6 @@ async function check(source: 'saved' | 'file' | 'paste') {
         ? { ok: false, detail: problems.join('; ') }
         : { ok: true, detail: `All ${blocks.length} published sealed blocks (${ballots} ballots) recompute from their parts.` };
     }
-    announce([summary.value?.text, blocksCheck.value?.detail].filter(Boolean).join(' '));
   } catch (e) {
     error.value = errorMessage(e);
   } finally {
@@ -183,7 +182,7 @@ const summary = computed(() => {
                 />
               </q-item-section>
               <q-item-section>
-                <q-item-label><span class="sr-only"> {{ stepStatus(s.ok) }}</span> {{ s.label }}</q-item-label>
+                <q-item-label><span class="sr-only">{{ stepStatus(s.ok) }}</span> {{ s.label }}</q-item-label>
                 <q-item-label v-if="s.detail" caption>{{ s.detail }}</q-item-label>
               </q-item-section>
             </q-item>

@@ -80,7 +80,7 @@ onMounted(load);
               :disable="a.accountId === session.me?.account?.accountId"
               @click="decide(a, 'approve')"
             >
-              <span class="sr-only"> {{ a.legalName }}</span>
+              <span class="sr-only">&nbsp;{{ a.legalName }}</span>
             </q-btn>
             <q-btn
               dense
@@ -90,7 +90,7 @@ onMounted(load);
               :disable="a.accountId === session.me?.account?.accountId"
               @click="decide(a, 'reject')"
             >
-              <span class="sr-only"> {{ a.legalName }}</span>
+              <span class="sr-only">&nbsp;{{ a.legalName }}</span>
             </q-btn>
           </div>
         </q-item-section>

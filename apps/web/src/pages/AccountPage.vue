@@ -185,7 +185,7 @@ function copyId() {
             </q-item-section>
             <q-item-section side>
               <q-btn flat dense color="negative" label="Remove" :disable="busy" @click="removeDevice(f)">
-                <span class="sr-only"> {{ f.displayName ?? 'authenticator app' }}</span>
+                <span class="sr-only">&nbsp;{{ f.displayName ?? 'authenticator app' }}</span>
               </q-btn>
             </q-item-section>
           </q-item>
@@ -211,7 +211,7 @@ function copyId() {
             </q-item-section>
             <q-item-section side>
               <q-btn flat dense color="negative" label="Remove" :disable="busy || identities.length <= 1" @click="unlink(i)">
-                <span class="sr-only"> {{ PROVIDER_LABELS[i.provider] }} login {{ i.email ?? '' }}</span>
+                <span class="sr-only">&nbsp;{{ PROVIDER_LABELS[i.provider] }} login {{ i.email ?? '' }}</span>
               </q-btn>
             </q-item-section>
           </q-item>

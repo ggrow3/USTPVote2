@@ -3,7 +3,6 @@ import { onMounted, ref } from 'vue';
 import { blockHash, blockSigningInput, GENESIS_HASH, verifyEcdsaP256 } from 'ustp-audit';
 import type { AnchorRecord, LedgerBlockRecord, LedgerEntry, LedgerVerification, SigningKeyRecord } from 'ustp-domain';
 import { api } from '../../api.js';
-import { announce } from '../../a11y.js';
 import { attempt } from '../../dialogs.js';
 
 const PAGE = 50;
@@ -78,11 +77,11 @@ const allBlocksOk = () => blocks.value.every((b) => blockChecks.value[b.index] =
 
 async function verify() {
   verifying.value = true;
+  // Cleared first, so the result banner (an alert) is inserted again and read out on every run.
+  verification.value = null;
   await attempt(async () => {
     verification.value = await api<LedgerVerification>('GET', '/v1/admin/audit/verify');
   }).finally(() => (verifying.value = false));
-  const v = verification.value;
-  if (v) announce(v.ok ? `All ${v.entries} ledger entries verify.` : `Ledger verification failed: ${v.reason}`, v.ok ? 'polite' : 'assertive');
 }
 
 onMounted(() => Promise.all([load(), loadBlocks()]));

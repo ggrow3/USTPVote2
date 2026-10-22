@@ -14,8 +14,13 @@ test. Keep it current when pages change.
 - **Keyboard only, in a Chromium browser against the seeded emulators**: v1@example.test cast "2026 Officer Election"
   without a mouse: skip link, a proposal (radio group), a ranked-choice contest (add, move up and down, remove, re-add),
   a choose-2 contest, the review dialog and the cast. Then the receipt, the Verify page with the saved receipt, the
-  account menu and sign-out. As elections@example.test: admin tabs (arrow keys), the Members and Elections panels, and
-  the New election dialog (validation, Escape).
+  account menu and sign-out. As elections@example.test: admin tabs (arrow keys), every panel it can see, the New
+  election dialog, the election editor, the contest dialog (validation), the remove-contest confirmation and a reason
+  prompt (both cancelled), and the status-history dialog. As auditor@example.test: the audit ledger and its verification.
+  As admin1@example.test: sign-in methods and the role-change form. As v1 again: the account page, the authenticator
+  dialog, the Resign prompt (cancelled), the register page and the review dialog on "Bylaw Amendment 3" (backed out).
+- **Target size**: every control on the signed-in pages measured against 24 × 24 px (2.5.8), including the spacing
+  exception.
 - **Accessibility tree and DOM**: names, roles and states read back for the controls above; live-region text read after
   each change.
 - **Both themes** (light, and dark via `prefers-color-scheme`), and **320 px wide** for reflow.
@@ -28,7 +33,7 @@ test. Keep it current when pages change.
 | 1.3.1 Info and relationships | Titles were styled `div`s, no headings at all; the main navigation was a tab list; contest controls and ranked lists had no group names; receipt table had no header row | One `h1` per page, `h2`/`h3` below it; nav is a `<nav>` of links; each contest is a named `section`, its radio/checkbox group is labelled by the contest title, the ranking is a named list; table headers and captions added |
 | 1.4.1 Use of colour | Verify steps showed passed / failed / pending only as a coloured icon | Each step starts with hidden text "Passed:", "Failed:" or "Not checked yet:" |
 | 1.4.3 Contrast (minimum) | Green (Quasar positive) with white text 2.6:1; dark theme: grey captions 3.0:1, primary-coloured text 4.1:1, red text 2.9:1, links 2.0:1; orange text 3.8:1; a light banner left white text on cream (1.1:1); the emulator badge 2.2:1 | Brand positive `#2e7d32` (5.1:1); dark-theme overrides for `text-primary`, `text-positive`, `text-negative`, `text-grey-7` and links (all ≥ 7:1); orange text uses `orange-10` (5.6:1); badges and banners get dark text where the background is light (table below) |
-| 1.4.10 Reflow | At 320 px the header cut the site name to "U" and pushed the account button off screen; on Verify the Check buttons were cut off, and long receipt titles widened cards past the screen | Account button becomes an icon on phones (its name keeps the account); fields take a full row on phones; page `.column` stacks no longer wrap (that is what sized cards to their widest content) |
+| 1.4.10 Reflow | At 320 px the header cut the site name to "U" and pushed the account button off screen; on Verify the Check buttons were cut off, and long receipt titles widened cards past the screen; the review and status-history dialogs had minimum widths wider than a phone | Account button becomes an icon on phones (its name keeps the account); fields take a full row on phones; page `.column` stacks no longer wrap (that is what sized cards to their widest content); dialog minimum widths capped at 95vw |
 | 1.4.11 Non-text contrast | Outlined field borders 1.8:1; toggle track 2.7:1; focus shown only as a faint tint | Borders 4.6:1; toggle track 4.6:1; focus ring below |
 | 2.1.1 Keyboard | The bylaws text sat in a scroll area that could not be scrolled from the keyboard | A focusable, named scroll region |
 | 2.4.1 Bypass blocks | Header and navigation before every page | "Skip to main content" link, first in the tab order |
@@ -37,9 +42,10 @@ test. Keep it current when pages change.
 | 2.4.4 / 2.4.6 Link purpose, labels | Many identical names: "Move up", "Remove", "Approve", "Reject", "Check", "Edit", "History", "Change", "Refresh", "Review" | Names say what they act on ("Move Casey Okafor up", "Approve Ada Brooks", "Check the saved receipt", "Change status of Ben Cruz"); the visible text always comes first (2.5.3) |
 | 2.4.7 Focus visible | Quasar's focus tint, nearly invisible on many controls | A 2 px ring with 3:1 or better on every surface: blue on light, light blue on dark, white in the header, on coloured banners and on toasts |
 | 2.4.11 Focus not obscured | The fixed header could cover a control the browser scrolled to | `scroll-padding-top` follows the header's height |
+| 2.5.8 Target size (minimum) | "Copy definition hash" 19 × 19 px, the members' copy buttons extra-small, "Clear (skip this contest)" 23 px tall | 24 × 24 px or larger (the Clear button is 32 px tall) |
 | 3.3.1 Error identification | Errors were shown, but focus stayed on the submit button | Focus goes to the first invalid field; Quasar links its message with `aria-describedby` |
 | 4.1.2 Name, role, value | Prompt dialogs (reasons, codes, passwords) had unnamed inputs and unnamed dialogs; the app's own dialogs were unnamed; sign-in method toggles had no name; filter toggles had no group name | Every dialog is named by its title (`dialog()` in `dialogs.ts` for Quasar's Dialog plugin, `aria-labelledby` elsewhere); prompt inputs are labelled; toggles named; toggle groups named (Quasar already sets `aria-pressed`) |
-| 4.1.3 Status messages | Ranking changes, the limit in choose-N contests, casting, verify results and ledger verification were silent | Announced through two live regions in the layout (`announce()` in `a11y.ts`); errors in banners and toasts were already `role="alert"` (Quasar) |
+| 4.1.3 Status messages | Ranking changes, the limit in choose-N contests and casting were silent (result banners and toasts were already `role="alert"` in Quasar, but the ledger result banner was not re-inserted, so a second run was not read) | Announced through two live regions in the layout (`announce()` in `a11y.ts`), plus "Checking your receipt…"; the ledger result is cleared before each run so its alert is read every time |
 
 Also: the review-and-cast dialog now opens with focus on its title, so a screen reader reads the summary from the top
 (Tab then reaches Back and Cast ballot); destructive confirmations (remove contest, login, device, photo) open with
@@ -75,9 +81,11 @@ emulator badge 9.74.
 - When the control that has focus disappears or moves, put focus somewhere sensible with `focusSoon(selector)` or
   `focusElement(el)`.
 - Announce results that appear without a page change with `announce(text)`; use `'assertive'` only for errors.
-  Quasar banners and toasts are already alerts.
-- Repeated buttons get the object in their name: `<q-btn label="Remove"><span class="sr-only"> {{ name }}</span></q-btn>`
-  (the leading space matters) or an `aria-label` that starts with the visible text.
+  Quasar banners (`q-banner`) and toasts are already alerts: don't announce their text again, and clear a result banner
+  before recomputing it so it is read on every run.
+- Repeated buttons get the object in their name: `<q-btn label="Remove"><span class="sr-only">&nbsp;{{ name }}</span></q-btn>`
+  or an `aria-label` that starts with the visible text. The `&nbsp;` matters: Vue drops a plain leading space before
+  an interpolation.
 - Colour classes: use `text-orange-10`, not `orange-9`, for warning text; light badge or banner backgrounds need
   `text-color="black"` / `text-black`. `app.css` fixes the dark theme for `text-primary`, `-positive`, `-negative`,
   `-grey-7` and `-orange-10`; another palette class used for text needs the same check.
@@ -87,10 +95,9 @@ emulator badge 9.74.
 - **No screen-reader pass yet** (next section). Live regions next to an open `aria-modal` dialog, and Quasar toasts
   shown while one is open, are announced inconsistently by some reader and browser pairs; the cast flow avoids depending
   on them by moving focus to the receipt.
-- **Not re-checked in a browser after the changes**: the account page (photo, authenticator setup, login methods), the
-  register form while signed in, two-step sign-in, the election editor page and the contest dialog, and the
-  applications, photos, bylaws, approvals, sign-in methods and audit panels. The shared Auth emulator stopped partway
-  through the audit; these were reviewed in code and type-checked only.
+- **Not exercised in a browser**: two-step sign-in and the authenticator QR step (the Auth emulator does not support
+  authenticator apps), the application form itself (every seeded voter is already a member), and the rows of pending
+  applications, photos and approval requests (the seed has none). These were reviewed in code only.
 - Quasar's radios, checkboxes and toggles are ARIA widgets on `div`s rather than native inputs. They behave correctly
   (roles, states, Space to toggle, roving focus in radio groups) but depend on Quasar staying that way.
 - `QBadge` renders `role="status"`, so badges in long lists (ballots, members) are live regions and may be read out

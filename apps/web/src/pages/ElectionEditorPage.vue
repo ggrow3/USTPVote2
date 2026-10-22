@@ -220,7 +220,7 @@ onMounted(load);
       </q-banner>
       <div class="text-caption text-grey-7">
         Definition hash <code>{{ detail.definitionHash.slice(0, 16) }}…</code>
-        <q-btn flat dense round size="xs" icon="content_copy" aria-label="Copy definition hash" @click="copyHash" />
+        <q-btn flat dense round size="sm" icon="content_copy" aria-label="Copy definition hash" @click="copyHash" />
         <template v-if="state === 'draft'"> — changes with any edit; scheduling freezes exactly this.</template>
         <template v-else-if="detail.election.tieBreakSeedCommitment">
           · tie-break seed commitment <code>{{ detail.election.tieBreakSeedCommitment.slice(0, 16) }}…</code>
@@ -240,10 +240,10 @@ onMounted(load);
             <q-item-section v-if="canDecide(r)" side>
               <div class="row q-gutter-xs">
                 <q-btn dense color="positive" label="Approve" @click="decide(r, 'approve')">
-                  <span class="sr-only"> {{ describeRequest(r) }}</span>
+                  <span class="sr-only">&nbsp;{{ describeRequest(r) }}</span>
                 </q-btn>
                 <q-btn dense flat color="negative" label="Reject" @click="decide(r, 'reject')">
-                  <span class="sr-only"> {{ describeRequest(r) }}</span>
+                  <span class="sr-only">&nbsp;{{ describeRequest(r) }}</span>
                 </q-btn>
               </div>
             </q-item-section>
@@ -344,10 +344,10 @@ onMounted(load);
             </div>
             <template v-if="canEdit">
               <q-btn flat dense no-caps label="Edit" @click="openContest(c)">
-                <span class="sr-only"> {{ c.title }}</span>
+                <span class="sr-only">&nbsp;{{ c.title }}</span>
               </q-btn>
               <q-btn flat dense no-caps color="negative" label="Remove" @click="removeContest(c)">
-                <span class="sr-only"> {{ c.title }}</span>
+                <span class="sr-only">&nbsp;{{ c.title }}</span>
               </q-btn>
             </template>
           </div>

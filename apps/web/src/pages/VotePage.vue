@@ -343,7 +343,6 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
               flat
               dense
               no-caps
-              size="sm"
               label="Clear (skip this contest)"
               class="q-mt-sm"
               @click="clear(c)"
@@ -367,7 +366,7 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
       </div>
 
       <q-dialog v-model="reviewing" aria-labelledby="review-title">
-        <q-card style="min-width: 360px; max-width: 640px">
+        <q-card style="min-width: min(360px, 95vw); max-width: 640px">
           <!-- Focus starts at the title, so a screen reader reads the summary from the top. -->
           <q-card-section>
             <h2 id="review-title" class="text-h6 ustp-focus-target" tabindex="-1" data-autofocus>Cast this ballot?</h2>
