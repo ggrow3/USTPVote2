@@ -80,7 +80,7 @@ flowchart LR
   WEB -- sign-in --> IDP[Identity Platform]
   WEB -- "ID token + App Check" --> API["server: api<br/>Cloud Run"]
   API --> FS[("Firestore (default)")]
-  API -- "encrypt ballots" --> KMS[Cloud KMS]
+  API -- "pool public keys" --> KMS[Cloud KMS]
   API -- "normalized photos" --> GCSP[("GCS: photos (private)")]
   API -- "photo checks" --> VIS[Cloud Vision]
   API -- enqueue --> CT[Cloud Tasks]
@@ -173,8 +173,8 @@ Builds use the committed lockfile with `npm ci --ignore-scripts` (spec §7).
   roles with `@Roles(...)`, which also requires MFA and verifies with `checkRevoked` (as will casting a ballot).
 - **Safety switches.** `APP_CHECK_ENFORCED=false` and `ADMIN_MFA_REQUIRED=false` exist for local development and
   integration tests; the server refuses to start with either unless the Firestore and Auth emulators are configured.
-  The emulator stand-ins `PHOTO_CHECKER=local`, `SECRET_STORE=emulator` and `AUDIT_SIGNER=emulator` (a local P-256
-  key kept in Firestore) are refused the same way.
+  The emulator stand-ins `PHOTO_CHECKER=local`, `SECRET_STORE=emulator`, `AUDIT_SIGNER=emulator` (a local P-256
+  key kept in Firestore) and `BALLOT_POOL=emulator` (local RSA keys) are refused the same way.
 - **Bootstrap.** Emails listed in `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` become System Admins once their account exists and
   the email is verified (checked on every `POST /v1/accounts`, which the web app calls on each sign-in and after
   verification; ledgered with actor `bootstrap`). An account that has ever held the role is never re-granted, so a
@@ -272,8 +272,15 @@ proposal texts** and refuses if anything changed since the request (the Auditor 
 transactional; the election records `tieBreakSeedRef`, the secret's ID, for the attempt that committed). Only its hash
 `tieBreakSeedCommitment` is published. One ledger entry, `election.scheduled`, records the definition hash, roll
 root and count, seed commitment and voting window. From then on nothing in the definition or roll can be edited.
-Creating the ballot-pool KMS key version moves to M3, when casting needs it. Planned: warn when the roll is too small
-for the anonymity threshold (roll < 3k).
+Planned: warn when the roll is too small for the anonymity threshold (roll < 3k).
+
+**Scheduled → Open → Closed** (implemented in M3a, the worker's clock on every tick): for a scheduled secret election
+the worker first creates its ballot-pool key version ([§7.3](#73-ballot-pool-encryption)) and records it as
+`poolKeyVersion`. At `opensAt` it opens the election — only once that key is ready, and only if the stored contests,
+candidates and proposal texts still hash to the frozen `definitionHash` (otherwise the tick fails loudly and the election
+stays scheduled). At `closesAt` it closes it. Each transition re-reads the election in a transaction (an election
+cancelled meanwhile is left alone, and overlapping ticks move it once) and ledgers `election.opened` (definition hash,
+window, pool key version) or `election.closed`, with actor `system`.
 
 **Cancelling** a draft is a single Election Admin action; cancelling a scheduled or open election is two-person
 (`election.cancel`, approved only if the election is still in the state it was requested from). Both are ledgered.
@@ -346,20 +353,34 @@ sequenceDiagram
   A-->>B: definition + definitionHash
   Note over B: for each answered contest:<br/>part = {v, electionId, contestId, selection, salt(32B)}<br/>commitment = H(JCS(part))
   B->>A: POST /v1/elections/{id}/ballots {definitionHash, parts}
-  Note over A: verify token (checkRevoked) + App Check<br/>election Open, now < closesAt, hash matches<br/>accountId in roll, parts valid (ustp-tally)
-  A->>K: encrypt(JCS(parts), AAD = electionId)
-  A->>F: transaction: create participation/{accountId}<br/>create ballot_pool/{randomId} {ciphertext}
-  F-->>A: ok, or ALREADY_EXISTS → 409
-  A-->>B: {status: cast, commitments}
+  Note over A: verify token (checkRevoked) + App Check<br/>election Open, now in window, hash matches<br/>accountId in roll, parts valid (ustp-tally)
+  A->>K: public key of the election's pool key version (cached)
+  Note over A: encrypt JCS(parts) locally (§7.3), AAD = electionId
+  A->>F: transaction: re-read election (still Open) and participation<br/>create participation/{accountId}<br/>create ballot_pool/{randomId} {ciphertext}
+  F-->>A: ok, or already voted → 409
+  A-->>B: {electionId, castAt, commitments}
   Note over B: compare commitments, show/save receipt
 ```
 
-- The **participation** document's ID is the `accountId`; `transaction.create()` fails if it exists, which is the
-  duplicate-vote guard (spec §4). It stores only `accountId` and server time.
+Implemented in M3a (`VotingService`):
+
+- **Voter endpoints:** `GET /v1/elections` lists the scheduled, open, closed and certified elections whose roll holds
+  the caller, with `castAt` once they voted. `GET /v1/elections/{id}/ballot` returns the frozen definition, its hash
+  and the proposal texts; the web app recomputes the hash and every proposal's `contentHash` in the browser before
+  showing the ballot. Drafts and cancelled elections answer 404 to voters; anyone off the roll gets 403.
+- **Checks at cast:** the token is checked for revocation (`@CheckRevoked`, as on admin routes); the election must be
+  Open and the server clock inside `[opensAt, closesAt)`; the request's `definitionHash` must equal the frozen one, and
+  the stored definition must still hash to it; at least one part, each for a different contest of this election, with
+  a 32-byte hex salt and a selection `ustp-tally` accepts (400 otherwise). Skipped contests are simply absent.
+- The approved roll is read once per api instance and kept in memory (it never changes, §6.3).
+- The **participation** document's ID is the `accountId`. The cast transaction reads it and creates it, which is the
+  duplicate-vote guard (spec §4); it also re-reads the election, so no ballot is accepted once a close has committed.
+  For secret ballots it stores only `accountId` and server time.
 - The **pool** document has a random server-generated ID and holds only ciphertext. No voter ID, no timestamp field.
-- The cast endpoint never logs request bodies; the Fastify logger redacts `authorization`, App Check headers and the
-  body for `/ballots`.
-- The "you voted" email task carries `accountId` and `electionId` only — never commitments.
+- The cast endpoint never logs request bodies (Fastify does not log bodies; the logger redacts `authorization` and App
+  Check headers).
+- Planned with email (Amazon SES): the "you voted" email task carries `accountId` and `electionId` only — never
+  commitments.
 
 ### 7.2 Sealer
 
@@ -392,24 +413,40 @@ seal(entries):
 Not in the spec; added because the sealer alone does not stop someone reading the pool *while* it exists (a real-time
 listener with database read access, or a backup / point-in-time-recovery copy).
 
-- Symmetric KMS key `ballot-pool`; a new key version per election, created at scheduling.
-- The **api** service account may only **encrypt**; the **worker** service account may only **decrypt**. No human
-  holds either permission in production. KMS Data Access audit logs are on, so any decrypt is visible.
-- After certification the election's key version is **destroyed**. Any copy of the pool in backups or PITR becomes
-  permanently unreadable — forward secrecy for past elections.
-- Cost: one key version (≈ $0.06/month) per election while it exists, plus one encrypt and one decrypt per ballot.
+Implemented in M3a:
+
+- **Asymmetric KMS key `ballot-pool`** (`ASYMMETRIC_DECRYPT`, `RSA_DECRYPT_OAEP_3072_SHA256`, named by
+  `BALLOT_POOL_KEY`); a **new key version per secret election**, created by the worker after scheduling. Unlike a
+  symmetric key, whose encryptions always use the primary version, an asymmetric version can be addressed directly, so
+  concurrent elections each get their own version.
+- **Hybrid encryption** in the api: each ballot `JCS(parts)` is encrypted with AES-256-GCM under a fresh 32-byte data
+  key, with the election ID as associated data (a ciphertext cannot be moved to another election's pool); the data key
+  is wrapped with RSA-OAEP-SHA256 to the election's public key and then discarded. The pool entry is
+  `{v, keyVersion, wrappedKey, iv, ciphertext, tag}`.
+- **The api cannot decrypt at all:** it only reads public keys (`roles/cloudkms.publicKeyViewer`), and only of versions
+  of the configured key, so an altered election document cannot point it at another key. Encryption needs no KMS call
+  per ballot. The **worker** alone may create versions and decrypt (`cloudkms.cryptoKeyVersions.create`, `.get`,
+  `.useToDecrypt`); the sealer (M3b) unwraps each data key through KMS. No human holds decrypt in production. KMS Data
+  Access audit logs are on, so any decrypt is visible.
+- After certification (M4) the election's key version is **destroyed**, and so are the versions of cancelled
+  elections. Any copy of the pool in backups or PITR becomes permanently unreadable — forward secrecy for past elections.
+- With the emulators, `BALLOT_POOL=emulator` keeps RSA-3072 key pairs in Firestore instead; the server refuses it
+  elsewhere.
+- Cost: one key version per election while it exists (a few cents a month), plus one KMS decrypt per ballot at sealing.
 
 ### 7.4 Open (roll-call) ballots
 
 For `secrecy: "open"` elections the API writes the plaintext parts with the `accountId` into the participation
-record; no pool, no encryption. The sealer still produces sealed blocks — parts carry `accountId` and are sorted by it
+record (implemented in M3a); no pool key, no pool, no encryption. The ballot page tells voters their vote is published
+with their name. The sealer still produces sealed blocks — parts carry `accountId` and are sorted by it
 — so tallying, publication and verification follow one path for both modes.
 
 ### 7.5 Receipts and voter verification
 
 - The browser computes each part's commitment *before* sending, so the voter does not have to trust the server's
-  echo. The receipt is the list of `{contestId, commitment}` plus the salts; the voter can save it (file download,
-  and optionally browser storage).
+  echo, and shows whether the server's commitments match. The receipt (`BallotReceipt`: election, definition hash,
+  cast time, the parts with their salts, the commitments) can be downloaded as a file, and kept in browser storage only
+  if the voter switches that on (implemented in M3a). It is never sent back to the server.
 - After the ballot is sealed, `/verify` fetches an inclusion proof for each commitment and checks, in the browser:
   RFC 9162 inclusion in the sealed block's Merkle root → the block's hash in the ledger → the ledger block's signature
   → the anchor object in the Bucket Lock bucket.
@@ -444,7 +481,8 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
   entries are public. A public verifier checks a public entry by Merkle inclusion in its ledger block (§8.3) without
   seeing the private entries in that block. Public types (`PUBLIC_LEDGER_EVENT_TYPES`): `bylaws.published`,
-  `roll.approved`, `election.scheduled`, `election.cancelled`, and the election and results types as they arrive.
+  `roll.approved`, `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled`, and the sealing
+  and results types as they arrive.
   `GET /v1/public/ledger/entries/{seq}` returns a public entry with its block and inclusion proof; anything else, or an
   entry not yet in a block, is 404.
 
@@ -669,7 +707,7 @@ Errors use RFC 9457 problem details. Request bodies are validated against schema
 
 | Endpoint | Trigger | Work |
 |---|---|---|
-| `POST /tasks/tick` | Cloud Scheduler, every minute | *M2c:* seal ledger blocks, sign approved rolls, anchor blocks (returns what it did). *M3+:* open/close elections on time; seal pools; schedule tally on close |
+| `POST /tasks/tick` | Cloud Scheduler, every minute | *M3a:* prepare pool keys, open/close elections on time. *M2c:* seal ledger blocks, sign approved rolls, anchor blocks. Returns what it did. *M3b+:* seal pools; schedule tally on close |
 | `POST /tasks/tally` | Cloud Task after close | reveal seed, run `ustp-tally`, write provisional results bundle |
 | `POST /tasks/email` | Cloud Task | send via Amazon SES |
 | `POST /tasks/destroy-pool-key` | Cloud Task after certify | destroy the election's ballot-pool key version |
@@ -687,7 +725,8 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
 - **IAM:** separate service accounts for api and worker; no human has Firestore data access or KMS
   encrypt/decrypt in production; break-glass group with alerting. Only the worker's account holds
   `cloudkms.signer` and `cloudkms.publicKeyViewer` on `audit-signing`; it also writes to the anchors bucket, which
-  nobody may delete from.
+  nobody may delete from. On `ballot-pool` the worker may create versions and decrypt; the api may only read public
+  keys (§7.3).
 - **Logging:** structured logs with redaction; no request bodies on cast; Firestore Data Access audit logs off in
   production (they would record write paths and times; pool encryption makes them harmless, but there is no need for
   them); KMS Data Access audit logs on.
@@ -738,6 +777,7 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
 | §3/§5.3 photos via signed upload URL, checked by the worker | Upload through the API, normalized (metadata stripped) and checked inline | Server-side decoding and metadata removal; works with the emulators; no URL-signing permission; one Vision call needs no task queue |
 | §6 roll snapshot "signed" | Signed by the worker on its next tick after approval, not inside the approval | Keeps signing rights off the internet-facing api; a compromised api cannot sign |
 | §6 collections | + `signing_keys` | Public keys of every key version that signed, for verification across key rotation |
+| (added) §7.3 pool encryption with a symmetric key the api may only encrypt with | Asymmetric key, one version per election; the api encrypts locally to its public key (RSA-OAEP wrapping an AES-GCM data key) | Symmetric KMS encryption always uses the primary version, so concurrent elections could not each have their own; the api then holds no decrypt permission at all and makes no KMS call per ballot |
 
 ## 18. Open questions
 
@@ -767,6 +807,6 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M0 — Foundations** *(this commit)* | Design; monorepo; `ustp-tally`, `ustp-audit`, `ustp-domain` with tests; server and web skeletons; CI |
 | **M1 — Identity & registration** | *Done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes via two-person approvals, auth switches, Auditor ledger verification; web sign-in (Google, Microsoft, Apple, email/password, email link), registration, account and admin console. admin two-step verification (authenticator-app setup, code step at sign-in, re-authentication for approvals, typed MFA/re-auth problems); profile photos (normalized upload, automatic checks, admin review). *Still to exercise against a real project:* authenticator-app setup and sign-in (TOTP), and Cloud Vision photo checks — neither has an emulator |
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
-| **M3 — Casting & secrecy** | Ballot UI with client-side commitments; cast endpoint; pool encryption; sealer; receipts; `/verify` |
+| **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *Still to exercise against a real project:* Cloud KMS pool keys. *M3b:* sealer (k-anonymous sealed blocks), published election record and inclusion proofs, `/verify` fetching proofs for a saved receipt; "you voted" email |
 | **M4 — Tally & certification** | Tally task, results bundle, certification, position terms, key destruction; `ustp-verify` CLI |
 | **M5 — Hardening & launch gates** | Terraform; Binary Authorization; PWA; accessibility audit; load test; external review; mock election |

@@ -18,6 +18,9 @@ import { ElectionApprovals } from '../elections/election-approvals.js';
 import { ElectionReader } from '../elections/election-reader.js';
 import { ElectionsController, ProposalsController } from '../elections/elections.controller.js';
 import { ElectionsService } from '../elections/elections.service.js';
+import { VotingController } from '../elections/voting.controller.js';
+import { VotingService } from '../elections/voting.service.js';
+import { ballotPoolKeysProvider } from '../infra/ballot-pool.js';
 import { Firebase } from '../infra/firebase.js';
 import { EmulatorSecretStore, SECRET_STORE, SecretManagerStore } from '../infra/secret-store.js';
 import { PublicLedgerController } from '../ledger/ledger.controller.js';
@@ -31,6 +34,7 @@ import { PhotosService } from '../photos/photos.service.js';
  * Client-facing API (design §12). Every route requires a verified sign-in unless marked @Public().
  * M1: accounts, registration, membership administration, profile photos, roles and approvals, auth switches, ledger.
  * M2: election setup, rolls, scheduling and cancellation; the published ledger (blocks, keys, proofs, anchors).
+ * M3: voting.
  */
 @Module({
   imports: [CoreModule],
@@ -43,6 +47,7 @@ import { PhotosService } from '../photos/photos.service.js';
     PhotoReviewController,
     ElectionsController,
     ProposalsController,
+    VotingController,
     ApprovalsController,
     PublicSignInMethodsController,
     SignInMethodsController,
@@ -56,6 +61,8 @@ import { PhotosService } from '../photos/photos.service.js';
     ElectionsService,
     ElectionReader,
     ElectionApprovals,
+    VotingService,
+    ballotPoolKeysProvider,
     RoleApprovals,
     ApprovalsService,
     {

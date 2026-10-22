@@ -37,6 +37,14 @@ export interface ElectionRecord {
   readonly tieBreakSeedRef: string | null;
   readonly scheduledAt: string | null;
   readonly cancelledAt: string | null;
+  /**
+   * Secret ballots: the ballot-pool key version ballots are encrypted to (design §7.3), created by the worker once the
+   * election is scheduled. The election does not open without it.
+   */
+  readonly poolKeyVersion: string | null;
+  /** Set by the worker on its clock (design §6.1). */
+  readonly openedAt: string | null;
+  readonly closedAt: string | null;
 }
 
 /**

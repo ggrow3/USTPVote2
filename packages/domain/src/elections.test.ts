@@ -31,6 +31,9 @@ const election: ElectionRecord = {
   tieBreakSeedRef: null,
   scheduledAt: null,
   cancelledAt: null,
+  poolKeyVersion: null,
+  openedAt: null,
+  closedAt: null,
 };
 
 const proposal: ProposalSnapshotRecord = {

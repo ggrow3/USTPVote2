@@ -9,6 +9,7 @@ import {
   Post,
 } from '@nestjs/common';
 import type { TickResult } from 'ustp-domain';
+import { ElectionClock } from './election-clock.js';
 import { LedgerSealer } from './ledger-sealer.js';
 
 /**
@@ -22,11 +23,15 @@ export type WorkerTask = (typeof WORKER_TASKS)[number];
 export class TasksController {
   private readonly logger = new Logger(TasksController.name);
 
-  constructor(private readonly sealer: LedgerSealer) {}
+  constructor(
+    private readonly clock: ElectionClock,
+    private readonly sealer: LedgerSealer,
+  ) {}
 
   /**
-   * Every minute: seal new ledger entries into a signed block, sign approved rolls, anchor new blocks. Opening and
-   * closing elections and sealing ballot pools join in M3. Each step runs even if an earlier one failed.
+   * Every minute: prepare ballot-pool keys, open and close elections on time, then seal new ledger entries (including
+   * those transitions) into a signed block, sign approved rolls and anchor new blocks. Sealing ballot pools joins in
+   * M3b. Each step runs even if an earlier one failed.
    */
   @Post('tick')
   @HttpCode(200)
@@ -43,6 +48,9 @@ export class TasksController {
       }
     };
     const result: TickResult = {
+      poolKeysCreated: await step('prepare pool keys', () => this.clock.preparePoolKeys(), 0),
+      electionsOpened: await step('open elections', () => this.clock.openDue(), 0),
+      electionsClosed: await step('close elections', () => this.clock.closeDue(), 0),
       blocksSealed: (await step('seal blocks', () => this.sealer.sealBlocks(), [])).length,
       rollsSigned: await step('sign rolls', () => this.sealer.signRolls(), 0),
       anchored: await step('anchor blocks', () => this.sealer.anchorBlocks(), 0),

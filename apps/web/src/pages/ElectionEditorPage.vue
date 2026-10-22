@@ -202,6 +202,16 @@ onMounted(load);
       <q-banner v-else-if="state === 'scheduled'" class="bg-primary text-white" rounded>
         Scheduled {{ new Date(detail.election.scheduledAt!).toLocaleString() }}. Voting opens
         {{ new Date(detail.election.opensAt).toLocaleString() }}. The definition and roll are frozen.
+        <template v-if="detail.election.secrecy === 'secret'">
+          {{ detail.election.poolKeyVersion ? 'The ballot encryption key is ready.' : 'The ballot encryption key is being prepared.' }}
+        </template>
+      </q-banner>
+      <q-banner v-else-if="state === 'open'" class="bg-positive text-white" rounded>
+        Voting is open until {{ new Date(detail.election.closesAt).toLocaleString() }} (opened
+        {{ new Date(detail.election.openedAt!).toLocaleString() }}).
+      </q-banner>
+      <q-banner v-else-if="state === 'closed'" class="bg-grey-7 text-white" rounded>
+        Voting closed {{ new Date(detail.election.closedAt!).toLocaleString() }}.
       </q-banner>
       <q-banner v-else-if="state === 'cancelled'" class="bg-grey-7 text-white" rounded>
         Cancelled {{ new Date(detail.election.cancelledAt!).toLocaleString() }}.

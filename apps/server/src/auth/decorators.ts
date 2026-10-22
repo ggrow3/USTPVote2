@@ -11,6 +11,7 @@ declare module 'fastify' {
 
 export const PUBLIC_KEY = 'ustp:public';
 export const ROLES_KEY = 'ustp:roles';
+export const CHECK_REVOKED_KEY = 'ustp:check-revoked';
 
 /** No sign-in required. */
 export const Public = () => SetMetadata(PUBLIC_KEY, true);
@@ -20,6 +21,9 @@ export const Public = () => SetMetadata(PUBLIC_KEY, true);
  * the ID token (design §4).
  */
 export const Roles = (...roles: Role[]) => SetMetadata(ROLES_KEY, roles);
+
+/** Also check that the ID token has not been revoked, as admin routes do (casting a ballot, design §7.1). */
+export const CheckRevoked = () => SetMetadata(CHECK_REVOKED_KEY, true);
 
 /** The authenticated caller. */
 export const Ctx = createParamDecorator((_: unknown, host: ExecutionContext): RequestContext => {
