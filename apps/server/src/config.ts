@@ -21,6 +21,10 @@ export interface ServerConfig {
   readonly auditSigningKeyVersion: string | null;
   /** Bucket with a retention policy for ledger anchors (design §8.4); anchoring is skipped until it is set. */
   readonly anchorsBucket: string | null;
+  /** Ballot-pool keys (design §7.3): Cloud KMS, or the emulator-only local keys. */
+  readonly ballotPool: 'kms' | 'emulator';
+  /** `projects/.../cryptoKeys/ballot-pool` (RSA_DECRYPT_OAEP_3072_SHA256); secret elections cannot open until it is set. */
+  readonly ballotPoolKey: string | null;
 }
 
 export const CONFIG = Symbol('ServerConfig');
@@ -47,6 +51,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const auditSigner = (env.AUDIT_SIGNER ?? (usingEmulators ? 'emulator' : 'kms')) as ServerConfig['auditSigner'];
   if (auditSigner !== 'kms' && auditSigner !== 'emulator') throw new Error('AUDIT_SIGNER must be "kms" or "emulator"');
   if (auditSigner === 'emulator' && !usingEmulators) throw new Error('AUDIT_SIGNER=emulator is only allowed with the Firebase emulators');
+  const ballotPool = (env.BALLOT_POOL ?? (usingEmulators ? 'emulator' : 'kms')) as ServerConfig['ballotPool'];
+  if (ballotPool !== 'kms' && ballotPool !== 'emulator') throw new Error('BALLOT_POOL must be "kms" or "emulator"');
+  if (ballotPool === 'emulator' && !usingEmulators) throw new Error('BALLOT_POOL=emulator is only allowed with the Firebase emulators');
 
   const projectId = env.GOOGLE_CLOUD_PROJECT || env.GCLOUD_PROJECT || undefined;
   return {
@@ -64,5 +71,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     auditSigner,
     auditSigningKeyVersion: env.AUDIT_SIGNING_KEY_VERSION || null,
     anchorsBucket: env.ANCHORS_BUCKET || (usingEmulators && projectId ? `${projectId}-anchors` : null),
+    ballotPool,
+    ballotPoolKey: env.BALLOT_POOL_KEY || null,
   };
 }

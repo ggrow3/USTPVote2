@@ -60,6 +60,17 @@ export type {
 export { rollLeaf, sortRoll, rollMerkleRoot, rollInclusionProof, rollStatement, rollSigningInput } from './roll.js';
 export type { RollStatement } from './roll.js';
 export * from './election-api.js';
+export { castBallotSchema, ballotProblems, commitmentsOf } from './ballots.js';
+export type {
+  CastBallotInput,
+  Commitment,
+  ParticipationRecord,
+  PoolEntryRecord,
+  VoterElection,
+  BallotView,
+  CastResult,
+  BallotReceipt,
+} from './ballots.js';
 export type { Likelihood, PhotoSignals, PhotoVerdict } from './photos.js';
 export type { ProblemCode } from './problems.js';
 export * from './api.js';

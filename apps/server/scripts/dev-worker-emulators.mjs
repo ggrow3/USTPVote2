@@ -13,12 +13,12 @@ for (const [key, value] of Object.entries(defaults)) process.env[key] ??= value;
 
 await import('../dist/main-worker.js');
 
-const idle = JSON.stringify({ blocksSealed: 0, rollsSigned: 0, anchored: 0 });
 setInterval(async () => {
   try {
     const res = await fetch(`http://127.0.0.1:${process.env.PORT}/tasks/tick`, { method: 'POST' });
     const body = await res.text();
-    if (!res.ok || body !== idle) console.log(`tick ${res.status} ${body}`);
+    const idle = res.ok && Object.values(JSON.parse(body)).every((n) => n === 0);
+    if (!idle) console.log(`tick ${res.status} ${body}`);
   } catch (e) {
     console.error(`tick failed: ${e instanceof Error ? e.message : String(e)}`);
   }

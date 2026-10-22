@@ -94,6 +94,9 @@ export class ElectionsService {
       tieBreakSeedRef: null,
       scheduledAt: null,
       cancelledAt: null,
+      poolKeyVersion: null,
+      openedAt: null,
+      closedAt: null,
     };
     await this.db.collection(Collections.elections).doc(record.electionId).create(record);
     return record;

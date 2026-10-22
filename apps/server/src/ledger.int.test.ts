@@ -56,7 +56,14 @@ async function rewriteEntry(seq: number, payload: Record<string, unknown>) {
 describe('ledger blocks and anchors', () => {
   it('seals new entries into signed, chained blocks and anchors each one outside Firestore', async () => {
     expect(await worker.tick()).toMatchObject({ status: 200, body: { blocksSealed: 1, rollsSigned: 0, anchored: 1 } });
-    expect((await worker.tick()).body).toEqual({ blocksSealed: 0, rollsSigned: 0, anchored: 0 });
+    expect((await worker.tick()).body).toEqual({
+      poolKeysCreated: 0,
+      electionsOpened: 0,
+      electionsClosed: 0,
+      blocksSealed: 0,
+      rollsSigned: 0,
+      anchored: 0,
+    });
 
     const [block1] = (await api.call('GET', '/v1/public/ledger/blocks')).body as LedgerBlockRecord[];
     expect(block1).toMatchObject({ index: 1, prevBlockHash: GENESIS_HASH, firstSeq: 1, lastSeq: 5 });

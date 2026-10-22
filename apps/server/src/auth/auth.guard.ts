@@ -11,7 +11,7 @@ import type { FastifyRequest } from 'fastify';
 import { PROBLEM_TYPES, type Role } from 'ustp-domain';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
-import { PUBLIC_KEY, ROLES_KEY } from './decorators.js';
+import { CHECK_REVOKED_KEY, PUBLIC_KEY, ROLES_KEY } from './decorators.js';
 import { DirectoryService } from './directory.service.js';
 import { principalFromToken, type RequestContext } from './principal.js';
 import { SignInMethodsService } from './sign-in-methods.service.js';
@@ -34,6 +34,7 @@ export class AuthGuard implements CanActivate {
     const targets = [context.getHandler(), context.getClass()];
     if (this.reflector.getAllAndOverride<boolean>(PUBLIC_KEY, targets)) return true;
     const required = this.reflector.getAllAndOverride<Role[] | undefined>(ROLES_KEY, targets) ?? [];
+    const checkRevoked = required.length > 0 || !!this.reflector.getAllAndOverride<boolean>(CHECK_REVOKED_KEY, targets);
     const request = context.switchToHttp().getRequest<FastifyRequest>();
 
     if (this.config.appCheckEnforced) {
@@ -50,8 +51,8 @@ export class AuthGuard implements CanActivate {
     if (!match) throw new UnauthorizedException('sign in required');
     let principal;
     try {
-      // Admin routes also check revocation, so a disabled or signed-out admin loses access immediately.
-      principal = principalFromToken(await this.firebase.auth.verifyIdToken(match[1]!, required.length > 0));
+      // Admin routes and casting also check revocation, so a disabled or signed-out user loses access immediately.
+      principal = principalFromToken(await this.firebase.auth.verifyIdToken(match[1]!, checkRevoked));
     } catch {
       throw new UnauthorizedException('invalid or expired sign-in');
     }

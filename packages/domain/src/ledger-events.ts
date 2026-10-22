@@ -12,6 +12,8 @@ export const LEDGER_EVENT_TYPES = [
   'photo.decided',
   'roll.approved',
   'election.scheduled',
+  'election.opened',
+  'election.closed',
   'election.cancelled',
 ] as const;
 export type LedgerEventType = (typeof LEDGER_EVENT_TYPES)[number];

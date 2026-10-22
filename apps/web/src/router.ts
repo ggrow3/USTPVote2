@@ -26,7 +26,8 @@ export const router = createRouter({
         { path: 'signin', component: () => import('./pages/SignInPage.vue') },
         { path: 'register', component: () => import('./pages/RegisterPage.vue') },
         { path: 'account', component: () => import('./pages/AccountPage.vue'), meta: { requiresAuth: true } },
-        { path: 'ballot', component: () => import('./pages/BallotPage.vue') },
+        { path: 'ballot', component: () => import('./pages/BallotPage.vue'), meta: { requiresAuth: true } },
+        { path: 'ballot/:id', component: () => import('./pages/VotePage.vue'), meta: { requiresAuth: true } },
         { path: 'verify', component: () => import('./pages/VerifyPage.vue') },
         {
           path: 'admin',

@@ -59,6 +59,8 @@ export const PUBLIC_LEDGER_EVENT_TYPES = [
   'bylaws.published',
   'roll.approved',
   'election.scheduled',
+  'election.opened',
+  'election.closed',
   'election.cancelled',
 ] as const satisfies readonly LedgerEventType[];
 
@@ -95,6 +97,9 @@ export type LedgerVerification =
 
 /** What `POST /tasks/tick` did (design §13). */
 export interface TickResult {
+  readonly poolKeysCreated: number;
+  readonly electionsOpened: number;
+  readonly electionsClosed: number;
   readonly blocksSealed: number;
   readonly rollsSigned: number;
   readonly anchored: number;
