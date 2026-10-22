@@ -249,9 +249,10 @@ export async function buildWorld(options: WorldOptions = {}): Promise<World> {
       cancelledAt: null,
     },
     definition,
-    roll: { count: roll.count, merkleRoot: roll.merkleRoot, asOf: roll.asOf, signature: rollSignature },
+    roll: { snapshotId: roll.snapshotId, count: roll.count, merkleRoot: roll.merkleRoot, asOf: roll.asOf, signature: rollSignature },
     sealedBlocks: summaries,
     ballotsSealed: summaries.reduce((n, b) => n + b.ballotCount, 0),
+    results: null,
   };
   return {
     signer,
