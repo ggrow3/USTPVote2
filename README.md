@@ -39,7 +39,7 @@ have not been exercised in dev yet.
 | [`packages/verify`](packages/verify) | `ustp-verify` — independent verifier CLI over public artifacts only. |
 | [`apps/server`](apps/server) | NestJS 12 on Fastify: `main-api.ts` (Cloud Run api) and `main-worker.ts` (Cloud Run worker). |
 | [`apps/web`](apps/web) | Vue 3 + Quasar 2 SPA: `/register`, `/ballot`, `/verify`, `/admin`. |
-| [`infra/firebase`](infra/firebase) | Firestore/Storage rules (deny all), indexes, Hosting config, emulator ports. |
+| [`infra/firebase`](infra/firebase) | Firestore/Storage rules (deny all) and indexes. [`firebase.json`](firebase.json) at the root ties them to Hosting and the emulator ports. |
 | [`infra/terraform`](infra/terraform) | Terraform for dev, staging and prod: service accounts, KMS, buckets, Firestore, Cloud Run, Scheduler, Binary Authorization. |
 
 ## Development

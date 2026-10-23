@@ -125,7 +125,7 @@ packages/tally     ustp-tally   (public)
 packages/audit     ustp-audit   (public)
 packages/domain    ustp-domain  (internal)
 packages/verify    ustp-verify  independent verifier CLI (public)
-infra/firebase     firestore.rules, storage.rules, indexes, hosting config
+infra/firebase     firestore.rules, storage.rules, indexes (firebase.json at the root: hosting, emulators)
 infra/terraform    project, IAM, KMS, buckets, Cloud Run, scheduler, Binary Authorization (see its README)
 docs/              this design, the source spec, ADRs
 ```
@@ -916,7 +916,8 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
   Setup per environment: [`infra/terraform/README.md`](../infra/terraform/README.md#release-workflow).
 - Web → Firebase Hosting, which rewrites `/v1/**` to the api Cloud Run service so the API is same-origin (no CORS).
   api and worker → Cloud Run from one image (`node dist/main-api.js` / `node dist/main-worker.js`).
-  Config: [`infra/firebase`](../infra/firebase).
+  Config: [`firebase.json`](../firebase.json) at the repository root (the Firebase CLI only publishes folders inside the
+  one holding it) and the rules and indexes in [`infra/firebase`](../infra/firebase).
 - Bucket Lock retention locked in prod only.
 - Cost deltas against spec §8: + ≈ $0.06/month per election with a live ballot-pool key version; one Scheduler job
   per environment (free); Cloud Tasks well within its free tier. Total remains under $1/month at the stated scale.

@@ -1,13 +1,13 @@
 {
   "firestore": {
-    "rules": "firestore.rules",
-    "indexes": "firestore.indexes.json"
+    "rules": "infra/firebase/firestore.rules",
+    "indexes": "infra/firebase/firestore.indexes.json"
   },
   "storage": {
-    "rules": "storage.rules"
+    "rules": "infra/firebase/storage.rules"
   },
   "hosting": {
-    "public": "../../apps/web/dist",
+    "public": "apps/web/dist",
     "ignore": ["**/.*"],
     "rewrites": [
       { "source": "/v1/**", "run": { "serviceId": "api", "region": "us-central1" } },
