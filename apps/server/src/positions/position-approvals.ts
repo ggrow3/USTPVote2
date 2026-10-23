@@ -12,8 +12,9 @@ import type { ApprovalHandler, PreparedDecision } from '../administration/approv
 import { Firebase } from '../infra/firebase.js';
 
 /**
- * Executes `position.modify` (design §6.4, §10.2): defining or changing an office, and ending a term early. Terms are
- * otherwise only created by certification (`ElectionApprovals`).
+ * Executes `position.modify` (design §6.4, §10.2): ending a term early, and defining or changing an office for requests
+ * made before offices were defined directly (`PositionsService.define`). Terms are otherwise only created by
+ * certification (`ElectionApprovals`).
  */
 @Injectable()
 export class PositionApprovals implements ApprovalHandler {

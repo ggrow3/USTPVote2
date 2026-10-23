@@ -4,15 +4,15 @@ import type { CandidateRecord, ElectionDefinition } from './elections.js';
 import type { ResultsBundle } from './results.js';
 
 /**
- * Offices and who holds them (design §6.4). An office is defined, and any term ended, only through the two-person
- * `position.modify` action; terms are otherwise created only by certifying an election whose candidate contests are
- * tied to the office.
+ * Offices and who holds them (design §6.4). A Membership or Election Admin defines or changes an office directly; a
+ * term is ended early only through the two-person `position.modify` action, and otherwise created only by certifying
+ * an election whose candidate contests are tied to the office.
  */
 
 const slug = z.string().regex(/^[a-z0-9][a-z0-9-]{1,47}$/, 'use 2–48 lowercase letters, digits and dashes');
 const reason = z.string().trim().min(1, 'a written reason is required').max(2000);
 
-/** `POST /v1/admin/positions`: define a new office or change one (two-person). */
+/** `POST /v1/admin/positions`: define a new office or change one; it takes effect at once. */
 export const positionInputSchema = z.strictObject({
   positionId: slug,
   title: z.string().trim().min(1, 'enter a title').max(200),
@@ -33,8 +33,8 @@ export interface PositionRecord {
   /** Term length from certification. */
   readonly termMonths: number;
   readonly definedAt: string;
-  /** The `position.modify` request that last defined it. */
-  readonly approvalId: string;
+  /** The `position.modify` request that last defined it, if one did; null when an admin defined it directly. */
+  readonly approvalId: string | null;
 }
 
 /** `position_terms/{termId}`: one person in one office, from one certified result. */
@@ -56,7 +56,10 @@ export interface PositionTermRecord {
   readonly endReason: string | null;
 }
 
-/** Two-person payloads (design §10.2). */
+/**
+ * Two-person payloads (design §10.2). Nothing requests `define` any more (offices are defined directly); requests made
+ * before can still be decided.
+ */
 export type PositionModifyPayload =
   | {
       readonly change: 'define';

@@ -5,7 +5,7 @@ import type { RequestContext } from '../auth/principal.js';
 import { ZodPipe } from '../common/validation.js';
 import { PositionsService } from './positions.service.js';
 
-/** Offices and terms for administrators (design §6.4); every change goes to an Auditor. */
+/** Offices and terms for administrators (design §6.4); ending a term goes to an Auditor. */
 @Controller('v1/admin/positions')
 @Roles('membership_admin', 'election_admin')
 export class PositionsController {
@@ -17,10 +17,10 @@ export class PositionsController {
     return this.positions.all();
   }
 
-  /** Define a new office or change one; an Auditor must approve. */
+  /** Define a new office or change one; it takes effect at once. */
   @Post()
   define(@Ctx() ctx: RequestContext, @Body(new ZodPipe(positionInputSchema)) body: PositionInput) {
-    return this.positions.requestDefine(ctx, body);
+    return this.positions.define(ctx, body);
   }
 
   /** End a term now; an Auditor must approve. */

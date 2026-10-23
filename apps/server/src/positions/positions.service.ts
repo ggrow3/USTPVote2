@@ -12,16 +12,18 @@ import { ApprovalsService } from '../administration/approvals.service.js';
 import { requireAccount } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { Firebase } from '../infra/firebase.js';
+import { LedgerService } from '../ledger/ledger.service.js';
 
 /**
- * Offices and terms (design §6.4). Every change is a `position.modify` request an Auditor approves; this service only
- * files requests and reads.
+ * Offices and terms (design §6.4). A Membership or Election Admin defines or changes an office at once; ending a term
+ * is a `position.modify` request an Auditor approves.
  */
 @Injectable()
 export class PositionsService {
   constructor(
     private readonly firebase: Firebase,
     private readonly approvals: ApprovalsService,
+    private readonly ledger: LedgerService,
   ) {}
 
   /** Every office and every term, for administrators. */
@@ -48,15 +50,18 @@ export class PositionsService {
     };
   }
 
-  /** Asks an Auditor to define a new office, or to change an existing one to exactly this. */
-  async requestDefine(ctx: RequestContext, input: PositionInput): Promise<ApprovalRequestRecord> {
-    const requestedBy = requireAccount(ctx);
-    this.approvals.assertCanRequest(ctx, 'position.modify', input.positionId);
+  /** Defines a new office, or changes an existing one to exactly this, at once. Terms already running are untouched. */
+  async define(ctx: RequestContext, input: PositionInput): Promise<PositionRecord> {
+    const definedBy = requireAccount(ctx);
     const { reason, ...position } = input;
-    const payload: PositionModifyPayload = { change: 'define', position };
-    return this.firebase.db.runTransaction((tx) =>
-      this.approvals.createRequest(tx, { action: 'position.modify', subject: position.positionId, payload, reason, requestedBy }),
-    );
+    const record: PositionRecord = { ...position, definedAt: new Date().toISOString(), approvalId: null };
+    return this.firebase.db.runTransaction(async (tx) => {
+      await this.ledger.record(tx, [
+        { type: 'position.defined', actor: definedBy, subject: position.positionId, payload: { ...position, reason } },
+      ]);
+      tx.set(this.firebase.db.collection(Collections.positions).doc(position.positionId), record);
+      return record;
+    });
   }
 
   /** Asks an Auditor to end an active term now (resignation, removal under the bylaws). */

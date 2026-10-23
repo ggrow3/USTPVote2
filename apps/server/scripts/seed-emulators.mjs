@@ -127,12 +127,11 @@ const OFFICES = [
   { positionId: 'outreach-coordinator', title: 'Outreach Coordinator', seats: 1, termMonths: 12, description: '' },
 ];
 
-/** Defines an office through the two-person flow (Election Admin asks, Auditor approves), unless it exists. */
+/** Defines an office as the Election Admin (it takes effect at once), unless it exists. */
 async function defineOffice(office) {
   const { positions } = await call('GET', '/v1/admin/positions', AUDITOR);
   if (positions.some((p) => p.positionId === office.positionId)) return;
-  const req = await call('POST', '/v1/admin/positions', ELECTION_ADMIN, { ...office, reason: 'dev seed' });
-  await call('POST', `/v1/admin/approvals/${req.id}/decision`, AUDITOR, { decision: 'approve', reason: 'dev seed' });
+  await call('POST', '/v1/admin/positions', ELECTION_ADMIN, { ...office, reason: 'dev seed' });
 }
 
 // --- elections ----------------------------------------------------------------------------------------------------
