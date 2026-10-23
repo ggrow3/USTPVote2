@@ -47,6 +47,29 @@ describe('bylaws', () => {
     const again = await api.call('POST', '/v1/admin/bylaws', admin, { version: '2026.1', title: 'x', text: 'y' });
     expect(again.status).toBe(409);
   });
+
+  it('amends only the current version, and lists and serves every version', async () => {
+    const amendment = { title: 'USTP Bylaws', text: 'Article I. Name.\nArticle II. Purpose.\n' };
+    const unanchored = await api.call('POST', '/v1/admin/bylaws', admin, { ...amendment, version: '2026.2' });
+    expect(unanchored).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/2026\.1 is the current/) } });
+
+    const second = await api.call('POST', '/v1/admin/bylaws', admin, {
+      ...amendment,
+      version: '2026.2',
+      amends: '2026.1',
+      changeNote: 'Adds Article II.',
+    });
+    expect(second).toMatchObject({ status: 201, body: { version: '2026.2', amends: '2026.1', changeNote: 'Adds Article II.' } });
+    const stale = await api.call('POST', '/v1/admin/bylaws', admin, { ...amendment, version: '2026.3', amends: '2026.1' });
+    expect(stale.status).toBe(409);
+
+    const list = await api.call('GET', '/v1/bylaws');
+    expect(list.body.map((v: { version: string }) => v.version)).toEqual(['2026.2', '2026.1']);
+    expect(list.body[0]).not.toHaveProperty('text');
+    expect((await api.call('GET', '/v1/bylaws/2026.1')).body).toMatchObject({ version: '2026.1', text: 'Article I. Name.\n' });
+    expect((await api.call('GET', '/v1/bylaws/current')).body.version).toBe('2026.2');
+    expect((await api.call('GET', '/v1/bylaws/9999')).status).toBe(404);
+  });
 });
 
 describe('applications', () => {

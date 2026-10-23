@@ -33,6 +33,21 @@ export class RegistrationController {
     return bylaws;
   }
 
+  /** Every published version, newest first, without the text (design §5.2). */
+  @Public()
+  @Get('bylaws')
+  bylawsVersions() {
+    return this.membership.bylawsVersions();
+  }
+
+  @Public()
+  @Get('bylaws/:version')
+  async bylawsVersion(@Param('version') version: string) {
+    const bylaws = /^[A-Za-z0-9._-]{1,64}$/.test(version) ? await this.membership.bylawsVersion(version) : null;
+    if (!bylaws) throw new NotFoundException(`no bylaws version ${version}`);
+    return bylaws;
+  }
+
   @Post('registration/applications')
   apply(@Ctx() ctx: RequestContext, @Body(new ZodPipe(createApplicationSchema)) body: CreateApplicationInput) {
     return this.membership.submitApplication(ctx, body);

@@ -12,6 +12,7 @@ import {
   type ApplicationRecord,
   type ApplicationStatus,
   type BylawsRecord,
+  type BylawsVersionSummary,
   type CreateApplicationInput,
   type DecisionInput,
   type MemberRecord,
@@ -51,8 +52,28 @@ export class MembershipService {
     return (snap.docs[0]?.data() as BylawsRecord | undefined) ?? null;
   }
 
+  /** Every published version without its text, newest first. */
+  async bylawsVersions(): Promise<BylawsVersionSummary[]> {
+    const snap = await this.firebase.db
+      .collection(Collections.bylawsVersions)
+      .orderBy('publishedAt', 'desc')
+      .select('version', 'title', 'contentHash', 'publishedAt', 'publishedBy', 'amends', 'changeNote')
+      .get();
+    return snap.docs.map((d) => d.data() as BylawsVersionSummary);
+  }
+
+  async bylawsVersion(version: string): Promise<BylawsRecord | null> {
+    const snap = await this.firebase.db.collection(Collections.bylawsVersions).doc(version).get();
+    return (snap.data() as BylawsRecord | undefined) ?? null;
+  }
+
+  /**
+   * Publishes a new version. `amends` must name the version that is current when publishing (null for the first), so
+   * a draft started from an older version cannot silently replace an amendment someone else published meanwhile.
+   */
   async publishBylaws(ctx: RequestContext, input: PublishBylawsInput): Promise<BylawsRecord> {
     const actor = requireAccount(ctx);
+    const amends = input.amends ?? null;
     const record: BylawsRecord = {
       version: input.version,
       title: input.title,
@@ -60,16 +81,26 @@ export class MembershipService {
       contentHash: sha256Hex(input.text),
       publishedAt: new Date().toISOString(),
       publishedBy: actor,
+      amends,
+      changeNote: input.changeNote || null,
     };
     const ref = this.firebase.db.collection(Collections.bylawsVersions).doc(input.version);
     return this.firebase.db.runTransaction(async (tx) => {
       if ((await tx.get(ref)).exists) throw new ConflictException(`bylaws version ${input.version} already exists`);
+      const current = (await tx.get(this.currentBylawsQuery())).docs[0]?.data() as BylawsRecord | undefined;
+      if ((current?.version ?? null) !== amends) {
+        throw new ConflictException(
+          current
+            ? `version ${current.version} is the current bylaws; start the new version from it`
+            : 'no bylaws have been published yet, so there is nothing to amend',
+        );
+      }
       await this.ledger.record(tx, [
         {
           type: 'bylaws.published',
           actor,
           subject: null,
-          payload: { version: record.version, title: record.title, contentHash: record.contentHash },
+          payload: { version: record.version, title: record.title, contentHash: record.contentHash, amends },
         },
       ]);
       tx.create(ref, record);

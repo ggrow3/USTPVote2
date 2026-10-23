@@ -9,11 +9,14 @@
     "build": "vite build",
     "preview": "vite preview",
     "typecheck": "vue-tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
     "dev:emulators": "vite --mode emulators"
   },
   "dependencies": {
     "@quasar/extras": "^2.1.0",
+    "docx": "^9.9.0",
     "firebase": "^13.0.0",
+    "jszip": "^3.10.2",
     "qrcode": "^1.5.4",
     "quasar": "^2.35.2",
     "ustp-audit": "^0.1.0",

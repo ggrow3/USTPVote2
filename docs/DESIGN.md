@@ -227,6 +227,18 @@ Every transition writes, in one transaction, the new status on `members/{account
   (`bylaws_versions/{version}`), so it is provable which text the applicant agreed to. An application is accepted
   only against the *current* bylaws (version and hash must both match) and only from a verified email address.
   Bylaws versions are published by a Membership Admin, are immutable, and are ledgered.
+- Amending the bylaws means publishing the next version. A Membership Admin drafts it in Admin → Bylaws from the
+  current text, from a Word document (the browser reads the `.docx` and writes out Word's automatic numbering, such
+  as "Article IV." or "2.3", so the text keeps it), or blank; edits it line by line or as a whole; reviews a line
+  diff against the current version; and publishes it with a change note. The version records `amends` (the version it
+  started from) and the api refuses it unless that is still the current version, so two drafts cannot silently
+  overwrite each other; `bylaws.published` ledgers `amends` too.
+- Any version can be downloaded as a stamped Word copy for passing around: a stamp block (party, title, version,
+  publish date, amended version, change note, SHA-256 of the text, where to check it), the version and hash in every
+  page header, and "page X of Y". The public page `/bylaws/{version}` shows the text, hash, change note and changes
+  from the version it amends, and "Check a copy" reads a `.docx` in the browser and says which published version, if
+  any, its text matches by SHA-256 (the stamp block is a separate paragraph style, so it is not part of the text).
+  The published text and hash remain the record; a Word copy is a convenience.
 - The application asks for: legal and preferred name; date of birth (at least `MINIMUM_MEMBER_AGE`, 18 until USTP
   decides Q17); two attestations (that minimum age, and support for the USTP platform); state, city and US ZIP code
   (never a street address); an optional phone number (stored as E.164); optional statement, interests, skills, how they
@@ -837,6 +849,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /me` · `POST /accounts` | M | current account; first-sign-in account creation |
 | `POST /me/identities` · `DELETE /me/identities/{uid}` | M | link / unlink a login method |
 | `GET /bylaws/current` | P | current bylaws version and hash |
+| `GET /bylaws` · `GET /bylaws/{version}` | P | every version without its text, newest first; one version in full |
 | `GET /sign-in-methods` | P | which sign-in providers are switched on (sign-in buttons) |
 | `POST /registration/applications` · `GET /registration/applications/me` | M | apply; status |
 | `POST /me/resign` | M | resign membership |
@@ -850,7 +863,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /public/elections/{id}/proofs/{commitment}` | P | inclusion proof for a receipt |
 | `GET /public/ledger/blocks` (paged) · `.../blocks/{index}` · `.../keys` · `GET /public/anchors/latest` | P | signed ledger blocks, signing keys, anchors |
 | `GET /public/ledger/entries/{seq}` | P | a public entry with its block and inclusion proof |
-| `POST /admin/bylaws` | Membership Admin | publish a bylaws version |
+| `POST /admin/bylaws` | Membership Admin | publish a bylaws version; `amends` must name the current version (409 otherwise) |
 | `GET /admin/applications` · `POST /admin/applications/{id}/decision` | Membership Admin | registration triage |
 | `GET /admin/members` · `GET /admin/members/{accountId}/history` | Membership Admin | member list (paged), status history |
 | `POST /admin/members/{accountId}/status` | Membership Admin | status changes |
