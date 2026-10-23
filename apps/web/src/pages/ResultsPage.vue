@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { copyToClipboard, useQuasar } from 'quasar';
 import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import {
@@ -20,6 +21,7 @@ import { rulesText } from '../election-text.js';
 
 type Contest = ElectionDefinition['contests'][number];
 
+const $q = useQuasar();
 const route = useRoute();
 const electionId = String(route.params.id);
 const loading = ref(true);
@@ -97,6 +99,19 @@ function roundCount(outcome: ContestOutcome, round: number, candidateId: string)
   if (outcome.result.kind !== 'irv') return '';
   const count = outcome.result.rounds[round]?.counts[candidateId];
   return count === undefined ? '—' : String(count);
+}
+
+/** The results as CSV; Google Sheets fetches it itself (IMPORTDATA), with no Google sign-in or add-on. */
+const csvPath = `/v1/public/elections/${electionId}/results.csv`;
+const sheetsFormula = `=IMPORTDATA("${window.location.origin}${csvPath}")`;
+
+async function copyFormula() {
+  try {
+    await copyToClipboard(sheetsFormula); // falls back to execCommand where the Clipboard API is refused
+    $q.notify({ message: 'Formula copied' });
+  } catch {
+    $q.notify({ message: 'Could not copy. Select the formula and copy it.' });
+  }
 }
 
 const STEP_ICON = (ok: boolean | null) =>
@@ -276,6 +291,38 @@ const summary = computed(() => {
               </q-item-section>
             </q-item>
           </q-list>
+        </q-card>
+
+        <q-card flat bordered>
+          <q-card-section>
+            <h2 class="text-subtitle1 q-my-none">Use these results in a spreadsheet</h2>
+            <div class="text-caption text-grey-7">
+              The CSV is an unsigned copy; the signed results checked on this page are the official record.
+            </div>
+          </q-card-section>
+          <q-card-section class="q-pt-none column q-gutter-md">
+            <div>
+              <q-btn outline no-caps color="primary" icon="download" label="Download CSV" :href="csvPath" download />
+            </div>
+            <div>
+              <q-input
+                :model-value="sheetsFormula"
+                readonly
+                outlined
+                dense
+                label="Google Sheets formula"
+                aria-describedby="sheets-formula-help"
+                @focus="($event.target as HTMLInputElement).select()"
+              >
+                <template #append>
+                  <q-btn flat round dense icon="content_copy" aria-label="Copy the Google Sheets formula" @click="copyFormula" />
+                </template>
+              </q-input>
+              <div id="sheets-formula-help" class="text-caption text-grey-7 q-mt-xs">
+                Paste it into a cell in Google Sheets to load these results; Sheets refreshes them about every hour.
+              </div>
+            </div>
+          </q-card-section>
         </q-card>
       </div>
     </template>

@@ -1,4 +1,5 @@
-import { Controller, Get, Param } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Header, Param, Req, Res } from '@nestjs/common';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { Public } from '../auth/decorators.js';
 import { PublicElectionsService } from './public-elections.service.js';
 
@@ -23,8 +24,27 @@ export class PublicElectionsController {
     return this.elections.results(id);
   }
 
+  /** The results for spreadsheets, e.g. Google Sheets' IMPORTDATA; no Google account or API involved. */
+  @Get(':id/results.csv')
+  @Header('Content-Type', 'text/csv; charset=utf-8')
+  async resultsCsv(@Param('id') id: string, @Req() req: FastifyRequest, @Res({ passthrough: true }) reply: FastifyReply) {
+    const csv = await this.elections.resultsCsv(id, requestOrigin(req));
+    void reply.header('Content-Disposition', `attachment; filename="results-${id.replace(/[^A-Za-z0-9-]/g, '')}.csv"`);
+    return csv;
+  }
+
   @Get(':id/proofs/:commitment')
   proof(@Param('id') id: string, @Param('commitment') commitment: string) {
     return this.elections.proof(id, commitment);
   }
+}
+
+/**
+ * The origin the caller reached the web app at. Firebase Hosting forwards `/v1/**` with X-Forwarded-Host and
+ * X-Forwarded-Proto, which Fastify reads (trustProxy), so links in the CSV point at the site it was fetched from.
+ */
+function requestOrigin(req: FastifyRequest): string {
+  const url = URL.parse(`${req.protocol}://${req.host}`);
+  if (!url || (url.protocol !== 'https:' && url.protocol !== 'http:')) throw new BadRequestException('the request has no usable host');
+  return url.origin;
 }

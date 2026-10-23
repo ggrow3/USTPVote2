@@ -8,8 +8,9 @@ import { defineConfig, type Plugin, type ResolvedConfig } from 'vite';
 export default defineConfig({
   plugins: [vue({ template: { transformAssetUrls } }), quasar(), serviceWorker()],
   server: {
-    // Local API (npm run dev:api) during development; Firebase Hosting rewrites in deployed environments.
-    proxy: { '/v1': 'http://localhost:8080' },
+    // Local API (npm run dev:api) during development; Firebase Hosting rewrites in deployed environments. Like
+    // Hosting, it sends X-Forwarded-Host, so links the API builds (the results CSV) point at this server.
+    proxy: { '/v1': { target: 'http://localhost:8080', changeOrigin: true, xfwd: true } },
   },
 });
 
