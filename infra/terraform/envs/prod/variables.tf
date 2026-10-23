@@ -75,3 +75,9 @@ variable "alert_emails" {
   type        = list(string)
   default     = []
 }
+
+variable "bylaws_check_enabled" {
+  description = "Run the advisory bylaws check with Claude (design §5.2; README \"Bylaws check\")."
+  type        = bool
+  default     = false
+}

@@ -23,4 +23,6 @@ module "ustpvote" {
   task_enqueuers   = var.task_enqueuers
   operator_members = var.operator_members
   alert_emails     = var.alert_emails
+
+  bylaws_check_enabled = var.bylaws_check_enabled
 }

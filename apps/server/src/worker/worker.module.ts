@@ -1,4 +1,9 @@
 import { Module } from '@nestjs/common';
+import { BylawsCheckRunner } from '../bylaws-check/bylaws-check-runner.js';
+import { BYLAWS_CHECKER } from '../bylaws-check/checker.js';
+import { ClaudeBylawsChecker } from '../bylaws-check/claude-checker.js';
+import { ReferenceLibrary } from '../bylaws-check/references.js';
+import { StubBylawsChecker } from '../bylaws-check/stub-checker.js';
 import { HealthController } from '../common/health.controller.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { CoreModule } from '../core.module.js';
@@ -23,6 +28,7 @@ import { TasksController } from './tasks.controller.js';
     BallotSealer,
     LedgerSealer,
     Tallier,
+    BylawsCheckRunner,
     ballotPoolKeysProvider,
     secretStoreProvider,
     {
@@ -32,6 +38,16 @@ import { TasksController } from './tasks.controller.js';
         config.auditSigner === 'emulator'
           ? new EmulatorAuditSigner(firebase.db)
           : new KmsAuditSigner(config.auditSigningKeyVersion),
+    },
+    {
+      provide: BYLAWS_CHECKER,
+      inject: [CONFIG, Firebase],
+      useFactory: (config: ServerConfig, firebase: Firebase) =>
+        config.bylawsChecker === 'claude'
+          ? new ClaudeBylawsChecker(config.anthropicApiKey, config.bylawsCheckModel, new ReferenceLibrary(firebase.db))
+          : config.bylawsChecker === 'stub'
+            ? new StubBylawsChecker()
+            : null,
     },
   ],
 })

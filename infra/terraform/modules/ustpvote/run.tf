@@ -5,7 +5,8 @@
 #
 # Environment variables are named exactly as apps/server/src/config.ts reads them; each service gets the ones it
 # uses. Nothing here sets APP_CHECK_ENFORCED, ADMIN_MFA_REQUIRED, PHOTO_CHECKER, SECRET_STORE, AUDIT_SIGNER,
-# BALLOT_POOL or an emulator host, so every safety switch keeps its production default (design §4).
+# BALLOT_POOL or an emulator host, so every safety switch keeps its production default (design §4). BYLAWS_CHECKER is
+# "claude" or "off" (bylaws_check.tf), never the emulator-only stand-in.
 
 locals {
   # api: Secret Manager (creating tie-break seeds), encrypting ballots to an election's pool key, Auditor verification
@@ -16,16 +17,21 @@ locals {
     ANCHORS_BUCKET                = google_storage_bucket.anchors.name
     PHOTOS_BUCKET                 = google_storage_bucket.photos.name
     BOOTSTRAP_SYSTEM_ADMIN_EMAILS = join(",", var.bootstrap_system_admin_emails)
+    BYLAWS_CHECKER                = local.bylaws_checker
   }
 
   # worker: Secret Manager (reading seeds at tally), signing ledger blocks and rolls, pool key versions and sealing,
-  # writing anchors.
+  # writing anchors, running bylaws checks (with ANTHROPIC_API_KEY from Secret Manager, below).
   worker_env = {
     GOOGLE_CLOUD_PROJECT      = var.project_id
     AUDIT_SIGNING_KEY_VERSION = local.audit_signing_key_version
     BALLOT_POOL_KEY           = google_kms_crypto_key.ballot_pool.id
     ANCHORS_BUCKET            = google_storage_bucket.anchors.name
+    BYLAWS_CHECKER            = local.bylaws_checker
   }
+
+  # The api queues bylaws checks and the worker runs them, so both must agree.
+  bylaws_checker = var.bylaws_check_enabled ? "claude" : "off"
 }
 
 # --- api ---------------------------------------------------------------------------------------------------------------
@@ -168,6 +174,20 @@ resource "google_cloud_run_v2_service" "worker" {
         content {
           name  = env.key
           value = env.value
+        }
+      }
+
+      # Read when an instance starts, so a new key version takes effect on the next release or restart.
+      dynamic "env" {
+        for_each = var.bylaws_check_enabled ? [google_secret_manager_secret.anthropic_api_key.secret_id] : []
+        content {
+          name = "ANTHROPIC_API_KEY"
+          value_source {
+            secret_key_ref {
+              secret  = env.value
+              version = "latest"
+            }
+          }
         }
       }
 

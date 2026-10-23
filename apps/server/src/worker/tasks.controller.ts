@@ -8,7 +8,8 @@ import {
   Param,
   Post,
 } from '@nestjs/common';
-import type { TickResult } from 'ustp-domain';
+import type { BylawsRunResult, TickResult } from 'ustp-domain';
+import { BylawsCheckRunner } from '../bylaws-check/bylaws-check-runner.js';
 import { BallotSealer } from './ballot-sealer.js';
 import { ElectionClock } from './election-clock.js';
 import { LedgerSealer } from './ledger-sealer.js';
@@ -18,7 +19,7 @@ import { Tallier } from './tallier.js';
  * Worker task endpoints (design §13), invoked by Cloud Scheduler and Cloud Tasks. The worker's Cloud Run service only
  * admits their OIDC tokens (IAM invoker), so these routes have no sign-in of their own.
  */
-export const WORKER_TASKS = ['tick', 'email'] as const;
+export const WORKER_TASKS = ['tick', 'bylaws-checks', 'email'] as const;
 export type WorkerTask = (typeof WORKER_TASKS)[number];
 
 @Controller('tasks')
@@ -30,6 +31,7 @@ export class TasksController {
     private readonly ballots: BallotSealer,
     private readonly tallier: Tallier,
     private readonly sealer: LedgerSealer,
+    private readonly bylawsChecks: BylawsCheckRunner,
   ) {}
 
   /**
@@ -64,6 +66,16 @@ export class TasksController {
     };
     if (failures.length) throw new InternalServerErrorException(`tick incomplete (${JSON.stringify(result)}): ${failures.join('; ')}`);
     return result;
+  }
+
+  /**
+   * Every minute, on its own Cloud Scheduler job: run queued bylaws checks (design §5.2). Separate from the tick because
+   * a review takes a minute or two. A check that fails is recorded on the check, not as a failed task.
+   */
+  @Post('bylaws-checks')
+  @HttpCode(200)
+  runBylawsChecks(): Promise<BylawsRunResult> {
+    return this.bylawsChecks.runQueued();
   }
 
   @Post(':task')

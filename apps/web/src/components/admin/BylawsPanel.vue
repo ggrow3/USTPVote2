@@ -1,17 +1,28 @@
 <script setup lang="ts">
 import { useQuasar } from 'quasar';
-import { computed, onMounted, reactive, ref } from 'vue';
-import { diffLines, publishBylawsSchema, splitLines, type BylawsRecord, type BylawsVersionSummary } from 'ustp-domain';
-import { focusFirstInvalid } from '../../a11y.js';
+import { computed, nextTick, onMounted, reactive, ref } from 'vue';
+import {
+  diffLines,
+  publishBylawsSchema,
+  splitLines,
+  type BylawsCheckScope,
+  type BylawsRecord,
+  type BylawsVersionSummary,
+} from 'ustp-domain';
+import { focusElement, focusFirstInvalid } from '../../a11y.js';
 import { api, errorMessage } from '../../api.js';
+import { flaggedLines, findingsLabel, SEVERITY_LABELS, SOURCE_LABELS } from '../../bylaws-check-text.js';
+import { useBylawsCheck } from '../../bylaws-check.js';
 import { downloadBylawsDocx, importBylawsDocx } from '../../bylaws-files.js';
 import { attempt } from '../../dialogs.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../../forms.js';
+import BylawsCheckSection from './BylawsCheckSection.vue';
 
 /**
  * Bylaws for Membership Admins (design §5.2). Published versions are permanent, so changing the bylaws means drafting
  * the next version: from the current text, from a Word document, or blank; editing it line by line or as a whole; and
- * publishing it as an amendment of the version it started from.
+ * publishing it as an amendment of the version it started from. An advisory check by Claude can flag lines that may
+ * contradict the US Constitution, Transhumanist principles or the USTP Constitution; it never blocks publishing.
  */
 const $q = useQuasar();
 const current = ref<BylawsRecord | null>(null);
@@ -48,6 +59,30 @@ const removed = computed(() => changes.value.filter((l) => l.kind === 'removed')
 const lines = (n: number) => `${n} ${n === 1 ? 'line' : 'lines'}`;
 const changeSummary = computed(() => `${lines(added.value)} added or changed, ${lines(removed.value)} removed`);
 
+const checker = useBylawsCheck();
+/** Draft line number → the numbers of the findings that name it. */
+const flags = computed(() => flaggedLines(checker.state.check?.findings ?? [], checker.state.checkedLines, draft.lines));
+/** What a screen reader hears before a flagged line: the findings, worded. */
+function flagDescription(line: number): string {
+  const findings = checker.state.check?.findings ?? [];
+  return (flags.value.get(line) ?? [])
+    .map((n) => `finding ${n}, ${SEVERITY_LABELS[findings[n - 1]!.severity].toLowerCase()} with the ${SOURCE_LABELS[findings[n - 1]!.source]}`)
+    .join('; ');
+}
+
+function startCheck(scope: BylawsCheckScope) {
+  checker.start({ title: draft.title.trim() || 'Bylaws', text: draftText.value, amends: draft.base?.version ?? null, scope });
+}
+
+/** From a finding: show the line in the line-by-line list and put focus on its edit button. */
+async function goToLineInList(line: number) {
+  wholeText.value = false;
+  await nextTick();
+  const button = document.querySelector<HTMLElement>(`[data-draft-line="${line}"]`);
+  button?.closest('.draft-line')?.scrollIntoView({ block: 'center' });
+  focusElement(button);
+}
+
 async function load() {
   current.value = await api<BylawsRecord>('GET', '/v1/bylaws/current').catch(() => null);
   versions.value = await api<BylawsVersionSummary[]>('GET', '/v1/bylaws').catch(() => []);
@@ -71,6 +106,12 @@ function open(lines: string[], source: string, title?: string | null) {
   });
   errors.value = {};
   wholeText.value = false;
+  checker.reset();
+}
+
+function discard() {
+  draft.open = false;
+  checker.reset();
 }
 
 function startFromCurrent() {
@@ -161,7 +202,7 @@ async function publish() {
     }
   }, `Version ${checked.data.version} published`);
   if (ok) {
-    draft.open = false;
+    discard();
     await load();
   }
 }
@@ -299,11 +340,28 @@ onMounted(load);
             :key="i"
             role="listitem"
             class="draft-line"
-            :class="{ 'draft-changed': changedLines.has(i + 1) }"
+            :class="{ 'draft-changed': changedLines.has(i + 1), 'draft-flagged': flags.has(i + 1) }"
           >
+            <span v-if="flags.has(i + 1)" class="draft-bar text-deep-orange-10" aria-hidden="true" />
             <span class="draft-number" aria-hidden="true">{{ i + 1 }}</span>
-            <span class="draft-text">{{ line || ' ' }}</span>
-            <q-btn flat round dense size="sm" icon="edit" :aria-label="`Edit line ${i + 1}`" @click="editLine(i)" />
+            <span class="draft-text">
+              <span v-if="flags.has(i + 1)" class="draft-flag text-deep-orange-10">
+                <q-icon name="flag" size="16px" aria-hidden="true" />
+                <span aria-hidden="true">{{ findingsLabel(flags.get(i + 1)!) }}</span>
+                <span class="sr-only">Flagged by the check: {{ flagDescription(i + 1) }}.</span>
+              </span>
+              {{ line || ' ' }}
+            </span>
+            <q-btn
+              flat
+              round
+              dense
+              size="sm"
+              icon="edit"
+              :data-draft-line="i + 1"
+              :aria-label="`Edit line ${i + 1}${flags.has(i + 1) ? ' (flagged)' : ''}`"
+              @click="editLine(i)"
+            />
           </div>
         </div>
         <div v-if="!wholeText && errors.text" class="text-negative text-caption">{{ errors.text }}</div>
@@ -323,12 +381,26 @@ onMounted(load);
         </template>
       </q-card-section>
 
+      <q-card-section class="q-pt-none">
+        <BylawsCheckSection
+          :check="checker.state.check"
+          :checked-lines="checker.state.checkedLines"
+          :requesting="checker.state.requesting"
+          :error="checker.state.error"
+          :gave-up="checker.state.gaveUp"
+          :draft-lines="draft.lines"
+          :changes-since="draft.base && changes.length ? draft.base.version : null"
+          @check="startCheck"
+          @go-to-line="goToLineInList"
+        />
+      </q-card-section>
+
       <q-card-section v-if="errors._" class="q-pt-none">
         <q-banner class="bg-negative text-white" rounded>{{ errors._ }}</q-banner>
       </q-card-section>
       <q-card-actions>
         <q-btn color="primary" no-caps label="Publish" @click="publish" />
-        <q-btn flat no-caps label="Discard draft" @click="draft.open = false" />
+        <q-btn flat no-caps label="Discard draft" @click="discard" />
       </q-card-actions>
     </q-card>
 
@@ -386,10 +458,26 @@ onMounted(load);
   border-radius: 4px;
 }
 .draft-line {
+  position: relative;
   display: flex;
   align-items: flex-start;
   gap: 8px;
   padding: 1px 4px 1px 0;
+}
+/* A flagged line: a bar in the warning colour down its left edge and a worded label, never colour alone. */
+.draft-bar {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: currentColor;
+}
+.draft-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 6px;
+  font-weight: 500;
+  white-space: nowrap;
 }
 .draft-line:nth-child(odd) {
   background: rgba(128, 128, 128, 0.06);

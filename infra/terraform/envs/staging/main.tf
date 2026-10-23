@@ -24,4 +24,6 @@ module "ustpvote" {
   operator_members       = var.operator_members
   developer_data_members = var.developer_data_members
   alert_emails           = var.alert_emails
+
+  bylaws_check_enabled = var.bylaws_check_enabled
 }

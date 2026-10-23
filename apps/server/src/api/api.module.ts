@@ -11,6 +11,8 @@ import {
 import { ApprovalsService } from '../administration/approvals.service.js';
 import { RoleChanges } from '../administration/role-changes.js';
 import { AuthGuard } from '../auth/auth.guard.js';
+import { BylawsChecksController } from '../bylaws-check/bylaws-checks.controller.js';
+import { BylawsChecksService } from '../bylaws-check/bylaws-checks.service.js';
 import { HealthController } from '../common/health.controller.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { CoreModule } from '../core.module.js';
@@ -47,6 +49,7 @@ import { PositionsService } from '../positions/positions.service.js';
     AccountsController,
     RegistrationController,
     MembershipAdminController,
+    BylawsChecksController,
     MyPhotoController,
     PhotoReviewController,
     ElectionsController,
@@ -65,6 +68,7 @@ import { PositionsService } from '../positions/positions.service.js';
   providers: [
     AccountsService,
     MembershipService,
+    BylawsChecksService,
     PhotosService,
     ElectionsService,
     ElectionReader,

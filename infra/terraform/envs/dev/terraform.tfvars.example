@@ -14,3 +14,6 @@ developer_data_members = ["user:developer@example.org"]
 alert_emails           = ["ustp-voting-alerts@example.org"]
 
 anchors_public_read = false
+
+# Sends bylaws drafts to Anthropic for the advisory check; add the anthropic-api-key secret's version first (README).
+bylaws_check_enabled = false

@@ -21,6 +21,7 @@
     "seed:emulators": "node scripts/seed-emulators.mjs"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.133.0",
     "@google-cloud/kms": "^6.3.0",
     "@google-cloud/secret-manager": "^7.2.0",
     "@google-cloud/vision": "^6.2.0",

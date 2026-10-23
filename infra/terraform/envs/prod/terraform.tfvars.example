@@ -15,3 +15,6 @@ alert_emails     = ["ustp-voting-alerts@example.org"]
 # Q11: confirm the period with USTP first. Keep false until then; true locks IRREVERSIBLY (README "Bucket Lock").
 anchors_retention_days   = 3653
 anchors_retention_locked = false
+
+# Sends bylaws drafts to Anthropic for the advisory check; add the anthropic-api-key secret's version first (README).
+bylaws_check_enabled = false

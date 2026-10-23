@@ -48,7 +48,7 @@ API-side limits are only checked by Google on the first apply.
 | | `signer` and `publicKeyViewer` on `audit-signing` | Only the worker signs ledger blocks and rolls (§8.3) |
 | | Create, get, decrypt with and destroy `ballot-pool` versions (custom role, on that key only) | One version per election, unwrapping at sealing, destruction after certification (§7.3, §13) |
 | | Create and read objects in the anchors bucket; never delete | Write-once anchors; overwriting needs delete, which it lacks (§8.4) |
-| | Access secrets | Tie-break seeds at tally (§9), later the email provider's credentials |
+| | Access secrets | Tie-break seeds at tally (§9), the Anthropic API key for the bylaws check (§5.2), later the email provider's credentials |
 | `ustp-worker-invoker` | Invoke the worker | Identity of the Scheduler tick and of Cloud Tasks; nothing else |
 | `ustp-release` | Push to the `ustpvote` Artifact Registry repository | The release workflow builds the server image |
 | | Sign attestations for `ustpvote-reviewed` (attestor key, note, occurrences) | Binary Authorization lets only attested images run |
@@ -84,6 +84,7 @@ Set in each root's `terraform.tfvars` (or with `-var`):
 | `developer_data_members` | yes | yes | (absent) | People with Firestore data access |
 | `alert_emails` | | | | Recipients of the KMS break-glass alert; empty means no alert policy |
 | `task_enqueuers` | | | | `"api"` and/or `"worker"`, once code enqueues Cloud Tasks |
+| `bylaws_check_enabled` | false | false | false | The advisory bylaws check with Claude, which sends drafts to Anthropic; see [Bylaws check](#bylaws-check) |
 | `project_id`, `region` | | | | Default to the environment's project and `us-central1` |
 
 Fixed per root: Binary Authorization is a dry run in dev and enforced elsewhere. The module has further knobs with
@@ -105,6 +106,9 @@ for running the server locally against a real project. Variable names are those 
 | `ANCHORS_BUCKET` | `anchors_bucket` (`<project>-anchors`) | ● | ● |
 | `PHOTOS_BUCKET` | `photos_bucket` (`<project>-profile-photos`) | ● | |
 | `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` | from the variable, not output | ● | |
+| `BYLAWS_CHECKER` | in `api_env` / `worker_env`: `claude` when `bylaws_check_enabled`, else `off` | ● | ● |
+| `ANTHROPIC_API_KEY` | not output: the `anthropic-api-key` secret's latest version, when `bylaws_check_enabled` | | ● |
+| `BYLAWS_CHECK_MODEL` | not set; the server defaults to `claude-opus-5-5` | | (●) |
 | `PORT` | set by Cloud Run (8080) | ● | ● |
 
 Never set: `APP_CHECK_ENFORCED`, `ADMIN_MFA_REQUIRED`, `PHOTO_CHECKER`, `SECRET_STORE`, `AUDIT_SIGNER`, `BALLOT_POOL`
@@ -321,6 +325,24 @@ remove it.
 4. Apply, then check that `gcloud storage buckets describe gs://ustpvote2-prod-anchors` reports the policy as locked.
 
 The production root has no default for `anchors_retention_locked`, so the decision is always written down.
+
+### Bylaws check
+
+The advisory bylaws check (design §5.2) is off until switched on per environment. When on, the worker sends bylaws
+drafts to Anthropic's API, which costs money per check and takes the text outside Google Cloud (design §15), so USTP
+should agree to it first. Terraform creates the empty `anthropic-api-key` secret; the key itself never passes through
+Terraform or its state.
+
+1. Create an API key for USTP's Anthropic organization (Console → API keys), ideally in a workspace of its own with a
+   monthly spend limit.
+2. Add it as the secret's first version, typed or pasted on standard input so it stays out of shell history:
+   `gcloud secrets versions add anthropic-api-key --project <project> --data-file=-`.
+3. Set `bylaws_check_enabled = true` in the environment's `terraform.tfvars` and apply: both services get
+   `BYLAWS_CHECKER=claude`, the worker gets `ANTHROPIC_API_KEY` from the secret, and the `worker-bylaws-checks` Scheduler
+   job starts calling `POST /tasks/bylaws-checks` every minute.
+
+To rotate the key, add a new version and roll the worker (a release, or a new revision); Cloud Run reads `latest` when an
+instance starts. To switch the check off, set the variable back to `false` and apply; the secret and past checks stay.
 
 ## Things to know
 

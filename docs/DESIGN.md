@@ -239,6 +239,9 @@ Every transition writes, in one transaction, the new status on `members/{account
   from the version it amends, and "Check a copy" reads a `.docx` in the browser and says which published version, if
   any, its text matches by SHA-256 (the stamp block is a separate paragraph style, so it is not part of the text).
   The published text and hash remain the record; a Word copy is a convenience.
+- **Bylaws check (advisory):** while drafting, a Membership Admin can ask Claude whether the draft contradicts the US
+  Constitution, Transhumanist principles or the USTP Constitution, for the whole draft or only the lines changed since
+  the version it amends. It never blocks publishing, decides nothing and is not ledgered. See [§5.4](#54-bylaws-check).
 - The application asks for: legal and preferred name; date of birth (at least `MINIMUM_MEMBER_AGE`, 18 until USTP
   decides Q17); two attestations (that minimum age, and support for the USTP platform); state, city and US ZIP code
   (never a street address); an optional phone number (stored as E.164); optional statement, interests, skills, how they
@@ -280,6 +283,69 @@ With the emulators there is no Vision API, so a local stand-in (`PHOTO_CHECKER=l
 assumes one clear face and flags only dark images, so the review flow can be exercised. Deployment needs: the
 `PHOTOS_BUCKET` (private, uniform bucket-level access), the Vision API enabled, and the api service account allowed
 to read, write and delete objects in that bucket.
+
+### 5.4 Bylaws check
+
+An advisory review of a bylaws draft by an AI model (Claude, by Anthropic), added at USTP's request, which flags lines
+that may contradict one of three references and says why. It is a reading aid for the Membership Admin: it can miss
+conflicts and flag ones that are not there, and nothing depends on its answer.
+
+**References.** What a finding can name as the conflicting source:
+
+| Source | Text the model is given | Where it comes from |
+|---|---|---|
+| US Constitution | The Constitution and Amendments I–XXVII, the National Archives transcription | Vendored as a dated snapshot (`apps/server/src/bylaws-check/us-constitution.ts`, 2026-10-22, with its URLs and SHA-256); public domain and unchanging |
+| Transhumanist principles | Article I of the USTP Constitution ("Immutable Principles": Core Ideals, Statements of Historical Fact, Immutable Operating Principles) and the Transhumanist Bill of Rights, Version 3.0 (adopted by USTP members in December 2018) | The party's own statement of its principles on transhumanist-party.org: the constitution's Article I, and `/tbr-3/` |
+| USTP Constitution | The rest of the Constitution of the United States Transhumanist Party (Articles II–IX, the Platform in Article VI included) | transhumanist-party.org/constitution/ |
+
+"Transhumanist principles" is pinned to those two party texts rather than to transhumanism at large, because they are
+what USTP itself adopted and publishes as its principles (its Values page quotes the Core Ideals and the Platform). The
+party's pages are read by the worker at check time, through the site's WordPress REST API (the page body without the
+theme), and cached in `bylaws_check_references/{id}` for 24 hours; if the site cannot be read, an older cached copy is
+used, and with none the check fails. They are not copied into this repository: the party amends them (the constitution
+last in March 2025; the page was updated in September 2026), and the site marks them "All Rights Reserved". Every check
+records which text it used: URL, when it was read, the page's last-modified time and the SHA-256 of the text sent.
+
+**Flow.** A review of a whole draft plus about 55,000 tokens of references takes a minute or two, longer than Firebase
+Hosting's 60-second limit on an api request, so it runs in the worker:
+
+1. `POST /v1/admin/bylaws/checks` (Membership Admin) with the draft's title and text, the version it amends and the
+   scope (`draft`, or `changes`: lines added or changed since `amends`, computed by the api with the same line diff the
+   editor shows). The api stores `bylaws_checks/{checkId}` as `queued` and answers 202. One check at a time per admin,
+   at most `MAX_BYLAWS_CHECKS_PER_DAY` (20) per admin in 24 hours (409 and 429 otherwise); 503 when the check is off.
+2. Every minute a Cloud Scheduler job of its own calls `POST /tasks/bylaws-checks` on the worker, which claims up to
+   three queued checks in transactions (`queued` → `running`, so overlapping runs never review a draft twice), reviews
+   them side by side and stores the findings (`done`) or the error (`failed`). A check still running after
+   `BYLAWS_CHECK_TIMEOUT_MINUTES` (10) is marked failed. It is not a step of the tick, which must never wait on it.
+3. The browser polls `GET /v1/admin/bylaws/checks/{checkId}` every 3 seconds until it is done or failed.
+
+**The request to Claude.** Model `claude-opus-5-5` (`BYLAWS_CHECK_MODEL` overrides it) with adaptive thinking at effort
+`high`, streamed, with a fixed system prompt, then the three references (one prompt-cache breakpoint after them, so
+repeated checks within five minutes pay a small fraction for them), then the draft with every line numbered. For scope
+`changes` the prompt names the lines to review and quotes the lines the draft removed. The system prompt defines the
+three sources as above, asks only for contradictions (not style or omissions), points out that the US Constitution
+mostly restrains governments rather than a private party, and says the bylaws and references are material, not
+instructions. Structured output (a JSON schema) returns a summary and findings: lines, source, provision (as the
+reference numbers it, e.g. "Article V, Section II"), severity (`high` plain contradiction, `medium` likely, `low`
+tension) and a plain-language explanation. The worker keeps only findings that name real lines (and, for `changes`,
+involve a changed line), most severe first. `fallbacks: "default"` lets the API retry a request its safety classifiers
+decline on Anthropic's recommended fallback model; the record names the model that answered. A refusal, a truncated
+answer or an API error fails the check with that reason.
+
+**In the editor.** Flagged lines get a bar down their left edge and a worded label ("Finding 2") with a flag icon,
+plus hidden text naming the severity and source; the edit button says "(flagged)". The findings list gives each one's
+severity in words, source and provision, explanation and buttons that jump to its lines. A line edited after the check
+loses its highlight and the finding says so. Nothing about the check is shown on the public bylaws pages.
+
+**Without Anthropic.** There is no Anthropic emulator, so with the emulators `BYLAWS_CHECKER=stub` (the default there,
+refused outside them) runs a deterministic stand-in that flags three test phrases ("religious test", opposing "life
+extension", "without a vote of the members") and reads no references; CI and local development use it. A real
+project has `BYLAWS_CHECKER=off` until it is switched on (`bylaws_check_enabled` in Terraform), which sets it to
+`claude` on both services and gives the worker `ANTHROPIC_API_KEY` from the Secret Manager secret
+`anthropic-api-key`. Only the worker holds the key; the internet-facing api never does.
+
+**Cost and privacy.** See §14 and §15. The draft text leaves Google Cloud for Anthropic's API; it is the party's own
+working text, and the check sends nothing about who asked. USTP should agree to that before switching it on (Q18).
 
 ## 6. Elections
 
@@ -823,6 +889,8 @@ registration collections are top-level and election data lives under each electi
 | `member_status_history/{id}` | auto | append-only | from, to, reason, actor, ledger seq |
 | `applications/{applicationId}` | auto | status only | answers (incl. date of birth and attestations, §5.2), bylaws version + hash |
 | `bylaws_versions/{version}` | version | immutable | text, content hash *(added)* |
+| `bylaws_checks/{checkId}` | UUIDv7 | queued → running → done / failed | draft text and hash, scope and changed lines, requester, findings, references used, model, token usage (§5.4) *(added)* |
+| `bylaws_check_references/{id}` | reference ID | replaced daily | cached text of a party page, URL, read and modified times, SHA-256 (§5.4) *(added)* |
 | `profile_photos/{photoId}` | auto | status only | storage path, status |
 | `photo_checks/{checkId}` | auto | immutable | Vision signals, verdict |
 | `positions/{positionId}` | slug | two-person | title, description, seats, term months, approval (§6.4) |
@@ -879,6 +947,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /public/ledger/blocks` (paged) · `.../blocks/{index}` · `.../keys` · `GET /public/anchors/latest` | P | signed ledger blocks, signing keys, anchors |
 | `GET /public/ledger/entries/{seq}` | P | a public entry with its block and inclusion proof |
 | `POST /admin/bylaws` | Membership Admin | publish a bylaws version; `amends` must name the current version (409 otherwise) |
+| `POST /admin/bylaws/checks` · `GET /admin/bylaws/checks/{checkId}` | Membership Admin | queue the advisory bylaws check of a draft (202; 409 while the admin's last one runs, 429 past 20 a day, 503 when off); read it until done (§5.4) |
 | `GET /admin/applications` · `POST /admin/applications/{id}/decision` | Membership Admin | registration triage |
 | `GET /admin/members` · `GET /admin/members/{accountId}/history` | Membership Admin | member list (paged), status history |
 | `POST /admin/members/{accountId}/status` | Membership Admin | status changes |
@@ -901,6 +970,7 @@ Errors use RFC 9457 problem details. Request bodies are validated against schema
 | Endpoint | Trigger | Work |
 |---|---|---|
 | `POST /tasks/tick` | Cloud Scheduler, every minute | Prepare pool keys, open/close elections on time, seal ballots (M3), tally sealed elections into signed provisional results (M4a), then seal ledger blocks, sign approved rolls and anchor (M2c). Returns what it did |
+| `POST /tasks/bylaws-checks` | Cloud Scheduler, every minute (its own job, 300 s deadline) | Run up to three queued bylaws checks with Claude and fail any stuck for 10 minutes (§5.4). Returns `{checked, failed}`; a failed check is recorded on the check, not as a failed task |
 | `POST /tasks/email` | Cloud Task | send via Amazon SES |
 | *(tick step, M4b)* | every tick | destroy the ballot-pool key version of certified and cancelled elections (§7.3); planned as a `destroy-pool-key` Cloud Task, which the tick made unnecessary |
 
@@ -913,7 +983,7 @@ have no sign-in of their own. Every task is idempotent. Overlapping ticks cannot
 ledger block and anchor is created once per index, and each ballot block's transaction re-reads the pool entries it
 removes (§7.2), so the planned `locks/tick` lease turned out unnecessary. Each tick step runs even if an earlier one failed; any failure makes
 the tick answer 500, so Cloud Scheduler records it. Locally, `npm run dev:worker:emulators -w apps/server` runs the
-worker against the emulators and ticks every 15 seconds in place of Cloud Scheduler.
+worker against the emulators and calls the tick and the bylaws checks every 15 seconds in place of Cloud Scheduler.
 
 ## 14. Security controls
 
@@ -943,6 +1013,14 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
     include data access) there; access goes through the break-glass group, with an alert.
   - Cloud Vision appears to need only the enabled API, no role (to confirm in a real project).
   - An optional alert fires when anyone but the worker uses the signing or ballot-pool keys.
+- **Bylaws check (§5.4):** the Anthropic API key is a Secret Manager secret that only the worker reads (as
+  `ANTHROPIC_API_KEY`, mounted by Cloud Run); Terraform creates the secret but a person adds the key, so it is never in
+  Terraform state, and the api never holds it. The draft text and the party's published texts go to Anthropic's API
+  over TLS; nothing identifying the requester does. Under Anthropic's commercial terms API inputs are not used to train
+  models by default; check the current terms and the organization's retention settings before enabling. The bylaws
+  and references are marked as material, not instructions, in the prompt; the answer is held to a JSON schema,
+  findings naming lines that do not exist are dropped, and the browser shows them as plain text. A wrong or manipulated
+  answer can only mislead a reader: it publishes, blocks and ledgers nothing.
 - **Logging:** structured logs with redaction; no request bodies on cast; Firestore Data Access audit logs off in
   production (they would record write paths and times; pool encryption makes them harmless, but there is no need for
   them); KMS Data Access audit logs on.
@@ -986,6 +1064,13 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
 - Bucket Lock retention locked in prod only.
 - Cost deltas against spec §8: + ≈ $0.06/month per election with a live ballot-pool key version; one Scheduler job
   per environment (free); Cloud Tasks well within its free tier. Total remains under $1/month at the stated scale.
+- **Bylaws check (§5.4), when switched on:** Anthropic bills per token, outside Google Cloud. At Claude Opus 5.5's
+  list prices ($4 per million input tokens, $20 per million output tokens, cache writes $5 and cache reads $0.20 per
+  million) a check of a typical draft (10,000 tokens) costs about $0.45 the first time (about 55,000 tokens of references
+  written to the cache, the draft, and several thousand tokens of thinking and findings) and about $0.20 when repeated
+  within five minutes. The largest draft the api accepts (500,000 characters) costs up to about $1.50. The 20-checks-a-day
+  limit per admin bounds the worst case; give the key a workspace with a monthly spend limit (infra README). A second
+  Scheduler job per environment costs $0.10/month beyond the three free jobs per billing account.
 
 ## 16. Testing and verification strategy
 
@@ -1055,6 +1140,10 @@ Decisions for USTP; the design's proposed default is in brackets.
 16. **GCP region** for Cloud Run, Firestore and the buckets. [`us-central1`, the cheapest free-tier region]
 17. **Membership requirements:** minimum age, and the wording of the platform attestation applicants confirm. [18; "I
     support the platform and goals of the US Transhumanist Party."]
+18. **Bylaws check (§5.4):** may bylaws drafts be sent to Anthropic, under whose account and spend limit, and in which
+    environments? Is "Transhumanist principles" rightly Article I of the USTP Constitution plus the Transhumanist Bill of
+    Rights 3.0? Should the repository instead carry dated copies of the party's texts (they are USTP's own, marked "All
+    Rights Reserved")? [off until agreed; those two texts; read from the party's site]
 
 ## 19. Roadmap
 
@@ -1065,4 +1154,4 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, not yet applied; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell and never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2). *Still to do:* bring up dev for real (first apply, Identity Platform, first release); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, not yet applied; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell and never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API). *Still to do:* bring up dev for real (first apply, Identity Platform, first release); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |

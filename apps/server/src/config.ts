@@ -25,7 +25,18 @@ export interface ServerConfig {
   readonly ballotPool: 'kms' | 'emulator';
   /** `projects/.../cryptoKeys/ballot-pool` (RSA_DECRYPT_OAEP_3072_SHA256); secret elections cannot open until it is set. */
   readonly ballotPoolKey: string | null;
+  /**
+   * The advisory bylaws check (design §5.2): `claude` (the worker sends drafts to Anthropic), `stub` (the emulator-only
+   * stand-in) or `off` (requests answer 503). Off unless set, outside the emulators.
+   */
+  readonly bylawsChecker: 'claude' | 'stub' | 'off';
+  /** Anthropic API key for `claude`; the worker's only (Secret Manager in Cloud Run). Never logged. */
+  readonly anthropicApiKey: string | null;
+  readonly bylawsCheckModel: string;
 }
+
+/** Claude Opus 5.5; `BYLAWS_CHECK_MODEL` overrides it. */
+export const DEFAULT_BYLAWS_CHECK_MODEL = 'claude-opus-5-5';
 
 export const CONFIG = Symbol('ServerConfig');
 
@@ -54,6 +65,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const ballotPool = (env.BALLOT_POOL ?? (usingEmulators ? 'emulator' : 'kms')) as ServerConfig['ballotPool'];
   if (ballotPool !== 'kms' && ballotPool !== 'emulator') throw new Error('BALLOT_POOL must be "kms" or "emulator"');
   if (ballotPool === 'emulator' && !usingEmulators) throw new Error('BALLOT_POOL=emulator is only allowed with the Firebase emulators');
+  const bylawsChecker = (env.BYLAWS_CHECKER ?? (usingEmulators ? 'stub' : 'off')) as ServerConfig['bylawsChecker'];
+  if (!['claude', 'stub', 'off'].includes(bylawsChecker)) throw new Error('BYLAWS_CHECKER must be "claude", "stub" or "off"');
+  if (bylawsChecker === 'stub' && !usingEmulators) throw new Error('BYLAWS_CHECKER=stub is only allowed with the Firebase emulators');
 
   const projectId = env.GOOGLE_CLOUD_PROJECT || env.GCLOUD_PROJECT || undefined;
   return {
@@ -73,5 +87,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     anchorsBucket: env.ANCHORS_BUCKET || (usingEmulators && projectId ? `${projectId}-anchors` : null),
     ballotPool,
     ballotPoolKey: env.BALLOT_POOL_KEY || null,
+    bylawsChecker,
+    anthropicApiKey: env.ANTHROPIC_API_KEY || null,
+    bylawsCheckModel: env.BYLAWS_CHECK_MODEL || DEFAULT_BYLAWS_CHECK_MODEL,
   };
 }
