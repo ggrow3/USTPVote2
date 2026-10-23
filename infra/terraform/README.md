@@ -253,15 +253,32 @@ factors with `adjacentIntervals: 5` and no SMS (design §4), and the authorized 
   curl -X PATCH "https://identitytoolkit.googleapis.com/admin/v2/projects/ustpvote2-dev/config?updateMask=passwordPolicyConfig" -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "x-goog-user-project: ustpvote2-dev" -H "Content-Type: application/json" -d '{"passwordPolicyConfig":{"passwordPolicyEnforcementState":"ENFORCE","forceUpgradeOnSignin":false,"passwordPolicyVersions":[{"customStrengthOptions":{"minPasswordLength":15,"maxPasswordLength":4096}}]}}'
   ```
 
-- **Bot resistance and email-enumeration protection** (§4): reCAPTCHA Enterprise enforced for email/password sign-up,
-  sign-in and email links (Identity Platform manages its own reCAPTCHA key; the web app loads its settings), and the
-  same answer for a wrong password and an unknown address. Also API-only:
+- **Email-enumeration protection** (§4): the same answer for a wrong password and an unknown address. API-only:
 
   ```bash
-  curl -X PATCH "https://identitytoolkit.googleapis.com/admin/v2/projects/ustpvote2-dev/config?updateMask=recaptchaConfig.emailPasswordEnforcementState,emailPrivacyConfig.enableImprovedEmailPrivacy" -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "x-goog-user-project: ustpvote2-dev" -H "Content-Type: application/json" -d '{"recaptchaConfig":{"emailPasswordEnforcementState":"ENFORCE"},"emailPrivacyConfig":{"enableImprovedEmailPrivacy":true}}'
+  curl -X PATCH "https://identitytoolkit.googleapis.com/admin/v2/projects/ustpvote2-dev/config?updateMask=emailPrivacyConfig.enableImprovedEmailPrivacy" -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "x-goog-user-project: ustpvote2-dev" -H "Content-Type: application/json" -d '{"emailPrivacyConfig":{"enableImprovedEmailPrivacy":true}}'
   ```
 
-  Set `"AUDIT"` instead of `"ENFORCE"` to only log bot scores while checking that sign-up still works.
+- **Bot resistance for email/password** (§4): reCAPTCHA Enterprise on sign-up, sign-in and email links. Identity
+  Platform creates and manages its own reCAPTCHA keys ("Key for Identity Platform reCAPTCHA integration"; never edit
+  or delete them), but only once **Identity Platform's service agent exists and holds its role**. Without it no key is
+  created, `GET /v2/recaptchaConfig` answers 500 for every visitor, and with enforcement on, email/password sign-in
+  fails. In order:
+
+  ```bash
+  # 1. The service agent and its role (Google's documented prerequisite; new projects have neither)
+  curl -X POST "https://serviceusage.googleapis.com/v1beta1/projects/ustpvote2-dev/services/identitytoolkit.googleapis.com:generateServiceIdentity" -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "x-goog-user-project: ustpvote2-dev" -H "Content-Type: application/json" -d '{}'
+  gcloud projects add-iam-policy-binding ustpvote2-dev --member="serviceAccount:service-<project number>@gcp-sa-identitytoolkit.iam.gserviceaccount.com" --role=roles/identitytoolkit.serviceAgent --condition=None
+  # 2. Audit first: keys are created and scores logged, nothing is blocked
+  curl -X PATCH "https://identitytoolkit.googleapis.com/admin/v2/projects/ustpvote2-dev/config?updateMask=recaptchaConfig.emailPasswordEnforcementState,recaptchaConfig.managedRules" -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "x-goog-user-project: ustpvote2-dev" -H "Content-Type: application/json" -d '{"recaptchaConfig":{"emailPasswordEnforcementState":"AUDIT","managedRules":[{"endScore":0.3,"action":"BLOCK"}]}}'
+  ```
+
+  3. Check `https://identitytoolkit.googleapis.com/v2/recaptchaConfig?clientType=CLIENT_TYPE_WEB&version=RECAPTCHA_ENTERPRISE&key=<web API key>`
+     answers 200 with a `recaptchaKey` (provisioning can take minutes).
+  4. Only then repeat step 2 with `"ENFORCE"` (scores at or below `endScore` are blocked). To back out at any point,
+     set `"OFF"`.
+
+  The Firebase console's Fraud Defense panel only covers SMS; email/password reCAPTCHA has no console switch.
 - **Google, Microsoft and Apple sign-in** (§4): each needs an OAuth client registered with that company. Google's is
   one click in the Firebase console (Authentication → Sign-in method → Google), which creates the client. The admin
   sign-in switches turn a provider off in the api without touching this configuration.

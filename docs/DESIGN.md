@@ -160,11 +160,15 @@ Builds use the committed lockfile with `npm ci --ignore-scripts` (spec §7).
   password found there. If that service is unreachable sign-up goes ahead, since Identity Platform never exposes the
   password to our code for a later check.
 - **Bot resistance at sign-up and sign-in.** Identity Platform's reCAPTCHA Enterprise integration is enforced for
-  email/password sign-up, sign-in and email links (the web SDK preloads its configuration and attaches a bot-score
-  token; the emulator has none); email-enumeration protection is on, so a wrong password and an unknown address get
-  the same answer; Identity Platform's per-IP sign-up quota applies. Behind that, every api request needs an App Check
-  token (reCAPTCHA Enterprise), applying needs a verified email, applications are capped per account (§14) and a
-  person decides each one. Both settings are API-only (infra README "Identity Platform").
+  email/password sign-up, sign-in and email links, blocking scores at or below 0.3 (the web SDK preloads its
+  configuration and attaches a bot-score token; the emulator has none). Identity Platform creates its own reCAPTCHA
+  keys, which requires its service agent with `roles/identitytoolkit.serviceAgent`; new projects lack both, and without
+  them the public reCAPTCHA config answers 500 and enforced email/password sign-in fails, so the rollout is service
+  agent, then audit, then a check that the config answers with a key, then enforce. Email-enumeration protection is
+  on, so a wrong password and an unknown address get the same answer; Identity Platform's per-IP sign-up quota
+  applies. Behind that, every api request needs an App Check token (reCAPTCHA Enterprise), applying needs a verified
+  email, applications are capped per account (§14) and a person decides each one. These settings are API-only, with no
+  console switch for email/password (infra README "Identity Platform").
 - **MFA.** Required for every admin role: admin endpoints reject tokens without `firebase.sign_in_second_factor`
   (problem type `/problems/mfa-required`), and approvals additionally require `auth_time` within the last 15 minutes
   (`/problems/reauth-required`; the web app re-authenticates and retries once). `GET /v1/me` reports `mfa.required`
