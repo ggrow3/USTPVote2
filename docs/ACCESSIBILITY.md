@@ -80,6 +80,8 @@ menus and dialogs `#1d1d1d`.
 | Warning text on the dark page / dark card | `#ffb74d` on `#121212` / `#1d1d1d` | 10.82 / 9.74 |
 | Warning badge (photo "waiting for review") | `#000` on `#f2c037` | 12.37 |
 | Emulator badge | `#000` on `#ff9800` | 9.74 |
+| Bylaws check: a flagged line's label ("Finding 2"), at its lowest, on a changed line's green tint; light / dark | `#bf360c` on `#e0f1e3` / `#ffb74d` on `#203123` | 4.75 / 8.00 |
+| Bylaws check: a flagged line's bar (non-text), on a card; light / dark | `#bf360c` on `#fff` / `#ffb74d` on `#1d1d1d` | 5.60 / 9.74 |
 | Outlined field border on white | `rgba(0,0,0,.54)` on `#fff` | 4.61 |
 | Toggle track (off) on white | | 4.6 |
 | Focus ring: primary on white / accent on the dark page / white on the header, menu bar and coloured banners / darker orange on light banners | | 4.94 / 6.49 / ≥ 4.94 / ≥ 4.62 |
@@ -129,6 +131,13 @@ the browser paints them, and were read back from the computed styles in a browse
   adding to the black-tint selectors in `app.css`, next to `.q-header .q-btn`.
 - Brand colours: change them only in `main.ts` (and `index.html`, `manifest.webmanifest` and `make-icons.mjs` for the
   primary), then recompute the table above.
+
+The bylaws check (design §5.4) was checked on 2026-10-22 against the emulators' stand-in, in both themes and at 320 px:
+a flagged line in the draft editor has a bar, a flag icon and a worded label ("Finding 2"), hidden text with the
+severity and source ("Flagged by the check: finding 2, likely conflict with the US Constitution"), and an edit button
+named "Edit line 6 (flagged)"; each finding gives its severity in words ("Clear conflict", "Likely conflict",
+"Possible tension"), and its line buttons ("Go to line 6") switch to the line list, scroll the line into view and move
+focus to its edit button. Start and finish are announced through the live region; a failure is a banner.
 
 ## Known gaps
 

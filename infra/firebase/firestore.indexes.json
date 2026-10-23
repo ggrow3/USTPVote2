@@ -63,12 +63,30 @@
         { "fieldPath": "accountId", "order": "ASCENDING" },
         { "fieldPath": "submittedAt", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "bylaws_checks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "requestedBy", "order": "ASCENDING" },
+        { "fieldPath": "requestedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "bylaws_checks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "requestedAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
     { "collectionGroup": "sealed_blocks", "fieldPath": "contests", "indexes": [] },
     { "collectionGroup": "ballot_pool", "fieldPath": "ciphertext", "indexes": [] },
     { "collectionGroup": "audit_events", "fieldPath": "payload", "indexes": [] },
-    { "collectionGroup": "participation", "fieldPath": "parts", "indexes": [] }
+    { "collectionGroup": "participation", "fieldPath": "parts", "indexes": [] },
+    { "collectionGroup": "bylaws_checks", "fieldPath": "text", "indexes": [] },
+    { "collectionGroup": "bylaws_check_references", "fieldPath": "text", "indexes": [] }
   ]
 }

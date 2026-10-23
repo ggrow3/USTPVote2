@@ -9,6 +9,8 @@ export const Collections = {
   memberStatusHistory: 'member_status_history',
   applications: 'applications',
   bylawsVersions: 'bylaws_versions',
+  bylawsChecks: 'bylaws_checks',
+  bylawsCheckReferences: 'bylaws_check_references',
   profilePhotos: 'profile_photos',
   photoChecks: 'photo_checks',
   positions: 'positions',

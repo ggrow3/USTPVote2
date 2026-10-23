@@ -29,7 +29,18 @@ export interface ServerConfig {
   readonly deploymentEnvironment: 'dev' | 'staging' | 'prod' | null;
   /** System Admins may create test personas and act as them (design §10.4). Never in production. */
   readonly testingMode: boolean;
+  /**
+   * The advisory bylaws check (design §5.2): `claude` (the worker sends drafts to Anthropic), `stub` (the emulator-only
+   * stand-in) or `off` (requests answer 503). Off unless set, outside the emulators.
+   */
+  readonly bylawsChecker: 'claude' | 'stub' | 'off';
+  /** Anthropic API key for `claude`; the worker's only (Secret Manager in Cloud Run). Never logged. */
+  readonly anthropicApiKey: string | null;
+  readonly bylawsCheckModel: string;
 }
+
+/** Claude Opus 5.5; `BYLAWS_CHECK_MODEL` overrides it. */
+export const DEFAULT_BYLAWS_CHECK_MODEL = 'claude-opus-5-5';
 
 export const CONFIG = Symbol('ServerConfig');
 
@@ -66,6 +77,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   if (testingMode && !usingEmulators && deploymentEnvironment !== 'dev' && deploymentEnvironment !== 'staging') {
     throw new Error('TESTING_MODE=true is only allowed with the Firebase emulators or DEPLOYMENT_ENVIRONMENT dev or staging');
   }
+  const bylawsChecker = (env.BYLAWS_CHECKER ?? (usingEmulators ? 'stub' : 'off')) as ServerConfig['bylawsChecker'];
+  if (!['claude', 'stub', 'off'].includes(bylawsChecker)) throw new Error('BYLAWS_CHECKER must be "claude", "stub" or "off"');
+  if (bylawsChecker === 'stub' && !usingEmulators) throw new Error('BYLAWS_CHECKER=stub is only allowed with the Firebase emulators');
 
   const projectId = env.GOOGLE_CLOUD_PROJECT || env.GCLOUD_PROJECT || undefined;
   return {
@@ -87,5 +101,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     ballotPoolKey: env.BALLOT_POOL_KEY || null,
     deploymentEnvironment,
     testingMode,
+    bylawsChecker,
+    anthropicApiKey: env.ANTHROPIC_API_KEY || null,
+    bylawsCheckModel: env.BYLAWS_CHECK_MODEL || DEFAULT_BYLAWS_CHECK_MODEL,
   };
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { BYLAWS_CHECK_SCOPES } from './bylaws-check.js';
 import { SIGN_IN_PROVIDERS } from './identity.js';
 import { MEMBER_STATUSES } from './member-status.js';
 import { checkApplicantAge, isCalendarDate, MINIMUM_MEMBER_AGE, normalizePhone, US_POSTAL_CODE } from './registration.js';
@@ -93,6 +94,16 @@ export const publishBylawsSchema = z.strictObject({
   changeNote: optionalText(2000),
 });
 export type PublishBylawsInput = z.infer<typeof publishBylawsSchema>;
+
+/** Ask for the advisory bylaws check of a draft (design §5.2). */
+export const requestBylawsCheckSchema = z.strictObject({
+  title: z.string().trim().min(1).max(200),
+  text: z.string().min(1).max(500_000),
+  /** The current version the draft started from; required for scope `changes`. */
+  amends: bylawsVersion.nullable().optional(),
+  scope: z.enum(BYLAWS_CHECK_SCOPES),
+});
+export type RequestBylawsCheckInput = z.infer<typeof requestBylawsCheckSchema>;
 
 export const roleChangeSchema = z.strictObject({
   accountId: uuidV7,

@@ -14,7 +14,10 @@ roll-call ballots, sealing them into k-anonymous published blocks, tallying them
 certification that seats the winners in their offices and destroys the ballot key, and checking a receipt or the
 results in the browser all work end to end against the Firebase emulators, in the API (emulator integration tests)
 and the web app. The `ustp-verify` CLI checks all of it independently from public data. Published results can also be
-downloaded as CSV or loaded into Google Sheets with `IMPORTDATA`, with no Google integration. The web app is an
+downloaded as CSV or loaded into Google Sheets with `IMPORTDATA`, with no Google integration. While drafting bylaws, a
+Membership Admin can run an advisory check by Claude (Anthropic) that highlights lines which may contradict the US
+Constitution, Transhumanist principles or the USTP Constitution; it is off in real projects until USTP agrees to it, and
+the emulators use a deterministic stand-in (design §5.4). The web app is an
 installable PWA and has had an accessibility pass. For deployment there are Terraform for dev, staging and prod (validated, not yet
 applied), the server image (`apps/server/Dockerfile`) and a release workflow that builds, attests and rolls it out
 with a keyless CI identity; CI builds and starts the image on every pull request. The rest of M5 (bringing up dev, the
@@ -94,7 +97,9 @@ npm run dev:emulators -w apps/web
 ```
 
 The worker ticks every 15 seconds in place of Cloud Scheduler: it opens and closes elections on time and seals,
-signs and anchors the ledger.
+signs and anchors the ledger. On the same timer it runs queued bylaws checks, with the emulator-only stand-in unless the
+api and worker both get `BYLAWS_CHECKER=claude` and the worker an `ANTHROPIC_API_KEY` (each check then costs money and
+sends the draft to Anthropic; design §5.4).
 
 The emulators start empty. To fill them with test data, run this once the api and worker are up (about a minute):
 

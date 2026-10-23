@@ -12,3 +12,6 @@ attestation_signers = []
 operator_members       = ["group:ustp-voting-operators@example.org"]
 developer_data_members = []
 alert_emails           = ["ustp-voting-alerts@example.org"]
+
+# Sends bylaws drafts to Anthropic for the advisory check; add the anthropic-api-key secret's version first (README).
+bylaws_check_enabled = false

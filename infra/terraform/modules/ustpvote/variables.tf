@@ -210,6 +210,12 @@ variable "alert_emails" {
   default     = []
 }
 
+variable "bylaws_check_enabled" {
+  description = "Run the advisory bylaws check, which sends bylaws drafts to Anthropic's API (design §5.2). Add the API key as a version of the anthropic-api-key secret before turning it on."
+  type        = bool
+  default     = false
+}
+
 # --- Sizing ----------------------------------------------------------------------------------------------------------
 
 variable "api_max_instances" {

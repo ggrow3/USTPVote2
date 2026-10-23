@@ -117,3 +117,24 @@ export type {
 export type { Likelihood, PhotoSignals, PhotoVerdict } from './photos.js';
 export type { ProblemCode } from './problems.js';
 export * from './api.js';
+export {
+  BYLAWS_CHECK_SOURCES,
+  BYLAWS_CHECK_SEVERITIES,
+  BYLAWS_CHECK_SCOPES,
+  BYLAWS_CHECK_REFERENCE_IDS,
+  MAX_BYLAWS_CHECKS_PER_DAY,
+  BYLAWS_CHECK_TIMEOUT_MINUTES,
+} from './bylaws-check.js';
+export type {
+  BylawsCheckSource,
+  BylawsCheckSeverity,
+  BylawsCheckScope,
+  BylawsCheckStatus,
+  BylawsFinding,
+  BylawsCheckReferenceId,
+  BylawsCheckReference,
+  BylawsCheckUsage,
+  BylawsCheckRecord,
+  BylawsCheckView,
+  BylawsRunResult,
+} from './bylaws-check.js';
