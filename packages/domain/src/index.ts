@@ -4,6 +4,8 @@ export { ROLES, conflictingRoles, isRole, checkRoleChange } from './roles.js';
 export type { Role } from './roles.js';
 export { MEMBER_STATUSES, checkStatusChange } from './member-status.js';
 export type { MemberStatus, StatusChange } from './member-status.js';
+export { diffLines, splitLines } from './text-diff.js';
+export type { DiffLine } from './text-diff.js';
 export {
   APPLICATION_WINDOW_DAYS,
   MAX_APPLICATIONS_PER_WINDOW,

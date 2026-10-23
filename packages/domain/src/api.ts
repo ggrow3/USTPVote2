@@ -81,10 +81,15 @@ export type ResignInput = z.infer<typeof resignSchema>;
 export const linkIdentitySchema = z.strictObject({ idToken: z.string().min(1).max(8192) });
 export type LinkIdentityInput = z.infer<typeof linkIdentitySchema>;
 
+const bylawsVersion = z.string().regex(/^[A-Za-z0-9._-]{1,64}$/, 'letters, digits, ".", "_" and "-" only');
+
 export const publishBylawsSchema = z.strictObject({
-  version: z.string().regex(/^[A-Za-z0-9._-]{1,64}$/),
+  version: bylawsVersion,
   title: z.string().trim().min(1).max(200),
   text: z.string().min(1).max(500_000),
+  /** The current version this draft started from; must still be current when publishing (design §5.2). */
+  amends: bylawsVersion.nullable().optional(),
+  changeNote: optionalText(2000),
 });
 export type PublishBylawsInput = z.infer<typeof publishBylawsSchema>;
 

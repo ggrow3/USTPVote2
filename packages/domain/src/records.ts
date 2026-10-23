@@ -110,7 +110,14 @@ export interface BylawsRecord {
   readonly contentHash: string;
   readonly publishedAt: string;
   readonly publishedBy: string;
+  /** The version this one was drafted from, or null for a first version (absent on versions before amendments). */
+  readonly amends?: string | null;
+  /** What changed and why, as the publisher wrote it. */
+  readonly changeNote?: string | null;
 }
+
+/** `GET /v1/bylaws`: every version without its text, newest first. */
+export type BylawsVersionSummary = Omit<BylawsRecord, 'text'>;
 
 /** `role_assignments/{accountId}_{role}` */
 export interface RoleAssignmentRecord {
