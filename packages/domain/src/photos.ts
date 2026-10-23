@@ -19,10 +19,21 @@ export interface PhotoSignals {
   readonly racy: Likelihood;
 }
 
+/** What the automatic check can flag, in words an admin and the member can act on. */
+export const PHOTO_FLAGS = {
+  noFace: 'no face found',
+  severalFaces: 'more than one face',
+  faceUnclear: 'face not clearly visible',
+  blurry: 'blurry',
+  dark: 'too dark',
+  inappropriate: 'may be inappropriate',
+} as const;
+export type PhotoFlag = (typeof PHOTO_FLAGS)[keyof typeof PHOTO_FLAGS];
+
 export interface PhotoVerdict {
   readonly verdict: 'pass' | 'flag';
-  /** Why it was flagged, in words an admin and the member can act on. Empty when it passed. */
-  readonly reasons: readonly string[];
+  /** Why it was flagged (`PHOTO_FLAGS`). Empty when it passed. */
+  readonly reasons: readonly PhotoFlag[];
 }
 
 export const MIN_FACE_CONFIDENCE = 0.6;
@@ -32,13 +43,13 @@ function atLeastLikely(value: Likelihood): boolean {
 }
 
 export function photoVerdict(s: PhotoSignals): PhotoVerdict {
-  const reasons: string[] = [];
-  if (s.faceCount === 0) reasons.push('no face found');
-  else if (s.faceCount > 1) reasons.push('more than one face');
-  else if (s.faceConfidence < MIN_FACE_CONFIDENCE) reasons.push('face not clearly visible');
-  if (atLeastLikely(s.blurred)) reasons.push('blurry');
-  if (atLeastLikely(s.underExposed)) reasons.push('too dark');
-  if (atLeastLikely(s.adult) || atLeastLikely(s.violence) || atLeastLikely(s.racy)) reasons.push('may be inappropriate');
+  const reasons: PhotoFlag[] = [];
+  if (s.faceCount === 0) reasons.push(PHOTO_FLAGS.noFace);
+  else if (s.faceCount > 1) reasons.push(PHOTO_FLAGS.severalFaces);
+  else if (s.faceConfidence < MIN_FACE_CONFIDENCE) reasons.push(PHOTO_FLAGS.faceUnclear);
+  if (atLeastLikely(s.blurred)) reasons.push(PHOTO_FLAGS.blurry);
+  if (atLeastLikely(s.underExposed)) reasons.push(PHOTO_FLAGS.dark);
+  if (atLeastLikely(s.adult) || atLeastLikely(s.violence) || atLeastLikely(s.racy)) reasons.push(PHOTO_FLAGS.inappropriate);
   return { verdict: reasons.length ? 'flag' : 'pass', reasons };
 }
 

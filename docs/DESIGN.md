@@ -275,6 +275,10 @@ Optional, for members with a membership record (applicants included).
    member sees the reason. Admins cannot decide their own photo. Members can remove their photo at any time.
 6. No face recognition or matching is performed, no face embeddings are stored, and images are only ever served to
    the member and Membership Admins through authenticated API routes (never public URLs).
+7. **What the member sees:** the web app shows the chosen photo before uploading it (full and as the square it will
+   appear in, with what the check looks for), and afterwards the photo, which opens larger, with the check's outcome
+   in words: passed (one clear face, in focus, well lit), or what it found (`PHOTO_FLAGS` in `ustp-domain`) with a
+   tip for each finding, or a reviewer's reason.
 
 With the emulators there is no Vision API, so a local stand-in (`PHOTO_CHECKER=local`, refused outside the emulators)
 assumes one clear face and flags only dark images, so the review flow can be exercised. Deployment needs: the

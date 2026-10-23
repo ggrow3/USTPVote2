@@ -4,6 +4,7 @@ import { apiBlob } from './api.js';
 /** Must match the server (apps/server/src/photos/image.ts). */
 export const PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 export const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+export const MIN_PHOTO_SIDE = 200;
 
 /** Problems the browser can spot before uploading; the server checks everything again. */
 export function photoFileProblem(file: File): string | null {
