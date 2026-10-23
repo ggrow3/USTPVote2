@@ -38,12 +38,11 @@ onMounted(load);
 </script>
 
 <template>
-  <div>
-    <div class="row items-center q-gutter-sm q-mb-md">
+  <div class="ustp-content">
+    <div class="ustp-toolbar">
       <q-btn-toggle
         v-model="status"
         no-caps
-        dense
         toggle-color="primary"
         role="group"
         aria-label="Show applications"
@@ -83,7 +82,7 @@ onMounted(load);
           <q-item-label v-if="a.decisionReason" caption class="q-mt-xs">Decision: {{ a.decisionReason }}</q-item-label>
         </q-item-section>
         <q-item-section v-if="a.status === 'pending'" side>
-          <div class="row q-gutter-xs">
+          <div class="ustp-actions">
             <q-btn
               dense
               color="positive"

@@ -55,8 +55,8 @@ onMounted(load);
 </script>
 
 <template>
-  <div>
-    <div class="row items-center q-gutter-sm q-mb-md">
+  <div class="ustp-content">
+    <div class="ustp-toolbar">
       <q-btn v-if="hasRole('election_admin')" color="primary" no-caps label="New election" @click="creating = true" />
       <q-btn flat dense icon="refresh" aria-label="Refresh elections" @click="load" />
     </div>
@@ -76,32 +76,45 @@ onMounted(load);
     </q-list>
 
     <q-dialog v-model="creating" aria-labelledby="new-election-title">
-      <q-card style="width: 480px; max-width: 95vw">
+      <q-card class="ustp-dialog">
         <q-card-section><h2 id="new-election-title" class="text-h6">New election</h2></q-card-section>
-        <q-form class="q-px-md q-gutter-md" @submit.prevent="create">
-          <q-input v-model="form.title" outlined dense label="Title" :error="!!errors.title" :error-message="errors.title" />
-          <q-btn-toggle
-            v-model="form.secrecy"
-            no-caps
-            toggle-color="primary"
-            role="group"
-            aria-label="Ballot secrecy"
-            :options="[
-              { label: 'Secret ballot', value: 'secret' },
-              { label: 'Open roll-call', value: 'open' },
-            ]"
-          />
-          <q-input v-model="form.opensAt" outlined dense type="datetime-local" label="Voting opens" />
-          <q-input
-            v-model="form.closesAt"
-            outlined
-            dense
-            type="datetime-local"
-            label="Voting closes"
-            :error="!!errors.closesAt || !!errors._"
-            :error-message="errors.closesAt ?? errors._"
-          />
-        </q-form>
+        <q-card-section>
+          <q-form class="ustp-form" @submit.prevent="create">
+            <q-input
+              v-model="form.title"
+              outlined
+              dense
+              hide-bottom-space
+              label="Title"
+              :error="!!errors.title"
+              :error-message="errors.title"
+            />
+            <q-btn-toggle
+              v-model="form.secrecy"
+              no-caps
+              toggle-color="primary"
+              role="group"
+              aria-label="Ballot secrecy"
+              :options="[
+                { label: 'Secret ballot', value: 'secret' },
+                { label: 'Open roll-call', value: 'open' },
+              ]"
+            />
+            <div class="ustp-row">
+              <q-input v-model="form.opensAt" outlined dense type="datetime-local" label="Voting opens" />
+              <q-input
+                v-model="form.closesAt"
+                outlined
+                dense
+                hide-bottom-space
+                type="datetime-local"
+                label="Voting closes"
+                :error="!!errors.closesAt || !!errors._"
+                :error-message="errors.closesAt ?? errors._"
+              />
+            </div>
+          </q-form>
+        </q-card-section>
         <q-card-actions align="right">
           <q-btn v-close-popup flat label="Cancel" />
           <q-btn color="primary" label="Create draft" @click="create" />

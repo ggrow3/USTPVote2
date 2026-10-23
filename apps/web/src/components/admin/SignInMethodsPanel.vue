@@ -37,26 +37,28 @@ onMounted(load);
 </script>
 
 <template>
-  <q-card v-if="draft" flat bordered style="max-width: 520px">
-    <q-card-section>
-      <h2 class="text-subtitle1">Sign-in methods</h2>
-      <div class="text-caption text-grey-7">
-        Turning a method off blocks every sign-in that uses it. "Email" covers both password and email-link sign-in.
-      </div>
-    </q-card-section>
-    <q-list>
-      <q-item v-for="p in SIGN_IN_PROVIDERS" :key="p" tag="label">
-        <q-item-section>
-          <q-item-label>{{ PROVIDER_LABELS[p] }}</q-item-label>
-          <q-item-label v-if="p === myProvider" caption>You are signed in with this method.</q-item-label>
-        </q-item-section>
-        <q-item-section side>
-          <q-toggle v-model="draft[p]" :aria-label="PROVIDER_LABELS[p]" :disable="p === myProvider && draft[p]" />
-        </q-item-section>
-      </q-item>
-    </q-list>
-    <q-card-actions align="right">
-      <q-btn color="primary" label="Save" :disable="!Object.keys(changes).length" @click="save" />
-    </q-card-actions>
-  </q-card>
+  <div class="ustp-content">
+    <q-card v-if="draft" flat bordered>
+      <q-card-section>
+        <h2 class="text-subtitle1">Sign-in methods</h2>
+        <div class="text-caption text-grey-7">
+          Turning a method off blocks every sign-in that uses it. "Email" covers both password and email-link sign-in.
+        </div>
+      </q-card-section>
+      <q-list>
+        <q-item v-for="p in SIGN_IN_PROVIDERS" :key="p" tag="label">
+          <q-item-section>
+            <q-item-label>{{ PROVIDER_LABELS[p] }}</q-item-label>
+            <q-item-label v-if="p === myProvider" caption>You are signed in with this method.</q-item-label>
+          </q-item-section>
+          <q-item-section side>
+            <q-toggle v-model="draft[p]" :aria-label="PROVIDER_LABELS[p]" :disable="p === myProvider && draft[p]" />
+          </q-item-section>
+        </q-item>
+      </q-list>
+      <q-card-section class="ustp-actions">
+        <q-btn color="primary" label="Save" :disable="!Object.keys(changes).length" @click="save" />
+      </q-card-section>
+    </q-card>
+  </div>
 </template>

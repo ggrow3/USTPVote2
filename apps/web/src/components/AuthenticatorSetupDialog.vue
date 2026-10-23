@@ -77,13 +77,13 @@ async function finish() {
 
 <template>
   <q-dialog v-model="open" persistent aria-labelledby="authenticator-setup-title">
-    <q-card style="width: 420px; max-width: 95vw">
+    <q-card class="ustp-dialog">
       <q-card-section><h2 id="authenticator-setup-title" class="text-h6">Set up an authenticator app</h2></q-card-section>
       <q-card-section v-if="busy && !setup" class="row justify-center">
         <q-spinner size="lg" />
         <span class="sr-only" role="status">Preparing the setup…</span>
       </q-card-section>
-      <q-card-section v-if="setup" class="q-gutter-md">
+      <q-card-section v-if="setup" class="ustp-form">
         <div>
           1. In an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password, …), scan this code.
         </div>
@@ -97,7 +97,9 @@ async function finish() {
         <q-input v-model="code" outlined dense inputmode="numeric" autocomplete="one-time-code" maxlength="6" label="Code" />
         <q-input v-model="name" outlined dense label="Name for this device" />
       </q-card-section>
-      <q-banner v-if="error" class="bg-negative text-white q-mx-md" rounded>{{ error }}</q-banner>
+      <q-card-section v-if="error">
+        <q-banner class="bg-negative text-white" rounded>{{ error }}</q-banner>
+      </q-card-section>
       <q-card-actions align="right">
         <q-btn v-close-popup flat label="Cancel" :disable="busy" />
         <q-btn color="primary" label="Turn on" :loading="busy && !!setup" :disable="!setup" @click="finish" />

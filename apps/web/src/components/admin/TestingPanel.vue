@@ -42,11 +42,11 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="column q-gutter-md" style="max-width: 760px">
+  <div class="ustp-content">
     <q-card flat bordered>
       <q-card-section>
         <h2 class="text-subtitle1">Test personas</h2>
-        <p class="q-mb-none">
+        <p class="q-mt-sm q-mb-none">
           This deployment lets System Admins rehearse elections. Test personas are accounts with no login: one for each
           admin role, and as many voters as you need. Act as one and the app shows and does exactly what that person
           could, so every two-person step is still done by two different accounts. Actions are recorded under the
@@ -54,7 +54,7 @@ onMounted(load);
           same time.
         </p>
       </q-card-section>
-      <q-card-section v-if="personas && !hasAdmins">
+      <q-card-section v-if="personas && !hasAdmins" class="ustp-actions">
         <q-btn color="primary" no-caps label="Create admin personas" @click="create(0)" />
       </q-card-section>
       <q-list v-if="personas?.length" separator>
@@ -68,16 +68,16 @@ onMounted(load);
           </q-item-section>
         </q-item>
       </q-list>
-      <q-card-section v-if="hasAdmins" class="row items-end q-gutter-sm">
+      <q-card-section v-if="hasAdmins" class="ustp-row">
         <q-input
           v-model.number="voters"
           type="number"
           outlined
           dense
+          hide-bottom-space
           :min="1"
           :max="room"
           label="Test voters to add"
-          style="width: 180px"
           :hint="`Up to ${room} more`"
         />
         <q-btn color="primary" no-caps label="Add voters" :disable="!(voters >= 1 && voters <= room)" @click="create(voters)" />
@@ -87,7 +87,7 @@ onMounted(load);
     <q-card flat bordered>
       <q-card-section>
         <h2 class="text-subtitle1">Rehearse an election</h2>
-        <ol class="q-mb-none q-pl-md">
+        <ol class="q-mt-sm q-mb-none q-pl-md">
           <li>
             If no bylaws are published, act as the Test Membership Admin and publish them under Admin → Bylaws. Test
             voters join on the current bylaws.

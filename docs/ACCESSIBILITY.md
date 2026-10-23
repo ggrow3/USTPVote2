@@ -43,6 +43,20 @@ test. Keep it current when pages change.
   and the sign-in link 4.94 / 5.84. At 320 px the steps wrap and nothing scrolls sideways. Found and fixed on the way:
   the application's sections sat 16 px left of the page (a margin reset cancelled the form's gutter), and field error
   messages in the dark theme (below).
+- **Added 2026-10-23, one layout for every form** (every page, admin panel and dialog, against the emulators as
+  admin1, elections, auditor, v1, a new applicant and signed out; light and dark; 1024 px and 320 px): the shared
+  classes in `layout.css` (below, "Layout") replaced each page's own gutters and widths. Read back from the DOM, not
+  estimated: every field in a card starts and ends 16 px inside it, rows of fields (Offices, the role change, City and
+  ZIP, Version and Title, the election dates) share those edges, and a button or toggle beside a field is the field's
+  40 px height; admin panels start on the page title's left edge (Quasar's panel padding had put them 16 px right of
+  it). Hints and errors sit under their field with no space reserved when there is none to show, so an empty submit
+  (Offices, the application) shows each message under its field, checkbox messages start on their checkbox's label,
+  and focus still goes to the first invalid field. At 320 px no page or admin tab scrolls sideways; the one that did,
+  Results, was a full results hash and tie-break seed in a caption, which now break (`code` in `app.css`). Labels,
+  names, focus order and live regions are unchanged: the Sign in page's "New to USTP?" link moved inside its card but
+  keeps its place in the reading order, and the election editor's back button now shows its name, "Administration"
+  (it was an icon named "Back to administration"). Dark-theme admin panels now sit on the page background (#121212)
+  like every other page rather than Quasar's #1d1d1d panel, which only raises the contrast of text on them.
 
 ## What was fixed
 
@@ -51,7 +65,7 @@ test. Keep it current when pages change.
 | 1.3.1 Info and relationships | Titles were styled `div`s, no headings at all; the main navigation was a tab list; contest controls and ranked lists had no group names; receipt table had no header row | One `h1` per page, `h2`/`h3` below it; nav is a `<nav>` of links; each contest is a named `section`, its radio/checkbox group is labelled by the contest title, the ranking is a named list; table headers and captions added |
 | 1.4.1 Use of colour | Verify steps showed passed / failed / pending only as a coloured icon | Each step starts with hidden text "Passed:", "Failed:" or "Not checked yet:" |
 | 1.4.3 Contrast (minimum) | Green (Quasar positive) with white text 2.6:1; dark theme: grey captions 3.0:1, primary-coloured text 4.1:1, red text 2.9:1, links 2.0:1; orange text 3.1:1; a light banner left white text on cream (1.1:1); the emulator badge 2.2:1; Quasar's hover and focus tint took button and tab text down to 3.55:1 | Brand positive `#2e7d32` (5.1:1); dark-theme overrides for `text-primary` (and the focused field label and current menu item, which Quasar colours with primary directly), `text-positive`, `text-negative`, `text-grey-7` and links (all ≥ 5.8:1); warning text uses `deep-orange-10` (5.6:1); badges and banners get dark text where the background is light; the tint darkens the header and filled buttons and is lighter on page and card surfaces, so text keeps 4.6:1 or more under it (table below) |
-| 1.4.10 Reflow | At 320 px the header cut the site name to "U" and pushed the account button off screen; on Verify the Check buttons were cut off, and long receipt titles widened cards past the screen; the review and status-history dialogs had minimum widths wider than a phone | Account button becomes an icon on phones (its name keeps the account); fields take a full row on phones; page `.column` stacks no longer wrap (that is what sized cards to their widest content); dialog minimum widths capped at 95vw |
+| 1.4.10 Reflow | At 320 px the header cut the site name to "U" and pushed the account button off screen; on Verify the Check buttons were cut off, and long receipt titles widened cards past the screen; the review and status-history dialogs had minimum widths wider than a phone | Account button becomes an icon on phones (its name keeps the account); fields take a full row on phones; page stacks no longer wrap (that is what sized cards to their widest content; now `.ustp-content`, and `.column` where one remains); dialogs are as wide as the screen less Quasar's 24 px margins at most; full hashes in running text break |
 | 1.4.11 Non-text contrast | Outlined field borders 1.8:1; toggle track 2.7:1; focus shown only as a faint tint | Borders 4.6:1; toggle track 4.6:1; focus ring below |
 | 2.1.1 Keyboard | The bylaws text sat in a scroll area that could not be scrolled from the keyboard | A focusable, named scroll region |
 | 2.4.1 Bypass blocks | Header and navigation before every page | "Skip to main content" link, first in the tab order |
@@ -150,6 +164,40 @@ the browser paints them, and were read back from the computed styles in a browse
   adding to the black-tint selectors in `app.css`, next to `.q-header .q-btn`.
 - Brand colours: change them only in `main.ts` (and `index.html`, `manifest.webmanifest` and `make-icons.mjs` for the
   primary), then recompute the table above.
+
+### Layout
+
+Every page, admin panel, card, form and dialog uses the classes in `apps/web/src/layout.css`, so edges line up across
+the app and everything stacks at 320 px. Use them instead of Quasar's `q-gutter-*` classes, `row`/`col` grids and
+inline widths: gutters move each child by a margin, and a gutter inside another one is what pushed rows of fields 16 px
+right of the fields around them.
+
+- **Page or panel**: one `<div class="ustp-content">` inside `<q-page padding>` (or as the panel's root): a column
+  860 px wide at most, 16 px between its parts. Sign-in style forms add `ustp-narrow` (480 px). A back link goes first,
+  `<q-btn flat dense no-caps icon="arrow_back" label="…" class="ustp-back" />`, then the `h1` (with its caption in one
+  `div` when it has one).
+- **Card**: `q-card flat bordered`, made of `q-card-section`s. The first holds the `h2` and its caption
+  (`text-caption text-grey-7`); a section straight after another needs no `q-pt-none` (`layout.css` removes the extra
+  padding). A heading with buttons or badges beside it is a `q-card-section class="ustp-header"` whose first child is
+  the heading block; the buttons move underneath when there is no room. Lists (`q-list`) are direct children of the
+  card, not inside a section, so their text lines up with the heading.
+- **Form**: the fields in a `q-form` (or a section) with `class="ustp-form"`: one field per row, 16 px apart, each as
+  wide as the card. Every field is `outlined dense`; add `hide-bottom-space` to any field with a hint or an error, so
+  space appears only for a message that is showing. A message for something that is not a field (a checkbox, the
+  bylaws line list) is `ustp-message`, set like a field's own; checkboxes in a run go in `ustp-options`.
+- **Fields side by side**: `<div class="ustp-row">`; each field takes an equal share (twice that with
+  `ustp-row__wide`) and the row stacks once a field would be under 200 px. A button or `q-btn-toggle` in a row keeps its
+  width and takes a field's 40 px height, so it lines up with the field it acts on.
+- **Filters above a list or table** and other control bars: `ustp-toolbar` (fields 240 px, or 120 px with
+  `ustp-field--short`).
+- **Buttons**: a form's or card's buttons go last, in `<div class="ustp-actions">` (or a `q-card-section` with that
+  class): the primary (filled) button first, on the fields' left edge, then the others. Dialogs keep Quasar's
+  `q-card-actions align="right"`, as the Dialog plugin's prompts do: dismiss first, the primary last, its right edge on
+  the fields' right edge.
+- **Dialog**: `q-card class="ustp-dialog"` (480 px) or `"ustp-dialog ustp-dialog--wide"` (640 px, for long text and
+  previews); on a phone either is the screen less Quasar's 24 px margins. Its body is a `q-card-section class="ustp-form"`.
+- **Long sections of one form** (the application): each `fieldset class="ustp-fieldset"` is a card's section, its
+  `legend` the heading, then an optional caption, then `<div class="ustp-form">` with the fields.
 
 The bylaws check (design §5.4) was checked on 2026-10-22 against the emulators' stand-in, in both themes and at 320 px:
 a flagged line in the draft editor has a bar, a flag icon and a worded label ("Finding 2"), hidden text with the

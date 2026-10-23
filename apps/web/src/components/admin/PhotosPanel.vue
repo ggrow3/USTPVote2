@@ -43,12 +43,11 @@ onMounted(load);
 </script>
 
 <template>
-  <div>
-    <div class="row items-center q-gutter-sm q-mb-md">
+  <div class="ustp-content">
+    <div class="ustp-toolbar">
       <q-btn-toggle
         v-model="status"
         no-caps
-        dense
         toggle-color="primary"
         role="group"
         aria-label="Show photos"
@@ -61,7 +60,7 @@ onMounted(load);
       />
       <q-btn flat dense icon="refresh" aria-label="Refresh photos" @click="load" />
     </div>
-    <div class="text-caption text-grey-7 q-mb-md">
+    <div class="text-caption text-grey-7">
       Automatic checks only flag photos (no face, several faces, blurry, too dark, possibly inappropriate). Only a
       Membership Admin can reject one.
     </div>
@@ -87,7 +86,7 @@ onMounted(load);
           <q-item-label v-if="p.decisionReason" caption>Decision: {{ p.decisionReason }}</q-item-label>
         </q-item-section>
         <q-item-section v-if="p.status !== 'rejected'" side>
-          <div class="row q-gutter-xs">
+          <div class="ustp-actions">
             <q-btn
               v-if="p.status === 'needs_review'"
               dense

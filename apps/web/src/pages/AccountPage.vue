@@ -130,106 +130,112 @@ function copyId() {
 
 <template>
   <q-page padding>
-    <h1 class="text-h5 q-mb-md">Your account</h1>
-    <div v-if="!me?.account" class="text-grey-7">Loading…</div>
-    <div v-else class="column q-gutter-md" style="max-width: 720px">
-      <q-card flat bordered>
-        <q-card-section>
-          <h2 class="text-subtitle1">{{ me.account.displayName || me.account.primaryEmail }}</h2>
-          <div class="text-caption text-grey-7">
-            Account ID <code>{{ me.account.accountId }}</code>
-            <q-btn flat dense round size="sm" icon="content_copy" aria-label="Copy account ID" @click="copyId" />
-          </div>
-          <div v-if="me.roles.length" class="q-mt-sm">
-            <q-chip v-for="r in me.roles" :key="r" dense color="primary" text-color="white">{{ r.replace('_', ' ') }}</q-chip>
-          </div>
-        </q-card-section>
-      </q-card>
+    <div class="ustp-content">
+      <h1 class="text-h5">Your account</h1>
+      <div v-if="!me?.account" class="text-grey-7">Loading…</div>
+      <template v-else>
+        <q-card flat bordered>
+          <q-card-section>
+            <h2 class="text-subtitle1">{{ me.account.displayName || me.account.primaryEmail }}</h2>
+            <div class="text-caption text-grey-7">
+              Account ID <code>{{ me.account.accountId }}</code>
+              <q-btn flat dense round size="sm" icon="content_copy" aria-label="Copy account ID" @click="copyId" />
+            </div>
+            <div v-if="me.roles.length" class="q-mt-sm">
+              <q-chip v-for="r in me.roles" :key="r" dense color="primary" text-color="white">{{ r.replace('_', ' ') }}</q-chip>
+            </div>
+          </q-card-section>
+        </q-card>
 
-      <q-card flat bordered>
-        <q-card-section>
-          <h2 class="text-subtitle1 q-mb-sm">Membership</h2>
-          <template v-if="me.member">
-            <q-badge :label="me.member.status" color="primary" />
-            <span v-if="me.member.memberSince" class="q-ml-sm text-grey-7">
-              member since {{ new Date(me.member.memberSince).toLocaleDateString() }}
-            </span>
-          </template>
-          <div v-else>Not a member yet. <router-link to="/register">Apply for membership</router-link>.</div>
-        </q-card-section>
-        <q-card-actions v-if="canResign">
-          <q-btn flat color="negative" label="Resign" :disable="busy" @click="resign" />
-        </q-card-actions>
-      </q-card>
+        <q-card flat bordered>
+          <q-card-section>
+            <h2 class="text-subtitle1">Membership</h2>
+          </q-card-section>
+          <q-card-section>
+            <template v-if="me.member">
+              <q-badge :label="me.member.status" color="primary" />
+              <span v-if="me.member.memberSince" class="q-ml-sm text-grey-7">
+                member since {{ new Date(me.member.memberSince).toLocaleDateString() }}
+              </span>
+            </template>
+            <div v-else>Not a member yet. <router-link to="/register">Apply for membership</router-link>.</div>
+          </q-card-section>
+          <q-card-section v-if="canResign" class="ustp-actions">
+            <q-btn flat color="negative" label="Resign" :disable="busy" @click="resign" />
+          </q-card-section>
+        </q-card>
 
-      <ProfilePhotoCard v-if="me.member" />
+        <ProfilePhotoCard v-if="me.member" />
 
-      <q-card flat bordered>
-        <q-card-section>
-          <h2 class="text-subtitle1">Two-step verification</h2>
-          <div class="text-caption text-grey-7">
-            A code from an authenticator app, asked for each time you sign in. Required for admin roles.
-          </div>
-        </q-card-section>
-        <q-banner v-if="mfa?.required && !factors.length" class="bg-orange-2 text-black q-mx-md q-mb-sm" rounded>
-          Your admin role requires two-step verification. Set it up to use the admin tools.
-        </q-banner>
-        <q-banner v-else-if="mfa?.required && !mfa.signedInWithMfa" class="bg-orange-2 text-black q-mx-md q-mb-sm" rounded>
-          Sign out and sign back in with your authenticator code to use the admin tools.
-        </q-banner>
-        <q-list v-if="factors.length" separator>
-          <q-item v-for="f in factors" :key="f.uid">
-            <q-item-section>
-              <q-item-label>{{ f.displayName ?? 'Authenticator app' }}</q-item-label>
-              <q-item-label caption>added {{ new Date(f.enrollmentTime).toLocaleDateString() }}</q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <q-btn flat dense color="negative" label="Remove" :disable="busy" @click="removeDevice(f)">
-                <span class="sr-only">&nbsp;{{ f.displayName ?? 'authenticator app' }}</span>
-              </q-btn>
-            </q-item-section>
-          </q-item>
-        </q-list>
-        <q-card-actions>
-          <q-btn outline no-caps color="primary" label="Set up an authenticator app" :disable="busy" @click="settingUp = true" />
-        </q-card-actions>
-      </q-card>
-      <AuthenticatorSetupDialog v-model="settingUp" @enrolled="onEnrolled" />
+        <q-card flat bordered>
+          <q-card-section>
+            <h2 class="text-subtitle1">Two-step verification</h2>
+            <div class="text-caption text-grey-7">
+              A code from an authenticator app, asked for each time you sign in. Required for admin roles.
+            </div>
+          </q-card-section>
+          <q-card-section v-if="mfa?.required && (!factors.length || !mfa.signedInWithMfa)">
+            <q-banner v-if="!factors.length" class="bg-orange-2 text-black" rounded>
+              Your admin role requires two-step verification. Set it up to use the admin tools.
+            </q-banner>
+            <q-banner v-else class="bg-orange-2 text-black" rounded>
+              Sign out and sign back in with your authenticator code to use the admin tools.
+            </q-banner>
+          </q-card-section>
+          <q-list v-if="factors.length" separator>
+            <q-item v-for="f in factors" :key="f.uid">
+              <q-item-section>
+                <q-item-label>{{ f.displayName ?? 'Authenticator app' }}</q-item-label>
+                <q-item-label caption>added {{ new Date(f.enrollmentTime).toLocaleDateString() }}</q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <q-btn flat dense color="negative" label="Remove" :disable="busy" @click="removeDevice(f)">
+                  <span class="sr-only">&nbsp;{{ f.displayName ?? 'authenticator app' }}</span>
+                </q-btn>
+              </q-item-section>
+            </q-item>
+          </q-list>
+          <q-card-section class="ustp-actions">
+            <q-btn outline no-caps color="primary" label="Set up an authenticator app" :disable="busy" @click="settingUp = true" />
+          </q-card-section>
+        </q-card>
+        <AuthenticatorSetupDialog v-model="settingUp" @enrolled="onEnrolled" />
 
-      <q-card flat bordered>
-        <q-card-section>
-          <h2 class="text-subtitle1">Login methods</h2>
-          <div class="text-caption text-grey-7">
-            Your account and voting record stay the same whichever of these you sign in with.
-          </div>
-        </q-card-section>
-        <q-list separator>
-          <q-item v-for="i in identities" :key="i.uid">
-            <q-item-section>
-              <q-item-label>{{ PROVIDER_LABELS[i.provider] }}</q-item-label>
-              <q-item-label caption>{{ i.email ?? i.uid }} · linked {{ new Date(i.linkedAt).toLocaleDateString() }}</q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <q-btn flat dense color="negative" label="Remove" :disable="busy || identities.length <= 1" @click="unlink(i)">
-                <span class="sr-only">&nbsp;{{ PROVIDER_LABELS[i.provider] }} login {{ i.email ?? '' }}</span>
-              </q-btn>
-            </q-item-section>
-          </q-item>
-        </q-list>
-        <q-card-actions>
-          <q-btn
-            v-for="p in linkable"
-            :key="p"
-            outline
-            no-caps
-            color="primary"
-            :disable="busy"
-            :label="`Link ${PROVIDER_LABELS[p]}`"
-            @click="linkProvider(p)"
-          />
-          <q-btn v-if="enabled?.password" outline no-caps color="primary" :disable="busy" label="Link email & password" @click="linkPassword" />
-        </q-card-actions>
-      </q-card>
+        <q-card flat bordered>
+          <q-card-section>
+            <h2 class="text-subtitle1">Login methods</h2>
+            <div class="text-caption text-grey-7">
+              Your account and voting record stay the same whichever of these you sign in with.
+            </div>
+          </q-card-section>
+          <q-list separator>
+            <q-item v-for="i in identities" :key="i.uid">
+              <q-item-section>
+                <q-item-label>{{ PROVIDER_LABELS[i.provider] }}</q-item-label>
+                <q-item-label caption>{{ i.email ?? i.uid }} · linked {{ new Date(i.linkedAt).toLocaleDateString() }}</q-item-label>
+              </q-item-section>
+              <q-item-section side>
+                <q-btn flat dense color="negative" label="Remove" :disable="busy || identities.length <= 1" @click="unlink(i)">
+                  <span class="sr-only">&nbsp;{{ PROVIDER_LABELS[i.provider] }} login {{ i.email ?? '' }}</span>
+                </q-btn>
+              </q-item-section>
+            </q-item>
+          </q-list>
+          <q-card-section class="ustp-actions">
+            <q-btn
+              v-for="p in linkable"
+              :key="p"
+              outline
+              no-caps
+              color="primary"
+              :disable="busy"
+              :label="`Link ${PROVIDER_LABELS[p]}`"
+              @click="linkProvider(p)"
+            />
+            <q-btn v-if="enabled?.password" outline no-caps color="primary" :disable="busy" label="Link email & password" @click="linkPassword" />
+          </q-card-section>
+        </q-card>
+      </template>
     </div>
   </q-page>
 </template>

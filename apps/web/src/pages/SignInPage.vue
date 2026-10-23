@@ -66,69 +66,78 @@ function submitEmail() {
 </script>
 
 <template>
-  <q-page padding class="row justify-center">
-    <div style="width: 100%; max-width: 440px">
-      <h1 class="text-h5 q-mb-md">Sign in</h1>
-      <q-banner v-if="error" class="bg-negative text-white q-mb-md" rounded>{{ error }}</q-banner>
-      <q-banner v-if="notice" class="bg-positive text-white q-mb-md" rounded role="status">{{ notice }}</q-banner>
+  <q-page padding>
+    <div class="ustp-content ustp-narrow">
+      <h1 class="text-h5">Sign in</h1>
+      <q-banner v-if="error" class="bg-negative text-white" rounded>{{ error }}</q-banner>
+      <q-banner v-if="notice" class="bg-positive text-white" rounded role="status">{{ notice }}</q-banner>
 
       <TwoStepCodeCard v-if="challenge" v-model:code="code" :busy="busy" @submit="submitCode" @cancel="challenge = null" />
 
       <template v-else>
-        <q-card v-if="emailLink.isLink && !emailLink.email" flat bordered class="q-mb-md">
+        <q-card v-if="emailLink.isLink && !emailLink.email" flat bordered>
           <q-card-section>
-            <h2 class="text-subtitle1 q-mb-sm">Finish signing in with your email link</h2>
-            <q-input v-model="email" type="email" label="The email address the link was sent to" outlined dense />
+            <h2 class="text-subtitle1">Finish signing in with your email link</h2>
           </q-card-section>
-          <q-card-actions align="right">
-            <q-btn color="primary" label="Continue" :loading="busy" @click="signIn(() => completeEmailLink(auth, email))" />
-          </q-card-actions>
+          <q-card-section class="ustp-form">
+            <q-input v-model="email" type="email" label="The email address the link was sent to" outlined dense />
+            <div class="ustp-actions">
+              <q-btn color="primary" label="Continue" :loading="busy" @click="signIn(() => completeEmailLink(auth, email))" />
+            </div>
+          </q-card-section>
         </q-card>
 
-        <div class="column q-gutter-sm q-mb-lg">
-          <q-btn
-            v-for="p in federated"
-            :key="p"
-            outline
-            color="primary"
-            no-caps
-            :disable="busy"
-            :label="`Continue with ${PROVIDER_LABELS[p]}`"
-            @click="withProvider(p)"
-          />
-        </div>
-
-        <q-card v-if="enabled?.password" flat bordered>
-          <q-tabs v-model="mode" dense align="justify" mobile-arrows class="text-primary">
-            <q-tab id="signin-tab-signin" name="signin" label="Email & password" no-caps aria-controls="signin-panel" />
-            <q-tab id="signin-tab-link" name="link" label="Email me a link" no-caps aria-controls="signin-panel" />
-          </q-tabs>
-          <q-separator />
-          <q-form
-            id="signin-panel"
-            role="tabpanel"
-            :aria-labelledby="`signin-tab-${mode}`"
-            class="q-pa-md q-gutter-md"
-            @submit.prevent="submitEmail"
-          >
-            <q-input v-model="email" type="email" label="Email" outlined dense autocomplete="email" />
-            <q-input
-              v-if="mode === 'signin'"
-              v-model="password"
-              type="password"
-              label="Password"
-              outlined
-              dense
-              autocomplete="current-password"
+        <q-card flat bordered>
+          <q-card-section v-if="federated.length" class="ustp-stack">
+            <q-btn
+              v-for="p in federated"
+              :key="p"
+              outline
+              color="primary"
+              no-caps
+              class="full-width"
+              :disable="busy"
+              :label="`Continue with ${PROVIDER_LABELS[p]}`"
+              @click="withProvider(p)"
             />
-            <q-btn type="submit" color="primary" class="full-width" :loading="busy" :label="mode === 'signin' ? 'Sign in' : 'Send link'" />
-          </q-form>
-        </q-card>
+          </q-card-section>
 
-        <p class="q-mt-lg">
-          New to USTP? <router-link to="/register">Register as a member</router-link>: creating your login is the first
-          step.
-        </p>
+          <template v-if="enabled?.password">
+            <q-separator v-if="federated.length" />
+            <q-tabs v-model="mode" dense align="justify" mobile-arrows class="text-primary">
+              <q-tab id="signin-tab-signin" name="signin" label="Email & password" no-caps aria-controls="signin-panel" />
+              <q-tab id="signin-tab-link" name="link" label="Email me a link" no-caps aria-controls="signin-panel" />
+            </q-tabs>
+            <q-separator />
+            <q-form
+              id="signin-panel"
+              role="tabpanel"
+              :aria-labelledby="`signin-tab-${mode}`"
+              class="ustp-form q-pa-md"
+              @submit.prevent="submitEmail"
+            >
+              <q-input v-model="email" type="email" label="Email" outlined dense autocomplete="email" />
+              <q-input
+                v-if="mode === 'signin'"
+                v-model="password"
+                type="password"
+                label="Password"
+                outlined
+                dense
+                autocomplete="current-password"
+              />
+              <div class="ustp-actions">
+                <q-btn type="submit" color="primary" :loading="busy" :label="mode === 'signin' ? 'Sign in' : 'Send link'" />
+              </div>
+            </q-form>
+          </template>
+
+          <q-separator />
+          <q-card-section>
+            New to USTP? <router-link to="/register">Register as a member</router-link>: creating your login is the first
+            step.
+          </q-card-section>
+        </q-card>
       </template>
     </div>
   </q-page>

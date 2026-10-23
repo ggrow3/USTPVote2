@@ -59,7 +59,7 @@ const checkedAt = computed(() => (props.check?.finishedAt ? new Date(props.check
       miss conflicts or flag ones that are not there, and it never stops you publishing.
     </p>
 
-    <div class="row items-center q-gutter-sm">
+    <div class="ustp-toolbar">
       <q-option-group
         v-if="changesSince"
         v-model="scope"
@@ -96,7 +96,7 @@ const checkedAt = computed(() => (props.check?.finishedAt ? new Date(props.check
       </div>
       <ol v-if="check.findings.length" class="bylaws-findings q-pl-none q-my-sm">
         <li v-for="(f, i) in check.findings" :id="`bylaws-finding-${i + 1}`" :key="i" class="bylaws-finding">
-          <div class="row items-center q-gutter-x-sm">
+          <div class="ustp-toolbar">
             <span class="text-weight-medium">Finding {{ i + 1 }}</span>
             <span class="text-deep-orange-10 text-weight-medium">
               <q-icon :name="SEVERITY_ICONS[f.severity]" size="18px" aria-hidden="true" /> {{ SEVERITY_LABELS[f.severity] }}
@@ -104,7 +104,7 @@ const checkedAt = computed(() => (props.check?.finishedAt ? new Date(props.check
             <span>with the {{ SOURCE_LABELS[f.source] }}, {{ f.provision }}</span>
           </div>
           <div class="q-my-xs">{{ f.explanation }}</div>
-          <div class="row items-center q-gutter-xs">
+          <div class="ustp-toolbar">
             <span class="text-caption text-grey-7">{{ linesLabel(f.lines).replace(/^l/, 'L') }}:</span>
             <q-btn
               v-for="n in f.lines"

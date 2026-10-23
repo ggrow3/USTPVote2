@@ -58,14 +58,13 @@ onMounted(() => load());
 </script>
 
 <template>
-  <div>
-    <div class="row items-center q-gutter-sm q-mb-md">
+  <div class="ustp-content">
+    <div class="ustp-toolbar">
       <q-select
         v-model="filter"
         dense
         outlined
         clearable
-        style="min-width: 180px"
         label="Status"
         :options="['applicant', 'active', 'lapsed', 'suspended', 'resigned', 'rejected']"
         @update:model-value="load()"
@@ -118,10 +117,10 @@ onMounted(() => load());
         </tr>
       </tbody>
     </q-markup-table>
-    <q-btn v-if="more" flat no-caps class="q-mt-sm" label="Load more" @click="load(false)" />
+    <q-btn v-if="more" flat no-caps label="Load more" @click="load(false)" />
 
     <q-dialog :model-value="!!history" aria-labelledby="history-title" @update:model-value="history = null">
-      <q-card v-if="history" style="min-width: min(420px, 95vw)">
+      <q-card v-if="history" class="ustp-dialog">
         <q-card-section>
           <h2 id="history-title" class="text-h6">{{ history.member.legalName }} — status history</h2>
         </q-card-section>

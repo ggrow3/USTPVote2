@@ -88,10 +88,10 @@ onMounted(() => Promise.all([load(), loadBlocks()]));
 </script>
 
 <template>
-  <div class="column q-gutter-md">
-    <q-card flat bordered style="max-width: 860px">
-      <q-card-section class="row items-center q-gutter-md">
-        <div class="col">
+  <div class="ustp-content">
+    <q-card flat bordered>
+      <q-card-section class="ustp-header">
+        <div>
           <h2 class="text-subtitle1">Ledger verification</h2>
           <div class="text-caption text-grey-7">
             Recomputes every entry's hash and link, every block's Merkle root and signature, and every anchor on the
@@ -113,8 +113,8 @@ onMounted(() => Promise.all([load(), loadBlocks()]));
     </q-card>
 
     <q-card flat bordered>
-      <q-card-section class="row items-center q-gutter-md">
-        <div class="col">
+      <q-card-section class="ustp-header">
+        <div>
           <h2 class="text-subtitle1">Ledger blocks</h2>
           <div class="text-caption text-grey-7">
             Sealed and signed by the worker every minute when there are new entries.
