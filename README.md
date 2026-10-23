@@ -7,8 +7,9 @@ deterministic tally library.
 
 **Status:** M1 (identity and registration), M2 (election setup and the signed, anchored ledger), M3 (casting and
 secrecy) and M4 (tally, certification, offices and terms) are built. Sign-in, accounts, bylaws, applications,
-membership administration, profile photos, two-person role changes, admin two-step verification, election setup with
-Auditor-approved rolls and scheduling, ledger blocks signed by the worker and anchored, casting secret (encrypted) or
+membership administration, profile photos, two-person role changes (with a People list of who holds which role),
+admin two-step verification, election setup with Auditor-approved rolls and scheduling, ledger blocks signed by the
+worker and anchored, casting secret (encrypted) or
 roll-call ballots, sealing them into k-anonymous published blocks, tallying them into signed results, two-person
 certification that seats the winners in their offices and destroys the ballot key, and checking a receipt or the
 results in the browser all work end to end against the Firebase emulators, in the API (emulator integration tests)

@@ -7,6 +7,11 @@ const ROLE_LABELS: Record<Role, string> = {
   system_admin: 'System Admin',
 };
 
+/** "Auditor", "System Admin". */
+export function roleLabel(role: Role): string {
+  return ROLE_LABELS[role];
+}
+
 /** "an Auditor", "a System Admin". */
 export function aRole(role: Role): string {
   const label = ROLE_LABELS[role];

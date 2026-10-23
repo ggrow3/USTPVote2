@@ -23,6 +23,8 @@ describe('admin multi-factor policy (real second-factor ID tokens)', () => {
       status: 403,
       body: { type: PROBLEM_TYPES.mfaRequired, detail: 'admin actions require multi-factor sign-in' },
     });
+    // Read-only admin routes too: the People list shows who holds which role.
+    expect((await api.call('GET', '/v1/admin/accounts', sa)).body.type).toBe(PROBLEM_TYPES.mfaRequired);
     // Non-admin routes still work, and tell the client what is missing.
     expect((await api.call('GET', '/v1/me', sa)).body.mfa).toEqual({ required: true, signedInWithMfa: false });
   });
@@ -33,6 +35,7 @@ describe('admin multi-factor policy (real second-factor ID tokens)', () => {
     const pat = await api.member('pat@example.test');
 
     expect((await api.call('GET', '/v1/me', sa1)).body.mfa).toEqual({ required: true, signedInWithMfa: true });
+    expect((await api.call('GET', '/v1/admin/accounts', sa1)).status).toBe(200);
     await api.grant(pat.accountId, 'auditor', sa1, sa2);
     expect((await api.call('GET', '/v1/me', pat)).body).toMatchObject({
       roles: ['auditor'],

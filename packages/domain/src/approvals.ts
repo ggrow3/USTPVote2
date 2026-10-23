@@ -1,5 +1,5 @@
 import { deny, OK, type Check } from './check.js';
-import type { Role } from './roles.js';
+import { checkRoleChange, type Role } from './roles.js';
 
 interface ApprovalRule {
   readonly requesters: readonly Role[];
@@ -48,6 +48,30 @@ export function checkCanRequest(action: TwoPersonAction, requester: Actor, subje
     return deny(`${action} must be requested by ${rule.requesters.join(' or ')}`);
   }
   if (subject !== undefined && subject === requester.accountId) return deny('you cannot request this for your own account');
+  return OK;
+}
+
+/**
+ * Everything the API checks before it records a role-change request (design §10.2), in the same order and with the
+ * same reasons, so the web app can explain a refusal before sending: the requester may ask, the change fits the
+ * roles the account holds now (skipped when they are not known, `roles: null`), and no request for the same change
+ * to that account is already waiting.
+ */
+export function checkRoleRequest(
+  requester: Actor,
+  subject: { readonly accountId: string; readonly roles: readonly Role[] | null },
+  change: 'grant' | 'revoke',
+  role: Role,
+  pending: readonly { readonly action: TwoPersonAction; readonly subject: string }[],
+): Check {
+  const action = change === 'grant' ? 'role.grant' : 'role.revoke';
+  const allowed = checkCanRequest(action, requester, subject.accountId);
+  if (!allowed.ok) return allowed;
+  const fits = subject.roles ? checkRoleChange(subject.roles, change, role) : OK;
+  if (!fits.ok) return fits;
+  if (pending.some((p) => p.action === action && p.subject === subject.accountId)) {
+    return deny('a request for this is already waiting for a decision');
+  }
   return OK;
 }
 

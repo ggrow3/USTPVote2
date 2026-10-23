@@ -194,6 +194,22 @@ export interface MeResponse {
   };
 }
 
+/**
+ * `GET /v1/admin/accounts`: one row of the System Admins' People list (design §10.3). Only what finding someone and
+ * changing their roles needs: no legal name, state, logins or photo.
+ */
+export interface AccountSummary {
+  readonly accountId: string;
+  readonly displayName: string | null;
+  readonly primaryEmail: string | null;
+  readonly emailVerified: boolean;
+  readonly createdAt: string;
+  /** Null for accounts that never applied for membership. */
+  readonly memberStatus: MemberStatus | null;
+  /** Active roles, from `role_assignments`. */
+  readonly roles: readonly Role[];
+}
+
 /** `sign_in_methods/{provider}`; a missing document means enabled. */
 export interface SignInMethodRecord {
   readonly provider: SignInProvider;
