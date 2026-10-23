@@ -21,8 +21,9 @@ export class GravatarError extends Error {
   constructor(
     readonly kind: 'none' | 'unavailable' | 'too-large' | 'not-image',
     message: string,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
   }
 }
 
@@ -41,8 +42,9 @@ export class GravatarClient {
 
   async fetch(email: string): Promise<Buffer> {
     const signal = AbortSignal.timeout(this.timeoutMs);
+    let res: Response | undefined;
     try {
-      const res = await fetch(gravatarUrl(this.baseUrl, email), {
+      res = await fetch(gravatarUrl(this.baseUrl, email), {
         signal,
         redirect: 'manual',
         headers: { accept: 'image/*' },
@@ -55,9 +57,13 @@ export class GravatarClient {
       if (Number(res.headers.get('content-length')) > this.maxBytes) throw this.tooLarge();
       return await this.readAtMost(res.body);
     } catch (e) {
+      // A body left unread holds its connection until it is garbage-collected; release it now.
+      if (res?.body && !res.bodyUsed) await res.body.cancel().catch(() => undefined);
       if (e instanceof GravatarError) throw e;
       const timedOut = signal.aborted;
-      throw new GravatarError('unavailable', timedOut ? 'Gravatar did not answer in time' : 'Gravatar could not be reached');
+      throw new GravatarError('unavailable', timedOut ? 'Gravatar did not answer in time' : 'Gravatar could not be reached', {
+        cause: e,
+      });
     }
   }
 

@@ -137,7 +137,8 @@ export class PhotosService {
     } catch (e) {
       if (!(e instanceof GravatarError)) throw e;
       if (e.kind === 'none') throw new NotFoundException(`Gravatar has no picture for ${email}, or none rated G`);
-      this.logger.warn(`gravatar fetch failed: ${e.message}`);
+      const cause = e.cause instanceof Error ? ` (${e.cause.message})` : '';
+      this.logger.warn(`gravatar fetch failed: ${e.message}${cause}`);
       if (e.kind === 'unavailable') throw new ServiceUnavailableException('Gravatar is not answering; try again shortly');
       throw new BadGatewayException(`your Gravatar picture cannot be used: ${e.message}`);
     }

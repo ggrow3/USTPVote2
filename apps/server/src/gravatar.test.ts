@@ -27,6 +27,7 @@ const seen: string[] = [];
 beforeAll(async () => {
   server = createServer((req, res) => {
     seen.push(req.url ?? '');
+    res.setHeader('connection', 'close'); // each request on its own connection, as the cases in one test must not interfere
     answer(req, res);
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
@@ -67,9 +68,12 @@ describe('GravatarClient', () => {
     expect(await failure(new GravatarClient(base))).toMatchObject({ kind: 'not-image' });
   });
 
-  it('stops at the size limit, whether or not the length is announced', async () => {
+  it('stops at the size limit when the length is announced', async () => {
     answer = (_req, res) => res.writeHead(200, { 'content-type': 'image/png', 'content-length': '2000' }).end(Buffer.alloc(2000));
     expect(await failure(new GravatarClient(base, 5_000, 1_000))).toMatchObject({ kind: 'too-large' });
+  });
+
+  it('stops at the size limit while reading when the length is not announced', async () => {
     answer = (_req, res) => {
       res.writeHead(200, { 'content-type': 'image/png' }); // chunked, no length
       for (let i = 0; i < 4; i++) res.write(Buffer.alloc(500));
