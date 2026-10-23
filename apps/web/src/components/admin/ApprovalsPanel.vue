@@ -41,12 +41,17 @@ const actor = computed<Actor>(() => ({
   authAgeSeconds: 0,
 }));
 
-/** Why the API would refuse this request, mirroring its checks (design §10.2); roles are unknown for a typed ID. */
+/**
+ * Why the API would refuse this request, mirroring its checks (design §10.2); roles are unknown for a typed ID. The
+ * reason is the API's, with role names as people read them ("Membership Admin", not `membership_admin`).
+ */
 const requestBlocker = computed(() => {
   if (!subjectId.value) return null;
   const subject = { accountId: subjectId.value, roles: byId.value ? null : (picked.value?.roles ?? null) };
   const check = checkRoleRequest(actor.value, subject, request.change, request.role, pending.value);
-  return check.ok ? null : `${check.reason[0]!.toUpperCase()}${check.reason.slice(1)}.`;
+  if (check.ok) return null;
+  const reason = ROLES.reduce((text, r) => text.replaceAll(r, roleLabel(r)), check.reason);
+  return `${reason[0]!.toUpperCase()}${reason.slice(1)}.`;
 });
 
 const personLabel = (a: AccountSummary) => a.primaryEmail ?? a.displayName ?? a.accountId;
