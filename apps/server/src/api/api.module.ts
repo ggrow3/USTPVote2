@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
-import { AccountsController } from '../accounts/accounts.controller.js';
+import { AccountsAdminController, AccountsController } from '../accounts/accounts.controller.js';
 import { AccountsService } from '../accounts/accounts.service.js';
 import {
   ApprovalsController,
@@ -56,6 +56,7 @@ import { PositionsService } from '../positions/positions.service.js';
     PositionsController,
     PublicPositionsController,
     ApprovalsController,
+    AccountsAdminController,
     PublicSignInMethodsController,
     SignInMethodsController,
     AuditController,

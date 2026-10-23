@@ -1,11 +1,23 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
-import { ROLES, roleChangeSchema, type ApprovalRequestRecord, type Role } from 'ustp-domain';
+import { computed, inject, onMounted, reactive, ref, watch } from 'vue';
+import {
+  checkRoleRequest,
+  ROLES,
+  roleChangeSchema,
+  type AccountSummary,
+  type Actor,
+  type ApprovalRequestRecord,
+  type Role,
+} from 'ustp-domain';
+import { focusSoon } from '../../a11y.js';
 import { api } from '../../api.js';
-import { aRole, describeRequest, reviewLink } from '../../approval-text.js';
+import { aRole, describeRequest, reviewLink, roleLabel } from '../../approval-text.js';
 import { askReason, attempt } from '../../dialogs.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../../forms.js';
+import { ROLE_CHANGE } from '../../role-change.js';
 import { hasRole, session } from '../../session.js';
+
+const ROLE_OPTIONS = ROLES.map((r) => ({ label: roleLabel(r), value: r }));
 
 const pending = ref<ApprovalRequestRecord[]>([]);
 /** An empty list only means "nothing pending" once a load has succeeded. */
@@ -14,6 +26,61 @@ const me = computed(() => session.me?.account?.accountId);
 const isSystemAdmin = computed(() => hasRole('system_admin'));
 const request = reactive({ accountId: '', role: 'membership_admin' as Role, change: 'grant' as 'grant' | 'revoke', reason: '' });
 const errors = ref<FieldErrors>({});
+
+/** The person chosen from the People list; `byId` switches to typing an account ID instead. */
+const picked = ref<AccountSummary | null>(null);
+const byId = ref(false);
+const people = ref<AccountSummary[]>([]);
+const subjectId = computed(() => (byId.value ? request.accountId.trim() : (picked.value?.accountId ?? '')));
+
+/** The caller as the API's two-person checks see them (actorOf on the server). */
+const actor = computed<Actor>(() => ({
+  accountId: me.value ?? '',
+  roles: session.me?.roles ?? [],
+  mfa: !!session.me && (session.me.mfa.signedInWithMfa || !session.me.mfa.required),
+  authAgeSeconds: 0,
+}));
+
+/** Why the API would refuse this request, mirroring its checks (design §10.2); roles are unknown for a typed ID. */
+const requestBlocker = computed(() => {
+  if (!subjectId.value) return null;
+  const subject = { accountId: subjectId.value, roles: byId.value ? null : (picked.value?.roles ?? null) };
+  const check = checkRoleRequest(actor.value, subject, request.change, request.role, pending.value);
+  return check.ok ? null : `${check.reason[0]!.toUpperCase()}${check.reason.slice(1)}.`;
+});
+
+const personLabel = (a: AccountSummary) => a.primaryEmail ?? a.displayName ?? a.accountId;
+const rolesText = (roles: readonly Role[]) => (roles.length ? roles.map(roleLabel).join(', ') : 'no role');
+const pickedSummary = computed(() => {
+  const a = picked.value;
+  if (!a || byId.value) return null;
+  return `${a.displayName ?? personLabel(a)} holds ${rolesText(a.roles)}${a.memberStatus ? `; membership ${a.memberStatus}` : ''}.`;
+});
+
+async function searchPeople(text: string, update: (fn: () => void) => void, abort: () => void) {
+  const query = new URLSearchParams({ limit: '20' });
+  if (text.trim()) query.set('email', text.trim());
+  let found: AccountSummary[] = [];
+  const ok = await attempt(async () => {
+    found = await api<AccountSummary[]>('GET', `/v1/admin/accounts?${query}`);
+  });
+  if (ok) update(() => (people.value = found));
+  else abort();
+}
+
+// "Change roles" in the People tab lands here with that person chosen.
+const handoff = inject(ROLE_CHANGE, null);
+watch(
+  () => handoff?.target.value,
+  (target) => {
+    if (!target) return;
+    byId.value = false;
+    picked.value = target.account;
+    errors.value = {};
+    void focusSoon('#role-change-title');
+  },
+  { immediate: true },
+);
 
 /** Why the current admin cannot decide a request, mirroring the server's two-person checks (design §10.2). */
 function blocker(r: ApprovalRequestRecord): string | null {
@@ -43,12 +110,14 @@ async function decide(r: ApprovalRequestRecord, decision: 'approve' | 'reject') 
 }
 
 async function submitRequest() {
-  const checked = validate(roleChangeSchema, { ...request, accountId: request.accountId.trim() });
+  const checked = validate(roleChangeSchema, { ...request, accountId: subjectId.value });
   if (!checked.ok) {
     errors.value = checked.errors;
+    if (errors.value.accountId && !byId.value) errors.value.accountId = 'Choose a person.';
     return;
   }
   errors.value = {};
+  if (requestBlocker.value) return;
   const ok = await attempt(async () => {
     try {
       await api('POST', '/v1/admin/roles', checked.data);
@@ -60,6 +129,7 @@ async function submitRequest() {
   if (ok) {
     request.accountId = '';
     request.reason = '';
+    picked.value = null;
     await load();
   }
 }
@@ -108,21 +178,66 @@ onMounted(load);
 
     <q-card v-if="isSystemAdmin" flat bordered>
       <q-card-section>
-        <h2 class="text-subtitle1">Request a role change</h2>
+        <h2 id="role-change-title" class="text-subtitle1">Request a role change</h2>
         <div class="text-caption text-grey-7">
           Takes effect when a different System Admin approves. Auditors cannot hold any other role.
         </div>
       </q-card-section>
       <q-form class="q-px-md q-pb-md q-gutter-md" @submit.prevent="submitRequest">
-        <q-input
-          v-model="request.accountId"
-          outlined
-          dense
-          label="Account ID"
-          hint="Copy it from the Members tab or the person's Account page."
-          :error="!!errors.accountId"
-          :error-message="errors.accountId"
-        />
+        <div>
+          <q-select
+            v-if="!byId"
+            v-model="picked"
+            outlined
+            dense
+            use-input
+            clearable
+            input-debounce="300"
+            label="Person"
+            hint="Type the start of their email address."
+            :options="people"
+            :option-label="personLabel"
+            option-value="accountId"
+            :error="!!errors.accountId"
+            :error-message="errors.accountId"
+            @filter="searchPeople"
+          >
+            <template #option="scope">
+              <q-item v-bind="scope.itemProps">
+                <q-item-section>
+                  <q-item-label>{{ personLabel(scope.opt) }}</q-item-label>
+                  <q-item-label caption>
+                    {{ scope.opt.displayName ?? 'No name' }} · holds {{ rolesText(scope.opt.roles) }}
+                  </q-item-label>
+                </q-item-section>
+              </q-item>
+            </template>
+            <template #no-option>
+              <q-item>
+                <q-item-section class="text-grey-7">No account with that email.</q-item-section>
+              </q-item>
+            </template>
+          </q-select>
+          <q-input
+            v-else
+            v-model="request.accountId"
+            outlined
+            dense
+            label="Account ID"
+            hint="Copy it from the People tab or the person's Account page."
+            :error="!!errors.accountId"
+            :error-message="errors.accountId"
+          />
+          <div v-if="pickedSummary" class="text-caption q-mt-xs">{{ pickedSummary }}</div>
+          <q-btn
+            flat
+            dense
+            no-caps
+            class="q-mt-xs"
+            :label="byId ? 'Choose from the People list instead' : 'Enter an account ID instead'"
+            @click="byId = !byId"
+          />
+        </div>
         <div class="row q-gutter-md">
           <q-btn-toggle
             v-model="request.change"
@@ -135,10 +250,22 @@ onMounted(load);
               { label: 'Revoke', value: 'revoke' },
             ]"
           />
-          <q-select v-model="request.role" outlined dense style="min-width: 220px" label="Role" :options="[...ROLES]" />
+          <q-select
+            v-model="request.role"
+            outlined
+            dense
+            emit-value
+            map-options
+            style="min-width: 220px"
+            label="Role"
+            :options="ROLE_OPTIONS"
+          />
         </div>
         <q-input v-model="request.reason" outlined dense autogrow label="Reason" :error="!!errors.reason" :error-message="errors.reason" />
-        <q-btn type="submit" color="primary" label="Create request" />
+        <div>
+          <div aria-live="polite" class="text-caption text-orange-10" :class="{ 'q-mb-sm': requestBlocker }">{{ requestBlocker ?? '' }}</div>
+          <q-btn type="submit" color="primary" label="Create request" :disable="!!requestBlocker" />
+        </div>
       </q-form>
     </q-card>
   </div>
