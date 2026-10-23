@@ -3,6 +3,7 @@ import { isHex32 } from 'ustp-audit';
 import {
   Collections,
   ElectionCollections,
+  resultsCsv,
   resultsSummary,
   sealedInclusionProof,
   type BallotProof,
@@ -86,6 +87,16 @@ export class PublicElectionsService {
     const snap = await this.resultsRef(electionId).get();
     if (!snap.exists) throw new NotFoundException('results are published once every ballot is sealed and counted');
     return snap.data() as ResultsRecord;
+  }
+
+  /**
+   * The results as CSV for spreadsheets (design §9), made from the stored bundle and the frozen definition; served
+   * exactly when the bundle is. `origin` is where the web app is served, for the links back to the signed record.
+   */
+  async resultsCsv(electionId: string, origin: string): Promise<string> {
+    const results = await this.results(electionId);
+    const { definition } = await this.reader.load(electionId);
+    return resultsCsv({ results, definition, origin });
   }
 
   /** Every sealed block with its parts, once voting has closed. */

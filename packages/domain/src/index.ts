@@ -88,6 +88,7 @@ export { checkReceiptPart } from './receipt-check.js';
 export { buildResultsBundle, resultsHash, resultsSigningInput, tieBreakOrders, matchesCommitment, resultsSummary } from './results.js';
 export type { ResultsBundle, ResultsRecord, ResultsSummary, ContestOutcome } from './results.js';
 export { checkResults } from './results-check.js';
+export { resultsCsv, RESULTS_CSV_NOTICE } from './results-csv.js';
 export { positionInputSchema, addMonths, winnersOf, termsFromResults } from './positions.js';
 export type {
   PositionInput,

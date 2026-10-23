@@ -13,8 +13,9 @@ worker and anchored, casting secret (encrypted) or
 roll-call ballots, sealing them into k-anonymous published blocks, tallying them into signed results, two-person
 certification that seats the winners in their offices and destroys the ballot key, and checking a receipt or the
 results in the browser all work end to end against the Firebase emulators, in the API (emulator integration tests)
-and the web app. The `ustp-verify` CLI checks all of it independently from public data. The web app is an installable
-PWA and has had an accessibility pass. For deployment there are Terraform for dev, staging and prod (validated, not yet
+and the web app. The `ustp-verify` CLI checks all of it independently from public data. Published results can also be
+downloaded as CSV or loaded into Google Sheets with `IMPORTDATA`, with no Google integration. The web app is an
+installable PWA and has had an accessibility pass. For deployment there are Terraform for dev, staging and prod (validated, not yet
 applied), the server image (`apps/server/Dockerfile`) and a release workflow that builds, attests and rolls it out
 with a keyless CI identity; CI builds and starts the image on every pull request. The rest of M5 (bringing up dev, the
 "you voted" email, load test, reviews) is next. Dev (`ustpvote2-dev`) is up: Terraform applied, Identity Platform
