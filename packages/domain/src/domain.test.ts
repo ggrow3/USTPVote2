@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { checkCanApprove, checkCanChangeRole, checkCanRequest, type Actor, type PendingApproval } from './approvals.js';
 import { electionDocPath, sequenceId } from './collections.js';
-import { electionTransitionAuthority, isTerminal } from './election-state.js';
+import { checkElectionDeletable, electionTransitionAuthority, isTerminal } from './election-state.js';
 import { isUuidV7, uuidv7, uuidv7Timestamp } from './ids.js';
 import { checkStatusChange } from './member-status.js';
 import { checkRoleChange, conflictingRoles } from './roles.js';
@@ -64,6 +64,18 @@ describe('election lifecycle', () => {
     expect(isTerminal('certified')).toBe(true);
     expect(isTerminal('cancelled')).toBe(true);
     expect(isTerminal('open')).toBe(false);
+  });
+
+  it('deletes only cancelled elections nobody voted in, once their pool key is destroyed', () => {
+    const cancelled = { state: 'cancelled' as const, poolKeyVersion: null, poolKeyDestroyedAt: null };
+    expect(checkElectionDeletable(cancelled, 0)).toEqual({ ok: true });
+    expect(checkElectionDeletable({ ...cancelled, state: 'draft' }, 0)).toMatchObject({ ok: false, reason: expect.stringMatching(/only cancelled/) });
+    expect(checkElectionDeletable({ ...cancelled, state: 'certified' }, 0).ok).toBe(false);
+    expect(checkElectionDeletable(cancelled, 1)).toMatchObject({ ok: false, reason: expect.stringMatching(/^1 ballot was cast/) });
+    expect(checkElectionDeletable(cancelled, 3)).toMatchObject({ ok: false, reason: expect.stringMatching(/^3 ballots were cast/) });
+    const keyed = { ...cancelled, poolKeyVersion: 'emulator/pool/1' };
+    expect(checkElectionDeletable(keyed, 0)).toMatchObject({ ok: false, reason: expect.stringMatching(/encryption key/) });
+    expect(checkElectionDeletable({ ...keyed, poolKeyDestroyedAt: '2026-10-23T00:00:00Z' }, 0)).toEqual({ ok: true });
   });
 });
 

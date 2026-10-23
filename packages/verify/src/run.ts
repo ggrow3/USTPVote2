@@ -1,10 +1,10 @@
 import type { BallotReceipt, PartEvidence } from 'ustp-domain';
 import { mapLimited, type PublicApi } from './api.js';
-import { checkElection } from './election.js';
+import { checkElection, missingElectionFindings } from './election.js';
 import { checkEntryScan } from './entries.js';
 import { anchorObjectFindings, checkLedger, type AnchorFiles } from './ledger.js';
 import { checkReceipt, receiptCommitment } from './receipt.js';
-import { fail, type Section } from './report.js';
+import type { Section } from './report.js';
 import { resultsFindings } from './results.js';
 
 export interface VerifyOptions {
@@ -41,14 +41,7 @@ export async function verify(api: PublicApi, options: VerifyOptions = {}): Promi
   const sections: Section[] = [{ title: 'Ledger', findings: ledger.findings }];
   if (options.anchors) sections.push({ title: 'Anchor objects', findings: anchorObjectFindings(blocks, keys, options.anchors) });
 
-  if (electionId && !record) {
-    sections.push({
-      title: `Election ${electionId}`,
-      findings: [fail('The election record is published', 'the api has no such election, or it is still a draft')],
-    });
-    return sections;
-  }
-  if (!record && !options.scanEntries) return sections;
+  if (!electionId && !options.scanEntries) return sections;
 
   const lastBlock = ledger.verified.at(-1) ?? null;
   const through = lastBlock?.lastSeq ?? 0;
@@ -56,7 +49,11 @@ export async function verify(api: PublicApi, options: VerifyOptions = {}): Promi
   const found = await mapLimited(seqs, CONCURRENCY, (seq) => api.ledgerEntry(seq));
   const scan = checkEntryScan(new Map(seqs.map((seq, i) => [seq, found[i]!])), through, ledger.verified);
   sections.push({ title: 'Public ledger entries', findings: scan.findings });
-  if (!record) return sections;
+  if (!record) {
+    // Without a record only the ledger can say what became of the election (deleted, design §6.1).
+    if (electionId) sections.push({ title: `Election ${electionId}`, findings: missingElectionFindings(electionId, scan.entries) });
+    return sections;
+  }
 
   const id = record.election.electionId;
   const [sealedBlocks, results] = await Promise.all([api.sealedBlocks(id), api.results(id)]);
