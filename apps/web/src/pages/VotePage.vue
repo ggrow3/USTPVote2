@@ -162,93 +162,93 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
 
 <template>
   <q-page padding>
-    <q-btn flat no-caps icon="arrow_back" label="Your ballots" to="/ballot" class="q-mb-sm" />
-    <h1 class="text-h5">{{ view?.definition.title ?? 'Ballot' }}</h1>
-    <template v-if="view">
-      <div class="text-caption text-grey-7 q-mb-md">
-        Voting {{ new Date(view.election.opensAt).toLocaleString() }} – {{ new Date(view.election.closesAt).toLocaleString() }}
-        · {{ view.election.secrecy === 'secret' ? 'Secret ballot' : 'Roll-call: how you vote is published with your name' }}
+    <div class="ustp-content">
+      <q-btn flat dense no-caps icon="arrow_back" label="Your ballots" to="/ballot" class="ustp-back" />
+      <div>
+        <h1 class="text-h5">{{ view?.definition.title ?? 'Ballot' }}</h1>
+        <div v-if="view" class="text-caption text-grey-7">
+          Voting {{ new Date(view.election.opensAt).toLocaleString() }} – {{ new Date(view.election.closesAt).toLocaleString() }}
+          · {{ view.election.secrecy === 'secret' ? 'Secret ballot' : 'Roll-call: how you vote is published with your name' }}
+        </div>
       </div>
-      <p v-if="view.definition.description" style="white-space: pre-wrap">{{ view.definition.description }}</p>
+      <template v-if="view">
+        <p v-if="view.definition.description" style="white-space: pre-wrap">{{ view.definition.description }}</p>
 
-      <q-banner v-if="integrity === false" class="bg-negative text-white q-mb-md" rounded>
-        This ballot does not match the definition frozen when the election was scheduled. Do not vote; tell an Auditor.
-      </q-banner>
-      <div v-else class="text-caption text-grey-7 q-mb-md">
-        <q-icon name="verified" color="positive" /> Checked in this browser: this is the ballot frozen at scheduling
-        (<code>{{ view.definitionHash.slice(0, 16) }}…</code>), proposal texts included.
-      </div>
+        <q-banner v-if="integrity === false" class="bg-negative text-white" rounded>
+          This ballot does not match the definition frozen when the election was scheduled. Do not vote; tell an Auditor.
+        </q-banner>
+        <div v-else class="text-caption text-grey-7">
+          <q-icon name="verified" color="positive" /> Checked in this browser: this is the ballot frozen at scheduling
+          (<code>{{ view.definitionHash.slice(0, 16) }}…</code>), proposal texts included.
+        </div>
 
-      <!-- Receipt after casting, or the record that this voter already voted. -->
-      <q-card
-        v-if="view.election.castAt"
-        tag="section"
-        aria-labelledby="receipt-heading"
-        flat
-        bordered
-        class="q-mb-md"
-        style="max-width: 860px"
-      >
-        <q-card-section>
-          <h2 id="receipt-heading" class="text-subtitle1">You voted on {{ new Date(view.election.castAt).toLocaleString() }}</h2>
-          <div v-if="commitmentsMatch === true" class="text-positive">
-            The server's commitments match the ones this browser computed before sending.
-          </div>
-          <div v-else-if="commitmentsMatch === false" class="text-negative">
-            The server's commitments differ from the ones this browser computed. Keep your receipt and tell an Auditor.
-          </div>
-        </q-card-section>
-        <template v-if="receipt">
-          <q-card-section class="q-pt-none">
-            <div class="text-caption text-grey-7 q-mb-sm">
-              Your receipt: one commitment per contest. Once your ballot is sealed — when enough others have voted, or
-              when voting closes — the Verify page checks that each one is in the published record. Anyone who sees the
-              full receipt can tell how you voted, so keep it to yourself.
+        <!-- Receipt after casting, or the record that this voter already voted. -->
+        <q-card
+          v-if="view.election.castAt"
+          tag="section"
+          aria-labelledby="receipt-heading"
+          flat
+          bordered
+        >
+          <q-card-section>
+            <h2 id="receipt-heading" class="text-subtitle1">You voted on {{ new Date(view.election.castAt).toLocaleString() }}</h2>
+            <div v-if="commitmentsMatch === true" class="text-positive">
+              The server's commitments match the ones this browser computed before sending.
             </div>
-            <q-markup-table flat dense>
-              <thead>
-                <tr>
-                  <th class="text-left">Contest</th>
-                  <th class="text-left">Commitment</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="c in receipt.commitments" :key="c.contestId">
-                  <td>{{ contestTitle(c.contestId) }}</td>
-                  <td><code>{{ c.commitment }}</code></td>
-                </tr>
-              </tbody>
-            </q-markup-table>
+            <div v-else-if="commitmentsMatch === false" class="text-negative">
+              The server's commitments differ from the ones this browser computed. Keep your receipt and tell an Auditor.
+            </div>
           </q-card-section>
-          <q-card-actions>
-            <q-btn color="primary" no-caps icon="download" label="Download receipt" @click="downloadReceipt(receipt)" />
-            <q-toggle :model-value="kept" label="Keep a copy in this browser" @update:model-value="toggleKeep" />
-            <q-space />
-            <q-btn flat no-caps icon="fact_check" label="Verify" :to="`/verify?election=${electionId}`">
-              <span class="sr-only"> this receipt</span>
-            </q-btn>
-          </q-card-actions>
-        </template>
-        <q-card-section v-else class="q-pt-none text-caption text-grey-7">
-          This browser has no copy of your receipt. If you downloaded it, open it on the Verify page after voting closes.
-        </q-card-section>
-      </q-card>
+          <template v-if="receipt">
+            <q-card-section>
+              <div class="text-caption text-grey-7 q-mb-sm">
+                Your receipt: one commitment per contest. Once your ballot is sealed — when enough others have voted, or
+                when voting closes — the Verify page checks that each one is in the published record. Anyone who sees the
+                full receipt can tell how you voted, so keep it to yourself.
+              </div>
+              <q-markup-table flat dense>
+                <thead>
+                  <tr>
+                    <th class="text-left">Contest</th>
+                    <th class="text-left">Commitment</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="c in receipt.commitments" :key="c.contestId">
+                    <td>{{ contestTitle(c.contestId) }}</td>
+                    <td><code>{{ c.commitment }}</code></td>
+                  </tr>
+                </tbody>
+              </q-markup-table>
+            </q-card-section>
+            <q-card-section class="ustp-actions">
+              <q-btn color="primary" no-caps icon="download" label="Download receipt" @click="downloadReceipt(receipt)" />
+              <q-toggle :model-value="kept" label="Keep a copy in this browser" @update:model-value="toggleKeep" />
+              <q-space />
+              <q-btn flat no-caps icon="fact_check" label="Verify" :to="`/verify?election=${electionId}`">
+                <span class="sr-only"> this receipt</span>
+              </q-btn>
+            </q-card-section>
+          </template>
+          <q-card-section v-else class="text-caption text-grey-7">
+            This browser has no copy of your receipt. If you downloaded it, open it on the Verify page after voting closes.
+          </q-card-section>
+        </q-card>
 
-      <q-banner v-else-if="view.election.state === 'scheduled'" class="bg-grey-3 text-black q-mb-md" rounded>
-        Voting opens {{ new Date(view.election.opensAt).toLocaleString() }}. You can read the ballot now.
-      </q-banner>
-      <q-banner v-else-if="view.election.state !== 'open'" class="bg-grey-3 text-black q-mb-md" rounded>
-        Voting has closed.
-      </q-banner>
+        <q-banner v-else-if="view.election.state === 'scheduled'" class="bg-grey-3 text-black" rounded>
+          Voting opens {{ new Date(view.election.opensAt).toLocaleString() }}. You can read the ballot now.
+        </q-banner>
+        <q-banner v-else-if="view.election.state !== 'open'" class="bg-grey-3 text-black" rounded>
+          Voting has closed.
+        </q-banner>
 
-      <div class="column q-gutter-md" style="max-width: 860px">
         <q-card v-for="c in contests" :key="c.contestId" tag="section" :aria-labelledby="`contest-${c.contestId}`" flat bordered>
           <q-card-section>
             <h2 :id="`contest-${c.contestId}`" class="text-subtitle1">{{ c.title }}</h2>
             <div v-if="c.description" class="text-body2" style="white-space: pre-wrap">{{ c.description }}</div>
             <div v-for="line in rulesText(c.spec)" :key="line" class="text-caption text-grey-7">{{ line }}</div>
           </q-card-section>
-          <q-expansion-item v-if="proposalText(c)" dense label="Read the full text" class="q-px-sm">
+          <q-expansion-item v-if="proposalText(c)" dense label="Read the full text">
             <div class="q-pa-md text-body2" style="white-space: pre-wrap">{{ proposalText(c)!.body }}</div>
           </q-expansion-item>
 
@@ -323,7 +323,7 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
                   </q-item-section>
                 </q-item>
               </q-list>
-              <div v-if="unranked(c).length" class="row q-gutter-sm" role="group" :aria-label="`Not yet ranked in ${c.title}`">
+              <div v-if="unranked(c).length" class="ustp-actions" role="group" :aria-label="`Not yet ranked in ${c.title}`">
                 <q-btn
                   v-for="k in unranked(c)"
                   :key="k.candidateId"
@@ -351,43 +351,43 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
             </q-btn>
           </q-card-section>
         </q-card>
-      </div>
 
-      <div v-if="view.election.state === 'open' && !view.election.castAt" class="q-mt-lg">
-        <q-btn
-          color="primary"
-          size="lg"
-          label="Review and cast"
-          :disable="skipped.length === contests.length || integrity === false"
-          aria-describedby="cast-hint"
-          @click="reviewing = true"
-        />
-        <span v-if="skipped.length === contests.length" id="cast-hint" class="q-ml-md text-grey-7">Answer at least one contest.</span>
-      </div>
+        <div v-if="view.election.state === 'open' && !view.election.castAt" class="ustp-actions">
+          <q-btn
+            color="primary"
+            size="lg"
+            label="Review and cast"
+            :disable="skipped.length === contests.length || integrity === false"
+            aria-describedby="cast-hint"
+            @click="reviewing = true"
+          />
+          <span v-if="skipped.length === contests.length" id="cast-hint" class="text-grey-7">Answer at least one contest.</span>
+        </div>
 
-      <q-dialog v-model="reviewing" aria-labelledby="review-title">
-        <q-card style="min-width: min(360px, 95vw); max-width: 640px">
-          <!-- Focus starts at the title, so a screen reader reads the summary from the top. -->
-          <q-card-section>
-            <h2 id="review-title" class="text-h6 ustp-focus-target" tabindex="-1" data-autofocus>Cast this ballot?</h2>
-          </q-card-section>
-          <q-card-section class="q-pt-none">
-            <q-list dense separator>
-              <q-item v-for="c in contests" :key="c.contestId">
-                <q-item-section>
-                  <q-item-label>{{ c.title }}</q-item-label>
-                  <q-item-label caption>{{ answered(c) ? answerText(c, answers[c.contestId]) : 'Skipped' }}</q-item-label>
-                </q-item-section>
-              </q-item>
-            </q-list>
-            <div class="text-caption text-grey-7 q-mt-sm">You cannot change your ballot after casting it.</div>
-          </q-card-section>
-          <q-card-actions align="right">
-            <q-btn flat label="Back" v-close-popup />
-            <q-btn color="primary" label="Cast ballot" :loading="casting" @click="cast" />
-          </q-card-actions>
-        </q-card>
-      </q-dialog>
-    </template>
+        <q-dialog v-model="reviewing" aria-labelledby="review-title">
+          <q-card class="ustp-dialog">
+            <!-- Focus starts at the title, so a screen reader reads the summary from the top. -->
+            <q-card-section>
+              <h2 id="review-title" class="text-h6 ustp-focus-target" tabindex="-1" data-autofocus>Cast this ballot?</h2>
+            </q-card-section>
+            <q-card-section>
+              <q-list dense separator>
+                <q-item v-for="c in contests" :key="c.contestId">
+                  <q-item-section>
+                    <q-item-label>{{ c.title }}</q-item-label>
+                    <q-item-label caption>{{ answered(c) ? answerText(c, answers[c.contestId]) : 'Skipped' }}</q-item-label>
+                  </q-item-section>
+                </q-item>
+              </q-list>
+              <div class="text-caption text-grey-7 q-mt-sm">You cannot change your ballot after casting it.</div>
+            </q-card-section>
+            <q-card-actions align="right">
+              <q-btn flat label="Back" v-close-popup />
+              <q-btn color="primary" label="Cast ballot" :loading="casting" @click="cast" />
+            </q-card-actions>
+          </q-card>
+        </q-dialog>
+      </template>
+    </div>
   </q-page>
 </template>

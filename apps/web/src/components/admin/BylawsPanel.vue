@@ -219,21 +219,21 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="column q-gutter-md" style="max-width: 900px">
+  <div class="ustp-content">
     <q-card flat bordered>
       <q-card-section>
         <h2 class="text-subtitle1">Current bylaws</h2>
-        <div v-if="current" class="text-grey-7" style="overflow-wrap: anywhere">
+        <div v-if="current" class="text-caption text-grey-7" style="overflow-wrap: anywhere">
           {{ current.title }} · version {{ current.version }} · published
           {{ new Date(current.publishedAt).toLocaleDateString() }}<span v-if="current.amends"> · amends {{ current.amends }}</span> · SHA-256
           <code>{{ current.contentHash }}</code>
         </div>
-        <div v-else class="text-grey-7">None published yet. Applications cannot be submitted until one is.</div>
+        <div v-else class="text-caption text-grey-7">None published yet. Applications cannot be submitted until one is.</div>
       </q-card-section>
-      <q-card-actions v-if="current">
-        <q-btn flat no-caps color="primary" icon="download" label="Download stamped .docx" @click="download(current.version)" />
+      <q-card-section v-if="current" class="ustp-actions">
+        <q-btn outline no-caps color="primary" icon="download" label="Download stamped .docx" @click="download(current.version)" />
         <q-btn flat no-caps color="primary" icon="open_in_new" label="Public page" to="/bylaws" />
-      </q-card-actions>
+      </q-card-section>
     </q-card>
 
     <q-card v-if="!draft.open" flat bordered>
@@ -244,7 +244,7 @@ onMounted(load);
           publish it. New applications must agree to the newest version.
         </div>
       </q-card-section>
-      <q-card-section class="row q-gutter-sm items-center">
+      <q-card-section class="ustp-toolbar">
         <q-btn v-if="current" color="primary" no-caps :label="`Start from version ${current.version}`" @click="startFromCurrent" />
         <q-file
           v-model="importFile"
@@ -252,7 +252,6 @@ onMounted(load);
           dense
           accept=".docx"
           label="Import from Word (.docx)"
-          style="min-width: 240px"
           :loading="importing"
           @update:model-value="startFromDocx"
         />
@@ -270,23 +269,33 @@ onMounted(load);
         </div>
       </q-card-section>
 
-      <q-card-section class="q-gutter-md q-pt-none">
-        <div class="row q-col-gutter-md">
+      <q-card-section class="ustp-form">
+        <div class="ustp-row">
           <q-input
             v-model="draft.version"
-            class="col-12 col-sm-4"
             outlined
             dense
+            hide-bottom-space
             label="Version (e.g. 2026.2)"
             :error="!!errors.version"
             :error-message="errors.version"
           />
-          <q-input v-model="draft.title" class="col-12 col-sm-8" outlined dense label="Title" :error="!!errors.title" :error-message="errors.title" />
+          <q-input
+            v-model="draft.title"
+            class="ustp-row__wide"
+            outlined
+            dense
+            hide-bottom-space
+            label="Title"
+            :error="!!errors.title"
+            :error-message="errors.title"
+          />
         </div>
         <q-input
           v-model="draft.changeNote"
           outlined
           dense
+          hide-bottom-space
           autogrow
           type="textarea"
           label="What changed and why (shown with the version)"
@@ -294,7 +303,7 @@ onMounted(load);
           :error-message="errors.changeNote"
         />
 
-        <div class="row items-center q-gutter-sm">
+        <div class="ustp-toolbar">
           <q-btn-toggle
             v-model="wholeText"
             no-caps
@@ -309,13 +318,13 @@ onMounted(load);
           <template v-if="!wholeText">
             <q-input
               v-model.number="goTo"
-              dense
+              class="ustp-field--short"
               outlined
+              dense
               type="number"
               :min="1"
               :max="draft.lines.length"
               label="Line"
-              style="width: 110px"
               @keyup.enter="goToLine"
             />
             <q-btn flat no-caps color="primary" label="Edit line" :disable="!goTo" @click="goToLine" />
@@ -328,46 +337,50 @@ onMounted(load);
           v-if="wholeText"
           v-model="draftText"
           outlined
+          dense
+          hide-bottom-space
           type="textarea"
           rows="18"
           label="Full text"
           :error="!!errors.text"
           :error-message="errors.text"
         />
-        <div v-else class="draft-lines" role="list" aria-label="Draft text, one entry per line">
-          <div
-            v-for="(line, i) in draft.lines"
-            :key="i"
-            role="listitem"
-            class="draft-line"
-            :class="{ 'draft-changed': changedLines.has(i + 1), 'draft-flagged': flags.has(i + 1) }"
-          >
-            <span v-if="flags.has(i + 1)" class="draft-bar text-deep-orange-10" aria-hidden="true" />
-            <span class="draft-number" aria-hidden="true">{{ i + 1 }}</span>
-            <span class="draft-text">
-              <span v-if="flags.has(i + 1)" class="draft-flag text-deep-orange-10">
-                <q-icon name="flag" size="16px" aria-hidden="true" />
-                <span aria-hidden="true">{{ findingsLabel(flags.get(i + 1)!) }}</span>
-                <span class="sr-only">Flagged by the check: {{ flagDescription(i + 1) }}.</span>
+        <div v-else>
+          <div class="draft-lines" role="list" aria-label="Draft text, one entry per line">
+            <div
+              v-for="(line, i) in draft.lines"
+              :key="i"
+              role="listitem"
+              class="draft-line"
+              :class="{ 'draft-changed': changedLines.has(i + 1), 'draft-flagged': flags.has(i + 1) }"
+            >
+              <span v-if="flags.has(i + 1)" class="draft-bar text-deep-orange-10" aria-hidden="true" />
+              <span class="draft-number" aria-hidden="true">{{ i + 1 }}</span>
+              <span class="draft-text">
+                <span v-if="flags.has(i + 1)" class="draft-flag text-deep-orange-10">
+                  <q-icon name="flag" size="16px" aria-hidden="true" />
+                  <span aria-hidden="true">{{ findingsLabel(flags.get(i + 1)!) }}</span>
+                  <span class="sr-only">Flagged by the check: {{ flagDescription(i + 1) }}.</span>
+                </span>
+                {{ line || ' ' }}
               </span>
-              {{ line || ' ' }}
-            </span>
-            <q-btn
-              flat
-              round
-              dense
-              size="sm"
-              icon="edit"
-              :data-draft-line="i + 1"
-              :aria-label="`Edit line ${i + 1}${flags.has(i + 1) ? ' (flagged)' : ''}`"
-              @click="editLine(i)"
-            />
+              <q-btn
+                flat
+                round
+                dense
+                size="sm"
+                icon="edit"
+                :data-draft-line="i + 1"
+                :aria-label="`Edit line ${i + 1}${flags.has(i + 1) ? ' (flagged)' : ''}`"
+                @click="editLine(i)"
+              />
+            </div>
           </div>
+          <div v-if="errors.text" class="ustp-message text-negative">{{ errors.text }}</div>
         </div>
-        <div v-if="!wholeText && errors.text" class="text-negative text-caption">{{ errors.text }}</div>
       </q-card-section>
 
-      <q-card-section v-if="draft.base" class="q-pt-none">
+      <q-card-section v-if="draft.base">
         <h3 class="text-subtitle2">Changes from version {{ draft.base.version }}</h3>
         <div v-if="changes.length === 0" class="text-grey-7">None yet.</div>
         <template v-else>
@@ -381,7 +394,7 @@ onMounted(load);
         </template>
       </q-card-section>
 
-      <q-card-section class="q-pt-none">
+      <q-card-section>
         <BylawsCheckSection
           :check="checker.state.check"
           :checked-lines="checker.state.checkedLines"
@@ -395,40 +408,40 @@ onMounted(load);
         />
       </q-card-section>
 
-      <q-card-section v-if="errors._" class="q-pt-none">
+      <q-card-section v-if="errors._">
         <q-banner class="bg-negative text-white" rounded>{{ errors._ }}</q-banner>
       </q-card-section>
-      <q-card-actions>
+      <q-card-section class="ustp-actions">
         <q-btn color="primary" no-caps label="Publish" @click="publish" />
         <q-btn flat no-caps label="Discard draft" @click="discard" />
-      </q-card-actions>
+      </q-card-section>
     </q-card>
 
     <q-card v-if="versions.length" flat bordered>
       <q-card-section>
         <h2 class="text-subtitle1">All versions</h2>
-        <q-list separator>
-          <q-item v-for="v in versions" :key="v.version">
-            <q-item-section>
-              <q-item-label>Version {{ v.version }} · {{ v.title }}</q-item-label>
-              <q-item-label caption>
-                Published {{ new Date(v.publishedAt).toLocaleDateString() }}<span v-if="v.amends"> · amends {{ v.amends }}</span
-                ><span v-if="v.changeNote"> · {{ v.changeNote }}</span>
-              </q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <div class="row q-gutter-xs">
-                <q-btn flat dense no-caps color="primary" icon="download" :aria-label="`Download version ${v.version} as .docx`" @click="download(v.version)" />
-                <q-btn flat dense no-caps color="primary" icon="open_in_new" :aria-label="`Open version ${v.version}`" :to="`/bylaws/${encodeURIComponent(v.version)}`" />
-              </div>
-            </q-item-section>
-          </q-item>
-        </q-list>
       </q-card-section>
+      <q-list separator>
+        <q-item v-for="v in versions" :key="v.version">
+          <q-item-section>
+            <q-item-label>Version {{ v.version }} · {{ v.title }}</q-item-label>
+            <q-item-label caption>
+              Published {{ new Date(v.publishedAt).toLocaleDateString() }}<span v-if="v.amends"> · amends {{ v.amends }}</span
+              ><span v-if="v.changeNote"> · {{ v.changeNote }}</span>
+            </q-item-label>
+          </q-item-section>
+          <q-item-section side>
+            <div class="ustp-actions">
+              <q-btn flat dense no-caps color="primary" icon="download" :aria-label="`Download version ${v.version} as .docx`" @click="download(v.version)" />
+              <q-btn flat dense no-caps color="primary" icon="open_in_new" :aria-label="`Open version ${v.version}`" :to="`/bylaws/${encodeURIComponent(v.version)}`" />
+            </div>
+          </q-item-section>
+        </q-item>
+      </q-list>
     </q-card>
 
     <q-dialog v-model="editor.open">
-      <q-card style="min-width: min(640px, 92vw)">
+      <q-card class="ustp-dialog ustp-dialog--wide">
         <q-card-section>
           <h2 class="text-subtitle1">Line {{ editor.index + 1 }}</h2>
           <div v-if="draft.base && baseLine !== undefined" class="text-caption text-grey-7">
@@ -436,7 +449,7 @@ onMounted(load);
           </div>
         </q-card-section>
         <q-card-section class="q-pt-none">
-          <q-input v-model="editor.text" outlined autogrow autofocus type="textarea" label="Text of this line" @keydown.ctrl.enter="saveLine" />
+          <q-input v-model="editor.text" outlined dense autogrow autofocus type="textarea" label="Text of this line" @keydown.ctrl.enter="saveLine" />
         </q-card-section>
         <q-card-actions align="right">
           <q-btn flat no-caps color="negative" label="Delete line" @click="deleteLine" />

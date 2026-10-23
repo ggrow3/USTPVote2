@@ -251,8 +251,8 @@ async function submit() {
 
 <template>
   <q-page padding>
-    <h1 class="text-h5 q-mb-md">Register as a member</h1>
-    <div style="max-width: 760px">
+    <div class="ustp-content">
+      <h1 class="text-h5">Register as a member</h1>
       <ol v-if="session.ready && step !== null" class="register-steps" aria-label="Steps to register">
         <li
           v-for="(label, i) in STEPS"
@@ -271,24 +271,32 @@ async function submit() {
       <div v-if="!session.ready" class="text-grey-7">Loading…</div>
 
       <template v-else-if="!session.user">
-        <q-banner v-if="methodsError" class="bg-negative text-white q-mb-md" rounded>{{ methodsError }}</q-banner>
-        <q-banner v-if="signInError" class="bg-negative text-white q-mb-md" rounded>{{ signInError }}</q-banner>
+        <q-banner v-if="methodsError" class="bg-negative text-white" rounded>{{ methodsError }}</q-banner>
+        <q-banner v-if="signInError" class="bg-negative text-white" rounded>{{ signInError }}</q-banner>
 
-        <TwoStepCodeCard v-if="challenge" v-model:code="code" :busy="signingIn" @submit="submitCode" @cancel="challenge = null" />
+        <TwoStepCodeCard
+          v-if="challenge"
+          v-model:code="code"
+          class="ustp-narrow"
+          :busy="signingIn"
+          @submit="submitCode"
+          @cancel="challenge = null"
+        />
 
-        <q-card v-else flat bordered style="max-width: 480px">
+        <q-card v-else flat bordered class="ustp-narrow">
           <q-card-section>
             <h2 class="text-subtitle1">Create your login</h2>
-            <div class="text-grey-7">You will use it to apply, to vote and to manage your membership.</div>
+            <div class="text-caption text-grey-7">You will use it to apply, to vote and to manage your membership.</div>
           </q-card-section>
 
-          <q-card-section v-if="federated.length" class="column q-gutter-sm q-pt-none">
+          <q-card-section v-if="federated.length" class="ustp-stack">
             <q-btn
               v-for="p in federated"
               :key="p"
               outline
               color="primary"
               no-caps
+              class="full-width"
               :disable="signingIn"
               :label="`Continue with ${PROVIDER_LABELS[p]}`"
               @click="withProvider(p)"
@@ -297,7 +305,7 @@ async function submit() {
 
           <template v-if="enabled?.password">
             <q-separator v-if="federated.length" />
-            <q-form class="q-pa-md q-gutter-md" @submit.prevent="createLogin">
+            <q-form class="ustp-form q-pa-md" @submit.prevent="createLogin">
               <h3 v-if="federated.length" class="text-body1">Or use your email address</h3>
               <q-input
                 v-model="login.email"
@@ -317,12 +325,15 @@ async function submit() {
                 outlined
                 dense
                 autocomplete="new-password"
+                hide-bottom-space
                 :hint="`At least ${MIN_PASSWORD_LENGTH} characters. No other rules.`"
                 :error="!!loginErrors.password"
                 :error-message="loginErrors.password"
               />
               <div class="text-caption text-grey-7">We will email you a link to confirm the address.</div>
-              <q-btn type="submit" color="primary" label="Create login and continue" :loading="signingIn" />
+              <div class="ustp-actions">
+                <q-btn type="submit" color="primary" label="Create login and continue" :loading="signingIn" />
+              </div>
             </q-form>
           </template>
 
@@ -343,7 +354,7 @@ async function submit() {
       <q-card v-else-if="status === 'applicant'" flat bordered>
         <q-card-section>
           <h2 id="application-status" class="text-subtitle1">Your application is being reviewed</h2>
-          <div class="text-grey-7">
+          <div class="text-caption text-grey-7">
             Submitted {{ applications[0] ? new Date(applications[0].submittedAt).toLocaleString() : '' }}. A Membership
             Admin will decide it; you will see the outcome here.
           </div>
@@ -358,21 +369,21 @@ async function submit() {
       </q-card>
 
       <template v-else>
-        <h2 id="apply-heading" class="text-subtitle1 q-mb-sm">Apply for membership</h2>
-        <q-banner v-if="!session.user.emailVerified" class="bg-orange-1 text-black q-mb-md" rounded>
+        <h2 id="apply-heading" class="text-subtitle1">Apply for membership</h2>
+        <q-banner v-if="!session.user.emailVerified" class="bg-orange-1 text-black" rounded>
           We sent a link to {{ session.user.email }} to confirm the address. Open it before you submit; you can fill
           in the form first, and your answers stay here.
           <template #action>
             <q-btn flat no-caps label="Send the link again" @click="resendVerification" />
           </template>
         </q-banner>
-        <q-banner v-if="lastDecision?.status === 'rejected'" class="bg-orange-1 text-black q-mb-md" rounded>
+        <q-banner v-if="lastDecision?.status === 'rejected'" class="bg-orange-1 text-black" rounded>
           Your previous application was not approved: {{ lastDecision.decisionReason }}
         </q-banner>
-        <q-banner v-if="bylawsError" class="bg-negative text-white q-mb-md" rounded>{{ bylawsError }}</q-banner>
+        <q-banner v-if="bylawsError" class="bg-negative text-white" rounded>{{ bylawsError }}</q-banner>
         <div v-else-if="!bylaws" class="text-grey-7">Loading the bylaws…</div>
 
-        <q-card v-if="bylaws" flat bordered class="q-mb-md">
+        <q-card v-if="bylaws" flat bordered>
           <q-card-section>
             <h3 id="bylaws-title" class="text-subtitle1">{{ bylaws.title }}</h3>
             <div class="text-caption text-grey-7">
@@ -394,103 +405,160 @@ async function submit() {
           </q-card-section>
         </q-card>
 
-        <q-form v-if="bylaws" class="q-gutter-md" @submit.prevent="submit">
-          <fieldset class="register-section">
-            <legend class="text-subtitle1">About you</legend>
-            <q-input
-              v-model="form.legalName"
-              outlined
-              label="Legal name"
-              autocomplete="name"
-              :error="!!errors.legalName"
-              :error-message="errors.legalName"
-            />
-            <q-input v-model="form.preferredName" outlined label="Preferred name (optional)" autocomplete="nickname" />
-            <q-input
-              v-model="form.dateOfBirth"
-              outlined
-              stack-label
-              type="date"
-              label="Date of birth"
-              autocomplete="bday"
-              :hint="`Members must be at least ${MINIMUM_MEMBER_AGE}. Kept with your application only, for the membership review.`"
-              :error="!!errors.dateOfBirth"
-              :error-message="errors.dateOfBirth"
-            />
-          </fieldset>
+        <!-- Each section of the form is a card, its legend the card's heading. -->
+        <q-form v-if="bylaws" class="ustp-stack" @submit.prevent="submit">
+          <q-card flat bordered>
+            <q-card-section>
+              <fieldset class="ustp-fieldset">
+                <legend class="text-subtitle1">About you</legend>
+                <div class="ustp-form">
+                  <q-input
+                    v-model="form.legalName"
+                    outlined
+                    dense
+                    hide-bottom-space
+                    label="Legal name"
+                    autocomplete="name"
+                    :error="!!errors.legalName"
+                    :error-message="errors.legalName"
+                  />
+                  <q-input v-model="form.preferredName" outlined dense label="Preferred name (optional)" autocomplete="nickname" />
+                  <q-input
+                    v-model="form.dateOfBirth"
+                    outlined
+                    dense
+                    hide-bottom-space
+                    stack-label
+                    type="date"
+                    label="Date of birth"
+                    autocomplete="bday"
+                    :hint="`Members must be at least ${MINIMUM_MEMBER_AGE}. Kept with your application only, for the membership review.`"
+                    :error="!!errors.dateOfBirth"
+                    :error-message="errors.dateOfBirth"
+                  />
+                </div>
+              </fieldset>
+            </q-card-section>
+          </q-card>
 
-          <fieldset class="register-section">
-            <legend class="text-subtitle1">Where you live and how to reach you</legend>
-            <div class="text-caption text-grey-7 q-mb-sm">We never ask for your street address.</div>
-            <q-select
-              v-model="form.state"
-              outlined
-              emit-value
-              map-options
-              :options="stateOptions"
-              label="State or territory"
-              :error="!!errors.state"
-              :error-message="errors.state"
-            />
-            <div class="row q-col-gutter-md">
-              <q-input
-                v-model="form.city"
-                class="col-12 col-sm-8"
-                outlined
-                label="City"
-                autocomplete="address-level2"
-                :error="!!errors.city"
-                :error-message="errors.city"
-              />
-              <q-input
-                v-model="form.postalCode"
-                class="col-12 col-sm-4"
-                outlined
-                label="ZIP code"
-                inputmode="numeric"
-                autocomplete="postal-code"
-                :error="!!errors.postalCode"
-                :error-message="errors.postalCode"
-              />
-            </div>
-            <q-input
-              v-model="form.phone"
-              outlined
-              type="tel"
-              label="Phone (optional)"
-              autocomplete="tel"
-              :error="!!errors.phone"
-              :error-message="errors.phone"
-            />
-          </fieldset>
+          <q-card flat bordered>
+            <q-card-section>
+              <fieldset class="ustp-fieldset">
+                <legend class="text-subtitle1">Where you live and how to reach you</legend>
+                <div class="text-caption text-grey-7">We never ask for your street address.</div>
+                <div class="ustp-form">
+                  <q-select
+                    v-model="form.state"
+                    outlined
+                    dense
+                    hide-bottom-space
+                    emit-value
+                    map-options
+                    :options="stateOptions"
+                    label="State or territory"
+                    :error="!!errors.state"
+                    :error-message="errors.state"
+                  />
+                  <div class="ustp-row">
+                    <q-input
+                      v-model="form.city"
+                      class="ustp-row__wide"
+                      outlined
+                      dense
+                      hide-bottom-space
+                      label="City"
+                      autocomplete="address-level2"
+                      :error="!!errors.city"
+                      :error-message="errors.city"
+                    />
+                    <q-input
+                      v-model="form.postalCode"
+                      outlined
+                      dense
+                      hide-bottom-space
+                      label="ZIP code"
+                      inputmode="numeric"
+                      autocomplete="postal-code"
+                      :error="!!errors.postalCode"
+                      :error-message="errors.postalCode"
+                    />
+                  </div>
+                  <q-input
+                    v-model="form.phone"
+                    outlined
+                    dense
+                    hide-bottom-space
+                    type="tel"
+                    label="Phone (optional)"
+                    autocomplete="tel"
+                    :error="!!errors.phone"
+                    :error-message="errors.phone"
+                  />
+                </div>
+              </fieldset>
+            </q-card-section>
+          </q-card>
 
-          <fieldset class="register-section">
-            <legend class="text-subtitle1">Your interest in USTP</legend>
-            <q-input v-model="form.statement" outlined autogrow type="textarea" label="Why do you want to join? (optional)" />
-            <q-input v-model="form.interests" outlined autogrow type="textarea" label="Issues you care most about (optional)" />
-            <q-input v-model="form.skills" outlined autogrow type="textarea" label="Skills or experience you could contribute (optional)" />
-            <q-input v-model="form.referral" outlined label="How did you hear about USTP? (optional)" />
-            <q-checkbox v-model="form.volunteer" label="I'd like to volunteer." />
-            <q-checkbox v-model="form.runForOffice" label="I'm interested in running for party or public office." />
-          </fieldset>
+          <q-card flat bordered>
+            <q-card-section>
+              <fieldset class="ustp-fieldset">
+                <legend class="text-subtitle1">Your interest in USTP</legend>
+                <div class="ustp-form">
+                  <q-input v-model="form.statement" outlined dense autogrow type="textarea" label="Why do you want to join? (optional)" />
+                  <q-input v-model="form.interests" outlined dense autogrow type="textarea" label="Issues you care most about (optional)" />
+                  <q-input
+                    v-model="form.skills"
+                    outlined
+                    dense
+                    autogrow
+                    type="textarea"
+                    label="Skills or experience you could contribute (optional)"
+                  />
+                  <q-input v-model="form.referral" outlined dense label="How did you hear about USTP? (optional)" />
+                  <div class="ustp-options">
+                    <q-checkbox v-model="form.volunteer" label="I'd like to volunteer." />
+                    <q-checkbox v-model="form.runForOffice" label="I'm interested in running for party or public office." />
+                  </div>
+                </div>
+              </fieldset>
+            </q-card-section>
+          </q-card>
 
-          <fieldset class="register-section">
-            <legend class="text-subtitle1">Staying in touch</legend>
-            <div class="text-caption text-grey-7 q-mb-sm">Optional. You can withdraw either at any time.</div>
-            <q-checkbox v-model="form.newsletter" label="Send me the USTP newsletter." />
-            <q-checkbox v-model="form.announcements" label="Email me party announcements and calls to vote." />
-          </fieldset>
+          <q-card flat bordered>
+            <q-card-section>
+              <fieldset class="ustp-fieldset">
+                <legend class="text-subtitle1">Staying in touch</legend>
+                <div class="text-caption text-grey-7">Optional. You can withdraw either at any time.</div>
+                <div class="ustp-form">
+                  <div class="ustp-options">
+                    <q-checkbox v-model="form.newsletter" label="Send me the USTP newsletter." />
+                    <q-checkbox v-model="form.announcements" label="Email me party announcements and calls to vote." />
+                  </div>
+                </div>
+              </fieldset>
+            </q-card-section>
+          </q-card>
 
-          <fieldset class="register-section">
-            <legend class="text-subtitle1">Confirmations</legend>
-            <q-checkbox v-model="form.attestsAge" :label="`I am at least ${MINIMUM_MEMBER_AGE} years old.`" />
-            <div v-if="errors.attestsAge" class="text-negative text-caption q-ml-lg">{{ errors.attestsAge }}</div>
-            <q-checkbox v-model="form.supportsPlatform" label="I support the platform and goals of the US Transhumanist Party." />
-            <div v-if="errors.supportsPlatform" class="text-negative text-caption q-ml-lg">{{ errors.supportsPlatform }}</div>
-          </fieldset>
+          <q-card flat bordered>
+            <q-card-section>
+              <fieldset class="ustp-fieldset">
+                <legend class="text-subtitle1">Confirmations</legend>
+                <div class="ustp-form">
+                  <div class="ustp-options">
+                    <q-checkbox v-model="form.attestsAge" :label="`I am at least ${MINIMUM_MEMBER_AGE} years old.`" />
+                    <div v-if="errors.attestsAge" class="ustp-message text-negative">{{ errors.attestsAge }}</div>
+                    <q-checkbox v-model="form.supportsPlatform" label="I support the platform and goals of the US Transhumanist Party." />
+                    <div v-if="errors.supportsPlatform" class="ustp-message text-negative">{{ errors.supportsPlatform }}</div>
+                  </div>
+                </div>
+              </fieldset>
+            </q-card-section>
+          </q-card>
 
           <q-banner v-if="errors._" class="bg-negative text-white" rounded>{{ errors._ }}</q-banner>
-          <q-btn type="submit" color="primary" label="Submit application" :loading="busy" />
+          <div class="ustp-actions">
+            <q-btn type="submit" color="primary" label="Submit application" :loading="busy" />
+          </div>
         </q-form>
       </template>
     </div>
@@ -500,7 +568,7 @@ async function submit() {
 <style scoped>
 .register-steps {
   list-style: none;
-  margin: 0 0 24px;
+  margin: 0;
   padding: 0;
   display: flex;
   flex-wrap: wrap;
@@ -527,18 +595,5 @@ async function submit() {
 }
 .register-steps__marker.bg-primary {
   border-color: var(--q-primary);
-}
-/* The form's gutter sets the top and left margins. */
-.register-section {
-  border: 0;
-  margin-right: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.register-section legend {
-  padding: 0;
-  margin-bottom: 8px;
 }
 </style>

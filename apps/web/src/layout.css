@@ -1,0 +1,149 @@
+/*
+ * Page, card, form and dialog layout shared by every page and admin panel; docs/ACCESSIBILITY.md ("Layout") has the
+ * markup. Spacing is flex gap rather than Quasar's q-gutter-* classes: those move every child by a margin, which left a
+ * row of fields 16px to the right of the full-width fields around it.
+ */
+
+/* A page's content, or an admin panel's: one column, 860px at most, 16px between headings, banners and cards. */
+.ustp-content,
+.ustp-stack,
+.ustp-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.ustp-content {
+  max-width: 860px;
+}
+/* One short form on its own: sign in, create a login. */
+.ustp-narrow {
+  max-width: 480px;
+}
+/* Fields stretch to the column's width; buttons, toggles and checkboxes keep their own. */
+:is(.ustp-content, .ustp-stack, .ustp-form) > :is(.q-btn, .q-btn-group, .q-checkbox, .q-toggle, .q-radio, .q-badge) {
+  align-self: flex-start;
+}
+:is(.ustp-content, .ustp-stack, .ustp-form) > p {
+  margin: 0;
+}
+
+/* The link back to a list, above a page's title: dense, so its icon lines up with the title's first letter. */
+.ustp-back {
+  margin-left: -4px;
+}
+
+/* A card is sections of 16px padding; one section straight after another adds no more (as in Quasar's dialog plugin). */
+.q-card > .q-card__section + .q-card__section {
+  padding-top: 0;
+}
+
+/* A card's heading and caption, with buttons or badges after them that move underneath when there is no room. */
+.ustp-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 16px;
+}
+.ustp-header > :first-child {
+  flex: 1 1 240px;
+  min-width: 0;
+}
+
+/*
+ * Fields side by side: each takes an equal share (twice that with .ustp-row__wide) and the row stacks once a field
+ * would be under 200px. A button or button toggle keeps its width and takes a dense field's height, so its edges meet
+ * the fields' boxes; hints and errors hang below each field without moving the others.
+ */
+.ustp-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+}
+.ustp-row > * {
+  flex: 1 1 0;
+  min-width: min(100%, 200px);
+}
+.ustp-row > .ustp-row__wide {
+  flex-grow: 2;
+}
+.ustp-row > :is(.q-btn, .q-btn-group) {
+  flex: none;
+  min-width: 0;
+}
+.ustp-row > .q-btn,
+.ustp-row > .q-btn-group > .q-btn {
+  min-height: 40px;
+}
+
+/* Filters above a list and controls in a card: each keeps its width (a field 240px, or 120px with .ustp-field--short). */
+.ustp-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.ustp-toolbar > .q-field {
+  flex: 0 1 240px;
+  min-width: 0;
+}
+.ustp-toolbar > .q-field.ustp-field--short {
+  flex-basis: 120px;
+}
+
+/* A form's or card's buttons, after its fields: the primary one first, on the fields' left edge. */
+.ustp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+/* A hint or error under something that is not a field (a list, a checkbox), set like a dense field's own. */
+.ustp-message {
+  padding: 8px 12px 0;
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+/* Checkboxes or radios in a run keep Quasar's 40px rows; a message under one lines up with its label. */
+.ustp-options {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+.ustp-options > .ustp-message {
+  padding: 0 0 8px 40px;
+}
+
+/* A section of a long form, in its own card: the legend is the heading, then an optional caption, then the fields. */
+.ustp-fieldset {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.ustp-fieldset > legend {
+  padding: 0;
+}
+.ustp-fieldset > .ustp-form {
+  margin-top: 16px;
+}
+
+/*
+ * Dialog buttons (the Dialog plugin's prompts and confirmations too): right-aligned, the primary last, its edge on the
+ * fields' right edge rather than Quasar's 8px in from the card.
+ */
+.q-dialog .q-card > .q-card__actions {
+  padding: 0 16px 16px;
+}
+
+/* Dialogs: 480px, or 640px for long text and previews; on a phone, the screen less Quasar's 24px margins. */
+.ustp-dialog {
+  width: 480px;
+  max-width: 100%;
+}
+.q-dialog__inner > .ustp-dialog--wide {
+  width: 640px;
+  max-width: 100%;
+}

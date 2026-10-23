@@ -155,22 +155,22 @@ async function save() {
 
 <template>
   <q-dialog v-model="open" persistent aria-labelledby="contest-dialog-title">
-    <q-card style="width: 560px; max-width: 95vw">
+    <q-card class="ustp-dialog ustp-dialog--wide">
       <q-card-section>
         <h2 id="contest-dialog-title" class="text-h6">{{ contest ? 'Edit contest' : 'Add a contest' }}</h2>
       </q-card-section>
-      <q-card-section class="q-gutter-md">
+      <q-card-section class="ustp-form">
         <q-select v-model="form.kind" outlined dense emit-value map-options :options="kinds" label="Kind" />
-        <q-input v-model="form.title" outlined dense label="Title" :error="!!errors.title" :error-message="errors.title" />
+        <q-input v-model="form.title" outlined dense hide-bottom-space label="Title" :error="!!errors.title" :error-message="errors.title" />
         <q-input v-model="form.description" outlined dense autogrow label="Description (optional)" />
 
         <template v-if="form.kind === 'proposal'">
-          <div v-if="!writingText" class="row items-start q-gutter-sm">
+          <div v-if="!writingText" class="ustp-row">
             <q-select
               v-model="form.proposalSnapshotId"
-              class="col"
               outlined
               dense
+              hide-bottom-space
               emit-value
               map-options
               :options="proposalOptions"
@@ -178,24 +178,36 @@ async function save() {
               :error="!!errors.proposalSnapshotId"
               :error-message="errors.proposalSnapshotId"
             />
-            <q-btn flat no-caps color="primary" label="Write new text" @click="writingText = true" />
+            <q-btn outline no-caps color="primary" label="Write new text" @click="writingText = true" />
           </div>
-          <q-card v-else flat bordered class="q-pa-sm q-gutter-sm">
-            <div class="text-caption">Saved texts are permanent; the exact text is what members vote on.</div>
-            <q-input v-model="newText.title" outlined dense label="Proposal title" :error="!!errors.newTitle" :error-message="errors.newTitle" />
-            <q-input
-              v-model="newText.body"
-              outlined
-              type="textarea"
-              rows="6"
-              label="Full text"
-              :error="!!errors.newBody"
-              :error-message="errors.newBody"
-            />
-            <div class="row q-gutter-sm">
-              <q-btn color="primary" no-caps label="Save text" @click="createText" />
-              <q-btn flat no-caps label="Cancel" @click="writingText = false" />
-            </div>
+          <q-card v-else flat bordered>
+            <q-card-section class="ustp-form">
+              <div class="text-caption text-grey-7">Saved texts are permanent; the exact text is what members vote on.</div>
+              <q-input
+                v-model="newText.title"
+                outlined
+                dense
+                hide-bottom-space
+                label="Proposal title"
+                :error="!!errors.newTitle"
+                :error-message="errors.newTitle"
+              />
+              <q-input
+                v-model="newText.body"
+                outlined
+                dense
+                hide-bottom-space
+                type="textarea"
+                rows="6"
+                label="Full text"
+                :error="!!errors.newBody"
+                :error-message="errors.newBody"
+              />
+              <div class="ustp-actions">
+                <q-btn color="primary" no-caps label="Save text" @click="createText" />
+                <q-btn flat no-caps label="Cancel" @click="writingText = false" />
+              </div>
+            </q-card-section>
           </q-card>
           <q-select v-model="form.passPreset" outlined dense emit-value map-options :options="presetOptions" label="To pass" />
           <q-input
@@ -210,17 +222,9 @@ async function save() {
         </template>
 
         <template v-else-if="form.kind === 'choose_n'">
-          <div class="row q-gutter-md">
-            <q-input v-model.number="form.seats" class="col" outlined dense type="number" min="1" label="Seats to fill" />
-            <q-input
-              v-model.number="form.maxSelections"
-              class="col"
-              outlined
-              dense
-              type="number"
-              min="1"
-              label="Each voter may choose up to"
-            />
+          <div class="ustp-row">
+            <q-input v-model.number="form.seats" outlined dense type="number" min="1" label="Seats to fill" />
+            <q-input v-model.number="form.maxSelections" outlined dense type="number" min="1" label="Each voter may choose up to" />
           </div>
           <div class="text-caption text-grey-7">
             Plurality: 1 and 1. Block voting: seats and choices equal. Approval: choices = number of candidates.
@@ -245,6 +249,7 @@ async function save() {
           v-model="form.positionId"
           outlined
           dense
+          hide-bottom-space
           emit-value
           map-options
           :options="officeOptions"

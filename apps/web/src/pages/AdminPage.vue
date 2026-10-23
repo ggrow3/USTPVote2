@@ -76,9 +76,17 @@ const tab = ref(tabs.value.some((t) => t.name === requested) ? requested : (tabs
         :aria-controls="`admin-panel-${t.name}`"
       />
     </q-tabs>
-    <q-separator class="q-mb-md" />
-    <q-tab-panels v-model="tab" keep-alive>
-      <q-tab-panel v-for="t in tabs" :id="`admin-panel-${t.name}`" :key="t.name" :name="t.name" :aria-labelledby="`admin-tab-${t.name}`">
+    <q-separator />
+    <!-- Transparent and without side padding, so panels sit on the page, in line with the title and tabs. -->
+    <q-tab-panels v-model="tab" keep-alive class="bg-transparent">
+      <q-tab-panel
+        v-for="t in tabs"
+        :id="`admin-panel-${t.name}`"
+        :key="t.name"
+        :name="t.name"
+        :aria-labelledby="`admin-tab-${t.name}`"
+        class="q-px-none"
+      >
         <component :is="PANELS[t.name]" />
       </q-tab-panel>
     </q-tab-panels>

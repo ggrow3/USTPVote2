@@ -70,24 +70,26 @@ async function check(file: File | null) {
 
 <template>
   <q-page padding>
-    <div style="max-width: 860px">
-      <q-banner v-if="error" class="bg-orange-1 text-black q-mb-md" rounded>{{ error }}</q-banner>
+    <div class="ustp-content">
+      <q-banner v-if="error" class="bg-orange-1 text-black" rounded>{{ error }}</q-banner>
 
       <template v-if="shown">
-        <h1 class="text-h5 q-mb-xs">{{ shown.title }}</h1>
-        <div class="text-grey-7 q-mb-sm">
-          Version {{ shown.version }}
-          <q-badge v-if="isCurrent" color="positive" label="current" class="q-ml-xs" />
-          · published {{ new Date(shown.publishedAt).toLocaleDateString() }}
-          <span v-if="shown.amends">
-            · amends <router-link :to="`/bylaws/${encodeURIComponent(shown.amends)}`">version {{ shown.amends }}</router-link>
-          </span>
+        <div>
+          <h1 class="text-h5 q-mb-xs">{{ shown.title }}</h1>
+          <div class="text-grey-7">
+            Version {{ shown.version }}
+            <q-badge v-if="isCurrent" color="positive" label="current" class="q-ml-xs" />
+            · published {{ new Date(shown.publishedAt).toLocaleDateString() }}
+            <span v-if="shown.amends">
+              · amends <router-link :to="`/bylaws/${encodeURIComponent(shown.amends)}`">version {{ shown.amends }}</router-link>
+            </span>
+          </div>
+          <div v-if="shown.changeNote" class="q-mt-sm">Change: {{ shown.changeNote }}</div>
+          <div class="text-caption q-mt-sm" style="overflow-wrap: anywhere">
+            SHA-256 of the text: <code>{{ shown.contentHash }}</code>
+          </div>
         </div>
-        <div v-if="shown.changeNote" class="q-mb-sm">Change: {{ shown.changeNote }}</div>
-        <div class="text-caption q-mb-md" style="overflow-wrap: anywhere">
-          SHA-256 of the text: <code>{{ shown.contentHash }}</code>
-        </div>
-        <div class="row q-gutter-sm q-mb-md">
+        <div class="ustp-actions">
           <q-btn color="primary" icon="download" label="Download stamped .docx" no-caps @click="download" />
           <q-btn
             v-if="previous"
@@ -100,7 +102,7 @@ async function check(file: File | null) {
           />
         </div>
 
-        <q-card v-if="showChanges" flat bordered class="q-mb-md">
+        <q-card v-if="showChanges" flat bordered>
           <q-card-section>
             <h2 class="text-subtitle1">Changes from version {{ previous?.version }}</h2>
             <div v-if="changes.length === 0" class="text-grey-7">The text is identical.</div>
@@ -116,7 +118,7 @@ async function check(file: File | null) {
           </q-card-section>
         </q-card>
 
-        <q-card flat bordered class="q-mb-md">
+        <q-card flat bordered>
           <!-- A focusable region, so the text can be scrolled with the keyboard too (WCAG 2.1.1). -->
           <div class="q-pa-md" style="white-space: pre-wrap" tabindex="0" role="region" :aria-label="`${shown.title}, version ${shown.version}`">
             {{ shown.text }}
@@ -124,13 +126,15 @@ async function check(file: File | null) {
         </q-card>
       </template>
 
-      <q-card flat bordered class="q-mb-md">
+      <q-card flat bordered>
         <q-card-section>
           <h2 class="text-subtitle1">Check a copy</h2>
-          <div class="text-grey-7 q-mb-sm">
+          <div class="text-caption text-grey-7">
             Choose a Word copy you were given. Its text is compared, by SHA-256, with every published version; nothing is
             uploaded.
           </div>
+        </q-card-section>
+        <q-card-section class="ustp-form">
           <q-file
             v-model="copyFile"
             outlined
@@ -143,7 +147,6 @@ async function check(file: File | null) {
           <q-banner
             v-if="copyResult"
             rounded
-            class="q-mt-sm"
             :class="copyResult.version ? 'bg-green-1 text-black' : 'bg-orange-1 text-black'"
             role="status"
           >
@@ -163,18 +166,18 @@ async function check(file: File | null) {
       <q-card v-if="versions.length" flat bordered>
         <q-card-section>
           <h2 class="text-subtitle1">All versions</h2>
-          <q-list separator>
-            <q-item v-for="v in versions" :key="v.version" :to="`/bylaws/${encodeURIComponent(v.version)}`">
-              <q-item-section>
-                <q-item-label>Version {{ v.version }} · {{ v.title }}</q-item-label>
-                <q-item-label caption>
-                  Published {{ new Date(v.publishedAt).toLocaleDateString() }}<span v-if="v.amends"> · amends {{ v.amends }}</span
-                  ><span v-if="v.changeNote"> · {{ v.changeNote }}</span>
-                </q-item-label>
-              </q-item-section>
-            </q-item>
-          </q-list>
         </q-card-section>
+        <q-list separator>
+          <q-item v-for="v in versions" :key="v.version" :to="`/bylaws/${encodeURIComponent(v.version)}`">
+            <q-item-section>
+              <q-item-label>Version {{ v.version }} · {{ v.title }}</q-item-label>
+              <q-item-label caption>
+                Published {{ new Date(v.publishedAt).toLocaleDateString() }}<span v-if="v.amends"> · amends {{ v.amends }}</span
+                ><span v-if="v.changeNote"> · {{ v.changeNote }}</span>
+              </q-item-label>
+            </q-item-section>
+          </q-item>
+        </q-list>
       </q-card>
     </div>
   </q-page>

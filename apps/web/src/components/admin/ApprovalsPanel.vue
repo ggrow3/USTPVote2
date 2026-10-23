@@ -42,45 +42,43 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="column q-gutter-lg" style="max-width: 860px">
-    <div>
-      <div class="row items-center q-mb-sm">
-        <h2 class="text-subtitle1">Pending two-person requests</h2>
-        <q-btn flat dense icon="refresh" aria-label="Refresh requests" @click="load" />
-      </div>
-      <p v-if="hasRole('system_admin')" class="text-grey-7">
-        Role changes no longer come here: make them in the People tab, where they take effect at once.
-      </p>
-      <div v-if="listState === 'failed'" class="text-grey-7">Could not load requests.</div>
-      <div v-else-if="listState === 'ready' && !pending.length" class="text-grey-7">Nothing waiting for a decision.</div>
-      <q-list v-else bordered separator>
-        <q-item v-for="r in pending" :key="r.id">
-          <q-item-section>
-            <q-item-label>
-              {{ describe(r) }} for <code>{{ r.subject }}</code>
-              <router-link v-if="reviewLink(r)" :to="reviewLink(r)!" class="q-ml-sm">
-                Review<span class="sr-only">&nbsp;{{ describe(r) }}</span>
-              </router-link>
-            </q-item-label>
-            <q-item-label caption>
-              Requested {{ new Date(r.requestedAt).toLocaleString() }} by <code>{{ r.requestedBy }}</code> · expires
-              {{ new Date(r.expiresAt).toLocaleDateString() }}
-            </q-item-label>
-            <q-item-label class="q-mt-xs">“{{ r.reason }}”</q-item-label>
-            <q-item-label v-if="blocker(r)" caption class="text-deep-orange-10">{{ blocker(r) }}</q-item-label>
-          </q-item-section>
-          <q-item-section side>
-            <div class="row q-gutter-xs">
-              <q-btn dense color="positive" label="Approve" :disable="!!blocker(r)" @click="decide(r, 'approve')">
-                <span class="sr-only">&nbsp;{{ describe(r) }}</span>
-              </q-btn>
-              <q-btn dense flat color="negative" label="Reject" :disable="!!blocker(r)" @click="decide(r, 'reject')">
-                <span class="sr-only">&nbsp;{{ describe(r) }}</span>
-              </q-btn>
-            </div>
-          </q-item-section>
-        </q-item>
-      </q-list>
+  <div class="ustp-content">
+    <div class="ustp-header">
+      <h2 class="text-subtitle1">Pending two-person requests</h2>
+      <q-btn flat dense icon="refresh" aria-label="Refresh requests" @click="load" />
     </div>
+    <p v-if="hasRole('system_admin')" class="text-grey-7">
+      Role changes no longer come here: make them in the People tab, where they take effect at once.
+    </p>
+    <div v-if="listState === 'failed'" class="text-grey-7">Could not load requests.</div>
+    <div v-else-if="listState === 'ready' && !pending.length" class="text-grey-7">Nothing waiting for a decision.</div>
+    <q-list v-else bordered separator>
+      <q-item v-for="r in pending" :key="r.id">
+        <q-item-section>
+          <q-item-label>
+            {{ describe(r) }} for <code>{{ r.subject }}</code>
+            <router-link v-if="reviewLink(r)" :to="reviewLink(r)!" class="q-ml-sm">
+              Review<span class="sr-only">&nbsp;{{ describe(r) }}</span>
+            </router-link>
+          </q-item-label>
+          <q-item-label caption>
+            Requested {{ new Date(r.requestedAt).toLocaleString() }} by <code>{{ r.requestedBy }}</code> · expires
+            {{ new Date(r.expiresAt).toLocaleDateString() }}
+          </q-item-label>
+          <q-item-label class="q-mt-xs">“{{ r.reason }}”</q-item-label>
+          <q-item-label v-if="blocker(r)" caption class="text-deep-orange-10">{{ blocker(r) }}</q-item-label>
+        </q-item-section>
+        <q-item-section side>
+          <div class="ustp-actions">
+            <q-btn dense color="positive" label="Approve" :disable="!!blocker(r)" @click="decide(r, 'approve')">
+              <span class="sr-only">&nbsp;{{ describe(r) }}</span>
+            </q-btn>
+            <q-btn dense flat color="negative" label="Reject" :disable="!!blocker(r)" @click="decide(r, 'reject')">
+              <span class="sr-only">&nbsp;{{ describe(r) }}</span>
+            </q-btn>
+          </div>
+        </q-item-section>
+      </q-item>
+    </q-list>
   </div>
 </template>

@@ -1,6 +1,7 @@
 import '@quasar/extras/material-icons/material-icons.css';
 import 'quasar/src/css/index.sass';
 import './app.css';
+import './layout.css';
 import { Dialog, Notify, Quasar } from 'quasar';
 import { createApp } from 'vue';
 import App from './App.vue';

@@ -133,198 +133,202 @@ const summary = computed(() => {
 
 <template>
   <q-page padding>
-    <q-btn flat no-caps icon="arrow_back" label="Your ballots" to="/ballot" class="q-mb-sm" />
-    <q-banner v-if="error" class="bg-negative text-white" rounded>{{ error }}</q-banner>
-    <div v-else-if="loading" class="row items-center q-gutter-sm">
-      <q-spinner size="sm" /><span>Loading and checking the results…</span>
-    </div>
-
-    <template v-else-if="record">
-      <h1 class="text-h5 q-my-none">{{ record.definition.title }} — results</h1>
-      <div class="text-caption text-grey-7 q-mb-md">
-        Voting closed {{ new Date(record.election.closesAt).toLocaleString() }} ·
-        {{ record.election.secrecy === 'secret' ? 'secret ballot' : 'roll-call' }}
-        <template v-if="results">
-          · {{ results.bundle.participationCount }} of {{ results.bundle.roll.count }} on the roll voted · counted
-          {{ new Date(results.computedAt).toLocaleString() }}
-        </template>
+    <div class="ustp-content">
+      <q-btn flat dense no-caps icon="arrow_back" label="Your ballots" to="/ballot" class="ustp-back" />
+      <q-banner v-if="error" class="bg-negative text-white" rounded>{{ error }}</q-banner>
+      <div v-else-if="loading" class="ustp-toolbar">
+        <q-spinner size="sm" /><span>Loading and checking the results…</span>
       </div>
 
-      <q-banner v-if="!results" class="bg-grey-3 text-black" rounded style="max-width: 860px">
-        {{
-          record.election.state === 'cancelled'
-            ? 'This election was cancelled; it has no results.'
-            : 'Results are published once voting has closed and every ballot has been sealed and counted, usually within a minute of closing.'
-        }}
-      </q-banner>
+      <template v-else-if="record">
+        <div>
+          <h1 class="text-h5">{{ record.definition.title }} — results</h1>
+          <div class="text-caption text-grey-7">
+            Voting closed {{ new Date(record.election.closesAt).toLocaleString() }} ·
+            {{ record.election.secrecy === 'secret' ? 'secret ballot' : 'roll-call' }}
+            <template v-if="results">
+              · {{ results.bundle.participationCount }} of {{ results.bundle.roll.count }} on the roll voted · counted
+              {{ new Date(results.computedAt).toLocaleString() }}
+            </template>
+          </div>
+        </div>
 
-      <div v-else class="column q-gutter-md" style="max-width: 860px">
-        <q-banner v-if="results.status === 'provisional'" class="bg-grey-3 text-black" rounded>
-          Provisional: these results are signed and in the audit ledger, but not yet certified.
+        <q-banner v-if="!results" class="bg-grey-3 text-black" rounded>
+          {{
+            record.election.state === 'cancelled'
+              ? 'This election was cancelled; it has no results.'
+              : 'Results are published once voting has closed and every ballot has been sealed and counted, usually within a minute of closing.'
+          }}
         </q-banner>
-        <q-banner v-else class="bg-positive text-white" rounded>
-          Certified {{ results.certifiedAt ? new Date(results.certifiedAt).toLocaleString() : '' }} by an Election Admin and an
-          Auditor.
-        </q-banner>
-        <q-banner v-if="summary" :class="summary.cls" rounded>{{ summary.text }}</q-banner>
 
-        <q-card v-for="{ contest, outcome } in outcomes" :key="contest.contestId" flat bordered>
-          <q-card-section>
-            <div class="row items-center">
-              <h2 class="text-subtitle1 col q-my-none">{{ contest.title }}</h2>
-              <q-badge
-                v-if="outcome.result.kind === 'proposal'"
-                :color="PROPOSAL_OUTCOME[outcome.result.outcome].color"
-                :label="PROPOSAL_OUTCOME[outcome.result.outcome].label"
-              />
-            </div>
-            <div v-for="line in rulesText(contest.spec)" :key="line" class="text-caption text-grey-7">{{ line }}</div>
-          </q-card-section>
+        <template v-else>
+          <q-banner v-if="results.status === 'provisional'" class="bg-grey-3 text-black" rounded>
+            Provisional: these results are signed and in the audit ledger, but not yet certified.
+          </q-banner>
+          <q-banner v-else class="bg-positive text-white" rounded>
+            Certified {{ results.certifiedAt ? new Date(results.certifiedAt).toLocaleString() : '' }} by an Election Admin and an
+            Auditor.
+          </q-banner>
+          <q-banner v-if="summary" :class="summary.cls" rounded>{{ summary.text }}</q-banner>
 
-          <q-card-section v-if="outcome.result.kind === 'proposal'" class="q-pt-none">
-            <q-markup-table flat dense separator="horizontal">
-              <thead>
-                <tr><th scope="col" class="text-left">Choice</th><th scope="col" class="text-right">Votes</th></tr>
-              </thead>
-              <tbody>
-                <tr><td>Yes</td><td class="text-right">{{ outcome.result.counts.yes }}</td></tr>
-                <tr><td>No</td><td class="text-right">{{ outcome.result.counts.no }}</td></tr>
-                <tr><td>Abstain</td><td class="text-right">{{ outcome.result.counts.abstain }}</td></tr>
-              </tbody>
-            </q-markup-table>
-            <div v-if="outcome.result.quorum.required > 0" class="text-caption q-mt-sm">
-              Quorum: {{ outcome.result.ballots }} of {{ outcome.result.quorum.required }} needed
-              ({{ outcome.result.quorum.met ? 'met' : 'not met' }}).
-            </div>
-          </q-card-section>
+          <q-card v-for="{ contest, outcome } in outcomes" :key="contest.contestId" flat bordered>
+            <q-card-section>
+              <div class="ustp-header">
+                <h2 class="text-subtitle1">{{ contest.title }}</h2>
+                <q-badge
+                  v-if="outcome.result.kind === 'proposal'"
+                  :color="PROPOSAL_OUTCOME[outcome.result.outcome].color"
+                  :label="PROPOSAL_OUTCOME[outcome.result.outcome].label"
+                />
+              </div>
+              <div v-for="line in rulesText(contest.spec)" :key="line" class="text-caption text-grey-7">{{ line }}</div>
+            </q-card-section>
 
-          <q-card-section v-else-if="outcome.result.kind === 'choose_n'" class="q-pt-none">
-            <div class="text-body1 q-mb-sm">
-              Elected: <strong>{{ names(contest, outcome.result.winners) }}</strong>
-              <span v-if="outcome.result.vacantSeats > 0">
-                · {{ outcome.result.vacantSeats }} {{ outcome.result.vacantSeats === 1 ? 'seat' : 'seats' }} left vacant
-              </span>
-            </div>
-            <q-markup-table flat dense separator="horizontal">
-              <thead>
-                <tr>
-                  <th scope="col" class="text-left">Candidate</th>
-                  <th scope="col" class="text-right">Votes</th>
-                  <th v-if="'supportFloor' in contest.spec && contest.spec.supportFloor" scope="col" class="text-left">Support floor</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="r in outcome.result.ranking" :key="r.candidateId">
-                  <td>
-                    {{ nameOf(contest, r.candidateId) }}
-                    <q-icon v-if="outcome.result.winners.includes(r.candidateId)" name="how_to_reg" color="positive" aria-label="elected" />
-                  </td>
-                  <td class="text-right">{{ r.votes }}</td>
-                  <td v-if="'supportFloor' in contest.spec && contest.spec.supportFloor">{{ r.meetsFloor ? 'met' : 'not met' }}</td>
-                </tr>
-              </tbody>
-            </q-markup-table>
-          </q-card-section>
+            <q-card-section v-if="outcome.result.kind === 'proposal'" class="q-pt-none">
+              <q-markup-table flat dense separator="horizontal">
+                <thead>
+                  <tr><th scope="col" class="text-left">Choice</th><th scope="col" class="text-right">Votes</th></tr>
+                </thead>
+                <tbody>
+                  <tr><td>Yes</td><td class="text-right">{{ outcome.result.counts.yes }}</td></tr>
+                  <tr><td>No</td><td class="text-right">{{ outcome.result.counts.no }}</td></tr>
+                  <tr><td>Abstain</td><td class="text-right">{{ outcome.result.counts.abstain }}</td></tr>
+                </tbody>
+              </q-markup-table>
+              <div v-if="outcome.result.quorum.required > 0" class="text-caption q-mt-sm">
+                Quorum: {{ outcome.result.ballots }} of {{ outcome.result.quorum.required }} needed
+                ({{ outcome.result.quorum.met ? 'met' : 'not met' }}).
+              </div>
+            </q-card-section>
 
-          <q-card-section v-else class="q-pt-none">
-            <div class="text-body1 q-mb-sm">
-              Elected: <strong>{{ outcome.result.winner ? nameOf(contest, outcome.result.winner) : 'nobody (no ranked ballots)' }}</strong>
-            </div>
-            <div v-if="outcome.result.rounds.length" class="scroll">
-              <q-markup-table flat dense separator="cell">
+            <q-card-section v-else-if="outcome.result.kind === 'choose_n'" class="q-pt-none">
+              <div class="text-body1 q-mb-sm">
+                Elected: <strong>{{ names(contest, outcome.result.winners) }}</strong>
+                <span v-if="outcome.result.vacantSeats > 0">
+                  · {{ outcome.result.vacantSeats }} {{ outcome.result.vacantSeats === 1 ? 'seat' : 'seats' }} left vacant
+                </span>
+              </div>
+              <q-markup-table flat dense separator="horizontal">
                 <thead>
                   <tr>
                     <th scope="col" class="text-left">Candidate</th>
-                    <th v-for="r in outcome.result.rounds" :key="r.round" scope="col" class="text-right">Round {{ r.round }}</th>
+                    <th scope="col" class="text-right">Votes</th>
+                    <th v-if="'supportFloor' in contest.spec && contest.spec.supportFloor" scope="col" class="text-left">Support floor</th>
                   </tr>
                 </thead>
                 <tbody>
-                  <tr v-for="k in contest.candidates" :key="k.candidateId">
-                    <th scope="row" class="text-left text-weight-regular">{{ k.name }}</th>
-                    <td v-for="(r, i) in outcome.result.rounds" :key="r.round" class="text-right">
-                      {{ roundCount(outcome, i, k.candidateId) }}
+                  <tr v-for="r in outcome.result.ranking" :key="r.candidateId">
+                    <td>
+                      {{ nameOf(contest, r.candidateId) }}
+                      <q-icon v-if="outcome.result.winners.includes(r.candidateId)" name="how_to_reg" color="positive" aria-label="elected" />
                     </td>
-                  </tr>
-                  <tr>
-                    <th scope="row" class="text-left text-weight-regular text-grey-7">Exhausted</th>
-                    <td v-for="r in outcome.result.rounds" :key="r.round" class="text-right text-grey-7">{{ r.exhausted }}</td>
-                  </tr>
-                  <tr>
-                    <th scope="row" class="text-left text-weight-regular text-grey-7">Outcome</th>
-                    <td v-for="r in outcome.result.rounds" :key="r.round" class="text-right text-grey-7">
-                      {{ r.elected ? `${nameOf(contest, r.elected)} elected` : r.eliminated ? `${nameOf(contest, r.eliminated)} out` : '—' }}
-                    </td>
+                    <td class="text-right">{{ r.votes }}</td>
+                    <td v-if="'supportFloor' in contest.spec && contest.spec.supportFloor">{{ r.meetsFloor ? 'met' : 'not met' }}</td>
                   </tr>
                 </tbody>
               </q-markup-table>
-            </div>
-          </q-card-section>
+            </q-card-section>
 
-          <q-card-section v-if="outcome.result.kind !== 'proposal'" class="q-pt-none text-caption">
-            <div v-for="(t, i) in outcome.result.tieBreaks" :key="i">{{ tieText(contest, t) }}</div>
-            <div class="text-grey-7">
-              {{ outcome.result.ballots }} ballots ({{ outcome.result.blank }} blank)<span v-if="outcome.result.invalid">,
-              {{ outcome.result.invalid }} invalid</span>. Tie-break order: {{ names(contest, outcome.tieBreakOrder ?? []) }}.
-            </div>
-          </q-card-section>
-          <q-card-section v-else-if="outcome.result.invalid" class="q-pt-none text-caption text-grey-7">
-            {{ outcome.result.invalid }} invalid
-          </q-card-section>
-        </q-card>
-
-        <q-card v-if="check" flat bordered>
-          <q-card-section>
-            <h2 class="text-subtitle1 q-my-none">How these results were checked</h2>
-            <div class="text-caption text-grey-7">
-              In this browser, from the published record only. Results hash <code>{{ results.resultsHash }}</code>; revealed
-              tie-break seed <code>{{ results.bundle.tieBreakSeed }}</code>.
-            </div>
-          </q-card-section>
-          <q-list dense class="q-pb-sm">
-            <q-item v-for="s in check.steps" :key="s.label">
-              <q-item-section avatar>
-                <q-icon :name="STEP_ICON(s.ok).name" :color="STEP_ICON(s.ok).color" :aria-label="s.ok === true ? 'passed' : s.ok === false ? 'failed' : 'not yet'" />
-              </q-item-section>
-              <q-item-section>
-                <q-item-label>{{ s.label }}</q-item-label>
-                <q-item-label v-if="s.detail" caption>{{ s.detail }}</q-item-label>
-              </q-item-section>
-            </q-item>
-          </q-list>
-        </q-card>
-
-        <q-card flat bordered>
-          <q-card-section>
-            <h2 class="text-subtitle1 q-my-none">Use these results in a spreadsheet</h2>
-            <div class="text-caption text-grey-7">
-              The CSV is an unsigned copy; the signed results checked on this page are the official record.
-            </div>
-          </q-card-section>
-          <q-card-section class="q-pt-none column q-gutter-md">
-            <div>
-              <q-btn outline no-caps color="primary" icon="download" label="Download CSV" :href="csvPath" download />
-            </div>
-            <div>
-              <q-input
-                :model-value="sheetsFormula"
-                readonly
-                outlined
-                dense
-                label="Google Sheets formula"
-                aria-describedby="sheets-formula-help"
-                @focus="($event.target as HTMLInputElement).select()"
-              >
-                <template #append>
-                  <q-btn flat round dense icon="content_copy" aria-label="Copy the Google Sheets formula" @click="copyFormula" />
-                </template>
-              </q-input>
-              <div id="sheets-formula-help" class="text-caption text-grey-7 q-mt-xs">
-                Paste it into a cell in Google Sheets to load these results; Sheets refreshes them about every hour.
+            <q-card-section v-else class="q-pt-none">
+              <div class="text-body1 q-mb-sm">
+                Elected: <strong>{{ outcome.result.winner ? nameOf(contest, outcome.result.winner) : 'nobody (no ranked ballots)' }}</strong>
               </div>
-            </div>
-          </q-card-section>
-        </q-card>
-      </div>
-    </template>
+              <div v-if="outcome.result.rounds.length" class="scroll">
+                <q-markup-table flat dense separator="cell">
+                  <thead>
+                    <tr>
+                      <th scope="col" class="text-left">Candidate</th>
+                      <th v-for="r in outcome.result.rounds" :key="r.round" scope="col" class="text-right">Round {{ r.round }}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="k in contest.candidates" :key="k.candidateId">
+                      <th scope="row" class="text-left text-weight-regular">{{ k.name }}</th>
+                      <td v-for="(r, i) in outcome.result.rounds" :key="r.round" class="text-right">
+                        {{ roundCount(outcome, i, k.candidateId) }}
+                      </td>
+                    </tr>
+                    <tr>
+                      <th scope="row" class="text-left text-weight-regular text-grey-7">Exhausted</th>
+                      <td v-for="r in outcome.result.rounds" :key="r.round" class="text-right text-grey-7">{{ r.exhausted }}</td>
+                    </tr>
+                    <tr>
+                      <th scope="row" class="text-left text-weight-regular text-grey-7">Outcome</th>
+                      <td v-for="r in outcome.result.rounds" :key="r.round" class="text-right text-grey-7">
+                        {{ r.elected ? `${nameOf(contest, r.elected)} elected` : r.eliminated ? `${nameOf(contest, r.eliminated)} out` : '—' }}
+                      </td>
+                    </tr>
+                  </tbody>
+                </q-markup-table>
+              </div>
+            </q-card-section>
+
+            <q-card-section v-if="outcome.result.kind !== 'proposal'" class="q-pt-none text-caption">
+              <div v-for="(t, i) in outcome.result.tieBreaks" :key="i">{{ tieText(contest, t) }}</div>
+              <div class="text-grey-7">
+                {{ outcome.result.ballots }} ballots ({{ outcome.result.blank }} blank)<span v-if="outcome.result.invalid">,
+                {{ outcome.result.invalid }} invalid</span>. Tie-break order: {{ names(contest, outcome.tieBreakOrder ?? []) }}.
+              </div>
+            </q-card-section>
+            <q-card-section v-else-if="outcome.result.invalid" class="q-pt-none text-caption text-grey-7">
+              {{ outcome.result.invalid }} invalid
+            </q-card-section>
+          </q-card>
+
+          <q-card v-if="check" flat bordered>
+            <q-card-section>
+              <h2 class="text-subtitle1">How these results were checked</h2>
+              <div class="text-caption text-grey-7">
+                In this browser, from the published record only. Results hash <code>{{ results.resultsHash }}</code>; revealed
+                tie-break seed <code>{{ results.bundle.tieBreakSeed }}</code>.
+              </div>
+            </q-card-section>
+            <q-list dense class="q-pb-sm">
+              <q-item v-for="s in check.steps" :key="s.label">
+                <q-item-section avatar>
+                  <q-icon :name="STEP_ICON(s.ok).name" :color="STEP_ICON(s.ok).color" :aria-label="s.ok === true ? 'passed' : s.ok === false ? 'failed' : 'not yet'" />
+                </q-item-section>
+                <q-item-section>
+                  <q-item-label>{{ s.label }}</q-item-label>
+                  <q-item-label v-if="s.detail" caption>{{ s.detail }}</q-item-label>
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-card>
+
+          <q-card flat bordered>
+            <q-card-section>
+              <h2 class="text-subtitle1">Use these results in a spreadsheet</h2>
+              <div class="text-caption text-grey-7">
+                The CSV is an unsigned copy; the signed results checked on this page are the official record.
+              </div>
+            </q-card-section>
+            <q-card-section class="ustp-form">
+              <div class="ustp-actions">
+                <q-btn outline no-caps color="primary" icon="download" label="Download CSV" :href="csvPath" download />
+              </div>
+              <div>
+                <q-input
+                  :model-value="sheetsFormula"
+                  readonly
+                  outlined
+                  dense
+                  label="Google Sheets formula"
+                  aria-describedby="sheets-formula-help"
+                  @focus="($event.target as HTMLInputElement).select()"
+                >
+                  <template #append>
+                    <q-btn flat round dense icon="content_copy" aria-label="Copy the Google Sheets formula" @click="copyFormula" />
+                  </template>
+                </q-input>
+                <div id="sheets-formula-help" class="ustp-message text-grey-7">
+                  Paste it into a cell in Google Sheets to load these results; Sheets refreshes them about every hour.
+                </div>
+              </div>
+            </q-card-section>
+          </q-card>
+        </template>
+      </template>
+    </div>
   </q-page>
 </template>

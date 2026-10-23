@@ -118,36 +118,38 @@ const summary = computed(() => {
 
 <template>
   <q-page padding>
-    <h1 class="text-h5 q-mb-sm">Verify a receipt</h1>
-    <p style="max-width: 760px">
-      Checks, in this browser and from public data only, that each part of your ballot was sealed into the election's
-      published record, that the sealed block is in the signed audit ledger, and that the ledger is anchored outside the
-      database. Your receipt never leaves this browser: only the commitments are looked up.
-    </p>
+    <div class="ustp-content">
+      <h1 class="text-h5">Verify a receipt</h1>
+      <p>
+        Checks, in this browser and from public data only, that each part of your ballot was sealed into the election's
+        published record, that the sealed block is in the signed audit ledger, and that the ledger is anchored outside the
+        database. Your receipt never leaves this browser: only the commitments are looked up.
+      </p>
 
-    <div class="column q-gutter-md" style="max-width: 760px">
       <q-card v-if="saved.length" flat bordered>
-        <q-card-section class="row items-center q-gutter-md">
-          <q-select v-model="chosen" :options="receiptOptions" emit-value map-options outlined dense label="Saved in this browser" class="col-12 col-sm" />
+        <q-card-section class="ustp-row">
+          <q-select v-model="chosen" :options="receiptOptions" emit-value map-options outlined dense label="Saved in this browser" />
           <q-btn color="primary" label="Check" :loading="checking" :disable="!chosen" @click="check('saved')">
             <span class="sr-only"> the saved receipt</span>
           </q-btn>
         </q-card-section>
       </q-card>
       <q-card flat bordered>
-        <q-card-section class="row items-center q-gutter-md">
-          <q-file v-model="file" outlined dense accept=".json,application/json" label="Open a downloaded receipt" class="col-12 col-sm" />
+        <q-card-section class="ustp-row">
+          <q-file v-model="file" outlined dense accept=".json,application/json" label="Open a downloaded receipt" />
           <q-btn color="primary" label="Check" :loading="checking" :disable="!file" @click="check('file')">
             <span class="sr-only"> the receipt file</span>
           </q-btn>
         </q-card-section>
-        <q-expansion-item dense label="…or paste one" class="q-px-sm">
-          <div class="q-pa-sm">
-            <q-input v-model="pasted" type="textarea" outlined autogrow label="Receipt (JSON)" />
-            <q-btn class="q-mt-sm" color="primary" label="Check" :loading="checking" :disable="!pasted.trim()" @click="check('paste')">
-              <span class="sr-only"> the pasted receipt</span>
-            </q-btn>
-          </div>
+        <q-expansion-item dense label="…or paste one">
+          <q-card-section class="ustp-form">
+            <q-input v-model="pasted" type="textarea" outlined dense autogrow label="Receipt (JSON)" />
+            <div class="ustp-actions">
+              <q-btn color="primary" label="Check" :loading="checking" :disable="!pasted.trim()" @click="check('paste')">
+                <span class="sr-only"> the pasted receipt</span>
+              </q-btn>
+            </div>
+          </q-card-section>
         </q-expansion-item>
       </q-card>
 
@@ -166,8 +168,8 @@ const summary = computed(() => {
           {{ blocksCheck.detail }}
         </q-banner>
         <q-card v-for="r in results" :key="r.contestId" flat bordered>
-          <q-card-section class="row items-center">
-            <div class="col">
+          <q-card-section class="ustp-header">
+            <div>
               <h3 class="text-subtitle1">{{ titleOf(r.contestId) }}</h3>
               <div class="text-caption text-grey-7"><code>{{ r.commitment }}</code></div>
             </div>

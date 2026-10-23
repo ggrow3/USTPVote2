@@ -123,94 +123,108 @@ async function submit() {
         Auditors cannot hold any other role.
       </div>
     </q-card-section>
-    <q-form class="q-px-md q-pb-md q-gutter-md" @submit.prevent="submit">
-      <div>
-        <q-select
-          v-if="!byId"
-          v-model="picked"
-          outlined
-          dense
-          use-input
-          clearable
-          input-debounce="300"
-          label="Person"
-          hint="Type the start of their email address."
-          :options="people"
-          :option-label="personLabel"
-          option-value="accountId"
-          :error="!!errors.accountId"
-          :error-message="errors.accountId"
-          @filter="searchPeople"
-        >
-          <template #option="scope">
-            <q-item v-bind="scope.itemProps">
-              <q-item-section>
-                <q-item-label>{{ personLabel(scope.opt) }}</q-item-label>
-                <q-item-label caption>
-                  {{ scope.opt.displayName ?? 'No name' }} · holds {{ rolesText(scope.opt.roles) }}
-                </q-item-label>
-              </q-item-section>
-            </q-item>
-          </template>
-          <template #no-option>
-            <q-item>
-              <q-item-section class="text-grey-7">No account with that email.</q-item-section>
-            </q-item>
-          </template>
-        </q-select>
+    <q-card-section>
+      <q-form class="ustp-form" @submit.prevent="submit">
+        <div>
+          <q-select
+            v-if="!byId"
+            v-model="picked"
+            outlined
+            dense
+            hide-bottom-space
+            use-input
+            clearable
+            input-debounce="300"
+            label="Person"
+            hint="Type the start of their email address."
+            :options="people"
+            :option-label="personLabel"
+            option-value="accountId"
+            :error="!!errors.accountId"
+            :error-message="errors.accountId"
+            @filter="searchPeople"
+          >
+            <template #option="scope">
+              <q-item v-bind="scope.itemProps">
+                <q-item-section>
+                  <q-item-label>{{ personLabel(scope.opt) }}</q-item-label>
+                  <q-item-label caption>
+                    {{ scope.opt.displayName ?? 'No name' }} · holds {{ rolesText(scope.opt.roles) }}
+                  </q-item-label>
+                </q-item-section>
+              </q-item>
+            </template>
+            <template #no-option>
+              <q-item>
+                <q-item-section class="text-grey-7">No account with that email.</q-item-section>
+              </q-item>
+            </template>
+          </q-select>
+          <q-input
+            v-else
+            v-model="request.accountId"
+            outlined
+            dense
+            hide-bottom-space
+            label="Account ID"
+            hint="Copy it from the list above or the person's Account page."
+            :error="!!errors.accountId"
+            :error-message="errors.accountId"
+          />
+          <div v-if="pickedSummary" class="ustp-message">{{ pickedSummary }}</div>
+          <q-btn
+            flat
+            dense
+            no-caps
+            class="q-mt-xs"
+            :label="byId ? 'Choose from the People list instead' : 'Enter an account ID instead'"
+            @click="byId = !byId"
+          />
+        </div>
+        <div class="ustp-row">
+          <q-btn-toggle
+            v-model="request.change"
+            no-caps
+            toggle-color="primary"
+            role="group"
+            aria-label="Change"
+            :options="[
+              { label: 'Grant', value: 'grant' },
+              { label: 'Revoke', value: 'revoke' },
+            ]"
+          />
+          <q-select
+            v-model="request.role"
+            outlined
+            dense
+            emit-value
+            map-options
+            label="Role"
+            :options="ROLE_OPTIONS"
+          />
+        </div>
         <q-input
-          v-else
-          v-model="request.accountId"
+          v-model="request.reason"
           outlined
           dense
-          label="Account ID"
-          hint="Copy it from the list above or the person's Account page."
-          :error="!!errors.accountId"
-          :error-message="errors.accountId"
+          hide-bottom-space
+          autogrow
+          label="Reason"
+          :error="!!errors.reason"
+          :error-message="errors.reason"
         />
-        <div v-if="pickedSummary" class="text-caption q-mt-xs">{{ pickedSummary }}</div>
-        <q-btn
-          flat
-          dense
-          no-caps
-          class="q-mt-xs"
-          :label="byId ? 'Choose from the People list instead' : 'Enter an account ID instead'"
-          @click="byId = !byId"
-        />
-      </div>
-      <div class="row q-gutter-md">
-        <q-btn-toggle
-          v-model="request.change"
-          no-caps
-          toggle-color="primary"
-          role="group"
-          aria-label="Change"
-          :options="[
-            { label: 'Grant', value: 'grant' },
-            { label: 'Revoke', value: 'revoke' },
-          ]"
-        />
-        <q-select
-          v-model="request.role"
-          outlined
-          dense
-          emit-value
-          map-options
-          style="min-width: 220px"
-          label="Role"
-          :options="ROLE_OPTIONS"
-        />
-      </div>
-      <q-input v-model="request.reason" outlined dense autogrow label="Reason" :error="!!errors.reason" :error-message="errors.reason" />
-      <div>
-        <div aria-live="polite" class="text-caption text-deep-orange-10" :class="{ 'q-mb-sm': blocker }">{{ blocker ?? '' }}</div>
-        <q-btn
-          type="submit"
-          color="primary"
-          :label="request.change === 'grant' ? 'Grant role' : 'Revoke role'"
-          :disable="!!blocker"
-        />
-      </div>
-    </q-form>
+        <div>
+          <div aria-live="polite" class="text-caption text-deep-orange-10" :class="{ 'q-mb-sm': blocker }">{{ blocker ?? '' }}</div>
+          <div class="ustp-actions">
+            <q-btn
+              type="submit"
+              color="primary"
+              :label="request.change === 'grant' ? 'Grant role' : 'Revoke role'"
+              :disable="!!blocker"
+            />
+          </div>
+        </div>
+      </q-form>
+    </q-card-section>
   </q-card>
 </template>

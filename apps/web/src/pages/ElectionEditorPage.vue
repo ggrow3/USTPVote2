@@ -200,228 +200,230 @@ onMounted(load);
 
 <template>
   <q-page padding>
-    <div class="row items-center q-gutter-sm q-mb-md">
-      <q-btn flat dense icon="arrow_back" aria-label="Back to administration" to="/admin" />
-      <h1 class="text-h5">{{ detail?.election.title ?? 'Election' }}</h1>
-      <q-badge v-if="detail" :label="detail.election.state" />
-    </div>
-
-    <div v-if="detail" class="column q-gutter-md" style="max-width: 900px">
-      <template v-if="state === 'draft'">
-        <q-banner v-if="detail.problems.length" class="bg-orange-2 text-black" rounded>
-          <div class="text-weight-medium q-mb-xs">Not ready to schedule yet:</div>
-          <ul class="q-my-none">
-            <li v-for="p in detail.problems" :key="p">{{ p }}</li>
-          </ul>
-        </q-banner>
-        <q-banner v-else-if="!rollApproved" class="bg-orange-2 text-black" rounded>
-          The definition is complete. Next: get a voter roll approved, then request scheduling.
-        </q-banner>
-        <q-banner v-else class="bg-positive text-white" rounded>Ready to schedule.</q-banner>
-      </template>
-      <q-banner v-else-if="state === 'scheduled'" class="bg-primary text-white" rounded>
-        Scheduled {{ new Date(detail.election.scheduledAt!).toLocaleString() }}. Voting opens
-        {{ new Date(detail.election.opensAt).toLocaleString() }}. The definition and roll are frozen.
-        <template v-if="detail.election.secrecy === 'secret'">
-          {{ detail.election.poolKeyVersion ? 'The ballot encryption key is ready.' : 'The ballot encryption key is being prepared.' }}
-        </template>
-      </q-banner>
-      <q-banner v-else-if="state === 'open'" class="bg-positive text-white" rounded>
-        Voting is open until {{ new Date(detail.election.closesAt).toLocaleString() }} (opened
-        {{ new Date(detail.election.openedAt!).toLocaleString() }}).
-      </q-banner>
-      <q-banner v-else-if="state === 'closed'" class="bg-grey-7 text-white" rounded>
-        Voting closed {{ new Date(detail.election.closedAt!).toLocaleString() }}.
-        {{
-          detail.results
-            ? 'Provisional results are published; they need certifying.'
-            : 'The results are computed once every ballot is sealed, usually within a minute.'
-        }}
-      </q-banner>
-      <q-banner v-else-if="state === 'certified'" class="bg-positive text-white" rounded>
-        Results certified {{ new Date(detail.election.certifiedAt!).toLocaleString() }}.
-        {{ detail.election.poolKeyDestroyedAt ? 'The ballot encryption key has been destroyed.' : '' }}
-      </q-banner>
-      <q-banner v-else-if="state === 'cancelled'" class="bg-grey-7 text-white" rounded>
-        Cancelled {{ new Date(detail.election.cancelledAt!).toLocaleString() }}.
-      </q-banner>
-      <div class="text-caption text-grey-7">
-        Definition hash <code>{{ detail.definitionHash.slice(0, 16) }}…</code>
-        <q-btn flat dense round size="sm" icon="content_copy" aria-label="Copy definition hash" @click="copyHash" />
-        <template v-if="state === 'draft'"> — changes with any edit; scheduling freezes exactly this.</template>
-        <template v-else-if="detail.election.tieBreakSeedCommitment">
-          · tie-break seed commitment <code>{{ detail.election.tieBreakSeedCommitment.slice(0, 16) }}…</code>
-        </template>
+    <div class="ustp-content">
+      <q-btn flat dense no-caps icon="arrow_back" label="Administration" to="/admin" class="ustp-back" />
+      <div class="ustp-toolbar">
+        <h1 class="text-h5">{{ detail?.election.title ?? 'Election' }}</h1>
+        <q-badge v-if="detail" :label="detail.election.state" />
       </div>
 
-      <q-card v-if="detail.pending.length" flat bordered>
-        <q-card-section><h2 class="text-subtitle1">Waiting for a decision</h2></q-card-section>
-        <q-list separator>
-          <q-item v-for="r in detail.pending" :key="r.id">
-            <q-item-section>
-              <q-item-label>{{ describeRequest(r) }}</q-item-label>
-              <q-item-label caption>
-                Requested {{ new Date(r.requestedAt).toLocaleString() }} · “{{ r.reason }}” · needs {{ aRole(r.approverRole) }}
-              </q-item-label>
-            </q-item-section>
-            <q-item-section v-if="canDecide(r)" side>
-              <div class="row q-gutter-xs">
-                <q-btn dense color="positive" label="Approve" @click="decide(r, 'approve')">
-                  <span class="sr-only">&nbsp;{{ describeRequest(r) }}</span>
-                </q-btn>
-                <q-btn dense flat color="negative" label="Reject" @click="decide(r, 'reject')">
-                  <span class="sr-only">&nbsp;{{ describeRequest(r) }}</span>
-                </q-btn>
-              </div>
-            </q-item-section>
-          </q-item>
-        </q-list>
-      </q-card>
+      <template v-if="detail">
+        <template v-if="state === 'draft'">
+          <q-banner v-if="detail.problems.length" class="bg-orange-2 text-black" rounded>
+            <div class="text-weight-medium q-mb-xs">Not ready to schedule yet:</div>
+            <ul class="q-my-none">
+              <li v-for="p in detail.problems" :key="p">{{ p }}</li>
+            </ul>
+          </q-banner>
+          <q-banner v-else-if="!rollApproved" class="bg-orange-2 text-black" rounded>
+            The definition is complete. Next: get a voter roll approved, then request scheduling.
+          </q-banner>
+          <q-banner v-else class="bg-positive text-white" rounded>Ready to schedule.</q-banner>
+        </template>
+        <q-banner v-else-if="state === 'scheduled'" class="bg-primary text-white" rounded>
+          Scheduled {{ new Date(detail.election.scheduledAt!).toLocaleString() }}. Voting opens
+          {{ new Date(detail.election.opensAt).toLocaleString() }}. The definition and roll are frozen.
+          <template v-if="detail.election.secrecy === 'secret'">
+            {{ detail.election.poolKeyVersion ? 'The ballot encryption key is ready.' : 'The ballot encryption key is being prepared.' }}
+          </template>
+        </q-banner>
+        <q-banner v-else-if="state === 'open'" class="bg-positive text-white" rounded>
+          Voting is open until {{ new Date(detail.election.closesAt).toLocaleString() }} (opened
+          {{ new Date(detail.election.openedAt!).toLocaleString() }}).
+        </q-banner>
+        <q-banner v-else-if="state === 'closed'" class="bg-grey-7 text-white" rounded>
+          Voting closed {{ new Date(detail.election.closedAt!).toLocaleString() }}.
+          {{
+            detail.results
+              ? 'Provisional results are published; they need certifying.'
+              : 'The results are computed once every ballot is sealed, usually within a minute.'
+          }}
+        </q-banner>
+        <q-banner v-else-if="state === 'certified'" class="bg-positive text-white" rounded>
+          Results certified {{ new Date(detail.election.certifiedAt!).toLocaleString() }}.
+          {{ detail.election.poolKeyDestroyedAt ? 'The ballot encryption key has been destroyed.' : '' }}
+        </q-banner>
+        <q-banner v-else-if="state === 'cancelled'" class="bg-grey-7 text-white" rounded>
+          Cancelled {{ new Date(detail.election.cancelledAt!).toLocaleString() }}.
+        </q-banner>
+        <div class="text-caption text-grey-7">
+          Definition hash <code>{{ detail.definitionHash.slice(0, 16) }}…</code>
+          <q-btn flat dense round size="sm" icon="content_copy" aria-label="Copy definition hash" @click="copyHash" />
+          <template v-if="state === 'draft'"> — changes with any edit; scheduling freezes exactly this.</template>
+          <template v-else-if="detail.election.tieBreakSeedCommitment">
+            · tie-break seed commitment <code>{{ detail.election.tieBreakSeedCommitment.slice(0, 16) }}…</code>
+          </template>
+        </div>
 
-      <q-card flat bordered>
-        <q-card-section class="row items-center">
-          <div class="col">
-            <h2 class="text-subtitle1">Voter roll</h2>
-            <div v-if="detail.roll" class="text-caption text-grey-7">
-              {{ detail.roll.count }} Active members as of {{ new Date(detail.roll.asOf).toLocaleString() }} · Merkle root
-              <code>{{ detail.roll.merkleRoot.slice(0, 16) }}…</code>
-              <template v-if="detail.roll.signature"> · signed by the audit key</template>
-              <template v-else-if="detail.roll.status === 'approved'"> · signature follows within a minute</template>
-            </div>
-            <div v-else class="text-caption text-grey-7">No roll yet.</div>
-          </div>
-          <q-badge v-if="detail.roll" :label="detail.roll.status" class="q-mr-sm" />
-          <q-badge v-if="detail.roll?.signature" color="positive" label="signed" class="q-mr-sm" />
-          <q-btn v-if="canEdit" outline no-caps color="primary" label="Request roll snapshot" @click="requestRoll" />
-        </q-card-section>
-        <q-expansion-item v-if="detail.roll" dense label="Members on this roll" @show="loadRoll">
-          <q-list v-if="roll" dense separator>
-            <q-item v-for="e in roll.entries" :key="e.accountId">
-              <q-item-section>{{ e.legalName }}</q-item-section>
-              <q-item-section side>{{ e.state }}</q-item-section>
+        <q-card v-if="detail.pending.length" flat bordered>
+          <q-card-section><h2 class="text-subtitle1">Waiting for a decision</h2></q-card-section>
+          <q-list separator>
+            <q-item v-for="r in detail.pending" :key="r.id">
+              <q-item-section>
+                <q-item-label>{{ describeRequest(r) }}</q-item-label>
+                <q-item-label caption>
+                  Requested {{ new Date(r.requestedAt).toLocaleString() }} · “{{ r.reason }}” · needs {{ aRole(r.approverRole) }}
+                </q-item-label>
+              </q-item-section>
+              <q-item-section v-if="canDecide(r)" side>
+                <div class="ustp-actions">
+                  <q-btn dense color="positive" label="Approve" @click="decide(r, 'approve')">
+                    <span class="sr-only">&nbsp;{{ describeRequest(r) }}</span>
+                  </q-btn>
+                  <q-btn dense flat color="negative" label="Reject" @click="decide(r, 'reject')">
+                    <span class="sr-only">&nbsp;{{ describeRequest(r) }}</span>
+                  </q-btn>
+                </div>
+              </q-item-section>
             </q-item>
           </q-list>
-        </q-expansion-item>
-      </q-card>
+        </q-card>
 
-      <q-card v-if="detail.results" flat bordered>
-        <q-card-section class="row items-center q-gutter-sm">
-          <div class="col">
-            <h2 class="text-subtitle1 q-my-none">Results</h2>
-            <div class="text-caption text-grey-7">
-              {{ detail.results.status === 'certified' ? 'Certified' : 'Provisional' }} · results hash
-              <code>{{ detail.results.resultsHash.slice(0, 16) }}…</code>
+        <q-card flat bordered>
+          <q-card-section class="ustp-header">
+            <div>
+              <h2 class="text-subtitle1">Voter roll</h2>
+              <div v-if="detail.roll" class="text-caption text-grey-7">
+                {{ detail.roll.count }} Active members as of {{ new Date(detail.roll.asOf).toLocaleString() }} · Merkle root
+                <code>{{ detail.roll.merkleRoot.slice(0, 16) }}…</code>
+                <template v-if="detail.roll.signature"> · signed by the audit key</template>
+                <template v-else-if="detail.roll.status === 'approved'"> · signature follows within a minute</template>
+              </div>
+              <div v-else class="text-caption text-grey-7">No roll yet.</div>
             </div>
-          </div>
-          <q-btn flat no-caps icon="leaderboard" label="View results" :to="`/results/${detail.election.electionId}`" />
-          <q-btn v-if="canCertify" color="primary" no-caps label="Request certification" @click="requestCertify" />
-        </q-card-section>
-      </q-card>
+            <q-badge v-if="detail.roll" :label="detail.roll.status" />
+            <q-badge v-if="detail.roll?.signature" color="positive" label="signed" />
+            <q-btn v-if="canEdit" outline no-caps color="primary" label="Request roll snapshot" @click="requestRoll" />
+          </q-card-section>
+          <q-expansion-item v-if="detail.roll" dense label="Members on this roll" @show="loadRoll">
+            <q-list v-if="roll" dense separator>
+              <q-item v-for="e in roll.entries" :key="e.accountId">
+                <q-item-section>{{ e.legalName }}</q-item-section>
+                <q-item-section side>{{ e.state }}</q-item-section>
+              </q-item>
+            </q-list>
+          </q-expansion-item>
+        </q-card>
 
-      <q-card v-if="canEdit || canCancel" flat bordered>
-        <q-card-section class="row items-center q-gutter-sm">
-          <h2 class="col text-subtitle1">Scheduling</h2>
-          <q-btn
-            v-if="canEdit"
-            color="primary"
-            no-caps
-            label="Request scheduling"
-            :disable="detail.problems.length > 0 || !rollApproved"
-            @click="requestSchedule"
-          />
-          <q-btn v-if="canCancel" flat no-caps color="negative" label="Cancel election" @click="cancelElection" />
-        </q-card-section>
-      </q-card>
+        <q-card v-if="detail.results" flat bordered>
+          <q-card-section class="ustp-header">
+            <div>
+              <h2 class="text-subtitle1">Results</h2>
+              <div class="text-caption text-grey-7">
+                {{ detail.results.status === 'certified' ? 'Certified' : 'Provisional' }} · results hash
+                <code>{{ detail.results.resultsHash.slice(0, 16) }}…</code>
+              </div>
+            </div>
+            <q-btn flat no-caps icon="leaderboard" label="View results" :to="`/results/${detail.election.electionId}`" />
+            <q-btn v-if="canCertify" color="primary" no-caps label="Request certification" @click="requestCertify" />
+          </q-card-section>
+        </q-card>
 
-      <q-card flat bordered>
-        <q-card-section><h2 class="text-subtitle1">Details</h2></q-card-section>
-        <q-card-section class="q-gutter-md q-pt-none">
-          <q-input v-model="details.title" outlined dense label="Title" :readonly="!canEdit" />
-          <q-input v-model="details.description" outlined dense autogrow label="Description" :readonly="!canEdit" />
-          <q-btn-toggle
-            v-model="details.secrecy"
-            no-caps
-            toggle-color="primary"
-            role="group"
-            aria-label="Ballot secrecy"
-            :disable="!canEdit"
-            :options="[
-              { label: 'Secret ballot', value: 'secret' },
-              { label: 'Open roll-call', value: 'open' },
-            ]"
-          />
-          <div class="row q-gutter-md">
-            <q-input v-model="details.opensAt" class="col-12 col-sm" outlined dense type="datetime-local" label="Voting opens" :readonly="!canEdit" />
-            <q-input v-model="details.closesAt" class="col-12 col-sm" outlined dense type="datetime-local" label="Voting closes" :readonly="!canEdit" />
-          </div>
-          <q-input
-            v-if="details.secrecy === 'secret'"
-            v-model.number="details.kAnonymity"
-            outlined
-            dense
-            type="number"
-            min="2"
-            label="Anonymity threshold (minimum ballots per sealed block)"
-            :readonly="!canEdit"
-          />
-        </q-card-section>
-        <q-card-actions v-if="canEdit">
-          <q-btn color="primary" label="Save details" @click="saveDetails" />
-        </q-card-actions>
-      </q-card>
+        <q-card v-if="canEdit || canCancel" flat bordered>
+          <q-card-section class="ustp-header">
+            <h2 class="text-subtitle1">Scheduling</h2>
+            <q-btn
+              v-if="canEdit"
+              color="primary"
+              no-caps
+              label="Request scheduling"
+              :disable="detail.problems.length > 0 || !rollApproved"
+              @click="requestSchedule"
+            />
+            <q-btn v-if="canCancel" flat no-caps color="negative" label="Cancel election" @click="cancelElection" />
+          </q-card-section>
+        </q-card>
 
-      <div class="row items-center">
-        <h2 class="text-h6 col">Contests</h2>
-        <q-btn v-if="canEdit" color="primary" no-caps label="Add contest" @click="openContest(null)" />
-      </div>
-      <div v-if="!detail.contests.length" class="text-grey-7">No contests yet.</div>
+        <q-card flat bordered>
+          <q-card-section><h2 class="text-subtitle1">Details</h2></q-card-section>
+          <q-card-section class="ustp-form">
+            <q-input v-model="details.title" outlined dense label="Title" :readonly="!canEdit" />
+            <q-input v-model="details.description" outlined dense autogrow label="Description" :readonly="!canEdit" />
+            <q-btn-toggle
+              v-model="details.secrecy"
+              no-caps
+              toggle-color="primary"
+              role="group"
+              aria-label="Ballot secrecy"
+              :disable="!canEdit"
+              :options="[
+                { label: 'Secret ballot', value: 'secret' },
+                { label: 'Open roll-call', value: 'open' },
+              ]"
+            />
+            <div class="ustp-row">
+              <q-input v-model="details.opensAt" outlined dense type="datetime-local" label="Voting opens" :readonly="!canEdit" />
+              <q-input v-model="details.closesAt" outlined dense type="datetime-local" label="Voting closes" :readonly="!canEdit" />
+            </div>
+            <q-input
+              v-if="details.secrecy === 'secret'"
+              v-model.number="details.kAnonymity"
+              outlined
+              dense
+              type="number"
+              min="2"
+              label="Anonymity threshold (minimum ballots per sealed block)"
+              :readonly="!canEdit"
+            />
+          </q-card-section>
+          <q-card-section v-if="canEdit" class="ustp-actions">
+            <q-btn color="primary" label="Save details" @click="saveDetails" />
+          </q-card-section>
+        </q-card>
 
-      <q-card v-for="c in detail.contests" :key="c.contestId" tag="section" :aria-labelledby="`contest-${c.contestId}`" flat bordered>
-        <q-card-section>
-          <div class="row items-center">
-            <div class="col">
+        <div class="ustp-header">
+          <h2 class="text-h6">Contests</h2>
+          <q-btn v-if="canEdit" color="primary" no-caps label="Add contest" @click="openContest(null)" />
+        </div>
+        <div v-if="!detail.contests.length" class="text-grey-7">No contests yet.</div>
+
+        <q-card v-for="c in detail.contests" :key="c.contestId" tag="section" :aria-labelledby="`contest-${c.contestId}`" flat bordered>
+          <q-card-section class="ustp-header">
+            <div>
               <h3 :id="`contest-${c.contestId}`" class="text-subtitle1">{{ c.order }}. {{ c.title }}</h3>
               <div class="text-caption text-grey-7">{{ KIND_LABELS[c.spec.kind] }}</div>
             </div>
-            <template v-if="canEdit">
+            <div v-if="canEdit" class="ustp-actions">
               <q-btn flat dense no-caps label="Edit" @click="openContest(c)">
                 <span class="sr-only">&nbsp;{{ c.title }}</span>
               </q-btn>
               <q-btn flat dense no-caps color="negative" label="Remove" @click="removeContest(c)">
                 <span class="sr-only">&nbsp;{{ c.title }}</span>
               </q-btn>
-            </template>
-          </div>
-          <div v-if="c.description" class="q-mt-sm" style="white-space: pre-wrap">{{ c.description }}</div>
-          <div v-for="line in rulesText(c.spec)" :key="line" class="q-mt-xs">{{ line }}</div>
-        </q-card-section>
-
-        <q-expansion-item v-if="c.spec.kind === 'proposal'" dense :label="proposalOf(c) ? `Text: ${proposalOf(c)!.title}` : 'No text attached'">
-          <q-card-section v-if="proposalOf(c)">
-            <div style="white-space: pre-wrap">{{ proposalOf(c)!.body }}</div>
-            <div class="text-caption text-grey-7 q-mt-sm">Content hash <code>{{ proposalOf(c)!.contentHash }}</code></div>
+            </div>
           </q-card-section>
-        </q-expansion-item>
-
-        <template v-else>
-          <q-separator />
-          <q-list dense>
-            <q-item v-for="k in candidatesOf(c)" :key="k!.candidateId">
-              <q-item-section>{{ k!.name }}</q-item-section>
-              <q-item-section v-if="canEdit" side>
-                <q-btn flat dense round size="sm" icon="close" :aria-label="`Remove ${k!.name}`" @click="removeCandidate(c, k!.candidateId)" />
-              </q-item-section>
-            </q-item>
-            <q-item v-if="!candidatesOf(c).length"><q-item-section class="text-grey-7">No candidates yet.</q-item-section></q-item>
-          </q-list>
-          <q-card-section v-if="canEdit" class="row q-gutter-sm q-pt-none">
-            <q-input v-model="newCandidate[c.contestId]" class="col" outlined dense label="Candidate name" @keyup.enter="addCandidate(c)" />
-            <q-btn outline no-caps color="primary" label="Add candidate" @click="addCandidate(c)">
-              <span class="sr-only"> to {{ c.title }}</span>
-            </q-btn>
+          <q-card-section>
+            <div v-if="c.description" class="q-mb-xs" style="white-space: pre-wrap">{{ c.description }}</div>
+            <div v-for="line in rulesText(c.spec)" :key="line">{{ line }}</div>
           </q-card-section>
-        </template>
-      </q-card>
+
+          <q-expansion-item v-if="c.spec.kind === 'proposal'" dense :label="proposalOf(c) ? `Text: ${proposalOf(c)!.title}` : 'No text attached'">
+            <q-card-section v-if="proposalOf(c)">
+              <div style="white-space: pre-wrap">{{ proposalOf(c)!.body }}</div>
+              <div class="text-caption text-grey-7 q-mt-sm">Content hash <code>{{ proposalOf(c)!.contentHash }}</code></div>
+            </q-card-section>
+          </q-expansion-item>
+
+          <template v-else>
+            <q-separator />
+            <q-list dense>
+              <q-item v-for="k in candidatesOf(c)" :key="k!.candidateId">
+                <q-item-section>{{ k!.name }}</q-item-section>
+                <q-item-section v-if="canEdit" side>
+                  <q-btn flat dense round size="sm" icon="close" :aria-label="`Remove ${k!.name}`" @click="removeCandidate(c, k!.candidateId)" />
+                </q-item-section>
+              </q-item>
+              <q-item v-if="!candidatesOf(c).length"><q-item-section class="text-grey-7">No candidates yet.</q-item-section></q-item>
+            </q-list>
+            <q-card-section v-if="canEdit" class="ustp-row">
+              <q-input v-model="newCandidate[c.contestId]" outlined dense label="Candidate name" @keyup.enter="addCandidate(c)" />
+              <q-btn outline no-caps color="primary" label="Add candidate" @click="addCandidate(c)">
+                <span class="sr-only"> to {{ c.title }}</span>
+              </q-btn>
+            </q-card-section>
+          </template>
+        </q-card>
+      </template>
     </div>
 
     <ContestDialog

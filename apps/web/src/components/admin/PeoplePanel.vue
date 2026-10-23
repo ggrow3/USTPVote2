@@ -58,19 +58,18 @@ onMounted(() => load());
 </script>
 
 <template>
-  <div>
-    <p class="text-grey-7 q-mb-md">
+  <div class="ustp-content">
+    <p class="text-grey-7">
       Everyone with an account, and the roles they hold. A role change below takes effect at once; it needs no second
       admin.
     </p>
-    <div class="row items-center q-gutter-sm q-mb-md">
+    <div class="ustp-toolbar">
       <q-input
         v-model="email"
         dense
         outlined
         clearable
         debounce="300"
-        style="min-width: 240px"
         label="Email starts with"
         @update:model-value="search"
       />
@@ -81,7 +80,6 @@ onMounted(() => load());
         clearable
         emit-value
         map-options
-        style="min-width: 200px"
         label="Holding a role"
         :options="ROLE_FILTERS"
         @update:model-value="search"
@@ -132,7 +130,7 @@ onMounted(() => load());
         </tr>
       </tbody>
     </q-markup-table>
-    <q-btn v-if="more" flat no-caps class="q-mt-sm" label="Load more" @click="load(false)" />
-    <RoleChangeForm ref="form" class="q-mt-lg" style="max-width: 860px" @changed="load()" />
+    <q-btn v-if="more" flat no-caps label="Load more" @click="load(false)" />
+    <RoleChangeForm ref="form" @changed="load()" />
   </div>
 </template>

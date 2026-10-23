@@ -193,11 +193,11 @@ onBeforeUnmount(drop);
         face recognition, and location and camera data are removed. Only a person can turn a photo down.
       </div>
     </q-card-section>
-    <q-card-section class="row items-start q-gutter-md">
+    <q-card-section class="ustp-photo-row">
       <button v-if="urls.mine" type="button" class="ustp-photo-button" aria-label="View your photo larger" @click="viewing = true">
         <img :src="urls.mine" alt="Your profile photo" class="ustp-photo-thumb" />
       </button>
-      <div v-if="photo && check" class="col" style="min-width: 220px">
+      <div v-if="photo && check" class="ustp-photo-status">
         <q-badge
           :label="STATUS_LABELS[photo.status] ?? photo.status"
           :color="photo.status === 'accepted' ? 'positive' : photo.status === 'rejected' ? 'negative' : 'warning'"
@@ -215,7 +215,7 @@ onBeforeUnmount(drop);
       </div>
       <div v-else class="text-grey-7">No photo yet.</div>
     </q-card-section>
-    <q-card-actions>
+    <q-card-section class="ustp-actions">
       <input ref="fileInput" type="file" :accept="PHOTO_TYPES.join(',')" hidden @change="onFile" />
       <input ref="cameraInput" type="file" :accept="PHOTO_TYPES.join(',')" capture="user" hidden @change="onFile($event, 'camera')" />
       <q-btn
@@ -229,19 +229,19 @@ onBeforeUnmount(drop);
       <q-btn v-if="canUseCamera" outline no-caps color="primary" icon="photo_camera" label="Take photo" :disable="busy" @click="takePhoto" />
       <q-btn outline no-caps color="primary" icon="account_circle" label="Use Gravatar" :disable="busy" @click="openGravatar" />
       <q-btn v-if="photo && photo.status !== 'rejected'" flat no-caps color="negative" label="Remove" :disable="busy" @click="remove" />
-    </q-card-actions>
+    </q-card-section>
 
     <!-- Review before upload: the photo as chosen, as it will appear, and what the check looks for. -->
     <q-dialog v-model="reviewing" :persistent="busy" aria-labelledby="photo-review-title" @hide="drop">
-      <q-card v-if="chosen" style="width: 460px; max-width: 92vw">
+      <q-card v-if="chosen" class="ustp-dialog">
         <q-card-section>
           <h2 id="photo-review-title" class="text-h6 q-my-none">Review your photo</h2>
         </q-card-section>
-        <q-card-section class="text-center q-pt-none">
+        <q-card-section class="text-center">
           <img :src="chosen.url" :alt="CHOSEN_ALT[chosen.from]" class="ustp-photo-full ustp-photo-review" />
         </q-card-section>
-        <q-card-section class="row no-wrap items-center q-gutter-md q-pt-none">
-          <img :src="chosen.url" alt="" class="ustp-photo-thumb" />
+        <q-card-section class="row no-wrap items-center">
+          <img :src="chosen.url" alt="" class="ustp-photo-thumb q-mr-md" />
           <div class="text-caption">How it will appear on your account and to Membership Admins.</div>
         </q-card-section>
         <q-card-section class="q-pt-none">
@@ -263,7 +263,7 @@ onBeforeUnmount(drop);
 
     <!-- Live camera preview (computers). The camera runs only while this is open. -->
     <q-dialog v-model="cameraOpen" aria-labelledby="camera-title" @show="start" @hide="stop">
-      <q-card style="width: 560px; max-width: 92vw">
+      <q-card class="ustp-dialog ustp-dialog--wide">
         <q-card-section>
           <h2 id="camera-title" class="text-h6 q-my-none">Take a photo</h2>
         </q-card-section>
@@ -287,7 +287,7 @@ onBeforeUnmount(drop);
 
     <!-- Gravatar: nothing goes to Gravatar until "Get my Gravatar", and nothing is saved until the review. -->
     <q-dialog v-model="gravatarOpen" :persistent="gravatarLoading" aria-labelledby="gravatar-title">
-      <q-card style="width: 460px; max-width: 92vw">
+      <q-card class="ustp-dialog">
         <q-card-section>
           <h2 id="gravatar-title" class="text-h6 q-my-none">Use your Gravatar</h2>
         </q-card-section>
@@ -328,6 +328,17 @@ onBeforeUnmount(drop);
 </template>
 
 <style scoped>
+/* The photo and its check side by side, the check under the photo when there is no room. */
+.ustp-photo-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+}
+.ustp-photo-status {
+  flex: 1 1 220px;
+  min-width: 0;
+}
 .ustp-photo-thumb {
   display: block;
   width: 128px;

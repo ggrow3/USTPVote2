@@ -63,12 +63,12 @@ onMounted(load);
 </script>
 
 <template>
-  <div class="column q-gutter-md" style="max-width: 860px">
+  <div class="ustp-content">
     <div v-if="view && view.positions.length === 0" class="text-grey-7">No offices defined yet.</div>
     <q-card v-for="p in view?.positions ?? []" :key="p.positionId" flat bordered>
-      <q-card-section class="row items-center">
-        <div class="col">
-          <h2 class="text-subtitle1 q-my-none">{{ p.title }}</h2>
+      <q-card-section class="ustp-header">
+        <div>
+          <h2 class="text-subtitle1">{{ p.title }}</h2>
           <div class="text-caption text-grey-7">
             <code>{{ p.positionId }}</code> · {{ p.seats }} {{ p.seats === 1 ? 'seat' : 'seats' }} · {{ p.termMonths }}-month
             terms<template v-if="p.description"> · {{ p.description }}</template>
@@ -97,40 +97,80 @@ onMounted(load);
           </q-item-section>
         </q-item>
       </q-list>
-      <q-card-section v-else class="text-caption text-grey-7 q-pt-none">Nobody holds this office yet.</q-card-section>
+      <q-card-section v-else class="text-caption text-grey-7">Nobody holds this office yet.</q-card-section>
     </q-card>
 
     <q-card v-if="canManage" flat bordered>
       <q-card-section>
-        <h2 class="text-subtitle1 q-my-none">Define or change an office</h2>
+        <h2 class="text-subtitle1">Define or change an office</h2>
         <div class="text-caption text-grey-7">
           Takes effect at once; no approval needed. Using an existing ID changes that office; terms already running keep
           their dates.
         </div>
       </q-card-section>
-      <q-form class="q-px-md q-pb-md q-gutter-md" @submit.prevent="save">
-        <div class="row q-gutter-md">
-          <q-input v-model="form.positionId" class="col" outlined dense label="ID (e.g. chair)" :error="!!errors.positionId" :error-message="errors.positionId" />
-          <q-input v-model="form.title" class="col" outlined dense label="Title" :error="!!errors.title" :error-message="errors.title" />
-        </div>
-        <q-input v-model="form.description" outlined dense autogrow label="Description (optional)" />
-        <div class="row q-gutter-md">
-          <q-input v-model.number="form.seats" class="col" outlined dense type="number" min="1" label="Seats" :error="!!errors.seats" :error-message="errors.seats" />
+      <q-card-section>
+        <q-form class="ustp-form" @submit.prevent="save">
+          <div class="ustp-row">
+            <q-input
+              v-model="form.positionId"
+              outlined
+              dense
+              hide-bottom-space
+              label="ID (e.g. chair)"
+              :error="!!errors.positionId"
+              :error-message="errors.positionId"
+            />
+            <q-input
+              v-model="form.title"
+              class="ustp-row__wide"
+              outlined
+              dense
+              hide-bottom-space
+              label="Title"
+              :error="!!errors.title"
+              :error-message="errors.title"
+            />
+          </div>
+          <q-input v-model="form.description" outlined dense autogrow label="Description (optional)" />
+          <div class="ustp-row">
+            <q-input
+              v-model.number="form.seats"
+              outlined
+              dense
+              hide-bottom-space
+              type="number"
+              min="1"
+              label="Seats"
+              :error="!!errors.seats"
+              :error-message="errors.seats"
+            />
+            <q-input
+              v-model.number="form.termMonths"
+              outlined
+              dense
+              hide-bottom-space
+              type="number"
+              min="1"
+              label="Term (months)"
+              :error="!!errors.termMonths"
+              :error-message="errors.termMonths"
+            />
+          </div>
           <q-input
-            v-model.number="form.termMonths"
-            class="col"
+            v-model="form.reason"
             outlined
             dense
-            type="number"
-            min="1"
-            label="Term (months)"
-            :error="!!errors.termMonths"
-            :error-message="errors.termMonths"
+            hide-bottom-space
+            autogrow
+            label="Reason (e.g. bylaws article)"
+            :error="!!errors.reason"
+            :error-message="errors.reason"
           />
-        </div>
-        <q-input v-model="form.reason" outlined dense autogrow label="Reason (e.g. bylaws article)" :error="!!errors.reason" :error-message="errors.reason" />
-        <q-btn type="submit" color="primary" no-caps label="Save office" />
-      </q-form>
+          <div class="ustp-actions">
+            <q-btn type="submit" color="primary" no-caps label="Save office" />
+          </div>
+        </q-form>
+      </q-card-section>
     </q-card>
   </div>
 </template>
