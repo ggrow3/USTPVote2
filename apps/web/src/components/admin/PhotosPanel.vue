@@ -83,7 +83,7 @@ onMounted(load);
           <q-item-label caption>
             Uploaded {{ new Date(p.uploadedAt).toLocaleString() }} · {{ p.width }}×{{ p.height }}
           </q-item-label>
-          <q-item-label v-if="p.flags.length" class="text-orange-10">Flagged: {{ p.flags.join(', ') }}</q-item-label>
+          <q-item-label v-if="p.flags.length" class="text-deep-orange-10">Flagged: {{ p.flags.join(', ') }}</q-item-label>
           <q-item-label v-if="p.decisionReason" caption>Decision: {{ p.decisionReason }}</q-item-label>
         </q-item-section>
         <q-item-section v-if="p.status !== 'rejected'" side>

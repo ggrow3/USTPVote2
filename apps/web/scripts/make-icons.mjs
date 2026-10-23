@@ -1,4 +1,4 @@
-// Draws the app icon (a ticked ballot box in the header's primary blue) as SVG and as the PNG sizes browsers and
+// Draws the app icon (a ticked ballot box in the header's primary orange) as SVG and as the PNG sizes browsers and
 // install prompts ask for, with no image libraries: shapes are signed-distance functions, supersampled for
 // anti-aliasing, and the PNGs are encoded with node:zlib. Run `node apps/web/scripts/make-icons.mjs` after changing it;
 // the output in apps/web/public/icons is committed.
@@ -8,7 +8,8 @@ import { fileURLToPath } from 'node:url';
 import { crc32, deflateSync } from 'node:zlib';
 
 const OUT = join(dirname(fileURLToPath(import.meta.url)), '..', 'public', 'icons');
-const BLUE = [0x19, 0x76, 0xd2]; // Quasar's primary, as in the header
+const PRIMARY = '#bd4e00'; // the brand primary in src/main.ts, as in the header (white on it: 4.9:1)
+const BACKGROUND = [1, 3, 5].map((i) => parseInt(PRIMARY.slice(i, i + 2), 16));
 const WHITE = [0xff, 0xff, 0xff];
 
 // Geometry on a 512 × 512 canvas. Everything white stays inside the maskable safe zone (a circle of radius 204.8).
@@ -18,8 +19,8 @@ const CORNER = 96; // background corner radius for the "any" icon; maskable icon
 
 function svg({ maskable }) {
   const bg = maskable
-    ? `<rect width="512" height="512" fill="#1976d2"/>`
-    : `<rect width="512" height="512" rx="${CORNER}" fill="#1976d2"/>`;
+    ? `<rect width="512" height="512" fill="${PRIMARY}"/>`
+    : `<rect width="512" height="512" rx="${CORNER}" fill="${PRIMARY}"/>`;
   const [a, b, c] = TICK.points;
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   ${bg}
@@ -67,7 +68,7 @@ function rasterize(size, maskable) {
       }
       const alpha = (bg + fg) / (SS * SS);
       const i = (py * size + px) * 4;
-      for (let k = 0; k < 3; k++) rgba[i + k] = alpha ? Math.round((BLUE[k] * bg + WHITE[k] * fg) / (bg + fg)) : 0;
+      for (let k = 0; k < 3; k++) rgba[i + k] = alpha ? Math.round((BACKGROUND[k] * bg + WHITE[k] * fg) / (bg + fg)) : 0;
       rgba[i + 3] = Math.round(alpha * 255);
     }
   }
