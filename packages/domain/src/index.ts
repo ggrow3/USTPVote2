@@ -93,6 +93,8 @@ export { buildResultsBundle, resultsHash, resultsSigningInput, tieBreakOrders, m
 export type { ResultsBundle, ResultsRecord, ResultsSummary, ContestOutcome } from './results.js';
 export { checkResults } from './results-check.js';
 export { resultsCsv, RESULTS_CSV_NOTICE } from './results-csv.js';
+export { votingCalendar, CALENDAR_PRODID } from './calendar.js';
+export type { CalendarElection } from './calendar.js';
 export { positionInputSchema, addMonths, winnersOf, termsFromResults } from './positions.js';
 export type {
   PositionInput,
