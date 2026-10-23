@@ -1,12 +1,15 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import type { Query } from 'firebase-admin/firestore';
 import {
   Collections,
   isSignInProvider,
   uuidv7,
   type AccountRecord,
+  type AccountSummary,
   type IdentityRecord,
   type MemberRecord,
   type MeResponse,
+  type Role,
   type RoleAssignmentRecord,
 } from 'ustp-domain';
 import { requireAccount } from '../auth/decorators.js';
@@ -19,6 +22,16 @@ import { LedgerService } from '../ledger/ledger.service.js';
 
 /** A second sign-in used to link a login method must be this fresh. */
 const LINK_MAX_AUTH_AGE_SECONDS = 5 * 60;
+
+/** `GET /v1/admin/accounts` parameters; `after` is the accountId of the previous page's last row. */
+export interface AccountQuery {
+  /** Lowercase primary-email prefix. */
+  readonly email: string | undefined;
+  /** Only accounts holding this role, or any role. */
+  readonly role: Role | 'any' | undefined;
+  readonly after: string | undefined;
+  readonly limit: number;
+}
 
 /** USTP accounts and the logins linked to them (design §4). */
 @Injectable()
@@ -49,6 +62,42 @@ export class AccountsService {
       roles,
       mfa: { required: this.config.adminMfaRequired && roles.length > 0, signedInWithMfa },
     };
+  }
+
+  /**
+   * The People list (design §10.3): accounts by primary email, each with its member status and active roles. With
+   * `role`, only role holders, gathered from their assignments instead of by paging through every account.
+   */
+  async list(query: AccountQuery): Promise<AccountSummary[]> {
+    const db = this.firebase.db;
+    const accounts = db.collection(Collections.accounts);
+    const [roles, cursor] = await Promise.all([this.directory.allActiveRoles(), query.after ? accounts.doc(query.after).get() : null]);
+    if (cursor && !cursor.exists) throw new BadRequestException('invalid query parameter after');
+
+    let page: AccountRecord[];
+    if (query.role) {
+      const wanted = query.role;
+      const holders = [...roles].filter(([, held]) => wanted === 'any' || held.includes(wanted)).map(([id]) => id);
+      const snaps = holders.length ? await db.getAll(...holders.map((id) => accounts.doc(id))) : [];
+      const found = snaps.flatMap((s) => (s.exists ? [s.data() as AccountRecord] : []));
+      page = pageOf(found, query.email, (cursor?.data() as AccountRecord | undefined) ?? null, query.limit);
+    } else {
+      let q: Query = accounts.orderBy('primaryEmail');
+      if (query.email) q = q.where('primaryEmail', '>=', query.email).where('primaryEmail', '<', `${query.email}\uf8ff`);
+      if (cursor) q = q.startAfter(cursor);
+      page = (await q.limit(query.limit).get()).docs.map((d) => d.data() as AccountRecord);
+    }
+
+    const members = page.length ? await db.getAll(...page.map((a) => db.collection(Collections.members).doc(a.accountId))) : [];
+    return page.map((a, i) => ({
+      accountId: a.accountId,
+      displayName: a.displayName,
+      primaryEmail: a.primaryEmail,
+      emailVerified: a.emailVerified,
+      createdAt: a.createdAt,
+      memberStatus: (members[i]?.data() as MemberRecord | undefined)?.status ?? null,
+      roles: roles.get(a.accountId) ?? [],
+    }));
   }
 
   /**
@@ -156,6 +205,32 @@ export class AccountsService {
       tx.delete(target.ref);
     });
   }
+}
+
+/**
+ * The People-list order, as Firestore sorts `orderBy('primaryEmail')`: accounts without an email first, then by
+ * email, ties by document ID (the accountId).
+ */
+export function compareAccounts(a: AccountRecord, b: AccountRecord): number {
+  const order = (x: string, y: string) => (x < y ? -1 : x > y ? 1 : 0);
+  if (a.primaryEmail === b.primaryEmail) return order(a.accountId, b.accountId);
+  if (a.primaryEmail === null) return -1;
+  if (b.primaryEmail === null) return 1;
+  return order(a.primaryEmail, b.primaryEmail);
+}
+
+/** One page of accounts already in memory, with the same email prefix, order and cursor as the Firestore query. */
+export function pageOf(
+  accounts: readonly AccountRecord[],
+  email: string | undefined,
+  after: AccountRecord | null,
+  limit: number,
+): AccountRecord[] {
+  return accounts
+    .filter((a) => !email || (a.primaryEmail?.startsWith(email) ?? false))
+    .filter((a) => !after || compareAccounts(a, after) > 0)
+    .sort(compareAccounts)
+    .slice(0, limit);
 }
 
 function identityRecord(principal: Principal, accountId: string, linkedAt: string): IdentityRecord {

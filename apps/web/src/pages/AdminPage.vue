@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, ref, type Component } from 'vue';
-import type { Role } from 'ustp-domain';
+import { computed, provide, ref, type Component } from 'vue';
+import type { AccountSummary, Role } from 'ustp-domain';
 import ApplicationsPanel from '../components/admin/ApplicationsPanel.vue';
 import ApprovalsPanel from '../components/admin/ApprovalsPanel.vue';
 import AuditPanel from '../components/admin/AuditPanel.vue';
@@ -8,10 +8,12 @@ import BylawsPanel from '../components/admin/BylawsPanel.vue';
 import ElectionsPanel from '../components/admin/ElectionsPanel.vue';
 import MembersPanel from '../components/admin/MembersPanel.vue';
 import OfficesPanel from '../components/admin/OfficesPanel.vue';
+import PeoplePanel from '../components/admin/PeoplePanel.vue';
 import PhotosPanel from '../components/admin/PhotosPanel.vue';
 import SignInMethodsPanel from '../components/admin/SignInMethodsPanel.vue';
 import { useRoute } from 'vue-router';
 import { usePageTitle } from '../a11y.js';
+import { ROLE_CHANGE } from '../role-change.js';
 import { hasRole, session } from '../session.js';
 
 interface Tab {
@@ -29,6 +31,7 @@ const PANELS: Record<string, Component> = {
   elections: ElectionsPanel,
   offices: OfficesPanel,
   approvals: ApprovalsPanel,
+  people: PeoplePanel,
   signin: SignInMethodsPanel,
   audit: AuditPanel,
 };
@@ -41,6 +44,7 @@ const ALL_TABS: readonly Tab[] = [
   { name: 'elections', label: 'Elections', roles: ['election_admin', 'auditor'] },
   { name: 'offices', label: 'Offices', roles: ['membership_admin', 'election_admin', 'auditor'] },
   { name: 'approvals', label: 'Approvals', roles: ['membership_admin', 'election_admin', 'auditor', 'system_admin'] },
+  { name: 'people', label: 'People', roles: ['system_admin'] },
   { name: 'signin', label: 'Sign-in methods', roles: ['system_admin'] },
   { name: 'audit', label: 'Audit ledger', roles: ['auditor'] },
 ];
@@ -50,6 +54,15 @@ const tabs = computed(() => ALL_TABS.filter((t) => hasRole(...t.roles)));
 const needsMfa = computed(() => !!session.me?.mfa.required && !session.me.mfa.signedInWithMfa);
 const requested = String(useRoute().query.tab ?? '');
 const tab = ref(tabs.value.some((t) => t.name === requested) ? requested : (tabs.value[0]?.name ?? 'approvals'));
+
+const roleChangeTarget = ref<{ account: AccountSummary } | null>(null);
+provide(ROLE_CHANGE, {
+  target: roleChangeTarget,
+  choose(account) {
+    roleChangeTarget.value = { account };
+    tab.value = 'approvals';
+  },
+});
 </script>
 
 <template>
