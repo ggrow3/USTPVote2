@@ -44,6 +44,49 @@ body {
   outline: none !important;
 }
 
+/*
+ * Hover and focus tint (WCAG 1.4.3): Quasar's .q-focus-helper washes a control in its own text colour, .15 on hover and
+ * .22 on focus, which pulls the background towards the text (white on primary fell to 3.55:1). On a colour fill (the
+ * header, filled buttons) the wash is black instead, so it darkens under the white text. On page and card surfaces it
+ * keeps Quasar's colour, below what primary text on white (.10) and the accent on a dark card (.14) allow; focus has
+ * the ring there, so it needs no stronger tint than hover.
+ */
+body {
+  --ustp-tint-hover: 0.08;
+  --ustp-tint-focus: 0.08;
+}
+.body--dark {
+  --ustp-tint-hover: 0.12;
+  --ustp-tint-focus: 0.12;
+}
+.q-header,
+.q-btn[class*='bg-'] {
+  --ustp-tint-hover: 0.15;
+  --ustp-tint-focus: 0.22;
+}
+.q-header .q-btn > .q-focus-helper,
+.q-btn[class*='bg-'] > .q-focus-helper {
+  background: #000;
+}
+.q-header .q-btn > .q-focus-helper:after,
+.q-btn[class*='bg-'] > .q-focus-helper:after {
+  content: none;
+}
+@media (any-hover: hover) {
+  .q-hoverable:hover > .q-focus-helper {
+    opacity: var(--ustp-tint-hover);
+  }
+}
+.q-focusable:focus-visible > .q-focus-helper,
+.q-manual-focusable--focused > .q-focus-helper {
+  opacity: var(--ustp-tint-focus);
+}
+/* Buttons stack their content above the tint; tabs and list rows did not, so it washed their text as well. */
+.q-tab__content,
+.q-item__section {
+  z-index: 0;
+}
+
 /* Semantic headings keep Quasar's text-h* / text-subtitle* sizes and the spacing classes next to them. */
 h1,
 h2,

@@ -32,7 +32,7 @@ test. Keep it current when pages change.
 | --- | --- | --- |
 | 1.3.1 Info and relationships | Titles were styled `div`s, no headings at all; the main navigation was a tab list; contest controls and ranked lists had no group names; receipt table had no header row | One `h1` per page, `h2`/`h3` below it; nav is a `<nav>` of links; each contest is a named `section`, its radio/checkbox group is labelled by the contest title, the ranking is a named list; table headers and captions added |
 | 1.4.1 Use of colour | Verify steps showed passed / failed / pending only as a coloured icon | Each step starts with hidden text "Passed:", "Failed:" or "Not checked yet:" |
-| 1.4.3 Contrast (minimum) | Green (Quasar positive) with white text 2.6:1; dark theme: grey captions 3.0:1, primary-coloured text 4.1:1, red text 2.9:1, links 2.0:1; orange text 3.1:1; a light banner left white text on cream (1.1:1); the emulator badge 2.2:1 | Brand positive `#2e7d32` (5.1:1); dark-theme overrides for `text-primary` (and the focused field label and current menu item, which Quasar colours with primary directly), `text-positive`, `text-negative`, `text-grey-7` and links (all ≥ 5.8:1); warning text uses `deep-orange-10` (5.6:1); badges and banners get dark text where the background is light (table below) |
+| 1.4.3 Contrast (minimum) | Green (Quasar positive) with white text 2.6:1; dark theme: grey captions 3.0:1, primary-coloured text 4.1:1, red text 2.9:1, links 2.0:1; orange text 3.1:1; a light banner left white text on cream (1.1:1); the emulator badge 2.2:1; Quasar's hover and focus tint took button and tab text down to 3.55:1 | Brand positive `#2e7d32` (5.1:1); dark-theme overrides for `text-primary` (and the focused field label and current menu item, which Quasar colours with primary directly), `text-positive`, `text-negative`, `text-grey-7` and links (all ≥ 5.8:1); warning text uses `deep-orange-10` (5.6:1); badges and banners get dark text where the background is light; the tint darkens the header and filled buttons and is lighter on page and card surfaces, so text keeps 4.6:1 or more under it (table below) |
 | 1.4.10 Reflow | At 320 px the header cut the site name to "U" and pushed the account button off screen; on Verify the Check buttons were cut off, and long receipt titles widened cards past the screen; the review and status-history dialogs had minimum widths wider than a phone | Account button becomes an icon on phones (its name keeps the account); fields take a full row on phones; page `.column` stacks no longer wrap (that is what sized cards to their widest content); dialog minimum widths capped at 95vw |
 | 1.4.11 Non-text contrast | Outlined field borders 1.8:1; toggle track 2.7:1; focus shown only as a faint tint | Borders 4.6:1; toggle track 4.6:1; focus ring below |
 | 2.1.1 Keyboard | The bylaws text sat in a scroll area that could not be scrolled from the keyboard | A focusable, named scroll region |
@@ -83,6 +83,9 @@ menus and dialogs `#1d1d1d`.
 | Outlined field border on white | `rgba(0,0,0,.54)` on `#fff` | 4.61 |
 | Toggle track (off) on white | | 4.6 |
 | Focus ring: primary on white / accent on the dark page / white on the header, menu bar and coloured banners / darker orange on light banners | | 4.94 / 6.49 / ≥ 4.94 / ≥ 4.62 |
+| Under the hover / focus tint, on a fill (header, filled buttons): black at .15 / .22 darkens primary and positive under the white text | `#fff` on `#a14200` / `#933d00`; on `#276a2b` / `#246227` | 6.37 / 7.22; 6.60 / 7.36 |
+| Under the tint, light theme (the text's own colour at .08, hover and focus): primary on white (flat and outline buttons, tabs, the current menu item); negative on white; black on white | `#bd4e00` on `#fbf6f3`; `#c10015` on `#fbf3f4`; `#000` on `#f3f3f3` | 4.60; 5.87; 18.93 |
+| Under the tint, dark theme (the text's own colour at .12): accent on the page / a card; `#ef9a9a` on a card; white on a card | `#ff6900` on `#2d231c` / `#362d26`; on `#353030`; on `#363636` | 5.31 / 4.66; 6.04; 12.08 |
 | App icon: white ballot box on primary | `#fff` on `#bd4e00` | 4.94 |
 
 Corrections to the first audit: `orange-10` (`#e65100`) is 3.79:1 on white, not 5.60 (5.60 is `deep-orange-10`), so
@@ -91,6 +94,16 @@ warning text failed until it moved to `deep-orange-10`; `orange-9` was 3.08; `te
 The accent fails as text on white and under white text (2.89:1 either way), so it is used only in the dark theme and on
 black. Warning text (`deep-orange-10`) is close in hue to primary, so a warning is always a worded label ("Flagged: …",
 an approval's blocker), never colour alone.
+
+Quasar shows hover and keyboard focus with `.q-focus-helper`, a layer over the control: its text colour, with black at
+.1 and white at .4 on top, at opacity .15 on hover and .22 on focus. That pulls the background towards the text, so as
+Quasar ships it white on primary fell to 3.96:1 on hover and 3.55 on focus, white on positive 3.98 / 3.53, flat primary
+buttons on white 4.31 / 4.07 and flat accent buttons on a dark card 4.40 / 3.74. Tabs and list rows were lower still
+(3.97 / 3.59 for primary tabs), because the layer covered their text as well. `app.css` now makes the layer black on
+the header and filled buttons; elsewhere it keeps Quasar's colour at .08 in the light theme and .12 in the dark one,
+under the .10 that primary text on white allows and the .14 the accent on a dark card allows; and it stacks tab and
+list-row content above the layer, as Quasar already does for buttons. The figures above are the layer's colours composited as
+the browser paints them, and were read back from the computed styles in a browser, both themes.
 
 ## Patterns for new pages
 
@@ -111,6 +124,9 @@ an approval's blocker), never colour alone.
   and focus colour). `app.css` fixes the dark theme for `text-primary`, `-positive`, `-negative`, `-grey-7` and
   `-deep-orange-10`; another palette class used for text needs the same check. Don't use `accent` on light
   backgrounds or under white text.
+- Text on a button, tab or clickable row needs about 4.9:1 at rest in the light theme and 5.7 on a dark card to keep
+  4.5 under the hover and focus tint. A flat button on a colour fill other than the header (a banner, a toast) needs
+  adding to the black-tint selectors in `app.css`, next to `.q-header .q-btn`.
 - Brand colours: change them only in `main.ts` (and `index.html`, `manifest.webmanifest` and `make-icons.mjs` for the
   primary), then recompute the table above.
 
@@ -133,10 +149,9 @@ an approval's blocker), never colour alone.
 - Sign-in with an authenticator code (3.3.8 Accessible authentication) relies on the alternatives: federated
   sign-in and email links are available, and the code field has `autocomplete="one-time-code"` so password managers can
   fill it.
-- Quasar's hover and keyboard-focus tint (`.q-focus-helper`) lowers a button's text contrast while it is shown: white on
-  primary (header and filled buttons) 3.96:1 on hover and 3.55 on focus, flat primary buttons on white 4.31 / 4.07,
-  flat buttons on a dark card 4.36 / 3.74. The blue theme was lower in each case (3.70 / 3.32 and 4.07 / 3.81). The
-  resting state passes, and keyboard focus also shows the ring.
+- Captions in clickable list rows (the ballot list, the admin election list) keep Quasar's colour, black at 54%, which
+  is 4.61:1 on white at rest and 4.46 under the light theme's hover and focus tint (3.54 before the tint was changed).
+  Button, tab and menu-item text keeps 4.6:1 or more under it (contrast figures); dark-theme captions stay above 8.
 - Not addressed (AAA, outside the target): reduced motion for Quasar transitions, enhanced contrast, target size
   44 px.
 
