@@ -3,7 +3,7 @@ import { checkCanApprove, checkCanChangeRole, checkCanRequest, type Actor, type 
 import { electionDocPath, sequenceId } from './collections.js';
 import { electionTransitionAuthority, isTerminal } from './election-state.js';
 import { isUuidV7, uuidv7, uuidv7Timestamp } from './ids.js';
-import { checkStatusChange } from './member-status.js';
+import { checkStatusChange, mayApply, type MemberStatus } from './member-status.js';
 import { checkRoleChange, conflictingRoles } from './roles.js';
 
 describe('uuidv7', () => {
@@ -33,6 +33,13 @@ describe('membership status', () => {
       ok: false,
       reason: /Membership Admin/,
     });
+  });
+
+  it('lets only people with no membership, or a rejected or resigned one, apply', () => {
+    const may: (MemberStatus | null)[] = [null, 'rejected', 'resigned'];
+    const mayNot: MemberStatus[] = ['applicant', 'active', 'lapsed', 'suspended'];
+    expect(may.map(mayApply)).toEqual([true, true, true]);
+    expect(mayNot.map(mayApply)).toEqual([false, false, false, false]);
   });
 
   it('requires a written reason for admin decisions', () => {

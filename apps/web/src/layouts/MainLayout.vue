@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { focusElement, liveRegions } from '../a11y.js';
 import { acting } from '../acting.js';
 import { usingEmulators } from '../firebase.js';
-import { hasRole, session, signOut } from '../session.js';
+import { canRegister, hasRole, session, signOut } from '../session.js';
 
 const TestingBar = defineAsyncComponent(() => import('../components/TestingBar.vue'));
 
@@ -13,7 +13,7 @@ const router = useRouter();
 const isAdmin = computed(() => hasRole('membership_admin', 'election_admin', 'auditor', 'system_admin'));
 const who = computed(() => acting.persona?.label || session.me?.account?.displayName || session.user?.email || 'Signed in');
 const links = computed(() => [
-  { to: '/register', label: 'Register' },
+  ...(canRegister.value ? [{ to: '/register', label: 'Register' }] : []),
   { to: '/ballot', label: 'Ballot' },
   { to: '/verify', label: 'Verify' },
   ...(isAdmin.value ? [{ to: '/admin', label: 'Admin' }] : []),

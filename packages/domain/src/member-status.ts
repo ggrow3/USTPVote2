@@ -26,6 +26,11 @@ export interface StatusChange {
   readonly reason?: string;
 }
 
+/** Whether someone may apply for membership now: never applied (null), or rejected or resigned before. */
+export function mayApply(status: MemberStatus | null): boolean {
+  return checkStatusChange({ from: status, to: 'applicant', initiatedBy: 'member' }).ok;
+}
+
 export function checkStatusChange({ from, to, initiatedBy, reason }: StatusChange): Check {
   const allowed = from === null ? to === 'applicant' : TRANSITIONS[from].includes(to);
   if (!allowed) return deny(`cannot change membership status from ${from ?? 'none'} to ${to}`);
