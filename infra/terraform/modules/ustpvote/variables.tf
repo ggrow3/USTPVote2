@@ -99,6 +99,17 @@ variable "anchors_retention_locked" {
   }
 }
 
+variable "testing_mode" {
+  description = "Let System Admins create test personas and act as them to rehearse elections (design §10.4). Never in production."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.testing_mode || var.environment != "prod"
+    error_message = "Testing mode is never on in production (design §10.4)."
+  }
+}
+
 variable "anchors_public_read" {
   description = "Make anchor objects publicly readable (design §8.4 recommendation), so outsiders can keep copies and browsers can fetch them."
   type        = bool

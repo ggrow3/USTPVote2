@@ -12,7 +12,7 @@ import {
   type Role,
   type RoleAssignmentRecord,
 } from 'ustp-domain';
-import { requireAccount } from '../auth/decorators.js';
+import { requireAccount, requireOwnAccount } from '../auth/decorators.js';
 import { DirectoryService, roleAssignmentId } from '../auth/directory.service.js';
 import { principalFromToken, type Principal, type RequestContext } from '../auth/principal.js';
 import { SignInMethodsService } from '../auth/sign-in-methods.service.js';
@@ -47,7 +47,10 @@ export class AccountsService {
   async me(ctx: RequestContext): Promise<MeResponse> {
     const accountId = ctx.accountId;
     const signedInWithMfa = ctx.principal.mfa;
-    if (!accountId) return { account: null, identities: [], member: null, roles: [], mfa: { required: false, signedInWithMfa } };
+    const testing = { enabled: this.config.testingMode, operator: ctx.operator };
+    if (!accountId) {
+      return { account: null, identities: [], member: null, roles: [], mfa: { required: false, signedInWithMfa }, testing };
+    }
     const db = this.firebase.db;
     const [account, identities, member, roles] = await Promise.all([
       db.collection(Collections.accounts).doc(accountId).get(),
@@ -61,6 +64,7 @@ export class AccountsService {
       member: (member.data() as MemberRecord | undefined) ?? null,
       roles,
       mfa: { required: this.config.adminMfaRequired && roles.length > 0, signedInWithMfa },
+      testing,
     };
   }
 
@@ -160,6 +164,7 @@ export class AccountsService {
 
   /** Links another login to the caller's account; `idToken` proves the caller controls it right now. */
   async link(ctx: RequestContext, idToken: string): Promise<IdentityRecord> {
+    requireOwnAccount(ctx);
     const accountId = requireAccount(ctx);
     let other: Principal;
     try {
@@ -193,6 +198,7 @@ export class AccountsService {
   }
 
   async unlink(ctx: RequestContext, uid: string): Promise<void> {
+    requireOwnAccount(ctx);
     const accountId = requireAccount(ctx);
     const db = this.firebase.db;
     await db.runTransaction(async (tx) => {

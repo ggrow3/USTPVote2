@@ -1,5 +1,5 @@
-# Development: ustpvote2-dev. Unlocked anchors retention, Binary Authorization in dry run, developers may be given
-# Firestore data access.
+# Development: ustpvote2-dev. Unlocked anchors retention, Binary Authorization in dry run, testing mode on, developers
+# may be given Firestore data access.
 
 module "ustpvote" {
   source = "../../modules/ustpvote"
@@ -19,6 +19,9 @@ module "ustpvote" {
 
   binauthz_dry_run    = true
   attestation_signers = var.attestation_signers
+
+  # System Admins can rehearse elections with test personas (design §10.4).
+  testing_mode = true
 
   task_enqueuers         = var.task_enqueuers
   operator_members       = var.operator_members

@@ -5,6 +5,8 @@ export type { Role } from './roles.js';
 export { MEMBER_STATUSES, checkStatusChange } from './member-status.js';
 export type { MemberStatus, StatusChange } from './member-status.js';
 export { diffLines, splitLines } from './text-diff.js';
+export { ACT_AS_HEADER, ADMIN_PERSONAS, MAX_TEST_VOTERS, PERSONA_KINDS, voterPersonaLabel } from './testing.js';
+export type { PersonaKind, PersonaRecord, PersonaSummary } from './testing.js';
 export type { DiffLine } from './text-diff.js';
 export {
   APPLICATION_WINDOW_DAYS,

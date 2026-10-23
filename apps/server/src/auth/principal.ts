@@ -34,6 +34,11 @@ export interface RequestContext {
   readonly accountId: string | null;
   /** Active roles; loaded only for routes that require a role. */
   readonly roles: readonly Role[];
+  /**
+   * In testing mode, the System Admin's own accountId when they act as a test persona (design §10.4); `accountId`
+   * and `roles` are then the persona's. Null otherwise.
+   */
+  readonly operator: string | null;
 }
 
 /** The caller as the two-person rule sees them (ustp-domain). */

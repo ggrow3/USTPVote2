@@ -1,6 +1,7 @@
 import { onIdTokenChanged, signOut as firebaseSignOut, type User } from 'firebase/auth';
 import { reactive, readonly, watch } from 'vue';
 import type { MeResponse, Role } from 'ustp-domain';
+import { acting, setActing, type ActingAs } from './acting.js';
 import { api } from './api.js';
 import { auth } from './firebase.js';
 
@@ -42,7 +43,10 @@ onIdTokenChanged(auth, async (user) => {
   if (!user) {
     state.me = null;
     lastUid = null;
+    setActing(null);
   } else if (user.uid !== lastUid) {
+    // A reload keeps the persona this tab acted as; someone else signing in does not.
+    if (lastUid !== null) setActing(null);
     lastUid = user.uid;
     await loadAccount();
   }
@@ -58,8 +62,13 @@ async function loadAccount(): Promise<void> {
   state.loading = true;
   try {
     state.error = null;
-    await api('POST', '/v1/accounts');
-    state.me = await api<MeResponse>('GET', '/v1/me');
+    await api('POST', '/v1/accounts', undefined, { actAs: null });
+    state.me = await api<MeResponse>('GET', '/v1/me').catch(async (e: unknown) => {
+      // The persona this tab acted as is no longer allowed (testing mode off, MFA missing): be yourself again.
+      if (!acting.persona) throw e;
+      setActing(null);
+      return api<MeResponse>('GET', '/v1/me');
+    });
   } catch (e) {
     state.me = null;
     state.error = e instanceof Error ? e.message : String(e);
@@ -97,6 +106,17 @@ export async function refreshUser(): Promise<void> {
   await user.getIdToken(true);
   state.user = snapshot(auth.currentUser);
   await loadAccount();
+}
+
+/**
+ * Acts as a test persona in this tab, or stops with null (design §10.4): every request then carries the persona and the
+ * account, roles and pages shown are the persona's. The persona's account loads first, so nothing changes if the API
+ * refuses and pages switch over with the right account already in place.
+ */
+export async function actAs(persona: ActingAs | null): Promise<void> {
+  const me = await api<MeResponse>('GET', '/v1/me', undefined, { actAs: persona?.accountId ?? null });
+  setActing(persona);
+  state.me = me;
 }
 
 export async function signOut(): Promise<void> {

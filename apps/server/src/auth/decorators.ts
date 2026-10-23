@@ -32,6 +32,11 @@ export const Ctx = createParamDecorator((_: unknown, host: ExecutionContext): Re
   return ctx;
 });
 
+/** For routes about the caller's own logins: refused while a System Admin acts as a test persona (design §10.4). */
+export function requireOwnAccount(ctx: RequestContext): void {
+  if (ctx.operator) throw new ForbiddenException('stop acting as a test persona first');
+}
+
 /** The caller's accountId; 403 until they have created their account. */
 export function requireAccount(ctx: RequestContext): string {
   if (!ctx.accountId) throw new ForbiddenException('create your account first (POST /v1/accounts)');

@@ -9,14 +9,18 @@
 
 locals {
   # api: Secret Manager (creating tie-break seeds), encrypting ballots to an election's pool key, Auditor verification
-  # of anchors, profile photos, bootstrap System Admins. An empty BOOTSTRAP_SYSTEM_ADMIN_EMAILS is left out.
-  api_env = {
-    GOOGLE_CLOUD_PROJECT          = var.project_id
-    BALLOT_POOL_KEY               = google_kms_crypto_key.ballot_pool.id
-    ANCHORS_BUCKET                = google_storage_bucket.anchors.name
-    PHOTOS_BUCKET                 = google_storage_bucket.photos.name
-    BOOTSTRAP_SYSTEM_ADMIN_EMAILS = join(",", var.bootstrap_system_admin_emails)
-  }
+  # of anchors, profile photos, bootstrap System Admins, and testing mode, which the api also refuses in prod.
+  api_env = merge(
+    {
+      GOOGLE_CLOUD_PROJECT          = var.project_id
+      DEPLOYMENT_ENVIRONMENT        = var.environment
+      BALLOT_POOL_KEY               = google_kms_crypto_key.ballot_pool.id
+      ANCHORS_BUCKET                = google_storage_bucket.anchors.name
+      PHOTOS_BUCKET                 = google_storage_bucket.photos.name
+      BOOTSTRAP_SYSTEM_ADMIN_EMAILS = join(",", var.bootstrap_system_admin_emails)
+    },
+    var.testing_mode ? { TESTING_MODE = "true" } : {},
+  )
 
   # worker: Secret Manager (reading seeds at tally), signing ledger blocks and rolls, pool key versions and sealing,
   # writing anchors.

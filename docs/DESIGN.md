@@ -791,6 +791,36 @@ when the account was created, the member status if there is a member record, and
   API's own checks (`checkRoleRequest` in `ustp-domain`: not for your own account, compatible with the roles held, no
   request for the same change and person already waiting). The API still decides.
 
+### 10.4 Testing mode
+
+Rehearsing an election means doing every step as the person whose role it is, and the two-person rule (§10.2) needs a
+different account on each side. Testing mode lets one System Admin do that alone, on a test deployment only.
+
+- **Where:** off by default. The api refuses to start with `TESTING_MODE=true` unless it runs against the emulators
+  or `DEPLOYMENT_ENVIRONMENT` is `dev` or `staging`, and Terraform's `testing_mode` variable is refused for `prod`.
+  Dev has it on.
+- **Personas:** `POST /v1/testing/personas` (System Admin) creates whichever admin persona is missing (Test
+  Membership Admin, Test Election Admin, Test Auditor) and adds the requested number of numbered test voters, at most
+  50 per deployment. A persona is an ordinary account with no login (no email, no `account_identities`) plus a
+  `testing_personas` record. Admin personas get their role directly; voters become Active members on the current
+  bylaws (409 while none is published). Each persona is created in its own transaction with the ledger entry its real
+  counterpart gets (`role.granted` or `member.status_changed`, reason `test persona`), naming the System Admin as the
+  actor. There is no System Admin persona: role changes stay with real System Admins, recorded under their own
+  names.
+- **Acting:** a request with `X-Act-As: <persona accountId>` runs as that persona. The guard checks that testing mode
+  is on, that the caller is a System Admin signed in with MFA whose token is not revoked, and that the target is a
+  persona; the request's account and roles are then the persona's, and the System Admin is kept as its `operator`.
+  Every route behaves as it would for the persona, two-person checks included, so a rehearsal exercises the real
+  rules, and ledger entries name the persona. The api logs each acting request with operator, persona, method and
+  path; that log is what ties a persona's actions to a real person. Linking and unlinking logins refuse while acting,
+  and `GET /v1/me` reports `testing.enabled` and `testing.operator`.
+- **Web app:** Admin → Testing (System Admins, testing mode only) creates personas and starts acting as one. A bar
+  under the menu names the persona, switches to another or stops. The choice is per browser tab (sessionStorage), so
+  two tabs can be two personas; switching reloads the page as the new persona, and ballot receipts are kept per
+  persona.
+- **Effect on the record:** what a persona does is real data in that deployment's ledger, rolls and results. That is
+  acceptable only because testing mode is confined to test deployments.
+
 ## 11. Data model (Firestore `(default)` database)
 
 Firestore Native mode has no namespaces. The spec's two namespaces are **module boundaries in code**: each module owns
@@ -832,6 +862,7 @@ registration collections are top-level and election data lives under each electi
 | `signing_keys/{keyId}` | hash of key version | immutable | key version, public key PEM *(added)* |
 | `role_assignments/{accountId}_{role}` | composite | grant/revoke | grantedBy, approvalId |
 | `approval_requests/{id}` | auto | status only | two-person requests *(added)* |
+| `testing_personas/{accountId}` | accountId | immutable | kind, label, number, createdBy; testing mode only (§10.4) *(added)* |
 
 The spec places `role_assignments` and `audit_events` in the voting namespace; they serve both modules, so the
 design treats them as a shared audit/admin module. Path constants and document shapes live in `ustp-domain`
@@ -878,6 +909,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/audit/events` · `GET /admin/audit/verify` | Auditor | ledger (paged by seq); verification of chain, blocks, signatures and anchors |
 | `GET\|PUT /admin/sign-in-methods` · `POST /admin/roles` | System Admin | auth switches, roles (→ approval) |
 | `GET /admin/accounts` (paged; `email` prefix, `role` filter) | System Admin | People list: accounts with member status and active roles, read-only (§10.3) |
+| `GET\|POST /testing/personas` · header `X-Act-As` on any signed-in route | System Admin, testing mode only (404 otherwise) | test personas and acting as them (§10.4) |
 
 Errors use RFC 9457 problem details. Request bodies are validated against schemas shared with the web app.
 
@@ -968,7 +1000,7 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
   api and worker → Cloud Run from one image (`node dist/main-api.js` / `node dist/main-worker.js`).
   Config: [`firebase.json`](../firebase.json) at the repository root (the Firebase CLI only publishes folders inside the
   one holding it) and the rules and indexes in [`infra/firebase`](../infra/firebase).
-- Bucket Lock retention locked in prod only.
+- Bucket Lock retention locked in prod only. Testing mode (§10.4) is on in dev and can never be on in prod.
 - Cost deltas against spec §8: + ≈ $0.06/month per election with a live ballot-pool key version; one Scheduler job
   per environment (free); Cloud Tasks well within its free tier. Total remains under $1/month at the stated scale.
 
@@ -1050,4 +1082,4 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, not yet applied; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell and never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3). *Still to do:* bring up dev for real (first apply, Identity Platform, first release); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, not yet applied; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell and never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4). *Still to do:* bring up dev for real (first apply, Identity Platform, first release); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
