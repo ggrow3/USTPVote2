@@ -262,10 +262,10 @@ onBeforeUnmount(drop);
     </q-dialog>
 
     <!-- Live camera preview (computers). The camera runs only while this is open. -->
-    <q-dialog v-model="cameraOpen" @show="start" @hide="stop">
+    <q-dialog v-model="cameraOpen" aria-labelledby="camera-title" @show="start" @hide="stop">
       <q-card style="width: 560px; max-width: 92vw">
         <q-card-section>
-          <h2 class="text-h6 q-my-none">Take a photo</h2>
+          <h2 id="camera-title" class="text-h6 q-my-none">Take a photo</h2>
         </q-card-section>
         <q-card-section class="q-pt-none">
           <div v-if="cameraProblem" role="alert" class="text-negative">{{ cameraProblem }}</div>
@@ -313,7 +313,8 @@ onBeforeUnmount(drop);
       </q-card>
     </q-dialog>
 
-    <q-dialog v-model="viewing">
+    <!-- No visible title, so the dialog is named directly (WCAG 4.1.2). -->
+    <q-dialog v-model="viewing" aria-label="Your profile photo">
       <q-card style="max-width: 92vw">
         <q-card-section class="text-center">
           <img v-if="urls.mine" :src="urls.mine" alt="Your profile photo" class="ustp-photo-full" />
