@@ -151,6 +151,10 @@ h3 {
 .body--dark .text-negative {
   color: #ef9a9a !important;
 }
+/* A field's error message: Quasar colours it with var(--q-negative) itself (2.6:1 on a dark card). */
+.body--dark .q-field--error .q-field__bottom {
+  color: #ef9a9a;
+}
 .body--dark .text-grey-7 {
   color: #b0b0b0 !important;
 }

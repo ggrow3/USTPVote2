@@ -13,6 +13,8 @@ export interface ServerConfig {
   readonly photosBucket: string | null;
   /** `vision`: Cloud Vision. `local`: the emulator-only stand-in (no face detection). */
   readonly photoChecker: 'vision' | 'local';
+  /** Where Gravatar pictures are fetched (design §5.3); only the emulators may point it anywhere but Gravatar. */
+  readonly gravatarUrl: string;
   /** Where tie-break seeds are kept: Secret Manager, or the emulator-only Firestore stand-in. */
   readonly secretStore: 'secret-manager' | 'emulator';
   /** Who signs ledger blocks and rolls (worker only): Cloud KMS, or the emulator-only local key. */
@@ -39,6 +41,9 @@ export interface ServerConfig {
   readonly bylawsCheckModel: string;
 }
 
+/** Gravatar's image endpoint (docs.gravatar.com/sdk/images); `GRAVATAR_URL` replaces it, with the emulators only. */
+export const DEFAULT_GRAVATAR_URL = 'https://gravatar.com/avatar';
+
 /** Claude Opus 5.5; `BYLAWS_CHECK_MODEL` overrides it. */
 export const DEFAULT_BYLAWS_CHECK_MODEL = 'claude-opus-5-5';
 
@@ -58,6 +63,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const photoChecker = (env.PHOTO_CHECKER ?? (usingEmulators ? 'local' : 'vision')) as ServerConfig['photoChecker'];
   if (photoChecker !== 'vision' && photoChecker !== 'local') throw new Error('PHOTO_CHECKER must be "vision" or "local"');
   if (photoChecker === 'local' && !usingEmulators) throw new Error('PHOTO_CHECKER=local is only allowed with the Firebase emulators');
+  if (env.GRAVATAR_URL && !usingEmulators) throw new Error('GRAVATAR_URL is only allowed with the Firebase emulators');
   const secretStore = (env.SECRET_STORE ?? (usingEmulators ? 'emulator' : 'secret-manager')) as ServerConfig['secretStore'];
   if (secretStore !== 'secret-manager' && secretStore !== 'emulator') {
     throw new Error('SECRET_STORE must be "secret-manager" or "emulator"');
@@ -93,6 +99,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       .filter(Boolean),
     photosBucket: env.PHOTOS_BUCKET || (usingEmulators && projectId ? `${projectId}-profile-photos` : null),
     photoChecker,
+    gravatarUrl: (env.GRAVATAR_URL || DEFAULT_GRAVATAR_URL).replace(/\/+$/, ''),
     secretStore,
     auditSigner,
     auditSigningKeyVersion: env.AUDIT_SIGNING_KEY_VERSION || null,

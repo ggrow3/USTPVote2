@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { faceCheckMessage } from './photo-check.js';
+import { faceCheckMessage, gravatarProblem } from './photo-check.js';
 
 describe('faceCheckMessage', () => {
   it('says the check passed when nothing was flagged', () => {
@@ -24,5 +24,18 @@ describe('faceCheckMessage', () => {
     const overruled = faceCheckMessage({ status: 'accepted', flags: ['blurry'], decisionReason: 'Fine' });
     expect(overruled).toMatchObject({ tone: 'passed', advice: [] });
     expect(overruled.text).toMatch(/accepted this photo after the automatic check found: blurry/);
+  });
+});
+
+describe('gravatarProblem', () => {
+  it('says plainly why there is no Gravatar picture, and offers the upload', () => {
+    expect(gravatarProblem(404, 'Gravatar has no picture for robin@example.test, or none rated G', 'robin@example.test')).toBe(
+      'Gravatar has no picture for robin@example.test, or none rated G. You can upload a photo instead.',
+    );
+    expect(gravatarProblem(503, 'Gravatar is not answering; try again shortly', null)).toMatch(/^Gravatar is not answering right now\./);
+    expect(gravatarProblem(409, 'sign in with a verified email address to use its Gravatar', null)).toBe(
+      'Sign in with a verified email address to use its Gravatar. You can upload a photo instead.',
+    );
+    expect(gravatarProblem(0, 'Failed to fetch.', null)).toBe('Failed to fetch. You can upload a photo instead.');
   });
 });

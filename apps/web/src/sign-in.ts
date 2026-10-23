@@ -54,8 +54,8 @@ export function reauthenticate(user: User, method: { provider: FederatedProvider
 
 /** Returns a problem with the password, or null if it meets the policy. */
 export function passwordProblem(password: string): string | null {
-  if (password.length < MIN_PASSWORD_LENGTH) return `use at least ${MIN_PASSWORD_LENGTH} characters (a passphrase works well)`;
-  if (password.length > MAX_PASSWORD_LENGTH) return `use at most ${MAX_PASSWORD_LENGTH} characters`;
+  if (password.length < MIN_PASSWORD_LENGTH) return `Use at least ${MIN_PASSWORD_LENGTH} characters (a passphrase works well).`;
+  if (password.length > MAX_PASSWORD_LENGTH) return `Use at most ${MAX_PASSWORD_LENGTH} characters.`;
   return null;
 }
 
@@ -81,12 +81,16 @@ export async function breachCount(password: string): Promise<number | null> {
   }
 }
 
+/** The chosen password breaks the policy or is breached, so the form can show the message on the password field. */
+export class PasswordRejected extends Error {}
+
+/** Creates an email/password login and sends the verification email, whose link leads back to registering. */
 export async function signUpWithPassword(auth: Auth, email: string, password: string) {
   const problem = passwordProblem(password);
-  if (problem) throw new Error(problem);
+  if (problem) throw new PasswordRejected(problem);
   const breaches = await breachCount(password);
   if (breaches) {
-    throw new Error('this password has appeared in a data breach; choose another (a few unrelated words work well)');
+    throw new PasswordRejected('This password has appeared in a data breach. Choose another (a few unrelated words work well).');
   }
   const credential = await createUserWithEmailAndPassword(auth, email, password);
   await sendEmailVerification(credential.user, { url: `${location.origin}/register` });

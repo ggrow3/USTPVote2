@@ -25,6 +25,24 @@ test. Keep it current when pages change.
   each change.
 - **Both themes** (light, and dark via `prefers-color-scheme`), and **320 px wide** for reflow.
 - **Contrast** computed from the actual colours (WCAG relative luminance), not estimated.
+- **Added 2026-10-22, profile photo from Gravatar** (account page, against the emulators with a Gravatar stand-in):
+  keyboard only from "Use Gravatar" through "Get my Gravatar" to the review dialog and the upload; Escape returns
+  focus to "Use Gravatar"; both dialogs are named by their titles; "Asking Gravatar for your picture…" goes to the
+  status region and a missing or slow picture is a `role="alert"` message in the dialog with an "Upload a photo"
+  alternative; nothing can be dismissed half-way through the request. At 320 px the card's buttons wrap with no
+  horizontal scrolling; the new text is 4.94:1 or better in both themes (primary on white and white on primary 4.94,
+  error text 6.41 light / 7.83 dark, accent on the dark card 5.84).
+- **Added 2026-10-23, registering as one flow** (Register page, against the emulators, signed out): the step list
+  (an `ol` named "Steps to register", `aria-current="step"` on the current step, hidden "Done:" before finished ones);
+  the create-login form (empty submit focuses Email, both messages linked to their fields, the password message follows
+  typing and gives way to the hint); after "Create login and continue" focus moves to the "Apply for membership"
+  heading, as it does after a federated sign-in, and the verification note is a light banner (alert) with "Send the
+  link again"; the application form itself (an empty submit focuses Legal name), a submit before verifying (an alert
+  says so, the answers stay), and the submitted state (focus on its heading). Light and dark themes: the current step
+  is 4.94 light / 6.49 dark, its marker white on primary 4.94, other steps 21 / 18.7, the card's caption 4.61 / 7.77
+  and the sign-in link 4.94 / 5.84. At 320 px the steps wrap and nothing scrolls sideways. Found and fixed on the way:
+  the application's sections sat 16 px left of the page (a margin reset cancelled the form's gutter), and field error
+  messages in the dark theme (below).
 
 ## What was fixed
 
@@ -74,6 +92,7 @@ menus and dialogs `#1d1d1d`.
 | Positive text on the dark page | `#81c784` on `#121212` | 9.31 |
 | White on negative | `#fff` on `#c10015` | 6.41 |
 | Negative text on the dark page | `#ef9a9a` on `#121212` | 8.71 |
+| A field's error message in the dark theme, on a card (Quasar uses negative itself: `#c10015`, 2.63) | `#ef9a9a` on `#1d1d1d` | 7.83 |
 | `text-grey-7` captions on white | `#757575` on `#fff` | 4.61 |
 | `text-grey-7` captions on the dark page / dark card | `#b0b0b0` on `#121212` / `#1d1d1d` | 8.64 / 7.77 |
 | Warning text on white (`deep-orange-10`) | `#bf360c` on `#fff` | 5.60 |
@@ -145,8 +164,9 @@ focus to its edit button. Start and finish are announced through the live region
   shown while one is open, are announced inconsistently by some reader and browser pairs; the cast flow avoids depending
   on them by moving focus to the receipt.
 - **Not exercised in a browser**: two-step sign-in and the authenticator QR step (the Auth emulator does not support
-  authenticator apps), the application form itself (every seeded voter is already a member), and the rows of pending
-  applications, photos and approval requests (the seed has none). These were reviewed in code only.
+  authenticator apps), the rows of pending applications, photos and approval requests (the seed has none), and the
+  federated buttons' popups in the desktop app's browser pane (it opens popups in the same tab, so a federated
+  newcomer was checked by signing in with an emulator Google credential instead). These were reviewed in code only.
 - Quasar's radios, checkboxes and toggles are ARIA widgets on `div`s rather than native inputs. They behave correctly
   (roles, states, Space to toggle, roving focus in radio groups) but depend on Quasar staying that way.
 - `QBadge` renders `role="status"`, so badges in long lists (ballots, members) are live regions and may be read out
@@ -179,3 +199,6 @@ Android if time allows), on staging or the emulators:
 6. Dialogs from the Dialog plugin (reasons, codes, confirmations): name and prompt label read; focus returns afterwards.
 7. Admin console: tab and panel relationship, row action names, the status-history dialog, the contest dialog.
 8. Zoom to 200 % and 400 % (desktop) and large text on iOS: no clipped controls.
+9. Profile photo from Gravatar: the dialog's name and its explanation are read; "Asking Gravatar for your picture…"
+   and a "no picture" message are each read once; the review dialog reads "Review your photo" and the picture as
+   "Your Gravatar picture".

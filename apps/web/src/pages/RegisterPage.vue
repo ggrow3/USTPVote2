@@ -1,16 +1,48 @@
 <script setup lang="ts">
 import { sendEmailVerification } from 'firebase/auth';
 import { useQuasar } from 'quasar';
-import { computed, reactive, ref, watch } from 'vue';
-import { createApplicationSchema, MINIMUM_MEMBER_AGE, type ApplicationRecord, type BylawsRecord } from 'ustp-domain';
-import { focusFirstInvalid, focusSoon, usePageTitle } from '../a11y.js';
+import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
+import {
+  createApplicationSchema,
+  MINIMUM_MEMBER_AGE,
+  type ApplicationRecord,
+  type BylawsRecord,
+  type SignInProvider,
+} from 'ustp-domain';
+import { focusElement, focusFirstInvalid, focusSoon, usePageTitle } from '../a11y.js';
 import { api, errorMessage } from '../api.js';
+import TwoStepCodeCard from '../components/TwoStepCodeCard.vue';
 import { auth } from '../firebase.js';
 import { apiFieldErrors, STATES, validate, type FieldErrors } from '../forms.js';
 import { refreshMe, refreshUser, session } from '../session.js';
+import {
+  MIN_PASSWORD_LENGTH,
+  PasswordRejected,
+  passwordProblem,
+  PROVIDER_LABELS,
+  signInWithProvider,
+  signUpWithPassword,
+  type FederatedProvider,
+} from '../sign-in.js';
+import { useSignInFlow } from '../sign-in-flow.js';
 
 const $q = useQuasar();
 usePageTitle('Register');
+
+/** Registering is one flow (design §5.2): a login, then the application, then a Membership Admin's decision. */
+const STEPS = ['Create your login', 'Apply', 'Membership review'] as const;
+
+// Step 1: the login, for visitors who are not signed in.
+const enabled = ref<Record<SignInProvider, boolean> | null>(null);
+const methodsError = ref<string | null>(null);
+const federated = computed(() =>
+  (['google.com', 'microsoft.com', 'apple.com'] as const).filter((p) => enabled.value?.[p]),
+);
+const login = reactive({ email: '', password: '' });
+const loginErrors = ref<FieldErrors>({});
+const { busy: signingIn, error: signInError, challenge, code, run, submitCode } = useSignInFlow(toNextStep);
+
+// Step 2: the application.
 const bylaws = ref<BylawsRecord | null>(null);
 const bylawsError = ref<string | null>(null);
 const applications = ref<ApplicationRecord[]>([]);
@@ -43,6 +75,29 @@ const status = computed(() => session.me?.member?.status ?? null);
 const canApply = computed(() => status.value === null || status.value === 'rejected' || status.value === 'resigned');
 const lastDecision = computed(() => applications.value.find((a) => a.status !== 'pending') ?? null);
 const stateOptions = STATES.map((s) => ({ label: `${s.name} (${s.code})`, value: s.code }));
+/** The current step, or null for members, who have nothing left to do here. */
+const step = computed(() => {
+  if (!session.user) return 0;
+  if (!session.me) return 1;
+  if (status.value === 'applicant') return 2;
+  return canApply.value ? 1 : null;
+});
+
+onMounted(() => document.addEventListener('visibilitychange', onVisibilityChange));
+onUnmounted(() => document.removeEventListener('visibilitychange', onVisibilityChange));
+
+watch(
+  () => !session.user,
+  async (signedOut) => {
+    if (!signedOut || enabled.value) return;
+    try {
+      enabled.value = await api<Record<SignInProvider, boolean>>('GET', '/v1/sign-in-methods');
+    } catch (e) {
+      methodsError.value = `Could not load the ways to create a login: ${errorMessage(e)}`;
+    }
+  },
+  { immediate: true },
+);
 
 watch(
   () => session.me?.account?.accountId,
@@ -59,6 +114,75 @@ watch(
   { immediate: true },
 );
 
+// Once a field was refused, its message follows what the person types.
+watch(
+  () => login.email,
+  () => {
+    const { email: _, ...rest } = loginErrors.value;
+    loginErrors.value = rest;
+  },
+);
+watch(
+  () => login.password,
+  (password) => {
+    if (!loginErrors.value.password) return;
+    const { password: _, ...rest } = loginErrors.value;
+    const problem = passwordProblem(password);
+    loginErrors.value = problem ? { ...rest, password: problem } : rest;
+  },
+);
+
+function withProvider(p: FederatedProvider) {
+  return run(() => signInWithProvider(auth, p));
+}
+
+async function createLogin() {
+  const problems: FieldErrors = {};
+  if (!login.email.trim()) problems.email = 'Enter your email address.';
+  const problem = passwordProblem(login.password);
+  if (problem) problems.password = problem;
+  loginErrors.value = problems;
+  if (Object.keys(problems).length) return focusFirstInvalid();
+  await run(async () => {
+    try {
+      return await signUpWithPassword(auth, login.email.trim(), login.password);
+    } catch (e) {
+      if (!(e instanceof PasswordRejected)) throw e;
+      loginErrors.value = { password: e.message };
+    }
+  });
+  if (loginErrors.value.password) await focusFirstInvalid();
+}
+
+/** After signing in here the login form is gone, so start the person at the step that replaced it. */
+async function toNextStep() {
+  await nextTick();
+  focusElement(document.querySelector('#apply-heading, #application-status') ?? document.querySelector('main h1'));
+}
+
+/**
+ * People who sign up with a password verify their address while they fill in the form. The session's copy of the
+ * sign-in still says unverified until it is reloaded, so reload it when they come back to this tab from their email.
+ * Firebase may already have the news from another tab (the one the link opened), so ask the session, not Firebase.
+ */
+function onVisibilityChange() {
+  const user = auth.currentUser;
+  if (document.visibilityState !== 'visible' || !user || session.user?.emailVerified) return;
+  void user
+    .reload()
+    .then(() => (user.emailVerified ? refreshUser() : undefined))
+    .catch(() => undefined);
+}
+
+/** Whether the ID token the API checks says the address is verified, reloading the sign-in once if it does not. */
+async function verifiedForApi(): Promise<boolean> {
+  const user = auth.currentUser;
+  if (!user) return false;
+  if ((await user.getIdTokenResult()).claims.email_verified === true) return true;
+  await refreshUser();
+  return (await auth.currentUser?.getIdTokenResult())?.claims.email_verified === true;
+}
+
 async function resendVerification() {
   const user = auth.currentUser;
   if (!user) return;
@@ -68,11 +192,6 @@ async function resendVerification() {
   } catch (e) {
     $q.notify({ type: 'negative', message: errorMessage(e) });
   }
-}
-
-async function checkVerified() {
-  await refreshUser();
-  if (!session.user?.emailVerified) $q.notify({ message: 'Not verified yet. Open the link in the email, then try again.' });
 }
 
 async function submit() {
@@ -110,6 +229,12 @@ async function submit() {
   busy.value = true;
   errors.value = {};
   try {
+    if (!(await verifiedForApi())) {
+      errors.value = {
+        _: `Your email address isn't verified yet. Open the link we sent to ${session.user?.email}, then choose Submit application again. Your answers stay here.`,
+      };
+      return;
+    }
     await api('POST', '/v1/registration/applications', checked.data);
     await refreshMe();
     applications.value = await api<ApplicationRecord[]>('GET', '/v1/registration/applications/me');
@@ -128,14 +253,92 @@ async function submit() {
   <q-page padding>
     <h1 class="text-h5 q-mb-md">Register as a member</h1>
     <div style="max-width: 760px">
+      <ol v-if="session.ready && step !== null" class="register-steps" aria-label="Steps to register">
+        <li
+          v-for="(label, i) in STEPS"
+          :key="label"
+          :aria-current="i === step ? 'step' : undefined"
+          :class="{ 'register-steps__current text-primary': i === step }"
+        >
+          <span class="register-steps__marker" :class="i === step ? 'bg-primary text-white' : ''" aria-hidden="true">
+            <q-icon v-if="i < step" name="check" size="16px" />
+            <template v-else>{{ i + 1 }}</template>
+          </span>
+          <span v-if="i < step" class="sr-only">Done:&nbsp;</span>{{ label }}
+        </li>
+      </ol>
+
       <div v-if="!session.ready" class="text-grey-7">Loading…</div>
 
-      <q-card v-else-if="!session.user" flat bordered>
-        <q-card-section>Sign in or create a login first. You will then be able to read the bylaws and apply.</q-card-section>
-        <q-card-actions>
-          <q-btn color="primary" label="Sign in" :to="{ path: '/signin', query: { redirect: '/register' } }" />
-        </q-card-actions>
-      </q-card>
+      <template v-else-if="!session.user">
+        <q-banner v-if="methodsError" class="bg-negative text-white q-mb-md" rounded>{{ methodsError }}</q-banner>
+        <q-banner v-if="signInError" class="bg-negative text-white q-mb-md" rounded>{{ signInError }}</q-banner>
+
+        <TwoStepCodeCard v-if="challenge" v-model:code="code" :busy="signingIn" @submit="submitCode" @cancel="challenge = null" />
+
+        <q-card v-else flat bordered style="max-width: 480px">
+          <q-card-section>
+            <h2 class="text-subtitle1">Create your login</h2>
+            <div class="text-grey-7">You will use it to apply, to vote and to manage your membership.</div>
+          </q-card-section>
+
+          <q-card-section v-if="federated.length" class="column q-gutter-sm q-pt-none">
+            <q-btn
+              v-for="p in federated"
+              :key="p"
+              outline
+              color="primary"
+              no-caps
+              :disable="signingIn"
+              :label="`Continue with ${PROVIDER_LABELS[p]}`"
+              @click="withProvider(p)"
+            />
+          </q-card-section>
+
+          <template v-if="enabled?.password">
+            <q-separator v-if="federated.length" />
+            <q-form class="q-pa-md q-gutter-md" @submit.prevent="createLogin">
+              <h3 v-if="federated.length" class="text-body1">Or use your email address</h3>
+              <q-input
+                v-model="login.email"
+                type="email"
+                label="Email"
+                outlined
+                dense
+                autocomplete="email"
+                hide-bottom-space
+                :error="!!loginErrors.email"
+                :error-message="loginErrors.email"
+              />
+              <q-input
+                v-model="login.password"
+                type="password"
+                label="Password"
+                outlined
+                dense
+                autocomplete="new-password"
+                :hint="`At least ${MIN_PASSWORD_LENGTH} characters. No other rules.`"
+                :error="!!loginErrors.password"
+                :error-message="loginErrors.password"
+              />
+              <div class="text-caption text-grey-7">We will email you a link to confirm the address.</div>
+              <q-btn type="submit" color="primary" label="Create login and continue" :loading="signingIn" />
+            </q-form>
+          </template>
+
+          <q-separator />
+          <q-card-section>
+            Already have a login?
+            <router-link :to="{ path: '/signin', query: { redirect: '/register' } }">Sign in</router-link>, and you
+            will come back here.
+          </q-card-section>
+        </q-card>
+      </template>
+
+      <template v-else-if="!session.me">
+        <q-banner v-if="session.error" class="bg-negative text-white" rounded>{{ session.error }}</q-banner>
+        <div v-else class="text-grey-7">Loading your account…</div>
+      </template>
 
       <q-card v-else-if="status === 'applicant'" flat bordered>
         <q-card-section>
@@ -154,29 +357,24 @@ async function submit() {
         </q-card-section>
       </q-card>
 
-      <q-card v-else-if="!session.user.emailVerified" flat bordered>
-        <q-card-section>
-          <h2 class="text-subtitle1">Verify your email address</h2>
-          <div class="text-grey-7">
-            We need a verified address for {{ session.user.email }} before you can apply. Check your inbox for the
-            verification link.
-          </div>
-        </q-card-section>
-        <q-card-actions>
-          <q-btn color="primary" label="I've verified it" @click="checkVerified" />
-          <q-btn flat color="primary" label="Resend email" @click="resendVerification" />
-        </q-card-actions>
-      </q-card>
-
       <template v-else>
+        <h2 id="apply-heading" class="text-subtitle1 q-mb-sm">Apply for membership</h2>
+        <q-banner v-if="!session.user.emailVerified" class="bg-orange-1 text-black q-mb-md" rounded>
+          We sent a link to {{ session.user.email }} to confirm the address. Open it before you submit; you can fill
+          in the form first, and your answers stay here.
+          <template #action>
+            <q-btn flat no-caps label="Send the link again" @click="resendVerification" />
+          </template>
+        </q-banner>
         <q-banner v-if="lastDecision?.status === 'rejected'" class="bg-orange-1 text-black q-mb-md" rounded>
           Your previous application was not approved: {{ lastDecision.decisionReason }}
         </q-banner>
         <q-banner v-if="bylawsError" class="bg-negative text-white q-mb-md" rounded>{{ bylawsError }}</q-banner>
+        <div v-else-if="!bylaws" class="text-grey-7">Loading the bylaws…</div>
 
         <q-card v-if="bylaws" flat bordered class="q-mb-md">
           <q-card-section>
-            <h2 id="bylaws-title" class="text-subtitle1">{{ bylaws.title }}</h2>
+            <h3 id="bylaws-title" class="text-subtitle1">{{ bylaws.title }}</h3>
             <div class="text-caption text-grey-7">
               Version {{ bylaws.version }} · SHA-256 <code>{{ bylaws.contentHash.slice(0, 16) }}…</code>
             </div>
@@ -300,9 +498,40 @@ async function submit() {
 </template>
 
 <style scoped>
+.register-steps {
+  list-style: none;
+  margin: 0 0 24px;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+}
+.register-steps li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.register-steps__current {
+  font-weight: 600;
+}
+.register-steps__marker {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+  font-size: 13px;
+  line-height: 1;
+}
+.register-steps__marker.bg-primary {
+  border-color: var(--q-primary);
+}
+/* The form's gutter sets the top and left margins. */
 .register-section {
   border: 0;
-  margin: 0;
+  margin-right: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
