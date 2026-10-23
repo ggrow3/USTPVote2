@@ -39,13 +39,18 @@ const CONTENTS_PUBLIC: readonly ElectionState[] = ['closed', 'certified'];
 
 type Payload = Readonly<Record<string, unknown>>;
 
-export async function checkElection(e: ElectionEvidence): Promise<Finding[]> {
-  const { election } = e.record;
-  const id = election.electionId;
-  const mine = [...e.entries.values()]
+/** The verified public entries about one election, in order. */
+function entriesAbout(id: string, entries: ReadonlyMap<number, PublicLedgerEntry>): LedgerEntry[] {
+  return [...entries.values()]
     .map((p) => p.entry)
     .filter((entry) => entry.subject === id || entry.payload.electionId === id)
     .sort((a, b) => a.seq - b.seq);
+}
+
+export async function checkElection(e: ElectionEvidence): Promise<Finding[]> {
+  const { election } = e.record;
+  const id = election.electionId;
+  const mine = entriesAbout(id, e.entries);
   // An entry recorded after the last verified block was created cannot be in it: it is pending, not missing.
   const notBlockedYet = (at: string | null) => !e.lastBlock || (at !== null && Date.parse(e.lastBlock.createdAt) < Date.parse(at));
   return [
@@ -57,6 +62,41 @@ export async function checkElection(e: ElectionEvidence): Promise<Finding[]> {
     ...kAnonymityFinding(e.record),
     countFinding(e.record),
     contentFinding(e),
+  ];
+}
+
+/**
+ * An election the api has no record of: a draft, a wrong ID, or an election deleted after it was cancelled with no
+ * ballots cast (design §6.1), whose ledger entries stay. A deletion must follow the cancellation and be the election's
+ * last entry, and no entry may show ballots sealed for it.
+ */
+export function missingElectionFindings(id: string, entries: ReadonlyMap<number, PublicLedgerEntry>): Finding[] {
+  const mine = entriesAbout(id, entries);
+  const deleted = mine.find((x) => x.type === 'election.deleted');
+  if (!deleted) {
+    return [
+      fail(
+        'The election record is published',
+        'the api has no such election: it is still a draft, or was deleted after the last verified ledger block',
+      ),
+    ];
+  }
+  const cancelled = mine.find((x) => x.type === 'election.cancelled' && x.seq < deleted.seq);
+  const history: string[] = [];
+  if (!cancelled) history.push('no election.cancelled entry before the deletion');
+  for (const x of mine.filter((x) => x.seq > deleted.seq)) history.push(`${x.type} ${x.seq} is recorded after the deletion`);
+  const ballots = mine
+    .filter((x) => (x.type === 'ballots.sealed' && x.payload.ballotCount !== 0) || (x.type === 'election.sealed' && x.payload.ballots !== 0))
+    .map((x) => `${x.type} ${x.seq} records ballots`);
+  const { title, reason } = deleted.payload;
+  return [
+    info(`Deleted permanently (entry ${deleted.seq}, ${deleted.at})`, `${String(title)}: "${String(reason)}"`),
+    problemsFinding(
+      'The ledger records its cancellation, then its deletion as its last entry',
+      history,
+      cancelled && `election.cancelled ${cancelled.seq}, election.deleted ${deleted.seq}`,
+    ),
+    problemsFinding('No ballots were sealed for it', ballots),
   ];
 }
 

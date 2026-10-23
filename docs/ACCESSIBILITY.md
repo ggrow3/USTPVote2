@@ -80,8 +80,8 @@ test. Keep it current when pages change.
 | 4.1.3 Status messages | Ranking changes, the limit in choose-N contests and casting were silent (result banners and toasts were already `role="alert"` in Quasar, but the ledger result banner was not re-inserted, so a second run was not read) | Announced through two live regions in the layout (`announce()` in `a11y.ts`), plus "Checking your receipt…"; the ledger result is cleared before each run so its alert is read every time |
 
 Also: the review-and-cast dialog now opens with focus on its title, so a screen reader reads the summary from the top
-(Tab then reaches Back and Cast ballot); destructive confirmations (remove contest, login, device, photo) open with
-focus on Cancel.
+(Tab then reaches Back and Cast ballot); destructive confirmations (remove contest, login, device, photo; delete
+election) open with focus on Cancel.
 
 ### Contrast figures
 

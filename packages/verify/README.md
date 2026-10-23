@@ -86,6 +86,10 @@ withheld entries where the record implies them: lifecycle steps, rolls and seale
 - **Ledger history.** Each step the record shows (`election.scheduled`, `opened`, `closed`, `sealed`, `cancelled`) is
   ledgered exactly once, with the same definition hash, voting window, roll, tie-break seed commitment and final count.
   A ledgered step the record does not show is also a failure.
+- **Deleted elections.** An election cancelled with no ballots cast may be deleted permanently (design §6.1), and then
+  has no record. The check looks for its `election.deleted` entry instead: it must follow an `election.cancelled`
+  entry and be the election's last, and no `ballots.sealed` or `election.sealed` entry may record ballots for it.
+  Without a deletion entry, a missing record is a failure.
 - **Roll.** A `roll.approved` entry records the published roll (count, Merkle root, as-of time), and the snapshot it
   approved is the one `election.scheduled` names. The roll signature verifies over `rollSigningInput` (JCS of the roll
   statement). The statement's snapshot and approval IDs come from that ledger entry, and its criteria are

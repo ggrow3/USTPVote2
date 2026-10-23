@@ -409,6 +409,7 @@ stateDiagram-v2
   Draft --> Cancelled
   Scheduled --> Cancelled: two-person
   Open --> Cancelled: two-person, emergency only
+  Cancelled --> [*]: delete (one Election Admin) — only if no ballot was cast
 ```
 
 Spec §4 lists Draft → Scheduled → Open → Closed → Certified. This design adds **Cancelled** and makes
@@ -447,6 +448,25 @@ per term. On its next tick the worker destroys the election's ballot-pool key ve
 
 **Cancelling** a draft is a single Election Admin action; cancelling a scheduled or open election is two-person
 (`election.cancel`, approved only if the election is still in the state it was requested from). Both are ledgered.
+
+**Deleting** a cancelled election nobody voted in removes it for good (`POST /v1/admin/elections/{id}/delete`, with a
+written reason). One Election Admin does it at once, as for cancelling a draft: not a candidate in the election, and
+signed in within the last 15 minutes, since nothing can bring it back. In one transaction the server re-reads the
+election and refuses unless `checkElectionDeletable` in `ustp-domain` passes: the election is Cancelled, it has no
+participation records (no ballot was cast, whatever its state when cancelled; an approved roll does not count), and
+the worker has destroyed its ballot-pool key version, which it finds only through the election (§7.3; within a minute
+of cancelling). It then deletes the election document and everything under it (contests, candidates, and the empty
+participation, pool and sealed-block collections), every voter roll snapshot of the election, and requests about it
+that are still pending, and ledgers `election.deleted` (`electionId, title, reason`, the admin as actor). After the
+commit it deletes the election's tie-break seed secret; a failure there is logged and leaves only an unused secret.
+What stays: every ledger entry about the election (public ones such as `roll.approved`, `election.scheduled` and
+`election.cancelled` still verify by their inclusion proofs, §8.2), decided requests (the record of who approved
+what), and proposal texts, which elections share. The public record and the admin view answer 404 afterwards; the
+verify CLI, asked about a deleted election, checks instead that its `election.deleted` entry follows its cancellation,
+is its last entry, and that no entry records ballots sealed for it. The election editor offers Delete on a qualifying
+cancelled election (the detail's `ballotsCast` says how many ballots were cast) and explains when it cannot. What it
+gives up: an election that was scheduled, and perhaps opened, loses its published definition and roll; its ledger
+entries still hold their hashes, so nobody can quietly rewrite what was scheduled, but the texts themselves are gone.
 
 ### 6.2 Contests
 
@@ -692,14 +712,14 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   `approval.requested`, `approval.decided`, `signin_method.changed`. Added since: `photo.decided`, `roll.approved`,
   `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled` (M2–M3a), `ballots.sealed`,
   `election.sealed` (M3b), `results.computed` (M4a), `results.certified`, `election.pool_key_destroyed`,
-  `position.defined`, `position_term.created`, `position_term.ended` (M4b). The authoritative list is
+  `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted` (M5). The authoritative list is
   `LEDGER_EVENT_TYPES` in `ustp-domain`.
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
   entries are public. A public verifier checks a public entry by Merkle inclusion in its ledger block (§8.3) without
   seeing the private entries in that block. Public types (`PUBLIC_LEDGER_EVENT_TYPES`): `bylaws.published`,
   `roll.approved`, `election.scheduled`, `election.opened`, `election.closed`, `ballots.sealed`, `election.sealed`,
-  `election.cancelled`, `results.computed`, `results.certified`, `election.pool_key_destroyed`, `position.defined`,
-  `position_term.created`, `position_term.ended`.
+  `election.cancelled`, `election.deleted`, `results.computed`, `results.certified`, `election.pool_key_destroyed`,
+  `position.defined`, `position_term.created`, `position_term.ended`.
   `GET /v1/public/ledger/entries/{seq}` returns a public entry with its block and inclusion proof; anything else, or an
   entry not yet in a block, is 404.
 
@@ -856,7 +876,7 @@ results page, the CLI and the tests pass it that entry.
 | Capability | Membership Admin | Election Admin | Auditor | System Admin |
 |---|:-:|:-:|:-:|:-:|
 | Triage applications and photos; change member status | ● | | | |
-| Create/edit draft elections, contests, proposals | | ● | | |
+| Create/edit draft elections, contests, proposals; delete a cancelled election nobody voted in (at once; §6.1) | | ● | | |
 | Request roll snapshot, scheduling, certification, cancellation | | ● | | |
 | Define or change offices (at once; §6.4) | ● | ● | | |
 | Approve roll, scheduling, certification, cancellation, ending a term of office | | | ● | |
@@ -892,6 +912,7 @@ decidedBy, decidedAt, reason, expiresAt}`.
 | `position.modify` (ending a term; §6.4) | Membership or Election Admin | Auditor |
 
 Defining or changing an office is no longer two-person: one Membership or Election Admin does it at once (§6.4).
+Deleting a cancelled election nobody voted in is one Election Admin's action too, like cancelling a draft (§6.1).
 
 **Role changes need one System Admin.** `POST /v1/admin/roles` grants or revokes a role and takes effect at once: no
 request, no second admin. Any System Admin may change anyone's roles but their own, System Admin and Auditor
@@ -981,9 +1002,9 @@ registration collections are top-level and election data lives under each electi
 | `photo_checks/{checkId}` | auto | immutable | Vision signals, verdict |
 | `positions/{positionId}` | slug | Membership or Election Admin, at once | title, description, seats, term months, approval if any (§6.4) |
 | `position_terms/{termId}` | auto | created by certification; ended two-person | holder, contest, start/end, results hash, status |
-| `eligibility_snapshots/{snapshotId}` | auto | immutable once approved | criteria, count, Merkle root, signature |
+| `eligibility_snapshots/{snapshotId}` | auto | immutable once approved; deleted with its election (§6.1) | criteria, count, Merkle root, signature |
 | **voting** | | | |
-| `elections/{electionId}` | UUIDv7 | state transitions | definition, definitionHash, seed commitment, k |
+| `elections/{electionId}` | UUIDv7 | state transitions; deleted with everything under it if cancelled with no ballot cast (§6.1) | definition, definitionHash, seed commitment, k |
 | `elections/{id}/contests/{contestId}` | slug | frozen at schedule | contest spec (`ustp-tally` type) |
 | `elections/{id}/candidates/{candidateId}` | slug | frozen at schedule | contestId, display data, optional accountId |
 | `elections/{id}/roll_entries/{accountId}` | accountId | immutable | snapshotId |
@@ -1000,7 +1021,7 @@ registration collections are top-level and election data lives under each electi
 | `anchors/{index}` | zero-padded integer | immutable | GCS URI, generation |
 | `signing_keys/{keyId}` | hash of key version | immutable | key version, public key PEM *(added)* |
 | `role_assignments/{accountId}_{role}` | composite | grant/revoke | grantedBy (approvedBy, approvalId only for two-person grants made before §10.2's change) |
-| `approval_requests/{id}` | auto | status only | two-person requests *(added)* |
+| `approval_requests/{id}` | auto | status only; pending ones go with a deleted election | two-person requests *(added)* |
 | `testing_personas/{accountId}` | accountId | immutable | kind, label, number, createdBy; testing mode only (§10.4) *(added)* |
 
 The spec places `role_assignments` and `audit_events` in the voting namespace; they serve both modules, so the
@@ -1043,6 +1064,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/elections` · `GET /admin/elections/{id}` (detail, definition hash, problems) · `GET /admin/proposals` | Election Admin, Auditor | read election setup |
 | `POST /admin/elections` · `PATCH /admin/elections/{id}` · `POST\|PUT\|DELETE …/contests[/{cid}]` · `POST\|DELETE …/contests/{cid}/candidates[/{kid}]` · `POST /admin/proposals` | Election Admin | edit drafts |
 | `POST /admin/elections/{id}/roll` · `.../schedule` · `.../cancel` · `.../certify` | Election Admin | roll snapshot, scheduling, cancellation and certification requests (draft cancel is immediate) |
+| `POST /admin/elections/{id}/delete` | Election Admin | permanently delete a cancelled election nobody voted in, at once (204; 409 otherwise; §6.1) |
 | `GET /admin/positions` · `POST /admin/positions` · `POST /admin/positions/{id}/terms/{termId}/end` | any admin (read); Membership or Election Admin | offices and terms; define or change an office (at once), end a term (→ approval) |
 | `GET /public/positions` | P | offices and who holds them now |
 | `GET /admin/elections/{id}/roll` | Election Admin, Auditor | latest roll with member names, for review |
@@ -1193,7 +1215,7 @@ worker against the emulators and calls the tick and the bylaws checks every 15 s
 | §2 Firestore "namespaces" | Module boundaries in code; top-level registration collections, election data under each election | Firestore Native mode has no namespaces |
 | §2 worker as "Cloud Run Worker / Jobs" | Cloud Run service, HTTP-triggered | Per-minute Jobs would exceed the free tier |
 | §4 sealer only | + KMS encryption of pool entries with per-election key versions destroyed after certification | Sealing does not protect the pool while it exists, nor backups |
-| §4 lifecycle | + `Cancelled`; scheduling is two-person | Need a terminal state for aborted elections; the contest rules matter as much as the roll |
+| §4 lifecycle | + `Cancelled`; scheduling is two-person; a cancelled election nobody voted in can be deleted | Need a terminal state for aborted elections; the contest rules matter as much as the roll; elections set up by mistake or for practice should not stay in every list, and the ledger keeps their record (§6.1) |
 | §5 two-person list | + scheduling, cancellation; officer position modifications only for ending a term | Same reasoning. Role changes were two-person too until USTP chose one System Admin for them (§10.2), and defining or changing an office until USTP chose one Membership or Election Admin for it (§6.4) |
 | §6 collections | + `approval_requests`, `bylaws_versions`, `ledger_head` | Two-person workflow, provable bylaws agreement, chain head |
 | §4 "1-minute anchors" | Anchor only when a new block exists, ≤ 1/min | Matches spec §8 "smart anchoring" |
@@ -1250,4 +1272,4 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, not yet applied; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell and never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); a profile photo from the member's Gravatar, fetched by the api only on request and then reviewed and uploaded like any photo (§5.3); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2). *Still to do:* bring up dev for real (first apply, Identity Platform, first release); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, not yet applied; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell and never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); a profile photo from the member's Gravatar, fetched by the api only on request and then reviewed and uploaded like any photo (§5.3); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1). *Still to do:* bring up dev for real (first apply, Identity Platform, first release); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |

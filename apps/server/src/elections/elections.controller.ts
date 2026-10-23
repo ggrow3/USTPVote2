@@ -76,6 +76,13 @@ export class ElectionsController {
     return this.elections.cancel(ctx, id, body.reason);
   }
 
+  /** Permanently deletes a cancelled election nobody voted in; the ledger keeps its entries and records the deletion. */
+  @Post(':id/delete')
+  @HttpCode(204)
+  async delete(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(reasonInputSchema)) body: ReasonInput) {
+    await this.elections.delete(ctx, id, body.reason);
+  }
+
   @Post(':id/contests')
   addContest(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(contestInputSchema)) body: ContestInput) {
     return this.elections.addContest(ctx, id, body);

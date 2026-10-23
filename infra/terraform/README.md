@@ -353,8 +353,8 @@ instance starts. To switch the check off, set the variable back to `false` and a
 - **Nothing here is easily undone.** KMS key rings and keys can never be deleted, so they and the anchors bucket have
   `prevent_destroy`; Firestore is only forgotten on destroy; Cloud Run services and Firestore have deletion protection.
   `terraform destroy` therefore stops at the keys by design.
-- **Custom roles** (`ustpSecretCreator`, `ustpBallotPoolWorker`) keep their IDs reserved for weeks after deletion;
-  undelete them rather than recreate them. So does the `github` workload identity pool (30 days).
+- **Custom roles** (`ustpSecretCreator`, `ustpSecretDeleter`, `ustpBallotPoolWorker`) keep their IDs reserved for weeks
+  after deletion; undelete them rather than recreate them. So does the `github` workload identity pool (30 days).
 - **Firestore's location** is fixed at creation (default: the region; `firestore_location = "nam5"` for the
   multi-region).
 - **Key rotation:** create a new `audit-signing` version, raise `audit_signing_key_version` and apply; the worker

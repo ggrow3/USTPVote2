@@ -1,6 +1,6 @@
-import { rollSigningInput, type PublicElection, type SealedBlockRecord } from 'ustp-domain';
+import { rollSigningInput, type LedgerEventType, type PublicElection, type PublicLedgerEntry, type SealedBlockRecord } from 'ustp-domain';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { checkElection, kAnonymityFinding, type ElectionEvidence } from './election.js';
+import { checkElection, kAnonymityFinding, missingElectionFindings, type ElectionEvidence } from './election.js';
 import type { Finding } from './report.js';
 import { buildWorld, ELECTION_ID, makeSigner, publicEntries, type World } from './testing/fixtures.js';
 
@@ -138,5 +138,35 @@ describe('a published election', () => {
     const lowTurnout = { ...small, sealedBlocks: small.sealedBlocks.slice(0, 1) };
     expect(kAnonymityFinding(lowTurnout)[0]!.status).toBe('info');
     expect(kAnonymityFinding(rollCall.record)).toEqual([]);
+  });
+});
+
+describe('an election the api does not publish', () => {
+  /** Public entries about ELECTION_ID, numbered from 1; only `entry` matters to these checks. */
+  const ledgerOf = (...steps: [LedgerEventType, Record<string, unknown>?][]) =>
+    new Map(
+      steps.map(([type, payload = {}], i) => {
+        const entry = { v: 1, seq: i + 1, type, at: '2026-10-23T12:00:00.000Z', actor: 'a', subject: ELECTION_ID, payload, prevHash: '', hash: '' };
+        return [i + 1, { entry } as unknown as PublicLedgerEntry];
+      }),
+    );
+  const deletion: [LedgerEventType, Record<string, unknown>] = ['election.deleted', { electionId: ELECTION_ID, title: 'Officers', reason: 'test' }];
+
+  it('fails when the ledger does not record a deletion', () => {
+    expect(failed(missingElectionFindings(ELECTION_ID, ledgerOf(['election.cancelled'])))).toEqual(['The election record is published']);
+  });
+
+  it('passes a deletion that follows the cancellation, with no ballots sealed', () => {
+    const findings = missingElectionFindings(ELECTION_ID, ledgerOf(['roll.approved'], ['election.scheduled'], ['election.cancelled'], deletion));
+    expect(failed(findings)).toEqual([]);
+    expect(findings[0]).toEqual({ status: 'info', label: 'Deleted permanently (entry 4, 2026-10-23T12:00:00.000Z)', detail: 'Officers: "test"' });
+  });
+
+  it('fails a deletion without a cancellation, with ballots sealed, or followed by more entries', () => {
+    expect(failed(missingElectionFindings(ELECTION_ID, ledgerOf(deletion, ['election.cancelled'])))).toEqual([
+      'The ledger records its cancellation, then its deletion as its last entry',
+    ]);
+    const sealed = ledgerOf(['election.opened'], ['ballots.sealed', { ballotCount: 2 }], ['election.cancelled'], deletion);
+    expect(failed(missingElectionFindings(ELECTION_ID, sealed))).toEqual(['No ballots were sealed for it']);
   });
 });
