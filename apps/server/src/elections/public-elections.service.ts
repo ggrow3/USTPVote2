@@ -6,6 +6,7 @@ import {
   resultsCsv,
   resultsSummary,
   sealedInclusionProof,
+  votingCalendar,
   type BallotProof,
   type ElectionRecord,
   type ElectionState,
@@ -24,7 +25,8 @@ const CONTENTS_PUBLIC: readonly ElectionState[] = ['closed', 'certified'];
 /**
  * The published record of an election (design §7.5, §9, §12), readable by anyone once it is past its draft: the frozen
  * definition, the roll's size and root, sealed block summaries, the contents of sealed blocks once voting has closed,
- * the inclusion proof for any sealed commitment, and the signed results once the worker has tallied them.
+ * the inclusion proof for any sealed commitment, the signed results once the worker has tallied them, and the voting
+ * window as a calendar event.
  */
 @Injectable()
 export class PublicElectionsService {
@@ -97,6 +99,17 @@ export class PublicElectionsService {
     const results = await this.results(electionId);
     const { definition } = await this.reader.load(electionId);
     return resultsCsv({ results, definition, origin });
+  }
+
+  /**
+   * The voting window as an iCalendar event (design §6.1): any election past its draft, since only then is the window
+   * frozen and public. Nothing in it depends on the caller.
+   */
+  async calendar(electionId: string, origin: string): Promise<string> {
+    const snap = await this.firebase.db.collection(Collections.elections).doc(electionId).get();
+    const election = snap.data() as ElectionRecord | undefined;
+    if (!election || election.state === 'draft') throw new NotFoundException('no such election');
+    return votingCalendar({ election, origin, now: new Date().toISOString() });
   }
 
   /** Every sealed block with its parts, once voting has closed. */

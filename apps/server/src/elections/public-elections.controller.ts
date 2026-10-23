@@ -33,6 +33,18 @@ export class PublicElectionsController {
     return csv;
   }
 
+  /**
+   * The voting window as an iCalendar event, for "Add to calendar". A link, not a fetch, so it carries no credentials;
+   * `inline` lets iOS offer to add it to Calendar, and other browsers download it, as they cannot show text/calendar.
+   */
+  @Get(':id/calendar.ics')
+  @Header('Content-Type', 'text/calendar; charset=utf-8')
+  async calendar(@Param('id') id: string, @Req() req: FastifyRequest, @Res({ passthrough: true }) reply: FastifyReply) {
+    const ics = await this.elections.calendar(id, requestOrigin(req));
+    void reply.header('Content-Disposition', `inline; filename="ustp-vote-${id.replace(/[^A-Za-z0-9-]/g, '')}.ics"`);
+    return ics;
+  }
+
   @Get(':id/proofs/:commitment')
   proof(@Param('id') id: string, @Param('commitment') commitment: string) {
     return this.elections.proof(id, commitment);
@@ -41,7 +53,8 @@ export class PublicElectionsController {
 
 /**
  * The origin the caller reached the web app at. Firebase Hosting forwards `/v1/**` with X-Forwarded-Host and
- * X-Forwarded-Proto, which Fastify reads (trustProxy), so links in the CSV point at the site it was fetched from.
+ * X-Forwarded-Proto, which Fastify reads (trustProxy), so links in the CSV and the calendar event point at the site
+ * they were fetched from.
  */
 function requestOrigin(req: FastifyRequest): string {
   const url = URL.parse(`${req.protocol}://${req.host}`);

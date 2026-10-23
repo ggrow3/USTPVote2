@@ -57,6 +57,15 @@ test. Keep it current when pages change.
   keeps its place in the reading order, and the election editor's back button now shows its name, "Administration"
   (it was an icon named "Back to administration"). Dark-theme admin panels now sit on the page background (#121212)
   like every other page rather than Quasar's #1d1d1d panel, which only raises the contrast of text on them.
+- **Added 2026-10-23, "Add to calendar"** (ballot list and ballot page, against the emulators as v1 and v2, light and
+  dark, 1280 px and 320 px): both are links (`<a href>` to the public `.ics`), not buttons, since they fetch a file.
+  On the list each is its own row under its election, like "Results of …", named by its visible text ("Add 2026
+  Officer Election to your calendar"); on the ballot page the visible "Add to calendar" is followed by hidden text, so
+  its name is "Add to calendar: voting in 2027 Platform Convention" (visible text first, 2.5.3). The icons are hidden
+  from the accessibility tree. On the ballot page Tab goes from the back link to it, with the 2 px focus ring; it is
+  36 px tall and starts on the title's left edge. Primary on white 4.94, accent on the dark page 6.49, list rows black
+  on white. At 320 px long titles wrap inside the row and nothing scrolls sideways. Neither appears once the voter has
+  voted or voting is over.
 
 ## What was fixed
 
