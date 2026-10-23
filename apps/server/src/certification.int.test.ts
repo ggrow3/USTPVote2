@@ -8,6 +8,7 @@ import {
   type ResultsRecord,
 } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { ApprovalsService } from './administration/approvals.service.js';
 import { BALLOT_POOL_KEYS, type BallotPoolKeys } from './infra/ballot-pool.js';
 import { closeNow, ledgerTypes, minutes, seedElection, seededBallot, type SeededElection } from './testing/elections.js';
 import { resetEmulators, TestApi, TestWorker, type User } from './testing/emulator.js';
@@ -40,11 +41,10 @@ beforeEach(async () => {
 const decide = (by: User, id: string, decision: 'approve' | 'reject' = 'approve') =>
   api.call('POST', `/v1/admin/approvals/${id}/decision`, by, { decision, reason: 'checked' });
 
-/** Defines an office through the two-person flow: the Election Admin asks, the Auditor approves. */
+/** Defines an office as the Election Admin; it takes effect at once. */
 async function defineOffice(positionId: string, termMonths = 24) {
-  const req = await api.call('POST', '/v1/admin/positions', ea, { positionId, title: 'Chair', seats: 1, termMonths, reason: 'bylaws art. 4' });
-  expect(req.status).toBe(201);
-  expect((await decide(auditor, req.body.id)).body.status).toBe('executed');
+  const res = await api.call('POST', '/v1/admin/positions', ea, { positionId, title: 'Chair', seats: 1, termMonths, reason: 'bylaws art. 4' });
+  expect(res.status).toBe(201);
 }
 
 /** A seeded secret election with every voter's ballot cast (Blair wins the chair), closed, sealed and tallied. */
@@ -148,6 +148,52 @@ describe('certification', () => {
 });
 
 describe('offices and terms', () => {
+  const chair = { positionId: 'chair', title: 'Chair', description: '', seats: 1, termMonths: 24 };
+
+  it('defines and changes an office at once, with no approval, ledgered publicly with the admin as actor', async () => {
+    const res = await api.call('POST', '/v1/admin/positions', ea, { ...chair, reason: 'bylaws art. 4' });
+    expect(res).toMatchObject({ status: 201, body: { ...chair, approvalId: null, definedAt: expect.any(String) } });
+    expect((await api.call('GET', '/v1/public/positions')).body.positions).toEqual([res.body]);
+    expect((await api.call('GET', '/v1/admin/approvals', auditor)).body).toEqual([]);
+
+    const changed = await api.call('POST', '/v1/admin/positions', ea, { ...chair, title: 'Party Chair', termMonths: 36, reason: 'art. 4 amended' });
+    expect(changed.body).toMatchObject({ title: 'Party Chair', termMonths: 36 });
+    expect((await api.call('GET', '/v1/public/positions')).body.positions).toEqual([changed.body]);
+
+    const entries = (await api.firebase.db.collection('audit_events').where('type', '==', 'position.defined').get()).docs;
+    expect(entries.map((d) => d.data()).sort((x, y) => x.seq - y.seq)).toEqual([
+      expect.objectContaining({ actor: ea.accountId, subject: 'chair', payload: { ...chair, reason: 'bylaws art. 4' } }),
+      expect.objectContaining({ actor: ea.accountId, payload: expect.objectContaining({ title: 'Party Chair', reason: 'art. 4 amended' }) }),
+    ]);
+  });
+
+  it('lets only Membership and Election Admins define offices', async () => {
+    const ma = await api.member('membership.admin@example.test');
+    await api.grant(ma.accountId, 'membership_admin', sa1);
+    expect((await api.call('POST', '/v1/admin/positions', ma, { ...chair, reason: 'x' })).status).toBe(201);
+    for (const who of [auditor, sa1, voters[0]!]) {
+      expect((await api.call('POST', '/v1/admin/positions', who, { ...chair, title: 'Mine', reason: 'x' })).status).toBe(403);
+    }
+    expect((await api.call('GET', '/v1/public/positions')).body.positions[0].title).toBe('Chair');
+  });
+
+  it('still decides office definitions requested before offices were defined directly', async () => {
+    const approvals = api.app.get(ApprovalsService);
+    const old = await api.firebase.db.runTransaction((tx) =>
+      approvals.createRequest(tx, {
+        action: 'position.modify',
+        subject: 'chair',
+        payload: { change: 'define', position: chair },
+        reason: 'made before the change',
+        requestedBy: ea.accountId,
+      }),
+    );
+    expect((await decide(auditor, old.id)).body.status).toBe('executed');
+    expect((await api.call('GET', '/v1/public/positions')).body.positions).toEqual([
+      { ...chair, approvalId: old.id, definedAt: expect.any(String) },
+    ]);
+  });
+
   it('links candidate contests only to offices that exist', async () => {
     await defineOffice('chair');
     const { electionId } = (
