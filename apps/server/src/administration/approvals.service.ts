@@ -11,10 +11,8 @@ import {
   type ApprovalRequestRecord,
   type ApprovalStatus,
   type DecisionInput,
-  type RoleChangeInput,
   type TwoPersonAction,
 } from 'ustp-domain';
-import { requireAccount } from '../auth/decorators.js';
 import { actorOf, type RequestContext } from '../auth/principal.js';
 import { assertCheck } from '../common/validation.js';
 import { CONFIG, type ServerConfig } from '../config.js';
@@ -23,7 +21,7 @@ import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { PositionApprovals } from '../positions/position-approvals.js';
 import { NO_EFFECT, type ApprovalHandler } from './approval-handler.js';
-import { RoleApprovals, type RoleChangePayload } from './role-approvals.js';
+import { RoleChanges } from './role-changes.js';
 
 export interface NewRequest {
   readonly action: TwoPersonAction;
@@ -46,7 +44,7 @@ export class ApprovalsService {
     private readonly firebase: Firebase,
     private readonly ledger: LedgerService,
     @Inject(CONFIG) private readonly config: ServerConfig,
-    private readonly roles: RoleApprovals,
+    private readonly roles: RoleChanges,
     private readonly elections: ElectionApprovals,
     private readonly positions: PositionApprovals,
   ) {}
@@ -106,17 +104,6 @@ export class ApprovalsService {
 
   allocateId(): string {
     return this.firebase.db.collection(Collections.approvalRequests).doc().id;
-  }
-
-  async requestRoleChange(ctx: RequestContext, input: RoleChangeInput): Promise<ApprovalRequestRecord> {
-    const requestedBy = requireAccount(ctx);
-    const action = input.change === 'grant' ? 'role.grant' : 'role.revoke';
-    this.assertCanRequest(ctx, action, input.accountId);
-    const payload: RoleChangePayload = { accountId: input.accountId, role: input.role, change: input.change };
-    return this.firebase.db.runTransaction(async (tx) => {
-      await this.roles.assertAllowed(tx, payload);
-      return this.createRequest(tx, { action, subject: input.accountId, payload, reason: input.reason, requestedBy });
-    });
   }
 
   async list(status: ApprovalStatus): Promise<ApprovalRequestRecord[]> {
@@ -194,6 +181,7 @@ export class ApprovalsService {
   }
 
   private handlerFor(action: TwoPersonAction): ApprovalHandler {
+    // Role requests come only from before role changes needed one admin (design §10.2).
     if (action === 'role.grant' || action === 'role.revoke') return this.roles;
     if (action === 'position.modify') return this.positions;
     return this.elections; // roll.approve, election.schedule, election.certify, election.cancel

@@ -67,9 +67,9 @@ beforeEach(async () => {
   ea = await api.member('election.admin@example.test');
   ea2 = await api.member('election.admin2@example.test');
   auditor = await api.member('auditor@example.test');
-  await api.grant(ea.accountId, 'election_admin', sa1, sa2);
-  await api.grant(ea2.accountId, 'election_admin', sa1, sa2);
-  await api.grant(auditor.accountId, 'auditor', sa1, sa2);
+  await api.grant(ea.accountId, 'election_admin', sa1);
+  await api.grant(ea2.accountId, 'election_admin', sa1);
+  await api.grant(auditor.accountId, 'auditor', sa1);
   voters = [await api.member('v1@example.test'), await api.member('v2@example.test'), await api.member('v3@example.test')];
   for (const v of voters) await makeActive(v);
 });

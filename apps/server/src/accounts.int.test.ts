@@ -93,7 +93,7 @@ describe('accounts', () => {
     expect((await api.call('POST', '/v1/accounts', verified)).body).toEqual({ created: false, accountId: created.body.accountId });
     expect((await api.call('GET', '/v1/me', verified)).body.roles).toEqual(['system_admin']);
 
-    // Revoked (seeded directly here; normally a two-person action): a later sign-in must not restore it.
+    // Revoked (seeded directly here; normally a System Admin's change): a later sign-in must not restore it.
     await api.firebase.db
       .collection('role_assignments')
       .doc(`${created.body.accountId}_system_admin`)

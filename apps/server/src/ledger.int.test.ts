@@ -36,7 +36,7 @@ beforeEach(async () => {
     .catch(() => undefined); // nothing anchored yet
   [sa1, sa2] = await api.systemAdmins();
   auditor = await api.member('auditor@example.test');
-  await api.grant(auditor.accountId, 'auditor', sa1, sa2); // entries 1..5 with the two bootstrap grants
+  await api.grant(auditor.accountId, 'auditor', sa1); // entries 1..3 with the two bootstrap grants
 });
 
 /** An insider with database access rewrites entry `seq` and relinks everything after it, head included. */
@@ -69,7 +69,7 @@ describe('ledger blocks and anchors', () => {
     });
 
     const [block1] = (await api.call('GET', '/v1/public/ledger/blocks')).body as LedgerBlockRecord[];
-    expect(block1).toMatchObject({ index: 1, prevBlockHash: GENESIS_HASH, firstSeq: 1, lastSeq: 5 });
+    expect(block1).toMatchObject({ index: 1, prevBlockHash: GENESIS_HASH, firstSeq: 1, lastSeq: 3 });
     const [key] = (await api.call('GET', '/v1/public/ledger/keys')).body;
     expect(key.keyVersion).toBe(block1!.signature.keyVersion);
     expect(await verifyEcdsaP256(key.publicKeyPem, blockSigningInput(block1!), block1!.signature.signature)).toBe(true);
@@ -87,11 +87,11 @@ describe('ledger blocks and anchors', () => {
     expect(pem.toString()).toBe(key.publicKeyPem);
 
     const pat = await api.member('pat@example.test');
-    await api.grant(pat.accountId, 'membership_admin', sa1, sa2); // entries 6..8
+    await api.grant(pat.accountId, 'membership_admin', sa1); // entry 4
     expect((await worker.tick()).body).toMatchObject({ blocksSealed: 1, anchored: 1 });
     const block2 = (await api.call('GET', '/v1/public/ledger/blocks/2')).body;
-    expect(block2).toMatchObject({ prevBlockHash: block1!.blockHash, firstSeq: 6, lastSeq: 8 });
-    expect(await verify()).toEqual({ ok: true, entries: 8, head: block2.headEntryHash, blocks: 2, unblocked: 0, anchored: 2 });
+    expect(block2).toMatchObject({ prevBlockHash: block1!.blockHash, firstSeq: 4, lastSeq: 4 });
+    expect(await verify()).toEqual({ ok: true, entries: 4, head: block2.headEntryHash, blocks: 2, unblocked: 0, anchored: 2 });
     expect((await api.call('GET', '/v1/public/ledger/blocks/3')).status).toBe(404);
   });
 
@@ -117,14 +117,14 @@ describe('ledger blocks and anchors', () => {
   });
 
   it('refuses to sign a chain that does not verify', async () => {
-    await api.firebase.db.collection('audit_events').doc(sequenceId(4)).update({ 'payload.reason': 'edited' });
+    await api.firebase.db.collection('audit_events').doc(sequenceId(3)).update({ 'payload.reason': 'edited' });
     expect((await worker.tick()).status).toBe(500);
     expect((await api.call('GET', '/v1/public/ledger/blocks')).body).toEqual([]);
   });
 
   it('publishes public entries with inclusion proofs and keeps member entries private', async () => {
     const admin = await api.member('membership.admin@example.test');
-    await api.grant(admin.accountId, 'membership_admin', sa1, sa2);
+    await api.grant(admin.accountId, 'membership_admin', sa1);
     await api.call('POST', '/v1/admin/bylaws', admin, { version: '2026.1', title: 'USTP Bylaws', text: 'Article I.\n' });
     const seq = (await api.firebase.db.collection('audit_events').where('type', '==', 'bylaws.published').get()).docs[0]!.data().seq;
 
@@ -136,14 +136,14 @@ describe('ledger blocks and anchors', () => {
     expect(published.proof.root).toBe(published.block.merkleRoot);
     expect(verifyInclusionHex(published.entry.hash, published.proof)).toBe(true);
 
-    expect((await api.call('GET', '/v1/public/ledger/entries/5')).status).toBe(404); // role.granted
+    expect((await api.call('GET', '/v1/public/ledger/entries/3')).status).toBe(404); // role.granted
   });
 });
 
 describe('roll signatures', () => {
   it('signs a roll once an Auditor has approved it', async () => {
     const ea = await api.member('election.admin@example.test');
-    await api.grant(ea.accountId, 'election_admin', sa1, sa2);
+    await api.grant(ea.accountId, 'election_admin', sa1);
     for (const email of ['v1@example.test', 'v2@example.test']) {
       const voter = await api.member(email);
       await api.firebase.db.collection('members').doc(voter.accountId).set({ accountId: voter.accountId, status: 'active', legalName: email, state: 'CA' });

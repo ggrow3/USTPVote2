@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, provide, ref, type Component } from 'vue';
-import type { AccountSummary, Role } from 'ustp-domain';
+import { computed, ref, type Component } from 'vue';
+import type { Role } from 'ustp-domain';
 import ApplicationsPanel from '../components/admin/ApplicationsPanel.vue';
 import ApprovalsPanel from '../components/admin/ApprovalsPanel.vue';
 import AuditPanel from '../components/admin/AuditPanel.vue';
@@ -13,7 +13,6 @@ import PhotosPanel from '../components/admin/PhotosPanel.vue';
 import SignInMethodsPanel from '../components/admin/SignInMethodsPanel.vue';
 import { useRoute } from 'vue-router';
 import { usePageTitle } from '../a11y.js';
-import { ROLE_CHANGE } from '../role-change.js';
 import { hasRole, session } from '../session.js';
 
 interface Tab {
@@ -54,15 +53,6 @@ const tabs = computed(() => ALL_TABS.filter((t) => hasRole(...t.roles)));
 const needsMfa = computed(() => !!session.me?.mfa.required && !session.me.mfa.signedInWithMfa);
 const requested = String(useRoute().query.tab ?? '');
 const tab = ref(tabs.value.some((t) => t.name === requested) ? requested : (tabs.value[0]?.name ?? 'approvals'));
-
-const roleChangeTarget = ref<{ account: AccountSummary } | null>(null);
-provide(ROLE_CHANGE, {
-  target: roleChangeTarget,
-  choose(account) {
-    roleChangeTarget.value = { account };
-    tab.value = 'approvals';
-  },
-});
 </script>
 
 <template>

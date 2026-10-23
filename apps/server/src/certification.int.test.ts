@@ -31,8 +31,8 @@ beforeEach(async () => {
   [sa1, sa2] = await api.systemAdmins();
   ea = await api.member('election.admin@example.test');
   auditor = await api.member('auditor@example.test');
-  await api.grant(ea.accountId, 'election_admin', sa1, sa2);
-  await api.grant(auditor.accountId, 'auditor', sa1, sa2);
+  await api.grant(ea.accountId, 'election_admin', sa1);
+  await api.grant(auditor.accountId, 'auditor', sa1);
   voters = [];
   for (let i = 0; i < 4; i++) voters.push(await api.member(`v${i}@example.test`));
 });
@@ -137,7 +137,7 @@ describe('certification', () => {
 
     await api.firebase.db.collection('results').doc(election.electionId).update({ resultsHash: 'f'.repeat(64) });
     const second = await api.member('auditor2@example.test');
-    await api.grant(second.accountId, 'auditor', sa1, sa2);
+    await api.grant(second.accountId, 'auditor', sa1);
     expect((await decide(second, req.body.id)).body.detail).toMatch(/no longer the ones/);
   });
 

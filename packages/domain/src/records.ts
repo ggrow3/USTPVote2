@@ -124,8 +124,9 @@ export interface RoleAssignmentRecord {
   readonly accountId: string;
   readonly role: Role;
   readonly grantedAt: string;
-  /** Requester's accountId, or `bootstrap`. */
+  /** The System Admin who granted it, or `bootstrap`. */
   readonly grantedBy: string;
+  /** Set only for grants made through a two-person request, before role changes needed one admin (design §10.2). */
   readonly approvedBy: string | null;
   readonly approvalId: string | null;
   readonly revokedAt: string | null;

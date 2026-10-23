@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { ApprovalsService } from './administration/approvals.service.js';
 import { resetEmulators, TestApi, type User } from './testing/emulator.js';
 
 let api: TestApi;
@@ -18,72 +19,103 @@ beforeEach(async () => {
   pat = await api.member('pat@example.test');
 });
 
-const request = (by: User, accountId: string, role: string, change = 'grant') =>
+const changeRole = (by: User, accountId: string, role: string, change = 'grant') =>
   api.call('POST', '/v1/admin/roles', by, { accountId, role, change, reason: 'staffing' });
 const decide = (by: User, id: string, decision: 'approve' | 'reject') =>
   api.call('POST', `/v1/admin/approvals/${id}/decision`, by, { decision, reason: 'reviewed' });
+const rolesOf = async (m: Member) => (await api.call('GET', '/v1/me', m)).body.roles;
 
-describe('two-person role changes', () => {
-  it('needs a second System Admin to approve', async () => {
-    const req = await request(sa1, pat.accountId, 'auditor');
-    expect(req.body).toMatchObject({ status: 'pending', action: 'role.grant', approverRole: 'system_admin' });
+describe('role changes (one System Admin)', () => {
+  it('take effect at once, with no approval request, and are ledgered with the admin as actor', async () => {
+    const res = await changeRole(sa1, pat.accountId, 'auditor');
+    expect(res).toMatchObject({ status: 201, body: { accountId: pat.accountId, roles: ['auditor'] } });
+    expect(await rolesOf(pat)).toEqual(['auditor']);
+    expect((await api.call('GET', '/v1/admin/approvals', sa2)).body).toEqual([]);
 
-    const self = await decide(sa1, req.body.id, 'approve');
-    expect(self).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/different person/) } });
-    expect((await decide(pat, req.body.id, 'approve')).status).toBe(403);
-
-    expect((await decide(sa2, req.body.id, 'approve')).body).toMatchObject({ status: 'executed', decidedBy: sa2.accountId });
-    expect((await api.call('GET', '/v1/me', pat)).body.roles).toEqual(['auditor']);
-    expect((await decide(sa2, req.body.id, 'approve')).status).toBe(403);
+    const assignment = (await api.firebase.db.collection('role_assignments').doc(`${pat.accountId}_auditor`).get()).data();
+    expect(assignment).toMatchObject({ grantedBy: sa1.accountId, approvedBy: null, approvalId: null, revokedAt: null });
+    const events = (await api.firebase.db.collection('audit_events').orderBy('seq').get()).docs.map((d) => d.data());
+    expect(events.map((e) => e.type)).toEqual(['role.granted', 'role.granted', 'role.granted']); // bootstrap ×2, then this
+    expect(events[2]).toMatchObject({ actor: sa1.accountId, subject: pat.accountId, payload: { role: 'auditor', reason: 'staffing' } });
   });
 
-  it('leaves roles untouched when rejected', async () => {
-    const req = await request(sa1, pat.accountId, 'election_admin');
-    expect((await decide(sa2, req.body.id, 'reject')).body.status).toBe('rejected');
-    expect((await api.call('GET', '/v1/me', pat)).body.roles).toEqual([]);
+  it('revoke the same way', async () => {
+    await api.grant(pat.accountId, 'election_admin', sa1);
+    await api.grant(pat.accountId, 'membership_admin', sa1);
+    const res = await changeRole(sa2, pat.accountId, 'election_admin', 'revoke');
+    expect(res.body).toEqual({ accountId: pat.accountId, roles: ['membership_admin'] });
+    expect(await rolesOf(pat)).toEqual(['membership_admin']);
+    const assignment = (await api.firebase.db.collection('role_assignments').doc(`${pat.accountId}_election_admin`).get()).data();
+    expect(assignment).toMatchObject({ revokedBy: sa2.accountId, revokedAt: expect.any(String) });
   });
 
-  it('revokes through the same flow', async () => {
-    await api.grant(pat.accountId, 'election_admin', sa1, sa2);
-    const req = await request(sa2, pat.accountId, 'election_admin', 'revoke');
-    await decide(sa1, req.body.id, 'approve');
-    expect((await api.call('GET', '/v1/me', pat)).body.roles).toEqual([]);
+  it('let one System Admin grant and revoke System Admin too', async () => {
+    await api.grant(pat.accountId, 'system_admin', sa1);
+    expect(await rolesOf(pat)).toEqual(['system_admin']);
+    expect((await changeRole(pat, sa2.accountId, 'system_admin', 'revoke')).status).toBe(201);
+    expect(await rolesOf(sa2)).toEqual([]);
+    expect((await changeRole(sa2, pat.accountId, 'system_admin', 'revoke')).status).toBe(403);
   });
 
-  it('refuses incompatible roles, duplicate grants and requests about yourself', async () => {
-    await api.grant(pat.accountId, 'auditor', sa1, sa2);
-    expect((await request(sa1, pat.accountId, 'election_admin')).body.detail).toMatch(/cannot be held together/);
-    expect((await request(sa1, pat.accountId, 'auditor')).body.detail).toMatch(/already holds/);
-    expect((await request(sa1, sa1.accountId, 'membership_admin')).status).toBe(403);
-    expect((await request(pat, sa1.accountId, 'membership_admin')).status).toBe(403);
+  it('refuse incompatible roles, duplicate grants, unknown accounts, and changes to your own roles', async () => {
+    await api.grant(pat.accountId, 'auditor', sa1);
+    expect((await changeRole(sa1, pat.accountId, 'election_admin')).body.detail).toMatch(/cannot be held together/);
+    expect((await changeRole(sa1, pat.accountId, 'auditor')).body.detail).toMatch(/already holds/);
+    expect((await changeRole(sa1, pat.accountId, 'election_admin', 'revoke')).body.detail).toMatch(/does not hold/);
+    expect((await changeRole(sa1, '01890000-0000-7000-8000-000000000000', 'auditor')).status).toBe(404);
+    expect(await changeRole(sa1, sa1.accountId, 'membership_admin')).toMatchObject({
+      status: 403,
+      body: { detail: expect.stringMatching(/own account/) },
+    });
+    expect((await changeRole(sa1, sa1.accountId, 'system_admin', 'revoke')).status).toBe(403);
+    expect((await changeRole(pat, sa1.accountId, 'membership_admin')).status).toBe(403);
+    expect(await rolesOf(sa1)).toEqual(['system_admin']);
   });
 
-  it('keeps the person gaining a role from approving it', async () => {
-    const req = await request(sa1, sa2.accountId, 'membership_admin');
-    const res = await decide(sa2, req.body.id, 'approve');
-    expect(res).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/own account/) } });
+  it('still decide role requests made while role changes were two-person', async () => {
+    const approvals = api.app.get(ApprovalsService);
+    const pending = (role: string) =>
+      api.firebase.db.runTransaction((tx) =>
+        approvals.createRequest(tx, {
+          action: 'role.grant',
+          subject: pat.accountId,
+          payload: { accountId: pat.accountId, role, change: 'grant' },
+          reason: 'made before the change',
+          requestedBy: sa1.accountId,
+        }),
+      );
+    const old = await pending('election_admin');
+    expect((await decide(sa1, old.id, 'approve')).body.detail).toMatch(/different person/);
+    expect((await decide(sa2, old.id, 'approve')).body).toMatchObject({ status: 'executed', decidedBy: sa2.accountId });
+    expect(await rolesOf(pat)).toEqual(['election_admin']);
+    const assignment = (await api.firebase.db.collection('role_assignments').doc(`${pat.accountId}_election_admin`).get()).data();
+    expect(assignment).toMatchObject({ grantedBy: sa1.accountId, approvedBy: sa2.accountId, approvalId: old.id });
+
+    const rejected = await pending('membership_admin');
+    expect((await decide(sa2, rejected.id, 'reject')).body.status).toBe('rejected');
+    expect(await rolesOf(pat)).toEqual(['election_admin']);
   });
 });
 
 describe('audit ledger', () => {
   it('verifies the chain end to end and detects an edited entry', async () => {
-    await api.grant(pat.accountId, 'auditor', sa1, sa2);
+    await api.grant(pat.accountId, 'auditor', sa1);
     const verify = await api.call('GET', '/v1/admin/audit/verify', pat);
-    // bootstrap ×2, approval.requested, approval.decided, role.granted
+    // bootstrap ×2, role.granted
     expect(verify.body).toEqual({
       ok: true,
-      entries: 5,
+      entries: 3,
       head: expect.stringMatching(/^[0-9a-f]{64}$/),
       blocks: 0,
-      unblocked: 5,
+      unblocked: 3,
       anchored: 0,
     });
     expect((await api.call('GET', '/v1/admin/audit/verify', sa1)).status).toBe(403);
 
-    const events = (await api.call('GET', '/v1/admin/audit/events?after=2&limit=2', pat)).body;
+    const events = (await api.call('GET', '/v1/admin/audit/events?after=1&limit=2', pat)).body;
     expect(events.map((e: { seq: number; type: string }) => [e.seq, e.type])).toEqual([
-      [3, 'approval.requested'],
-      [4, 'approval.decided'],
+      [2, 'role.granted'],
+      [3, 'role.granted'],
     ]);
 
     await api.firebase.db.collection('audit_events').doc('000000000003').update({ 'payload.reason': 'edited later' });
@@ -116,8 +148,8 @@ describe('People list (GET /v1/admin/accounts)', () => {
   }
 
   it('is for System Admins only', async () => {
-    await api.grant(pat.accountId, 'membership_admin', sa1, sa2);
-    await api.grant(kim.accountId, 'auditor', sa1, sa2);
+    await api.grant(pat.accountId, 'membership_admin', sa1);
+    await api.grant(kim.accountId, 'auditor', sa1);
     expect((await list(undefined)).status).toBe(401);
     expect((await list(lee)).status).toBe(403);
     expect(await list(pat)).toMatchObject({ status: 403, body: { detail: 'requires role system_admin' } });
@@ -126,11 +158,10 @@ describe('People list (GET /v1/admin/accounts)', () => {
   });
 
   it('shows the roles each account holds in role_assignments, and only what the list needs', async () => {
-    await api.grant(pat.accountId, 'election_admin', sa1, sa2);
-    await api.grant(pat.accountId, 'membership_admin', sa2, sa1);
-    await api.grant(kim.accountId, 'auditor', sa1, sa2);
-    const revoke = await request(sa1, pat.accountId, 'election_admin', 'revoke');
-    expect((await decide(sa2, revoke.body.id, 'approve')).body.status).toBe('executed');
+    await api.grant(pat.accountId, 'election_admin', sa1);
+    await api.grant(pat.accountId, 'membership_admin', sa2);
+    await api.grant(kim.accountId, 'auditor', sa1);
+    expect((await changeRole(sa1, pat.accountId, 'election_admin', 'revoke')).status).toBe(201);
     // Member status comes from members/{accountId}; nothing else from the member record is shown.
     await api.firebase.db
       .collection('members')
@@ -176,7 +207,7 @@ describe('People list (GET /v1/admin/accounts)', () => {
   });
 
   it('filters to role holders, with the same order, search and paging', async () => {
-    await api.grant(kim.accountId, 'auditor', sa1, sa2);
+    await api.grant(kim.accountId, 'auditor', sa1);
     expect(emails((await list(sa1, '?role=any')).body)).toEqual(['kim@example.test', 'sa1@example.test', 'sa2@example.test']);
     expect(emails((await list(sa1, '?role=auditor')).body)).toEqual(['kim@example.test']);
     expect(emails((await list(sa1, '?role=any&email=sa')).body)).toEqual(['sa1@example.test', 'sa2@example.test']);
