@@ -110,12 +110,13 @@ npm run seed:emulators -w apps/server
 It creates, through the api as people would: System Admins `admin1@` and `admin2@example.test`, an Election and
 Membership Admin `elections@example.test`, an Auditor `auditor@example.test`, and twelve Active members
 `v1@` … `v12@example.test`, all with the password in
-[`seed-emulators.mjs`](apps/server/scripts/seed-emulators.mjs). It defines two offices (Chair, Outreach Coordinator),
-sets up five elections (two open secret ballots, one of which closes after 15 minutes, an open roll-call vote, one
-scheduled for later and a draft; the Chair and Outreach Coordinator contests fill those offices) and casts random
-ballots for every voter except `v1@example.test`, so you can vote as v1. Once the 15-minute election closes and is
-counted, request certification as `elections@` and approve it as `auditor@` to see the winner take office. Running it
-again reuses what is there.
+[`seed-emulators.mjs`](apps/server/scripts/seed-emulators.mjs). It defines two offices (Chair, Outreach Coordinator)
+and sets up six elections: three open secret ballots (one of which closes after 15 minutes), an open roll-call vote, one
+scheduled for later and a draft. The Chair and Outreach Coordinator contests fill those offices. One open ballot,
+"Platform Vote #9 (demo)", follows the USTP's 2025 platform vote: all 20 questions, open for 21 days, summarized in our
+own words with a link to the official ballot. It casts random ballots for every voter except `v1@example.test`, so you
+can vote as v1. Once the 15-minute election closes and is counted, request certification as `elections@` and approve
+it as `auditor@` to see the winner take office. Running it again reuses what is there.
 
 Open http://localhost:5173. Everything runs against the emulator-only project `demo-ustpvote` with App Check and
 admin MFA off. Use `npm run dev:api:emulators:mfa -w apps/server` instead to keep the production admin MFA policy on;
