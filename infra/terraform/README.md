@@ -253,6 +253,15 @@ factors with `adjacentIntervals: 5` and no SMS (design §4), and the authorized 
   curl -X PATCH "https://identitytoolkit.googleapis.com/admin/v2/projects/ustpvote2-dev/config?updateMask=passwordPolicyConfig" -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "x-goog-user-project: ustpvote2-dev" -H "Content-Type: application/json" -d '{"passwordPolicyConfig":{"passwordPolicyEnforcementState":"ENFORCE","forceUpgradeOnSignin":false,"passwordPolicyVersions":[{"customStrengthOptions":{"minPasswordLength":15,"maxPasswordLength":4096}}]}}'
   ```
 
+- **Bot resistance and email-enumeration protection** (§4): reCAPTCHA Enterprise enforced for email/password sign-up,
+  sign-in and email links (Identity Platform manages its own reCAPTCHA key; the web app loads its settings), and the
+  same answer for a wrong password and an unknown address. Also API-only:
+
+  ```bash
+  curl -X PATCH "https://identitytoolkit.googleapis.com/admin/v2/projects/ustpvote2-dev/config?updateMask=recaptchaConfig.emailPasswordEnforcementState,emailPrivacyConfig.enableImprovedEmailPrivacy" -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "x-goog-user-project: ustpvote2-dev" -H "Content-Type: application/json" -d '{"recaptchaConfig":{"emailPasswordEnforcementState":"ENFORCE"},"emailPrivacyConfig":{"enableImprovedEmailPrivacy":true}}'
+  ```
+
+  Set `"AUDIT"` instead of `"ENFORCE"` to only log bot scores while checking that sign-up still works.
 - **Google, Microsoft and Apple sign-in** (§4): each needs an OAuth client registered with that company. Google's is
   one click in the Firebase console (Authentication → Sign-in method → Google), which creates the client. The admin
   sign-in switches turn a provider off in the api without touching this configuration.

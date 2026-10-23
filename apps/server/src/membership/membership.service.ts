@@ -1,9 +1,14 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, HttpException, HttpStatus, Injectable, NotFoundException } from '@nestjs/common';
 import { FieldPath, type Transaction } from 'firebase-admin/firestore';
 import { sha256Hex } from 'ustp-audit';
 import {
+  APPLICATION_WINDOW_DAYS,
   checkStatusChange,
   Collections,
+  MAX_APPLICATIONS_PER_WINDOW,
+  MINIMUM_MEMBER_AGE,
+  normalizePhone,
+  normalizePostalCode,
   type ApplicationRecord,
   type ApplicationStatus,
   type BylawsRecord,
@@ -30,7 +35,7 @@ interface StatusChange {
   readonly reason: string | null;
   readonly applicationId: string | null;
   /** Profile fields to set alongside the status (applications). */
-  readonly profile?: Pick<MemberRecord, 'legalName' | 'preferredName' | 'state' | 'bylawsVersion'>;
+  readonly profile?: Pick<MemberRecord, 'legalName' | 'preferredName' | 'state' | 'contact' | 'communications' | 'bylawsVersion'>;
 }
 
 /** Bylaws, membership applications and member status (design §5). */
@@ -72,7 +77,10 @@ export class MembershipService {
     });
   }
 
-  /** Applying requires agreeing to the *current* bylaws, identified by version and content hash. */
+  /**
+   * Applying requires agreeing to the *current* bylaws, identified by version and content hash. The schema has
+   * already checked the age, attestations and contact formats.
+   */
   async submitApplication(ctx: RequestContext, input: CreateApplicationInput): Promise<ApplicationRecord> {
     const accountId = requireAccount(ctx);
     if (!ctx.principal.emailVerified) throw new ForbiddenException('verify your email address before applying');
@@ -84,22 +92,51 @@ export class MembershipService {
       if (bylaws.version !== input.bylawsVersion || bylaws.contentHash !== input.bylawsHash) {
         throw new ConflictException('the bylaws have changed; review the current version and agree again');
       }
+      const now = new Date();
+      const windowStart = new Date(now.getTime() - APPLICATION_WINDOW_DAYS * 86_400_000).toISOString();
+      const recent = await tx.get(
+        db
+          .collection(Collections.applications)
+          .where('accountId', '==', accountId)
+          .where('submittedAt', '>=', windowStart)
+          .orderBy('submittedAt', 'desc')
+          .limit(MAX_APPLICATIONS_PER_WINDOW),
+      );
+      if (recent.size >= MAX_APPLICATIONS_PER_WINDOW) {
+        throw new HttpException(
+          `at most ${MAX_APPLICATIONS_PER_WINDOW} applications in ${APPLICATION_WINDOW_DAYS} days; try again later`,
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+      }
       const current = await this.readMember(tx, accountId);
       assertCheck(checkStatusChange({ from: current?.status ?? null, to: 'applicant', initiatedBy: 'member' }));
 
       const ref = db.collection(Collections.applications).doc();
-      const now = new Date().toISOString();
+      const at = now.toISOString();
       const application: ApplicationRecord = {
         applicationId: ref.id,
         accountId,
         status: 'pending',
-        submittedAt: now,
+        submittedAt: at,
         bylawsVersion: bylaws.version,
         bylawsHash: bylaws.contentHash,
         legalName: input.legalName,
         preferredName: input.preferredName || null,
+        dateOfBirth: input.dateOfBirth,
+        attestations: { minimumAge: MINIMUM_MEMBER_AGE, supportsPlatform: true },
         state: input.state,
+        contact: {
+          city: input.city,
+          postalCode: normalizePostalCode(input.postalCode),
+          phone: input.phone ? normalizePhone(input.phone) : null,
+        },
+        communications: { newsletter: input.newsletter ? at : null, announcements: input.announcements ? at : null },
         statement: input.statement || null,
+        interests: input.interests || null,
+        skills: input.skills || null,
+        volunteer: input.volunteer ?? false,
+        runForOffice: input.runForOffice ?? false,
+        referral: input.referral || null,
         decidedBy: null,
         decidedAt: null,
         decisionReason: null,
@@ -115,6 +152,8 @@ export class MembershipService {
           legalName: application.legalName,
           preferredName: application.preferredName,
           state: application.state,
+          contact: application.contact,
+          communications: application.communications,
           bylawsVersion: application.bylawsVersion,
         },
       });
@@ -263,6 +302,8 @@ export class MembershipService {
       legalName: profile.legalName,
       preferredName: profile.preferredName,
       state: profile.state,
+      contact: profile.contact ?? null,
+      communications: profile.communications ?? null,
       bylawsVersion: profile.bylawsVersion,
       memberSince: change.current?.memberSince ?? (change.to === 'active' ? now : null),
       statusChangedAt: now,

@@ -109,7 +109,14 @@ async function member(email, legalName, current) {
       bylawsVersion: current.version,
       bylawsHash: current.contentHash,
       legalName,
+      dateOfBirth: `${1950 + randomInt(55)}-0${1 + randomInt(9)}-1${randomInt(10)}`,
+      attestsAge: true,
+      supportsPlatform: true,
       state: STATES[randomInt(STATES.length)],
+      city: 'Springfield',
+      postalCode: String(10000 + randomInt(89999)),
+      volunteer: randomInt(2) === 1,
+      newsletter: randomInt(2) === 1,
     }));
   await call('POST', `/v1/admin/applications/${application.applicationId}/decision`, ELECTION_ADMIN, { decision: 'approve', reason: 'dev seed' });
 }

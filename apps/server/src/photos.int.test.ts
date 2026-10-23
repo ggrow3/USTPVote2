@@ -24,7 +24,12 @@ async function applyForMembership(user: Member) {
     bylawsVersion: bylaws.version,
     bylawsHash: bylaws.contentHash,
     legalName: user.email,
+    dateOfBirth: '1990-04-01',
+    attestsAge: true,
+    supportsPlatform: true,
     state: 'CA',
+    city: 'Oakland',
+    postalCode: '94612',
   });
   expect(res.status).toBe(201);
 }

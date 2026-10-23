@@ -46,8 +46,25 @@ export async function apiBlob(path: string): Promise<Blob> {
 }
 
 /** A user-facing message for any error thrown by `api` or the Firebase SDK. */
+/**
+ * Plain-language messages for sign-in errors. With email-enumeration protection on (design §4), a wrong password and
+ * an unknown address both arrive as `auth/invalid-credential`, so the message must not say which.
+ */
+const AUTH_MESSAGES: Record<string, string> = {
+  'auth/invalid-credential': "That email and password don't match. Check them, or use “Email me a link”.",
+  'auth/invalid-login-credentials': "That email and password don't match. Check them, or use “Email me a link”.",
+  'auth/too-many-requests': 'Too many attempts. Wait a few minutes, then try again.',
+  'auth/email-already-in-use': 'An account already uses this email. Sign in instead.',
+  'auth/network-request-failed': 'Could not reach the sign-in service. Check your connection and try again.',
+  'auth/captcha-check-failed': "We couldn't confirm this sign-in came from a person. Reload the page and try again.",
+  'auth/missing-recaptcha-token': "We couldn't confirm this sign-in came from a person. Reload the page and try again.",
+  'auth/invalid-recaptcha-token': "We couldn't confirm this sign-in came from a person. Reload the page and try again.",
+};
+
 export function errorMessage(error: unknown): string {
   if (error instanceof ApiError) return error.message;
+  const code = (error as { code?: unknown } | null)?.code;
+  if (typeof code === 'string' && AUTH_MESSAGES[code]) return AUTH_MESSAGES[code];
   if (error instanceof Error) return error.message.replace(/^Firebase: /, '');
   return String(error);
 }

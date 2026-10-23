@@ -4,6 +4,17 @@ export { ROLES, conflictingRoles, isRole, checkRoleChange } from './roles.js';
 export type { Role } from './roles.js';
 export { MEMBER_STATUSES, checkStatusChange } from './member-status.js';
 export type { MemberStatus, StatusChange } from './member-status.js';
+export {
+  APPLICATION_WINDOW_DAYS,
+  MAX_APPLICATIONS_PER_WINDOW,
+  MINIMUM_MEMBER_AGE,
+  US_POSTAL_CODE,
+  ageOn,
+  checkApplicantAge,
+  isCalendarDate,
+  normalizePhone,
+  normalizePostalCode,
+} from './registration.js';
 export { ELECTION_STATES, electionTransitionAuthority, isTerminal } from './election-state.js';
 export type { ElectionState, TransitionAuthority } from './election-state.js';
 export {

@@ -1,6 +1,6 @@
 import { deleteApp, initializeApp, type FirebaseOptions } from 'firebase/app';
 import { getToken, initializeAppCheck, ReCaptchaEnterpriseProvider, type AppCheck } from 'firebase/app-check';
-import { connectAuthEmulator, getAuth, type Auth } from 'firebase/auth';
+import { connectAuthEmulator, getAuth, initializeRecaptchaConfig, type Auth } from 'firebase/auth';
 
 const env = import.meta.env;
 export const usingEmulators = env.VITE_USE_EMULATORS === 'true';
@@ -37,7 +37,12 @@ export function secondaryAuth(): { auth: Auth; dispose: () => Promise<void> } {
   return { auth: withEmulator(getAuth(linkApp)), dispose: () => deleteApp(linkApp) };
 }
 
+/**
+ * Points Auth at the emulator, or, in a real project, loads Identity Platform's reCAPTCHA Enterprise settings so that
+ * email/password sign-up and sign-in and email links carry a bot-score token (design §4); the emulator has no reCAPTCHA.
+ */
 function withEmulator(a: Auth): Auth {
   if (usingEmulators) connectAuthEmulator(a, env.VITE_AUTH_EMULATOR_URL ?? 'http://127.0.0.1:9099', { disableWarnings: true });
+  else void initializeRecaptchaConfig(a).catch((e: unknown) => console.warn('reCAPTCHA config for sign-in not loaded', e));
   return a;
 }

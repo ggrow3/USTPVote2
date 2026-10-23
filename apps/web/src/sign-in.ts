@@ -59,9 +59,35 @@ export function passwordProblem(password: string): string | null {
   return null;
 }
 
+/**
+ * How often the password appears in known breaches (design §4, Q9), from Have I Been Pwned's k-anonymity range API:
+ * only the first 5 hex digits of its SHA-1 leave the browser, and padded responses hide which range was of interest.
+ * Null when the service cannot be reached, so an outage does not stop anyone signing up.
+ */
+export async function breachCount(password: string): Promise<number | null> {
+  const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(password));
+  const hex = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+  try {
+    const res = await fetch(`https://api.pwnedpasswords.com/range/${hex.slice(0, 5)}`, { headers: { 'Add-Padding': 'true' } });
+    if (!res.ok) return null;
+    const suffix = hex.slice(5);
+    for (const line of (await res.text()).split('\n')) {
+      const [candidate, count] = line.trim().split(':');
+      if (candidate === suffix) return Number(count);
+    }
+    return 0;
+  } catch {
+    return null;
+  }
+}
+
 export async function signUpWithPassword(auth: Auth, email: string, password: string) {
   const problem = passwordProblem(password);
   if (problem) throw new Error(problem);
+  const breaches = await breachCount(password);
+  if (breaches) {
+    throw new Error('this password has appeared in a data breach; choose another (a few unrelated words work well)');
+  }
   const credential = await createUserWithEmailAndPassword(auth, email, password);
   await sendEmailVerification(credential.user, { url: `${location.origin}/register` });
   return credential;
