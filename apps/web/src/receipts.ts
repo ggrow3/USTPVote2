@@ -1,15 +1,17 @@
 import type { BallotReceipt } from 'ustp-domain';
+import { acting } from './acting.js';
 
 /**
  * Ballot receipts (design §7.5). A receipt holds the salts and selections, so anyone holding it can see how the voter
  * voted: it is kept in this browser only when the voter asks, and otherwise only downloaded.
  */
 
-const KEY = 'ustp-receipts';
+/** Each test persona keeps its own receipts (design §10.4), so voting as several in one browser keeps them apart. */
+const key = () => (acting.persona ? `ustp-receipts:${acting.persona.accountId}` : 'ustp-receipts');
 
 export function savedReceipts(): BallotReceipt[] {
   try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(KEY) ?? '[]');
+    const parsed: unknown = JSON.parse(localStorage.getItem(key()) ?? '[]');
     return Array.isArray(parsed) ? (parsed as BallotReceipt[]) : [];
   } catch {
     return []; // storage blocked or unreadable
@@ -24,7 +26,7 @@ export function savedReceipt(electionId: string): BallotReceipt | null {
 export function keepReceipt(receipt: BallotReceipt): boolean {
   try {
     const others = savedReceipts().filter((r) => r.electionId !== receipt.electionId);
-    localStorage.setItem(KEY, JSON.stringify([...others, receipt]));
+    localStorage.setItem(key(), JSON.stringify([...others, receipt]));
     return true;
   } catch {
     return false;
@@ -33,7 +35,7 @@ export function keepReceipt(receipt: BallotReceipt): boolean {
 
 export function forgetReceipt(electionId: string): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(savedReceipts().filter((r) => r.electionId !== electionId)));
+    localStorage.setItem(key(), JSON.stringify(savedReceipts().filter((r) => r.electionId !== electionId)));
   } catch {
     // nothing stored
   }

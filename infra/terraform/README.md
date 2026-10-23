@@ -101,6 +101,8 @@ for running the server locally against a real project. Variable names are those 
 | Environment variable | Output | api | worker |
 |---|---|:-:|:-:|
 | `GOOGLE_CLOUD_PROJECT` | in `api_env` / `worker_env` | ● | ● |
+| `DEPLOYMENT_ENVIRONMENT` | the `environment` variable (`dev`, `staging`, `prod`) | ● | |
+| `TESTING_MODE` | `true` only when the `testing_mode` variable is (dev sets it; prod refuses it) | ● | |
 | `AUDIT_SIGNING_KEY_VERSION` | `audit_signing_key_version` (`…/cryptoKeys/audit-signing/cryptoKeyVersions/1`) | | ● |
 | `BALLOT_POOL_KEY` | `ballot_pool_key` (`…/cryptoKeys/ballot-pool`) | ● | ● |
 | `ANCHORS_BUCKET` | `anchors_bucket` (`<project>-anchors`) | ● | ● |
@@ -112,7 +114,9 @@ for running the server locally against a real project. Variable names are those 
 | `PORT` | set by Cloud Run (8080) | ● | ● |
 
 Never set: `APP_CHECK_ENFORCED`, `ADMIN_MFA_REQUIRED`, `PHOTO_CHECKER`, `SECRET_STORE`, `AUDIT_SIGNER`, `BALLOT_POOL`
-or an emulator host. Every safety switch then keeps its production default (§4).
+or an emulator host. Every safety switch then keeps its production default (§4). Testing mode (design §10.4) is
+refused twice in prod: the `testing_mode` variable's validation, and the api, which will not start with `TESTING_MODE`
+unless `DEPLOYMENT_ENVIRONMENT` is `dev` or `staging`.
 
 | Consumer | Output |
 |---|---|

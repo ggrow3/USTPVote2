@@ -32,6 +32,8 @@ import { MembershipService } from '../membership/membership.service.js';
 import { LocalPhotoChecker, PHOTO_CHECKER, VisionPhotoChecker } from '../photos/checker.js';
 import { MyPhotoController, PhotoReviewController } from '../photos/photos.controller.js';
 import { PhotosService } from '../photos/photos.service.js';
+import { PersonasController } from '../personas/personas.controller.js';
+import { PersonasService } from '../personas/personas.service.js';
 import { PositionApprovals } from '../positions/position-approvals.js';
 import { PositionsController, PublicPositionsController } from '../positions/positions.controller.js';
 import { PositionsService } from '../positions/positions.service.js';
@@ -40,7 +42,7 @@ import { PositionsService } from '../positions/positions.service.js';
  * Client-facing API (design §12). Every route requires a verified sign-in unless marked @Public().
  * M1: accounts, registration, membership administration, profile photos, roles and approvals, auth switches, ledger.
  * M2: election setup, rolls, scheduling and cancellation; the published ledger (blocks, keys, proofs, anchors).
- * M3: voting. M4: results, certification, offices and terms.
+ * M3: voting. M4: results, certification, offices and terms. Testing mode: test personas (design §10.4).
  */
 @Module({
   imports: [CoreModule],
@@ -64,6 +66,7 @@ import { PositionsService } from '../positions/positions.service.js';
     SignInMethodsController,
     AuditController,
     PublicLedgerController,
+    PersonasController,
   ],
   providers: [
     AccountsService,
@@ -80,6 +83,7 @@ import { PositionsService } from '../positions/positions.service.js';
     PositionApprovals,
     PositionsService,
     ApprovalsService,
+    PersonasService,
     secretStoreProvider,
     {
       provide: PHOTO_CHECKER,

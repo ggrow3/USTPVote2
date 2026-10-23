@@ -299,6 +299,32 @@ export class MembershipService {
     return snap.docs.map((d) => d.data() as StatusHistoryRecord);
   }
 
+  /**
+   * Makes a test voter persona an Active member on `bylawsVersion` (design §10.4), through the same ledgered status
+   * change as an approved application. Call inside the persona's creation transaction, after its other reads.
+   */
+  async admitTestPersona(
+    tx: Transaction,
+    persona: { readonly accountId: string; readonly label: string; readonly actor: string; readonly bylawsVersion: string },
+  ): Promise<MemberRecord> {
+    return this.changeStatus(tx, {
+      accountId: persona.accountId,
+      current: null,
+      to: 'active',
+      actor: persona.actor,
+      reason: 'test persona',
+      applicationId: null,
+      profile: {
+        legalName: persona.label,
+        preferredName: null,
+        state: 'DC',
+        contact: null,
+        communications: null,
+        bylawsVersion: persona.bylawsVersion,
+      },
+    });
+  }
+
   // --- internals --------------------------------------------------------------------------------------------
 
   private currentBylawsQuery() {

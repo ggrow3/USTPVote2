@@ -25,6 +25,10 @@ export interface ServerConfig {
   readonly ballotPool: 'kms' | 'emulator';
   /** `projects/.../cryptoKeys/ballot-pool` (RSA_DECRYPT_OAEP_3072_SHA256); secret elections cannot open until it is set. */
   readonly ballotPoolKey: string | null;
+  /** `dev`, `staging` or `prod`, set by Terraform; null when unset, as against the emulators. */
+  readonly deploymentEnvironment: 'dev' | 'staging' | 'prod' | null;
+  /** System Admins may create test personas and act as them (design §10.4). Never in production. */
+  readonly testingMode: boolean;
   /**
    * The advisory bylaws check (design §5.2): `claude` (the worker sends drafts to Anthropic), `stub` (the emulator-only
    * stand-in) or `off` (requests answer 503). Off unless set, outside the emulators.
@@ -65,6 +69,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const ballotPool = (env.BALLOT_POOL ?? (usingEmulators ? 'emulator' : 'kms')) as ServerConfig['ballotPool'];
   if (ballotPool !== 'kms' && ballotPool !== 'emulator') throw new Error('BALLOT_POOL must be "kms" or "emulator"');
   if (ballotPool === 'emulator' && !usingEmulators) throw new Error('BALLOT_POOL=emulator is only allowed with the Firebase emulators');
+  const deploymentEnvironment = (env.DEPLOYMENT_ENVIRONMENT || null) as ServerConfig['deploymentEnvironment'];
+  if (deploymentEnvironment !== null && !['dev', 'staging', 'prod'].includes(deploymentEnvironment)) {
+    throw new Error('DEPLOYMENT_ENVIRONMENT must be "dev", "staging" or "prod"');
+  }
+  const testingMode = env.TESTING_MODE === 'true';
+  if (testingMode && !usingEmulators && deploymentEnvironment !== 'dev' && deploymentEnvironment !== 'staging') {
+    throw new Error('TESTING_MODE=true is only allowed with the Firebase emulators or DEPLOYMENT_ENVIRONMENT dev or staging');
+  }
   const bylawsChecker = (env.BYLAWS_CHECKER ?? (usingEmulators ? 'stub' : 'off')) as ServerConfig['bylawsChecker'];
   if (!['claude', 'stub', 'off'].includes(bylawsChecker)) throw new Error('BYLAWS_CHECKER must be "claude", "stub" or "off"');
   if (bylawsChecker === 'stub' && !usingEmulators) throw new Error('BYLAWS_CHECKER=stub is only allowed with the Firebase emulators');
@@ -87,6 +99,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     anchorsBucket: env.ANCHORS_BUCKET || (usingEmulators && projectId ? `${projectId}-anchors` : null),
     ballotPool,
     ballotPoolKey: env.BALLOT_POOL_KEY || null,
+    deploymentEnvironment,
+    testingMode,
     bylawsChecker,
     anthropicApiKey: env.ANTHROPIC_API_KEY || null,
     bylawsCheckModel: env.BYLAWS_CHECK_MODEL || DEFAULT_BYLAWS_CHECK_MODEL,

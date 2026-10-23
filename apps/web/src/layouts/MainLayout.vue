@@ -1,14 +1,17 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, defineAsyncComponent, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { focusElement, liveRegions } from '../a11y.js';
+import { acting } from '../acting.js';
 import { usingEmulators } from '../firebase.js';
 import { hasRole, session, signOut } from '../session.js';
+
+const TestingBar = defineAsyncComponent(() => import('../components/TestingBar.vue'));
 
 const route = useRoute();
 const router = useRouter();
 const isAdmin = computed(() => hasRole('membership_admin', 'election_admin', 'auditor', 'system_admin'));
-const who = computed(() => session.me?.account?.displayName || session.user?.email || 'Signed in');
+const who = computed(() => acting.persona?.label || session.me?.account?.displayName || session.user?.email || 'Signed in');
 const links = computed(() => [
   { to: '/register', label: 'Register' },
   { to: '/ballot', label: 'Ballot' },
@@ -76,13 +79,15 @@ function onHeaderResize({ height }: { height: number }) {
           {{ l.label }}
         </router-link>
       </nav>
+      <TestingBar v-if="acting.persona" />
     </q-header>
 
     <q-page-container>
       <q-banner v-if="session.error" class="bg-negative text-white">
         Could not load your account: {{ session.error }}
       </q-banner>
-      <router-view />
+      <!-- Keyed by persona, so switching reloads every page's data as the new persona. -->
+      <router-view :key="acting.persona?.accountId ?? 'self'" />
     </q-page-container>
 
     <div class="sr-only" role="status">{{ liveRegions.polite }}</div>
