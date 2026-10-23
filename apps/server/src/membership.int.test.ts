@@ -14,8 +14,16 @@ const application = () => ({
   bylawsVersion: bylaws.version,
   bylawsHash: bylaws.contentHash,
   legalName: 'Robin Applicant',
+  dateOfBirth: '1990-04-01',
+  attestsAge: true,
+  supportsPlatform: true,
   state: 'CA',
+  city: 'San Francisco',
+  postalCode: '941101234',
+  phone: '(555) 123-4567',
   statement: 'I want to help.',
+  volunteer: true,
+  newsletter: true,
 });
 
 beforeEach(async () => {
@@ -53,6 +61,45 @@ describe('applications', () => {
     expect((await api.call('GET', '/v1/me', robin)).body.member).toMatchObject({ status: 'applicant', state: 'CA' });
     expect((await api.call('POST', '/v1/registration/applications', robin, application())).status).toBe(409);
     expect((await api.call('GET', '/v1/registration/applications/me', robin)).body).toHaveLength(1);
+  });
+
+  it('keeps the full application for review but copies only contact and consent to the member', async () => {
+    const robin = await api.member('robin@example.test');
+    const { body: app } = await api.call('POST', '/v1/registration/applications', robin, application());
+    expect(app).toMatchObject({
+      dateOfBirth: '1990-04-01',
+      attestations: { minimumAge: 18, supportsPlatform: true },
+      contact: { city: 'San Francisco', postalCode: '94110-1234', phone: '+15551234567' },
+      communications: { newsletter: app.submittedAt, announcements: null },
+      volunteer: true,
+      runForOffice: false,
+    });
+    const member = (await api.call('GET', '/v1/me', robin)).body.member;
+    expect(member).toMatchObject({ contact: app.contact, communications: app.communications });
+    expect(member).not.toHaveProperty('dateOfBirth');
+  });
+
+  it('refuses applicants under the minimum age and missing attestations', async () => {
+    const robin = await api.member('robin@example.test');
+    const young = `${new Date().getUTCFullYear() - 16}-01-01`;
+    const tooYoung = await api.call('POST', '/v1/registration/applications', robin, { ...application(), dateOfBirth: young });
+    expect(tooYoung.status).toBe(400);
+    const unattested = await api.call('POST', '/v1/registration/applications', robin, { ...application(), supportsPlatform: false });
+    expect(unattested.status).toBe(400);
+  });
+
+  it('caps applications per account', async () => {
+    const robin = await api.member('robin@example.test');
+    for (let i = 0; i < 3; i++) {
+      const { body: app } = await api.call('POST', '/v1/registration/applications', robin, application());
+      const rejected = await api.call('POST', `/v1/admin/applications/${app.applicationId}/decision`, admin, {
+        decision: 'reject',
+        reason: 'incomplete',
+      });
+      expect(rejected.body).toMatchObject({ status: 'rejected' });
+    }
+    const fourth = await api.call('POST', '/v1/registration/applications', robin, application());
+    expect(fourth).toMatchObject({ status: 429, body: { detail: expect.stringMatching(/at most 3 applications/) } });
   });
 
   it('requires a verified email and an account', async () => {

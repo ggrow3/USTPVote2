@@ -2,7 +2,7 @@
 import { sendEmailVerification } from 'firebase/auth';
 import { useQuasar } from 'quasar';
 import { computed, reactive, ref, watch } from 'vue';
-import { createApplicationSchema, type ApplicationRecord, type BylawsRecord } from 'ustp-domain';
+import { createApplicationSchema, MINIMUM_MEMBER_AGE, type ApplicationRecord, type BylawsRecord } from 'ustp-domain';
 import { focusFirstInvalid, focusSoon, usePageTitle } from '../a11y.js';
 import { api, errorMessage } from '../api.js';
 import { auth } from '../firebase.js';
@@ -17,7 +17,27 @@ const applications = ref<ApplicationRecord[]>([]);
 const agreed = ref(false);
 const busy = ref(false);
 const errors = ref<FieldErrors>({});
-const form = reactive({ legalName: '', preferredName: '', state: null as string | null, statement: '' });
+const form = reactive({
+  legalName: '',
+  preferredName: '',
+  dateOfBirth: '',
+  state: null as string | null,
+  city: '',
+  postalCode: '',
+  phone: '',
+  statement: '',
+  interests: '',
+  skills: '',
+  referral: '',
+  volunteer: false,
+  runForOffice: false,
+  newsletter: false,
+  announcements: false,
+  attestsAge: false,
+  supportsPlatform: false,
+});
+/** Optional text fields go to the API only when filled in. */
+const optional = (value: string) => value.trim() || undefined;
 
 const status = computed(() => session.me?.member?.status ?? null);
 const canApply = computed(() => status.value === null || status.value === 'rejected' || status.value === 'resigned');
@@ -65,9 +85,22 @@ async function submit() {
     bylawsVersion: bylaws.value.version,
     bylawsHash: bylaws.value.contentHash,
     legalName: form.legalName,
-    preferredName: form.preferredName || undefined,
+    preferredName: optional(form.preferredName),
+    dateOfBirth: form.dateOfBirth,
+    attestsAge: form.attestsAge,
+    supportsPlatform: form.supportsPlatform,
     state: form.state ?? '',
-    statement: form.statement || undefined,
+    city: form.city,
+    postalCode: form.postalCode,
+    phone: optional(form.phone),
+    statement: optional(form.statement),
+    interests: optional(form.interests),
+    skills: optional(form.skills),
+    volunteer: form.volunteer,
+    runForOffice: form.runForOffice,
+    referral: optional(form.referral),
+    newsletter: form.newsletter,
+    announcements: form.announcements,
   });
   if (!checked.ok) {
     errors.value = checked.errors;
@@ -164,26 +197,100 @@ async function submit() {
         </q-card>
 
         <q-form v-if="bylaws" class="q-gutter-md" @submit.prevent="submit">
-          <q-input
-            v-model="form.legalName"
-            outlined
-            label="Legal name"
-            :error="!!errors.legalName"
-            :error-message="errors.legalName"
-          />
-          <q-input v-model="form.preferredName" outlined label="Preferred name (optional)" />
-          <q-select
-            v-model="form.state"
-            outlined
-            emit-value
-            map-options
-            :options="stateOptions"
-            label="State or territory"
-            hint="Only your state is stored, never your street address."
-            :error="!!errors.state"
-            :error-message="errors.state"
-          />
-          <q-input v-model="form.statement" outlined autogrow type="textarea" label="Why do you want to join? (optional)" />
+          <fieldset class="register-section">
+            <legend class="text-subtitle1">About you</legend>
+            <q-input
+              v-model="form.legalName"
+              outlined
+              label="Legal name"
+              autocomplete="name"
+              :error="!!errors.legalName"
+              :error-message="errors.legalName"
+            />
+            <q-input v-model="form.preferredName" outlined label="Preferred name (optional)" autocomplete="nickname" />
+            <q-input
+              v-model="form.dateOfBirth"
+              outlined
+              stack-label
+              type="date"
+              label="Date of birth"
+              autocomplete="bday"
+              :hint="`Members must be at least ${MINIMUM_MEMBER_AGE}. Kept with your application only, for the membership review.`"
+              :error="!!errors.dateOfBirth"
+              :error-message="errors.dateOfBirth"
+            />
+          </fieldset>
+
+          <fieldset class="register-section">
+            <legend class="text-subtitle1">Where you live and how to reach you</legend>
+            <div class="text-caption text-grey-7 q-mb-sm">We never ask for your street address.</div>
+            <q-select
+              v-model="form.state"
+              outlined
+              emit-value
+              map-options
+              :options="stateOptions"
+              label="State or territory"
+              :error="!!errors.state"
+              :error-message="errors.state"
+            />
+            <div class="row q-col-gutter-md">
+              <q-input
+                v-model="form.city"
+                class="col-12 col-sm-8"
+                outlined
+                label="City"
+                autocomplete="address-level2"
+                :error="!!errors.city"
+                :error-message="errors.city"
+              />
+              <q-input
+                v-model="form.postalCode"
+                class="col-12 col-sm-4"
+                outlined
+                label="ZIP code"
+                inputmode="numeric"
+                autocomplete="postal-code"
+                :error="!!errors.postalCode"
+                :error-message="errors.postalCode"
+              />
+            </div>
+            <q-input
+              v-model="form.phone"
+              outlined
+              type="tel"
+              label="Phone (optional)"
+              autocomplete="tel"
+              :error="!!errors.phone"
+              :error-message="errors.phone"
+            />
+          </fieldset>
+
+          <fieldset class="register-section">
+            <legend class="text-subtitle1">Your interest in USTP</legend>
+            <q-input v-model="form.statement" outlined autogrow type="textarea" label="Why do you want to join? (optional)" />
+            <q-input v-model="form.interests" outlined autogrow type="textarea" label="Issues you care most about (optional)" />
+            <q-input v-model="form.skills" outlined autogrow type="textarea" label="Skills or experience you could contribute (optional)" />
+            <q-input v-model="form.referral" outlined label="How did you hear about USTP? (optional)" />
+            <q-checkbox v-model="form.volunteer" label="I'd like to volunteer." />
+            <q-checkbox v-model="form.runForOffice" label="I'm interested in running for party or public office." />
+          </fieldset>
+
+          <fieldset class="register-section">
+            <legend class="text-subtitle1">Staying in touch</legend>
+            <div class="text-caption text-grey-7 q-mb-sm">Optional. You can withdraw either at any time.</div>
+            <q-checkbox v-model="form.newsletter" label="Send me the USTP newsletter." />
+            <q-checkbox v-model="form.announcements" label="Email me party announcements and calls to vote." />
+          </fieldset>
+
+          <fieldset class="register-section">
+            <legend class="text-subtitle1">Confirmations</legend>
+            <q-checkbox v-model="form.attestsAge" :label="`I am at least ${MINIMUM_MEMBER_AGE} years old.`" />
+            <div v-if="errors.attestsAge" class="text-negative text-caption q-ml-lg">{{ errors.attestsAge }}</div>
+            <q-checkbox v-model="form.supportsPlatform" label="I support the platform and goals of the US Transhumanist Party." />
+            <div v-if="errors.supportsPlatform" class="text-negative text-caption q-ml-lg">{{ errors.supportsPlatform }}</div>
+          </fieldset>
+
           <q-banner v-if="errors._" class="bg-negative text-white" rounded>{{ errors._ }}</q-banner>
           <q-btn type="submit" color="primary" label="Submit application" :loading="busy" />
         </q-form>
@@ -191,3 +298,18 @@ async function submit() {
     </div>
   </q-page>
 </template>
+
+<style scoped>
+.register-section {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.register-section legend {
+  padding: 0;
+  margin-bottom: 8px;
+}
+</style>

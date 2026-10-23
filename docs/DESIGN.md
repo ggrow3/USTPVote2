@@ -155,8 +155,16 @@ Builds use the committed lockfile with `npm ci --ignore-scripts` (spec §7).
   every login method requires Membership-Admin-assisted relinking with a written reason (not yet built).
 - **Passwords (NIST SP 800-63B-4).** Minimum 15 characters (the single-factor minimum, applied to everyone), at least 64
   allowed, no composition rules, no forced rotation, breached-password screening, rate-limited attempts. Identity Platform
-  enforces length; the browser screens against breached passwords before submission (see open question Q9), because
-  Identity Platform never exposes the password to our code.
+  enforces length; the browser screens against breached passwords before creating the account (Q9): it sends only the
+  first 5 hex digits of the password's SHA-1 to Have I Been Pwned's range API, with padded responses, and refuses any
+  password found there. If that service is unreachable sign-up goes ahead, since Identity Platform never exposes the
+  password to our code for a later check.
+- **Bot resistance at sign-up and sign-in.** Identity Platform's reCAPTCHA Enterprise integration is enforced for
+  email/password sign-up, sign-in and email links (the web SDK preloads its configuration and attaches a bot-score
+  token; the emulator has none); email-enumeration protection is on, so a wrong password and an unknown address get
+  the same answer; Identity Platform's per-IP sign-up quota applies. Behind that, every api request needs an App Check
+  token (reCAPTCHA Enterprise), applying needs a verified email, applications are capped per account (§14) and a
+  person decides each one. Both settings are API-only (infra README "Identity Platform").
 - **MFA.** Required for every admin role: admin endpoints reject tokens without `firebase.sign_in_second_factor`
   (problem type `/problems/mfa-required`), and approvals additionally require `auth_time` within the last 15 minutes
   (`/problems/reauth-required`; the web app re-authenticates and retries once). `GET /v1/me` reports `mfa.required`
@@ -215,6 +223,14 @@ Every transition writes, in one transaction, the new status on `members/{account
   (`bylaws_versions/{version}`), so it is provable which text the applicant agreed to. An application is accepted
   only against the *current* bylaws (version and hash must both match) and only from a verified email address.
   Bylaws versions are published by a Membership Admin, are immutable, and are ledgered.
+- The application asks for: legal and preferred name; date of birth (at least `MINIMUM_MEMBER_AGE`, 18 until USTP
+  decides Q17); two attestations (that minimum age, and support for the USTP platform); state, city and US ZIP code
+  (never a street address); an optional phone number (stored as E.164); optional statement, interests, skills, how they
+  heard about USTP, and wishes to volunteer or run for office; and opt-ins to the newsletter and to announcements, each
+  stored with the time consent was given. The browser and the api apply the same schema, the api with its own clock.
+- Data minimization: the date of birth stays on the application, for the Membership Admin's review, and is never
+  copied to `members/{accountId}`; the member record gets only what membership uses afterwards (name, state, city, ZIP,
+  phone, and the consents). Members who applied before these fields have `contact` and `communications` null.
 - Separation of duties within membership: an admin cannot decide their own application or change their own status.
   Status changes other than application decisions (suspend, reinstate, lapse) use a separate endpoint so an
   application can never be bypassed.
@@ -741,9 +757,9 @@ registration collections are top-level and election data lives under each electi
 | `account_identities/{uid}` | Identity Platform uid | create/delete | → `accountId`, provider, linkedAt |
 | `account_factors/{accountId}/factors/{factorId}` | | mutable | mirror of MFA enrollment, no secrets |
 | `sign_in_methods/{method}` | provider ID | mutable | enabled flag (auth switches) |
-| `members/{accountId}` | accountId | mutable | current status, state/district, bylaws version, memberSince |
+| `members/{accountId}` | accountId | mutable | current status, state/district, city + ZIP + phone, email consents, bylaws version, memberSince |
 | `member_status_history/{id}` | auto | append-only | from, to, reason, actor, ledger seq |
-| `applications/{applicationId}` | auto | status only | answers, bylaws version + hash |
+| `applications/{applicationId}` | auto | status only | answers (incl. date of birth and attestations, §5.2), bylaws version + hash |
 | `bylaws_versions/{version}` | version | immutable | text, content hash *(added)* |
 | `profile_photos/{photoId}` | auto | status only | storage path, status |
 | `photo_checks/{checkId}` | auto | immutable | Vision signals, verdict |
@@ -871,7 +887,11 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
   a Binary Authorization policy that lets Cloud Run run only attested images. Build provenance (SLSA) is not recorded
   yet: the image is built in GitHub Actions rather than Cloud Build (§17), and GitHub's artifact attestations need a
   public repository or GitHub Enterprise.
-- **Abuse:** per-account rate limits on registration and casting, in addition to Identity Platform's limits.
+- **Abuse:** at most `MAX_APPLICATIONS_PER_WINDOW` (3) applications per account in 30 days (429 beyond that; only one
+  can be pending at a time anyway), counted from the account's own applications so no IP addresses are stored; casting
+  is limited to one ballot per voter by `participation/{accountId}`. Sign-up volume per IP is left to Identity
+  Platform's quota and reCAPTCHA Enterprise (§4), which see the real client address; behind Hosting and Cloud Run the
+  api cannot tell a forwarded address from a forged one.
 - **Hosting headers:** HSTS, `frame-ancestors 'none'`, `nosniff`, strict referrer policy; CSP tightened once the
   sign-in providers' origins are final.
 
@@ -967,6 +987,8 @@ Decisions for USTP; the design's proposed default is in brackets.
 14. **Repository visibility and license.** `ustp-tally` and `ustp-audit` are meant to be public; the repository was created private. [decide before the first release]
 15. **Email sender domain** for Amazon SES and DMARC alignment.
 16. **GCP region** for Cloud Run, Firestore and the buckets. [`us-central1`, the cheapest free-tier region]
+17. **Membership requirements:** minimum age, and the wording of the platform attestation applicants confirm. [18; "I
+    support the platform and goals of the US Transhumanist Party."]
 
 ## 19. Roadmap
 
