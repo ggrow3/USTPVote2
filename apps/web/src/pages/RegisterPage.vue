@@ -4,6 +4,7 @@ import { useQuasar } from 'quasar';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import {
   createApplicationSchema,
+  mayApply,
   MINIMUM_MEMBER_AGE,
   type ApplicationRecord,
   type BylawsRecord,
@@ -72,7 +73,7 @@ const form = reactive({
 const optional = (value: string) => value.trim() || undefined;
 
 const status = computed(() => session.me?.member?.status ?? null);
-const canApply = computed(() => status.value === null || status.value === 'rejected' || status.value === 'resigned');
+const canApply = computed(() => mayApply(status.value));
 const lastDecision = computed(() => applications.value.find((a) => a.status !== 'pending') ?? null);
 const stateOptions = STATES.map((s) => ({ label: `${s.name} (${s.code})`, value: s.code }));
 /** The current step, or null for members, who have nothing left to do here. */

@@ -2,7 +2,7 @@ export type { Check } from './check.js';
 export { uuidv7, isUuidV7, uuidv7Timestamp } from './ids.js';
 export { ROLES, conflictingRoles, isRole, checkRoleChange } from './roles.js';
 export type { Role } from './roles.js';
-export { MEMBER_STATUSES, checkStatusChange } from './member-status.js';
+export { MEMBER_STATUSES, checkStatusChange, mayApply } from './member-status.js';
 export type { MemberStatus, StatusChange } from './member-status.js';
 export { diffLines, splitLines } from './text-diff.js';
 export { ACT_AS_HEADER, ADMIN_PERSONAS, MAX_TEST_VOTERS, PERSONA_KINDS, voterPersonaLabel } from './testing.js';

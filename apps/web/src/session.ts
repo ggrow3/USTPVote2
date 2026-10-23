@@ -1,6 +1,6 @@
 import { onIdTokenChanged, signOut as firebaseSignOut, type User } from 'firebase/auth';
-import { reactive, readonly, watch } from 'vue';
-import type { MeResponse, Role } from 'ustp-domain';
+import { computed, reactive, readonly, watch } from 'vue';
+import { mayApply, type MeResponse, type Role } from 'ustp-domain';
 import { acting, setActing, type ActingAs } from './acting.js';
 import { api } from './api.js';
 import { auth } from './firebase.js';
@@ -122,6 +122,12 @@ export async function actAs(persona: ActingAs | null): Promise<void> {
 export async function signOut(): Promise<void> {
   await firebaseSignOut(auth);
 }
+
+/**
+ * Whether to offer Register: to anyone signed out, and to a signed-in person who may apply (no membership yet, or
+ * rejected or resigned before). Not while their account is still loading, so the link does not flash and vanish.
+ */
+export const canRegister = computed(() => !state.user || (!!state.me && mayApply(state.me.member?.status ?? null)));
 
 export function hasRole(...roles: Role[]): boolean {
   return roles.some((r) => state.me?.roles.includes(r));
