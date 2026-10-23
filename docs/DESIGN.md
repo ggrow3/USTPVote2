@@ -282,6 +282,11 @@ Optional, for members with a membership record (applicants included).
    appear in, with what the check looks for), and afterwards the photo, which opens larger, with the check's outcome
    in words: passed (one clear face, in focus, well lit), or what it found (`PHOTO_FLAGS` in `ustp-domain`) with a
    tip for each finding, or a reviewer's reason.
+8. **Taking the photo with the camera:** phones and tablets open their own camera app (a file input with
+   `capture="user"`); computers with a camera get a live, mirrored preview (`getUserMedia`, front camera, no audio)
+   that runs only while its window is open, and the photo taken is not mirrored. Either way the photo goes through
+   the same review and upload; nothing leaves the browser before that. Hosting already allows the camera for the
+   site's own pages (`Permissions-Policy: camera=(self)`).
 
 With the emulators there is no Vision API, so a local stand-in (`PHOTO_CHECKER=local`, refused outside the emulators)
 assumes one clear face and flags only dark images, so the review flow can be exercised. Deployment needs: the
