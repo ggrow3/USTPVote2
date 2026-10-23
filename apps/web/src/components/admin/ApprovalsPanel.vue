@@ -268,7 +268,7 @@ onMounted(load);
         </div>
         <q-input v-model="request.reason" outlined dense autogrow label="Reason" :error="!!errors.reason" :error-message="errors.reason" />
         <div>
-          <div aria-live="polite" class="text-caption text-orange-10" :class="{ 'q-mb-sm': requestBlocker }">{{ requestBlocker ?? '' }}</div>
+          <div aria-live="polite" class="text-caption text-deep-orange-10" :class="{ 'q-mb-sm': requestBlocker }">{{ requestBlocker ?? '' }}</div>
           <q-btn type="submit" color="primary" label="Create request" :disable="!!requestBlocker" />
         </div>
       </q-form>

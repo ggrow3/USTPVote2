@@ -105,7 +105,7 @@ onMounted(() => load());
           </td>
           <td>
             {{ a.primaryEmail ?? '—' }}
-            <span v-if="a.primaryEmail && !a.emailVerified" class="text-caption text-orange-10">&nbsp;unverified</span>
+            <span v-if="a.primaryEmail && !a.emailVerified" class="text-caption text-deep-orange-10">&nbsp;unverified</span>
           </td>
           <td>
             <q-badge v-if="a.memberStatus" :label="a.memberStatus" />
