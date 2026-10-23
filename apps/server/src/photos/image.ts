@@ -18,8 +18,12 @@ export interface NormalizedPhoto {
  * Decodes an upload and re-encodes it as a bounded JPEG (design §5.3). Decoding proves it really is an image of an
  * accepted format; re-encoding drops all metadata (EXIF GPS location, camera serials, embedded thumbnails) and
  * anything else hidden in the original bytes. EXIF orientation is applied first so the photo stays upright.
+ * `formats` widens what is decoded (a Gravatar may be a GIF; its first frame is used).
  */
-export async function normalizePhoto(input: Buffer): Promise<NormalizedPhoto> {
+export async function normalizePhoto(
+  input: Buffer,
+  formats: readonly string[] = ['jpeg', 'png', 'webp'],
+): Promise<NormalizedPhoto> {
   const options = { limitInputPixels: 50_000_000, failOn: 'error' } as const;
   let meta: Metadata;
   try {
@@ -27,7 +31,7 @@ export async function normalizePhoto(input: Buffer): Promise<NormalizedPhoto> {
   } catch {
     throw new PhotoInputError('that file is not a readable image');
   }
-  if (!['jpeg', 'png', 'webp'].includes(meta.format ?? '')) throw new PhotoInputError('use a JPEG, PNG or WebP image');
+  if (!formats.includes(meta.format ?? '')) throw new PhotoInputError('use a JPEG, PNG or WebP image');
   // EXIF orientations 5–8 swap width and height.
   const [w, h] = (meta.orientation ?? 1) >= 5 ? [meta.height, meta.width] : [meta.width, meta.height];
   if (Math.min(w ?? 0, h ?? 0) < MIN_PHOTO_SIDE) {

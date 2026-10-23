@@ -30,6 +30,7 @@ import { PublicLedgerController } from '../ledger/ledger.controller.js';
 import { MembershipAdminController, RegistrationController } from '../membership/membership.controller.js';
 import { MembershipService } from '../membership/membership.service.js';
 import { LocalPhotoChecker, PHOTO_CHECKER, VisionPhotoChecker } from '../photos/checker.js';
+import { GravatarClient } from '../photos/gravatar.js';
 import { MyPhotoController, PhotoReviewController } from '../photos/photos.controller.js';
 import { PhotosService } from '../photos/photos.service.js';
 import { PersonasController } from '../personas/personas.controller.js';
@@ -91,6 +92,7 @@ import { PositionsService } from '../positions/positions.service.js';
       useFactory: (config: ServerConfig) =>
         config.photoChecker === 'vision' ? new VisionPhotoChecker() : new LocalPhotoChecker(),
     },
+    { provide: GravatarClient, inject: [CONFIG], useFactory: (config: ServerConfig) => new GravatarClient(config.gravatarUrl) },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],
 })
