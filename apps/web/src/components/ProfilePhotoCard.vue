@@ -2,10 +2,12 @@
 import { useQuasar } from 'quasar';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import type { ProfilePhotoRecord } from 'ustp-domain';
-import { api, ApiError, apiUpload, errorMessage } from '../api.js';
+import { announce } from '../a11y.js';
+import { api, ApiError, apiBlob, apiUpload, errorMessage } from '../api.js';
 import { hasCamera, prefersCameraApp, useCamera } from '../camera.js';
 import { dialog } from '../dialogs.js';
-import { faceCheckMessage } from '../photo-check.js';
+import { auth } from '../firebase.js';
+import { faceCheckMessage, gravatarProblem } from '../photo-check.js';
 import { MIN_PHOTO_SIDE, photoFileProblem, PHOTO_TYPES, STATUS_LABELS, useAuthenticatedImages } from '../photos.js';
 
 const $q = useQuasar();
@@ -17,8 +19,12 @@ const check = computed(() => (photo.value ? faceCheckMessage(photo.value) : null
 const TONE_ICONS = { passed: 'check_circle', flagged: 'error', rejected: 'cancel' } as const;
 const TONE_CLASSES = { passed: 'text-positive', flagged: 'text-deep-orange-10', rejected: 'text-negative' } as const;
 
+type Source = 'file' | 'camera' | 'gravatar';
+const ANOTHER: Record<Source, string> = { file: 'Choose another', camera: 'Retake', gravatar: 'Choose a file instead' };
+const CHOSEN_ALT: Record<Source, string> = { file: 'The photo you chose', camera: 'The photo you took', gravatar: 'Your Gravatar picture' };
+
 /** The chosen file, shown for review before it is uploaded; its object URL is revoked when it is dropped. */
-const chosen = ref<{ file: File; url: string; from: 'file' | 'camera' } | null>(null);
+const chosen = ref<{ file: File; url: string; from: Source } | null>(null);
 const reviewing = ref(false);
 const viewing = ref(false);
 
@@ -31,6 +37,12 @@ const { stream: cameraStream, problem: cameraProblem, starting: cameraStarting, 
 watch([cameraStream, video], ([s, v]) => {
   if (v) v.srcObject = s;
 });
+
+/** Gravatar: looked up by the server only when the member asks here, then reviewed like any other photo. */
+const gravatarOpen = ref(false);
+const gravatarLoading = ref(false);
+const gravatarError = ref<string | null>(null);
+const signedInEmail = auth.currentUser?.email ?? null;
 
 async function refresh() {
   try {
@@ -61,7 +73,7 @@ async function onFile(event: Event, from: 'file' | 'camera' = 'file') {
 }
 
 /** Checks what the browser can, then shows the photo for review. */
-async function consider(file: File, from: 'file' | 'camera') {
+async function consider(file: File, from: Source) {
   const problem = photoFileProblem(file);
   if (problem) {
     $q.notify({ type: 'negative', message: problem });
@@ -91,6 +103,31 @@ async function snap() {
   cameraOpen.value = false;
   if (file) await consider(file, 'camera');
   else $q.notify({ type: 'negative', message: 'The camera gave no picture. Try again.' });
+}
+
+function openGravatar() {
+  gravatarError.value = null;
+  gravatarOpen.value = true;
+}
+
+async function getGravatar() {
+  gravatarError.value = null;
+  gravatarLoading.value = true;
+  announce('Asking Gravatar for your picture…');
+  try {
+    const blob = await apiBlob('/v1/me/photo/gravatar');
+    gravatarOpen.value = false;
+    await consider(new File([blob], 'gravatar.jpg', { type: blob.type || 'image/jpeg' }), 'gravatar');
+  } catch (e) {
+    gravatarError.value = gravatarProblem(e instanceof ApiError ? e.status : 0, errorMessage(e), signedInEmail);
+  } finally {
+    gravatarLoading.value = false;
+  }
+}
+
+function uploadInstead() {
+  gravatarOpen.value = false;
+  fileInput.value?.click();
 }
 
 function drop() {
@@ -190,17 +227,18 @@ onBeforeUnmount(drop);
         @click="fileInput?.click()"
       />
       <q-btn v-if="canUseCamera" outline no-caps color="primary" icon="photo_camera" label="Take photo" :disable="busy" @click="takePhoto" />
+      <q-btn outline no-caps color="primary" icon="account_circle" label="Use Gravatar" :disable="busy" @click="openGravatar" />
       <q-btn v-if="photo && photo.status !== 'rejected'" flat no-caps color="negative" label="Remove" :disable="busy" @click="remove" />
     </q-card-actions>
 
     <!-- Review before upload: the photo as chosen, as it will appear, and what the check looks for. -->
-    <q-dialog v-model="reviewing" :persistent="busy" @hide="drop">
+    <q-dialog v-model="reviewing" :persistent="busy" aria-labelledby="photo-review-title" @hide="drop">
       <q-card v-if="chosen" style="width: 460px; max-width: 92vw">
         <q-card-section>
-          <h2 class="text-h6 q-my-none">Review your photo</h2>
+          <h2 id="photo-review-title" class="text-h6 q-my-none">Review your photo</h2>
         </q-card-section>
         <q-card-section class="text-center q-pt-none">
-          <img :src="chosen.url" alt="The photo you chose" class="ustp-photo-full ustp-photo-review" />
+          <img :src="chosen.url" :alt="CHOSEN_ALT[chosen.from]" class="ustp-photo-full ustp-photo-review" />
         </q-card-section>
         <q-card-section class="row no-wrap items-center q-gutter-md q-pt-none">
           <img :src="chosen.url" alt="" class="ustp-photo-thumb" />
@@ -217,7 +255,7 @@ onBeforeUnmount(drop);
         </q-card-section>
         <q-card-actions align="right">
           <q-btn v-close-popup flat no-caps label="Cancel" :disable="busy" />
-          <q-btn flat no-caps color="primary" :label="chosen.from === 'camera' ? 'Retake' : 'Choose another'" :disable="busy" @click="chooseAnother" />
+          <q-btn flat no-caps color="primary" :label="ANOTHER[chosen.from]" :disable="busy" @click="chooseAnother" />
           <q-btn color="primary" no-caps label="Upload photo" :loading="busy" @click="upload" />
         </q-card-actions>
       </q-card>
@@ -243,6 +281,34 @@ onBeforeUnmount(drop);
         <q-card-actions align="right">
           <q-btn v-close-popup flat no-caps label="Cancel" />
           <q-btn color="primary" no-caps icon="photo_camera" label="Take photo" :disable="!cameraStream" @click="snap" />
+        </q-card-actions>
+      </q-card>
+    </q-dialog>
+
+    <!-- Gravatar: nothing goes to Gravatar until "Get my Gravatar", and nothing is saved until the review. -->
+    <q-dialog v-model="gravatarOpen" :persistent="gravatarLoading" aria-labelledby="gravatar-title">
+      <q-card style="width: 460px; max-width: 92vw">
+        <q-card-section>
+          <h2 id="gravatar-title" class="text-h6 q-my-none">Use your Gravatar</h2>
+        </q-card-section>
+        <q-card-section class="q-pt-none">
+          <p>
+            Gravatar (gravatar.com) links a picture to an email address. To find yours, this site's server sends Gravatar
+            a hash (a one-way code) of
+            <template v-if="signedInEmail"><strong class="ustp-email">{{ signedInEmail }}</strong>, the address</template>
+            <template v-else>the address</template>
+            you signed in with. Your browser does not contact Gravatar.
+          </p>
+          <p class="q-mb-none">
+            You will see the picture before anything is saved, and it gets the same automatic check and review as any
+            other photo.
+          </p>
+          <div v-if="gravatarError" role="alert" class="text-negative q-mt-md">{{ gravatarError }}</div>
+        </q-card-section>
+        <q-card-actions align="right">
+          <q-btn v-close-popup flat no-caps label="Cancel" :disable="gravatarLoading" />
+          <q-btn v-if="gravatarError" flat no-caps color="primary" label="Upload a photo" @click="uploadInstead" />
+          <q-btn color="primary" no-caps label="Get my Gravatar" :loading="gravatarLoading" @click="getGravatar" />
         </q-card-actions>
       </q-card>
     </q-dialog>
@@ -293,6 +359,9 @@ onBeforeUnmount(drop);
   max-height: 50vh;
   object-fit: contain;
   transform: scaleX(-1);
+}
+.ustp-email {
+  overflow-wrap: anywhere;
 }
 .ustp-photo-button {
   padding: 0;

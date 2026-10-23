@@ -25,6 +25,13 @@ test. Keep it current when pages change.
   each change.
 - **Both themes** (light, and dark via `prefers-color-scheme`), and **320 px wide** for reflow.
 - **Contrast** computed from the actual colours (WCAG relative luminance), not estimated.
+- **Added 2026-10-22, profile photo from Gravatar** (account page, against the emulators with a Gravatar stand-in):
+  keyboard only from "Use Gravatar" through "Get my Gravatar" to the review dialog and the upload; Escape returns
+  focus to "Use Gravatar"; both dialogs are named by their titles; "Asking Gravatar for your picture…" goes to the
+  status region and a missing or slow picture is a `role="alert"` message in the dialog with an "Upload a photo"
+  alternative; nothing can be dismissed half-way through the request. At 320 px the card's buttons wrap with no
+  horizontal scrolling; the new text is 4.94:1 or better in both themes (primary on white and white on primary 4.94,
+  error text 6.41 light / 7.83 dark, accent on the dark card 5.84).
 
 ## What was fixed
 
@@ -179,3 +186,6 @@ Android if time allows), on staging or the emulators:
 6. Dialogs from the Dialog plugin (reasons, codes, confirmations): name and prompt label read; focus returns afterwards.
 7. Admin console: tab and panel relationship, row action names, the status-history dialog, the contest dialog.
 8. Zoom to 200 % and 400 % (desktop) and large text on iOS: no clipped controls.
+9. Profile photo from Gravatar: the dialog's name and its explanation are read; "Asking Gravatar for your picture…"
+   and a "no picture" message are each read once; the review dialog reads "Review your photo" and the picture as
+   "Your Gravatar picture".
