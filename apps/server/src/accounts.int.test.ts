@@ -32,6 +32,7 @@ describe('accounts', () => {
       member: null,
       roles: [],
       mfa: { required: false, signedInWithMfa: false },
+      testing: { enabled: false, operator: null },
     });
 
     const first = await api.call('POST', '/v1/accounts', user);

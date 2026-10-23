@@ -11,6 +11,7 @@ import OfficesPanel from '../components/admin/OfficesPanel.vue';
 import PeoplePanel from '../components/admin/PeoplePanel.vue';
 import PhotosPanel from '../components/admin/PhotosPanel.vue';
 import SignInMethodsPanel from '../components/admin/SignInMethodsPanel.vue';
+import TestingPanel from '../components/admin/TestingPanel.vue';
 import { useRoute } from 'vue-router';
 import { usePageTitle } from '../a11y.js';
 import { hasRole, session } from '../session.js';
@@ -33,6 +34,7 @@ const PANELS: Record<string, Component> = {
   people: PeoplePanel,
   signin: SignInMethodsPanel,
   audit: AuditPanel,
+  testing: TestingPanel,
 };
 
 const ALL_TABS: readonly Tab[] = [
@@ -46,10 +48,12 @@ const ALL_TABS: readonly Tab[] = [
   { name: 'people', label: 'People', roles: ['system_admin'] },
   { name: 'signin', label: 'Sign-in methods', roles: ['system_admin'] },
   { name: 'audit', label: 'Audit ledger', roles: ['auditor'] },
+  { name: 'testing', label: 'Testing', roles: ['system_admin'] },
 ];
 
 usePageTitle('Administration');
-const tabs = computed(() => ALL_TABS.filter((t) => hasRole(...t.roles)));
+// Testing shows only where the deployment allows test personas (design §10.4).
+const tabs = computed(() => ALL_TABS.filter((t) => hasRole(...t.roles) && (t.name !== 'testing' || !!session.me?.testing.enabled)));
 const needsMfa = computed(() => !!session.me?.mfa.required && !session.me.mfa.signedInWithMfa);
 const requested = String(useRoute().query.tab ?? '');
 const tab = ref(tabs.value.some((t) => t.name === requested) ? requested : (tabs.value[0]?.name ?? 'approvals'));

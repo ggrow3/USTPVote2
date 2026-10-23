@@ -13,6 +13,11 @@ export class DirectoryService {
     return snap.exists ? (snap.data() as IdentityRecord).accountId : null;
   }
 
+  /** A test persona's account (design §10.4). */
+  async isPersona(accountId: string): Promise<boolean> {
+    return (await this.firebase.db.collection(Collections.testingPersonas).doc(accountId).get()).exists;
+  }
+
   /** Active (unrevoked) roles. Pass a transaction to read them consistently with other transactional reads. */
   async activeRoles(accountId: string, tx?: Transaction): Promise<Role[]> {
     const query = this.firebase.db

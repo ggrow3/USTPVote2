@@ -3,6 +3,7 @@ import { SIGN_IN_PROVIDERS } from './identity.js';
 import { MEMBER_STATUSES } from './member-status.js';
 import { checkApplicantAge, isCalendarDate, MINIMUM_MEMBER_AGE, normalizePhone, US_POSTAL_CODE } from './registration.js';
 import { ROLES } from './roles.js';
+import { MAX_TEST_VOTERS } from './testing.js';
 
 /** Request bodies (design §12), shared by the API (validation) and the web app (forms, types). */
 
@@ -100,6 +101,12 @@ export const roleChangeSchema = z.strictObject({
   reason,
 });
 export type RoleChangeInput = z.infer<typeof roleChangeSchema>;
+
+/** `POST /v1/testing/personas`: creates any missing admin persona, then adds `voters` voter personas (design §10.4). */
+export const createPersonasSchema = z.strictObject({
+  voters: z.number().int().min(0).max(MAX_TEST_VOTERS).default(0),
+});
+export type CreatePersonasInput = z.infer<typeof createPersonasSchema>;
 
 export const signInMethodsSchema = z
   .strictObject(Object.fromEntries(SIGN_IN_PROVIDERS.map((p) => [p, z.boolean().optional()])) as Record<

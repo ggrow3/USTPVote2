@@ -1,19 +1,21 @@
 import {
+  BadRequestException,
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   UnauthorizedException,
   type CanActivate,
   type ExecutionContext,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
-import { PROBLEM_TYPES, type Role } from 'ustp-domain';
+import { ACT_AS_HEADER, isUuidV7, PROBLEM_TYPES, type Role } from 'ustp-domain';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { CHECK_REVOKED_KEY, PUBLIC_KEY, ROLES_KEY } from './decorators.js';
 import { DirectoryService } from './directory.service.js';
-import { principalFromToken, type RequestContext } from './principal.js';
+import { principalFromToken, type Principal, type RequestContext } from './principal.js';
 import { SignInMethodsService } from './sign-in-methods.service.js';
 
 /**
@@ -22,6 +24,8 @@ import { SignInMethodsService } from './sign-in-methods.service.js';
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
+  private readonly logger = new Logger('TestPersonas');
+
   constructor(
     private readonly reflector: Reflector,
     private readonly firebase: Firebase,
@@ -34,8 +38,14 @@ export class AuthGuard implements CanActivate {
     const targets = [context.getHandler(), context.getClass()];
     if (this.reflector.getAllAndOverride<boolean>(PUBLIC_KEY, targets)) return true;
     const required = this.reflector.getAllAndOverride<Role[] | undefined>(ROLES_KEY, targets) ?? [];
-    const checkRevoked = required.length > 0 || !!this.reflector.getAllAndOverride<boolean>(CHECK_REVOKED_KEY, targets);
     const request = context.switchToHttp().getRequest<FastifyRequest>();
+    const actAsHeader = request.headers[ACT_AS_HEADER];
+    if (actAsHeader !== undefined && (typeof actAsHeader !== 'string' || !isUuidV7(actAsHeader))) {
+      throw new BadRequestException(`${ACT_AS_HEADER} must be a test persona's accountId`);
+    }
+    const personaId = actAsHeader as string | undefined;
+    const checkRevoked =
+      required.length > 0 || personaId !== undefined || !!this.reflector.getAllAndOverride<boolean>(CHECK_REVOKED_KEY, targets);
 
     if (this.config.appCheckEnforced) {
       const appCheckToken = request.headers['x-firebase-appcheck'];
@@ -60,7 +70,9 @@ export class AuthGuard implements CanActivate {
       throw new ForbiddenException(`sign-in with ${principal.provider} is not enabled`);
     }
 
-    const accountId = await this.directory.accountIdForUid(principal.uid);
+    const ownAccountId = await this.directory.accountIdForUid(principal.uid);
+    const operator = personaId === undefined ? null : await this.operatorFor(request, principal, ownAccountId, personaId);
+    const accountId = personaId === undefined ? ownAccountId : personaId;
     let roles: Role[] = [];
     if (required.length > 0) {
       if (!accountId) throw new ForbiddenException('no account');
@@ -71,8 +83,31 @@ export class AuthGuard implements CanActivate {
       if (!required.some((r) => roles.includes(r))) throw new ForbiddenException(`requires role ${required.join(' or ')}`);
     }
 
-    const ctx: RequestContext = { principal, accountId, roles };
+    const ctx: RequestContext = { principal, accountId, roles, operator };
     request.ctx = ctx;
     return true;
+  }
+
+  /**
+   * Checks a request to act as a test persona (design §10.4): testing mode is on, the caller is a System Admin signed
+   * in with MFA, and the target is a persona. Returns the caller's own accountId, the operator.
+   */
+  private async operatorFor(
+    request: FastifyRequest,
+    principal: Principal,
+    ownAccountId: string | null,
+    personaId: string,
+  ): Promise<string> {
+    if (!this.config.testingMode) throw new ForbiddenException('testing mode is off on this deployment');
+    if (!ownAccountId) throw new ForbiddenException('no account');
+    if (this.config.adminMfaRequired && !principal.mfa) {
+      throw new ForbiddenException({ message: 'acting as a test persona requires multi-factor sign-in', type: PROBLEM_TYPES.mfaRequired });
+    }
+    const [roles, isPersona] = await Promise.all([this.directory.activeRoles(ownAccountId), this.directory.isPersona(personaId)]);
+    if (!roles.includes('system_admin')) throw new ForbiddenException('only System Admins can act as test personas');
+    if (!isPersona) throw new ForbiddenException('not a test persona');
+    // Persona accounts have no login of their own, so this log is what ties each persona action to a real person.
+    this.logger.log(`${ownAccountId} acting as test persona ${personaId}: ${request.method} ${request.url}`);
+    return ownAccountId;
   }
 }

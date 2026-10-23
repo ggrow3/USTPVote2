@@ -1,4 +1,5 @@
-import type { ProblemDetails } from 'ustp-domain';
+import { ACT_AS_HEADER, type ProblemDetails } from 'ustp-domain';
+import { acting } from './acting.js';
 import { appCheckToken, auth } from './firebase.js';
 
 /** An API error carrying the server's RFC 9457 problem details. */
@@ -14,9 +15,17 @@ export class ApiError extends Error {
 
 type Method = 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
 
-/** The current ID token and App Check token. */
-async function authHeaders(): Promise<Record<string, string>> {
-  const headers: Record<string, string> = {};
+export interface ApiOptions {
+  /**
+   * The test persona to act as for this request (design §10.4): by default the one this tab acts as, if any; null
+   * for the signed-in person themself.
+   */
+  readonly actAs?: string | null;
+}
+
+/** The current ID token and App Check token, and the test persona the request acts as, if any. */
+async function authHeaders({ actAs = acting.persona?.accountId ?? null }: ApiOptions = {}): Promise<Record<string, string>> {
+  const headers: Record<string, string> = actAs ? { [ACT_AS_HEADER]: actAs } : {};
   const user = auth.currentUser;
   if (user) headers.authorization = `Bearer ${await user.getIdToken()}`;
   const appCheck = await appCheckToken();
@@ -25,8 +34,8 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 /** Calls the same-origin API with JSON in and out. */
-export async function api<T>(method: Method, path: string, body?: unknown): Promise<T> {
-  const headers: Record<string, string> = { ...(await authHeaders()), accept: 'application/json' };
+export async function api<T>(method: Method, path: string, body?: unknown, options?: ApiOptions): Promise<T> {
+  const headers: Record<string, string> = { ...(await authHeaders(options)), accept: 'application/json' };
   if (body !== undefined) headers['content-type'] = 'application/json';
   const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
   return readJson<T>(res);

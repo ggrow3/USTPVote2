@@ -200,6 +200,13 @@ export interface MeResponse {
     /** The current ID token was issued after a second factor. */
     readonly signedInWithMfa: boolean;
   };
+  /** Testing mode (design §10.4). */
+  readonly testing: {
+    /** This deployment lets System Admins act as test personas. */
+    readonly enabled: boolean;
+    /** When this request was made as a persona, the System Admin acting as it; otherwise null. */
+    readonly operator: string | null;
+  };
 }
 
 /**

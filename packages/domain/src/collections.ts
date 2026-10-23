@@ -28,6 +28,8 @@ export const Collections = {
   roleAssignments: 'role_assignments',
   approvalRequests: 'approval_requests',
   locks: 'locks',
+  // testing mode (design §10.4)
+  testingPersonas: 'testing_personas',
 } as const;
 
 /** Subcollections of `elections/{electionId}`. */
