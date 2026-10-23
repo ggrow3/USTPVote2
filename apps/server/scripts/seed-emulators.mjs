@@ -1,6 +1,6 @@
-// Fills the local emulators with test data through the running api, the same way people would: accounts, two-person
-// role grants, bylaws, approved membership applications, elections taken through the roll and scheduling approvals, and
-// cast ballots. Needs the emulators (`npm run emulators`) and the api (`npm run dev:api:emulators`, not the --require-mfa
+// Fills the local emulators with test data through the running api, the same way people would: accounts, role grants by
+// a System Admin, bylaws, approved membership applications, elections taken through the roll and scheduling approvals,
+// and cast ballots. Needs the emulators (`npm run emulators`) and the api (`npm run dev:api:emulators`, not the --require-mfa
 // variant); the worker (`npm run dev:worker:emulators`) must also run for elections to open and ballots to be cast.
 //
 // Safe to run again: existing accounts, roles, members and elections (matched by title) are reused, and voters who
@@ -48,7 +48,7 @@ async function request(url, init) {
 const postJson = (url, body, headers = {}) =>
   request(url, { method: 'POST', headers: { 'content-type': 'application/json', ...headers }, body: JSON.stringify(body) });
 
-/** A fresh ID token for each call: two-person approvals require a recent sign-in. */
+/** A fresh ID token for each call: approvals and role changes require a recent sign-in. */
 const token = async (email) =>
   (await postJson(`${AUTH}/accounts:signInWithPassword?key=fake-api-key`, { email, password: PASSWORD, returnSecureToken: true })).idToken;
 
@@ -79,13 +79,11 @@ async function account(email) {
   return call('GET', '/v1/me', email);
 }
 
-/** Grants a role through the two-person flow (one System Admin requests, the other approves), unless held. */
+/** Grants a role as the first System Admin (it takes effect at once), unless held. */
 async function grant(email, role) {
   const me = await call('GET', '/v1/me', email);
   if (me.roles.includes(role)) return;
-  const [requester, approver] = SYSTEM_ADMINS;
-  const req = await call('POST', '/v1/admin/roles', requester, { accountId: me.account.accountId, role, change: 'grant', reason: 'dev seed' });
-  await call('POST', `/v1/admin/approvals/${req.id}/decision`, approver, { decision: 'approve', reason: 'dev seed' });
+  await call('POST', '/v1/admin/roles', SYSTEM_ADMINS[0], { accountId: me.account.accountId, role, change: 'grant', reason: 'dev seed' });
 }
 
 async function bylaws() {

@@ -13,13 +13,15 @@ export const TWO_PERSON_ACTIONS = {
   'election.certify': { requesters: ['election_admin'], approver: 'auditor' },
   'election.cancel': { requesters: ['election_admin'], approver: 'auditor' },
   'position.modify': { requesters: ['membership_admin', 'election_admin'], approver: 'auditor' },
-  'role.grant': { requesters: ['system_admin'], approver: 'system_admin' },
-  'role.revoke': { requesters: ['system_admin'], approver: 'system_admin' },
+  // Role changes now take effect on one System Admin's word (checkCanChangeRole). Nobody requests these any more;
+  // they stay so that requests made before can still be decided until they expire.
+  'role.grant': { requesters: [], approver: 'system_admin' },
+  'role.revoke': { requesters: [], approver: 'system_admin' },
 } as const satisfies Record<string, ApprovalRule>;
 
 export type TwoPersonAction = keyof typeof TWO_PERSON_ACTIONS;
 
-/** Approvals require a sign-in (with MFA) no older than this. */
+/** Approvals and role changes require a sign-in (with MFA) no older than this. */
 export const APPROVAL_MAX_AUTH_AGE_SECONDS = 15 * 60;
 export const APPROVAL_TTL_DAYS = 7;
 
@@ -44,6 +46,7 @@ export interface PendingApproval {
 export function checkCanRequest(action: TwoPersonAction, requester: Actor, subject?: string): Check {
   const rule: ApprovalRule = TWO_PERSON_ACTIONS[action];
   if (!requester.mfa) return deny('admin actions require multi-factor sign-in', 'mfaRequired');
+  if (rule.requesters.length === 0) return deny(`${action} is no longer requested`);
   if (!rule.requesters.some((r) => requester.roles.includes(r))) {
     return deny(`${action} must be requested by ${rule.requesters.join(' or ')}`);
   }
@@ -52,26 +55,24 @@ export function checkCanRequest(action: TwoPersonAction, requester: Actor, subje
 }
 
 /**
- * Everything the API checks before it records a role-change request (design §10.2), in the same order and with the
- * same reasons, so the web app can explain a refusal before sending: the requester may ask, the change fits the
- * roles the account holds now (skipped when they are not known, `roles: null`), and no request for the same change
- * to that account is already waiting.
+ * Whether `changer` may grant or revoke `role` for `subject` (design §10.2). A role change needs no second admin: one
+ * System Admin, signed in with MFA within the last 15 minutes, changes the roles of anyone but themselves, and it
+ * takes effect at once. The API checks this before the change and checks the roles held again inside its
+ * transaction; the web app runs it, in the same order and with the same reasons, to explain a refusal before
+ * sending. `roles` is null when the roles held are not known (an account ID typed in), which skips that check.
  */
-export function checkRoleRequest(
-  requester: Actor,
+export function checkCanChangeRole(
+  changer: Actor,
   subject: { readonly accountId: string; readonly roles: readonly Role[] | null },
   change: 'grant' | 'revoke',
   role: Role,
-  pending: readonly { readonly action: TwoPersonAction; readonly subject: string }[],
 ): Check {
-  const action = change === 'grant' ? 'role.grant' : 'role.revoke';
-  const allowed = checkCanRequest(action, requester, subject.accountId);
-  if (!allowed.ok) return allowed;
+  if (!changer.mfa) return deny('admin actions require multi-factor sign-in', 'mfaRequired');
+  if (!changer.roles.includes('system_admin')) return deny('roles are changed by system_admin');
+  if (subject.accountId === changer.accountId) return deny('you cannot change the roles of your own account');
   const fits = subject.roles ? checkRoleChange(subject.roles, change, role) : OK;
   if (!fits.ok) return fits;
-  if (pending.some((p) => p.action === action && p.subject === subject.accountId)) {
-    return deny('a request for this is already waiting for a decision');
-  }
+  if (changer.authAgeSeconds > APPROVAL_MAX_AUTH_AGE_SECONDS) return deny('sign in again to change roles', 'reauthRequired');
   return OK;
 }
 

@@ -39,7 +39,7 @@ variable "server_image" {
 }
 
 variable "bootstrap_system_admin_emails" {
-  description = "BOOTSTRAP_SYSTEM_ADMIN_EMAILS (design §4): verified emails that become System Admins when their account is created. List at least two; set to [] once real admins exist."
+  description = "BOOTSTRAP_SYSTEM_ADMIN_EMAILS (design §4): verified emails that become System Admins when their account is created. One is enough (a System Admin grants roles alone); set to [] once real admins exist."
   type        = list(string)
   default     = []
 }

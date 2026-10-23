@@ -17,7 +17,7 @@ variable "server_image" {
 }
 
 variable "bootstrap_system_admin_emails" {
-  description = "At least two verified emails that become System Admins; [] once real admins exist."
+  description = "Verified emails that become System Admins (one is enough); [] once real admins exist."
   type        = list(string)
   default     = []
 }

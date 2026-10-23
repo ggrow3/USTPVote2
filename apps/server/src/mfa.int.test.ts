@@ -1,6 +1,6 @@
 import { PROBLEM_TYPES } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { resetEmulators, SA1_EMAIL, SA2_EMAIL, TestApi } from './testing/emulator.js';
+import { resetEmulators, SA1_EMAIL, TestApi } from './testing/emulator.js';
 
 // The other suites run with ADMIN_MFA_REQUIRED=false; this one turns the production policy back on.
 let api: TestApi;
@@ -25,18 +25,22 @@ describe('admin multi-factor policy (real second-factor ID tokens)', () => {
     });
     // Read-only admin routes too: the People list shows who holds which role.
     expect((await api.call('GET', '/v1/admin/accounts', sa)).body.type).toBe(PROBLEM_TYPES.mfaRequired);
+    // And a role change, which one System Admin makes alone.
+    const pat = await api.member('pat@example.test');
+    const change = await api.call('POST', '/v1/admin/roles', sa, { accountId: pat.accountId, role: 'auditor', change: 'grant', reason: 'x' });
+    expect(change).toMatchObject({ status: 403, body: { type: PROBLEM_TYPES.mfaRequired } });
+    expect((await api.call('GET', '/v1/me', pat)).body.roles).toEqual([]);
     // Non-admin routes still work, and tell the client what is missing.
     expect((await api.call('GET', '/v1/me', sa)).body.mfa).toEqual({ required: true, signedInWithMfa: false });
   });
 
-  it('admits admins who signed in with a second factor, through a full two-person approval', async () => {
+  it('admits admins who signed in with a second factor, through a role change', async () => {
     const sa1 = await api.member(SA1_EMAIL, { mfa: true });
-    const sa2 = await api.member(SA2_EMAIL, { mfa: true });
     const pat = await api.member('pat@example.test');
 
     expect((await api.call('GET', '/v1/me', sa1)).body.mfa).toEqual({ required: true, signedInWithMfa: true });
     expect((await api.call('GET', '/v1/admin/accounts', sa1)).status).toBe(200);
-    await api.grant(pat.accountId, 'auditor', sa1, sa2);
+    await api.grant(pat.accountId, 'auditor', sa1);
     expect((await api.call('GET', '/v1/me', pat)).body).toMatchObject({
       roles: ['auditor'],
       mfa: { required: true, signedInWithMfa: false },

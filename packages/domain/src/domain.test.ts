@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkCanApprove, checkCanRequest, checkRoleRequest, type Actor, type PendingApproval } from './approvals.js';
+import { checkCanApprove, checkCanChangeRole, checkCanRequest, type Actor, type PendingApproval } from './approvals.js';
 import { electionDocPath, sequenceId } from './collections.js';
 import { electionTransitionAuthority, isTerminal } from './election-state.js';
 import { isUuidV7, uuidv7, uuidv7Timestamp } from './ids.js';
@@ -117,42 +117,52 @@ describe('two-person rule', () => {
     expect(checkCanApprove({ ...request, status: 'approved' }, auditor, now).ok).toBe(false);
   });
 
-  it('requires a second System Admin for role changes', () => {
+  it('keeps role-change requests made before role changes needed one admin decidable, but takes no new ones', () => {
     const sa1: Actor = { accountId: 'sa1', roles: ['system_admin'], mfa: true, authAgeSeconds: 10 };
     const sa2: Actor = { ...sa1, accountId: 'sa2' };
+    expect(checkCanRequest('role.grant', sa1, 'someone')).toMatchObject({ ok: false, reason: /no longer requested/ });
+    expect(checkCanRequest('role.revoke', sa1, 'someone').ok).toBe(false);
     const grant: PendingApproval = { ...request, action: 'role.grant', requestedBy: 'sa1', subject: 'someone' };
     expect(checkCanApprove(grant, sa2, now).ok).toBe(true);
+    expect(checkCanApprove(grant, sa1, now)).toMatchObject({ ok: false, reason: /different person/ });
     expect(checkCanApprove(grant, auditor, now).ok).toBe(false);
-  });
-
-  it('keeps the affected person out of both sides of the request', () => {
-    const sa1: Actor = { accountId: 'sa1', roles: ['system_admin'], mfa: true, authAgeSeconds: 10 };
-    const sa2: Actor = { ...sa1, accountId: 'sa2' };
-    expect(checkCanRequest('role.grant', sa1, 'sa1')).toMatchObject({ ok: false, reason: /own account/ });
-    const grantToSa2: PendingApproval = { ...request, action: 'role.grant', requestedBy: 'sa1', subject: 'sa2' };
+    const grantToSa2: PendingApproval = { ...grant, subject: 'sa2' };
     expect(checkCanApprove(grantToSa2, sa2, now)).toMatchObject({ ok: false, reason: /own account/ });
   });
+});
 
-  it('previews a role-change request with the checks the API makes, in its order', () => {
-    const sa1: Actor = { accountId: 'sa1', roles: ['system_admin'], mfa: true, authAgeSeconds: 10 };
-    const pat = { accountId: 'pat', roles: ['auditor' as const] };
-    const none = [] as const;
-    expect(checkRoleRequest(sa1, pat, 'revoke', 'auditor', none).ok).toBe(true);
-    expect(checkRoleRequest(sa1, { accountId: 'sa1', roles: null }, 'grant', 'auditor', none)).toMatchObject({
+describe('role changes (one System Admin)', () => {
+  const sa1: Actor = { accountId: 'sa1', roles: ['system_admin'], mfa: true, authAgeSeconds: 10 };
+  const pat = { accountId: 'pat', roles: ['auditor' as const] };
+
+  it('lets one System Admin change the roles of anyone else, System Admin and Auditor included', () => {
+    expect(checkCanChangeRole(sa1, pat, 'revoke', 'auditor').ok).toBe(true);
+    expect(checkCanChangeRole(sa1, { accountId: 'pat', roles: [] }, 'grant', 'system_admin').ok).toBe(true);
+    expect(checkCanChangeRole(sa1, { accountId: 'sa2', roles: ['system_admin'] }, 'revoke', 'system_admin').ok).toBe(true);
+    expect(checkCanChangeRole(sa1, { accountId: 'pat', roles: [] }, 'grant', 'auditor').ok).toBe(true);
+  });
+
+  it('refuses in the order the API checks, with its reasons', () => {
+    expect(checkCanChangeRole({ ...sa1, mfa: false }, pat, 'grant', 'election_admin')).toMatchObject({ code: 'mfaRequired' });
+    expect(checkCanChangeRole({ ...sa1, roles: ['membership_admin'] }, pat, 'revoke', 'auditor')).toMatchObject({
+      ok: false,
+      reason: /system_admin/,
+    });
+    expect(checkCanChangeRole(sa1, { accountId: 'sa1', roles: null }, 'grant', 'auditor')).toMatchObject({ reason: /own account/ });
+    expect(checkCanChangeRole(sa1, { accountId: 'sa1', roles: ['system_admin'] }, 'revoke', 'system_admin')).toMatchObject({
       reason: /own account/,
     });
-    expect(checkRoleRequest({ ...sa1, mfa: false }, pat, 'grant', 'election_admin', none)).toMatchObject({ code: 'mfaRequired' });
-    expect(checkRoleRequest({ ...sa1, roles: ['membership_admin'] }, pat, 'revoke', 'auditor', none).ok).toBe(false);
-    expect(checkRoleRequest(sa1, pat, 'grant', 'auditor', none)).toMatchObject({ reason: /already holds auditor/ });
-    expect(checkRoleRequest(sa1, pat, 'grant', 'election_admin', none)).toMatchObject({ reason: /cannot be held together/ });
-    expect(checkRoleRequest(sa1, pat, 'revoke', 'system_admin', none)).toMatchObject({ reason: /does not hold/ });
-    // Unknown roles (an account ID typed in) leave that check to the API.
-    expect(checkRoleRequest(sa1, { accountId: 'pat', roles: null }, 'grant', 'election_admin', none).ok).toBe(true);
-    // One pending request per action and person, whichever role it is about.
-    const pending = [{ action: 'role.revoke' as const, subject: 'pat' }];
-    expect(checkRoleRequest(sa1, pat, 'revoke', 'auditor', pending)).toMatchObject({ reason: /already waiting/ });
-    expect(checkRoleRequest(sa1, { accountId: 'pat', roles: [] }, 'grant', 'election_admin', pending).ok).toBe(true);
-    expect(checkRoleRequest(sa1, pat, 'revoke', 'auditor', [{ action: 'role.revoke', subject: 'kim' }]).ok).toBe(true);
+    expect(checkCanChangeRole(sa1, pat, 'grant', 'auditor')).toMatchObject({ reason: /already holds auditor/ });
+    expect(checkCanChangeRole(sa1, pat, 'grant', 'election_admin')).toMatchObject({ reason: /cannot be held together/ });
+    expect(checkCanChangeRole(sa1, pat, 'revoke', 'system_admin')).toMatchObject({ reason: /does not hold/ });
+    // A change takes effect at once, so it needs a recent sign-in, as an approval does; asked for last.
+    expect(checkCanChangeRole({ ...sa1, authAgeSeconds: 3600 }, pat, 'revoke', 'auditor')).toMatchObject({ code: 'reauthRequired' });
+    expect(checkCanChangeRole({ ...sa1, authAgeSeconds: 3600 }, pat, 'grant', 'auditor')).toMatchObject({ reason: /already holds/ });
+  });
+
+  it('leaves the roles check to the API when the roles held are unknown', () => {
+    expect(checkCanChangeRole(sa1, { accountId: 'pat', roles: null }, 'grant', 'election_admin').ok).toBe(true);
+    expect(checkCanChangeRole(sa1, { accountId: 'pat', roles: null }, 'revoke', 'system_admin').ok).toBe(true);
   });
 });
 

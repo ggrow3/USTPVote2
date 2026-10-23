@@ -51,7 +51,7 @@ marks it; decisions that belong to USTP (bylaws, policy) are collected in [§18 
 | Voter | Vote once, see own receipt | Vote twice; vote without being on the frozen roll | `transaction.create()` on `participation/{accountId}`; roll check in the same request |
 | Member / public observer | Read published blocks, results, anchors | Link a ballot to a voter | Sealed blocks carry no voter IDs, ordered by random commitment, ≥ k ballots each |
 | Firestore reader (insider with DB access, leaked backup/export/PITR) | See *who* voted and when | See *how* anyone voted, during or after the election | Pool entries are KMS-encrypted; pool key version destroyed after certification ([§7.3](#73-ballot-pool-encryption)) |
-| Single administrator | Act within their role | Approve their own request; certify, freeze a roll or change an office alone | Two-person rule ([§10](#10-administration-and-separation-of-duties)) |
+| Single administrator | Act within their role; a System Admin can grant or revoke any role, System Admin and Auditor included, alone | Approve their own request; certify, freeze a roll or change an office alone; change their own roles; change roles unrecorded | Two-person rule; role changes in the ledger ([§10](#10-administration-and-separation-of-duties)) |
 | Anyone with write access to the DB | Edit documents out of band | Do so undetected | Ledger hash chain, KMS-signed blocks, WORM anchors in Bucket Lock ([§8](#8-audit-ledger-hash-chain-merkle-blocks-anchors)) |
 | GCP project owner / deployer | Deploy new code, change IAM | Rewrite already-anchored history | Bucket Lock; recommended public mirroring of anchors; Binary Authorization; reviewed deploys |
 | Release workflow (GitHub Actions as `ustp-release`) | Build, attest and run any code on `main` | Change IAM, read Firestore, use the signing or ballot-pool keys; run from another branch or workflow | Workload Identity Federation bound to `release.yml` on `main` in one GitHub environment; required reviewers on staging and production; pull-request review of `main` ([§15](#15-environments-deployment-cost)) |
@@ -194,7 +194,7 @@ Builds use the committed lockfile with `npm ci --ignore-scripts` (spec §7).
 - **Bootstrap.** Emails listed in `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` become System Admins once their account exists and
   the email is verified (checked on every `POST /v1/accounts`, which the web app calls on each sign-in and after
   verification; ledgered with actor `bootstrap`). An account that has ever held the role is never re-granted, so a
-  revocation sticks. List at least two, because role changes need a second System Admin; remove the setting once real
+  revocation sticks. One is enough, since a System Admin grants roles alone (§10.2); remove the setting once real
   admins exist.
 
 ## 5. Registration
@@ -741,7 +741,7 @@ results page, the CLI and the tests pass it that entry.
 | Request roll snapshot, scheduling, certification, cancellation | | ● | | |
 | Approve roll, scheduling, certification, cancellation, office changes | | | ● | |
 | Read full ledger, run verifications | | | ● | |
-| Grant/revoke roles (two-person between System Admins), see who holds them (§10.3), sign-in switches, operations | | | | ● |
+| Grant/revoke roles (one System Admin, at once; §10.2), see who holds them (§10.3), sign-in switches, operations | | | | ● |
 
 **Incompatible role pairs:** Auditor with any other role. An Election Admin who is a candidate in an election may not
 act on that election (Q12; enforced on every edit, and nobody can add themselves as a candidate). All admin roles require MFA. The first System Admin is bootstrapped once from deployment
@@ -753,11 +753,11 @@ configuration and ledgered.
 decidedBy, decidedAt, reason, expiresAt}`.
 
 - Approver ≠ requester (by `accountId`), holds `approverRole` at decision time, signed in with MFA within 15 minutes.
-- The account an action affects (`subject`, e.g. the person gaining a role) may be neither requester nor approver.
+- The account an action affects (`subject`, when it is an account) may be neither requester nor approver.
 - The approver approves `payloadHash`; approval executes immediately (status `executed`), re-checking every
   precondition and acting on exactly that payload. Statuses: `pending` → `executed` | `rejected`.
 - Requests expire after 7 days (checked at decision time). Request and decision are ledgered, plus the executed
-  effect (e.g. `role.granted`) in the same transaction.
+  effect (e.g. `results.certified`) in the same transaction.
 - Implemented in M1 for role changes and generalized in M2b: each action has a handler that re-checks its
   preconditions inside the decision transaction and returns its ledger entries and writes. Only one request per
   action and subject can be pending at a time. For election actions the approver must not be a candidate in that
@@ -770,7 +770,21 @@ decidedBy, decidedAt, reason, expiresAt}`.
 | `election.certify` | Election Admin | Auditor |
 | `election.cancel` (Scheduled/Open) | Election Admin | Auditor |
 | `position.modify` | Membership or Election Admin | Auditor |
-| `role.grant` / `role.revoke` | System Admin | another System Admin |
+
+**Role changes need one System Admin.** `POST /v1/admin/roles` grants or revokes a role and takes effect at once: no
+request, no second admin. Any System Admin may change anyone's roles but their own, System Admin and Auditor
+included, so one admin can make another System Admin or remove the others alone. The API checks
+(`checkCanChangeRole` in `ustp-domain`): the caller holds System Admin, signed in with MFA within 15 minutes (as for an
+approval, since the change executes at once), the account exists and is not the caller's, and the change fits the
+roles it holds now (no duplicate grant, no revoking a role it does not hold, the Auditor incompatibility). The
+change is ledgered as `role.granted` / `role.revoked` with that admin as actor and the reason in the payload, in the
+same transaction as the `role_assignments` write.
+
+This replaced a two-person rule for role changes (`role.grant` / `role.revoke`, approved by another System Admin).
+What it gives up: a single System Admin account, if compromised or misused, can take over role management and lock the
+other admins out, and the ledger records it only after the fact. Requests made under the old rule stay decidable
+(approve or reject by a System Admin other than the requester and the affected person) until they expire; nothing
+creates new ones.
 
 ### 10.3 People list
 
@@ -788,8 +802,9 @@ when the account was created, the member status if there is a member record, and
   both need all of them. The query needs only single-field indexes.
 - The web app's People tab (System Admin) shows the list with role chips. The role-change form picks the person from
   the same list, typing an account ID stays as a fallback, and the form explains a refusal before sending it with the
-  API's own checks (`checkRoleRequest` in `ustp-domain`: not for your own account, compatible with the roles held, no
-  request for the same change and person already waiting). The API still decides.
+  API's own checks (`checkCanChangeRole` in `ustp-domain`: not for your own account, compatible with the roles held).
+  The form sits in the People tab, under the list ("Change roles" on a row fills it in), and asks for confirmation
+  before sending, because the change takes effect at once. The API still decides.
 
 ## 11. Data model (Firestore `(default)` database)
 
@@ -830,7 +845,7 @@ registration collections are top-level and election data lives under each electi
 | `blocks/{index}` | zero-padded integer | immutable | ledger blocks, hash, signature |
 | `anchors/{index}` | zero-padded integer | immutable | GCS URI, generation |
 | `signing_keys/{keyId}` | hash of key version | immutable | key version, public key PEM *(added)* |
-| `role_assignments/{accountId}_{role}` | composite | grant/revoke | grantedBy, approvalId |
+| `role_assignments/{accountId}_{role}` | composite | grant/revoke | grantedBy (approvedBy, approvalId only for two-person grants made before §10.2's change) |
 | `approval_requests/{id}` | auto | status only | two-person requests *(added)* |
 
 The spec places `role_assignments` and `audit_events` in the voting namespace; they serve both modules, so the
@@ -874,9 +889,9 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/positions` · `POST /admin/positions` · `POST /admin/positions/{id}/terms/{termId}/end` | any admin (read); Membership or Election Admin | offices and terms; define or change an office, end a term (→ approval) |
 | `GET /public/positions` | P | offices and who holds them now |
 | `GET /admin/elections/{id}/roll` | Election Admin, Auditor | latest roll with member names, for review |
-| `GET /admin/approvals` · `POST /admin/approvals/{id}/decision` | per action | two-person decisions |
+| `GET /admin/approvals` · `POST /admin/approvals/{id}/decision` | per action | two-person decisions (§10.2) |
 | `GET /admin/audit/events` · `GET /admin/audit/verify` | Auditor | ledger (paged by seq); verification of chain, blocks, signatures and anchors |
-| `GET\|PUT /admin/sign-in-methods` · `POST /admin/roles` | System Admin | auth switches, roles (→ approval) |
+| `GET\|PUT /admin/sign-in-methods` · `POST /admin/roles` | System Admin | auth switches; grant or revoke a role, at once (returns the account's roles afterwards; §10.2) |
 | `GET /admin/accounts` (paged; `email` prefix, `role` filter) | System Admin | People list: accounts with member status and active roles, read-only (§10.3) |
 
 Errors use RFC 9457 problem details. Request bodies are validated against schemas shared with the web app.
@@ -1000,7 +1015,7 @@ worker against the emulators and ticks every 15 seconds in place of Cloud Schedu
 | §2 worker as "Cloud Run Worker / Jobs" | Cloud Run service, HTTP-triggered | Per-minute Jobs would exceed the free tier |
 | §4 sealer only | + KMS encryption of pool entries with per-election key versions destroyed after certification | Sealing does not protect the pool while it exists, nor backups |
 | §4 lifecycle | + `Cancelled`; scheduling is two-person | Need a terminal state for aborted elections; the contest rules matter as much as the roll |
-| §5 two-person list | + scheduling, cancellation, role changes | Same reasoning |
+| §5 two-person list | + scheduling, cancellation | Same reasoning. Role changes were two-person too until USTP chose one System Admin for them (§10.2) |
 | §6 collections | + `approval_requests`, `bylaws_versions`, `ledger_head` | Two-person workflow, provable bylaws agreement, chain head |
 | §4 "1-minute anchors" | Anchor only when a new block exists, ≤ 1/min | Matches spec §8 "smart anchoring" |
 | §7 "Binary Authorization: reproducible builds" | Lockfile + `--ignore-scripts` **and** an actual Binary Authorization policy on Cloud Run | They are separate controls |
@@ -1046,8 +1061,8 @@ Decisions for USTP; the design's proposed default is in brackets.
 | Milestone | Content |
 |---|---|
 | **M0 — Foundations** *(this commit)* | Design; monorepo; `ustp-tally`, `ustp-audit`, `ustp-domain` with tests; server and web skeletons; CI |
-| **M1 — Identity & registration** | *Done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes via two-person approvals, auth switches, Auditor ledger verification; web sign-in (Google, Microsoft, Apple, email/password, email link), registration, account and admin console. admin two-step verification (authenticator-app setup, code step at sign-in, re-authentication for approvals, typed MFA/re-auth problems); profile photos (normalized upload, automatic checks, admin review). *Still to exercise against a real project:* authenticator-app setup and sign-in (TOTP), and Cloud Vision photo checks — neither has an emulator |
+| **M1 — Identity & registration** | *Done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes (two-person at first, one System Admin since M5; §10.2), auth switches, Auditor ledger verification; web sign-in (Google, Microsoft, Apple, email/password, email link), registration, account and admin console. admin two-step verification (authenticator-app setup, code step at sign-in, re-authentication for approvals, typed MFA/re-auth problems); profile photos (normalized upload, automatic checks, admin review). *Still to exercise against a real project:* authenticator-app setup and sign-in (TOTP), and Cloud Vision photo checks — neither has an emulator |
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, not yet applied; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell and never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3). *Still to do:* bring up dev for real (first apply, Identity Platform, first release); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, not yet applied; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell and never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2). *Still to do:* bring up dev for real (first apply, Identity Platform, first release); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
