@@ -69,8 +69,8 @@ export class LedgerSealer {
       const signature = await this.signer.sign(rollSigningInput(doc.data() as RollSnapshotRecord));
       await this.recordKey();
       const applied = await this.firebase.db.runTransaction(async (tx) => {
-        const current = (await tx.get(doc.ref)).data() as RollSnapshotRecord;
-        if (current.signature) return false; // a concurrent tick signed it first
+        const current = (await tx.get(doc.ref)).data() as RollSnapshotRecord | undefined;
+        if (!current || current.signature) return false; // its election was deleted, or a concurrent tick signed it first
         tx.update(doc.ref, { signature });
         return true;
       });

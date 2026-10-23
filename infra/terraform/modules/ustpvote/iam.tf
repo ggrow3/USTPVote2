@@ -74,6 +74,29 @@ resource "google_project_iam_member" "api_seed_versions" {
   }
 }
 
+# Deleting a deleted election's seed (design §6.1), only tie-break seeds. No predefined role holds secrets.delete
+# without secrets management. Adding versions already lets the api spoil a seed, so this widens nothing.
+resource "google_project_iam_custom_role" "secret_deleter" {
+  project     = var.project_id
+  role_id     = "ustpSecretDeleter"
+  title       = "USTPVote secret deleter"
+  description = "Delete secrets; granted only for tie-break seeds, which go with a deleted election (design §6.1)."
+  permissions = ["secretmanager.secrets.delete"]
+  depends_on  = [google_project_service.this]
+}
+
+resource "google_project_iam_member" "api_seed_deleter" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.secret_deleter.name
+  member  = google_service_account.api.member
+
+  condition {
+    title       = "tie-break seeds only"
+    description = "Secrets named ${local.tiebreak_seed_prefix}* (design §6.1)"
+    expression  = "resource.name.startsWith(\"projects/${data.google_project.this.number}/secrets/${local.tiebreak_seed_prefix}\")"
+  }
+}
+
 # --- worker ------------------------------------------------------------------------------------------------------------
 
 # Reads tie-break seeds when tallying (design §9, §13) and, later, the email provider's credentials.

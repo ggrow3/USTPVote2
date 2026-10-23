@@ -1,11 +1,14 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { DocumentReference, Transaction } from 'firebase-admin/firestore';
 import type { ContestSpec } from 'ustp-tally';
 import {
+  APPROVAL_MAX_AUTH_AGE_SECONDS,
+  checkElectionDeletable,
   Collections,
   definitionHash,
   ElectionCollections,
   electionTransitionAuthority,
+  PROBLEM_TYPES,
   proposalContentHash,
   resultsSummary,
   rollMerkleRoot,
@@ -34,8 +37,11 @@ import {
 } from 'ustp-domain';
 import { ApprovalsService } from '../administration/approvals.service.js';
 import { requireAccount } from '../auth/decorators.js';
-import type { RequestContext } from '../auth/principal.js';
+import { actorOf, type RequestContext } from '../auth/principal.js';
+import { assertCheck } from '../common/validation.js';
+import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
+import { SECRET_STORE, type SecretStore } from '../infra/secret-store.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { ElectionReader } from './election-reader.js';
 
@@ -45,11 +51,15 @@ import { ElectionReader } from './election-reader.js';
  */
 @Injectable()
 export class ElectionsService {
+  private readonly logger = new Logger(ElectionsService.name);
+
   constructor(
     private readonly firebase: Firebase,
     private readonly ledger: LedgerService,
     private readonly approvals: ApprovalsService,
     private readonly reader: ElectionReader,
+    @Inject(SECRET_STORE) private readonly secrets: SecretStore,
+    @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
   // --- proposals --------------------------------------------------------------------------------------------
@@ -126,8 +136,13 @@ export class ElectionsService {
     ]);
     const { election, contests, candidates, proposals, definition } = loaded;
     const results = resultsSnap.data() as ResultsRecord | undefined;
+    const ballotsCast =
+      election.state === 'cancelled'
+        ? (await this.electionRef(electionId).collection(ElectionCollections.participation).count().get()).data().count
+        : null;
     return {
       results: results ? resultsSummary(results) : null,
+      ballotsCast,
       election,
       contests,
       candidates,
@@ -277,6 +292,47 @@ export class ElectionsService {
       return this.approvals.createRequest(tx, { action: 'election.cancel', subject: electionId, payload, reason, requestedBy: actor });
     });
     return { cancelled: false, request };
+  }
+
+  /**
+   * Deletes a cancelled election nobody voted in, permanently (design §6.1): the election and everything stored under
+   * it, its voter rolls, any request about it still pending, and its tie-break seed. One Election Admin does it at
+   * once, signed in within the last 15 minutes. The ledger keeps every entry about the election and records this one.
+   */
+  async delete(ctx: RequestContext, electionId: string, reason: string): Promise<void> {
+    const actor = actorOf(ctx, this.config.adminMfaRequired);
+    if (actor.authAgeSeconds > APPROVAL_MAX_AUTH_AGE_SECONDS) {
+      throw new ForbiddenException({ message: 'sign in again to delete an election', type: PROBLEM_TYPES.reauthRequired });
+    }
+    const ref = this.electionRef(electionId);
+    const seedRef = await this.db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new NotFoundException('no such election');
+      const election = snap.data() as ElectionRecord;
+      if (await this.reader.isCandidate(tx, electionId, actor.accountId)) {
+        throw new ForbiddenException('you are a candidate in this election, so you cannot administer it');
+      }
+      const ballots = (await tx.get(ref.collection(ElectionCollections.participation).count())).data().count;
+      assertCheck(checkElectionDeletable(election, ballots));
+      const [children, rolls, pending] = await Promise.all([
+        Promise.all(Object.values(ElectionCollections).map((c) => tx.get(ref.collection(c)))),
+        tx.get(this.db.collection(Collections.eligibilitySnapshots).where('electionId', '==', electionId)),
+        tx.get(this.db.collection(Collections.approvalRequests).where('subject', '==', electionId).where('status', '==', 'pending')),
+      ]);
+      await this.ledger.record(tx, [
+        { type: 'election.deleted', actor: actor.accountId, subject: electionId, payload: { electionId, title: election.title, reason } },
+      ]);
+      for (const doc of [...children.flatMap((s) => s.docs), ...rolls.docs, ...pending.docs]) tx.delete(doc.ref);
+      tx.delete(ref);
+      return election.tieBreakSeedRef;
+    });
+    // Secret Manager is not transactional. The seed of a cancelled election is never read, so a failure here leaves an
+    // unused secret behind rather than failing a deletion that has already happened.
+    if (seedRef) {
+      await this.secrets.delete(seedRef).catch((e: unknown) => {
+        this.logger.warn(`election ${electionId} deleted, but not its tie-break seed ${seedRef}: ${e instanceof Error ? e.message : String(e)}`);
+      });
+    }
   }
 
   private async latestRoll(electionId: string): Promise<RollSnapshotRecord | null> {

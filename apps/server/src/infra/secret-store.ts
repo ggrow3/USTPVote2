@@ -8,12 +8,18 @@ export interface SecretStore {
   /** Stores a new secret under a fresh ID and returns that ID (the reference, not the value). */
   create(prefix: string, value: string): Promise<string>;
   read(id: string): Promise<string | null>;
+  /** Deletes the secret and every version of it; a secret that is already gone is not an error. */
+  delete(id: string): Promise<void>;
 }
 
 export const SECRET_STORE = Symbol('SecretStore');
 
+/** gRPC status NOT_FOUND, as the Secret Manager client reports it. */
+const NOT_FOUND = 5;
+
 /**
- * The api creates seeds when an election is scheduled; the worker reads them back to reveal them at tally (design §9).
+ * The api creates seeds when an election is scheduled and deletes them with a deleted election (design §6.1); the
+ * worker reads them back to reveal them at tally (design §9).
  */
 export const secretStoreProvider = {
   provide: SECRET_STORE,
@@ -47,6 +53,14 @@ export class SecretManagerStore implements SecretStore {
     return data ? Buffer.from(data).toString() : null;
   }
 
+  async delete(id: string): Promise<void> {
+    try {
+      await this.client.deleteSecret({ name: `projects/${this.requireProject()}/secrets/${id}` });
+    } catch (e) {
+      if ((e as { code?: number }).code !== NOT_FOUND) throw e;
+    }
+  }
+
   private requireProject(): string {
     if (!this.projectId) throw new Error('Secret Manager needs GOOGLE_CLOUD_PROJECT');
     return this.projectId;
@@ -66,5 +80,9 @@ export class EmulatorSecretStore implements SecretStore {
   async read(id: string): Promise<string | null> {
     const snap = await this.db.collection('emulator_secrets').doc(id).get();
     return (snap.data()?.value as string | undefined) ?? null;
+  }
+
+  async delete(id: string): Promise<void> {
+    await this.db.collection('emulator_secrets').doc(id).delete();
   }
 }

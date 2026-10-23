@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { useQuasar } from 'quasar';
 import { computed, onMounted, reactive, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import {
   candidateInputSchema,
+  checkElectionDeletable,
   updateElectionSchema,
   type ApprovalRequestRecord,
   type ContestRecord,
@@ -22,6 +23,7 @@ import { hasRole, session } from '../session.js';
 
 const $q = useQuasar();
 const route = useRoute();
+const router = useRouter();
 const electionId = String(route.params.id);
 const url = `/v1/admin/elections/${electionId}`;
 
@@ -180,6 +182,33 @@ async function cancelElection() {
   await load();
 }
 
+// --- permanent deletion (design §6.1) ----------------------------------------------------------------------
+
+/** Cancelled elections: whether this one can be deleted, by the API's own rule. */
+const deletion = computed(() =>
+  detail.value?.ballotsCast == null ? null : checkElectionDeletable(detail.value.election, detail.value.ballotsCast),
+);
+const canDelete = computed(() => hasRole('election_admin') && state.value === 'cancelled' && deletion.value !== null);
+
+async function deleteElection() {
+  const title = detail.value!.election.title;
+  const reason = await askReason('Delete election permanently', 'Why is it being deleted? The reason is published in the ledger.');
+  if (reason === null) return;
+  dialog({
+    title: 'Delete permanently?',
+    message:
+      `“${title}”, its contests, candidates and voter rolls will be deleted permanently. This cannot be undone. ` +
+      'The ledger keeps every entry about the election and records the deletion.',
+    cancel: true,
+    focus: 'cancel',
+    ok: { label: 'Delete permanently', color: 'negative', noCaps: true },
+  }).onOk(async () => {
+    if (await attempt(() => api('POST', `${url}/delete`, { reason }), 'Election deleted')) {
+      await router.replace({ path: '/admin', query: { tab: 'elections' } });
+    }
+  });
+}
+
 /** An approver reviewing this page can decide pending requests here. */
 function canDecide(r: ApprovalRequestRecord): boolean {
   return hasRole(r.approverRole) && r.requestedBy !== me.value;
@@ -331,6 +360,19 @@ onMounted(load);
               @click="requestSchedule"
             />
             <q-btn v-if="canCancel" flat no-caps color="negative" label="Cancel election" @click="cancelElection" />
+          </q-card-section>
+        </q-card>
+
+        <q-card v-if="canDelete" flat bordered>
+          <q-card-section class="ustp-header">
+            <div>
+              <h2 class="text-subtitle1">Delete permanently</h2>
+              <div class="text-caption text-grey-7">
+                <template v-if="deletion?.ok">Nobody voted in it, so it can be deleted. The ledger keeps its entries.</template>
+                <template v-else-if="deletion">Cannot be deleted: {{ deletion.reason }}.</template>
+              </div>
+            </div>
+            <q-btn v-if="deletion?.ok" flat no-caps color="negative" label="Delete election" @click="deleteElection" />
           </q-card-section>
         </q-card>
 

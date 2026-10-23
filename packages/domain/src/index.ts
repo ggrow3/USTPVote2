@@ -19,7 +19,7 @@ export {
   normalizePhone,
   normalizePostalCode,
 } from './registration.js';
-export { ELECTION_STATES, electionTransitionAuthority, isTerminal } from './election-state.js';
+export { ELECTION_STATES, checkElectionDeletable, electionTransitionAuthority, isTerminal } from './election-state.js';
 export type { ElectionState, TransitionAuthority } from './election-state.js';
 export {
   TWO_PERSON_ACTIONS,

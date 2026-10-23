@@ -17,6 +17,7 @@ export const LEDGER_EVENT_TYPES = [
   'ballots.sealed',
   'election.sealed',
   'election.cancelled',
+  'election.deleted',
   'results.computed',
   'results.certified',
   'election.pool_key_destroyed',
