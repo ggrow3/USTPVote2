@@ -65,7 +65,7 @@ function onHeaderResize({ height }: { height: number }) {
         </template>
       </q-toolbar>
       <!-- Links, not tabs: each one loads a page (tab semantics would promise panels on this page). -->
-      <nav aria-label="Main" class="row q-px-sm">
+      <nav aria-label="Main" class="row q-px-sm bg-black">
         <router-link
           v-for="l in links"
           :key="l.to"
@@ -105,6 +105,6 @@ function onHeaderResize({ height }: { height: number }) {
   background: rgba(255, 255, 255, 0.1);
 }
 .ustp-nav-link--active {
-  border-bottom-color: #fff;
+  border-bottom-color: var(--q-accent);
 }
 </style>

@@ -90,7 +90,7 @@ onMounted(load);
               {{ new Date(r.expiresAt).toLocaleDateString() }}
             </q-item-label>
             <q-item-label class="q-mt-xs">“{{ r.reason }}”</q-item-label>
-            <q-item-label v-if="blocker(r)" caption class="text-orange-10">{{ blocker(r) }}</q-item-label>
+            <q-item-label v-if="blocker(r)" caption class="text-deep-orange-10">{{ blocker(r) }}</q-item-label>
           </q-item-section>
           <q-item-section side>
             <div class="row q-gutter-xs">

@@ -32,7 +32,7 @@ test. Keep it current when pages change.
 | --- | --- | --- |
 | 1.3.1 Info and relationships | Titles were styled `div`s, no headings at all; the main navigation was a tab list; contest controls and ranked lists had no group names; receipt table had no header row | One `h1` per page, `h2`/`h3` below it; nav is a `<nav>` of links; each contest is a named `section`, its radio/checkbox group is labelled by the contest title, the ranking is a named list; table headers and captions added |
 | 1.4.1 Use of colour | Verify steps showed passed / failed / pending only as a coloured icon | Each step starts with hidden text "Passed:", "Failed:" or "Not checked yet:" |
-| 1.4.3 Contrast (minimum) | Green (Quasar positive) with white text 2.6:1; dark theme: grey captions 3.0:1, primary-coloured text 4.1:1, red text 2.9:1, links 2.0:1; orange text 3.8:1; a light banner left white text on cream (1.1:1); the emulator badge 2.2:1 | Brand positive `#2e7d32` (5.1:1); dark-theme overrides for `text-primary`, `text-positive`, `text-negative`, `text-grey-7` and links (all ≥ 7:1); orange text uses `orange-10` (5.6:1); badges and banners get dark text where the background is light (table below) |
+| 1.4.3 Contrast (minimum) | Green (Quasar positive) with white text 2.6:1; dark theme: grey captions 3.0:1, primary-coloured text 4.1:1, red text 2.9:1, links 2.0:1; orange text 3.1:1; a light banner left white text on cream (1.1:1); the emulator badge 2.2:1 | Brand positive `#2e7d32` (5.1:1); dark-theme overrides for `text-primary` (and the focused field label and current menu item, which Quasar colours with primary directly), `text-positive`, `text-negative`, `text-grey-7` and links (all ≥ 5.8:1); warning text uses `deep-orange-10` (5.6:1); badges and banners get dark text where the background is light (table below) |
 | 1.4.10 Reflow | At 320 px the header cut the site name to "U" and pushed the account button off screen; on Verify the Check buttons were cut off, and long receipt titles widened cards past the screen; the review and status-history dialogs had minimum widths wider than a phone | Account button becomes an icon on phones (its name keeps the account); fields take a full row on phones; page `.column` stacks no longer wrap (that is what sized cards to their widest content); dialog minimum widths capped at 95vw |
 | 1.4.11 Non-text contrast | Outlined field borders 1.8:1; toggle track 2.7:1; focus shown only as a faint tint | Borders 4.6:1; toggle track 4.6:1; focus ring below |
 | 2.1.1 Keyboard | The bylaws text sat in a scroll area that could not be scrolled from the keyboard | A focusable, named scroll region |
@@ -40,7 +40,7 @@ test. Keep it current when pages change.
 | 2.4.2 Page titled | Every page was "USTP Vote" | "Page · USTP Vote", with the election title on ballot and editor pages (`usePageTitle`) |
 | 2.4.3 Focus order | After a route change focus stayed on the old link; adding or removing a ranked candidate, clearing a contest, casting (the dialog's opener disappears) and submitting the application all dropped focus to the page body | Focus moves to the new page's `h1`; ranked-choice controls move focus to the next sensible control (next "Add" button, the moved row's button, the neighbouring row); after casting focus lands on the receipt heading; invalid forms focus the first invalid field |
 | 2.4.4 / 2.4.6 Link purpose, labels | Many identical names: "Move up", "Remove", "Approve", "Reject", "Check", "Edit", "History", "Change", "Refresh", "Review" | Names say what they act on ("Move Casey Okafor up", "Approve Ada Brooks", "Check the saved receipt", "Change status of Ben Cruz"); the visible text always comes first (2.5.3) |
-| 2.4.7 Focus visible | Quasar's focus tint, nearly invisible on many controls | A 2 px ring with 3:1 or better on every surface: blue on light, light blue on dark, white in the header, on coloured banners and on toasts |
+| 2.4.7 Focus visible | Quasar's focus tint, nearly invisible on many controls | A 2 px ring with 3:1 or better on every surface: primary on light, accent on dark, white in the header, on coloured banners and on toasts, darker orange on light banners |
 | 2.4.11 Focus not obscured | The fixed header could cover a control the browser scrolled to | `scroll-padding-top` follows the header's height |
 | 2.5.8 Target size (minimum) | "Copy definition hash" 19 × 19 px, the members' copy buttons extra-small, "Clear (skip this contest)" 23 px tall | 24 × 24 px or larger (the Clear button is 32 px tall) |
 | 3.3.1 Error identification | Errors were shown, but focus stayed on the submit button | Focus goes to the first invalid field; Quasar links its message with `aria-describedby` |
@@ -53,24 +53,44 @@ focus on Cancel.
 
 ### Contrast figures
 
-| Foreground on background | Before | After |
-| --- | --- | --- |
-| White on positive (badges, Approve, success banners and toasts) | 2.57 (`#21ba45`) | 5.13 (`#2e7d32`) |
-| Positive text on white | 2.57 | 5.13 |
-| Positive text on the dark page | 7.29 | 9.31 (`#81c784`) |
-| Negative text on the dark page | 2.92 | 8.71 (`#ef9a9a`) |
-| Primary text (flat buttons, tabs, outlines) on the dark page / dark card | 4.07 / 3.66 | 10.71 / 9.63 (`#90caf9`) |
-| `text-grey-7` captions on the dark page / dark card | 3.02 / 2.72 | 8.64 / 7.77 (`#b0b0b0`) |
-| Links in page content, dark page | 2.0 (browser default) | 10.71 |
-| Links in page content, light page | 9.4 (browser default) | 5.75 (`#1565c0`) |
-| Orange warning text on white (`orange-9` → `orange-10`) | 3.79 | 5.60 |
-| Warning badge (photo "waiting for review") | 1.70 | 12.37 (black text) |
-| Outlined field border on white | 1.78 | 4.61 |
-| Toggle track (off) on white | 2.68 | 4.6 |
-| Focus ring: blue on white / light blue on dark / white on header blue | — | 4.60 / 10.71 / 4.60 |
+The brand colours are those of the party's site, transhumanist-party.org, read from its theme's colour-scheme CSS
+on 2026-10-22: primary `#bd4e00` (its header and links), accent `#ff6900` (its hover colour and buttons) and a black
+menu bar. They are set once, in `apps/web/src/main.ts`; `app.css` refers to them as `var(--q-primary)` and
+`var(--q-accent)`. The figures below were recomputed for them; the first audit's figures for Quasar's blue are in git
+history. The page background is white in the light theme; in the dark theme Quasar's page is `#121212` and cards,
+menus and dialogs `#1d1d1d`.
 
-Unchanged and passing: white on primary 4.60, white on negative 6.41, `text-grey-7` on white 6.19, black on the orange
-emulator badge 9.74.
+| Foreground on background | Colours | Ratio |
+| --- | --- | --- |
+| White on primary (header, filled buttons, primary badges and banners) | `#fff` on `#bd4e00` | 4.94 |
+| Primary text on white (flat buttons, tabs, outlines, focused fields) | `#bd4e00` on `#fff` | 4.94 |
+| Primary-coloured text in the dark theme: accent instead (`text-primary`, the focused field's label, the current menu item), on the page / a card | `#ff6900` on `#121212` / `#1d1d1d` | 6.49 / 5.84 (primary itself: 3.79 / 3.41) |
+| Primary as non-text in the dark theme, on a card (ticked checkboxes, radios, toggles) | `#bd4e00` on `#1d1d1d` | 3.41 |
+| Links in page content, light page | `#bd4e00` on `#fff` | 4.94 |
+| Links in page content, dark page | `#ff6900` on `#121212` | 6.49 |
+| Links in light banners, both themes (`orange-2` / `orange-1` / `grey-3`) | `#aa4600` on `#ffe0b2` / `#fff3e0` / `#eeeeee` | 4.62 / 5.34 / 5.05 |
+| Menu bar: white links on black; the current page's underline (accent) on black | `#fff` / `#ff6900` on `#000` | 21.0 / 7.27 |
+| White on positive (badges, Approve, success banners and toasts); positive text on white | `#2e7d32` | 5.13 |
+| Positive text on the dark page | `#81c784` on `#121212` | 9.31 |
+| White on negative | `#fff` on `#c10015` | 6.41 |
+| Negative text on the dark page | `#ef9a9a` on `#121212` | 8.71 |
+| `text-grey-7` captions on white | `#757575` on `#fff` | 4.61 |
+| `text-grey-7` captions on the dark page / dark card | `#b0b0b0` on `#121212` / `#1d1d1d` | 8.64 / 7.77 |
+| Warning text on white (`deep-orange-10`) | `#bf360c` on `#fff` | 5.60 |
+| Warning text on the dark page / dark card | `#ffb74d` on `#121212` / `#1d1d1d` | 10.82 / 9.74 |
+| Warning badge (photo "waiting for review") | `#000` on `#f2c037` | 12.37 |
+| Emulator badge | `#000` on `#ff9800` | 9.74 |
+| Outlined field border on white | `rgba(0,0,0,.54)` on `#fff` | 4.61 |
+| Toggle track (off) on white | | 4.6 |
+| Focus ring: primary on white / accent on the dark page / white on the header, menu bar and coloured banners / darker orange on light banners | | 4.94 / 6.49 / ≥ 4.94 / ≥ 4.62 |
+| App icon: white ballot box on primary | `#fff` on `#bd4e00` | 4.94 |
+
+Corrections to the first audit: `orange-10` (`#e65100`) is 3.79:1 on white, not 5.60 (5.60 is `deep-orange-10`), so
+warning text failed until it moved to `deep-orange-10`; `orange-9` was 3.08; `text-grey-7` on white is 4.61, not 6.19.
+
+The accent fails as text on white and under white text (2.89:1 either way), so it is used only in the dark theme and on
+black. Warning text (`deep-orange-10`) is close in hue to primary, so a warning is always a worded label ("Flagged: …",
+an approval's blocker), never colour alone.
 
 ## Patterns for new pages
 
@@ -86,9 +106,13 @@ emulator badge 9.74.
 - Repeated buttons get the object in their name: `<q-btn label="Remove"><span class="sr-only">&nbsp;{{ name }}</span></q-btn>`
   or an `aria-label` that starts with the visible text. The `&nbsp;` matters: Vue drops a plain leading space before
   an interpolation.
-- Colour classes: use `text-orange-10`, not `orange-9`, for warning text; light badge or banner backgrounds need
-  `text-color="black"` / `text-black`. `app.css` fixes the dark theme for `text-primary`, `-positive`, `-negative`,
-  `-grey-7` and `-orange-10`; another palette class used for text needs the same check.
+- Colour classes: use `text-deep-orange-10` for warning text (`orange-9` and `orange-10` fail on white); light badge or
+  banner backgrounds need `text-color="black"` / `text-black` (a `q-banner` with `text-black` also gets the darker link
+  and focus colour). `app.css` fixes the dark theme for `text-primary`, `-positive`, `-negative`, `-grey-7` and
+  `-deep-orange-10`; another palette class used for text needs the same check. Don't use `accent` on light
+  backgrounds or under white text.
+- Brand colours: change them only in `main.ts` (and `index.html`, `manifest.webmanifest` and `make-icons.mjs` for the
+  primary), then recompute the table above.
 
 ## Known gaps
 
@@ -109,6 +133,10 @@ emulator badge 9.74.
 - Sign-in with an authenticator code (3.3.8 Accessible authentication) relies on the alternatives: federated
   sign-in and email links are available, and the code field has `autocomplete="one-time-code"` so password managers can
   fill it.
+- Quasar's hover and keyboard-focus tint (`.q-focus-helper`) lowers a button's text contrast while it is shown: white on
+  primary (header and filled buttons) 3.96:1 on hover and 3.55 on focus, flat primary buttons on white 4.31 / 4.07,
+  flat buttons on a dark card 4.36 / 3.74. The blue theme was lower in each case (3.70 / 3.32 and 4.07 / 3.81). The
+  resting state passes, and keyboard focus also shows the ring.
 - Not addressed (AAA, outside the target): reduced motion for Quasar transitions, enhanced contrast, target size
   44 px.
 

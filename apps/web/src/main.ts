@@ -12,8 +12,11 @@ createApp(App)
     plugins: { Dialog, Notify },
     config: {
       dark: 'auto',
+      // The colours of transhumanist-party.org (its theme's colour-scheme CSS): primary is its header and link colour,
+      // accent its hover and button colour. app.css builds the focus ring, links and dark-theme text on these;
+      // docs/ACCESSIBILITY.md has the contrast figures, so recheck them when changing either.
       // Quasar's default green (#21ba45) has 2.6:1 contrast with white text; this one has 5.1:1.
-      brand: { positive: '#2e7d32' },
+      brand: { primary: '#bd4e00', accent: '#ff6900', positive: '#2e7d32' },
       notify: { position: 'top', timeout: 4000 },
     },
   })

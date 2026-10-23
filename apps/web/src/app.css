@@ -1,12 +1,14 @@
 /* Accessibility fixes on top of Quasar's styles; docs/ACCESSIBILITY.md has the contrast figures. */
 
-:root {
-  --ustp-focus: #1976d2;
-  --ustp-link: #1565c0;
+/* On body, where Quasar sets the brand colours from main.ts. The dark theme uses the accent, as the party site does
+   for links on its black footer: primary is under 4.5:1 on the dark background. */
+body {
+  --ustp-focus: var(--q-primary);
+  --ustp-link: var(--q-primary);
 }
 .body--dark {
-  --ustp-focus: #90caf9;
-  --ustp-link: #90caf9;
+  --ustp-focus: var(--q-accent);
+  --ustp-link: var(--q-accent);
 }
 .q-header,
 .q-notification,
@@ -15,6 +17,11 @@
 .bg-positive,
 .bg-negative {
   --ustp-focus: #fff;
+}
+/* Light banners (orange-1, orange-2, grey-3) stay light in the dark theme; primary darkened 10% passes on all three. */
+.q-banner.text-black {
+  --ustp-focus: #aa4600;
+  --ustp-link: #aa4600;
 }
 
 /* Visible focus (WCAG 2.4.7): Quasar's own indicator is a faint tint, so add a ring with 3:1 on every surface. */
@@ -64,7 +71,7 @@ h3 {
   padding: 8px 16px;
   border-radius: 4px;
   background: #fff;
-  color: #0d47a1;
+  color: var(--q-primary);
   font-weight: 500;
 }
 .ustp-skip-link:focus {
@@ -86,7 +93,14 @@ h3 {
 
 /* Contrast (WCAG 1.4.3): the palette classes used for text are too dark for the dark theme. */
 .body--dark .text-primary {
-  color: #90caf9 !important;
+  color: var(--q-accent) !important;
+}
+/* Quasar colours these with var(--q-primary) itself rather than text-primary: the focused field's label and border
+   (unless the field has an error or its own colour) and the current page's item in a menu. */
+.body--dark .q-field__control:not([class*='text-']),
+.body--dark .q-item.q-router-link--active,
+.body--dark .q-item--active {
+  color: var(--q-accent);
 }
 .body--dark .text-positive {
   color: #81c784 !important;
@@ -97,7 +111,7 @@ h3 {
 .body--dark .text-grey-7 {
   color: #b0b0b0 !important;
 }
-.body--dark .text-orange-10 {
+.body--dark .text-deep-orange-10 {
   color: #ffb74d !important;
 }
 
