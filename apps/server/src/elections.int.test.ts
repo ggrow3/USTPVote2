@@ -23,9 +23,9 @@ beforeEach(async () => {
   ea2 = await api.member('election.admin2@example.test');
   auditor = await api.member('auditor@example.test');
   member = await api.member('member@example.test');
-  await api.grant(ea.accountId, 'election_admin', sa1, sa2);
-  await api.grant(ea2.accountId, 'election_admin', sa1, sa2);
-  await api.grant(auditor.accountId, 'auditor', sa1, sa2);
+  await api.grant(ea.accountId, 'election_admin', sa1);
+  await api.grant(ea2.accountId, 'election_admin', sa1);
+  await api.grant(auditor.accountId, 'auditor', sa1);
 });
 
 async function draft(overrides: Record<string, unknown> = {}) {

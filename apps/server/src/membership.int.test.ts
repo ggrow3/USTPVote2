@@ -30,7 +30,7 @@ beforeEach(async () => {
   await resetEmulators();
   const [sa1, sa2] = await api.systemAdmins();
   admin = await api.member('membership.admin@example.test');
-  await api.grant(admin.accountId, 'membership_admin', sa1, sa2);
+  await api.grant(admin.accountId, 'membership_admin', sa1);
   const published = await api.call('POST', '/v1/admin/bylaws', admin, {
     version: '2026.1',
     title: 'USTP Bylaws',

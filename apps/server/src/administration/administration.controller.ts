@@ -19,16 +19,20 @@ import { parseQuery, ZodPipe } from '../common/validation.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { ApprovalsService } from './approvals.service.js';
+import { RoleChanges } from './role-changes.js';
 
-/** Role changes and two-person decisions (design §10). */
+/** Role changes, which take effect at once, and two-person decisions (design §10). */
 @Controller('v1/admin')
 export class ApprovalsController {
-  constructor(private readonly approvals: ApprovalsService) {}
+  constructor(
+    private readonly approvals: ApprovalsService,
+    private readonly roles: RoleChanges,
+  ) {}
 
   @Post('roles')
   @Roles('system_admin')
-  requestRoleChange(@Ctx() ctx: RequestContext, @Body(new ZodPipe(roleChangeSchema)) body: RoleChangeInput) {
-    return this.approvals.requestRoleChange(ctx, body);
+  changeRole(@Ctx() ctx: RequestContext, @Body(new ZodPipe(roleChangeSchema)) body: RoleChangeInput) {
+    return this.roles.change(ctx, body);
   }
 
   /** Any admin may look; whether they may decide is checked per request. */

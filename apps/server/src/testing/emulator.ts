@@ -123,15 +123,10 @@ export class TestApi {
     return [await this.member(SA1_EMAIL), await this.member(SA2_EMAIL)] as const;
   }
 
-  /** Grants a role through the two-person flow: one System Admin requests, the other approves. */
-  async grant(accountId: string, role: Role, requester: User, approver: User): Promise<void> {
-    const req = await this.call('POST', '/v1/admin/roles', requester, { accountId, role, change: 'grant', reason: 'test' });
-    if (req.status !== 201) throw new Error(`role request failed: ${req.status} ${JSON.stringify(req.body)}`);
-    const dec = await this.call('POST', `/v1/admin/approvals/${req.body.id}/decision`, approver, {
-      decision: 'approve',
-      reason: 'test',
-    });
-    if (dec.status !== 201) throw new Error(`role approval failed: ${dec.status} ${JSON.stringify(dec.body)}`);
+  /** Grants a role as `by`, a System Admin; it takes effect at once (design §10.2). */
+  async grant(accountId: string, role: Role, by: User): Promise<void> {
+    const res = await this.call('POST', '/v1/admin/roles', by, { accountId, role, change: 'grant', reason: 'test' });
+    if (res.status !== 201) throw new Error(`role change failed: ${res.status} ${JSON.stringify(res.body)}`);
   }
 
   async close(): Promise<void> {

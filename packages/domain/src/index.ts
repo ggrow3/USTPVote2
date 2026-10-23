@@ -27,7 +27,7 @@ export {
   APPROVAL_TTL_DAYS,
   checkCanRequest,
   checkCanApprove,
-  checkRoleRequest,
+  checkCanChangeRole,
 } from './approvals.js';
 export type { TwoPersonAction, Actor, PendingApproval } from './approvals.js';
 export { Collections, ElectionCollections, electionDocPath, sequenceId } from './collections.js';

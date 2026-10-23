@@ -22,8 +22,8 @@ beforeEach(async () => {
   [sa1, sa2] = await api.systemAdmins();
   ea = await api.member('election.admin@example.test');
   auditor = await api.member('auditor@example.test');
-  await api.grant(ea.accountId, 'election_admin', sa1, sa2);
-  await api.grant(auditor.accountId, 'auditor', sa1, sa2);
+  await api.grant(ea.accountId, 'election_admin', sa1);
+  await api.grant(auditor.accountId, 'auditor', sa1);
   voters = [];
   for (let i = 0; i < 3; i++) voters.push(await api.member(`v${i}@example.test`));
 });

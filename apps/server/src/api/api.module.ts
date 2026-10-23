@@ -9,7 +9,7 @@ import {
   SignInMethodsController,
 } from '../administration/administration.controller.js';
 import { ApprovalsService } from '../administration/approvals.service.js';
-import { RoleApprovals } from '../administration/role-approvals.js';
+import { RoleChanges } from '../administration/role-changes.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { HealthController } from '../common/health.controller.js';
 import { CONFIG, type ServerConfig } from '../config.js';
@@ -75,7 +75,7 @@ import { PositionsService } from '../positions/positions.service.js';
     VotingService,
     PublicElectionsService,
     ballotPoolKeysProvider,
-    RoleApprovals,
+    RoleChanges,
     PositionApprovals,
     PositionsService,
     ApprovalsService,

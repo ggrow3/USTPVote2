@@ -1,19 +1,19 @@
 <script setup lang="ts">
 import { useQuasar } from 'quasar';
-import { computed, inject, onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { ROLES, type AccountSummary, type Role } from 'ustp-domain';
 import { announce } from '../../a11y.js';
 import { api } from '../../api.js';
 import { roleLabel } from '../../approval-text.js';
 import { attempt } from '../../dialogs.js';
-import { ROLE_CHANGE } from '../../role-change.js';
 import { session } from '../../session.js';
+import RoleChangeForm from './RoleChangeForm.vue';
 
 const PAGE = 50;
 const ROLE_FILTERS = [{ label: 'Any role', value: 'any' }, ...ROLES.map((r) => ({ label: roleLabel(r), value: r }))];
 
 const $q = useQuasar();
-const handoff = inject(ROLE_CHANGE, null);
+const form = ref<InstanceType<typeof RoleChangeForm> | null>(null);
 const email = ref<string | null>('');
 const role = ref<Role | 'any' | null>(null);
 const rows = ref<AccountSummary[]>([]);
@@ -60,7 +60,8 @@ onMounted(() => load());
 <template>
   <div>
     <p class="text-grey-7 q-mb-md">
-      Everyone with an account, and the roles they hold. Roles change through two-person requests in the Approvals tab.
+      Everyone with an account, and the roles they hold. A role change below takes effect at once; it needs no second
+      admin.
     </p>
     <div class="row items-center q-gutter-sm q-mb-md">
       <q-input
@@ -105,7 +106,7 @@ onMounted(() => load());
           </td>
           <td>
             {{ a.primaryEmail ?? '—' }}
-            <span v-if="a.primaryEmail && !a.emailVerified" class="text-caption text-orange-10">&nbsp;unverified</span>
+            <span v-if="a.primaryEmail && !a.emailVerified" class="text-caption text-deep-orange-10">&nbsp;unverified</span>
           </td>
           <td>
             <q-badge v-if="a.memberStatus" :label="a.memberStatus" />
@@ -118,7 +119,7 @@ onMounted(() => load());
           <td>{{ new Date(a.createdAt).toLocaleDateString() }}</td>
           <td class="text-right text-no-wrap">
             <q-btn flat dense round size="sm" icon="content_copy" :aria-label="`Copy account ID of ${nameOf(a)}`" @click="copy(a.accountId)" />
-            <q-btn v-if="handoff && a.accountId !== me" flat dense no-caps label="Change roles" @click="handoff.choose(a)">
+            <q-btn v-if="a.accountId !== me" flat dense no-caps label="Change roles" @click="form?.choose(a)">
               <span class="sr-only">&nbsp;of {{ nameOf(a) }}</span>
             </q-btn>
           </td>
@@ -132,5 +133,6 @@ onMounted(() => load());
       </tbody>
     </q-markup-table>
     <q-btn v-if="more" flat no-caps class="q-mt-sm" label="Load more" @click="load(false)" />
+    <RoleChangeForm ref="form" class="q-mt-lg" style="max-width: 860px" @changed="load()" />
   </div>
 </template>

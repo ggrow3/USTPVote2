@@ -74,7 +74,7 @@ Set in each root's `terraform.tfvars` (or with `-var`):
 | Variable | dev | staging | prod | Meaning |
 |---|---|---|---|---|
 | `server_image` | | | | Image by digest the services are created with; null (default) skips the Cloud Run services and the tick. Keep it set: later releases come from the release workflow, and Terraform ignores the image once a service exists |
-| `bootstrap_system_admin_emails` | | | | `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` (§4): at least two; `[]` once real admins exist |
+| `bootstrap_system_admin_emails` | | | | `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` (§4): one is enough; `[]` once real admins exist |
 | `firebase_web_app_id` | | | | The Firebase web app's ID; registers the reCAPTCHA key with App Check ([App Check](#app-check-and-the-web-build)) |
 | `anchors_retention_days` | 3653 | 3653 | 3653 | Q11; 10 years |
 | `anchors_retention_locked` | false (fixed) | false (fixed) | **required** | Bucket Lock, irreversible; see [Bucket Lock](#bucket-lock-production) |
