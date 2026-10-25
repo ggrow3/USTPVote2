@@ -104,7 +104,7 @@ flowchart LR
 | `apps/server` → **worker** | Same image, different entrypoint, Cloud Run service (internal ingress, callable only by the Scheduler/Tasks invoker account) | Election clock, pool sealing, tally, ledger blocks, anchoring, email. |
 | `packages/tally` (`ustp-tally`) | Pure TypeScript, zero dependencies | Ballot validation and deterministic counting for every contest type. Published publicly (spec §1.1). |
 | `packages/audit` (`ustp-audit`) | Pure TypeScript, depends only on `@noble/hashes` | JCS, SHA-256, hash chains, RFC 9162 Merkle trees and proofs, ballot commitments, tie-break ordering. Isomorphic (Node + browser). Published publicly. |
-| `packages/domain` (`ustp-domain`) | Pure TypeScript | Shared types, state machines, role rules, two-person checks, Firestore path constants, sealed blocks, results bundles, and the receipt and results checks the browser, the CLI and the tests share. |
+| `packages/domain` (`ustp-domain`) | Pure TypeScript | The domain layer (§3.3): shared types, state machines, role rules, two-person checks, aggregate commands, Firestore path constants, sealed blocks, results bundles, and the receipt and results checks the browser, the CLI and the tests share. |
 | `packages/verify` (`ustp-verify`) | Node CLI, depends only on `ustp-audit` and `ustp-domain` | Independent verification from public artifacts only (§16). |
 
 **Why one server package with two entrypoints:** the API and worker share Firestore repositories, KMS adapters and
@@ -128,11 +128,56 @@ packages/domain    ustp-domain  (internal)
 packages/verify    ustp-verify  independent verifier CLI (public)
 infra/firebase     firestore.rules, storage.rules, indexes (firebase.json at the root: hosting, emulators)
 infra/terraform    project, IAM, KMS, buckets, Cloud Run, scheduler, Binary Authorization (see its README)
-docs/              this design, the source spec, ADRs
+docs/              this design, the domain model (DOMAIN-MODEL.md), the source spec, ADRs
 ```
 
 Toolchain: npm workspaces, TypeScript 6 (ESM, `nodenext`), Vitest, Vite 8 with `@quasar/vite-plugin`.
 Builds use the committed lockfile with `npm ci --ignore-scripts` (spec §7).
+
+### 3.3 Domain structure
+
+The code follows domain-driven design: bounded contexts that match this document's sections, each owning its
+collections, with the rules in the pure core and the GCP code around them. [DOMAIN-MODEL.md](DOMAIN-MODEL.md) holds
+the context map, the aggregates and their invariants, the ubiquitous language and the migration path; contexts move to
+this structure one at a time, without changing routes, documents or the ledger.
+
+| Context | Sections | Owns |
+|---|---|---|
+| Accounts & identity | §4 | `accounts`, `account_identities`, `sign_in_methods` |
+| Membership | §5.1–5.3 | `members`, `member_status_history`, `applications`, `profile_photos`, `photo_checks` |
+| Bylaws | §5.2, §5.4, §6.6 | `bylaws_versions`, `bylaws_checks`, `bylaws_check_references` |
+| Elections | §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results` |
+| Offices | §6.4 | `positions`, `position_terms` |
+| Governance | §10 | `role_assignments`, `approval_requests`, `testing_personas` |
+| Audit ledger | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` |
+
+**Layers.** Records stay plain data (Firestore stores them, JCS hashes them, the browser reads them), so an aggregate
+is its record types plus pure functions in `ustp-domain`:
+
+- **Domain** (`packages/domain/src/<context>/`): records, rule checks and *commands*, such as
+  `decideApplication(...)`, that take the current records and a request and return an `Outcome`: the next records and
+  the domain events, or a refusal saying why and of what kind (`forbidden`, `not_found`, `conflict`, `rate_limited`).
+  No I/O and no clock: the time comes in as an argument. The ledger entries are the domain events (`LedgerEvent`, §8.2).
+  The package keeps one entry point; the folders only organise it.
+- **Application** (`apps/server/src/<context>/*.service.ts`): authorise the caller, open the transaction, load through
+  repositories, run the command, append its events to the ledger and save, in that order (Firestore reads come before
+  writes). `assertCheck` and `accepted` turn a refusal into the HTTP status it has always had (409 by default).
+- **Infrastructure** (`*.repository.ts`, `infra/`): one repository per aggregate, which alone knows its collection
+  paths; the KMS, Secret Manager, Vision and Gravatar adapters.
+- **Interface**: the controllers and worker routes of §12 and §13, unchanged.
+
+**Ports.** A context publishes a small read or command interface for the others, called inside their transaction
+where they need it, and keeps its repositories to itself. `apps/server/src/boundaries.test.ts` fails if code outside a
+converted context names its collections or imports its repositories; the API module registers each context's
+providers from its `providers.ts`.
+
+**Converted so far: Membership** (members and applications). `ustp-domain/membership/` holds the member-status
+machine, the application rules, the records, the Member aggregate (`memberStatusTransition`, `resignMembership`,
+`changeMemberStatus`, `testVoterAdmission`) and the MembershipApplication aggregate (`submitApplication`,
+`decideApplication`). In the server, `MemberRepository` and `ApplicationRepository` store them, and `Members` and
+`MembershipApplications` are the application services. Elections take the roll's Active members, accounts and testing
+show statuses and photos require a member record through the `MemberDirectory` port; testing admits a voter persona
+through `Members`. Bylaws versions are still served by `MembershipService` until the bylaws context is split out.
 
 ## 4. Identity and accounts
 
@@ -1078,9 +1123,9 @@ different account on each side. Testing mode lets one System Admin do that alone
 
 ## 11. Data model (Firestore `(default)` database)
 
-Firestore Native mode has no namespaces. The spec's two namespaces are **module boundaries in code**: each module owns
-its collections through its own repository classes, and other modules go through its service. Physically,
-registration collections are top-level and election data lives under each election.
+Firestore Native mode has no namespaces. The spec's two namespaces are **module boundaries in code**: each bounded
+context (§3.3) owns its collections through its own repositories, and other contexts go through the port it publishes.
+Physically, registration collections are top-level and election data lives under each election.
 
 | Path | Key | Mutability | Notes |
 |---|---|---|---|
@@ -1123,7 +1168,8 @@ registration collections are top-level and election data lives under each electi
 
 The spec places `role_assignments` and `audit_events` in the voting namespace; they serve both modules, so the
 design treats them as a shared audit/admin module. Path constants and document shapes live in `ustp-domain`
-(`Collections`, `records.ts`) as the single source of truth. Timestamps are ISO 8601 strings from the server clock:
+(`Collections`; `records.ts`, or a converted context's own, such as `membership/records.ts`) as the single source of
+truth. Timestamps are ISO 8601 strings from the server clock:
 they sort lexically, survive JSON unchanged and can be JCS-hashed. Member status history is ordered by ledger sequence
 number, not time.
 

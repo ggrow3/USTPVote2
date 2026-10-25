@@ -1,4 +1,4 @@
-import { deny, OK, type Check } from './check.js';
+import { deny, OK, type Check } from '../check.js';
 
 /**
  * Membership application rules shared by the browser and the api (design §5.2). The minimum age is USTP's call

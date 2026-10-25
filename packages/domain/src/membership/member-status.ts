@@ -1,4 +1,4 @@
-import { deny, OK, type Check } from './check.js';
+import { deny, OK, type Check } from '../check.js';
 
 export const MEMBER_STATUSES = ['applicant', 'active', 'lapsed', 'suspended', 'resigned', 'rejected'] as const;
 export type MemberStatus = (typeof MEMBER_STATUSES)[number];

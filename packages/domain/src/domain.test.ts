@@ -3,7 +3,7 @@ import { checkCanApprove, checkCanChangeRole, checkCanRequest, type Actor, type 
 import { electionDocPath, sequenceId } from './collections.js';
 import { checkElectionDeletable, electionTransitionAuthority, isTerminal } from './election-state.js';
 import { isUuidV7, uuidv7, uuidv7Timestamp } from './ids.js';
-import { checkStatusChange, mayApply, type MemberStatus } from './member-status.js';
+import { checkStatusChange, mayApply, type MemberStatus } from './membership/member-status.js';
 import { checkRoleChange, conflictingRoles } from './roles.js';
 
 describe('uuidv7', () => {

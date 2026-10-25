@@ -28,7 +28,6 @@ import {
   type CreateElectionInput,
   type ElectionDetail,
   type ElectionRecord,
-  type MemberRecord,
   type ProposalInput,
   type ProposalSnapshotRecord,
   type ResultsRecord,
@@ -49,6 +48,7 @@ import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { SECRET_STORE, type SecretStore } from '../infra/secret-store.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { MemberDirectory } from '../membership/member-directory.js';
 import { MembershipService } from '../membership/membership.service.js';
 import { ElectionReader } from './election-reader.js';
 
@@ -66,6 +66,7 @@ export class ElectionsService {
     private readonly approvals: ApprovalsService,
     private readonly reader: ElectionReader,
     private readonly membership: MembershipService,
+    private readonly members: MemberDirectory,
     @Inject(SECRET_STORE) private readonly secrets: SecretStore,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
@@ -207,8 +208,7 @@ export class ElectionsService {
     }
     return this.db.runTransaction(async (tx) => {
       await this.editable(tx, ctx, electionId);
-      const active = await tx.get(this.db.collection(Collections.members).where('status', '==', 'active'));
-      let accountIds = sortRoll(active.docs.map((d) => d.id));
+      let accountIds = sortRoll(await this.members.activeIds(tx));
       let criteria: RollCriteria = { status: 'active' };
       if (voters === 'test_voters') {
         const personas = await tx.get(this.db.collection(Collections.testingPersonas).where('kind', '==', 'voter'));
@@ -255,14 +255,12 @@ export class ElectionsService {
   async roll(electionId: string): Promise<RollView> {
     const snapshot = await this.latestRoll(electionId);
     if (!snapshot) throw new NotFoundException('no voter roll yet');
-    const entries: { accountId: string; legalName: string; state: string }[] = [];
-    for (let i = 0; i < snapshot.accountIds.length; i += 300) {
-      const refs = snapshot.accountIds.slice(i, i + 300).map((id) => this.db.collection(Collections.members).doc(id));
-      for (const s of await this.db.getAll(...refs)) {
-        const m = s.data() as MemberRecord | undefined;
-        entries.push({ accountId: s.id, legalName: m?.legalName ?? '(no member record)', state: m?.state ?? '' });
-      }
-    }
+    const members = await this.members.findMany(snapshot.accountIds);
+    const entries = snapshot.accountIds.map((accountId, i) => ({
+      accountId,
+      legalName: members[i]?.legalName ?? '(no member record)',
+      state: members[i]?.state ?? '',
+    }));
     return { snapshot: withoutList(snapshot), entries };
   }
 

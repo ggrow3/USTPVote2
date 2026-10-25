@@ -1,4 +1,4 @@
-import type { MemberStatus } from './member-status.js';
+import type { MemberStatus } from './membership/member-status.js';
 import type { Role } from './roles.js';
 
 /**

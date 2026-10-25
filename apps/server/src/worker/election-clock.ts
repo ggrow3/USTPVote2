@@ -1,10 +1,10 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import type { DocumentReference } from 'firebase-admin/firestore';
-import { Collections, definitionHash, type ElectionRecord } from 'ustp-domain';
+import { Collections, definitionHash, type ElectionRecord, type LedgerEvent } from 'ustp-domain';
 import { ElectionReader } from '../elections/election-reader.js';
 import { BALLOT_POOL_KEYS, type BallotPoolKeys } from '../infra/ballot-pool.js';
 import { Firebase } from '../infra/firebase.js';
-import { LedgerService, type LedgerEvent } from '../ledger/ledger.service.js';
+import { LedgerService } from '../ledger/ledger.service.js';
 
 /**
  * The election clock (design §6.1): prepares each scheduled secret election's ballot-pool key, opens elections at

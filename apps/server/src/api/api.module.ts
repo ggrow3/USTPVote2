@@ -28,7 +28,7 @@ import { ballotPoolKeysProvider } from '../infra/ballot-pool.js';
 import { secretStoreProvider } from '../infra/secret-store.js';
 import { PublicLedgerController } from '../ledger/ledger.controller.js';
 import { MembershipAdminController, RegistrationController } from '../membership/membership.controller.js';
-import { MembershipService } from '../membership/membership.service.js';
+import { MEMBERSHIP_PROVIDERS } from '../membership/providers.js';
 import { LocalPhotoChecker, PHOTO_CHECKER, VisionPhotoChecker } from '../photos/checker.js';
 import { GravatarClient } from '../photos/gravatar.js';
 import { MyPhotoController, PhotoReviewController } from '../photos/photos.controller.js';
@@ -71,7 +71,7 @@ import { PositionsService } from '../positions/positions.service.js';
   ],
   providers: [
     AccountsService,
-    MembershipService,
+    ...MEMBERSHIP_PROVIDERS,
     BylawsChecksService,
     PhotosService,
     ElectionsService,
