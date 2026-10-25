@@ -5,6 +5,26 @@ export type { Role } from './roles.js';
 export { MEMBER_STATUSES, checkStatusChange, mayApply } from './member-status.js';
 export type { MemberStatus, StatusChange } from './member-status.js';
 export { diffLines, splitLines } from './text-diff.js';
+export {
+  MAX_AMENDMENT_CHANGES,
+  MAX_AMENDMENT_CHARACTERS,
+  amendmentChangeSchema,
+  bylawsAmendmentSchema,
+  applyAmendment,
+  applyAmendments,
+  amendmentConflicts,
+  amendmentDiff,
+  amendmentText,
+  amendmentFromTexts,
+} from './amendments.js';
+export type {
+  AmendmentBase,
+  AmendmentChange,
+  AmendmentConflict,
+  AmendmentResult,
+  BylawsAmendment,
+  NamedAmendment,
+} from './amendments.js';
 export { ACT_AS_HEADER, ADMIN_PERSONAS, MAX_TEST_VOTERS, PERSONA_KINDS, voterPersonaLabel } from './testing.js';
 export type { PersonaKind, PersonaRecord, PersonaSummary } from './testing.js';
 export type { DiffLine } from './text-diff.js';

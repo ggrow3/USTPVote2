@@ -1,4 +1,4 @@
-import { canonicalBytes, verifyInclusionHex } from 'ustp-audit';
+import { canonicalBytes, sha256Hex, verifyInclusionHex } from 'ustp-audit';
 import { describe, expect, it } from 'vitest';
 import { rollInclusionProof, rollLeaf, rollMerkleRoot, rollSigningInput, rollStatement, sortRoll } from './roll.js';
 
@@ -45,5 +45,7 @@ describe('voter roll', () => {
     const superseded = { ...snapshot, status: 'superseded' };
     expect(rollSigningInput(superseded)).toEqual(rollSigningInput(snapshot));
     expect(rollSigningInput({ ...snapshot, count: 4 })).not.toEqual(rollSigningInput(snapshot));
+    // Golden value: roll signatures already in the ledger cover exactly these bytes (design §6.3).
+    expect(sha256Hex(rollSigningInput(snapshot))).toBe('c72a82a1694be5726bbaff06beeb45ef5e9cca35a2ed3b42f4e338698f37d689');
   });
 });

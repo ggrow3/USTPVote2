@@ -94,6 +94,13 @@ describe('election definition', () => {
     expect(edited).not.toBe(a);
   });
 
+  // Golden values: scheduled elections and published records depend on these exact hashes (design §6.5, §6.6). A
+  // change here means old proposals or definitions would no longer verify.
+  it('keeps the proposal and definition hashes of existing records', () => {
+    expect(proposal.contentHash).toBe('568879281fc84f419dfba404b21dca1fa1cff26c6b04cd31e55209bc11b53203');
+    expect(definitionHash(buildDefinition(election, contests, candidates, [proposal]))).toBe('dded9e87c5541117ff55caff238a168b0ebcde39ac3555b6ac31b3d180f95ba7');
+  });
+
   it('reports what blocks scheduling', () => {
     const empty = buildDefinition({ ...election, opensAt: '2026-10-01T00:00:00Z', kAnonymity: 1 }, [], [], []);
     expect(validateDefinition(empty, now)).toEqual([

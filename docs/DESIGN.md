@@ -556,6 +556,52 @@ fit the `ustp-tally` ID pattern. Only drafts can be edited.
   - **Public:** `GET /v1/public/positions` lists the offices and their active terms; office holders are public, like
     the results they come from. Administrators see every term in the console's Offices tab.
 
+### 6.6 Bylaws amendments
+
+A proposal can change particular lines of the published bylaws, so members vote on exactly the words that change and,
+once the election is certified, the amended bylaws follow from the result instead of being retyped.
+
+**Format** (`ustp.bylaws-amendment` v1, `bylawsAmendmentSchema` in `ustp-domain`, JSON):
+
+```
+{ v: 1, base: { version, contentHash },
+  changes: [ { op: 'replace', from, to, expect: [old lines], lines: [new lines] }
+           | { op: 'insert',  after, anchor: line `after` | null, lines: [new lines] }
+           | { op: 'delete',  from, to, expect: [old lines] } ] }
+```
+
+- **Lines** are those of the base version's text as stored (`splitLines`: `\r\n` and `\r` read as `\n`), numbered
+  from 1, a trailing empty line after the final newline included: the numbering the bylaws editor shows (§5.2).
+  Word's own paragraph or list numbering never defines them; a Word copy is only ever a picture of the text.
+- **Quotes guard the base.** `replace` and `delete` quote every line they remove (`expect`), and `insert` quotes the
+  line it follows (`anchor`, null for `after: 0`, the top). An amendment applies only to the version and hash it
+  names, and only while every quoted line reads exactly as quoted.
+- **Rules:** changes run top to bottom and do not overlap (an insert may come just before a change that starts at
+  the same line, and two inserts at one point must be one insert); a range's quote covers it exactly; no line holds a
+  line break; new lines carry no trailing whitespace (a Word round trip would drop it); at most 200 changes and
+  300,000 quoted and new characters.
+
+**Applying** (application v1, `applyAmendments`): every amendment must name the same base and fit it. Each change
+becomes the base lines it consumes, `[start, end)` (empty for an insert), and its new lines; the changes of all the
+amendments are merged in line order (an insert before a change starting at the same line) and applied in one pass, and
+the lines are joined with `\n`. The result is the same in any order, and the same as splicing each change in from the
+bottom up (both are tested). Two changes from different amendments **conflict** when they consume the same base line,
+or an insert falls strictly inside another's lines, or both insert at the same point; adjacent changes do not, nor
+does an insert right before or after another change. Conflicting amendments cannot be applied together.
+
+**Showing:** `amendmentDiff` lists exactly the lines each change removes and adds (not a recomputed diff), with base
+and amended line numbers and optional context; `amendmentText` says it in words ("Replace line 12: was … now …"), for
+printed copies, screen readers and the verify CLI; `amendmentFromTexts` turns an edited copy of the base into an
+amendment, one change per run of changed lines.
+
+*Implemented so far:* the format and these functions, with tests. *Planned (in order):* a proposal snapshot may carry
+an amendment, hashed with it (`{v: 2, title, body, amendment}`; proposals without one keep the v1 hash), with the
+definition naming the base; the base must be the current version when the proposal is written and when the election is
+scheduled, conflicting amendments cannot share an election, and the bylaws cannot be republished while such an election
+is under way; the ballot page shows the changes and checks their hash; after certification the passed amendments give
+the amended text (its hash in the `results.certified` entry), downloadable as a draft .docx and published as the next
+version by a Membership Admin; the verify CLI recomputes it.
+
 ## 7. Ballot casting and secrecy
 
 ### 7.1 Cast flow (secret ballot)

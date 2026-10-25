@@ -20,6 +20,8 @@ export interface ProblemDetails {
 
 const reason = z.string().trim().min(1, 'a written reason is required').max(2000);
 const hex32 = z.string().regex(/^[0-9a-f]{64}$/, 'expected 64 lowercase hex digits');
+/** A SHA-256 hash as 64 lowercase hex digits. */
+export const hex32Schema = hex32;
 const uuidV7 = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/, 'expected a UUIDv7');
 const optionalText = (max: number) => z.string().trim().max(max).optional();
 
@@ -84,6 +86,8 @@ export const linkIdentitySchema = z.strictObject({ idToken: z.string().min(1).ma
 export type LinkIdentityInput = z.infer<typeof linkIdentitySchema>;
 
 const bylawsVersion = z.string().regex(/^[A-Za-z0-9._-]{1,64}$/, 'letters, digits, ".", "_" and "-" only');
+/** A bylaws version name (`2026.1`). */
+export const bylawsVersionSchema = bylawsVersion;
 
 export const publishBylawsSchema = z.strictObject({
   version: bylawsVersion,
