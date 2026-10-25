@@ -30,14 +30,6 @@ export class MyPhotoController {
     return this.photos.imageForOwner(ctx);
   }
 
-  /** The caller's Gravatar, fetched now and normalized, for them to review and upload; nothing is stored. */
-  @Get('gravatar')
-  @Header('Content-Type', 'image/jpeg')
-  @Header('Cache-Control', 'private, no-store')
-  gravatar(@Ctx() ctx: RequestContext) {
-    return this.photos.gravatar(ctx);
-  }
-
   @Delete()
   @HttpCode(204)
   async remove(@Ctx() ctx: RequestContext) {

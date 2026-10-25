@@ -163,7 +163,7 @@ is its record types plus pure functions in `ustp-domain`:
   repositories, run the command, append its events to the ledger and save, in that order (Firestore reads come before
   writes). `assertCheck` and `accepted` turn a refusal into the HTTP status it has always had (409 by default).
 - **Infrastructure** (`*.repository.ts`, `infra/`): one repository per aggregate, which alone knows its collection
-  paths; the KMS, Secret Manager, Vision and Gravatar adapters.
+  paths; the KMS, Secret Manager and Vision adapters.
 - **Interface**: the controllers and worker routes of §12 and §13, unchanged.
 
 **Ports.** A context publishes a small read or command interface for the others, called inside their transaction
@@ -237,8 +237,7 @@ through `Members`. Bylaws versions are still served by `MembershipService` until
 - **Safety switches.** `APP_CHECK_ENFORCED=false` and `ADMIN_MFA_REQUIRED=false` exist for local development and
   integration tests; the server refuses to start with either unless the Firestore and Auth emulators are configured.
   The emulator stand-ins `PHOTO_CHECKER=local`, `SECRET_STORE=emulator`, `AUDIT_SIGNER=emulator` (a local P-256
-  key kept in Firestore), `BALLOT_POOL=emulator` (local RSA keys) and `GRAVATAR_URL` (any address but Gravatar's) are
-  refused the same way.
+  key kept in Firestore) and `BALLOT_POOL=emulator` (local RSA keys) are refused the same way.
 - **Bootstrap.** Emails listed in `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` become System Admins once their account exists and
   the email is verified (checked on every `POST /v1/accounts`, which the web app calls on each sign-in and after
   verification; ledgered with actor `bootstrap`). An account that has ever held the role is never re-granted, so a
@@ -350,33 +349,11 @@ Optional, for members with a membership record (applicants included).
    that runs only while its window is open, and the photo taken is not mirrored. Either way the photo goes through
    the same review and upload; nothing leaves the browser before that. Hosting already allows the camera for the
    site's own pages (`Permissions-Policy: camera=(self)`).
-9. **Using a Gravatar:** the member opens "Use Gravatar", which says what will be sent, and chooses "Get my
-   Gravatar". Only then does the api, never the browser, call `GET /v1/me/photo/gravatar` →
-   `https://gravatar.com/avatar/{hash}?s=1024&d=404&r=g`, where the hash is SHA-256 of the email the member signed in
-   with, trimmed and lowercased (Gravatar's current scheme). The address must be verified and the member must have a
-   membership record, as for an upload (409 otherwise, and Gravatar is not asked); a System Admin acting as a test
-   persona cannot use it (§10.4). `d=404` makes "no picture" a 404, which the member sees as "Gravatar has no picture
-   for that address, or none rated G" with an offer to upload instead; `r=g` takes only pictures rated G. The fetch
-   allows 5 s for the whole answer and stops reading past 5 MB, follows no redirects and takes only image content
-   (503 if Gravatar does not answer, 502 if the answer cannot be used). The api normalizes the picture as in step 2
-   (GIFs too, first frame) and returns the JPEG without storing anything. The member reviews it like any other photo
-   and uploads it with `PUT /v1/me/photo`, so the image bytes are stored in the photos bucket (never a link to
-   Gravatar) and get the same check and review: there is no other way in.
-
-   **Privacy.** Each lookup sends Gravatar (Automattic) the hash, with the api's address and the time; no name,
-   account ID or cookie. A hash is not anonymous: Gravatar uses it to find the account it belongs to, and anyone with a
-   list of addresses can match it. Gravatar can also tell the request came from this service, so it may infer that the
-   address belongs to a USTP member or applicant. That is why it happens only on the member's request, after the
-   dialog says so, and never for anyone else's address. The browser never contacts Gravatar, and nothing about the
-   lookup is stored; a failed one is logged without the address. The camera (step 8) sends nothing anywhere until the
-   member uploads the photo.
 
 With the emulators there is no Vision API, so a local stand-in (`PHOTO_CHECKER=local`, refused outside the emulators)
-assumes one clear face and flags only dark images, so the review flow can be exercised. Gravatar has no emulator:
-`GRAVATAR_URL` points the api at a stand-in (the integration tests run one), and without it the emulators use the real
-Gravatar. Deployment needs: the `PHOTOS_BUCKET` (private, uniform bucket-level access), the Vision API enabled, the api
-service account allowed to read, write and delete objects in that bucket, and outbound internet access for the api to
-reach Gravatar (Cloud Run's default; Terraform sets no VPC egress).
+assumes one clear face and flags only dark images, so the review flow can be exercised. Deployment needs: the
+`PHOTOS_BUCKET` (private, uniform bucket-level access), the Vision API enabled, and the api service account allowed
+to read, write and delete objects in that bucket.
 
 ### 5.4 Bylaws check
 
@@ -1188,7 +1165,6 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /registration/applications` · `GET /registration/applications/me` | M | apply; status |
 | `POST /me/resign` | M | resign membership |
 | `PUT /me/photo` · `GET /me/photo` · `GET /me/photo/image` · `DELETE /me/photo` | M (member record) | profile photo |
-| `GET /me/photo/gravatar` | M (member record, verified sign-in email) | the member's Gravatar, fetched now, for review; nothing stored |
 | `GET /elections` | M | elections the caller is eligible for |
 | `GET /elections/{id}/ballot` | V | ballot definition and hash |
 | `POST /elections/{id}/ballots` | V | cast (409 if already voted) |
@@ -1276,11 +1252,6 @@ worker against the emulators and calls the tick and the bylaws checks every 15 s
   and references are marked as material, not instructions, in the prompt; the answer is held to a JSON schema,
   findings naming lines that do not exist are dropped, and the browser shows them as plain text. A wrong or manipulated
   answer can only mislead a reader: it publishes, blocks and ledgers nothing.
-- **Gravatar (§5.3):** the api fetches from one fixed address (`GRAVATAR_URL` is refused outside the emulators) built
-  from a hash, so a member cannot steer the request; redirects are refused, so it cannot be bounced to the metadata
-  server or anywhere else. The answer is limited in time (5 s) and size (5 MB), must be an image, and is decoded with
-  `sharp` under the same pixel limit as an upload before anything is returned. Only the signed-in member's own verified
-  address is looked up, only on their request.
 - **Logging:** structured logs with redaction; no request bodies on cast; Firestore Data Access audit logs off in
   production (they would record write paths and times; pool encryption makes them harmless, but there is no need for
   them); KMS Data Access audit logs on.
@@ -1404,8 +1375,6 @@ Decisions for USTP; the design's proposed default is in brackets.
     environments? Is "Transhumanist principles" rightly Article I of the USTP Constitution plus the Transhumanist Bill of
     Rights 3.0? Should the repository instead carry dated copies of the party's texts (they are USTP's own, marked "All
     Rights Reserved")? [off until agreed; those two texts; read from the party's site]
-19. **Gravatar (§5.3):** should the privacy notice name Gravatar (Automattic) as a service a member may choose to send
-    a hash of their address to, and should the option be offered at all? [offered; named in the notice]
 
 ## 19. Roadmap
 
@@ -1416,4 +1385,4 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, not yet applied; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell and never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); a profile photo from the member's Gravatar, fetched by the api only on request and then reviewed and uploaded like any photo (§5.3); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1); "Add to calendar" for a voting window, an iCalendar event from the public record linked from the ballot list and ballot page (§6.1). *Still to do:* bring up dev for real (first apply, Identity Platform, first release); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, not yet applied; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell and never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1); "Add to calendar" for a voting window, an iCalendar event from the public record linked from the ballot list and ballot page (§6.1). *Still to do:* bring up dev for real (first apply, Identity Platform, first release); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
