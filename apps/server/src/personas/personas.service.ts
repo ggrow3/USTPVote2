@@ -9,7 +9,6 @@ import {
   voterPersonaLabel,
   type AccountRecord,
   type CreatePersonasInput,
-  type MemberRecord,
   type PersonaKind,
   type PersonaRecord,
   type PersonaSummary,
@@ -21,6 +20,8 @@ import type { RequestContext } from '../auth/principal.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { MemberDirectory } from '../membership/member-directory.js';
+import { Members } from '../membership/members.service.js';
 import { MembershipService } from '../membership/membership.service.js';
 
 /**
@@ -35,6 +36,8 @@ export class PersonasService {
     private readonly ledger: LedgerService,
     private readonly directory: DirectoryService,
     private readonly membership: MembershipService,
+    private readonly members: MemberDirectory,
+    private readonly statusChanges: Members,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
@@ -48,12 +51,12 @@ export class PersonasService {
       .sort((a, b) => PERSONA_KINDS.indexOf(a.kind) - PERSONA_KINDS.indexOf(b.kind) || (a.number ?? 0) - (b.number ?? 0));
     const [roles, members] = await Promise.all([
       this.directory.allActiveRoles(),
-      personas.length ? db.getAll(...personas.map((p) => db.collection(Collections.members).doc(p.accountId))) : [],
+      this.members.findMany(personas.map((p) => p.accountId)),
     ]);
     return personas.map((p, i) => ({
       ...p,
       roles: roles.get(p.accountId) ?? [],
-      memberStatus: (members[i]?.data() as MemberRecord | undefined)?.status ?? null,
+      memberStatus: members[i]?.status ?? null,
     }));
   }
 
@@ -113,7 +116,7 @@ export class PersonasService {
       const number = Math.max(0, ...voters.docs.map((d) => (d.data() as PersonaRecord).number ?? 0)) + 1;
       const accountId = uuidv7();
       const label = voterPersonaLabel(number);
-      await this.membership.admitTestPersona(tx, { accountId, label, actor: operator, bylawsVersion });
+      await this.statusChanges.admitTestPersona(tx, { accountId, label, actor: operator, bylawsVersion });
       this.writePersona(tx, { accountId, kind: 'voter', label, number, createdBy: operator });
     });
   }

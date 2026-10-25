@@ -22,6 +22,7 @@ import type { RequestContext } from '../auth/principal.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { MemberDirectory } from '../membership/member-directory.js';
 import { PHOTO_CHECKER, type PhotoChecker } from './checker.js';
 import { GravatarClient, GravatarError } from './gravatar.js';
 import { normalizePhoto, PhotoInputError } from './image.js';
@@ -41,6 +42,7 @@ export class PhotosService {
     @Inject(CONFIG) private readonly config: ServerConfig,
     @Inject(PHOTO_CHECKER) private readonly checker: PhotoChecker,
     private readonly gravatars: GravatarClient,
+    private readonly members: MemberDirectory,
   ) {}
 
   /** Stores a new photo for the caller, replacing (and deleting) their previous one. */
@@ -243,8 +245,8 @@ export class PhotosService {
   // --- internals --------------------------------------------------------------------------------------------
 
   private async requireMember(accountId: string): Promise<void> {
-    const member = await this.firebase.db.collection(Collections.members).doc(accountId).get();
-    if (!member.exists) throw new ConflictException('apply for membership before adding a photo');
+    const member = await this.members.find(accountId);
+    if (!member) throw new ConflictException('apply for membership before adding a photo');
   }
 
   private bucket(): Bucket {

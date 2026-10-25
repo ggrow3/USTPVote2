@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createApplicationSchema } from './api.js';
+import { createApplicationSchema } from '../api.js';
 import {
   ageOn,
   checkApplicantAge,

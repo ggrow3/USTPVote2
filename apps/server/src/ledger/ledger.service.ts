@@ -19,21 +19,13 @@ import {
   type AnchorRecord,
   type LedgerBlockRecord,
   type LedgerEntry,
-  type LedgerEventType,
+  type LedgerEvent,
   type LedgerVerification,
   type PublicLedgerEntry,
   type SigningKeyRecord,
 } from 'ustp-domain';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
-
-export interface LedgerEvent {
-  readonly type: LedgerEventType;
-  readonly actor: string;
-  readonly subject: string | null;
-  /** Plain JSON only (it is JCS-hashed); no Firestore types or Dates. */
-  readonly payload: Readonly<Record<string, unknown>>;
-}
 
 interface LedgerHead {
   readonly seq: number;

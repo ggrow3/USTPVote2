@@ -7,7 +7,6 @@ import {
   type AccountRecord,
   type AccountSummary,
   type IdentityRecord,
-  type MemberRecord,
   type MeResponse,
   type Role,
   type RoleAssignmentRecord,
@@ -19,6 +18,7 @@ import { SignInMethodsService } from '../auth/sign-in-methods.service.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { MemberDirectory } from '../membership/member-directory.js';
 
 /** A second sign-in used to link a login method must be this fresh. */
 const LINK_MAX_AUTH_AGE_SECONDS = 5 * 60;
@@ -41,6 +41,7 @@ export class AccountsService {
     private readonly ledger: LedgerService,
     private readonly directory: DirectoryService,
     private readonly signInMethods: SignInMethodsService,
+    private readonly members: MemberDirectory,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
@@ -55,13 +56,13 @@ export class AccountsService {
     const [account, identities, member, roles] = await Promise.all([
       db.collection(Collections.accounts).doc(accountId).get(),
       db.collection(Collections.accountIdentities).where('accountId', '==', accountId).get(),
-      db.collection(Collections.members).doc(accountId).get(),
+      this.members.find(accountId),
       this.directory.activeRoles(accountId),
     ]);
     return {
       account: (account.data() as AccountRecord | undefined) ?? null,
       identities: identities.docs.map((d) => d.data() as IdentityRecord),
-      member: (member.data() as MemberRecord | undefined) ?? null,
+      member,
       roles,
       mfa: { required: this.config.adminMfaRequired && roles.length > 0, signedInWithMfa },
       testing,
@@ -92,14 +93,14 @@ export class AccountsService {
       page = (await q.limit(query.limit).get()).docs.map((d) => d.data() as AccountRecord);
     }
 
-    const members = page.length ? await db.getAll(...page.map((a) => db.collection(Collections.members).doc(a.accountId))) : [];
+    const members = await this.members.findMany(page.map((a) => a.accountId));
     return page.map((a, i) => ({
       accountId: a.accountId,
       displayName: a.displayName,
       primaryEmail: a.primaryEmail,
       emailVerified: a.emailVerified,
       createdAt: a.createdAt,
-      memberStatus: (members[i]?.data() as MemberRecord | undefined)?.status ?? null,
+      memberStatus: members[i]?.status ?? null,
       roles: roles.get(a.accountId) ?? [],
     }));
   }

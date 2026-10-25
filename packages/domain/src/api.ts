@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { BYLAWS_CHECK_SCOPES } from './bylaws-check.js';
 import { SIGN_IN_PROVIDERS } from './identity.js';
-import { MEMBER_STATUSES } from './member-status.js';
-import { checkApplicantAge, isCalendarDate, MINIMUM_MEMBER_AGE, normalizePhone, US_POSTAL_CODE } from './registration.js';
+import { MEMBER_STATUSES } from './membership/member-status.js';
+import { checkApplicantAge, isCalendarDate, MINIMUM_MEMBER_AGE, normalizePhone, US_POSTAL_CODE } from './membership/registration.js';
 import { ROLES } from './roles.js';
 import { MAX_TEST_VOTERS } from './testing.js';
 
