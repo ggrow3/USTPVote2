@@ -62,17 +62,4 @@ describe('photo configuration', () => {
   it('defaults to the local stand-in and a project bucket with the emulators', () => {
     expect(loadConfig(emulators)).toMatchObject({ photoChecker: 'local', photosBucket: 'demo-p-profile-photos' });
   });
-
-  it('fetches Gravatars from Gravatar; only the emulators may point elsewhere', () => {
-    expect(loadConfig({}).gravatarUrl).toBe('https://gravatar.com/avatar');
-    expect(() => loadConfig({ GRAVATAR_URL: 'http://127.0.0.1:9/avatar' })).toThrow(/only allowed with the Firebase emulators/);
-    expect(loadConfig({ ...emulators, GRAVATAR_URL: 'http://127.0.0.1:9/avatar/' }).gravatarUrl).toBe('http://127.0.0.1:9/avatar');
-  });
-});
-
-describe('normalizePhoto for a Gravatar', () => {
-  it('also takes a GIF, using its first frame', async () => {
-    const gif = await solid(300, 300, 128).gif().toBuffer();
-    expect(await normalizePhoto(gif, ['jpeg', 'png', 'webp', 'gif'])).toMatchObject({ width: 300, height: 300 });
-  });
 });

@@ -1,5 +1,4 @@
 import {
-  BadGatewayException,
   BadRequestException,
   ConflictException,
   ForbiddenException,
@@ -17,14 +16,13 @@ import {
   type PhotoDecisionInput,
   type ProfilePhotoRecord,
 } from 'ustp-domain';
-import { requireAccount, requireOwnAccount } from '../auth/decorators.js';
+import { requireAccount } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { MemberDirectory } from '../membership/member-directory.js';
 import { PHOTO_CHECKER, type PhotoChecker } from './checker.js';
-import { GravatarClient, GravatarError } from './gravatar.js';
 import { normalizePhoto, PhotoInputError } from './image.js';
 
 const CURRENT: readonly ProfilePhotoRecord['status'][] = ['accepted', 'needs_review'];
@@ -41,7 +39,6 @@ export class PhotosService {
     private readonly ledger: LedgerService,
     @Inject(CONFIG) private readonly config: ServerConfig,
     @Inject(PHOTO_CHECKER) private readonly checker: PhotoChecker,
-    private readonly gravatars: GravatarClient,
     private readonly members: MemberDirectory,
   ) {}
 
@@ -116,38 +113,6 @@ export class PhotosService {
       return record;
     } catch (e) {
       await this.deleteImages([storagePath]);
-      throw e;
-    }
-  }
-
-  /**
-   * The Gravatar of the address the caller signed in with, fetched only now that they ask (design §5.3), and
-   * normalized as an upload is. Nothing is stored: the member reviews it and uploads it like any other photo, so it
-   * gets the same checks and the same review.
-   */
-  async gravatar(ctx: RequestContext): Promise<Buffer> {
-    // A test persona's photo is not the operator's to fill from their own address.
-    requireOwnAccount(ctx);
-    const accountId = requireAccount(ctx);
-    const { email, emailVerified } = ctx.principal;
-    if (!email || !emailVerified) throw new ConflictException('sign in with a verified email address to use its Gravatar');
-    await this.requireMember(accountId);
-
-    let bytes: Buffer;
-    try {
-      bytes = await this.gravatars.fetch(email);
-    } catch (e) {
-      if (!(e instanceof GravatarError)) throw e;
-      if (e.kind === 'none') throw new NotFoundException(`Gravatar has no picture for ${email}, or none rated G`);
-      const cause = e.cause instanceof Error ? ` (${e.cause.message})` : '';
-      this.logger.warn(`gravatar fetch failed: ${e.message}${cause}`);
-      if (e.kind === 'unavailable') throw new ServiceUnavailableException('Gravatar is not answering; try again shortly');
-      throw new BadGatewayException(`your Gravatar picture cannot be used: ${e.message}`);
-    }
-    try {
-      return (await normalizePhoto(bytes, ['jpeg', 'png', 'webp', 'gif'])).jpeg;
-    } catch (e) {
-      if (e instanceof PhotoInputError) throw new BadGatewayException(`your Gravatar picture cannot be used: ${e.message}`);
       throw e;
     }
   }

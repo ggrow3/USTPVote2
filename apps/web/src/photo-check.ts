@@ -41,14 +41,3 @@ export function faceCheckMessage(photo: Pick<ProfilePhotoRecord, 'status' | 'fla
         : { tone: 'passed', text: 'The automatic check passed: one face, clearly visible, in focus and well lit.', advice: [] };
   }
 }
-
-/**
- * Why the member's Gravatar could not be fetched (`GET /v1/me/photo/gravatar` answered `status` with `detail`), in
- * words; each case points to uploading instead.
- */
-export function gravatarProblem(status: number, detail: string, email: string | null): string {
-  if (status === 404) return `Gravatar has no picture for ${email ?? 'your address'}, or none rated G. You can upload a photo instead.`;
-  if (status === 503) return 'Gravatar is not answering right now. Try again shortly, or upload a photo instead.';
-  const sentence = detail.replace(/\.$/, '');
-  return `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}. You can upload a photo instead.`;
-}
