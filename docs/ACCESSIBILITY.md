@@ -215,6 +215,14 @@ named "Edit line 6 (flagged)"; each finding gives its severity in words ("Clear 
 "Possible tension"), and its line buttons ("Go to line 6") switch to the line list, scroll the line into view and move
 focus to its edit button. Start and finish are announced through the live region; a failure is a banner.
 
+The Word downloads (design §9) were checked on 2026-10-25 against the emulators, in both themes and at 320 px. Each
+button's name starts with its visible text and adds the election ("Download ballot as Word: 2026 Officer Election",
+"Download as Word: …, ballot and results"); on the results page it is described by the line under it, which says what
+the file holds and how to open it in Google Docs. The button shows a spinner while the file is built, and a failure is
+a toast. The file itself uses Word's own structure, which Word, Google Docs and screen readers in both navigate: the
+title and Heading 1–3 styles, real bullet lists, tables with a header row that repeats on each page, links as links, a
+document title and the language (en-US).
+
 ## Known gaps
 
 - **No screen-reader pass yet** (next section). Live regions next to an open `aria-modal` dialog, and Quasar toasts
