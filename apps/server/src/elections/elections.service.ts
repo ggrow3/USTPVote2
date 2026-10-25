@@ -2,6 +2,9 @@ import { BadRequestException, ConflictException, ForbiddenException, Inject, Inj
 import type { DocumentReference, Transaction } from 'firebase-admin/firestore';
 import type { ContestSpec } from 'ustp-tally';
 import {
+  amendingContests,
+  amendmentProblems,
+  applyAmendment,
   APPROVAL_MAX_AUTH_AGE_SECONDS,
   checkElectionDeletable,
   Collections,
@@ -43,6 +46,7 @@ import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { SECRET_STORE, type SecretStore } from '../infra/secret-store.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { MembershipService } from '../membership/membership.service.js';
 import { ElectionReader } from './election-reader.js';
 
 /**
@@ -58,25 +62,49 @@ export class ElectionsService {
     private readonly ledger: LedgerService,
     private readonly approvals: ApprovalsService,
     private readonly reader: ElectionReader,
+    private readonly membership: MembershipService,
     @Inject(SECRET_STORE) private readonly secrets: SecretStore,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
   // --- proposals --------------------------------------------------------------------------------------------
 
+  /**
+   * Captures a proposal text. A bylaws amendment (design §6.6) must be written against the current version and fit it
+   * line for line; its lines are part of the content hash.
+   */
   async createProposal(ctx: RequestContext, input: ProposalInput): Promise<ProposalSnapshotRecord> {
+    const capturedBy = requireAccount(ctx);
     const ref = this.db.collection(Collections.proposalSnapshots).doc();
+    const amendment = input.amendment ?? null;
     const record: ProposalSnapshotRecord = {
       snapshotId: ref.id,
       title: input.title,
       body: input.body,
       source: input.source || null,
-      contentHash: proposalContentHash(input.title, input.body),
+      ...(amendment && { amendment }),
+      contentHash: proposalContentHash(input.title, input.body, amendment),
       capturedAt: new Date().toISOString(),
-      capturedBy: requireAccount(ctx),
+      capturedBy,
     };
-    await ref.create(record);
-    return record;
+    if (!amendment) {
+      await ref.create(record);
+      return record;
+    }
+    return this.db.runTransaction(async (tx) => {
+      const [base, current] = await Promise.all([
+        this.membership.bylawsRecord(amendment.base.version, tx),
+        this.membership.currentBylaws(tx),
+      ]);
+      if (!base) throw new BadRequestException(`there is no bylaws version ${amendment.base.version}`);
+      if (!current || current.version !== base.version) {
+        throw new ConflictException(`version ${base.version} is no longer the current bylaws; write the amendment against version ${current?.version}`);
+      }
+      const applied = applyAmendment(base, amendment);
+      if (!applied.ok) throw new BadRequestException(`the amendment does not fit version ${base.version}: ${applied.problems.join('; ')}`);
+      tx.create(ref, record);
+      return record;
+    });
   }
 
   async listProposals(): Promise<ProposalSnapshotRecord[]> {
@@ -148,7 +176,10 @@ export class ElectionsService {
       candidates,
       proposals,
       definitionHash: definitionHash(definition),
-      problems: election.state === 'draft' ? validateDefinition(definition) : [],
+      problems:
+        election.state === 'draft'
+          ? [...validateDefinition(definition), ...amendmentProblems(amendingContests(definition, proposals), await this.membership.currentBylaws())]
+          : [],
       roll: roll && withoutList(roll),
       pending: pending.docs.map((d) => d.data() as ApprovalRequestRecord),
     };
@@ -212,8 +243,9 @@ export class ElectionsService {
     this.approvals.assertCanRequest(ctx, 'election.schedule');
     return this.db.runTransaction(async (tx) => {
       await this.editable(tx, ctx, electionId);
-      const { election, definition } = await this.reader.load(electionId, tx);
-      const problems = validateDefinition(definition);
+      const { election, definition, proposals } = await this.reader.load(electionId, tx);
+      const current = await this.membership.currentBylaws(tx);
+      const problems = [...validateDefinition(definition), ...amendmentProblems(amendingContests(definition, proposals), current)];
       if (problems.length) throw new ConflictException(`not ready to schedule: ${problems.join('; ')}`);
       if (!election.rollSnapshotId) throw new ConflictException('get a voter roll approved first');
       const roll = (await tx.get(this.db.collection(Collections.eligibilitySnapshots).doc(election.rollSnapshotId))).data() as
@@ -366,6 +398,7 @@ export class ElectionsService {
       const ref = this.electionRef(electionId).collection(ElectionCollections.contests).doc();
       const order = Math.max(0, ...contests.docs.map((d) => (d.data() as ContestRecord).order)) + 1;
       const record = contestRecord(ref.id, order, input, []);
+      await this.assertAmendmentsFit(tx, contests.docs.map((d) => d.data() as ContestRecord), record);
       tx.create(ref, record);
       return record;
     });
@@ -383,6 +416,8 @@ export class ElectionsService {
       if (input.kind === 'proposal') await this.assertProposalExists(tx, input.proposalSnapshotId);
       else if (input.positionId) await this.assertPositionExists(tx, input.positionId);
       const record = contestRecord(contestId, current.order, input, [...candidateIds]);
+      const others = await tx.get(this.electionRef(electionId).collection(ElectionCollections.contests));
+      await this.assertAmendmentsFit(tx, others.docs.map((d) => d.data() as ContestRecord), record);
       tx.set(ref, record);
       return record;
     });
@@ -479,6 +514,26 @@ export class ElectionsService {
     if (!(await tx.get(this.db.collection(Collections.proposalSnapshots).doc(snapshotId))).exists) {
       throw new BadRequestException('no such proposal text');
     }
+  }
+
+  /**
+   * When `contest` puts a bylaws amendment to the vote, it and the election's other amendments must amend the current
+   * version and must not conflict (design §6.6). Other contests are not checked here; the editor lists their problems.
+   */
+  private async assertAmendmentsFit(tx: Transaction, contests: readonly ContestRecord[], contest: ContestRecord): Promise<void> {
+    if (!contest.proposalSnapshotId) return;
+    const all = [...contests.filter((c) => c.contestId !== contest.contestId), contest];
+    const ids = [...new Set(all.map((c) => c.proposalSnapshotId).filter((id): id is string => !!id))];
+    const refs = ids.map((id) => this.db.collection(Collections.proposalSnapshots).doc(id));
+    const proposals = (await tx.getAll(...refs)).map((s) => s.data() as ProposalSnapshotRecord);
+    const amendmentOf = (c: ContestRecord) => proposals.find((p) => p.snapshotId === c.proposalSnapshotId)?.amendment ?? null;
+    if (!amendmentOf(contest)) return;
+    const amending = all.flatMap((c) => {
+      const amendment = amendmentOf(c);
+      return amendment ? [{ contestId: c.contestId, title: c.title, amendment }] : [];
+    });
+    const problems = amendmentProblems(amending, await this.membership.currentBylaws(tx));
+    if (problems.length) throw new ConflictException(problems.join('; '));
   }
 
   private async assertPositionExists(tx: Transaction, positionId: string): Promise<void> {

@@ -72,7 +72,13 @@ export class VotingService {
       election: await this.voterView(election, accountId),
       definition,
       definitionHash: hash,
-      proposals: proposals.map(({ snapshotId, title, body, contentHash }) => ({ snapshotId, title, body, contentHash })),
+      proposals: proposals.map(({ snapshotId, title, body, contentHash, amendment }) => ({
+        snapshotId,
+        title,
+        body,
+        contentHash,
+        amendment: amendment ?? null,
+      })),
     };
   }
 

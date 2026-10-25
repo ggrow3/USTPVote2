@@ -173,3 +173,12 @@ h3 {
 .q-toggle__track {
   opacity: 0.54;
 }
+
+/* A bylaws amendment in words (design §6.6), kept line for line because its quotes are exact. */
+.ustp-amendment {
+  padding: 8px 12px;
+  border-left: 3px solid var(--q-primary);
+  font-size: 14px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

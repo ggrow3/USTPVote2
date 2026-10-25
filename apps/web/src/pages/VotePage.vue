@@ -3,9 +3,9 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { newSalt, type BallotPart } from 'ustp-audit';
 import {
+  amendmentText,
+  ballotViewProblems,
   commitmentsOf,
-  definitionHash,
-  proposalContentHash,
   type BallotReceipt,
   type BallotView,
   type CastResult,
@@ -44,20 +44,11 @@ async function load() {
 onMounted(load);
 
 /**
- * Checked here rather than taken on trust: the ballot shown is the definition frozen at scheduling, and each proposal
- * text is the one that definition commits to.
+ * Checked here rather than taken on trust (design §7.5): the ballot shown is the definition frozen at scheduling, and
+ * each proposal text, with any bylaws lines it changes, is the one that definition commits to.
  */
-const integrity = computed(() => {
-  const v = view.value;
-  if (!v) return null;
-  const hashOk = definitionHash(v.definition) === v.definitionHash;
-  const textsOk = v.definition.contests.every((c) => {
-    if (!c.proposal) return true;
-    const text = v.proposals.find((p) => p.snapshotId === c.proposal!.snapshotId);
-    return !!text && proposalContentHash(text.title, text.body) === c.proposal.contentHash;
-  });
-  return hashOk && textsOk;
-});
+const integrityProblems = computed(() => (view.value ? ballotViewProblems(view.value) : null));
+const integrity = computed(() => (integrityProblems.value ? integrityProblems.value.length === 0 : null));
 
 const proposalText = (c: Contest) => view.value?.proposals.find((p) => p.snapshotId === c.proposal?.snapshotId) ?? null;
 const nameOf = (c: Contest, id: string) => c.candidates.find((k) => k.candidateId === id)?.name ?? id;
@@ -189,10 +180,13 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
 
         <q-banner v-if="integrity === false" class="bg-negative text-white" rounded>
           This ballot does not match the definition frozen when the election was scheduled. Do not vote; tell an Auditor.
+          <ul class="q-mb-none">
+            <li v-for="p in integrityProblems" :key="p">{{ p }}</li>
+          </ul>
         </q-banner>
         <div v-else class="text-caption text-grey-7">
           <q-icon name="verified" color="positive" /> Checked in this browser: this is the ballot frozen at scheduling
-          (<code>{{ view.definitionHash.slice(0, 16) }}…</code>), proposal texts included.
+          (<code>{{ view.definitionHash.slice(0, 16) }}…</code>), proposal texts and bylaws changes included.
         </div>
 
         <!-- Receipt after casting, or the record that this voter already voted. -->
@@ -261,7 +255,18 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
             <div v-if="c.description" class="text-body2" style="white-space: pre-wrap">{{ c.description }}</div>
             <div v-for="line in rulesText(c.spec)" :key="line" class="text-caption text-grey-7">{{ line }}</div>
           </q-card-section>
-          <q-expansion-item v-if="proposalText(c)" dense label="Read the full text">
+          <!-- A bylaws amendment: the lines it changes are what the vote decides, so they are shown, not folded away. -->
+          <q-card-section v-if="proposalText(c)?.amendment" class="q-pt-none">
+            <h3 class="text-body2 text-weight-medium q-my-none">
+              Changes to the bylaws, version {{ proposalText(c)!.amendment!.base.version }}
+            </h3>
+            <div class="ustp-amendment q-mt-xs">{{ amendmentText(proposalText(c)!.amendment!) }}</div>
+          </q-card-section>
+          <q-expansion-item
+            v-if="proposalText(c)"
+            dense
+            :label="proposalText(c)!.amendment ? 'Read the reasons given' : 'Read the full text'"
+          >
             <div class="q-pa-md text-body2" style="white-space: pre-wrap">{{ proposalText(c)!.body }}</div>
           </q-expansion-item>
 
