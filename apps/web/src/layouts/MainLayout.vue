@@ -4,20 +4,20 @@ import { useRoute, useRouter } from 'vue-router';
 import { focusElement, liveRegions } from '../a11y.js';
 import { acting } from '../acting.js';
 import { usingEmulators } from '../firebase.js';
-import { canRegister, hasRole, session, signOut } from '../session.js';
+import { session, signOut } from '../session.js';
 
 const TestingBar = defineAsyncComponent(() => import('../components/TestingBar.vue'));
 
 const route = useRoute();
 const router = useRouter();
-const isAdmin = computed(() => hasRole('membership_admin', 'election_admin', 'auditor', 'system_admin'));
 const who = computed(() => acting.persona?.label || session.me?.account?.displayName || session.user?.email || 'Signed in');
-const links = computed(() => [
-  ...(canRegister.value ? [{ to: '/register', label: 'Register' }] : []),
+/** The same four for everyone; each page explains itself to people it is not for. */
+const LINKS = [
+  { to: '/register', label: 'Register' },
   { to: '/ballot', label: 'Ballot' },
   { to: '/verify', label: 'Verify' },
-  ...(isAdmin.value ? [{ to: '/admin', label: 'Admin' }] : []),
-]);
+  { to: '/admin', label: 'Admin' },
+] as const;
 
 async function onSignOut() {
   await signOut();
@@ -70,7 +70,7 @@ function onHeaderResize({ height }: { height: number }) {
       <!-- Links, not tabs: each one loads a page (tab semantics would promise panels on this page). -->
       <nav aria-label="Main" class="row q-px-sm bg-black">
         <router-link
-          v-for="l in links"
+          v-for="l in LINKS"
           :key="l.to"
           :to="l.to"
           class="ustp-nav-link"
@@ -111,5 +111,12 @@ function onHeaderResize({ height }: { height: number }) {
 }
 .ustp-nav-link--active {
   border-bottom-color: var(--q-accent);
+}
+/* Phones (Quasar's xs): tighter, so the four links keep to one row at 320 px; they still wrap if text is enlarged. */
+@media (max-width: 599.98px) {
+  .ustp-nav-link {
+    padding: 8px 8px 6px;
+    letter-spacing: 0.04em;
+  }
 }
 </style>
