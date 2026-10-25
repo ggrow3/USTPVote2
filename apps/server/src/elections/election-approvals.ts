@@ -8,6 +8,7 @@ import {
   Collections,
   definitionHash,
   electionTransitionAuthority,
+  isRehearsalRoll,
   termsFromResults,
   validateDefinition,
   type Actor,
@@ -24,6 +25,7 @@ import {
 } from 'ustp-domain';
 import type { ApprovalHandler, PreparedDecision } from '../administration/approval-handler.js';
 import { NO_EFFECT } from '../administration/approval-handler.js';
+import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { SECRET_STORE, type SecretStore } from '../infra/secret-store.js';
 import { MembershipService } from '../membership/membership.service.js';
@@ -46,6 +48,7 @@ export class ElectionApprovals implements ApprovalHandler {
     private readonly reader: ElectionReader,
     private readonly membership: MembershipService,
     @Inject(SECRET_STORE) private readonly secrets: SecretStore,
+    @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
   /**
@@ -95,10 +98,12 @@ export class ElectionApprovals implements ApprovalHandler {
       snapshot?.status !== 'pending' ||
       snapshot.electionId !== payload.electionId ||
       snapshot.merkleRoot !== payload.merkleRoot ||
-      snapshot.count !== payload.count
+      snapshot.count !== payload.count ||
+      isRehearsalRoll(snapshot.criteria) !== isRehearsalRoll(payload.criteria)
     ) {
       throw new ConflictException('the roll no longer matches what was requested');
     }
+    this.assertRehearsalAllowed(snapshot);
     await this.assertNotCandidate(tx, payload.electionId, approver.accountId);
     const previous = election.rollSnapshotId && election.rollSnapshotId !== snapshot.snapshotId ? election.rollSnapshotId : null;
     const now = new Date().toISOString();
@@ -140,6 +145,7 @@ export class ElectionApprovals implements ApprovalHandler {
     if (roll?.status !== 'approved' || roll.merkleRoot !== payload.rollMerkleRoot) {
       throw new ConflictException('the voter roll is no longer approved');
     }
+    this.assertRehearsalAllowed(roll);
     await this.assertNotCandidate(tx, payload.electionId, approver.accountId);
     const now = new Date().toISOString();
     return {
@@ -252,6 +258,13 @@ export class ElectionApprovals implements ApprovalHandler {
         });
       },
     };
+  }
+
+  /** A rehearsal roll (test voters only) is approved or scheduled only where testing mode is on (design §10.4). */
+  private assertRehearsalAllowed(roll: RollSnapshotRecord): void {
+    if (isRehearsalRoll(roll.criteria) && !this.config.testingMode) {
+      throw new ForbiddenException('this is a rehearsal roll of test voters only, and testing mode is off on this deployment');
+    }
   }
 
   private async election(tx: Transaction, electionId: string): Promise<ElectionRecord> {

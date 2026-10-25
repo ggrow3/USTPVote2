@@ -1,4 +1,4 @@
-import type { ApprovalRequestRecord, Role } from 'ustp-domain';
+import { isRehearsalRoll, type ApprovalRequestRecord, type Role, type RollCriteria } from 'ustp-domain';
 
 const ROLE_LABELS: Record<Role, string> = {
   membership_admin: 'Membership Admin',
@@ -26,7 +26,9 @@ export function describeRequest(r: ApprovalRequestRecord): string {
     case 'role.revoke':
       return `${p.change} ${String(p.role).replace('_', ' ')}`;
     case 'roll.approve':
-      return `approve the voter roll (${p.count} members)`;
+      return isRehearsalRoll(p.criteria as RollCriteria | undefined)
+        ? `approve a rehearsal roll (${p.count} test voters only)`
+        : `approve the voter roll (${p.count} members)`;
     case 'election.schedule':
       return `schedule the election (definition ${String(p.definitionHash).slice(0, 12)}…)`;
     case 'election.cancel':

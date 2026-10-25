@@ -92,8 +92,9 @@ withheld entries where the record implies them: lifecycle steps, rolls and seale
   Without a deletion entry, a missing record is a failure.
 - **Roll.** A `roll.approved` entry records the published roll (count, Merkle root, as-of time), and the snapshot it
   approved is the one `election.scheduled` names. The roll signature verifies over `rollSigningInput` (JCS of the roll
-  statement). The statement's snapshot and approval IDs come from that ledger entry, and its criteria are
-  `{status: 'active'}`, the only roll there is.
+  statement). The statement's snapshot and approval IDs come from that ledger entry, and so do its criteria:
+  `{status: 'active'}`, or for a rehearsal roll in testing mode `{status: 'active', testVotersOnly: true}`, which the
+  CLI reports as "Rehearsal roll" (the published record must say the same).
 - **Sealed block summaries.** Each summary matches its `ballots.sealed` entry (index, ballot count, Merkle root, sealed
   hash), the entries chain through `prevSealedHash`, and every `ballots.sealed` entry for the election has a summary, so
   the record cannot leave a block out.

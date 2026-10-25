@@ -1,6 +1,6 @@
 import { canonicalBytes, sha256Hex, verifyInclusionHex } from 'ustp-audit';
 import { describe, expect, it } from 'vitest';
-import { rollInclusionProof, rollLeaf, rollMerkleRoot, rollSigningInput, rollStatement, sortRoll } from './roll.js';
+import { isRehearsalRoll, rollInclusionProof, rollLeaf, rollMerkleRoot, rollSigningInput, rollStatement, sortRoll } from './roll.js';
 
 describe('voter roll', () => {
   const members = sortRoll(['c-3', 'a-1', 'b-2', 'a-1']);
@@ -47,5 +47,14 @@ describe('voter roll', () => {
     expect(rollSigningInput({ ...snapshot, count: 4 })).not.toEqual(rollSigningInput(snapshot));
     // Golden value: roll signatures already in the ledger cover exactly these bytes (design §6.3).
     expect(sha256Hex(rollSigningInput(snapshot))).toBe('c72a82a1694be5726bbaff06beeb45ef5e9cca35a2ed3b42f4e338698f37d689');
+  });
+
+  it('signs a rehearsal roll as one, so it cannot pass for a roll of every member', () => {
+    const common = { snapshotId: 's1', electionId: 'e1', asOf: '2026-10-21T12:00:00.000Z', count: 2, merkleRoot: 'r', approvalId: 'a1' };
+    const members = { ...common, criteria: { status: 'active' as const } };
+    const rehearsal = { ...common, criteria: { status: 'active' as const, testVotersOnly: true as const } };
+    expect(rollStatement(rehearsal).criteria).toEqual({ status: 'active', testVotersOnly: true });
+    expect(rollSigningInput(rehearsal)).not.toEqual(rollSigningInput(members));
+    expect([isRehearsalRoll(rehearsal.criteria), isRehearsalRoll(members.criteria), isRehearsalRoll(undefined)]).toEqual([true, false, false]);
   });
 });

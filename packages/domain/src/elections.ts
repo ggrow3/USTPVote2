@@ -1,6 +1,7 @@
 import { hashCanonical } from 'ustp-audit';
 import { validateContestSpec, type ContestSpec } from 'ustp-tally';
 import type { BylawsAmendment } from './amendments.js';
+import type { RollCriteria } from './roll.js';
 import type { ElectionState } from './election-state.js';
 import type { SignatureRecord } from './ledger.js';
 import type { ApprovalRequestRecord } from './records.js';
@@ -73,7 +74,7 @@ export interface BylawsBase {
 export interface RollSnapshotRecord {
   readonly snapshotId: string;
   readonly electionId: string;
-  readonly criteria: { readonly status: 'active' };
+  readonly criteria: RollCriteria;
   readonly asOf: string;
   readonly accountIds: readonly string[];
   readonly count: number;
@@ -95,6 +96,11 @@ export interface RollApprovalPayload {
   readonly snapshotId: string;
   readonly merkleRoot: string;
   readonly count: number;
+  /**
+   * Only on a rehearsal roll (test voters only, design §10.4): the request's payload hash, and the `roll.approved`
+   * ledger entry that copies the payload, then cover it. Normal rolls leave it out, as before.
+   */
+  readonly criteria?: RollCriteria;
 }
 
 export interface SchedulePayload {

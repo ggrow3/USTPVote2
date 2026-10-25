@@ -19,13 +19,25 @@ export function rollMerkleRoot(electionId: string, sortedAccountIds: readonly st
   return merkleRootHex(sortedAccountIds.map((id) => rollLeaf(electionId, id)));
 }
 
+/**
+ * Who a roll holds (design §6.3): every Active member, or, for a rehearsal in testing mode (§10.4), only the Active
+ * test voter personas. A normal roll's criteria are exactly `{status: 'active'}`, as they always were, so the
+ * statements already signed still verify.
+ */
+export type RollCriteria = { readonly status: 'active' } | { readonly status: 'active'; readonly testVotersOnly: true };
+
+/** A rehearsal roll: test voters only, which testing mode alone allows. */
+export function isRehearsalRoll(criteria: RollCriteria | null | undefined): boolean {
+  return !!criteria && 'testVotersOnly' in criteria && criteria.testVotersOnly === true;
+}
+
 /** What the `audit-signing` key signs for an approved roll: JCS of this statement. */
 export interface RollStatement {
   readonly v: 1;
   readonly type: 'roll';
   readonly electionId: string;
   readonly snapshotId: string;
-  readonly criteria: { readonly status: 'active' };
+  readonly criteria: RollCriteria;
   readonly asOf: string;
   readonly count: number;
   readonly merkleRoot: string;

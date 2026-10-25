@@ -71,6 +71,15 @@ export const reasonInputSchema = z.strictObject({
 });
 export type ReasonInput = z.infer<typeof reasonInputSchema>;
 
+/** Who a roll holds: every Active member, or only the test voters (a rehearsal; testing mode only, design §10.4). */
+export const ROLL_VOTERS = ['members', 'test_voters'] as const;
+
+/** `POST /v1/admin/elections/{id}/roll`. */
+export const rollRequestSchema = reasonInputSchema.extend({
+  voters: z.enum(ROLL_VOTERS).default('members'),
+});
+export type RollRequestInput = z.infer<typeof rollRequestSchema>;
+
 export const proposalInputSchema = z.strictObject({
   title,
   body: z.string().trim().min(1, 'enter the proposal text').max(100_000),

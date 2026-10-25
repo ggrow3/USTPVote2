@@ -9,6 +9,7 @@ import {
 } from 'ustp-audit';
 import type { ElectionDefinition, ElectionRecord } from './elections.js';
 import type { SignatureRecord } from './ledger.js';
+import type { RollCriteria } from './roll.js';
 import type { ResultsSummary } from './results.js';
 
 /**
@@ -175,6 +176,8 @@ export interface PublicElection {
   readonly definition: ElectionDefinition;
   readonly roll: {
     readonly snapshotId: string;
+    /** Every Active member, or test voters only for a rehearsal (design §6.3, §10.4). */
+    readonly criteria: RollCriteria;
     readonly count: number;
     readonly merkleRoot: string;
     readonly asOf: string;

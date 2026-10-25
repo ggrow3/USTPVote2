@@ -97,8 +97,8 @@ export type {
   SchedulePayload,
   CancelPayload,
 } from './elections.js';
-export { rollLeaf, sortRoll, rollMerkleRoot, rollInclusionProof, rollStatement, rollSigningInput } from './roll.js';
-export type { RollStatement } from './roll.js';
+export { rollLeaf, sortRoll, rollMerkleRoot, rollInclusionProof, rollStatement, rollSigningInput, isRehearsalRoll } from './roll.js';
+export type { RollCriteria, RollStatement } from './roll.js';
 export * from './election-api.js';
 export { castBallotSchema, ballotProblems, ballotViewProblems, commitmentsOf } from './ballots.js';
 export {

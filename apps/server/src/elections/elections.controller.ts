@@ -5,12 +5,14 @@ import {
   createElectionSchema,
   proposalInputSchema,
   reasonInputSchema,
+  rollRequestSchema,
   updateElectionSchema,
   type CandidateInput,
   type ContestInput,
   type CreateElectionInput,
   type ProposalInput,
   type ReasonInput,
+  type RollRequestInput,
   type UpdateElectionInput,
 } from 'ustp-domain';
 import { Ctx, Roles } from '../auth/decorators.js';
@@ -54,8 +56,8 @@ export class ElectionsController {
 
   /** Snapshot every Active member now; an Auditor must approve it. */
   @Post(':id/roll')
-  requestRoll(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(reasonInputSchema)) body: ReasonInput) {
-    return this.elections.requestRoll(ctx, id, body.reason);
+  requestRoll(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(rollRequestSchema)) body: RollRequestInput) {
+    return this.elections.requestRoll(ctx, id, body.reason, body.voters);
   }
 
   /** Ask an Auditor to freeze the current definition and roll. */

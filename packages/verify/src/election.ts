@@ -2,6 +2,7 @@ import { GENESIS_HASH, verifyEcdsaP256, type BallotPart } from 'ustp-audit';
 import {
   ballotProblems,
   definitionHash,
+  isRehearsalRoll,
   rollSigningInput,
   sealedBlockProblems,
   type ElectionDefinition,
@@ -11,6 +12,7 @@ import {
   type LedgerEventType,
   type PublicElection,
   type PublicLedgerEntry,
+  type RollCriteria,
   type SealedBlockRecord,
   type SigningKeyRecord,
 } from 'ustp-domain';
@@ -191,12 +193,23 @@ export async function rollFindings(
         ];
   }
   const { snapshotId, approvalId } = match.payload;
+  // Who the roll holds comes from the ledger, not the record: every Active member, unless the approval says it was a
+  // rehearsal roll of test voters only (design §6.3, §10.4).
+  const criteria: RollCriteria = isRehearsalRoll(match.payload.criteria as RollCriteria | undefined)
+    ? { status: 'active', testVotersOnly: true }
+    : { status: 'active' };
   const scheduledSnapshot = mine.find((x) => x.type === 'election.scheduled')?.payload.rollSnapshotId;
   const findings: Finding[] = [
     scheduledSnapshot !== undefined && scheduledSnapshot !== snapshotId
       ? fail(entryLabel, `election.scheduled names roll snapshot ${String(scheduledSnapshot)}; entry ${match.seq} approved ${String(snapshotId)}`)
       : pass(entryLabel, `entry ${match.seq}: ${roll.count} voters as of ${roll.asOf}, root ${roll.merkleRoot}`),
   ];
+  if (isRehearsalRoll(criteria)) {
+    findings.push(info('Rehearsal roll', 'test voters only, as testing mode allows: this election is a rehearsal, not a real vote'));
+  }
+  if (isRehearsalRoll(roll.criteria) !== isRehearsalRoll(criteria)) {
+    findings.push(fail('The published roll criteria match the ledger', `entry ${match.seq} and the record disagree on whether this is a rehearsal roll`));
+  }
 
   if (!roll.signature) {
     findings.push(pending(signatureLabel, 'not signed yet: the worker signs approved rolls within a minute'));
@@ -208,8 +221,7 @@ export async function rollFindings(
   } else if (typeof snapshotId !== 'string' || typeof approvalId !== 'string') {
     findings.push(fail(signatureLabel, `entry ${match.seq} lacks the snapshot or approval ID`));
   } else {
-    // The roll statement's criteria are fixed: Active members (the only roll there is, design §6.3).
-    const statement = { electionId: election.electionId, snapshotId, criteria: { status: 'active' as const }, asOf: roll.asOf, count: roll.count, merkleRoot: roll.merkleRoot, approvalId };
+    const statement = { electionId: election.electionId, snapshotId, criteria, asOf: roll.asOf, count: roll.count, merkleRoot: roll.merkleRoot, approvalId };
     const ok = await verifyEcdsaP256(key.publicKeyPem, rollSigningInput(statement), roll.signature.signature);
     findings.push(
       ok

@@ -9,6 +9,8 @@ const defaults = {
   APP_CHECK_ENFORCED: 'false',
   ADMIN_MFA_REQUIRED: process.argv.includes('--require-mfa') ? 'true' : 'false',
   BOOTSTRAP_SYSTEM_ADMIN_EMAILS: 'admin1@example.test,admin2@example.test',
+  // Test personas and rehearsals (design §10.4); the emulators always allow them.
+  TESTING_MODE: 'true',
 };
 for (const [key, value] of Object.entries(defaults)) process.env[key] ??= value;
 

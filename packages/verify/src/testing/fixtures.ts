@@ -84,6 +84,8 @@ export interface WorldOptions {
   /** Voting has closed and everything is sealed (default true); otherwise it is open with two ballots in the pool. */
   readonly closed?: boolean;
   readonly secrecy?: 'secret' | 'open';
+  /** The roll is a rehearsal roll: test voters only (design §10.4). */
+  readonly rehearsal?: boolean;
 }
 
 export interface World {
@@ -139,9 +141,8 @@ export async function buildWorld(options: WorldOptions = {}): Promise<World> {
 
   const accounts = ['acct-1', 'acct-2', 'acct-3', 'acct-4', 'acct-5', 'acct-6'];
   const roll = { snapshotId: 'snapshot-1', approvalId: 'approval-1', asOf: at(1), count: accounts.length, merkleRoot: rollMerkleRoot(ELECTION_ID, accounts) };
-  const rollSignature = await signer.sign(
-    rollSigningInput({ electionId: ELECTION_ID, criteria: { status: 'active' }, ...roll }),
-  );
+  const criteria = options.rehearsal ? ({ status: 'active', testVotersOnly: true } as const) : ({ status: 'active' } as const);
+  const rollSignature = await signer.sign(rollSigningInput({ electionId: ELECTION_ID, criteria, ...roll }));
 
   const choices: [string, string[]][] = [['yes', ['ca']], ['no', ['cb']], ['yes', ['ca']], ['abstain', ['cc']]];
   const ballots: SealableBallot[] = choices.map(([plank, chair], i) => ({
@@ -180,7 +181,15 @@ export async function buildWorld(options: WorldOptions = {}): Promise<World> {
 
   record('member.status_changed', 0, { status: 'active' }, 'acct-1');
   record('member.status_changed', 0, { status: 'active' }, 'acct-2');
-  record('roll.approved', 2, { electionId: ELECTION_ID, snapshotId: roll.snapshotId, merkleRoot: roll.merkleRoot, count: roll.count, asOf: roll.asOf, approvalId: roll.approvalId });
+  record('roll.approved', 2, {
+    electionId: ELECTION_ID,
+    snapshotId: roll.snapshotId,
+    merkleRoot: roll.merkleRoot,
+    count: roll.count,
+    ...(options.rehearsal && { criteria }),
+    asOf: roll.asOf,
+    approvalId: roll.approvalId,
+  });
   record('approval.decided', 3, { decision: 'approve' }, 'approval-2');
   const tieBreakSeedCommitment = sha256Hex('tie-break seed');
   record('election.scheduled', 3, {
@@ -253,7 +262,7 @@ export async function buildWorld(options: WorldOptions = {}): Promise<World> {
       cancelledAt: null,
     },
     definition,
-    roll: { snapshotId: roll.snapshotId, count: roll.count, merkleRoot: roll.merkleRoot, asOf: roll.asOf, signature: rollSignature },
+    roll: { snapshotId: roll.snapshotId, criteria, count: roll.count, merkleRoot: roll.merkleRoot, asOf: roll.asOf, signature: rollSignature },
     sealedBlocks: summaries,
     ballotsSealed: summaries.reduce((n, b) => n + b.ballotCount, 0),
     results: null,

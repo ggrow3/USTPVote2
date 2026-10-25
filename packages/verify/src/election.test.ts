@@ -7,8 +7,14 @@ import { buildWorld, ELECTION_ID, makeSigner, publicEntries, type World } from '
 let closed: World;
 let open: World;
 let rollCall: World;
+let rehearsal: World;
 beforeAll(async () => {
-  [closed, open, rollCall] = await Promise.all([buildWorld(), buildWorld({ closed: false }), buildWorld({ secrecy: 'open' })]);
+  [closed, open, rollCall, rehearsal] = await Promise.all([
+    buildWorld(),
+    buildWorld({ closed: false }),
+    buildWorld({ secrecy: 'open' }),
+    buildWorld({ rehearsal: true }),
+  ]);
 });
 
 function evidence(w: World, change: Partial<ElectionEvidence> = {}): ElectionEvidence {
@@ -32,6 +38,21 @@ describe('a published election', () => {
     expect(findings.filter((f) => f.status === 'pending')).toEqual([]);
     expect(findings.map((f) => f.status).filter((s) => s === 'pass')).toHaveLength(8);
     expect(statusOf(findings, 'The roll signature verifies')).toBe('pass');
+  });
+
+  it('verifies a rehearsal roll by the criteria its approval records, and says it is a rehearsal', async () => {
+    const findings = await checkElection(evidence(rehearsal));
+    expect(failed(findings)).toEqual([]);
+    expect(statusOf(findings, 'The roll signature verifies')).toBe('pass');
+    expect(findings.find((f) => f.label === 'Rehearsal roll')).toMatchObject({ status: 'info', detail: expect.stringMatching(/test voters only/) });
+    expect((await checkElection(evidence(closed))).some((f) => f.label === 'Rehearsal roll')).toBe(false);
+  });
+
+  it('catches a record that misstates who its roll holds', async () => {
+    const hidden = await checkElection(withRecord(rehearsal, (r) => ({ ...r, roll: { ...r.roll!, criteria: { status: 'active' } } })));
+    expect(failed(hidden)).toEqual(['The published roll criteria match the ledger']);
+    const claimed = await checkElection(withRecord(closed, (r) => ({ ...r, roll: { ...r.roll!, criteria: { status: 'active', testVotersOnly: true } } })));
+    expect(failed(claimed)).toEqual(['The published roll criteria match the ledger']);
   });
 
   it('verifies what it can while open and waits for the contents', async () => {
