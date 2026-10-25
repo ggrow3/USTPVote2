@@ -1,9 +1,11 @@
 import { sha256Hex } from 'ustp-audit';
 import { describe, expect, it } from 'vitest';
 import {
+  amendingContests,
   amendmentConflicts,
   amendmentDiff,
   amendmentFromTexts,
+  amendmentProblems,
   amendmentText,
   applyAmendment,
   applyAmendments,
@@ -176,6 +178,46 @@ describe('applying several amendments', () => {
       expect(applyAmendments(big, list)).toEqual({ ok: true, text: bottomUp.join('\n') });
       expect(applyAmendments(big, [...list].reverse())).toEqual({ ok: true, text: bottomUp.join('\n') });
     }
+  });
+});
+
+describe('the amendments of one election', () => {
+  const contest = (contestId: string, amendment: BylawsAmendment) => ({ contestId, title: `Amend ${contestId}`, amendment });
+
+  it('finds the contests that amend the bylaws, in ballot order', () => {
+    const amendment = amend(replace(3, 3, ['x']));
+    const definition = {
+      contests: [
+        { contestId: 'b', title: 'B', proposal: { snapshotId: 'p2', title: 'P2', contentHash: 'h2' } },
+        { contestId: 'a', title: 'A', proposal: { snapshotId: 'p1', title: 'P1', contentHash: 'h1' } },
+        { contestId: 'c', title: 'C', proposal: null },
+      ],
+    } as never;
+    const proposals = [
+      { snapshotId: 'p1', amendment },
+      { snapshotId: 'p2', amendment: null },
+    ] as never;
+    expect(amendingContests(definition, proposals)).toEqual([{ contestId: 'a', title: 'A', amendment }]);
+  });
+
+  it('need the current version, one base, quotes that still match, and no conflicts', () => {
+    const ok = [contest('name', amend(replace(3, 3, ['x']))), contest('members', amend(replace(4, 4, ['y'])))];
+    expect(amendmentProblems([], null)).toEqual([]);
+    expect(amendmentProblems(ok, base)).toEqual([]);
+    expect(amendmentProblems(ok, null)).toEqual(['no bylaws are published, so there is nothing to amend']);
+    expect(amendmentProblems(ok, { ...base, version: '2026.2' })).toEqual([
+      'the proposals amend bylaws version 2026.1, but version 2026.2 is current; write them again against it',
+    ]);
+    const other = { ...amend(replace(3, 3, ['x'])), base: { version: '2025.9', contentHash: base.contentHash } };
+    expect(amendmentProblems([...ok, contest('old', other)], base)).toEqual([
+      'the proposals amend different bylaws versions (2026.1, 2025.9); one election amends one version',
+    ]);
+    expect(amendmentProblems([...ok, contest('again', amend(remove(3, 4)))], base)).toEqual([
+      '"Amend name" and "Amend again" change the same lines',
+      '"Amend members" and "Amend again" change the same lines',
+    ]);
+    const edited = { ...base, text: text.replace('Article II', 'Part II') };
+    expect(amendmentProblems(ok, edited)).toEqual([expect.stringMatching(/"Amend members", change 1: line 4 no longer read as quoted/)]);
   });
 });
 

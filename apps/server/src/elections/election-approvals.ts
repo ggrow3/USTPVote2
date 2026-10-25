@@ -3,6 +3,8 @@ import { ConflictException, ForbiddenException, Inject, Injectable, InternalServ
 import type { Transaction } from 'firebase-admin/firestore';
 import { seedCommitment } from 'ustp-audit';
 import {
+  amendingContests,
+  amendmentProblems,
   Collections,
   definitionHash,
   electionTransitionAuthority,
@@ -24,6 +26,7 @@ import type { ApprovalHandler, PreparedDecision } from '../administration/approv
 import { NO_EFFECT } from '../administration/approval-handler.js';
 import { Firebase } from '../infra/firebase.js';
 import { SECRET_STORE, type SecretStore } from '../infra/secret-store.js';
+import { MembershipService } from '../membership/membership.service.js';
 import { ElectionReader } from './election-reader.js';
 
 interface PreparedSeed {
@@ -41,6 +44,7 @@ export class ElectionApprovals implements ApprovalHandler {
   constructor(
     private readonly firebase: Firebase,
     private readonly reader: ElectionReader,
+    private readonly membership: MembershipService,
     @Inject(SECRET_STORE) private readonly secrets: SecretStore,
   ) {}
 
@@ -122,12 +126,14 @@ export class ElectionApprovals implements ApprovalHandler {
     seed: PreparedSeed,
   ): Promise<PreparedDecision> {
     const payload = request.payload as unknown as SchedulePayload;
-    const { election, definition } = await this.reader.load(payload.electionId, tx);
+    const { election, definition, proposals } = await this.reader.load(payload.electionId, tx);
     if (election.state !== 'draft') throw new ConflictException(`the election is already ${election.state}`);
     if (definitionHash(definition) !== payload.definitionHash) {
       throw new ConflictException('the election changed after scheduling was requested; request scheduling again');
     }
-    const problems = validateDefinition(definition);
+    // The bylaws may have been republished since the request: amendments must still fit the current version.
+    const amending = amendingContests(definition, proposals);
+    const problems = [...validateDefinition(definition), ...amendmentProblems(amending, await this.membership.currentBylaws(tx))];
     if (problems.length) throw new ConflictException(`not ready to schedule: ${problems.join('; ')}`);
     if (election.rollSnapshotId !== payload.rollSnapshotId) throw new ConflictException('the voter roll changed since the request');
     const roll = (await tx.get(this.snapshotRef(payload.rollSnapshotId))).data() as RollSnapshotRecord | undefined;
@@ -158,6 +164,7 @@ export class ElectionApprovals implements ApprovalHandler {
           definitionHash: payload.definitionHash,
           tieBreakSeedCommitment: seed.commitment,
           tieBreakSeedRef: seed.seedRef,
+          amendsBylaws: amending[0] ? { ...amending[0].amendment.base } : null,
           scheduledAt: now,
           updatedAt: now,
         }),

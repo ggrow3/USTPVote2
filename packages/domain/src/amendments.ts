@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { bylawsVersionSchema, hex32Schema } from './api.js';
+import type { ElectionDefinition, ProposalSnapshotRecord } from './elections.js';
 import type { BylawsRecord } from './records.js';
 import { diffLines, splitLines, type DiffLine } from './text-diff.js';
 
@@ -220,6 +221,40 @@ export function applyAmendments(base: AmendmentBase, list: readonly NamedAmendme
 /** `base` with one amendment applied; see `applyAmendments`. */
 export function applyAmendment(base: AmendmentBase, amendment: BylawsAmendment): AmendmentResult {
   return applyAmendments(base, [{ id: 'the amendment', amendment }]);
+}
+
+/** A proposal contest whose text amends the bylaws. */
+export interface AmendingContest {
+  readonly contestId: string;
+  readonly title: string;
+  readonly amendment: BylawsAmendment;
+}
+
+/** The contests of a definition that amend the bylaws, with their amendments, in ballot order. */
+export function amendingContests(definition: ElectionDefinition, proposals: readonly ProposalSnapshotRecord[]): AmendingContest[] {
+  return definition.contests.flatMap((c) => {
+    const amendment = c.proposal && proposals.find((p) => p.snapshotId === c.proposal!.snapshotId)?.amendment;
+    return amendment ? [{ contestId: c.contestId, title: c.title, amendment }] : [];
+  });
+}
+
+/**
+ * Why an election's bylaws amendments cannot go to a vote (design §6.6): they must all amend one version, which must be
+ * the current one, every change must still fit it, and no two may conflict. Empty when the election amends nothing.
+ */
+export function amendmentProblems(contests: readonly AmendingContest[], current: AmendmentBase | null): string[] {
+  if (!contests.length) return [];
+  const versions = [...new Set(contests.map((c) => c.amendment.base.version))];
+  if (versions.length > 1) return [`the proposals amend different bylaws versions (${versions.join(', ')}); one election amends one version`];
+  if (!current) return ['no bylaws are published, so there is nothing to amend'];
+  if (versions[0] !== current.version) {
+    return [`the proposals amend bylaws version ${versions[0]}, but version ${current.version} is current; write them again against it`];
+  }
+  const result = applyAmendments(
+    current,
+    contests.map((c) => ({ id: `"${c.title}"`, amendment: c.amendment })),
+  );
+  return result.ok ? [] : [...result.problems];
 }
 
 /**

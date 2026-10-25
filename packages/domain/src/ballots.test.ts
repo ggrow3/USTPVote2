@@ -1,7 +1,8 @@
 import { ballotPartCommitment, newSalt, type BallotPart } from 'ustp-audit';
 import { describe, expect, it } from 'vitest';
-import { ballotProblems, castBallotSchema, commitmentsOf } from './ballots.js';
-import type { ElectionDefinition } from './elections.js';
+import { bylawsAmendmentSchema } from './amendments.js';
+import { ballotProblems, ballotViewProblems, castBallotSchema, commitmentsOf } from './ballots.js';
+import { definitionHash, proposalContentHash, type ElectionDefinition } from './elections.js';
 
 const MAJORITY = { threshold: { ratio: { num: 1, den: 2 }, comparison: 'gt' as const }, base: 'yes_no' as const };
 
@@ -51,6 +52,42 @@ const part = (contestId: string, selection: unknown, electionId = 'e1'): BallotP
   contestId,
   selection,
   salt: newSalt(),
+});
+
+describe('the ballot page check', () => {
+  const amendment = bylawsAmendmentSchema.parse({
+    v: 1,
+    base: { version: '2026.1', contentHash: 'b'.repeat(64) },
+    changes: [{ op: 'replace', from: 2, to: 2, expect: ['Membership is open to all.'], lines: ['Membership is open to every adult.'] }],
+  });
+  const text = { snapshotId: 'p1', title: 'Plank 12', body: 'Why.', amendment, contentHash: proposalContentHash('Plank 12', 'Why.', amendment) };
+  const amending: ElectionDefinition = {
+    ...definition,
+    contests: definition.contests.map((c) =>
+      c.proposal ? { ...c, proposal: { ...c.proposal, contentHash: text.contentHash, amendsBylaws: amendment.base } } : c,
+    ),
+  };
+  const view = (def: ElectionDefinition, proposals: (typeof text)[]) => ({ definition: def, definitionHash: definitionHash(def), proposals });
+
+  it('accepts the frozen definition with the texts and bylaws lines it commits to', () => {
+    expect(ballotViewProblems(view(amending, [text]))).toEqual([]);
+  });
+
+  it('names a definition that was altered, and a text or bylaws line that differs', () => {
+    expect(ballotViewProblems({ ...view(amending, [text]), definitionHash: 'f'.repeat(64) })).toEqual([
+      'the ballot is not the definition frozen at scheduling',
+    ]);
+    const changed = { ...amendment, changes: [{ ...amendment.changes[0]!, lines: ['Membership is closed.'] }] } as typeof amendment;
+    expect(ballotViewProblems(view(amending, [{ ...text, amendment: changed }]))).toEqual([
+      'the text of "Plank 12" is not the one the definition commits to',
+    ]);
+    expect(ballotViewProblems(view(amending, []))).toEqual(['the text of "Plank 12" is not the one the definition commits to']);
+    const otherBase = {
+      ...amending,
+      contests: amending.contests.map((c) => (c.proposal ? { ...c, proposal: { ...c.proposal, amendsBylaws: { version: '2026.2', contentHash: 'c'.repeat(64) } } } : c)),
+    };
+    expect(ballotViewProblems(view(otherBase, [text]))).toEqual(['"Plank 12" amends a different bylaws version than the definition names']);
+  });
 });
 
 describe('ballot checks', () => {

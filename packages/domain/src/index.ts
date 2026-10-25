@@ -12,12 +12,15 @@ export {
   bylawsAmendmentSchema,
   applyAmendment,
   applyAmendments,
+  amendingContests,
+  amendmentProblems,
   amendmentConflicts,
   amendmentDiff,
   amendmentText,
   amendmentFromTexts,
 } from './amendments.js';
 export type {
+  AmendingContest,
   AmendmentBase,
   AmendmentChange,
   AmendmentConflict,
@@ -85,6 +88,7 @@ export type {
   ContestRecord,
   CandidateRecord,
   ProposalSnapshotRecord,
+  BylawsBase,
   ElectionDefinition,
   ElectionDetail,
   RollSnapshotRecord,
@@ -96,7 +100,7 @@ export type {
 export { rollLeaf, sortRoll, rollMerkleRoot, rollInclusionProof, rollStatement, rollSigningInput } from './roll.js';
 export type { RollStatement } from './roll.js';
 export * from './election-api.js';
-export { castBallotSchema, ballotProblems, commitmentsOf } from './ballots.js';
+export { castBallotSchema, ballotProblems, ballotViewProblems, commitmentsOf } from './ballots.js';
 export {
   buildSealedBlock,
   sealedBlockBody,

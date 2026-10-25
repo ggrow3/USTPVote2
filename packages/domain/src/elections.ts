@@ -1,5 +1,6 @@
 import { hashCanonical } from 'ustp-audit';
 import { validateContestSpec, type ContestSpec } from 'ustp-tally';
+import type { BylawsAmendment } from './amendments.js';
 import type { ElectionState } from './election-state.js';
 import type { SignatureRecord } from './ledger.js';
 import type { ApprovalRequestRecord } from './records.js';
@@ -52,6 +53,17 @@ export interface ElectionRecord {
   readonly certifiedAt: string | null;
   /** Set once the worker has destroyed the ballot-pool key version (certified or cancelled, design §7.3). */
   readonly poolKeyDestroyedAt: string | null;
+  /**
+   * Set when scheduled: the bylaws version its proposals amend (design §6.6), or null when none does. While the election
+   * is scheduled, open or closed, that version stays current. Absent on elections scheduled before amendments.
+   */
+  readonly amendsBylaws?: BylawsBase | null;
+}
+
+/** A published bylaws version, by name and the hash of its text. */
+export interface BylawsBase {
+  readonly version: string;
+  readonly contentHash: string;
 }
 
 /**
@@ -129,14 +141,20 @@ export interface ProposalSnapshotRecord {
   readonly body: string;
   /** Where it came from (URL, forum post, minutes), if anywhere. */
   readonly source: string | null;
-  /** H(JCS({v: 1, title, body})). */
+  /** The bylaws lines it changes (design §6.6). Absent or null for any other proposal. */
+  readonly amendment?: BylawsAmendment | null;
+  /** `proposalContentHash(title, body, amendment)`. */
   readonly contentHash: string;
   readonly capturedAt: string;
   readonly capturedBy: string;
 }
 
-export function proposalContentHash(title: string, body: string): string {
-  return hashCanonical({ v: 1, title, body });
+/**
+ * H(JCS({v: 1, title, body})), or for a bylaws amendment H(JCS({v: 2, title, body, amendment})), so the hash a voter
+ * checks covers the exact lines changed. Proposals without an amendment keep their v1 hash.
+ */
+export function proposalContentHash(title: string, body: string, amendment?: BylawsAmendment | null): string {
+  return amendment ? hashCanonical({ v: 2, title, body, amendment }) : hashCanonical({ v: 1, title, body });
 }
 
 /** Everything a voter's ballot and the tally depend on, in canonical order. Its hash is what scheduling freezes. */
@@ -154,7 +172,13 @@ export interface ElectionDefinition {
     readonly title: string;
     readonly description: string;
     readonly spec: ContestSpec;
-    readonly proposal: { readonly snapshotId: string; readonly title: string; readonly contentHash: string } | null;
+    readonly proposal: {
+      readonly snapshotId: string;
+      readonly title: string;
+      readonly contentHash: string;
+      /** The bylaws version the proposal amends (design §6.6). Present only on amendments, so other hashes are unchanged. */
+      readonly amendsBylaws?: BylawsBase;
+    } | null;
     readonly candidates: readonly { readonly candidateId: string; readonly name: string; readonly statement: string | null }[];
     /** The office the contest fills, frozen with the rest (design §6.4); null when none. */
     readonly positionId: string | null;
@@ -186,7 +210,14 @@ export function buildDefinition(
         title: c.title,
         description: c.description,
         spec: c.spec,
-        proposal: proposal ? { snapshotId: proposal.snapshotId, title: proposal.title, contentHash: proposal.contentHash } : null,
+        proposal: proposal
+          ? {
+              snapshotId: proposal.snapshotId,
+              title: proposal.title,
+              contentHash: proposal.contentHash,
+              ...(proposal.amendment && { amendsBylaws: { ...proposal.amendment.base } }),
+            }
+          : null,
         candidates: candidates
           .filter((k) => k.contestId === c.contestId)
           .sort((a, b) => position(a) - position(b) || a.candidateId.localeCompare(b.candidateId))

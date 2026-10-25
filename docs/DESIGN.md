@@ -249,7 +249,8 @@ Every transition writes, in one transaction, the new status on `members/{account
   as "Article IV." or "2.3", so the text keeps it), or blank; edits it line by line or as a whole; reviews a line
   diff against the current version; and publishes it with a change note. The version records `amends` (the version it
   started from) and the api refuses it unless that is still the current version, so two drafts cannot silently
-  overwrite each other; `bylaws.published` ledgers `amends` too.
+  overwrite each other; `bylaws.published` ledgers `amends` too. While an election whose proposals amend the current
+  version (§6.6) is scheduled, open or closed, publishing is refused (409) until it is certified or cancelled.
 - Any version can be downloaded as a stamped Word copy for passing around: a stamp block (party, title, version,
   publish date, amended version, change note, SHA-256 of the text, where to check it), the version and hash in every
   page header, and "page X of Y". The public page `/bylaws/{version}` shows the text, hash, change note and changes
@@ -519,7 +520,8 @@ worker got to it is still signed, since it was approved.
 ### 6.4 Proposals and positions
 
 - `proposal_snapshots` freeze the exact title and text of a proposal with its content hash
-  `H(JCS({v: 1, title, body}))`; they are immutable, and a proposal contest points at one. V1 enters proposals in the
+  `H(JCS({v: 1, title, body}))`, or for a bylaws amendment `H(JCS({v: 2, title, body, amendment}))` (§6.6); they are
+  immutable, and a proposal contest points at one. V1 enters proposals in the
   admin console; an external source is Q6. The review that admits a text to the ballot is the Auditor's approval of
   the scheduling request, which covers the whole definition including every proposal's content hash; a separate
   `proposal_reviews` collection is not used.
@@ -594,13 +596,32 @@ and amended line numbers and optional context; `amendmentText` says it in words 
 printed copies, screen readers and the verify CLI; `amendmentFromTexts` turns an edited copy of the base into an
 amendment, one change per run of changed lines.
 
-*Implemented so far:* the format and these functions, with tests. *Planned (in order):* a proposal snapshot may carry
-an amendment, hashed with it (`{v: 2, title, body, amendment}`; proposals without one keep the v1 hash), with the
-definition naming the base; the base must be the current version when the proposal is written and when the election is
-scheduled, conflicting amendments cannot share an election, and the bylaws cannot be republished while such an election
-is under way; the ballot page shows the changes and checks their hash; after certification the passed amendments give
-the amended text (its hash in the `results.certified` entry), downloadable as a draft .docx and published as the next
-version by a Membership Admin; the verify CLI recomputes it.
+**In the record:**
+
+- **The proposal** (`POST /v1/admin/proposals` with `amendment`) is a snapshot like any other, with the amendment
+  stored on it and hashed with it: `H(JCS({v: 2, title, body, amendment}))`. `body` gives the reasons. Proposals
+  without an amendment keep the v1 hash, and their snapshots have no `amendment` field.
+- **The definition** names the base on the contest's proposal entry, `amendsBylaws: {version, contentHash}`. The key
+  is present only on amendments, so every other definition hashes exactly as before; a golden test pins one.
+- **The base must be current and the amendments must fit**, checked at each step:
+  - writing the proposal: the base version exists, is the current one and every change fits it (400/409 otherwise);
+  - adding or changing a contest that puts an amendment to the vote: the election's amendments share one base, it is
+    current, their quotes still match, and none conflict (409 naming the contests);
+  - the draft's `problems` list the same, so the editor shows them;
+  - the scheduling request, and the Auditor's approval, which reads the current version again inside its
+    transaction: the bylaws can change between request and approval, since a draft does not hold them.
+- **Scheduling records the base** on the election (`amendsBylaws`, null when nothing is amended). While the election
+  is scheduled, open or closed, publishing a new bylaws version is refused (409), so the lines members vote on stay
+  the lines in force; certifying or cancelling it releases them.
+- **The ballot** (`GET /v1/elections/{id}/ballot`) carries each proposal's amendment. The ballot page checks it with
+  `ballotViewProblems`: the definition hash, each proposal's hash (v2 with the amendment) and that the amendment's
+  base is the one the definition names; it lists any failure and blocks casting. It shows each amendment's changes in
+  words (`amendmentText`) above the reasons, and the election editor shows them on the contest.
+
+*Planned (in order):* after certification the passed amendments give the amended text (its hash in the
+`results.certified` entry), downloadable as a draft .docx and published as the next version by a Membership Admin;
+the verify CLI recomputes it; an editor for writing amendments line by line, with the changes shown as a line diff
+and downloadable as JSON and .docx.
 
 ## 7. Ballot casting and secrecy
 
@@ -732,6 +753,9 @@ already created are skipped.
 
 ### 7.5 Receipts and voter verification
 
+- Before anything is cast, the ballot page checks in the browser that the ballot is the definition frozen at
+  scheduling and that every proposal text, with any bylaws lines it changes, is the one the definition commits to
+  (`ballotViewProblems` in `ustp-domain`; §6.6). A failure is listed and casting is blocked.
 - The browser computes each part's commitment *before* sending, so the voter does not have to trust the server's
   echo, and shows whether the server's commitments match. The receipt (`BallotReceipt`: election, definition hash,
   cast time, the parts with their salts, the commitments) can be downloaded as a file, and kept in browser storage only
@@ -1065,14 +1089,14 @@ registration collections are top-level and election data lives under each electi
 | `position_terms/{termId}` | auto | created by certification; ended two-person | holder, contest, start/end, results hash, status |
 | `eligibility_snapshots/{snapshotId}` | auto | immutable once approved; deleted with its election (§6.1) | criteria, count, Merkle root, signature |
 | **voting** | | | |
-| `elections/{electionId}` | UUIDv7 | state transitions; deleted with everything under it if cancelled with no ballot cast (§6.1) | definition, definitionHash, seed commitment, k |
+| `elections/{electionId}` | UUIDv7 | state transitions; deleted with everything under it if cancelled with no ballot cast (§6.1) | definition, definitionHash, seed commitment, k; `amendsBylaws` once scheduled (§6.6) |
 | `elections/{id}/contests/{contestId}` | slug | frozen at schedule | contest spec (`ustp-tally` type) |
 | `elections/{id}/candidates/{candidateId}` | slug | frozen at schedule | contestId, display data, optional accountId |
 | `elections/{id}/roll_entries/{accountId}` | accountId | immutable | snapshotId |
 | `elections/{id}/participation/{accountId}` | accountId | create-only | castAt; open mode: parts |
 | `elections/{id}/ballot_pool/{randomId}` | random | create, delete by sealer | ciphertext only |
 | `elections/{id}/sealed_blocks/{index}` | zero-padded integer | immutable | parts by contest, Merkle root, `sealedHash`, sorted commitments, ledger seq |
-| `proposal_snapshots/{snapshotId}` | auto | immutable | text, content hash, source |
+| `proposal_snapshots/{snapshotId}` | auto | immutable | text, content hash, source; `amendment` for a bylaws amendment (§6.6) |
 | `proposal_reviews/{reviewId}` | auto | immutable | decision, reviewer |
 | `results/{electionId}` | electionId | provisional → certified | bundle, hash, signature, ledger seq |
 | **audit & admin** | | | |
@@ -1117,7 +1141,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /public/elections/{id}/proofs/{commitment}` | P | inclusion proof for a receipt |
 | `GET /public/ledger/blocks` (paged) · `.../blocks/{index}` · `.../keys` · `GET /public/anchors/latest` | P | signed ledger blocks, signing keys, anchors |
 | `GET /public/ledger/entries/{seq}` | P | a public entry with its block and inclusion proof |
-| `POST /admin/bylaws` | Membership Admin | publish a bylaws version; `amends` must name the current version (409 otherwise) |
+| `POST /admin/bylaws` | Membership Admin | publish a bylaws version; `amends` must name the current version, and no election amending it may be scheduled, open or closed (409 otherwise, §6.6) |
 | `POST /admin/bylaws/checks` · `GET /admin/bylaws/checks/{checkId}` | Membership Admin | queue the advisory bylaws check of a draft (202; 409 while the admin's last one runs, 429 past 20 a day, 503 when off); read it until done (§5.4) |
 | `GET /admin/applications` · `POST /admin/applications/{id}/decision` | Membership Admin | registration triage |
 | `GET /admin/members` · `GET /admin/members/{accountId}/history` | Membership Admin | member list (paged), status history |

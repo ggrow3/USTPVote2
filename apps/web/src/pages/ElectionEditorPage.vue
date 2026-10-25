@@ -3,6 +3,7 @@ import { useQuasar } from 'quasar';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
+  amendmentText,
   candidateInputSchema,
   checkElectionDeletable,
   updateElectionSchema,
@@ -442,6 +443,10 @@ onMounted(load);
           <q-expansion-item v-if="c.spec.kind === 'proposal'" dense :label="proposalOf(c) ? `Text: ${proposalOf(c)!.title}` : 'No text attached'">
             <q-card-section v-if="proposalOf(c)">
               <div style="white-space: pre-wrap">{{ proposalOf(c)!.body }}</div>
+              <div v-if="proposalOf(c)!.amendment" class="q-mt-sm">
+                <div class="text-weight-medium">Changes to the bylaws, version {{ proposalOf(c)!.amendment!.base.version }}</div>
+                <div class="ustp-amendment q-mt-xs">{{ amendmentText(proposalOf(c)!.amendment!) }}</div>
+              </div>
               <div class="text-caption text-grey-7 q-mt-sm">Content hash <code>{{ proposalOf(c)!.contentHash }}</code></div>
             </q-card-section>
           </q-expansion-item>

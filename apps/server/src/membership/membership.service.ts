@@ -15,6 +15,7 @@ import {
   type BylawsVersionSummary,
   type CreateApplicationInput,
   type DecisionInput,
+  type ElectionRecord,
   type MemberRecord,
   type MemberStatus,
   type MemberStatusInput,
@@ -47,9 +48,17 @@ export class MembershipService {
     private readonly ledger: LedgerService,
   ) {}
 
-  async currentBylaws(): Promise<BylawsRecord | null> {
-    const snap = await this.currentBylawsQuery().get();
+  /** The newest published version; read in `tx` when given, so it cannot change before the transaction commits. */
+  async currentBylaws(tx?: Transaction): Promise<BylawsRecord | null> {
+    const snap = await (tx ? tx.get(this.currentBylawsQuery()) : this.currentBylawsQuery().get());
     return (snap.docs[0]?.data() as BylawsRecord | undefined) ?? null;
+  }
+
+  /** A published version by name, or null. */
+  async bylawsRecord(version: string, tx?: Transaction): Promise<BylawsRecord | null> {
+    const ref = this.firebase.db.collection(Collections.bylawsVersions).doc(version);
+    const snap = await (tx ? tx.get(ref) : ref.get());
+    return (snap.data() as BylawsRecord | undefined) ?? null;
   }
 
   /** Every published version without its text, newest first. */
@@ -94,6 +103,17 @@ export class MembershipService {
             ? `version ${current.version} is the current bylaws; start the new version from it`
             : 'no bylaws have been published yet, so there is nothing to amend',
         );
+      }
+      // An election amending the current version holds it until certified or cancelled (design §6.6), so the lines
+      // members vote on stay the lines in force.
+      if (current) {
+        const amending = await tx.get(this.firebase.db.collection(Collections.elections).where('amendsBylaws.version', '==', current.version));
+        const underWay = amending.docs.map((d) => d.data() as ElectionRecord).find((e) => ['scheduled', 'open', 'closed'].includes(e.state));
+        if (underWay) {
+          throw new ConflictException(
+            `the election "${underWay.title}" amends version ${current.version} and is ${underWay.state}; publish once it is certified or cancelled`,
+          );
+        }
       }
       await this.ledger.record(tx, [
         {

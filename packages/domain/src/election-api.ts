@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { bylawsAmendmentSchema } from './amendments.js';
 import { DEFAULT_K_ANONYMITY, MIN_K_ANONYMITY, SECRECY_MODES } from './elections.js';
 
 /** Election setup request bodies (design §6, §12), shared by the API and the web app. */
@@ -74,5 +75,7 @@ export const proposalInputSchema = z.strictObject({
   title,
   body: z.string().trim().min(1, 'enter the proposal text').max(100_000),
   source: z.string().trim().max(2000).optional(),
+  /** The bylaws lines it changes (design §6.6); `body` then gives the reasons. */
+  amendment: bylawsAmendmentSchema.optional(),
 });
 export type ProposalInput = z.infer<typeof proposalInputSchema>;

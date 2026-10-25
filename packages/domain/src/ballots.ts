@@ -1,8 +1,9 @@
 import { ballotPartCommitment, type BallotPart } from 'ustp-audit';
 import { validateSelection } from 'ustp-tally';
 import { z } from 'zod';
+import type { BylawsAmendment } from './amendments.js';
 import type { ElectionState } from './election-state.js';
-import type { ElectionDefinition, Secrecy } from './elections.js';
+import { definitionHash, proposalContentHash, type ElectionDefinition, type Secrecy } from './elections.js';
 
 /**
  * Casting (design §7). The browser builds one part per answered contest, salts it and commits to it before sending;
@@ -106,7 +107,31 @@ export interface BallotView {
     readonly title: string;
     readonly body: string;
     readonly contentHash: string;
+    /** The bylaws lines it changes, for an amendment (design §6.6); null otherwise. */
+    readonly amendment: BylawsAmendment | null;
   }[];
+}
+
+/**
+ * What a voter's browser cannot confirm about a ballot (design §7.5): that it is the definition frozen at scheduling,
+ * and that every proposal's text, and any bylaws lines it changes, are the ones the definition commits to. Empty when
+ * everything checks out.
+ */
+export function ballotViewProblems(view: Pick<BallotView, 'definition' | 'definitionHash' | 'proposals'>): string[] {
+  const problems: string[] = [];
+  if (definitionHash(view.definition) !== view.definitionHash) problems.push('the ballot is not the definition frozen at scheduling');
+  for (const c of view.definition.contests) {
+    if (!c.proposal) continue;
+    const text = view.proposals.find((p) => p.snapshotId === c.proposal!.snapshotId);
+    const base = text?.amendment?.base;
+    const named = c.proposal.amendsBylaws;
+    if (!text || proposalContentHash(text.title, text.body, text.amendment) !== c.proposal.contentHash) {
+      problems.push(`the text of "${c.title}" is not the one the definition commits to`);
+    } else if ((base?.version ?? null) !== (named?.version ?? null) || (base?.contentHash ?? null) !== (named?.contentHash ?? null)) {
+      problems.push(`"${c.title}" amends a different bylaws version than the definition names`);
+    }
+  }
+  return problems;
 }
 
 /** `POST /v1/elections/{id}/ballots`: the server's commitments, which the browser compares with its own. */

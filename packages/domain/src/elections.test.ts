@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { bylawsAmendmentSchema } from './amendments.js';
 import { contestInputSchema, createElectionSchema } from './election-api.js';
 import {
   buildDefinition,
@@ -99,6 +100,34 @@ describe('election definition', () => {
   it('keeps the proposal and definition hashes of existing records', () => {
     expect(proposal.contentHash).toBe('568879281fc84f419dfba404b21dca1fa1cff26c6b04cd31e55209bc11b53203');
     expect(definitionHash(buildDefinition(election, contests, candidates, [proposal]))).toBe('dded9e87c5541117ff55caff238a168b0ebcde39ac3555b6ac31b3d180f95ba7');
+  });
+
+  it('hashes a bylaws amendment with its lines (v2), leaving other proposals on v1', () => {
+    const amendment = bylawsAmendmentSchema.parse({
+      v: 1,
+      base: { version: '2026.1', contentHash: 'a'.repeat(64) },
+      changes: [{ op: 'replace', from: 2, to: 2, expect: ['Old.'], lines: ['New.'] }],
+    });
+    const v2 = proposalContentHash('Plank 12', 'Text', amendment);
+    expect(proposalContentHash('Plank 12', 'Text', null)).toBe(proposalContentHash('Plank 12', 'Text'));
+    expect(v2).not.toBe(proposalContentHash('Plank 12', 'Text'));
+    const edited = { ...amendment, changes: [{ ...amendment.changes[0]!, lines: ['Newer.'] }] } as typeof amendment;
+    expect(proposalContentHash('Plank 12', 'Text', edited)).not.toBe(v2);
+
+    const amending: ProposalSnapshotRecord = { ...proposal, amendment, contentHash: v2 };
+    const def = buildDefinition(election, contests, candidates, [amending]);
+    expect(def.contests[0]!.proposal).toEqual({
+      snapshotId: 'p1',
+      title: 'Platform plank 12',
+      contentHash: v2,
+      amendsBylaws: { version: '2026.1', contentHash: 'a'.repeat(64) },
+    });
+    // Without an amendment the entry has no amendsBylaws key at all, so existing definitions hash as before.
+    expect(Object.keys(buildDefinition(election, contests, candidates, [proposal]).contests[0]!.proposal!)).toEqual([
+      'snapshotId',
+      'title',
+      'contentHash',
+    ]);
   });
 
   it('reports what blocks scheduling', () => {
