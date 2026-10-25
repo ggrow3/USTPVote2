@@ -6,6 +6,7 @@ import {
   amendmentText,
   candidateInputSchema,
   checkElectionDeletable,
+  isRehearsalRoll,
   updateElectionSchema,
   type ApprovalRequestRecord,
   type ContestRecord,
@@ -123,10 +124,10 @@ async function loadRoll() {
   });
 }
 
-async function requestWithReason(path: string, title: string, message: string, success: string) {
+async function requestWithReason(path: string, title: string, message: string, success: string, extra: object = {}) {
   const reason = await askReason(title, message);
   if (reason === null) return;
-  if (await attempt(() => api('POST', `${url}/${path}`, { reason }), success)) await load();
+  if (await attempt(() => api('POST', `${url}/${path}`, { reason, ...extra }), success)) await load();
 }
 
 function requestRoll() {
@@ -135,6 +136,18 @@ function requestRoll() {
     'Request a voter roll',
     'Snapshots every Active member now. An Auditor must approve it before the election can be scheduled.',
     'Roll requested; waiting for an Auditor',
+  );
+}
+
+/** Testing mode only (design §10.4): a roll of the test voter personas alone, so a rehearsal's turnout is its own. */
+const testingMode = computed(() => !!session.me?.testing.enabled);
+function requestRehearsalRoll() {
+  return requestWithReason(
+    'roll',
+    'Request a rehearsal roll',
+    'Snapshots only the Active test voters, for a rehearsal. The roll, its approval and its signature all say so. An Auditor must approve it before the election can be scheduled.',
+    'Rehearsal roll requested; waiting for an Auditor',
+    { voters: 'test_voters' },
   );
 }
 
@@ -314,7 +327,8 @@ onMounted(load);
             <div>
               <h2 class="text-subtitle1">Voter roll</h2>
               <div v-if="detail.roll" class="text-caption text-grey-7">
-                {{ detail.roll.count }} Active members as of {{ new Date(detail.roll.asOf).toLocaleString() }} · Merkle root
+                {{ detail.roll.count }} Active {{ isRehearsalRoll(detail.roll.criteria) ? 'test voters' : 'members' }} as of
+                {{ new Date(detail.roll.asOf).toLocaleString() }} · Merkle root
                 <code>{{ detail.roll.merkleRoot.slice(0, 16) }}…</code>
                 <template v-if="detail.roll.signature"> · signed by the audit key</template>
                 <template v-else-if="detail.roll.status === 'approved'"> · signature follows within a minute</template>
@@ -323,7 +337,17 @@ onMounted(load);
             </div>
             <q-badge v-if="detail.roll" :label="detail.roll.status" />
             <q-badge v-if="detail.roll?.signature" color="positive" label="signed" />
+            <q-badge v-if="isRehearsalRoll(detail.roll?.criteria)" color="orange-2" text-color="black" label="Rehearsal roll: test voters only" />
             <q-btn v-if="canEdit" outline no-caps color="primary" label="Request roll snapshot" @click="requestRoll" />
+            <q-btn
+              v-if="canEdit && testingMode"
+              outline
+              no-caps
+              color="primary"
+              label="Request rehearsal roll"
+              aria-label="Request rehearsal roll: test voters only"
+              @click="requestRehearsalRoll"
+            />
           </q-card-section>
           <q-expansion-item v-if="detail.roll" dense label="Members on this roll" @show="loadRoll">
             <q-list v-if="roll" dense separator>

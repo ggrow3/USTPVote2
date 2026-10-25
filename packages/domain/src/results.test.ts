@@ -226,7 +226,7 @@ describe('the results check', async () => {
       cancelledAt: null,
     },
     definition,
-    roll: { ...roll, asOf: AT, signature: null },
+    roll: { ...roll, criteria: { status: 'active' }, asOf: AT, signature: null },
     sealedBlocks: [],
     ballotsSealed: 4,
     results: null,

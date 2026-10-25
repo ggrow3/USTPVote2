@@ -507,6 +507,15 @@ An Auditor (≠ requester, and not a candidate in the election) reviews the name
 A rejected snapshot is marked `rejected`. The roll is frozen from then on: later status changes do not alter it (Q4).
 Every roll entry carries equal weight.
 
+**Rehearsal rolls** (testing mode only, §10.4): `POST …/roll` with `voters: 'test_voters'` snapshots only the Active
+test voter personas, so a rehearsal's turnout and quorum are its own and not diluted by real members. Its criteria
+are `{status: 'active', testVotersOnly: true}`, and that is recorded wherever the roll is: in the snapshot, in the
+request's payload (so the payload hash the Auditor approves covers it), in the `roll.approved` entry that copies the
+payload, in the roll statement the worker signs, and in the public record's `roll.criteria`. An ordinary roll keeps
+exactly `{status: 'active'}` and has no `criteria` in its payload, so rolls already signed still verify. The api
+refuses a rehearsal roll where testing mode is off (403), and so do the roll and schedule approvals, which check
+again; with no Active test voters the request gets 409.
+
 The snapshot document holds the whole sorted list, about 25,000 members within Firestore's 1 MiB document limit (the
 spec's scale is 1,000–5,000); the casting check in M3 reads it once per instance (it never changes), so a separate
 `roll_entries` collection is not needed until rolls outgrow one document.
@@ -1061,6 +1070,9 @@ different account on each side. Testing mode lets one System Admin do that alone
   under the menu names the persona, switches to another or stops. The choice is per browser tab (sessionStorage), so
   two tabs can be two personas; switching reloads the page as the new persona, and ballot receipts are kept per
   persona.
+- **Rehearsal roll:** the Election Admin can request a roll of the test voters only (§6.3), which the editor offers as
+  "Request rehearsal roll" in testing mode and marks "Rehearsal roll: test voters only". The verify CLI reads who the
+  roll holds from the ledger and reports a rehearsal as one.
 - **Effect on the record:** what a persona does is real data in that deployment's ledger, rolls and results. That is
   acceptable only because testing mode is confined to test deployments.
 
@@ -1087,7 +1099,7 @@ registration collections are top-level and election data lives under each electi
 | `photo_checks/{checkId}` | auto | immutable | Vision signals, verdict |
 | `positions/{positionId}` | slug | Membership or Election Admin, at once | title, description, seats, term months, approval if any (§6.4) |
 | `position_terms/{termId}` | auto | created by certification; ended two-person | holder, contest, start/end, results hash, status |
-| `eligibility_snapshots/{snapshotId}` | auto | immutable once approved; deleted with its election (§6.1) | criteria, count, Merkle root, signature |
+| `eligibility_snapshots/{snapshotId}` | auto | immutable once approved; deleted with its election (§6.1) | criteria (`testVotersOnly` on a rehearsal roll, §6.3), count, Merkle root, signature |
 | **voting** | | | |
 | `elections/{electionId}` | UUIDv7 | state transitions; deleted with everything under it if cancelled with no ballot cast (§6.1) | definition, definitionHash, seed commitment, k; `amendsBylaws` once scheduled (§6.6) |
 | `elections/{id}/contests/{contestId}` | slug | frozen at schedule | contest spec (`ustp-tally` type) |
@@ -1149,7 +1161,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/photos` · `GET /admin/photos/{id}/image` · `POST /admin/photos/{id}/decision` | Membership Admin | photo review |
 | `GET /admin/elections` · `GET /admin/elections/{id}` (detail, definition hash, problems) · `GET /admin/proposals` | Election Admin, Auditor | read election setup |
 | `POST /admin/elections` · `PATCH /admin/elections/{id}` · `POST\|PUT\|DELETE …/contests[/{cid}]` · `POST\|DELETE …/contests/{cid}/candidates[/{kid}]` · `POST /admin/proposals` | Election Admin | edit drafts |
-| `POST /admin/elections/{id}/roll` · `.../schedule` · `.../cancel` · `.../certify` | Election Admin | roll snapshot, scheduling, cancellation and certification requests (draft cancel is immediate) |
+| `POST /admin/elections/{id}/roll` · `.../schedule` · `.../cancel` · `.../certify` | Election Admin | roll snapshot (`voters: 'test_voters'` for a rehearsal roll, testing mode only, §6.3), scheduling, cancellation and certification requests (draft cancel is immediate) |
 | `POST /admin/elections/{id}/delete` | Election Admin | permanently delete a cancelled election nobody voted in, at once (204; 409 otherwise; §6.1) |
 | `GET /admin/positions` · `POST /admin/positions` · `POST /admin/positions/{id}/terms/{termId}/end` | any admin (read); Membership or Election Admin | offices and terms; define or change an office (at once), end a term (→ approval) |
 | `GET /public/positions` | P | offices and who holds them now |

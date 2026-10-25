@@ -32,7 +32,10 @@ import {
   type ProposalInput,
   type ProposalSnapshotRecord,
   type ResultsRecord,
+  type PersonaRecord,
   type RollApprovalPayload,
+  type RollCriteria,
+  type RollRequestInput,
   type RollSnapshotRecord,
   type RollView,
   type SchedulePayload,
@@ -187,24 +190,50 @@ export class ElectionsService {
 
   // --- roll, scheduling, cancellation (design §6.1, §6.3) ----------------------------------------------------
 
-  /** Snapshots every Active member now and asks an Auditor to approve the resulting roll. */
-  async requestRoll(ctx: RequestContext, electionId: string, reason: string): Promise<Omit<RollSnapshotRecord, 'accountIds'>> {
+  /**
+   * Snapshots every Active member now and asks an Auditor to approve the resulting roll. In testing mode a rehearsal
+   * roll (`voters: 'test_voters'`, design §10.4) holds only the Active test voter personas, and says so in its criteria.
+   */
+  async requestRoll(
+    ctx: RequestContext,
+    electionId: string,
+    reason: string,
+    voters: RollRequestInput['voters'] = 'members',
+  ): Promise<Omit<RollSnapshotRecord, 'accountIds'>> {
     const requestedBy = requireAccount(ctx);
     this.approvals.assertCanRequest(ctx, 'roll.approve');
+    if (voters === 'test_voters' && !this.config.testingMode) {
+      throw new ForbiddenException('a rehearsal roll needs testing mode, which is off on this deployment');
+    }
     return this.db.runTransaction(async (tx) => {
       await this.editable(tx, ctx, electionId);
       const active = await tx.get(this.db.collection(Collections.members).where('status', '==', 'active'));
-      const accountIds = sortRoll(active.docs.map((d) => d.id));
-      if (accountIds.length === 0) throw new ConflictException('there are no Active members to put on the roll');
+      let accountIds = sortRoll(active.docs.map((d) => d.id));
+      let criteria: RollCriteria = { status: 'active' };
+      if (voters === 'test_voters') {
+        const personas = await tx.get(this.db.collection(Collections.testingPersonas).where('kind', '==', 'voter'));
+        const testVoters = new Set(personas.docs.map((d) => (d.data() as PersonaRecord).accountId));
+        accountIds = accountIds.filter((id) => testVoters.has(id));
+        if (accountIds.length === 0) throw new ConflictException('there are no Active test voters; add them under Admin → Testing');
+        criteria = { status: 'active', testVotersOnly: true };
+      } else if (accountIds.length === 0) {
+        throw new ConflictException('there are no Active members to put on the roll');
+      }
       const merkleRoot = rollMerkleRoot(electionId, accountIds);
       const snapshotRef = this.db.collection(Collections.eligibilitySnapshots).doc();
       const approvalId = this.approvals.allocateId();
-      const payload: RollApprovalPayload = { electionId, snapshotId: snapshotRef.id, merkleRoot, count: accountIds.length };
+      const payload: RollApprovalPayload = {
+        electionId,
+        snapshotId: snapshotRef.id,
+        merkleRoot,
+        count: accountIds.length,
+        ...(voters === 'test_voters' && { criteria }),
+      };
       await this.approvals.createRequest(tx, { id: approvalId, action: 'roll.approve', subject: electionId, payload, reason, requestedBy });
       const snapshot: RollSnapshotRecord = {
         snapshotId: snapshotRef.id,
         electionId,
-        criteria: { status: 'active' },
+        criteria,
         asOf: new Date().toISOString(),
         accountIds,
         count: accountIds.length,

@@ -73,7 +73,14 @@ export class PublicElectionsService {
       },
       definition,
       roll: roll
-        ? { snapshotId: roll.snapshotId, count: roll.count, merkleRoot: roll.merkleRoot, asOf: roll.asOf, signature: roll.signature ?? null }
+        ? {
+            snapshotId: roll.snapshotId,
+            criteria: roll.criteria,
+            count: roll.count,
+            merkleRoot: roll.merkleRoot,
+            asOf: roll.asOf,
+            signature: roll.signature ?? null,
+          }
         : null,
       sealedBlocks,
       ballotsSealed: sealedBlocks.reduce((sum, b) => sum + b.ballotCount, 0),
