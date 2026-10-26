@@ -33,10 +33,10 @@ const draft: ElectionRecord = {
   poolKeyDestroyedAt: null,
 };
 
-const roll = (status: 'pending' | 'approved' | 'rejected'): NonNullable<ProgressInput['roll']> => ({
+const roll = (status: 'pending' | 'approved' | 'rejected', testVotersOnly = false): NonNullable<ProgressInput['roll']> => ({
   snapshotId: 'r1',
   electionId: 'e1',
-  criteria: { status: 'active' },
+  criteria: testVotersOnly ? { status: 'active', testVotersOnly: true } : { status: 'active' },
   asOf: before,
   count: 25,
   merkleRoot: 'ab'.repeat(32),
@@ -82,6 +82,7 @@ const input = (election: Partial<ElectionRecord>, rest: Partial<ProgressInput> =
   pending: [],
   results: null,
   ballotsCast: null,
+  officeTerms: null,
   ...rest,
 });
 
@@ -219,6 +220,30 @@ describe('electionProgress', () => {
     const fromDraft = input({ state: 'cancelled', cancelledAt: before, rollSnapshotId: 'r1' }, { roll: roll('approved'), ballotsCast: 0 });
     expect(statuses(fromDraft)).toMatchObject({ readiness: 'not_reached', roll: 'done', scheduling: 'not_reached', deleted: 'possible' });
     expect(electionProgress(fromDraft, now).waiting).toEqual([]);
+  });
+
+  it('where testing mode is on, a rehearsal can be deleted once certified, unless it seated anybody', () => {
+    const certified = { ...closedElection, state: 'certified' as const, sealedAt: before, certifiedAt: before, poolKeyDestroyedAt: before };
+    const rehearsal = input(certified, { roll: roll('approved', true), results: results('certified'), ballotsCast: 6, officeTerms: 0 });
+    const on = electionProgress(rehearsal, now, { testingMode: true });
+    expect(on.deletedFrom).toEqual(['cancelled', 'certified']);
+    expect(on.steps.find((s) => s.step === 'deleted')!.status).toBe('possible');
+    // Testing mode off, a real roll, or a term of office: the ordinary rule, which a certified election never meets.
+    for (const p of [
+      electionProgress(rehearsal, now),
+      electionProgress({ ...rehearsal, roll: roll('approved') }, now, { testingMode: true }),
+      electionProgress({ ...rehearsal, officeTerms: 1 }, now, { testingMode: true }),
+    ]) {
+      expect(p.steps.find((s) => s.step === 'deleted')!.status).toBe('not_reached');
+    }
+    expect(electionProgress(rehearsal, now).deletedFrom).toEqual(['cancelled']);
+
+    // Before then: a closed rehearsal can still get there (certify it), and a cancelled one goes with its ballots.
+    const closed = input({ ...closedElection, sealedAt: before }, { roll: roll('approved', true), results: results('provisional') });
+    expect(statuses({ ...closed })).toMatchObject({ deleted: 'not_reached' });
+    expect(electionProgress(closed, now, { testingMode: true }).steps.at(-1)).toEqual({ step: 'deleted', status: 'possible' });
+    const cancelled = input({ ...openElection, state: 'cancelled', cancelledAt: before }, { roll: roll('approved', true), ballotsCast: 4 });
+    expect(electionProgress(cancelled, now, { testingMode: true }).steps.at(-1)).toEqual({ step: 'deleted', status: 'possible' });
   });
 
   it('reads the state a cancelled election was cancelled from', () => {

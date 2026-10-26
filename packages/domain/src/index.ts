@@ -31,7 +31,7 @@ export { ACT_AS_HEADER, ADMIN_PERSONAS, MAX_TEST_VOTERS, PERSONA_KINDS, voterPer
 export type { PersonaKind, PersonaRecord, PersonaSummary } from './testing.js';
 export type { DiffLine } from './text-diff.js';
 export { ELECTION_STATES, checkElectionDeletable, electionTransitionAuthority, isTerminal } from './election-state.js';
-export type { ElectionState, TransitionAuthority } from './election-state.js';
+export type { ElectionState, RehearsalDeletion, TransitionAuthority } from './election-state.js';
 export { ELECTION_STEPS, STEP_STATE, cancelledFrom, electionProgress } from './election-progress.js';
 export type { ElectionProgress, ElectionStep, ProgressInput, StepStatus, Waiting, WaitingFor } from './election-progress.js';
 export {

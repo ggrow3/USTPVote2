@@ -1,6 +1,7 @@
 import { electionTransitionAuthority, type ElectionState } from './election-state.js';
 import type { ElectionDetail, ElectionRecord } from './elections.js';
 import type { Role } from './roles.js';
+import { isRehearsalRoll } from './roll.js';
 
 /**
  * Where an election is in its lifecycle (design §6.1) and what its next step waits on, for the election editor's
@@ -95,18 +96,29 @@ export interface ElectionProgress {
   readonly current: ElectionStep;
   /** Empty when nothing is outstanding (certified with its key destroyed, or cancelled). */
   readonly waiting: readonly Waiting[];
+  /** The states it can be deleted from: cancelled, and certified too for a rehearsal where testing mode is on. */
+  readonly deletedFrom: readonly ('cancelled' | 'certified')[];
 }
 
-export type ProgressInput = Pick<ElectionDetail, 'election' | 'problems' | 'roll' | 'pending' | 'results' | 'ballotsCast'>;
+export type ProgressInput = Pick<
+  ElectionDetail,
+  'election' | 'problems' | 'roll' | 'pending' | 'results' | 'ballotsCast' | 'officeTerms'
+>;
 
 /** The state a cancelled election was cancelled from, read from the times it recorded. */
 export function cancelledFrom(election: Pick<ElectionRecord, 'scheduledAt' | 'openedAt'>): ElectionState {
   return election.openedAt ? 'open' : election.scheduledAt ? 'scheduled' : 'draft';
 }
 
-export function electionProgress(detail: ProgressInput, now: Date = new Date()): ElectionProgress {
+/** `testingMode`: whether this deployment has testing mode on, which lets a rehearsal be deleted after voting (§10.4). */
+export function electionProgress(
+  detail: ProgressInput,
+  now: Date = new Date(),
+  { testingMode = false }: { readonly testingMode?: boolean } = {},
+): ElectionProgress {
   const { election, pending } = detail;
   const state = election.state;
+  const rehearsal = testingMode && isRehearsalRoll(detail.roll?.criteria);
   // The draft steps are behind an election that was ever scheduled; a draft's are done when their condition holds.
   const rollApproved = detail.roll?.status === 'approved' && !!election.rollSnapshotId;
   const scheduled = !!election.scheduledAt;
@@ -125,12 +137,19 @@ export function electionProgress(detail: ProgressInput, now: Date = new Date()):
     state === 'cancelled' || state === 'certified' ? state : TO_CERTIFICATION.find((s) => !done[s])!;
 
   const cancellable = electionTransitionAuthority(state, 'cancelled') !== null;
+  // `checkElectionDeletable`'s rule, leaving out the key the worker destroys within a minute: a cancelled election
+  // nobody voted in, or a certified or cancelled rehearsal that seated nobody, where testing mode is on. Until then,
+  // it is possible while the election can still get there.
+  const deletedFrom: ('cancelled' | 'certified')[] = rehearsal ? ['cancelled', 'certified'] : ['cancelled'];
+  const deletable =
+    state === 'cancelled' || state === 'certified'
+      ? deletedFrom.includes(state) && (rehearsal ? (detail.officeTerms ?? 0) === 0 : detail.ballotsCast === 0)
+      : cancellable || rehearsal;
   const steps = ELECTION_STEPS.map((step) => {
     let status: StepStatus;
     if (step === current) status = 'current';
     else if (step === 'cancelled') status = cancellable ? 'possible' : 'not_reached';
-    // Only an election nobody voted in can be deleted (`checkElectionDeletable`); the count is known once cancelled.
-    else if (step === 'deleted') status = cancellable || (state === 'cancelled' && detail.ballotsCast === 0) ? 'possible' : 'not_reached';
+    else if (step === 'deleted') status = deletable ? 'possible' : 'not_reached';
     else if (done[step]) status = 'done';
     else status = state === 'cancelled' ? 'not_reached' : 'upcoming';
     return { step, status };
@@ -171,5 +190,5 @@ export function electionProgress(detail: ProgressInput, now: Date = new Date()):
       if (election.poolKeyVersion && !election.poolKeyDestroyedAt) add('destroy_pool_key', state, 'worker');
       break;
   }
-  return { steps, current, waiting };
+  return { steps, current, waiting, deletedFrom };
 }

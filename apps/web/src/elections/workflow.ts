@@ -36,8 +36,11 @@ export const STATUS_TEXT: Record<StepStatus, string> = {
   not_reached: 'Not reached',
 };
 
-/** What happens at each step and who does it. */
-export function stepNote(step: ElectionStep, election: Pick<ElectionRecord, 'secrecy'>): string {
+/**
+ * What happens at each step and who does it. `rehearsal`: a rehearsal where testing mode is on, which can be deleted
+ * after voting too (design §10.4).
+ */
+export function stepNote(step: ElectionStep, election: Pick<ElectionRecord, 'secrecy'>, rehearsal = false): string {
   const secret = election.secrecy === 'secret';
   switch (step) {
     case 'readiness':
@@ -67,7 +70,10 @@ export function stepNote(step: ElectionStep, election: Pick<ElectionRecord, 'sec
     case 'cancelled':
       return 'A draft at once, by an Election Admin; a scheduled or open election with an Auditor’s approval.';
     case 'deleted':
-      return 'A cancelled election nobody voted in, by an Election Admin. The ledger keeps its entries.';
+      return rehearsal
+        ? 'This rehearsal, once certified or cancelled, with its ballots and results, unless it seated anyone in an ' +
+          'office; by an Election Admin, while testing mode is on. The ledger keeps its entries.'
+        : 'A cancelled election nobody voted in, by an Election Admin. The ledger keeps its entries.';
   }
 }
 
@@ -226,7 +232,7 @@ export function workflowDiagram(progress: ElectionProgress, c: DiagramColours): 
     `  draft -.-> ${id('cancelled')}`,
     `  ${id('scheduled')} -.-> ${id('cancelled')}`,
     `  ${id('open')} -.-> ${id('cancelled')}`,
-    `  ${id('cancelled')} -.-> ${id('deleted')}`,
+    ...progress.deletedFrom.map((state) => `  ${id(state)} -.-> ${id('deleted')}`),
     `  classDef done fill:${c.done},stroke:${c.doneBorder},color:${c.text}`,
     `  classDef current fill:${c.current},stroke:${c.current},stroke-width:3px,color:${c.currentText},font-weight:bold`,
     `  classDef upcoming fill:${c.node},stroke:${c.border},color:${c.text}`,

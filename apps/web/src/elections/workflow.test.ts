@@ -28,7 +28,7 @@ const election: ElectionRecord = {
   certifiedAt: null,
   poolKeyDestroyedAt: null,
 };
-const detail: ProgressInput = { election, problems: [], roll: null, pending: [], results: null, ballotsCast: null };
+const detail: ProgressInput = { election, problems: [], roll: null, pending: [], results: null, ballotsCast: null, officeTerms: null };
 const now = new Date('2026-11-02T00:00:00Z');
 
 describe('workflowDiagram', () => {
@@ -59,6 +59,32 @@ describe('workflowDiagram', () => {
     const dark = workflowDiagram(closed, DARK_COLOURS);
     expect(dark).toContain(`style closed fill:${DARK_COLOURS.cluster},stroke:${DARK_COLOURS.clusterCurrent},stroke-width:2px`);
     expect(dark).toContain(`style draft fill:${DARK_COLOURS.cluster},stroke:${DARK_COLOURS.border},stroke-width:1px`);
+  });
+
+  it('draws deletion from a certified rehearsal only where testing mode allows it', () => {
+    expect(source).toContain('  step_cancelled -.-> step_deleted');
+    expect(source).not.toContain('step_certified -.-> step_deleted');
+    const rehearsal: ProgressInput = {
+      ...detail,
+      roll: {
+        snapshotId: 'r1',
+        electionId: 'e1',
+        criteria: { status: 'active', testVotersOnly: true },
+        asOf: at,
+        count: 5,
+        merkleRoot: 'ab'.repeat(32),
+        status: 'approved',
+        requestedBy: 'ea',
+        requestedAt: at,
+        approvalId: 'a1',
+        decidedBy: 'au',
+        decidedAt: at,
+        signature: null,
+      },
+    };
+    expect(workflowDiagram(electionProgress(rehearsal, now, { testingMode: true }), LIGHT_COLOURS)).toContain(
+      '  step_certified -.-> step_deleted',
+    );
   });
 
   it('has a label for every step', () => {

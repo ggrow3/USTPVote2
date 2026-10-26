@@ -19,6 +19,7 @@ import {
   waitingText,
   workflowDiagram,
 } from './workflow.js';
+import { session } from '../session.js';
 
 /**
  * Where the election is in its lifecycle (design §6.1): a Mermaid flowchart with the current step highlighted, and
@@ -33,7 +34,8 @@ const now = ref(new Date());
 const clock = setInterval(() => (now.value = new Date()), 30_000);
 onBeforeUnmount(() => clearInterval(clock));
 
-const progress = computed(() => electionProgress(props.detail, now.value));
+// Testing mode lets a rehearsal be deleted after voting (design §10.4), as the editor's Delete card does.
+const progress = computed(() => electionProgress(props.detail, now.value, { testingMode: !!session.me?.testing.enabled }));
 const status = computed(() => new Map(progress.value.steps.map((s) => [s.step, s.status])));
 const GROUPS: readonly { label: string; tag: 'ol' | 'ul'; heading: boolean; steps: readonly ElectionStep[] }[] = [
   {
@@ -53,7 +55,7 @@ const waitingAt = (step: ElectionStep) =>
 const note = (step: ElectionStep) =>
   step === 'cancelled' && props.detail.election.state === 'cancelled'
     ? cancelledNote(props.detail.election)
-    : stepNote(step, props.detail.election);
+    : stepNote(step, props.detail.election, progress.value.deletedFrom.includes('certified'));
 
 const summary = computed(() => {
   const p = progress.value;
