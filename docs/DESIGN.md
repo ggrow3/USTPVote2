@@ -1421,7 +1421,13 @@ Decisions for USTP; the design's proposed default is in brackets.
 7. **Anonymity threshold k** and minimum election size. [k = 10]
 8. **District lookup provider** for addresses (Google's Civic Information representatives API was retired in 2025). [state only in V1]
 9. **Breached-password screening:** acceptable to query a third-party k-anonymity range API (e.g. HIBP) from the browser? [yes, browser-side]
-10. **Participation transparency:** after close, who sees *who voted* — auditors only, or all members? [auditors; members on request]
+10. **Participation transparency:** who sees *who voted*, while voting is open and after close: Election Admins,
+    Auditors, all members? [Election Admins see turnout counts only (ballots cast against the roll), never who
+    voted, so whoever runs an election cannot chase or pressure particular members, and a misused admin account
+    gives away a number; Auditors see the participation list after close, to catch ballots cast in a member's name
+    (§2); each member sees only their own status (`GET /v1/elections/{id}/participation/me`). Not built yet: no admin
+    view shows turnout before the results or the participation list. Roll-call ballots are published with names
+    after close anyway (§7.4)]
 11. **Anchor retention period** for the production Bucket Lock (irreversible once locked). [10 years]
 12. **Recusal:** must an Election Admin who is a candidate step aside for that election? [yes]
 13. **Infrastructure as code:** Terraform acceptable? [yes]
