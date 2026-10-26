@@ -22,7 +22,7 @@ export const router = createRouter({
       children: [
         { path: '', component: () => import('./pages/HomePage.vue') },
         { path: 'signin', component: () => import('./pages/SignInPage.vue') },
-        { path: 'register', component: () => import('./pages/RegisterPage.vue') },
+        { path: 'register', component: () => import('./membership/RegisterPage.vue') },
         { path: 'account', component: () => import('./pages/AccountPage.vue'), meta: { requiresAuth: true } },
         { path: 'ballot', component: () => import('./pages/BallotPage.vue'), meta: { requiresAuth: true } },
         { path: 'ballot/:id', component: () => import('./pages/VotePage.vue'), meta: { requiresAuth: true } },

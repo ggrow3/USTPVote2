@@ -17,6 +17,7 @@ export {
   resignMembership,
   checkMemberStatusRequest,
   changeMemberStatus,
+  adminStatusChanges,
   testVoterAdmission,
 } from './member.js';
 export type { MemberStatusChangedPayload, MemberProfile, MemberStatusChange, StatusTransition } from './member.js';

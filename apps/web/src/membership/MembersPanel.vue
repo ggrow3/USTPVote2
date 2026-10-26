@@ -1,18 +1,12 @@
 <script setup lang="ts">
 import { useQuasar } from 'quasar';
 import { onMounted, ref } from 'vue';
-import type { MemberRecord, MemberStatus, StatusHistoryRecord } from 'ustp-domain';
-import { api } from '../../api.js';
-import { askReason, attempt } from '../../dialogs.js';
-import { session } from '../../session.js';
+import { adminStatusChanges, type MemberRecord, type MemberStatus, type StatusHistoryRecord } from 'ustp-domain';
+import { askReason, attempt } from '../dialogs.js';
+import { session } from '../session.js';
+import { changeMemberStatus, memberHistory, members } from './api.js';
 
 const PAGE = 50;
-/** Admin status changes the API accepts from each status; applications are decided in their own tab. */
-const NEXT: Partial<Record<MemberStatus, MemberStatus[]>> = {
-  active: ['suspended', 'lapsed', 'resigned'],
-  lapsed: ['active', 'resigned'],
-  suspended: ['active', 'resigned'],
-};
 
 const $q = useQuasar();
 const filter = ref<MemberStatus | null>('active');
@@ -24,11 +18,8 @@ const history = ref<{ member: MemberRecord; entries: StatusHistoryRecord[] } | n
 
 async function load(reset = true) {
   const after = reset ? undefined : rows.value.at(-1)?.accountId;
-  const query = new URLSearchParams({ limit: String(PAGE) });
-  if (filter.value) query.set('status', filter.value);
-  if (after) query.set('after', after);
   const ok = await attempt(async () => {
-    const page = await api<MemberRecord[]>('GET', `/v1/admin/members?${query}`);
+    const page = await members({ status: filter.value, after, limit: PAGE });
     rows.value = reset ? page : [...rows.value, ...page];
     more.value = page.length === PAGE;
   });
@@ -38,14 +29,14 @@ async function load(reset = true) {
 async function change(member: MemberRecord, to: MemberStatus) {
   const reason = await askReason(`Change status to ${to}`, `${member.legalName}: ${member.status} → ${to}.`);
   if (reason === null) return;
-  if (await attempt(() => api('POST', `/v1/admin/members/${member.accountId}/status`, { to, reason }), 'Status changed')) {
+  if (await attempt(() => changeMemberStatus(member.accountId, { to, reason }), 'Status changed')) {
     await load();
   }
 }
 
 async function showHistory(member: MemberRecord) {
   await attempt(async () => {
-    history.value = { member, entries: await api<StatusHistoryRecord[]>('GET', `/v1/admin/members/${member.accountId}/history`) };
+    history.value = { member, entries: await memberHistory(member.accountId) };
   });
 }
 
@@ -94,7 +85,7 @@ onMounted(() => load());
               <span class="sr-only"> of {{ m.legalName }}</span>
             </q-btn>
             <q-btn-dropdown
-              v-if="NEXT[m.status] && m.accountId !== session.me?.account?.accountId"
+              v-if="adminStatusChanges(m.status).length > 0 && m.accountId !== session.me?.account?.accountId"
               flat
               dense
               no-caps
@@ -102,7 +93,7 @@ onMounted(() => load());
               :aria-label="`Change status of ${m.legalName}`"
             >
               <q-list dense>
-                <q-item v-for="to in NEXT[m.status]" :key="to" v-close-popup clickable @click="change(m, to)">
+                <q-item v-for="to in adminStatusChanges(m.status)" :key="to" v-close-popup clickable @click="change(m, to)">
                   <q-item-section>{{ to }}</q-item-section>
                 </q-item>
               </q-list>

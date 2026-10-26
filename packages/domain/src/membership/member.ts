@@ -1,6 +1,6 @@
 import { OK, refuse, type Check, type Outcome } from '../check.js';
 import type { LedgerEvent } from '../ledger-events.js';
-import { checkStatusChange, type MemberStatus } from './member-status.js';
+import { checkStatusChange, nextStatuses, type MemberStatus } from './member-status.js';
 import type { MemberRecord, StatusHistoryRecord } from './records.js';
 
 /**
@@ -124,6 +124,18 @@ export function changeMemberStatus(
     ok: true,
     value: memberStatusTransition({ accountId: current.accountId, current, ...request, applicationId: null }),
   };
+}
+
+/**
+ * The status changes an admin can make to a member in `status`, in the order to offer them: exactly what
+ * `checkMemberStatusRequest` and `changeMemberStatus` accept with a written reason. None for an applicant, whose
+ * application is decided instead.
+ */
+export function adminStatusChanges(status: MemberStatus): MemberStatus[] {
+  if (status === 'applicant') return [];
+  return nextStatuses(status).filter(
+    (to) => to !== 'applicant' && checkStatusChange({ from: status, to, initiatedBy: 'admin', reason: 'offered' }).ok,
+  );
 }
 
 /**

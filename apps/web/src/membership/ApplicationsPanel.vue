@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { ageOn, type ApplicationRecord, type ApplicationStatus } from 'ustp-domain';
-import { api } from '../../api.js';
-import { askReason, attempt } from '../../dialogs.js';
-import { session } from '../../session.js';
+import { askReason, attempt } from '../dialogs.js';
+import { session } from '../session.js';
+import { applications, decideApplication } from './api.js';
 
 const status = ref<ApplicationStatus>('pending');
 const rows = ref<ApplicationRecord[]>([]);
@@ -14,7 +14,7 @@ const listState = ref<'loading' | 'ready' | 'failed'>('loading');
 async function load() {
   loading.value = true;
   const ok = await attempt(async () => {
-    rows.value = await api<ApplicationRecord[]>('GET', `/v1/admin/applications?status=${status.value}`);
+    rows.value = await applications(status.value);
   });
   listState.value = ok ? 'ready' : 'failed';
   loading.value = false;
@@ -28,7 +28,7 @@ async function decide(app: ApplicationRecord, decision: 'approve' | 'reject') {
   );
   if (reason === null) return;
   const ok = await attempt(
-    () => api('POST', `/v1/admin/applications/${app.applicationId}/decision`, { decision, reason }),
+    () => decideApplication(app.applicationId, { decision, reason }),
     decision === 'approve' ? `${app.legalName} is now a member` : 'Application rejected',
   );
   if (ok) rows.value = rows.value.filter((r) => r.applicationId !== app.applicationId);

@@ -179,6 +179,15 @@ machine, the application rules, the records, the Member aggregate (`memberStatus
 show statuses and photos require a member record through the `MemberDirectory` port; testing admits a voter persona
 through `Members`. Bylaws versions are still served by `MembershipService` until the bylaws context is split out.
 
+**The web app** follows the same contexts ([DOMAIN-MODEL.md](DOMAIN-MODEL.md) §7). The root of `apps/web/src` holds the
+app shell (router, layout and menu, the admin console that composes each context's panels, PWA), the client kernel
+(`api.ts`, `session.ts`, `firebase.ts`, `acting.ts`) and the UI kit (`a11y.ts`, `dialogs.ts`, `forms.ts`, the CSS);
+each converted context has a folder with its typed client (`api.ts`, the only place its routes are written), its pages
+and panels, and its wording. The browser runs `ustp-domain`'s rules to offer only what the API will accept and keeps
+no copy of its own; `apps/web/src/boundaries.test.ts` fails if a context's routes appear outside its client. Converted
+so far: `membership/` (the Register page and the Applications and Members panels; the status changes the Members panel
+offers come from `adminStatusChanges` in `ustp-domain`).
+
 ## 4. Identity and accounts
 
 - **Account ID.** Every person gets a USTP-minted UUIDv7 `accountId` (spec §3). Everything — rolls, roles,

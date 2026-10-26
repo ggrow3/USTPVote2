@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Agreed 2026-10-25; step 1 (Membership) done, steps 2–7 to follow (§6) |
+| Status | Agreed 2026-10-25; step 1 (Membership) done, steps 2–7 to follow (§6). Web app (§7): agreed 2026-10-26; W1 (Membership) done |
 | Date | 2026-10-25 |
 | Scope | Structure of `packages/domain`, `apps/server/src` and, lightly, `apps/web/src`. No change to API routes, Firestore layout, ledger format or hashing. |
 
@@ -40,7 +40,7 @@ What is not domain-centred:
 6. **`ustp-domain` is flat.** 40 files, one 166-line index; `records.ts` and `api.ts` hold every context's document
    shapes and request schemas.
 7. **Web restates a few predicates** ("upcoming" = scheduled or open and not voted, in `BallotPage.vue` and
-   `VotePage.vue`; "editable" = draft, in `ElectionEditorPage.vue`). Minor.
+   `VotePage.vue`; "editable" = draft, in `ElectionEditorPage.vue`). See §7 for the web app.
 
 ## 2. Bounded contexts and context map
 
@@ -186,3 +186,76 @@ import moved code). Ordered by gain against risk, and around work in flight.
 DESIGN.md §3.3 describes the structure as each step lands; each PR marks its step done here and adds its context to
 `boundaries.test.ts`. Once Bylaws no longer depends on Elections (step 2), each context can become a Nest module that
 exports only its ports.
+
+## 7. The web app (`apps/web`)
+
+The browser is a client of the same contexts. It never decides (the API does), but it runs `ustp-domain`'s rules to
+offer only what is allowed and to explain a refusal before sending, and it checks receipts, results and the ledger
+itself. So the web app follows the same boundaries as the server, with the rules in one place for both.
+
+### 7.1 Where things are (survey, 2026-10-26)
+
+- **Flat folders.** 11 pages in `pages/`, 14 admin panels in `components/admin/`, and about 25 helper modules at the
+  root of `src/` that belong to different contexts (`bylaws-docx.ts`, `election-docx.ts`, `receipts.ts`, `photos.ts`,
+  `camera.ts`, `sign-in.ts`, `mfa.ts`, `approval-text.ts`…).
+- **HTTP written inline.** 83 `api('METHOD', '/v1/…')` calls in 26 components and modules, each choosing its response
+  type. Several endpoints are fetched from more than one place: the current bylaws (Register, Bylaws panel), the
+  People list (People panel, role-change form), offices (Offices panel, contest dialog), the signing keys and the
+  latest anchor (Audit panel, Results, Verify), approval decisions (Approvals panel, election editor), the ballot (Vote,
+  Results).
+- **Rules restated.** `MembersPanel.vue`'s `NEXT` copies the member-status machine; "upcoming" (scheduled or open, not
+  voted yet) is written out in `BallotPage.vue` and three times in `VotePage.vue`; `photos.ts` copies the server's
+  accepted image types and sizes ("must match the server"); `AdminPage.vue`'s tab roles restate the role matrix the
+  server's `@Roles(...)` hold (DESIGN §10.1).
+- **Already right.** Forms validate with the API's own schemas (`createApplicationSchema`, `positionInputSchema`…);
+  `mayApply`, `checkCanChangeRole`, `checkElectionDeletable`, `ballotViewProblems`, the receipt and results checks and
+  the amendment text come from `ustp-domain`.
+
+### 7.2 Structure
+
+```
+apps/web/src/
+  main.ts App.vue router.ts layouts/ pwa.ts   app shell: routes (same paths), layout and menu, PWA
+  pages/HomePage.vue pages/AdminPage.vue      shell pages; the admin console composes each context's panels
+  api.ts firebase.ts session.ts acting.ts     client kernel: HTTP and problem details, sign-in state, persona header
+  a11y.ts dialogs.ts forms.ts *.css           UI kit every context uses
+  accounts/      sign-in, account page, MFA, sign-in methods panel
+  membership/    register, applications, members; profile photos and camera
+  bylaws/        bylaws pages, editor panel, bylaws check, Word files
+  elections/     ballot list, vote, results, editor, contests, receipts, Word export
+  offices/       offices panel
+  governance/    approvals, people and role changes, testing personas and bar
+  ledger/        audit panel; the public ledger client (blocks, keys, anchors, entries)
+  verification/  the /verify page
+```
+
+Each context folder holds:
+
+- **`api.ts`**: its typed client, one function per endpoint, named in the ubiquitous language (`submitApplication`,
+  `decideApplication`, `memberHistory`) and returning `ustp-domain` types. The only place that context's `/v1/…` paths
+  appear; it calls the kernel's `api()`, so authentication, App Check, the persona header and problem details stay in
+  one place.
+- **Pages and components** (`*Page.vue`, `*Panel.vue`, dialogs), routed from `router.ts` at the same paths, with the
+  same titles.
+- **View logic**: wording and labels for the context's terms (`approval-text`, `election-text`), composables, file
+  exports. No rule the API or `ustp-domain` owns: a predicate the UI needs (which status changes to offer, whether
+  voting is still ahead, photo limits) goes into `ustp-domain` beside the rule it comes from, so server and browser
+  cannot drift.
+
+Contexts use each other only through their `api.ts` and the components they mean others to embed (the account page
+shows membership's resign; the election editor decides approvals through governance's client). A unit test, like the
+server's, fails if a context's API paths appear outside its folder.
+
+### 7.3 Migration (web)
+
+Each step behaviour-preserving: same routes and URLs, page titles, headings, labels and focus order; `typecheck`,
+`npm test` and a browser check in light and dark themes. A web step can ship with its server step or on its own.
+
+- **W1. Membership** (members and applications) — *done*: `membership/api.ts`; `RegisterPage`,
+  `ApplicationsPanel` and `MembersPanel` moved into `membership/`; `NEXT` gave way to `adminStatusChanges(status)` in
+  `ustp-domain` (same options in the same order); the account page resigns through the client; the boundary test
+  starts with it.
+- **W2. Bylaws**, **W3. Governance** (with the admin tab roles in one table the server's `@Roles` use too),
+  **W4. Offices**, **W5. Elections** (`votingAhead(election)` in `ustp-domain` for "upcoming"), **W6. Ledger and
+  verification** (one public-ledger client for the audit panel, results and verify), **W7. Accounts and photos**
+  (photo limits into `ustp-domain`), each following the matching server step where there is one.

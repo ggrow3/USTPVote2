@@ -26,6 +26,7 @@ import {
   type FederatedProvider,
 } from '../sign-in.js';
 import { useSignInFlow } from '../sign-in-flow.js';
+import { myApplications, submitApplication } from './api.js';
 
 const $q = useQuasar();
 usePageTitle('Register');
@@ -110,7 +111,7 @@ watch(
   () => session.me?.account?.accountId,
   async (accountId) => {
     if (!accountId) return;
-    applications.value = await api<ApplicationRecord[]>('GET', '/v1/registration/applications/me').catch(() => []);
+    applications.value = await myApplications().catch(() => []);
     if (canApply.value && !bylaws.value) {
       bylaws.value = await api<BylawsRecord>('GET', '/v1/bylaws/current').catch((e) => {
         bylawsError.value = errorMessage(e);
@@ -242,9 +243,9 @@ async function submit() {
       };
       return;
     }
-    await api('POST', '/v1/registration/applications', checked.data);
+    await submitApplication(checked.data);
     await refreshMe();
-    applications.value = await api<ApplicationRecord[]>('GET', '/v1/registration/applications/me');
+    applications.value = await myApplications();
     $q.notify({ type: 'positive', message: 'Application submitted' });
     await focusSoon('#application-status');
   } catch (e) {

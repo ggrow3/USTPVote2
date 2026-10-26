@@ -1,17 +1,17 @@
 <script setup lang="ts">
 import { computed, ref, type Component } from 'vue';
 import type { Role } from 'ustp-domain';
-import ApplicationsPanel from '../components/admin/ApplicationsPanel.vue';
 import ApprovalsPanel from '../components/admin/ApprovalsPanel.vue';
 import AuditPanel from '../components/admin/AuditPanel.vue';
 import BylawsPanel from '../components/admin/BylawsPanel.vue';
 import ElectionsPanel from '../components/admin/ElectionsPanel.vue';
-import MembersPanel from '../components/admin/MembersPanel.vue';
 import OfficesPanel from '../components/admin/OfficesPanel.vue';
 import PeoplePanel from '../components/admin/PeoplePanel.vue';
 import PhotosPanel from '../components/admin/PhotosPanel.vue';
 import SignInMethodsPanel from '../components/admin/SignInMethodsPanel.vue';
 import TestingPanel from '../components/admin/TestingPanel.vue';
+import ApplicationsPanel from '../membership/ApplicationsPanel.vue';
+import MembersPanel from '../membership/MembersPanel.vue';
 import { useRoute } from 'vue-router';
 import { usePageTitle } from '../a11y.js';
 import { acting } from '../acting.js';
