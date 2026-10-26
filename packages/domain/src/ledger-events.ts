@@ -1,6 +1,7 @@
 /** Ledger entry types (design §8.2). Member- and identity-related entries are visible to Auditors only. */
 export const LEDGER_EVENT_TYPES = [
   'member.status_changed',
+  'member.details_changed',
   'identity.linked',
   'identity.unlinked',
   'bylaws.published',

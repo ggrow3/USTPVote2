@@ -34,6 +34,12 @@ async function decide(app: ApplicationRecord, decision: 'approve' | 'reject') {
   if (ok) rows.value = rows.value.filter((r) => r.applicationId !== app.applicationId);
 }
 
+/** Which party email the applicant opted into. */
+function partyEmail(a: ApplicationRecord): string {
+  const chosen = [a.communications?.newsletter && 'newsletter', a.communications?.announcements && 'announcements'].filter(Boolean);
+  return chosen.length ? chosen.join(' and ') : 'none';
+}
+
 onMounted(load);
 </script>
 
@@ -61,7 +67,8 @@ onMounted(load);
       <q-item v-for="a in rows" :key="a.applicationId">
         <q-item-section>
           <q-item-label>
-            {{ a.legalName }}<span v-if="a.preferredName"> ({{ a.preferredName }})</span> · {{ a.state }}
+            <router-link :to="`/admin/members/${a.accountId}`">{{ a.legalName }}</router-link
+            ><span v-if="a.preferredName"> ({{ a.preferredName }})</span> · {{ a.state }}
           </q-item-label>
           <q-item-label v-if="a.contact" caption>
             {{ a.contact.city }} {{ a.contact.postalCode }}<span v-if="a.contact.phone"> · {{ a.contact.phone }}</span>
@@ -70,6 +77,9 @@ onMounted(load);
           <q-item-label v-if="a.attestations" caption>
             Confirmed: at least {{ a.attestations.minimumAge }}, supports the platform<span v-if="a.volunteer"> · wants to volunteer</span
             ><span v-if="a.runForOffice"> · interested in running for office</span>
+          </q-item-label>
+          <q-item-label caption>
+            Party email: {{ partyEmail(a) }}
           </q-item-label>
           <q-item-label caption>
             Submitted {{ new Date(a.submittedAt).toLocaleString() }} · bylaws {{ a.bylawsVersion }} · account

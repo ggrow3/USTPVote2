@@ -1,14 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import type { CreateApplicationInput } from '../api.js';
+import type { CreateApplicationInput, MemberCorrectionInput, MemberDetailsInput } from '../api.js';
 import type { BylawsRecord } from '../records.js';
 import { applicationWindowStart, checkApplicantEmail, decideApplication, submitApplication } from './application.js';
 import {
   adminStatusChanges,
   changeMemberStatus,
+  checkMemberCorrectionRequest,
   checkMemberStatusRequest,
+  correctMemberDetails,
   memberStatusTransition,
   resignMembership,
   testVoterAdmission,
+  updateOwnDetails,
 } from './member.js';
 import { MEMBER_STATUSES, type MemberStatus } from './member-status.js';
 import type { ApplicationRecord, MemberRecord } from './records.js';
@@ -240,5 +243,77 @@ describe('applications', () => {
 
     const rejected = decideApplication({ ...base, input: { decision: 'reject', reason: 'not eligible' } });
     expect(rejected.ok && [rejected.value.application.status, rejected.value.transition.member.status]).toEqual(['rejected', 'rejected']);
+  });
+});
+
+describe('member details', () => {
+  const joined: MemberRecord = {
+    ...member('active', AT),
+    contact: { city: 'Albany', postalCode: '12207-1234', phone: '+15185550100' },
+    communications: { newsletter: AT, announcements: null },
+  };
+  const own: MemberDetailsInput = {
+    preferredName: '',
+    state: 'NY',
+    city: 'Albany',
+    postalCode: '122071234',
+    phone: '(518) 555-0100',
+    newsletter: true,
+    announcements: false,
+  };
+
+  it('are the member’s own to change, stored as the application stores them, with the fields named in the ledger', () => {
+    const moved = updateOwnDetails(joined, { input: { ...own, preferredName: 'Ada', state: 'VT', city: 'Burlington', postalCode: '05401', phone: '' }, at: LATER });
+    if (!moved.ok) throw new Error(moved.reason);
+    expect(moved.value.member).toEqual({
+      ...joined,
+      preferredName: 'Ada',
+      state: 'VT',
+      contact: { city: 'Burlington', postalCode: '05401', phone: null },
+    });
+    expect(moved.value.event).toEqual({
+      type: 'member.details_changed',
+      actor: 'acc-1',
+      subject: 'acc-1',
+      payload: { fields: ['preferredName', 'state', 'contact.city', 'contact.postalCode', 'contact.phone'], reason: null },
+    });
+    expect(JSON.stringify(moved.value.event)).not.toContain('Burlington');
+  });
+
+  it('keep when an email opt-in was first given, and clear it when withdrawn', () => {
+    const changed = updateOwnDetails(joined, { input: { ...own, newsletter: false, announcements: true }, at: LATER });
+    if (!changed.ok) throw new Error(changed.reason);
+    expect(changed.value.member.communications).toEqual({ newsletter: null, announcements: LATER });
+    expect(changed.value.event.payload.fields).toEqual(['communications.newsletter', 'communications.announcements']);
+    const again = updateOwnDetails(changed.value.member, { input: { ...own, announcements: true }, at: '2027-01-01T00:00:00.000Z' });
+    expect(again.ok && again.value.member.communications).toEqual({ newsletter: '2027-01-01T00:00:00.000Z', announcements: LATER });
+  });
+
+  it('are refused without a membership, or when nothing changes', () => {
+    expect(updateOwnDetails(null, { input: own, at: LATER })).toMatchObject({ ok: false, refusal: 'not_found' });
+    expect(updateOwnDetails(joined, { input: own, at: LATER })).toMatchObject({ ok: false, reason: 'nothing to change' });
+  });
+
+  it('can be filled in by members who joined before contact details were collected', () => {
+    const filled = updateOwnDetails(member('active', AT), { input: { ...own, newsletter: false }, at: LATER });
+    expect(filled.ok && filled.value.event.payload.fields).toEqual(['contact.city', 'contact.postalCode', 'contact.phone']);
+  });
+
+  it('are corrected by another Membership Admin with a reason, never touching the opt-ins', () => {
+    const correction: MemberCorrectionInput = { ...own, legalName: 'Ada King', reason: 'name changed on marriage' };
+    expect(checkMemberCorrectionRequest('acc-1', 'acc-1')).toMatchObject({ ok: false, refusal: 'forbidden' });
+    expect(checkMemberCorrectionRequest('admin', 'acc-1').ok).toBe(true);
+    expect(correctMemberDetails(null, { input: correction, actor: 'admin' })).toMatchObject({ ok: false, refusal: 'not_found' });
+    expect(correctMemberDetails(joined, { input: { ...correction, reason: ' ' }, actor: 'admin' })).toMatchObject({ ok: false });
+
+    const corrected = correctMemberDetails(joined, { input: correction, actor: 'admin' });
+    if (!corrected.ok) throw new Error(corrected.reason);
+    expect(corrected.value.member).toEqual({ ...joined, legalName: 'Ada King' });
+    expect(corrected.value.event).toEqual({
+      type: 'member.details_changed',
+      actor: 'admin',
+      subject: 'acc-1',
+      payload: { fields: ['legalName'], reason: 'name changed on marriage' },
+    });
   });
 });

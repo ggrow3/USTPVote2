@@ -3,11 +3,15 @@ import {
   createApplicationSchema,
   decisionSchema,
   MEMBER_STATUSES,
+  memberCorrectionSchema,
+  memberDetailsSchema,
   memberStatusSchema,
   publishBylawsSchema,
   resignSchema,
   type CreateApplicationInput,
   type DecisionInput,
+  type MemberCorrectionInput,
+  type MemberDetailsInput,
   type MemberStatusInput,
   type PublishBylawsInput,
   type ResignInput,
@@ -68,6 +72,12 @@ export class RegistrationController {
   resign(@Ctx() ctx: RequestContext, @Body(new ZodPipe(resignSchema)) body: ResignInput) {
     return this.members.resign(ctx, body.reason);
   }
+
+  /** The signed-in member's own details and email opt-ins (design §5.2). */
+  @Post('me/details')
+  updateDetails(@Ctx() ctx: RequestContext, @Body(new ZodPipe(memberDetailsSchema)) body: MemberDetailsInput) {
+    return this.members.updateOwnDetails(ctx, body);
+  }
 }
 
 /** Membership Admin triage (design §5, §10.1). */
@@ -119,5 +129,20 @@ export class MembershipAdminController {
   @Get('members/:accountId/history')
   history(@Param('accountId') accountId: string) {
     return this.members.history(accountId);
+  }
+
+  /** One member's profile: record, applications with every answer, status history (design §5.2). */
+  @Get('members/:accountId')
+  member(@Param('accountId') accountId: string) {
+    return this.members.detail(accountId);
+  }
+
+  @Post('members/:accountId/details')
+  correctDetails(
+    @Ctx() ctx: RequestContext,
+    @Param('accountId') accountId: string,
+    @Body(new ZodPipe(memberCorrectionSchema)) body: MemberCorrectionInput,
+  ) {
+    return this.members.correctDetails(ctx, accountId, body);
   }
 }
