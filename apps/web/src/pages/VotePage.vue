@@ -14,6 +14,7 @@ import {
 import { announce, focusSoon, usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
 import { attempt } from '../dialogs.js';
+import { downloadElectionDocx } from '../election-files.js';
 import { rulesText } from '../election-text.js';
 import { downloadReceipt, forgetReceipt, keepReceipt, savedReceipt } from '../receipts.js';
 
@@ -49,6 +50,16 @@ onMounted(load);
  */
 const integrityProblems = computed(() => (view.value ? ballotViewProblems(view.value) : null));
 const integrity = computed(() => (integrityProblems.value ? integrityProblems.value.length === 0 : null));
+
+/** The ballot as a Word file (design §9), proposal texts included; never the voter's answers. */
+const exporting = ref(false);
+async function downloadWord() {
+  const v = view.value;
+  if (!v) return;
+  exporting.value = true;
+  await attempt(() => downloadElectionDocx({ definition: v.definition, state: v.election.state, proposals: v.proposals, results: null }));
+  exporting.value = false;
+}
 
 const proposalText = (c: Contest) => view.value?.proposals.find((p) => p.snapshotId === c.proposal?.snapshotId) ?? null;
 const nameOf = (c: Contest, id: string) => c.candidates.find((k) => k.candidateId === id)?.name ?? id;
@@ -165,17 +176,31 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
         </div>
       </div>
       <template v-if="view">
-        <q-btn
-          v-if="(view.election.state === 'scheduled' || view.election.state === 'open') && !view.election.castAt"
-          outline
-          no-caps
-          color="primary"
-          icon="event"
-          label="Add to calendar"
-          :href="calendarPath"
-        >
-          <span class="sr-only">: voting in {{ view.definition.title }}</span>
-        </q-btn>
+        <div class="ustp-actions">
+          <q-btn
+            v-if="(view.election.state === 'scheduled' || view.election.state === 'open') && !view.election.castAt"
+            outline
+            no-caps
+            color="primary"
+            icon="event"
+            label="Add to calendar"
+            :href="calendarPath"
+          >
+            <span class="sr-only">: voting in {{ view.definition.title }}</span>
+          </q-btn>
+          <q-btn
+            outline
+            no-caps
+            color="primary"
+            icon="description"
+            label="Download ballot as Word"
+            :loading="exporting"
+            :disable="integrity === false"
+            @click="downloadWord"
+          >
+            <span class="sr-only">: {{ view.definition.title }}</span>
+          </q-btn>
+        </div>
         <p v-if="view.definition.description" style="white-space: pre-wrap">{{ view.definition.description }}</p>
 
         <q-banner v-if="integrity === false" class="bg-negative text-white" rounded>

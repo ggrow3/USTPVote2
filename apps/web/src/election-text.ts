@@ -1,4 +1,4 @@
-import type { ContestSpec, ProposalContest, Ratio, Threshold } from 'ustp-tally';
+import type { ContestSpec, ProposalContest, Ratio, Threshold, TieBreakRecord } from 'ustp-tally';
 
 /** Plain-language descriptions of contest rules (design §9), so admins and voters see what a rule means. */
 
@@ -51,6 +51,14 @@ export function rulesText(spec: ContestSpec): string[] {
         ...(spec.maxRanks ? [`Voters may rank up to ${spec.maxRanks}.`] : []),
       ];
   }
+}
+
+/** A tie and how it was broken (design §9), in words; `names` turns candidate IDs into a list of names. */
+export function tieBreakText(t: TieBreakRecord, names: (ids: readonly string[]) => string): string {
+  const where = t.reason === 'seat_cutoff' ? 'for the last seat' : `for last place in round ${t.round}`;
+  const how = t.resolvedBy === 'previous_rounds' ? 'by the earlier rounds’ counts' : 'by the tie-break order drawn from the election’s seed';
+  const lost = t.reason === 'seat_cutoff' ? 'not elected' : 'eliminated';
+  return `${names(t.tied)} tied ${where}; resolved ${how}: ${names(t.excluded)} ${lost}.`;
 }
 
 export interface PassRulePreset {

@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router';
 import {
   checkResults,
   type AnchorRecord,
+  type BallotView,
   type ContestOutcome,
   type ElectionDefinition,
   type PublicElection,
@@ -17,7 +18,9 @@ import {
 import type { TieBreakRecord } from 'ustp-tally';
 import { usePageTitle } from '../a11y.js';
 import { api, ApiError, errorMessage } from '../api.js';
-import { rulesText } from '../election-text.js';
+import { downloadElectionDocx } from '../election-files.js';
+import { rulesText, tieBreakText } from '../election-text.js';
+import { session } from '../session.js';
 
 type Contest = ElectionDefinition['contests'][number];
 
@@ -87,12 +90,7 @@ const PROPOSAL_OUTCOME = {
   no_quorum: { label: 'No quorum', color: 'grey-7' },
 } as const;
 
-function tieText(c: Contest, t: TieBreakRecord): string {
-  const where = t.reason === 'seat_cutoff' ? 'for the last seat' : `for last place in round ${t.round}`;
-  const how = t.resolvedBy === 'previous_rounds' ? 'by the earlier rounds’ counts' : 'by the tie-break order drawn from the election’s seed';
-  const lost = t.reason === 'seat_cutoff' ? 'not elected' : 'eliminated';
-  return `${names(c, t.tied)} tied ${where}; resolved ${how}: ${names(c, t.excluded)} ${lost}.`;
-}
+const tieText = (c: Contest, t: TieBreakRecord) => tieBreakText(t, (ids) => names(c, ids));
 
 /** IRV round table cell: blank once a candidate is out. */
 function roundCount(outcome: ContestOutcome, round: number, candidateId: string): string {
@@ -111,6 +109,35 @@ async function copyFormula() {
     $q.notify({ message: 'Formula copied' });
   } catch {
     $q.notify({ message: 'Could not copy. Select the formula and copy it.' });
+  }
+}
+
+/**
+ * The ballot and these results as a Word file, which Google Docs opens as it is. The public record names each proposal
+ * by its hash only; a signed-in voter on the roll may read the texts on their ballot, so their copy includes them.
+ */
+const exporting = ref(false);
+
+async function proposalTexts(): Promise<BallotView['proposals']> {
+  if (!session.user || !record.value?.definition.contests.some((c) => c.proposal)) return [];
+  try {
+    return (await api<BallotView>('GET', `/v1/elections/${electionId}/ballot`)).proposals;
+  } catch (e) {
+    if (e instanceof ApiError && [401, 403, 404].includes(e.status)) return []; // not on this election's roll
+    throw e;
+  }
+}
+
+async function downloadWord() {
+  if (!record.value || !results.value) return;
+  exporting.value = true;
+  try {
+    const { definition, election } = record.value;
+    await downloadElectionDocx({ definition, state: election.state, proposals: await proposalTexts(), results: results.value });
+  } catch (e) {
+    $q.notify({ type: 'negative', message: errorMessage(e) });
+  } finally {
+    exporting.value = false;
   }
 }
 
@@ -298,14 +325,32 @@ const summary = computed(() => {
 
           <q-card flat bordered>
             <q-card-section>
-              <h2 class="text-subtitle1">Use these results in a spreadsheet</h2>
+              <h2 class="text-subtitle1">Use these results in a spreadsheet or document</h2>
               <div class="text-caption text-grey-7">
-                The CSV is an unsigned copy; the signed results checked on this page are the official record.
+                The CSV and Word files are unsigned copies; the signed results checked on this page are the official record.
               </div>
             </q-card-section>
             <q-card-section class="ustp-form">
-              <div class="ustp-actions">
-                <q-btn outline no-caps color="primary" icon="download" label="Download CSV" :href="csvPath" download />
+              <div>
+                <div class="ustp-actions">
+                  <q-btn outline no-caps color="primary" icon="download" label="Download CSV" :href="csvPath" download />
+                  <q-btn
+                    outline
+                    no-caps
+                    color="primary"
+                    icon="description"
+                    label="Download as Word"
+                    :loading="exporting"
+                    aria-describedby="word-help"
+                    @click="downloadWord"
+                  >
+                    <span class="sr-only">: {{ record.definition.title }}, ballot and results</span>
+                  </q-btn>
+                </div>
+                <div id="word-help" class="ustp-message text-grey-7">
+                  The Word file has the ballot and these results. To open it in Google Docs, upload it to Google Drive and
+                  choose Open with, then Google Docs.
+                </div>
               </div>
               <div>
                 <q-input

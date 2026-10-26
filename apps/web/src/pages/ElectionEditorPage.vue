@@ -4,6 +4,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   amendmentText,
+  buildDefinition,
   candidateInputSchema,
   checkElectionDeletable,
   isRehearsalRoll,
@@ -19,6 +20,7 @@ import { api } from '../api.js';
 import { aRole, describeRequest } from '../approval-text.js';
 import ContestDialog from '../components/admin/ContestDialog.vue';
 import { askReason, attempt, dialog } from '../dialogs.js';
+import { downloadElectionDocx } from '../election-files.js';
 import { fromLocalInput, KIND_LABELS, rulesText, toLocalInput } from '../election-text.js';
 import { validate } from '../forms.js';
 import { hasRole, session } from '../session.js';
@@ -103,6 +105,26 @@ async function addCandidate(c: ContestRecord) {
 
 async function removeCandidate(c: ContestRecord, candidateId: string) {
   if (await attempt(() => api('DELETE', `${url}/contests/${c.contestId}/candidates/${candidateId}`))) await load();
+}
+
+/**
+ * The ballot as a Word file (design §9): the definition as it stands, the same one its hash names, with the proposal
+ * texts. Built from the definition, so nothing else on this page (the roll, approvals) goes into it.
+ */
+const exporting = ref(false);
+async function downloadWord() {
+  const d = detail.value;
+  if (!d) return;
+  exporting.value = true;
+  await attempt(() =>
+    downloadElectionDocx({
+      definition: buildDefinition(d.election, d.contests, d.candidates, d.proposals),
+      state: d.election.state,
+      proposals: d.proposals,
+      results: null,
+    }),
+  );
+  exporting.value = false;
 }
 
 function copyHash() {
@@ -440,7 +462,12 @@ onMounted(load);
 
         <div class="ustp-header">
           <h2 class="text-h6">Contests</h2>
-          <q-btn v-if="canEdit" color="primary" no-caps label="Add contest" @click="openContest(null)" />
+          <div class="ustp-actions">
+            <q-btn v-if="canEdit" color="primary" no-caps label="Add contest" @click="openContest(null)" />
+            <q-btn outline no-caps color="primary" icon="description" label="Download ballot as Word" :loading="exporting" @click="downloadWord">
+              <span class="sr-only">: {{ detail.election.title }}</span>
+            </q-btn>
+          </div>
         </div>
         <div v-if="!detail.contests.length" class="text-grey-7">No contests yet.</div>
 
