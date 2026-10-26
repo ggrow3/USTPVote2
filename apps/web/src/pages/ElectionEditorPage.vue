@@ -220,20 +220,31 @@ async function cancelElection() {
 
 // --- permanent deletion (design §6.1) ----------------------------------------------------------------------
 
-/** Cancelled elections: whether this one can be deleted, by the API's own rule. */
-const deletion = computed(() =>
-  detail.value?.ballotsCast == null ? null : checkElectionDeletable(detail.value.election, detail.value.ballotsCast),
+/** A rehearsal (test voters only) can also be deleted after voting, where testing mode is on (design §10.4). */
+const rehearsal = computed(() => isRehearsalRoll(detail.value?.roll?.criteria));
+const deletableRehearsal = computed(() => rehearsal.value && testingMode.value);
+/** Cancelled and certified elections: whether this one can be deleted, by the API's own rule. */
+const deletion = computed(() => {
+  const d = detail.value;
+  if (d?.ballotsCast == null) return null;
+  return checkElectionDeletable(d.election, d.ballotsCast, { rehearsal: rehearsal.value, testingMode: testingMode.value, officeTerms: d.officeTerms ?? 0 });
+});
+const canDelete = computed(
+  () => hasRole('election_admin') && deletion.value !== null && (state.value === 'cancelled' || deletableRehearsal.value),
 );
-const canDelete = computed(() => hasRole('election_admin') && state.value === 'cancelled' && deletion.value !== null);
+const ballotsText = (n: number) => (n === 1 ? '1 ballot' : `${n} ballots`);
 
 async function deleteElection() {
-  const title = detail.value!.election.title;
+  const { election, ballotsCast } = detail.value!;
   const reason = await askReason('Delete election permanently', 'Why is it being deleted? The reason is published in the ledger.');
   if (reason === null) return;
+  const what = ballotsCast
+    ? `its contests, candidates, voter roll, ${ballotsText(ballotsCast)} and results`
+    : 'its contests, candidates and voter rolls';
   dialog({
     title: 'Delete permanently?',
     message:
-      `“${title}”, its contests, candidates and voter rolls will be deleted permanently. This cannot be undone. ` +
+      `“${election.title}”, ${what} will be deleted permanently. This cannot be undone. ` +
       'The ledger keeps every entry about the election and records the deletion.',
     cancel: true,
     focus: 'cancel',
@@ -415,7 +426,11 @@ onMounted(load);
             <div>
               <h2 class="text-subtitle1">Delete permanently</h2>
               <div class="text-caption text-grey-7">
-                <template v-if="deletion?.ok">Nobody voted in it, so it can be deleted. The ledger keeps its entries.</template>
+                <template v-if="deletion?.ok && detail.ballotsCast">
+                  A rehearsal with test voters only, so it can be deleted with its {{ ballotsText(detail.ballotsCast) }} and its
+                  results. The ledger keeps its entries.
+                </template>
+                <template v-else-if="deletion?.ok">Nobody voted in it, so it can be deleted. The ledger keeps its entries.</template>
                 <template v-else-if="deletion">Cannot be deleted: {{ deletion.reason }}.</template>
               </div>
             </div>

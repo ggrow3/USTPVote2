@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { ledgerTypes, seedElection, seededBallot } from './testing/elections.js';
+import { closeNow, ledgerTypes, seedElection, seededBallot } from './testing/elections.js';
 import { resetEmulators, TestApi, TestWorker, type User } from './testing/emulator.js';
 
 let api: TestApi;
@@ -124,5 +124,78 @@ describe('deleting an election', () => {
   it('keeps an Election Admin who is a candidate from deleting it', async () => {
     const seeded = await seedElection(api, { voters: [voter.accountId], secrecy: 'open', state: 'cancelled', blairAccountId: ea.accountId });
     expect(await remove(seeded.electionId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/candidate in this election/) } });
+  });
+});
+
+describe('deleting a rehearsal (design §10.4)', () => {
+  /** The same api with testing mode on, as on dev; `api` above has it off, as in production. */
+  let testing: TestApi;
+  let voter2: Member;
+  beforeAll(async () => {
+    process.env.TESTING_MODE = 'true';
+    testing = await TestApi.start();
+    delete process.env.TESTING_MODE;
+  });
+  afterAll(() => testing.close());
+  beforeEach(async () => {
+    voter2 = await api.member('voter2@example.test');
+  });
+
+  const removeRehearsal = (electionId: string) =>
+    testing.call('POST', `${admin(electionId)}/delete`, ea, { reason: 'demo over' });
+
+  /** A secret rehearsal both voters voted in, closed and tallied, then certified by the Election Admin and Auditor. */
+  async function certifiedRehearsal(opts: { chairPositionId?: string } = {}) {
+    const seeded = await seedElection(testing, { voters: [voter.accountId, voter2.accountId], kAnonymity: 2, rehearsal: true, ...opts });
+    expect((await worker.tick()).body).toMatchObject({ electionsOpened: 1 });
+    const { definitionHash } = (await testing.call('GET', `${seeded.url}/ballot`, voter)).body;
+    for (const v of [voter, voter2]) {
+      expect((await testing.call('POST', `${seeded.url}/ballots`, v, { definitionHash, parts: seededBallot(seeded.electionId) })).status).toBe(201);
+    }
+    await closeNow(testing, seeded);
+    expect((await worker.tick()).body).toMatchObject({ resultsComputed: 1 });
+    expect(await removeRehearsal(seeded.electionId)).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/once its results are certified/) } });
+    const req = await testing.call('POST', `${admin(seeded.electionId)}/certify`, ea, { reason: 'demo count' });
+    expect((await testing.call('POST', `/v1/admin/approvals/${req.body.id}/decision`, auditor, { decision: 'approve', reason: 'ok' })).body.status).toBe(
+      'executed',
+    );
+    return seeded;
+  }
+
+  it('deletes a certified rehearsal with its ballots and results, where testing mode is on', async () => {
+    const seeded = await certifiedRehearsal();
+    const { tieBreakSeedRef } = (await seeded.ref.get()).data()!;
+    expect((await testing.call('GET', admin(seeded.electionId), ea)).body).toMatchObject({ ballotsCast: 2, officeTerms: 0 });
+    expect(await removeRehearsal(seeded.electionId)).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/encryption key/) } });
+    expect((await worker.tick()).body).toMatchObject({ poolKeysDestroyed: 1 });
+
+    // Where testing mode is off (production), a rehearsal is held to the ordinary rule.
+    expect(await remove(seeded.electionId)).toMatchObject({ status: 409, body: { detail: 'a certified election cannot be deleted; only cancelled ones can' } });
+
+    expect((await removeRehearsal(seeded.electionId)).status).toBe(204);
+    expect(await exists(`elections/${seeded.electionId}`)).toBe(false);
+    for (const sub of ['participation', 'ballot_pool', 'sealed_blocks', 'contests', 'candidates']) {
+      expect(await count(`elections/${seeded.electionId}/${sub}`)).toBe(0);
+    }
+    expect(await exists(`results/${seeded.electionId}`)).toBe(false);
+    expect(await exists(`eligibility_snapshots/r-${seeded.electionId}`)).toBe(false);
+    expect(await exists(`emulator_secrets/${tieBreakSeedRef}`)).toBe(false);
+    expect((await testing.call('GET', `/v1/public/elections/${seeded.electionId}/results`)).status).toBe(404);
+
+    const types = await ledgerTypes(testing, seeded.electionId);
+    expect(types.slice(-3)).toEqual(['results.certified', 'election.pool_key_destroyed', 'election.deleted']);
+    const deleted = (await api.firebase.db.collection('audit_events').where('type', '==', 'election.deleted').get()).docs[0]!.data();
+    expect(deleted.payload).toEqual({ electionId: seeded.electionId, title: 'Officers', reason: 'demo over', rehearsal: true, ballotsCast: 2 });
+    expect((await worker.tick()).status).toBe(200);
+    expect((await testing.call('GET', '/v1/admin/audit/verify', auditor)).body).toMatchObject({ ok: true });
+  });
+
+  it('keeps a rehearsal whose certification seated someone in an office', async () => {
+    expect((await testing.call('POST', '/v1/admin/positions', ea, { positionId: 'chair', title: 'Chair', seats: 1, termMonths: 24, reason: 'test' })).status).toBe(201);
+    const seeded = await certifiedRehearsal({ chairPositionId: 'chair' });
+    expect((await worker.tick()).body).toMatchObject({ poolKeysDestroyed: 1 });
+    expect((await testing.call('GET', admin(seeded.electionId), ea)).body).toMatchObject({ officeTerms: 1 });
+    expect(await removeRehearsal(seeded.electionId)).toMatchObject({ status: 409, body: { detail: 'its certification started a term of office, so it stays on record' } });
+    expect(await exists(`elections/${seeded.electionId}`)).toBe(true);
   });
 });

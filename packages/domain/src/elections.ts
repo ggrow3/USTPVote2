@@ -250,8 +250,16 @@ export interface ElectionDetail {
   readonly pending: readonly ApprovalRequestRecord[];
   /** Once tallied: the results' status and hash, which certification approves. */
   readonly results: ResultsSummary | null;
-  /** Cancelled elections only: how many ballots were cast, which decides whether it can be deleted (§6.1). */
+  /**
+   * Cancelled and certified elections: how many ballots were cast, which decides whether it can be deleted (§6.1;
+   * a rehearsal's ballots do not, §10.4).
+   */
   readonly ballotsCast: number | null;
+  /**
+   * Certified elections: the terms of office their certification started. A rehearsal that seated anyone stays on
+   * record (§10.4).
+   */
+  readonly officeTerms: number | null;
 }
 
 /** `GET /v1/admin/elections/{id}/roll`: the latest roll with names, for review before approval. */
