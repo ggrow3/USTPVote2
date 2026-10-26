@@ -89,7 +89,7 @@ commit. What changes is that only the owner touches its documents.
 
 | Context | Aggregate (root → parts) | Invariants it guarantees |
 |---|---|---|
-| Membership | **Member** (`members/{accountId}` → `member_status_history`) | transitions only per §5.1; admin changes need a reason; nobody changes their own status; every change writes member, history and `member.status_changed` together; `memberSince` set once, at first Active |
+| Membership | **Member** (`members/{accountId}` → `member_status_history`) | transitions only per §5.1; admin changes need a reason; nobody changes their own status; every change writes member, history and `member.status_changed` together; `memberSince` set once, at first Active; details change only by the member (not the legal name) or by another Membership Admin with a reason (not the opt-ins), ledgered as `member.details_changed` by field name |
 | Membership | **MembershipApplication** | only against the current bylaws (version and hash); verified email; at most 3 per 30 days; pending → approved \| rejected once; decider ≠ applicant; applicant still `applicant` |
 | Membership | **ProfilePhoto** | machine flags, people decide; reviewer ≠ owner; new photo supersedes the old |
 | Bylaws | **BylawsVersion** | immutable; `amends` is the current version; no publishing while an amending election is scheduled, open or closed |
@@ -140,6 +140,7 @@ change only where a context is being reworked anyway.
 | Member, applicant | an account with a member record; `applicant` until decided | `members`, `MemberStatus` |
 | Application | a request to join, against one bylaws version | `applications` |
 | Member status change | the only way status moves, always ledgered | `member.status_changed` |
+| Member details change, correction | the member's own update, or a Membership Admin's correction with a reason | `member.details_changed` |
 | Bylaws version, amendment | immutable published text; a line-exact change to one version | `bylaws_versions`, `BylawsAmendment` |
 | Election, draft, definition, definition hash | the ballot being prepared; its canonical object and hash | `elections`, `ElectionDefinition` |
 | Contest: proposal, choose-N, IRV | one question on the ballot | `ContestRecord.spec.kind` |

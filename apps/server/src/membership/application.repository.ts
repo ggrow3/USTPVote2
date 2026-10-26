@@ -30,8 +30,8 @@ export class ApplicationRepository {
     return recent.size;
   }
 
-  /** The account's own applications, newest first. */
-  async mine(accountId: string): Promise<ApplicationRecord[]> {
+  /** An account's applications, newest first. */
+  async ofAccount(accountId: string): Promise<ApplicationRecord[]> {
     const snap = await this.applications().where('accountId', '==', accountId).orderBy('submittedAt', 'desc').limit(20).get();
     return snap.docs.map((d) => d.data() as ApplicationRecord);
   }

@@ -117,6 +117,34 @@
 }
 
 /* A section of a long form, in its own card: the legend is the heading, then an optional caption, then the fields. */
+/*
+ * Labelled facts (a member's details, an application's answers): label beside value, the labels one width everywhere so
+ * values line up from one list to the next; stacked on phones.
+ */
+.ustp-facts {
+  display: grid;
+  grid-template-columns: 14rem minmax(0, 1fr);
+  gap: 4px 16px;
+  margin: 0;
+}
+.ustp-facts > dt {
+  font-weight: 500;
+}
+.ustp-facts > dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+@media (max-width: 599.98px) {
+  .ustp-facts {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .ustp-facts > dd + dt {
+    margin-top: 8px;
+  }
+}
+
 .ustp-fieldset {
   min-width: 0;
   margin: 0;

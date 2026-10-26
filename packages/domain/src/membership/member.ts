@@ -1,7 +1,9 @@
+import type { MemberCorrectionInput, MemberDetailsInput } from '../api.js';
 import { OK, refuse, type Check, type Outcome } from '../check.js';
 import type { LedgerEvent } from '../ledger-events.js';
 import { checkStatusChange, nextStatuses, type MemberStatus } from './member-status.js';
-import type { MemberRecord, StatusHistoryRecord } from './records.js';
+import type { CommunicationConsents, MemberContact, MemberRecord, StatusHistoryRecord } from './records.js';
+import { normalizePhone, normalizePostalCode } from './registration.js';
 
 /**
  * The Member aggregate (design §5.1): `members/{accountId}` and its append-only `member_status_history`. A status
@@ -136,6 +138,113 @@ export function adminStatusChanges(status: MemberStatus): MemberStatus[] {
   return nextStatuses(status).filter(
     (to) => to !== 'applicant' && checkStatusChange({ from: status, to, initiatedBy: 'admin', reason: 'offered' }).ok,
   );
+}
+
+/** Payload of `member.details_changed` (design §8.2): which fields changed and why, never their values. */
+export type MemberDetailsChangedPayload = {
+  readonly fields: readonly MemberDetailField[];
+  readonly reason: string | null;
+};
+
+/** The parts of a member record that change after joining, as the ledger names them (design §5.2). */
+export const MEMBER_DETAIL_FIELDS = [
+  'legalName',
+  'preferredName',
+  'state',
+  'contact.city',
+  'contact.postalCode',
+  'contact.phone',
+  'communications.newsletter',
+  'communications.announcements',
+] as const;
+export type MemberDetailField = (typeof MEMBER_DETAIL_FIELDS)[number];
+
+export interface DetailsTransition {
+  readonly member: MemberRecord;
+  readonly event: LedgerEvent & { readonly type: 'member.details_changed'; readonly payload: MemberDetailsChangedPayload };
+}
+
+/** The new record and its ledger event, or a refusal when nothing changed. */
+function detailsTransition(current: MemberRecord, member: MemberRecord, actor: string, reason: string | null): Outcome<DetailsTransition> {
+  const before = detailValues(current);
+  const after = detailValues(member);
+  const fields = MEMBER_DETAIL_FIELDS.filter((f) => before[f] !== after[f]);
+  if (fields.length === 0) return refuse('conflict', 'nothing to change');
+  return {
+    ok: true,
+    value: {
+      member,
+      event: { type: 'member.details_changed', actor, subject: member.accountId, payload: { fields, reason } },
+    },
+  };
+}
+
+function detailValues(m: MemberRecord): Record<MemberDetailField, string | null> {
+  return {
+    legalName: m.legalName,
+    preferredName: m.preferredName,
+    state: m.state,
+    'contact.city': m.contact?.city ?? null,
+    'contact.postalCode': m.contact?.postalCode ?? null,
+    'contact.phone': m.contact?.phone ?? null,
+    'communications.newsletter': m.communications?.newsletter ?? null,
+    'communications.announcements': m.communications?.announcements ?? null,
+  };
+}
+
+/** Where the member lives and how to reach them, as stored: the same normalizing as the application's. */
+function addressDetails(input: Pick<MemberDetailsInput, 'preferredName' | 'state' | 'city' | 'postalCode' | 'phone'>) {
+  const contact: MemberContact = {
+    city: input.city,
+    postalCode: normalizePostalCode(input.postalCode),
+    phone: input.phone ? normalizePhone(input.phone) : null,
+  };
+  return { preferredName: input.preferredName || null, state: input.state, contact };
+}
+
+/** An opt-in keeps the time it was first given; withdrawing it clears that (design §5.2). */
+function consent(given: boolean, since: string | null | undefined, at: string): string | null {
+  return given ? (since ?? at) : null;
+}
+
+/**
+ * A member changes their own details (design §5.2): preferred name, where they live, phone, and their two email
+ * opt-ins. Their legal name is corrected by a Membership Admin (`correctMemberDetails`).
+ */
+export function updateOwnDetails(
+  current: MemberRecord | null,
+  request: { readonly input: MemberDetailsInput; readonly at: string },
+): Outcome<DetailsTransition> {
+  if (!current) return refuse('not_found', 'you are not a member');
+  const { input, at } = request;
+  const communications: CommunicationConsents = {
+    newsletter: consent(input.newsletter, current.communications?.newsletter, at),
+    announcements: consent(input.announcements, current.communications?.announcements, at),
+  };
+  return detailsTransition(current, { ...current, ...addressDetails(input), communications }, current.accountId, null);
+}
+
+/**
+ * Whether an admin may correct this member's details. Checked before the member is read: nobody corrects their own
+ * record this way (their own details are on their Account page, and their legal name is another admin's to correct).
+ */
+export function checkMemberCorrectionRequest(actor: string, accountId: string): Check {
+  if (accountId === actor) return refuse('forbidden', 'another Membership Admin must correct your own member record');
+  return OK;
+}
+
+/**
+ * A Membership Admin corrects a member's legal or preferred name, state or contact details, with a written reason
+ * (design §5.2). Never the email opt-ins: those are the member's own to give. Call after `checkMemberCorrectionRequest`.
+ */
+export function correctMemberDetails(
+  current: MemberRecord | null,
+  request: { readonly input: MemberCorrectionInput; readonly actor: string },
+): Outcome<DetailsTransition> {
+  if (!current) return refuse('not_found', 'no such member');
+  const { input, actor } = request;
+  if (!input.reason.trim()) return refuse('conflict', 'a written reason is required');
+  return detailsTransition(current, { ...current, legalName: input.legalName, ...addressDetails(input) }, actor, input.reason);
 }
 
 /**

@@ -7,7 +7,7 @@ import { describe, expect, it } from 'vitest';
  * folder, in its `api.ts`, and other code calls that client. A context is listed here once it has that structure.
  */
 const CONTEXTS: Readonly<Record<string, readonly string[]>> = {
-  membership: ['/v1/registration/', '/v1/admin/applications', '/v1/admin/members', '/v1/me/resign'],
+  membership: ['/v1/registration/', '/v1/admin/applications', '/v1/admin/members', '/v1/me/resign', '/v1/me/details'],
 };
 
 const SRC = import.meta.dirname;

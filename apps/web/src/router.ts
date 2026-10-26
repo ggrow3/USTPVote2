@@ -32,6 +32,11 @@ export const router = createRouter({
         // Open to anyone signed in: the page tells people without an admin role who it is for.
         { path: 'admin', component: () => import('./pages/AdminPage.vue'), meta: { requiresAuth: true } },
         {
+          path: 'admin/members/:accountId',
+          component: () => import('./membership/MemberPage.vue'),
+          meta: { requiresAuth: true, roles: ['membership_admin'] },
+        },
+        {
           path: 'admin/elections/:id',
           component: () => import('./pages/ElectionEditorPage.vue'),
           meta: { requiresAuth: true, roles: ['election_admin', 'auditor'] },

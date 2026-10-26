@@ -59,6 +59,11 @@ export class MemberRepository {
     return snap.docs.map((d) => d.data() as StatusHistoryRecord);
   }
 
+  /** Writes changed details (design §5.2); the status and its history are untouched. */
+  update(tx: Transaction, member: MemberRecord): void {
+    tx.set(this.members().doc(member.accountId), member);
+  }
+
   /** Writes a status change: the member record and a new history entry. */
   save(tx: Transaction, member: MemberRecord, history: StatusHistoryRecord): void {
     tx.set(this.members().doc(member.accountId), member);
