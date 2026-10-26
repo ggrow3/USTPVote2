@@ -68,9 +68,10 @@ export async function checkElection(e: ElectionEvidence): Promise<Finding[]> {
 }
 
 /**
- * An election the api has no record of: a draft, a wrong ID, or an election deleted after it was cancelled with no
- * ballots cast (design §6.1), whose ledger entries stay. A deletion must follow the cancellation and be the election's
- * last entry, and no entry may show ballots sealed for it.
+ * An election the api has no record of: a draft, a wrong ID, or a deleted election (design §6.1), whose ledger entries
+ * stay. A deletion must be the election's last entry. An ordinary one follows the cancellation, and no entry may show
+ * ballots sealed for it. A rehearsal, whose approved roll the ledger shows was test voters only (§10.4), may also be
+ * deleted after its certification, ballots and all; what the deletion entry says about itself is not taken on trust.
  */
 export function missingElectionFindings(id: string, entries: ReadonlyMap<number, PublicLedgerEntry>): Finding[] {
   const mine = entriesAbout(id, entries);
@@ -83,22 +84,33 @@ export function missingElectionFindings(id: string, entries: ReadonlyMap<number,
       ),
     ];
   }
-  const cancelled = mine.find((x) => x.type === 'election.cancelled' && x.seq < deleted.seq);
+  const rehearsalRoll = mine.find(
+    (x) => x.type === 'roll.approved' && x.seq < deleted.seq && isRehearsalRoll(x.payload.criteria as RollCriteria | undefined),
+  );
+  const ends = rehearsalRoll ? ['election.cancelled', 'results.certified'] : ['election.cancelled'];
+  const ended = mine.find((x) => ends.includes(x.type) && x.seq < deleted.seq);
   const history: string[] = [];
-  if (!cancelled) history.push('no election.cancelled entry before the deletion');
+  if (!ended) history.push(`no ${ends.join(' or ')} entry before the deletion`);
   for (const x of mine.filter((x) => x.seq > deleted.seq)) history.push(`${x.type} ${x.seq} is recorded after the deletion`);
   const ballots = mine
     .filter((x) => (x.type === 'ballots.sealed' && x.payload.ballotCount !== 0) || (x.type === 'election.sealed' && x.payload.ballots !== 0))
     .map((x) => `${x.type} ${x.seq} records ballots`);
   const { title, reason } = deleted.payload;
   return [
-    info(`Deleted permanently (entry ${deleted.seq}, ${deleted.at})`, `${String(title)}: "${String(reason)}"`),
-    problemsFinding(
-      'The ledger records its cancellation, then its deletion as its last entry',
-      history,
-      cancelled && `election.cancelled ${cancelled.seq}, election.deleted ${deleted.seq}`,
+    info(
+      `Deleted permanently${rehearsalRoll ? ', a rehearsal' : ''} (entry ${deleted.seq}, ${deleted.at})`,
+      `${String(title)}: "${String(reason)}"`,
     ),
-    problemsFinding('No ballots were sealed for it', ballots),
+    problemsFinding(
+      rehearsalRoll
+        ? 'The ledger records the rehearsal’s cancellation or certification, then its deletion as its last entry'
+        : 'The ledger records its cancellation, then its deletion as its last entry',
+      history,
+      ended && `${ended.type} ${ended.seq}, election.deleted ${deleted.seq}`,
+    ),
+    rehearsalRoll
+      ? info('Its ballots were a rehearsal’s', `roll.approved ${rehearsalRoll.seq} records a roll of test voters only, which only testing mode allows`)
+      : problemsFinding('No ballots were sealed for it', ballots),
   ];
 }
 
