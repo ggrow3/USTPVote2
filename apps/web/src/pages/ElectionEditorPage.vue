@@ -21,6 +21,7 @@ import { aRole, describeRequest } from '../approval-text.js';
 import ContestDialog from '../components/admin/ContestDialog.vue';
 import { askReason, attempt, dialog } from '../dialogs.js';
 import { downloadElectionDocx } from '../election-files.js';
+import ElectionWorkflow from '../elections/ElectionWorkflow.vue';
 import { fromLocalInput, KIND_LABELS, rulesText, toLocalInput } from '../election-text.js';
 import { validate } from '../forms.js';
 import { hasRole, session } from '../session.js';
@@ -319,6 +320,8 @@ onMounted(load);
             · tie-break seed commitment <code>{{ detail.election.tieBreakSeedCommitment.slice(0, 16) }}…</code>
           </template>
         </div>
+
+        <ElectionWorkflow :detail="detail" />
 
         <q-card v-if="detail.pending.length" flat bordered>
           <q-card-section><h2 class="text-subtitle1">Waiting for a decision</h2></q-card-section>

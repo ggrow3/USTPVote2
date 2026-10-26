@@ -137,6 +137,8 @@ menus and dialogs `#1d1d1d`.
 | Under the tint, light theme (the text's own colour at .08, hover and focus): primary on white (flat and outline buttons, tabs, the current menu item); negative on white; black on white | `#bd4e00` on `#fbf6f3`; `#c10015` on `#fbf3f4`; `#000` on `#f3f3f3` | 4.60; 5.87; 18.93 |
 | Under the tint, dark theme (the text's own colour at .12): accent on the page / a card; `#ef9a9a` on a card; white on a card | `#ff6900` on `#2d231c` / `#362d26`; on `#353030`; on `#363636` | 5.31 / 4.66; 6.04; 12.08 |
 | App icon: white ballot box on primary | `#fff` on `#bd4e00` | 4.94 |
+| Election workflow diagram, light (on a white card; groups `#f5f5f5`): the current step, white on primary, and its border on the card / group; a done step, black on `#e8f5e9`, its border on that fill / the card; other steps black on white, their border and a not-reached step's text `#757575` on the card / group; lines `#757575` | `#fff` on `#bd4e00`; `#bd4e00` on `#fff` / `#f5f5f5`; `#000` on `#e8f5e9`; `#2e7d32` on `#e8f5e9` / `#fff`; `#757575` on `#fff` / `#f5f5f5` | 4.94; 4.94 / 4.53; 18.67; 4.56 / 5.13; 4.61 / 4.23 |
+| Election workflow diagram, dark (on `#1d1d1d`; groups `#262626`): the current step, black on the accent, and its border on the card / group; a done step, white on `#203123`, its border on that fill / the card; other steps white on the card, their border and a not-reached step's text `#b0b0b0` on the card / group | `#000` on `#ff6900`; `#ff6900` on `#1d1d1d` / `#262626`; `#fff` on `#203123`; `#81c784` on `#203123` / `#1d1d1d`; `#b0b0b0` on `#1d1d1d` / `#262626` | 7.27; 5.84 / 5.24; 13.77; 6.84 / 8.38; 7.77 / 6.98 |
 
 Corrections to the first audit: `orange-10` (`#e65100`) is 3.79:1 on white, not 5.60 (5.60 is `deep-orange-10`), so
 warning text failed until it moved to `deep-orange-10`; `orange-9` was 3.08; `text-grey-7` on white is 4.61, not 6.19.
@@ -228,6 +230,20 @@ the file holds and how to open it in Google Docs. The button shows a spinner whi
 a toast. The file itself uses Word's own structure, which Word, Google Docs and screen readers in both navigate: the
 title and Heading 1–3 styles, real bullet lists, tables with a header row that repeats on each page, links as links, a
 document title and the language (en-US).
+
+The election editor's workflow (design §6.1) was checked on 2026-10-26 against the emulators, in both themes and at
+320 px, for elections in draft, scheduled, open, closed, certified and cancelled. The card "Where this election is"
+(an `h2`) says the current step and what it waits on in its caption. The steps are an `ol` named "Steps of this
+election" and a `ul` named "Ways out"; the current step has `aria-current="step"`, and every step's name is read after
+its status ("Done:", "Current step:", "To come:", "Possible:", "Not reached:"), which sighted readers get from the
+marker (a tick, a filled play symbol, an empty or dashed circle, a dash) and the current step's bold text. What a step
+waits on is a nested list under it ("Waiting: An Auditor approves scheduling (requested …)"). The Mermaid flowchart is
+one `role="img"` whose name says it shows the listed steps and names the current one; inside it the status is in the
+labels (✓, ▶, –) as well as the colours, and a legend under it says so. Mermaid's SVG scales to the card. It is drawn
+288–315 px wide, depending on the marks (14 px text, long names on two lines, Mermaid's classic look, whose nodes
+are only as wide as their names), so at 320 px it shrinks to 86–94% and its text stays at 12–13 px, with no
+sideways scrolling; the list
+(below it on a phone, beside it on wider screens) holds every word of it at full size.
 
 ## Known gaps
 

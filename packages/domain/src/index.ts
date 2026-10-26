@@ -32,6 +32,8 @@ export type { PersonaKind, PersonaRecord, PersonaSummary } from './testing.js';
 export type { DiffLine } from './text-diff.js';
 export { ELECTION_STATES, checkElectionDeletable, electionTransitionAuthority, isTerminal } from './election-state.js';
 export type { ElectionState, TransitionAuthority } from './election-state.js';
+export { ELECTION_STEPS, STEP_STATE, cancelledFrom, electionProgress } from './election-progress.js';
+export type { ElectionProgress, ElectionStep, ProgressInput, StepStatus, Waiting, WaitingFor } from './election-progress.js';
 export {
   TWO_PERSON_ACTIONS,
   APPROVAL_MAX_AUTH_AGE_SECONDS,
