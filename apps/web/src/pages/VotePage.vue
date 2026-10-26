@@ -32,8 +32,6 @@ const kept = ref(!!receipt.value);
 /** The server's commitments equal the ones this browser computed before sending. */
 const commitmentsMatch = ref<boolean | null>(null);
 usePageTitle(() => view.value?.definition.title ?? 'Ballot');
-/** The voting window as a calendar event (design §12): public, so a plain link with no credentials fetches it. */
-const calendarPath = `/v1/public/elections/${encodeURIComponent(electionId)}/calendar.ics`;
 
 async function load() {
   await attempt(async () => {
@@ -177,17 +175,6 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
       </div>
       <template v-if="view">
         <div class="ustp-actions">
-          <q-btn
-            v-if="(view.election.state === 'scheduled' || view.election.state === 'open') && !view.election.castAt"
-            outline
-            no-caps
-            color="primary"
-            icon="event"
-            label="Add to calendar"
-            :href="calendarPath"
-          >
-            <span class="sr-only">: voting in {{ view.definition.title }}</span>
-          </q-btn>
           <q-btn
             outline
             no-caps
