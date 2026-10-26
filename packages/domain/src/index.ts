@@ -31,7 +31,7 @@ export { ACT_AS_HEADER, ADMIN_PERSONAS, MAX_TEST_VOTERS, PERSONA_KINDS, voterPer
 export type { PersonaKind, PersonaRecord, PersonaSummary } from './testing.js';
 export type { DiffLine } from './text-diff.js';
 export { ELECTION_STATES, checkElectionDeletable, electionTransitionAuthority, isTerminal } from './election-state.js';
-export type { ElectionState, TransitionAuthority } from './election-state.js';
+export type { ElectionState, RehearsalDeletion, TransitionAuthority } from './election-state.js';
 export {
   TWO_PERSON_ACTIONS,
   APPROVAL_MAX_AUTH_AGE_SECONDS,

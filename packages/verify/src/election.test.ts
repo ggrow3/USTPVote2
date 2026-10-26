@@ -190,4 +190,25 @@ describe('an election the api does not publish', () => {
     const sealed = ledgerOf(['election.opened'], ['ballots.sealed', { ballotCount: 2 }], ['election.cancelled'], deletion);
     expect(failed(missingElectionFindings(ELECTION_ID, sealed))).toEqual(['No ballots were sealed for it']);
   });
+
+  it('passes a rehearsal deleted after its certification, ballots and all, by what its roll approval records', () => {
+    const rehearsalRoll: [LedgerEventType, Record<string, unknown>] = ['roll.approved', { criteria: { status: 'active', testVotersOnly: true } }];
+    const certified = ledgerOf(rehearsalRoll, ['election.opened'], ['ballots.sealed', { ballotCount: 5 }], ['results.certified'], deletion);
+    const findings = missingElectionFindings(ELECTION_ID, certified);
+    expect(failed(findings)).toEqual([]);
+    expect(findings[0]!.label).toBe('Deleted permanently, a rehearsal (entry 5, 2026-10-23T12:00:00.000Z)');
+    expect(findings[2]).toMatchObject({ status: 'info', detail: 'roll.approved 1 records a roll of test voters only, which only testing mode allows' });
+
+    // A deletion that only claims to be a rehearsal is held to the ordinary rule.
+    const claimed: [LedgerEventType, Record<string, unknown>] = ['election.deleted', { ...deletion[1], rehearsal: true, ballotsCast: 5 }];
+    const real = ledgerOf(['roll.approved', {}], ['election.opened'], ['ballots.sealed', { ballotCount: 5 }], ['results.certified'], claimed);
+    expect(failed(missingElectionFindings(ELECTION_ID, real))).toEqual([
+      'The ledger records its cancellation, then its deletion as its last entry',
+      'No ballots were sealed for it',
+    ]);
+    // Even a rehearsal must be over before it is deleted.
+    expect(failed(missingElectionFindings(ELECTION_ID, ledgerOf(rehearsalRoll, ['election.opened'], deletion)))).toEqual([
+      'The ledger records the rehearsal’s cancellation or certification, then its deletion as its last entry',
+    ]);
+  });
 });

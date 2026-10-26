@@ -54,6 +54,8 @@ export async function seedElection(
     readonly chairPositionId?: string;
     /** Candidate `blair`'s account, if any (a candidate may not decide on their own election). */
     readonly blairAccountId?: string;
+    /** A rehearsal: the roll says test voters only (design §10.4), whoever `voters` are. */
+    readonly rehearsal?: boolean;
   },
 ): Promise<SeededElection> {
   const db = api.firebase.db;
@@ -98,7 +100,7 @@ export async function seedElection(
   const roll: RollSnapshotRecord = {
     snapshotId: `r-${electionId}`,
     electionId,
-    criteria: { status: 'active' },
+    criteria: opts.rehearsal ? { status: 'active', testVotersOnly: true } : { status: 'active' },
     asOf: now,
     accountIds,
     count: accountIds.length,
