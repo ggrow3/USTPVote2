@@ -284,6 +284,13 @@ Every transition writes, in one transaction, the new status on `members/{account
      submit is stopped in the browser with the answers kept. The api still refuses any application from an unverified
      address.
   3. *Membership review*: the submitted application's status, until a Membership Admin decides it.
+- **Who sees what.** The web app's menu shows the same four links to everyone, signed in or not: Register, Ballot,
+  Verify and Admin; each page tells people it is not for what they can do instead. On Register, signed-out visitors
+  start at step 1, and people who may apply (no membership, or a rejected or resigned one: `mayApply` in
+  `ustp-domain`) at step 2. An applicant sees step 3. An Active, lapsed or suspended member sees their status instead
+  of the form, and what can change it: a Membership Admin renews a lapsed membership or reinstates a suspended one,
+  and the member can resign on the Account page. Ballot needs a sign-in, and someone on no current roll is told why
+  from their membership status (not a member yet, an applicant, lapsed or suspended, or Active but on no roll).
 - `applications/{applicationId}` stores the answers, the bylaws version accepted and that version's content hash
   (`bylaws_versions/{version}`), so it is provable which text the applicant agreed to. An application is accepted
   only against the *current* bylaws (version and hash must both match) and only from a verified email address.
@@ -1019,6 +1026,11 @@ results page, the CLI and the tests pass it that entry.
 **Incompatible role pairs:** Auditor with any other role. An Election Admin who is a candidate in an election may not
 act on that election (Q12; enforced on every edit, and nobody can add themselves as a candidate). All admin roles require MFA. The first System Admin is bootstrapped once from deployment
 configuration and ledgered.
+
+The admin console is in the web app's menu for everyone (§5.2). Signed out, it leads to sign-in and back; signed in
+with no role, to a page saying it is for party officers and that a System Admin grants roles (§10.2). Each officer
+sees the tabs their roles allow, and a page their roles do not cover (an election, for a Membership Admin) returns to
+the console.
 
 ### 10.2 Two-person rule
 

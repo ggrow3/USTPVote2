@@ -59,6 +59,19 @@ test. Keep it current when pages change.
   36 px tall and starts on the title's left edge. Primary on white 4.94, accent on the dark page 6.49, list rows black
   on white. At 320 px long titles wrap inside the row and nothing scrolls sideways. Neither appears once the voter has
   voted or voting is over.
+- **Added 2026-10-25, the same four menu links for everyone** (every page, against the emulators signed out and as a
+  new login with no membership, an applicant, rejected, resigned, Active (v1), lapsed and suspended members, admin1,
+  elections, auditor, and admin1 acting as a test voter, each on every page at desktop width; then Home, Admin, Register
+  and Ballot at 320 px, Admin in the light theme and the others in the dark): Register, Ballot, Verify
+  and Admin are always there, and the current page's link keeps `aria-current="page"` and its underline. Each page
+  still has one `h1` and its title. Ballot and Admin send signed-out visitors to sign-in, which now says why in a line
+  under its heading ("Sign in to see your ballots and vote.") and returns them afterwards, focus on the page's `h1`.
+  Admin for someone with no role, Register for applicants and members, and the empty ballot list for people on no roll
+  are plain text with ordinary links, in a card or the existing grey banner: the banner's link is `#aa4600` on
+  `#eeeeee` (5.05) in both themes, the card's link accent on `#1d1d1d` (5.84) and its caption 7.77 in the dark theme.
+  At 320 px the four links fit on one row (Quasar's xs breakpoint narrows their padding and letter spacing; Admin
+  ends 5 px inside the bar), each 38 px tall, and nothing scrolls sideways; enlarged text wraps them onto a second
+  row.
 
 ## What was fixed
 

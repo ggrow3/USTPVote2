@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import type { VoterElection } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
 import { attempt } from '../dialogs.js';
+import { session } from '../session.js';
 
 usePageTitle('Your ballots');
 const elections = ref<VoterElection[] | null>(null);
 const failed = ref(false);
+/** Anyone signed in can open this page; an empty list means something different for each membership status. */
+const memberStatus = computed(() => session.me?.member?.status ?? null);
 
 onMounted(async () => {
   failed.value = !(await attempt(async () => {
@@ -40,8 +43,22 @@ function status(e: VoterElection): { label: string; color: string } {
     <div class="ustp-content">
       <h1 class="text-h5">Your ballots</h1>
       <q-banner v-if="elections && elections.length === 0" class="bg-grey-3 text-black" rounded>
-        You are not on the voter roll of any current election. Rolls are taken from Active members when an election is set
-        up.
+        <template v-if="memberStatus === 'active'">
+          You are not on the voter roll of any current election. Rolls are taken from Active members when an election is
+          set up.
+        </template>
+        <template v-else-if="memberStatus === 'applicant'">
+          Your membership application is still being reviewed. Voter rolls are taken from Active members when an election
+          is set up, so once you are admitted you can vote in the elections that follow.
+        </template>
+        <template v-else-if="memberStatus === 'lapsed' || memberStatus === 'suspended'">
+          Your membership is {{ memberStatus }}, so you are not on the voter roll of any current election. Rolls are
+          taken from Active members when an election is set up.
+        </template>
+        <template v-else>
+          Voting is for USTP members. <router-link to="/register">Register as a member</router-link> to vote in the
+          elections set up after you are admitted.
+        </template>
       </q-banner>
       <q-list v-else-if="elections" bordered separator aria-label="Elections you can vote in">
         <template v-for="e in elections" :key="e.electionId">

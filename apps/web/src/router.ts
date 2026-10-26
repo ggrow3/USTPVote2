@@ -12,8 +12,6 @@ declare module 'vue-router' {
   }
 }
 
-const ADMIN_ROLES: readonly Role[] = ['membership_admin', 'election_admin', 'auditor', 'system_admin'];
-
 /** The four surfaces from spec §2.1, served by one SPA, plus sign-in and account management. */
 export const router = createRouter({
   history: createWebHistory(),
@@ -31,11 +29,8 @@ export const router = createRouter({
         { path: 'verify', component: () => import('./pages/VerifyPage.vue') },
         { path: 'bylaws/:version?', component: () => import('./pages/BylawsPage.vue') },
         { path: 'results/:id', component: () => import('./pages/ResultsPage.vue') },
-        {
-          path: 'admin',
-          component: () => import('./pages/AdminPage.vue'),
-          meta: { requiresAuth: true, roles: ADMIN_ROLES },
-        },
+        // Open to anyone signed in: the page tells people without an admin role who it is for.
+        { path: 'admin', component: () => import('./pages/AdminPage.vue'), meta: { requiresAuth: true } },
         {
           path: 'admin/elections/:id',
           component: () => import('./pages/ElectionEditorPage.vue'),
@@ -50,6 +45,7 @@ export const router = createRouter({
 router.beforeEach(async (to) => {
   await sessionReady;
   if ((to.meta.requiresAuth || to.meta.roles) && !session.user) return { path: '/signin', query: { redirect: to.fullPath } };
-  if (to.meta.roles && !hasRole(...to.meta.roles)) return { path: '/' };
+  // The admin console shows each person their own tools, or says who it is for (it has no roles of its own, so no loop).
+  if (to.meta.roles && !hasRole(...to.meta.roles)) return { path: '/admin' };
   return true;
 });
