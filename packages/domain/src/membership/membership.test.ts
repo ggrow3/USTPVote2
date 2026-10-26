@@ -3,13 +3,14 @@ import type { CreateApplicationInput } from '../api.js';
 import type { BylawsRecord } from '../records.js';
 import { applicationWindowStart, checkApplicantEmail, decideApplication, submitApplication } from './application.js';
 import {
+  adminStatusChanges,
   changeMemberStatus,
   checkMemberStatusRequest,
   memberStatusTransition,
   resignMembership,
   testVoterAdmission,
 } from './member.js';
-import type { MemberStatus } from './member-status.js';
+import { MEMBER_STATUSES, type MemberStatus } from './member-status.js';
 import type { ApplicationRecord, MemberRecord } from './records.js';
 
 const AT = '2026-10-25T12:00:00.000Z';
@@ -143,6 +144,30 @@ describe('admin status changes', () => {
     expect(changeMemberStatus(member('active', AT), { ...request, reason: ' ' })).toMatchObject({ ok: false, reason: /reason/ });
     const outcome = changeMemberStatus(member('active', AT), request);
     expect(outcome.ok && outcome.value.member).toMatchObject({ status: 'suspended', memberSince: AT });
+  });
+});
+
+describe('status changes an admin is offered', () => {
+  it('are the ones the admin console has always offered, in its order', () => {
+    expect(Object.fromEntries(MEMBER_STATUSES.map((s) => [s, adminStatusChanges(s)]))).toEqual({
+      applicant: [],
+      active: ['suspended', 'lapsed', 'resigned'],
+      lapsed: ['active', 'resigned'],
+      suspended: ['active', 'resigned'],
+      resigned: [],
+      rejected: [],
+    });
+  });
+
+  it('are exactly the changes the commands accept', () => {
+    for (const from of MEMBER_STATUSES) {
+      for (const to of MEMBER_STATUSES) {
+        const accepted =
+          checkMemberStatusRequest('admin', 'acc-1', to).ok &&
+          changeMemberStatus(member(from), { to, reason: 'conduct', actor: 'admin', at: LATER }).ok;
+        expect(adminStatusChanges(from).includes(to), `${from} → ${to}`).toBe(accepted);
+      }
+    }
   });
 });
 

@@ -10,6 +10,7 @@ import ProfilePhotoCard from '../components/ProfilePhotoCard.vue';
 import { confirmIdentity, dialog } from '../dialogs.js';
 import { auth, secondaryAuth } from '../firebase.js';
 import { enrolledFactors, removeFactor } from '../mfa.js';
+import { resign as resignMembership } from '../membership/api.js';
 import { refreshMe, session } from '../session.js';
 import { PROVIDER_LABELS, signInWithPassword, signInWithProvider, type FederatedProvider } from '../sign-in.js';
 
@@ -91,7 +92,7 @@ function resign() {
     message: 'You can re-apply later. Optionally tell us why:',
     prompt: { model: '', type: 'textarea', label: 'Reason (optional)' },
     cancel: true,
-  }).onOk((reason: string) => act(() => api('POST', '/v1/me/resign', reason.trim() ? { reason } : {}), 'You have resigned'));
+  }).onOk((reason: string) => act(() => resignMembership(reason.trim() ? reason : undefined), 'You have resigned'));
 }
 
 async function onEnrolled() {
