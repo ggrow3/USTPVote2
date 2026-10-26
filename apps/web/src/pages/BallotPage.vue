@@ -20,11 +20,6 @@ onMounted(async () => {
 
 const when = (iso: string) => new Date(iso).toLocaleString();
 
-/** Voting has not closed and the voter has not voted: the window is worth a calendar entry. */
-const upcoming = (e: VoterElection) => (e.state === 'scheduled' || e.state === 'open') && !e.castAt;
-/** The public calendar event (design §12): a plain link, the same file for everyone. */
-const calendarPath = (electionId: string) => `/v1/public/elections/${encodeURIComponent(electionId)}/calendar.ics`;
-
 function status(e: VoterElection): { label: string; color: string } {
   if (e.castAt) return { label: 'voted', color: 'positive' };
   switch (e.state) {
@@ -83,10 +78,6 @@ function status(e: VoterElection): { label: string; color: string } {
           >
             <q-item-section avatar><q-icon name="leaderboard" /></q-item-section>
             <q-item-section>Results of {{ e.title }}</q-item-section>
-          </q-item>
-          <q-item v-else-if="upcoming(e)" clickable dense :inset-level="0.25" :href="calendarPath(e.electionId)">
-            <q-item-section avatar><q-icon name="event" /></q-item-section>
-            <q-item-section>Add {{ e.title }} to your calendar</q-item-section>
           </q-item>
         </template>
       </q-list>
