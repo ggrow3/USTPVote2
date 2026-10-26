@@ -212,3 +212,79 @@ describe('member status', () => {
     expect((await api.call('GET', '/v1/admin/members?status=bogus', admin)).status).toBe(400);
   });
 });
+
+describe('member profiles and details', () => {
+  async function activeMember() {
+    const robin = await api.member('robin@example.test');
+    const { body: app } = await api.call('POST', '/v1/registration/applications', robin, application());
+    await api.call('POST', `/v1/admin/applications/${app.applicationId}/decision`, admin, { decision: 'approve', reason: 'ok' });
+    return robin;
+  }
+  const lastEntry = async () =>
+    (await api.firebase.db.collection('audit_events').orderBy('seq', 'desc').limit(1).get()).docs[0]!.data();
+  const where = { state: 'OR', city: 'Portland', postalCode: '97201', phone: '' };
+
+  it('shows a Membership Admin one member: the record, every application with its answers, and the history', async () => {
+    const robin = await activeMember();
+    const res = await api.call('GET', `/v1/admin/members/${robin.accountId}`, admin);
+    expect(res.status).toBe(200);
+    expect(res.body.member).toMatchObject({ accountId: robin.accountId, status: 'active', legalName: 'Robin Applicant' });
+    expect(res.body.applications).toHaveLength(1);
+    expect(res.body.applications[0]).toMatchObject({
+      status: 'approved',
+      dateOfBirth: '1990-04-01',
+      statement: 'I want to help.',
+      volunteer: true,
+      decisionReason: 'ok',
+    });
+    expect(res.body.history.map((h: { to: string }) => h.to)).toEqual(['active', 'applicant']);
+
+    expect((await api.call('GET', `/v1/admin/members/${robin.accountId}`, robin)).status).toBe(403);
+    expect((await api.call('GET', `/v1/admin/members/${admin.accountId}`, admin)).status).toBe(404);
+  });
+
+  it('lets members change their own details and email opt-ins, ledgered by field name only', async () => {
+    const robin = await activeMember();
+    const res = await api.call('POST', '/v1/me/details', robin, { preferredName: 'Rob', ...where, newsletter: false, announcements: true });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({
+      legalName: 'Robin Applicant',
+      preferredName: 'Rob',
+      state: 'OR',
+      contact: { city: 'Portland', postalCode: '97201', phone: null },
+      communications: { newsletter: null, announcements: expect.any(String) },
+    });
+    const entry = await lastEntry();
+    expect(entry).toMatchObject({ type: 'member.details_changed', actor: robin.accountId, subject: robin.accountId });
+    expect(entry.payload).toEqual({
+      fields: ['preferredName', 'state', 'contact.city', 'contact.postalCode', 'contact.phone', 'communications.newsletter', 'communications.announcements'],
+      reason: null,
+    });
+    expect(JSON.stringify(entry)).not.toContain('Portland');
+
+    const same = await api.call('POST', '/v1/me/details', robin, { preferredName: 'Rob', ...where, newsletter: false, announcements: true });
+    expect(same.status).toBe(409);
+    const legal = await api.call('POST', '/v1/me/details', robin, { ...where, legalName: 'Someone Else', newsletter: false, announcements: false });
+    expect(legal.status).toBe(400);
+    const nobody = await api.member('nobody@example.test');
+    expect((await api.call('POST', '/v1/me/details', nobody, { ...where, newsletter: false, announcements: false })).status).toBe(404);
+  });
+
+  it('lets another Membership Admin correct names and contact details with a reason, never the opt-ins', async () => {
+    const robin = await activeMember();
+    const correction = { legalName: 'Robin Q. Applicant', ...where, reason: 'Typo in the application' };
+    const res = await api.call('POST', `/v1/admin/members/${robin.accountId}/details`, admin, correction);
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ legalName: 'Robin Q. Applicant', state: 'OR', communications: { newsletter: expect.any(String) } });
+    expect((await lastEntry()).payload).toEqual({
+      fields: ['legalName', 'state', 'contact.city', 'contact.postalCode', 'contact.phone'],
+      reason: 'Typo in the application',
+    });
+
+    const path = `/v1/admin/members/${robin.accountId}/details`;
+    expect((await api.call('POST', path, admin, { ...correction, reason: ' ' })).status).toBe(400);
+    expect((await api.call('POST', path, admin, { ...correction, newsletter: false })).status).toBe(400);
+    expect((await api.call('POST', path, robin, correction)).status).toBe(403);
+    expect((await api.call('POST', `/v1/admin/members/${admin.accountId}/details`, admin, correction)).status).toBe(403);
+  });
+});

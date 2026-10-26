@@ -3,6 +3,9 @@ import type {
   ApplicationStatus,
   CreateApplicationInput,
   DecisionInput,
+  MemberCorrectionInput,
+  MemberDetail,
+  MemberDetailsInput,
   MemberRecord,
   MemberStatus,
   MemberStatusInput,
@@ -27,6 +30,11 @@ export function submitApplication(input: CreateApplicationInput): Promise<Applic
 /** The signed-in member resigns, with a reason if they give one. */
 export function resign(reason?: string): Promise<MemberRecord> {
   return api<MemberRecord>('POST', '/v1/me/resign', reason ? { reason } : {});
+}
+
+/** The signed-in member's own details and email opt-ins. */
+export function updateMyDetails(input: MemberDetailsInput): Promise<MemberRecord> {
+  return api<MemberRecord>('POST', '/v1/me/details', input);
 }
 
 // --- Membership Admin ---------------------------------------------------------------------------------------------
@@ -59,4 +67,14 @@ export function changeMemberStatus(accountId: string, input: MemberStatusInput):
 /** A member's status history, newest first. */
 export function memberHistory(accountId: string): Promise<StatusHistoryRecord[]> {
   return api<StatusHistoryRecord[]>('GET', `/v1/admin/members/${accountId}/history`);
+}
+
+/** One member's profile: their record, every application with its answers, and their status history. */
+export function member(accountId: string): Promise<MemberDetail> {
+  return api<MemberDetail>('GET', `/v1/admin/members/${accountId}`);
+}
+
+/** Corrects someone else's names, state or contact details, with a reason. */
+export function correctMemberDetails(accountId: string, input: MemberCorrectionInput): Promise<MemberRecord> {
+  return api<MemberRecord>('POST', `/v1/admin/members/${accountId}/details`, input);
 }

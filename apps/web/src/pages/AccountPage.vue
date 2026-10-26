@@ -11,6 +11,7 @@ import { confirmIdentity, dialog } from '../dialogs.js';
 import { auth, secondaryAuth } from '../firebase.js';
 import { enrolledFactors, removeFactor } from '../mfa.js';
 import { resign as resignMembership } from '../membership/api.js';
+import MyDetailsCard from '../membership/MyDetailsCard.vue';
 import { refreshMe, session } from '../session.js';
 import { PROVIDER_LABELS, signInWithPassword, signInWithProvider, type FederatedProvider } from '../sign-in.js';
 
@@ -165,6 +166,8 @@ function copyId() {
             <q-btn flat color="negative" label="Resign" :disable="busy" @click="resign" />
           </q-card-section>
         </q-card>
+
+        <MyDetailsCard />
 
         <ProfilePhotoCard v-if="me.member" />
 

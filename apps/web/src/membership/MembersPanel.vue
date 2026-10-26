@@ -74,7 +74,7 @@ onMounted(() => load());
       <tbody>
         <tr v-for="m in rows" :key="m.accountId">
           <td>
-            {{ m.legalName }}
+            <router-link :to="`/admin/members/${m.accountId}`">{{ m.legalName }}</router-link>
             <q-btn flat dense round size="sm" icon="content_copy" :aria-label="`Copy account ID of ${m.legalName}`" @click="copy(m.accountId)" />
           </td>
           <td>{{ m.state }}</td>

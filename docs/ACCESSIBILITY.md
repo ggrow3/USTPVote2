@@ -63,6 +63,19 @@ test. Keep it current when pages change.
   At 320 px the four links fit on one row (Quasar's xs breakpoint narrows their padding and letter spacing; Admin
   ends 5 px inside the bar), each 38 px tall, and nothing scrolls sideways; enlarged text wraps them onto a second
   row.
+- **Added 2026-10-26, member profiles and member details** (against the emulators as elections@example.test, the
+  seeded Membership Admin, and as v2; the profile at 1024 px light and 320 px dark): names in the Members and
+  Applications tabs are links to `/admin/members/{accountId}`, whose `h1` is the member's name (and the page title),
+  focused on arrival, with the Admin link still marked. Its cards have `h2` headings; the applications are expansion
+  items (buttons with `aria-expanded`), the newest open, each answer group an `h3` over a `dl` of question and answer.
+  Correct details is a dialog named by its title; an empty reason focuses the Reason field with its message, and on
+  close focus returns to Correct details. Change status is the members list's menu and reason prompt. Your own record
+  says so in a banner and offers neither. On the account page, Edit details replaces the facts with the form and
+  focuses Preferred name; an invalid phone focuses the phone field with its message; after Save or Cancel focus goes
+  back to Edit details. Someone else's details are typed with `autocomplete="off"`, your own with the usual tokens.
+  Labels are medium weight and values normal weight, both in the page's text colour; "Not given" is `text-grey-7`
+  (4.61 on a light card, 7.77 on a dark one). At 320 px the facts stack, label over value, and nothing scrolls sideways (the bylaws
+  hash breaks).
 
 ## What was fixed
 
@@ -202,6 +215,8 @@ right of the fields around them.
   the fields' right edge.
 - **Dialog**: `q-card class="ustp-dialog"` (480 px) or `"ustp-dialog ustp-dialog--wide"` (640 px, for long text and
   previews); on a phone either is the screen less Quasar's 24 px margins. Its body is a `q-card-section class="ustp-form"`.
+- **Facts** (a member's details, an application's answers): `<dl class="ustp-facts">` of `dt` and `dd` pairs, labels
+  in one 14rem column everywhere so values line up across cards; stacked, label over value, on phones.
 - **Long sections of one form** (the application): each `fieldset class="ustp-fieldset"` is a card's section, its
   `legend` the heading, then an optional caption, then `<div class="ustp-form">` with the fields.
 

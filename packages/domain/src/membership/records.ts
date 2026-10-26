@@ -76,3 +76,12 @@ export interface ApplicationRecord {
   readonly decidedAt: string | null;
   readonly decisionReason: string | null;
 }
+
+/** `GET /v1/admin/members/{accountId}`: one member as a Membership Admin sees them (design §5.2). */
+export interface MemberDetail {
+  readonly member: MemberRecord;
+  /** Every application the account made, newest first, with all its answers. */
+  readonly applications: readonly ApplicationRecord[];
+  /** Status history, newest first. */
+  readonly history: readonly StatusHistoryRecord[];
+}

@@ -19,8 +19,20 @@ export {
   changeMemberStatus,
   adminStatusChanges,
   testVoterAdmission,
+  MEMBER_DETAIL_FIELDS,
+  updateOwnDetails,
+  checkMemberCorrectionRequest,
+  correctMemberDetails,
 } from './member.js';
-export type { MemberStatusChangedPayload, MemberProfile, MemberStatusChange, StatusTransition } from './member.js';
+export type {
+  MemberStatusChangedPayload,
+  MemberProfile,
+  MemberStatusChange,
+  StatusTransition,
+  MemberDetailsChangedPayload,
+  MemberDetailField,
+  DetailsTransition,
+} from './member.js';
 export { checkApplicantEmail, applicationWindowStart, submitApplication, decideApplication } from './application.js';
 export type { ApplicationChange } from './application.js';
 export type * from './records.js';

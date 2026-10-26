@@ -50,7 +50,7 @@ export class MembershipApplications {
   }
 
   mine(ctx: RequestContext): Promise<ApplicationRecord[]> {
-    return this.applications.mine(requireAccount(ctx));
+    return this.applications.ofAccount(requireAccount(ctx));
   }
 
   list(status: ApplicationStatus, limit: number): Promise<ApplicationRecord[]> {
