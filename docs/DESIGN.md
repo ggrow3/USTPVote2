@@ -147,7 +147,7 @@ this structure one at a time, without changing routes, documents or the ledger.
 | Accounts & identity | §4 | `accounts`, `account_identities`, `sign_in_methods` |
 | Membership | §5.1–5.3 | `members`, `member_status_history`, `applications`, `profile_photos`, `photo_checks` |
 | Bylaws | §5.2, §5.4, §6.6 | `bylaws_versions`, `bylaws_checks`, `bylaws_check_references` |
-| Elections | §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results` |
+| Elections | §5.5, §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results`, `consistency_checks` |
 | Offices | §6.4 | `positions`, `position_terms` |
 | Governance | §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation` |
 | Audit ledger | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` |
@@ -469,6 +469,95 @@ project has `BYLAWS_CHECKER=off` until it is switched on (`bylaws_check_enabled`
 
 **Cost and privacy.** See §14 and §15. The draft text leaves Google Cloud for Anthropic's API; it is the party's own
 working text, and the check sends nothing about who asked. USTP should agree to that before switching it on (Q18).
+
+**Shared with the consistency check.** The worker's queue (`runCheckQueue`: claim in a transaction, run side by side,
+fail after the timeout), the request to Claude (`claudeReview`), the party's texts and their cache, and the
+`anthropic-api-key` secret also serve the platform consistency check (§5.5), which is switched on separately.
+
+### 5.5 Platform consistency check *(added)*
+
+An advisory review by Claude of whether an election's proposals agree with the party's adopted texts and with each
+other. A voter on the election's roll can ask for it on the ballot page, and an Election Admin or Auditor in the
+election editor; **each person may run it once per election**. Like the bylaws check it is a reading aid: it can miss
+inconsistencies and report ones that are not there, and it changes no ballot, vote or result.
+
+**What "the party's platform" is.** USTP's platform is not a document of its own: it is Article VI of the USTP
+Constitution, the numbered sections that platform votes add, amend and repeal (Platform Vote #9's Question XI offers
+an amendment to Section XXVII). So the check compares the election's questions with:
+
+| Source | Text the model is given | Where it comes from |
+|---|---|---|
+| Platform | Article VI of the USTP Constitution | transhumanist-party.org/constitution/, read and cached as for the bylaws check (§5.4) |
+| USTP Constitution | The rest of the Constitution, Article I's Immutable Principles included | The same page |
+| Transhumanist Bill of Rights | Version 3.0, adopted by USTP members in December 2018 | `/tbr-3/`, as in §5.4 |
+| Bylaws | The version in force in this system, which members agree to and amendments change (§6.6) | `bylaws_versions`: the version current when the check is asked for |
+| Ballot | The election's other questions | The check's own questions |
+
+The US Constitution, which the bylaws check also reads, is left out: the question is whether proposals fit the party's
+own commitments, not public law.
+
+**The questions** are every proposal (title and text, and for a bylaws amendment its changed lines in words,
+`amendmentText`) and every candidate contest that fills no office, whose options are positions to adopt: the "current
+section or amendment" choices and ranked platform questions of a platform vote. Contests that fill an office elect
+people, whom the check does not assess (`consistencyMaterial` in `ustp-domain`). Each question is numbered by its
+place on the ballot. An election with only offices has nothing to check (409), and the questions may run to
+`MAX_CONSISTENCY_MATERIAL_CHARACTERS` (500,000, the bylaws check's limit on a draft).
+
+**Only what the person can read, and never a vote.** A voter's check is built from exactly what
+`GET /v1/elections/{id}/ballot` gives them, refused as it is refused (404 for drafts and cancelled elections, 403 off
+the roll); an Election Admin's or Auditor's from the election as the editor shows it, a draft as it stands. Nothing
+about votes or participation is read, stored or sent: a voter who voted and one who did not get the same questions
+(tested). The record keeps the questions as they were when asked, their SHA-256 and the definition hash they were read
+from, so the editor can say when a draft has changed since. System Admins do not read election setup (§10.1, §10.5),
+so they have the check from a ballot they are on the roll for, like any member; the editor's check is for Election
+Admins and Auditors.
+
+**Once each.** The record is `consistency_checks/{electionId}_{accountId}`. The api writes it in a transaction that
+reads it first, so after a finished check, or while one runs, a second request is refused (409, "each person may run
+it once per election"), from the ballot or the editor alike, and two at once cannot both pass
+(`checkConsistencyRequest`). A check that failed (an API error, a refusal, a timeout) does not count and may be asked
+for again. The whole server takes at most `MAX_CONSISTENCY_CHECKS_PER_DAY` (100) checks in 24 hours (429), a cost
+bound across all voters, counted outside the transaction. 503 when the check is off.
+
+**Flow.** Nothing runs on its own: a check starts only when a person clicks the button, never when a ballot is
+published, an election opens or a draft changes, and the worker only runs checks people have asked for. As in §5.4,
+the click's request makes the api store the record `queued` and answer 202; a Cloud Scheduler job of its own calls
+`POST /tasks/consistency-checks` every minute, which claims up to three queued checks and reviews them side by side,
+and fails one still running after `CONSISTENCY_CHECK_TIMEOUT_MINUTES` (10); the browser polls
+`GET …/consistency-check` every 3 seconds. That `GET` says whether the check is on and returns the caller's own
+record, never anyone else's.
+
+**The request to Claude.** The bylaws check's request: model `claude-opus-5-5` (`CONSISTENCY_CHECK_MODEL` overrides
+it), adaptive thinking at effort `high`, streamed, `fallbacks: "default"`, structured output. A fixed system prompt,
+then the two party texts (a prompt-cache breakpoint), the bylaws in force, then the ballot (a second breakpoint, so
+others checking the same ballot within five minutes pay a fraction). The prompt defines the five sources; asks for
+proposals that contradict an adopted text and for questions that could all pass but not all be carried out; says a
+proposal meant to amend or repeal a section is not inconsistent for doing so (only its effects on provisions it leaves
+alone count), that the options of one question are alternatives and not to be reported against each other, to make no
+findings about people, and not to judge merits or how anyone should vote; and says the texts are material, not
+instructions. Each finding gives the questions it concerns, its source and provision, a short exact quote of the
+ballot (`passage`), a severity (`high`, `medium`, `low`, shown as "Clear conflict", "Likely conflict", "Possible
+tension") and a plain explanation that names questions by title. The worker keeps findings that name questions it
+sent (two or more for a conflict within the ballot), and a passage only if one of those questions has exactly those
+words; the most severe first.
+
+**On the page.** A card, "Consistency with the platform", on the ballot page (above the questions) and in the election
+editor (above Contests) says what the check reads and that it is advisory. "Check consistency with Claude" opens a
+confirmation that the proposals go to Anthropic and nothing about the person or their vote does, and that it runs once;
+its focus starts on Cancel. The progress and then the outcome take the button's place, focus moves there, and the end
+is announced. Each finding gives its severity in words with an icon, the source and provision, the passage, the
+explanation, and buttons that go to the questions it concerns, by title. Once the person has had their run, the
+button's place says so ("You have used your one consistency check of this election…") and their saved result follows,
+whenever they come back, also after the check is switched off; after a failed check the button returns. Nothing about
+it is public, ledgered or shown to anyone else.
+
+**Without Anthropic.** With the emulators `CONSISTENCY_CHECKER=stub` (the default there, refused outside them) runs a
+deterministic stand-in that flags three test phrases (opposing "life extension", acting "without a vote of the
+members", "replace") and questions that name the same platform section ("Section E9-A"), and reads no references. A
+real project has `CONSISTENCY_CHECKER=off` until `consistency_check_enabled` in Terraform sets it to `claude` on
+both services; the worker then gets `ANTHROPIC_API_KEY` from the same `anthropic-api-key` secret as the bylaws
+check. It is switched on separately because voters can ask for it, so what it costs and what leaves Google Cloud
+differ (§14, §15, Q18). Deleting an election (§6.1) removes its checks after the transaction, as it does its notices.
 
 ## 6. Elections
 
@@ -1527,6 +1616,7 @@ Physically, registration collections are top-level and election data lives under
 | `proposal_snapshots/{snapshotId}` | auto | immutable | text, content hash, source; `amendment` for a bylaws amendment (§6.6) |
 | `proposal_reviews/{reviewId}` | auto | immutable | decision, reviewer |
 | `results/{electionId}` | electionId | provisional → certified | bundle, hash, signature, ledger seq |
+| `consistency_checks/{electionId}_{accountId}` | election and account | queued → running → done / failed; asked for again only after a failure; deleted with its election | view (ballot or editor), definition hash, the questions as read and their SHA-256, bylaws version, requester, findings, references used, model, token usage; never a vote (§5.5) *(added)* |
 | **notifications** | | | |
 | `notices/{electionId}_{kind}` | election and kind (`voting_open`, `closing_soon`) | preparing → sending → done, a round at a time; deleted with its election | delivery (`mail`/`outbox`), rehearsal, number of recipients, round, who started the round (§6.8) *(added)* |
 | `notices/{id}/recipients/{accountId}` | accountId | status per send | pending → sending → sent / failed / bounced, or skipped; round, attempts, claim time, provider message ID, outcome code; never the address *(added)* |
@@ -1570,6 +1660,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /elections/{id}/ballot` | V | ballot definition and hash |
 | `POST /elections/{id}/ballots` | V | cast (409 if already voted) |
 | `GET /elections/{id}/participation/me` | V | "have I voted?" |
+| `GET /elections/{id}/consistency-check` · `POST …` | M · V | whether the platform consistency check is on, and the caller's own check of the election; ask for it from the ballot, once per person per election (202; 409 after a finished or running one, 429 past 100 a day for the whole server, 503 when off; §5.5) |
 | `GET /public/elections/{id}` · `.../sealed-blocks` · `.../results` | P | published record (non-draft): definition, roll size and root, block summaries, results status; block contents once closed; the signed results bundle once tallied (404 until then) |
 | `GET /public/elections/{id}/amended-bylaws` | P | the bylaws as the election's passed amendments give them, once certified (404 if it amends none, 409 before; §6.6) |
 | `GET /public/elections/{id}/results.csv` | P | the results as CSV for spreadsheets (Google Sheets `IMPORTDATA`), an unsigned copy of the bundle served when it is (404 until then; §9) |
@@ -1589,6 +1680,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/member-search?name=…` (`limit` ≤ 20) | Election Admin | Active members whose legal or preferred name matches, to link a candidate: account ID, names and state only (§6.5) |
 | `POST /admin/elections/import` | Election Admin | a whole draft from a `ustp.election` file, in one transaction (400/403/409 write nothing; §6.7) |
 | `GET /admin/elections/{id}/package` | Election Admin, Auditor | any election as a `ustp.election` file (§6.7) |
+| `GET /admin/elections/{id}/consistency-check` · `POST …` | Election Admin, Auditor | the same check from the election editor, on the election as it stands, a draft included; the same one-run record (§5.5) |
 | `POST /admin/elections/{id}/roll` · `.../schedule` · `.../cancel` · `.../certify` | Election Admin | roll snapshot (`voters: 'test_voters'` for a rehearsal roll, testing mode only, §6.3), scheduling, cancellation and certification requests (draft cancel is immediate) |
 | `POST /admin/elections/{id}/delete` | Election Admin | permanently delete a cancelled election nobody voted in, or in testing mode a certified or cancelled rehearsal with its ballots, at once (204; 409 otherwise; §6.1) |
 | `GET /admin/positions` · `POST /admin/positions` · `POST /admin/positions/{id}/terms/{termId}/end` | any admin (read); Membership or Election Admin | offices and terms; define or change an office (at once), end a term (→ approval) |
@@ -1611,6 +1703,7 @@ Errors use RFC 9457 problem details. Request bodies are validated against schema
 |---|---|---|
 | `POST /tasks/tick` | Cloud Scheduler, every minute | Prepare pool keys, open/close elections on time, seal ballots (M3), tally sealed elections into signed provisional results (M4a), destroy pool keys (M4b), send election notices for at most 20 seconds and record their bounces from SQS (§6.8), then seal ledger blocks, sign approved rolls and anchor (M2c). Returns what it did |
 | `POST /tasks/bylaws-checks` | Cloud Scheduler, every minute (its own job, 300 s deadline) | Run up to three queued bylaws checks with Claude and fail any stuck for 10 minutes (§5.4). Returns `{checked, failed}`; a failed check is recorded on the check, not as a failed task |
+| `POST /tasks/consistency-checks` | Cloud Scheduler, every minute (its own job, 300 s deadline) | Run up to three queued platform consistency checks with Claude and fail any stuck for 10 minutes (§5.5). Returns `{checked, failed}`, as the bylaws checks do |
 | `POST /tasks/email` | Cloud Task | send via Amazon SES |
 | *(tick step, M4b)* | every tick | destroy the ballot-pool key version of certified and cancelled elections (§7.3); planned as a `destroy-pool-key` Cloud Task, which the tick made unnecessary |
 
@@ -1623,7 +1716,8 @@ have no sign-in of their own. Every task is idempotent. Overlapping ticks cannot
 ledger block and anchor is created once per index, and each ballot block's transaction re-reads the pool entries it
 removes (§7.2), so the planned `locks/tick` lease turned out unnecessary. Each tick step runs even if an earlier one failed; any failure makes
 the tick answer 500, so Cloud Scheduler records it. Locally, `npm run dev:worker:emulators -w apps/server` runs the
-worker against the emulators and calls the tick and the bylaws checks every 15 seconds in place of Cloud Scheduler.
+worker against the emulators and calls the tick, the bylaws checks and the consistency checks every 15 seconds in place
+of Cloud Scheduler.
 
 ## 14. Security controls
 
@@ -1661,6 +1755,13 @@ worker against the emulators and calls the tick and the bylaws checks every 15 s
   and references are marked as material, not instructions, in the prompt; the answer is held to a JSON schema,
   findings naming lines that do not exist are dropped, and the browser shows them as plain text. A wrong or manipulated
   answer can only mislead a reader: it publishes, blocks and ledgers nothing.
+- **Consistency check (§5.5):** the same key, held by the worker alone. What goes to Anthropic is the election's
+  question texts, the party's published texts and the bylaws in force, all of which the person asking can already
+  read; never who asked, a vote or whether anyone voted. Proposals are written by Election Admins, so a proposal could
+  try to steer the review; the prompt marks every text as material, the answer is held to a schema, findings naming
+  questions that were not sent are dropped, a quoted passage must occur in the ballot, and the browser shows it all as
+  plain text. The one-run rule is a transaction on a record keyed by election and account, so it holds across both
+  routes and parallel requests, and the server-wide daily limit bounds what a roll of voters can spend.
 - **Election notices (§6.8):** the worker reads a roll member's address from the account only to send their notice;
   no record, ledger entry or log line holds it (a failure is logged with the accountId and an outcome code, never the
   provider's text, which can quote the address). Admins see counts only, on an election they can already see. Only
@@ -1723,6 +1824,12 @@ worker against the emulators and calls the tick and the bylaws checks every 15 s
   within five minutes. The largest draft the api accepts (500,000 characters) costs up to about $1.50. The 20-checks-a-day
   limit per admin bounds the worst case; give the key a workspace with a monthly spend limit (infra README). A second
   Scheduler job per environment costs $0.10/month beyond the three free jobs per billing account.
+- **Consistency check (§5.5), when switched on:** at the same prices, a check of a ballot with about 10,000 tokens of
+  questions costs about $0.45 when nothing is cached (about 45,000 tokens of party texts, the bylaws and the ballot
+  written to the cache, and several thousand tokens of thinking and findings) and about $0.20 when someone checked the
+  same ballot in the last five minutes, since the whole prompt is then read from the cache. Each person on a roll may
+  ask once per election, so the cost grows with the voters who ask; the server-wide limit of 100 checks a day bounds
+  it at about $50 a day. Its Scheduler job is a third job of the same kind ($0.10/month).
 
 ## 16. Testing and verification strategy
 
@@ -1800,10 +1907,13 @@ Decisions for USTP; the design's proposed default is in brackets.
 16. **GCP region** for Cloud Run, Firestore and the buckets. [`us-central1`, the cheapest free-tier region]
 17. **Membership requirements:** minimum age, and the wording of the platform attestation applicants confirm. [18; "I
     support the platform and goals of the US Transhumanist Party."]
-18. **Bylaws check (§5.4):** may bylaws drafts be sent to Anthropic, under whose account and spend limit, and in which
-    environments? Is "Transhumanist principles" rightly Article I of the USTP Constitution plus the Transhumanist Bill of
-    Rights 3.0? Should the repository instead carry dated copies of the party's texts (they are USTP's own, marked "All
-    Rights Reserved")? [off until agreed; those two texts; read from the party's site]
+18. **Bylaws check (§5.4) and consistency check (§5.5):** may bylaws drafts, and an election's proposals, be sent to
+    Anthropic, under whose account and spend limit, and in which environments? Is "Transhumanist principles" rightly
+    Article I of the USTP Constitution plus the Transhumanist Bill of Rights 3.0, and "the platform" Article VI with
+    the rest of the Constitution, that Bill of Rights and the bylaws in force? Is one check per person per election, and
+    100 a day for the server, right for voters? Should the repository instead carry dated copies of the party's texts
+    (they are USTP's own, marked "All Rights Reserved")? [both off until agreed; those texts; once each and 100 a day;
+    read from the party's site]
 19. **Contact for election questions** in the election notices (§6.8), whose From address takes no replies: an address
     or a page members can write to about an election. [none yet: a placeholder in the emulators; SES needs one before it
     sends]
@@ -1817,4 +1927,4 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Word export done:* the ballot and results as a `.docx` built in the browser, for Word and Google Docs, from the results page, the ballot page and the election editor (§9). *Synopsis done:* the results in brief, as the party publishes them, first on the results page (printable) and first in the Word file (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES with bounces read from SQS, and an outbox in place of mail with the emulators (§6.8; SES itself not yet set up in any project). *Still to do:* the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES with bounces read from SQS, and an outbox in place of mail with the emulators (§6.8; SES itself not yet set up in any project); the platform consistency check with Claude, once per person per election, from the ballot for voters on the roll and from the election editor for Election Admins and Auditors, comparing the proposals with the USTP Constitution (its Article VI is the Platform), the Transhumanist Bill of Rights, the bylaws in force and each other (§5.5; off in real projects until Q18 is settled, and not yet run against Anthropic's API). *Still to do:* the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |

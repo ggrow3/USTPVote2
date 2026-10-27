@@ -6,6 +6,7 @@ import {
   amendmentText,
   buildDefinition,
   checkElectionDeletable,
+  consistencyMaterial,
   isRehearsalRoll,
   updateElectionSchema,
   type ApprovalRequestRecord,
@@ -20,6 +21,7 @@ import { usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
 import { aRole, describeRequest } from '../approval-text.js';
 import ContestDialog from '../components/admin/ContestDialog.vue';
+import ConsistencyCheckCard from '../consistency-check/ConsistencyCheckCard.vue';
 import { askReason, attempt, dialog } from '../dialogs.js';
 import { downloadElectionDocx, saveElectionPackage } from '../election-files.js';
 import CandidatePicker from '../elections/CandidatePicker.vue';
@@ -48,6 +50,11 @@ const candidatesOf = (c: ContestRecord) =>
     ? []
     : c.spec.candidates.map((id) => detail.value!.candidates.find((k) => k.candidateId === id)).filter((k) => !!k);
 const proposalOf = (c: ContestRecord) => detail.value?.proposals.find((p) => p.snapshotId === c.proposalSnapshotId);
+/** Whether the platform consistency check has anything to read (design §5.5): proposals or options, not only offices. */
+const checkable = computed(() => {
+  const d = detail.value;
+  return !!d && consistencyMaterial(buildDefinition(d.election, d.contests, d.candidates, d.proposals), d.proposals).length > 0;
+});
 
 async function load() {
   await attempt(async () => {
@@ -481,6 +488,8 @@ onMounted(load);
             <q-btn color="primary" label="Save details" @click="saveDetails" />
           </q-card-section>
         </q-card>
+
+        <ConsistencyCheckCard :election-id="electionId" view="admin" :available="checkable" :definition-hash="detail.definitionHash" />
 
         <div class="ustp-header">
           <h2 class="text-h6">Contests</h2>

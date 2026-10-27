@@ -81,6 +81,14 @@
       ]
     },
     {
+      "collectionGroup": "consistency_checks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "requestedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "recipients",
       "queryScope": "COLLECTION",
       "fields": [
@@ -96,6 +104,8 @@
     { "collectionGroup": "participation", "fieldPath": "parts", "indexes": [] },
     { "collectionGroup": "bylaws_checks", "fieldPath": "text", "indexes": [] },
     { "collectionGroup": "bylaws_check_references", "fieldPath": "text", "indexes": [] },
+    { "collectionGroup": "consistency_checks", "fieldPath": "material", "indexes": [] },
+    { "collectionGroup": "consistency_checks", "fieldPath": "findings", "indexes": [] },
     { "collectionGroup": "notice_outbox", "fieldPath": "text", "indexes": [] },
     { "collectionGroup": "notice_outbox", "fieldPath": "html", "indexes": [] }
   ]

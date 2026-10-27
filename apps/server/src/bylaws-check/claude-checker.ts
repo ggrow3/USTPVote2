@@ -1,7 +1,7 @@
-import Anthropic from '@anthropic-ai/sdk';
-import { betaZodOutputFormat } from '@anthropic-ai/sdk/helpers/beta/zod';
+import type Anthropic from '@anthropic-ai/sdk';
 import { BYLAWS_CHECK_SEVERITIES, BYLAWS_CHECK_SOURCES, splitLines } from 'ustp-domain';
 import { z } from 'zod';
+import { claudeReview, reviewClient } from '../claude-checks/claude-review.js';
 import { tidyFindings, type BylawsChecker, type BylawsCheckInput, type BylawsCheckOutput } from './checker.js';
 import type { ReferenceLibrary, ReferenceText } from './references.js';
 
@@ -58,55 +58,25 @@ export class ClaudeBylawsChecker implements BylawsChecker {
 
   async check(input: BylawsCheckInput): Promise<BylawsCheckOutput> {
     if (!this.apiKey) throw new Error('the bylaws check is not configured on the worker (no ANTHROPIC_API_KEY)');
-    // Under the worker's 300-second request limit, with one retry for a dropped connection.
-    this.client ??= new Anthropic({ apiKey: this.apiKey, timeout: 240_000, maxRetries: 1, ...this.clientOptions });
+    this.client ??= reviewClient(this.apiKey, this.clientOptions);
     const references = await this.references.load();
-    const lineCount = splitLines(input.text).length;
-
-    const stream = this.client.beta.messages.stream({
+    const { review, model, usage } = await claudeReview(this.client, {
       model: this.model,
-      max_tokens: 32_000,
-      betas: ['server-side-fallback-2026-07-01'],
-      fallbacks: 'default',
-      output_config: { effort: 'high', format: betaZodOutputFormat(reviewSchema) },
       system: SYSTEM_PROMPT,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            ...references.map((ref, i) => ({
-              type: 'text' as const,
-              text: referenceBlock(ref),
-              ...(i === references.length - 1 ? { cache_control: { type: 'ephemeral' as const } } : {}),
-            })),
-            { type: 'text', text: draftBlock(input) },
-          ],
-        },
-      ],
+      blocks: [...references.map((ref, i) => ({ text: referenceBlock(ref), cache: i === references.length - 1 })), { text: draftBlock(input) }],
+      schema: reviewSchema,
     });
-    const message = await stream.finalMessage();
-    if (message.stop_reason === 'refusal') {
-      throw new Error(`Claude declined to review this text${message.stop_details?.category ? ` (${message.stop_details.category})` : ''}`);
-    }
-    if (message.stop_reason === 'max_tokens') throw new Error('the review was cut off before it finished');
-    const review = message.parsed_output;
-    if (!review) throw new Error('the review did not come back in the expected form');
     return {
-      findings: tidyFindings(review.findings, lineCount, input.focusLines),
+      findings: tidyFindings(review.findings, splitLines(input.text).length, input.focusLines),
       summary: review.summary.trim(),
       references: references.map(({ text: _, ...ref }) => ref),
-      model: message.model,
-      usage: {
-        inputTokens: message.usage.input_tokens,
-        outputTokens: message.usage.output_tokens,
-        cacheReadInputTokens: message.usage.cache_read_input_tokens ?? 0,
-        cacheCreationInputTokens: message.usage.cache_creation_input_tokens ?? 0,
-      },
+      model,
+      usage,
     };
   }
 }
 
-function referenceBlock(ref: ReferenceText): string {
+export function referenceBlock(ref: ReferenceText): string {
   return `<reference id="${ref.id}" title="${ref.title}" source="${ref.url}">\n${ref.text}\n</reference>`;
 }
 

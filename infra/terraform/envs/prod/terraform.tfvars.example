@@ -19,6 +19,10 @@ anchors_retention_locked = false
 # Sends bylaws drafts to Anthropic for the advisory check; add the anthropic-api-key secret's version first (README).
 bylaws_check_enabled = false
 
+# Sends an election's proposals to Anthropic when a voter on its roll, or an Election Admin or Auditor, asks for the
+# platform consistency check (once each per election); uses the same anthropic-api-key secret (README).
+consistency_check_enabled = false
+
 # Election notices by Amazon SES (design §6.8): set SES up and add the aws-ses-* secret versions first (README
 # "Election notices"). The From address is the module default, USTP Elections <noreply@transhumanist-party.org>.
 # web_origin           = "https://vote.example.org"  # empty: https://<project>.web.app

@@ -82,6 +82,12 @@ variable "bylaws_check_enabled" {
   default     = false
 }
 
+variable "consistency_check_enabled" {
+  description = "Run the platform consistency check with Claude, once per person per election (design §5.5; README \"Consistency check\")."
+  type        = bool
+  default     = false
+}
+
 variable "web_origin" {
   description = "Where the web app is served, which election notices link to; empty for https://<project>.web.app (design §6.8)."
   type        = string

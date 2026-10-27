@@ -5,8 +5,8 @@
 #
 # Environment variables are named exactly as apps/server/src/config.ts reads them; each service gets the ones it
 # uses. Nothing here sets APP_CHECK_ENFORCED, ADMIN_MFA_REQUIRED, PHOTO_CHECKER, SECRET_STORE, AUDIT_SIGNER,
-# BALLOT_POOL or an emulator host, so every safety switch keeps its production default (design §4). BYLAWS_CHECKER is
-# "claude" or "off" (bylaws_check.tf), never the emulator-only stand-in.
+# BALLOT_POOL or an emulator host, so every safety switch keeps its production default (design §4). BYLAWS_CHECKER and
+# CONSISTENCY_CHECKER are "claude" or "off" (bylaws_check.tf, consistency_check.tf), never the emulator-only stand-ins.
 
 locals {
   # api: Secret Manager (creating tie-break seeds), encrypting ballots to an election's pool key, Auditor verification
@@ -21,14 +21,16 @@ locals {
       PHOTOS_BUCKET                 = google_storage_bucket.photos.name
       BOOTSTRAP_SYSTEM_ADMIN_EMAILS = join(",", var.bootstrap_system_admin_emails)
       BYLAWS_CHECKER                = local.bylaws_checker
+      CONSISTENCY_CHECKER           = local.consistency_checker
     },
     local.notices_env,
     var.testing_mode ? { TESTING_MODE = "true" } : {},
   )
 
   # worker: Secret Manager (reading seeds at tally), signing ledger blocks and rolls, pool key versions and sealing,
-  # writing anchors, running bylaws checks (with ANTHROPIC_API_KEY from Secret Manager, below), and sending election
-  # notices, which link to the web app (design §6.8; notices.tf, and the AWS key from Secret Manager, below).
+  # writing anchors, running bylaws and consistency checks (with ANTHROPIC_API_KEY from Secret Manager, below), and
+  # sending election notices, which link to the web app (design §6.8; notices.tf, and the AWS key from Secret Manager,
+  # below).
   worker_env = merge(
     {
       GOOGLE_CLOUD_PROJECT      = var.project_id
@@ -37,6 +39,7 @@ locals {
       BALLOT_POOL_KEY           = google_kms_crypto_key.ballot_pool.id
       ANCHORS_BUCKET            = google_storage_bucket.anchors.name
       BYLAWS_CHECKER            = local.bylaws_checker
+      CONSISTENCY_CHECKER       = local.consistency_checker
       WEB_ORIGIN                = var.web_origin != "" ? var.web_origin : "https://${var.project_id}.web.app"
     },
     local.notices_env,
@@ -45,8 +48,12 @@ locals {
     var.testing_mode ? { TESTING_MODE = "true" } : {},
   )
 
-  # The api queues bylaws checks and the worker runs them, so both must agree.
-  bylaws_checker = var.bylaws_check_enabled ? "claude" : "off"
+  # The api queues the checks and the worker runs them, so both must agree.
+  bylaws_checker      = var.bylaws_check_enabled ? "claude" : "off"
+  consistency_checker = var.consistency_check_enabled ? "claude" : "off"
+
+  # Either check needs the worker to hold the Anthropic API key.
+  anthropic_key_needed = var.bylaws_check_enabled || var.consistency_check_enabled
 }
 
 # --- api ---------------------------------------------------------------------------------------------------------------
@@ -194,7 +201,7 @@ resource "google_cloud_run_v2_service" "worker" {
 
       # Read when an instance starts, so a new key version takes effect on the next release or restart.
       dynamic "env" {
-        for_each = var.bylaws_check_enabled ? [google_secret_manager_secret.anthropic_api_key.secret_id] : []
+        for_each = local.anthropic_key_needed ? [google_secret_manager_secret.anthropic_api_key.secret_id] : []
         content {
           name = "ANTHROPIC_API_KEY"
           value_source {

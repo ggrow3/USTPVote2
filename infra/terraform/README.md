@@ -48,7 +48,7 @@ API-side limits are only checked by Google on the first apply.
 | | `signer` and `publicKeyViewer` on `audit-signing` | Only the worker signs ledger blocks and rolls (§8.3) |
 | | Create, get, decrypt with and destroy `ballot-pool` versions (custom role, on that key only) | One version per election, unwrapping at sealing, destruction after certification (§7.3, §13) |
 | | Create and read objects in the anchors bucket; never delete | Write-once anchors; overwriting needs delete, which it lacks (§8.4) |
-| | Access secrets | Tie-break seeds at tally (§9), the Anthropic API key for the bylaws check (§5.2), the AWS key for election notices by SES (§6.8) |
+| | Access secrets | Tie-break seeds at tally (§9), the Anthropic API key for the bylaws and consistency checks (§5.4, §5.5), the AWS key for election notices by SES (§6.8) |
 | `ustp-worker-invoker` | Invoke the worker | Identity of the Scheduler tick and of Cloud Tasks; nothing else |
 | `ustp-release` | Push to the `ustpvote` Artifact Registry repository | The release workflow builds the server image |
 | | Sign attestations for `ustpvote-reviewed` (attestor key, note, occurrences) | Binary Authorization lets only attested images run |
@@ -85,6 +85,7 @@ Set in each root's `terraform.tfvars` (or with `-var`):
 | `alert_emails` | | | | Recipients of the KMS break-glass alert; empty means no alert policy |
 | `task_enqueuers` | | | | `"api"` and/or `"worker"`, once code enqueues Cloud Tasks |
 | `bylaws_check_enabled` | false | false | false | The advisory bylaws check with Claude, which sends drafts to Anthropic; see [Bylaws check](#bylaws-check) |
+| `consistency_check_enabled` | false | false | false | The platform consistency check with Claude, once per person per election, which sends an election's proposals to Anthropic; see [Consistency check](#consistency-check) |
 | `project_id`, `region` | | | | Default to the environment's project and `us-central1` |
 
 Fixed per root: Binary Authorization is a dry run in dev and enforced elsewhere. The module has further knobs with
@@ -114,8 +115,9 @@ for running the server locally against a real project. Variable names are those 
 | `PHOTOS_BUCKET` | `photos_bucket` (`<project>-profile-photos`) | ● | |
 | `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` | from the variable, not output | ● | |
 | `BYLAWS_CHECKER` | in `api_env` / `worker_env`: `claude` when `bylaws_check_enabled`, else `off` | ● | ● |
-| `ANTHROPIC_API_KEY` | not output: the `anthropic-api-key` secret's latest version, when `bylaws_check_enabled` | | ● |
-| `BYLAWS_CHECK_MODEL` | not set; the server defaults to `claude-opus-5-5` | | (●) |
+| `CONSISTENCY_CHECKER` | in `api_env` / `worker_env`: `claude` when `consistency_check_enabled`, else `off` | ● | ● |
+| `ANTHROPIC_API_KEY` | not output: the `anthropic-api-key` secret's latest version, when `bylaws_check_enabled` or `consistency_check_enabled` | | ● |
+| `BYLAWS_CHECK_MODEL`, `CONSISTENCY_CHECK_MODEL` | not set; the server defaults to `claude-opus-5-5` | | (●) |
 | `PORT` | set by Cloud Run (8080) | ● | ● |
 
 Never set: `APP_CHECK_ENFORCED`, `ADMIN_MFA_REQUIRED`, `PHOTO_CHECKER`, `SECRET_STORE`, `AUDIT_SIGNER`, `BALLOT_POOL`
@@ -352,6 +354,24 @@ Terraform or its state.
 
 To rotate the key, add a new version and roll the worker (a release, or a new revision); Cloud Run reads `latest` when an
 instance starts. To switch the check off, set the variable back to `false` and apply; the secret and past checks stay.
+
+### Consistency check
+
+The platform consistency check (design §5.5) is switched on separately from the bylaws check, because voters can ask
+for it: anyone on an election's roll, and each Election Admin and Auditor, may run it once per election. When on, the
+worker sends the election's proposals, the party's constitution and Bill of Rights (read from transhumanist-party.org)
+and the bylaws in force to Anthropic's API; each check costs money (design §15), and the server takes at most 100 a day.
+USTP should agree to it first (design Q18). It uses the same `anthropic-api-key` secret as the bylaws check.
+
+1. If the secret has no version yet, add the key as in [Bylaws check](#bylaws-check), steps 1 and 2.
+2. Set `consistency_check_enabled = true` in the environment's `terraform.tfvars` and apply: both services get
+   `CONSISTENCY_CHECKER=claude`, the worker gets `ANTHROPIC_API_KEY` from the secret (if the bylaws check had not
+   already given it), and the `worker-consistency-checks` Scheduler job starts calling `POST /tasks/consistency-checks`
+   every minute.
+3. Deploy the Firestore indexes (`npx firebase deploy --project <project> --only firestore`): the worker's query for
+   queued checks needs the `consistency_checks` index.
+
+Switching it off (`false`, apply) stops new checks and hides the button; people can still read the checks they ran.
 
 ### Election notices
 

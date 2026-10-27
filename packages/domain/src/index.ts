@@ -185,3 +185,30 @@ export type {
   BylawsCheckView,
   BylawsRunResult,
 } from './bylaws-check.js';
+export {
+  CONSISTENCY_CHECK_SOURCES,
+  CONSISTENCY_CHECK_VIEWS,
+  CONSISTENCY_CHECK_TIMEOUT_MINUTES,
+  MAX_CONSISTENCY_CHECKS_PER_DAY,
+  MAX_CONSISTENCY_MATERIAL_CHARACTERS,
+  MAX_PASSAGE_CHARACTERS,
+  checkConsistencyRequest,
+  consistencyCheckId,
+  consistencyMaterial,
+  contestText,
+  materialCharacters,
+  tidyConsistencyFindings,
+} from './consistency-check.js';
+export type {
+  ConsistencyCheckRecord,
+  ConsistencyCheckResult,
+  ConsistencyCheckSource,
+  ConsistencyCheckState,
+  ConsistencyCheckStatus,
+  ConsistencyCheckView,
+  ConsistencyContest,
+  ConsistencyContestRef,
+  ConsistencyFinding,
+  ConsistencyRunResult,
+  ProposalText,
+} from './consistency-check.js';

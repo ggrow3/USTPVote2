@@ -8,8 +8,9 @@ import {
   Param,
   Post,
 } from '@nestjs/common';
-import type { BylawsRunResult, TickResult } from 'ustp-domain';
+import type { BylawsRunResult, ConsistencyRunResult, TickResult } from 'ustp-domain';
 import { BylawsCheckRunner } from '../bylaws-check/bylaws-check-runner.js';
+import { ConsistencyCheckRunner } from '../consistency-check/consistency-check-runner.js';
 import { NoticeSender } from '../notifications/notice-sender.js';
 import { BallotSealer } from './ballot-sealer.js';
 import { ElectionClock } from './election-clock.js';
@@ -20,7 +21,7 @@ import { Tallier } from './tallier.js';
  * Worker task endpoints (design §13), invoked by Cloud Scheduler and Cloud Tasks. The worker's Cloud Run service only
  * admits their OIDC tokens (IAM invoker), so these routes have no sign-in of their own.
  */
-export const WORKER_TASKS = ['tick', 'bylaws-checks', 'email'] as const;
+export const WORKER_TASKS = ['tick', 'bylaws-checks', 'consistency-checks', 'email'] as const;
 export type WorkerTask = (typeof WORKER_TASKS)[number];
 
 @Controller('tasks')
@@ -33,6 +34,7 @@ export class TasksController {
     private readonly tallier: Tallier,
     private readonly sealer: LedgerSealer,
     private readonly bylawsChecks: BylawsCheckRunner,
+    private readonly consistencyChecks: ConsistencyCheckRunner,
     private readonly notices: NoticeSender,
   ) {}
 
@@ -81,6 +83,13 @@ export class TasksController {
   @HttpCode(200)
   runBylawsChecks(): Promise<BylawsRunResult> {
     return this.bylawsChecks.runQueued();
+  }
+
+  /** Every minute, on its own Cloud Scheduler job: run queued platform consistency checks (design §5.5), as above. */
+  @Post('consistency-checks')
+  @HttpCode(200)
+  runConsistencyChecks(): Promise<ConsistencyRunResult> {
+    return this.consistencyChecks.runQueued();
   }
 
   @Post(':task')

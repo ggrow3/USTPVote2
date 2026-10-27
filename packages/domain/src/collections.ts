@@ -20,6 +20,8 @@ export const Collections = {
   elections: 'elections',
   proposalSnapshots: 'proposal_snapshots',
   proposalReviews: 'proposal_reviews',
+  /** `consistency_checks/{electionId}_{accountId}`: one platform consistency check per person per election (design §5.5). */
+  consistencyChecks: 'consistency_checks',
   results: 'results',
   // audit & admin
   auditEvents: 'audit_events',

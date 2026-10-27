@@ -216,6 +216,12 @@ variable "bylaws_check_enabled" {
   default     = false
 }
 
+variable "consistency_check_enabled" {
+  description = "Run the platform consistency check, which voters on a roll and Election Admins and Auditors may each ask for once per election, and which sends the election's proposals to Anthropic's API (design §5.5). Uses the same anthropic-api-key secret as the bylaws check."
+  type        = bool
+  default     = false
+}
+
 # --- Election notices (design §6.8) -----------------------------------------------------------------------------------
 
 variable "web_origin" {

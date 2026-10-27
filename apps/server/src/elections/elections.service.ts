@@ -455,9 +455,10 @@ export class ElectionsService {
   /**
    * Deletes an election permanently (design §6.1): a cancelled one nobody voted in or, where testing mode is on, a
    * rehearsal once it is certified or cancelled, with its ballots (§10.4). Goes with it: the election and everything
-   * stored under it, its results, its voter rolls, any request about it still pending, and its tie-break seed. One
-   * Election Admin does it at once, signed in within the last 15 minutes. The ledger keeps every entry about the
-   * election and records this one, saying when it was a rehearsal and how many ballots went with it.
+   * stored under it, its results, its voter rolls, any request about it still pending, its tie-break seed, its notices
+   * and its consistency checks. One Election Admin does it at once, signed in within the last 15 minutes. The ledger
+   * keeps every entry about the election and records this one, saying when it was a rehearsal and how many ballots
+   * went with it.
    */
   async delete(ctx: RequestContext, electionId: string, reason: string): Promise<void> {
     const actor = actorOf(ctx, this.config.adminMfaRequired);
@@ -504,6 +505,17 @@ export class ElectionsService {
     await this.notices.forgetElection(electionId).catch((e: unknown) => {
       this.logger.warn(`election ${electionId} deleted, but not its notices: ${e instanceof Error ? e.message : String(e)}`);
     });
+    // Its consistency checks quote its texts, one per person who asked (design §5.5); the same goes for them.
+    await this.forgetConsistencyChecks(electionId).catch((e: unknown) => {
+      this.logger.warn(`election ${electionId} deleted, but not its consistency checks: ${e instanceof Error ? e.message : String(e)}`);
+    });
+  }
+
+  private async forgetConsistencyChecks(electionId: string): Promise<void> {
+    const checks = await this.db.collection(Collections.consistencyChecks).where('electionId', '==', electionId).select().get();
+    const writer = this.db.bulkWriter();
+    for (const doc of checks.docs) void writer.delete(doc.ref);
+    await writer.close();
   }
 
   private async latestRoll(electionId: string): Promise<RollSnapshotRecord | null> {

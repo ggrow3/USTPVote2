@@ -6,6 +6,7 @@ import {
   amendmentText,
   ballotViewProblems,
   commitmentsOf,
+  consistencyMaterial,
   type BallotReceipt,
   type BallotView,
   type CastResult,
@@ -13,6 +14,7 @@ import {
 } from 'ustp-domain';
 import { announce, focusSoon, usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
+import ConsistencyCheckCard from '../consistency-check/ConsistencyCheckCard.vue';
 import { attempt } from '../dialogs.js';
 import { downloadElectionDocx } from '../election-files.js';
 import { rulesText } from '../election-text.js';
@@ -48,6 +50,9 @@ onMounted(load);
  */
 const integrityProblems = computed(() => (view.value ? ballotViewProblems(view.value) : null));
 const integrity = computed(() => (integrityProblems.value ? integrityProblems.value.length === 0 : null));
+
+/** Whether the platform consistency check has anything to read here (design §5.5): proposals or options, not only offices. */
+const checkable = computed(() => (view.value ? consistencyMaterial(view.value.definition, view.value.proposals).length > 0 : false));
 
 /** The ballot as a Word file (design §9), proposal texts included; never the voter's answers. */
 const exporting = ref(false);
@@ -260,6 +265,8 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
         <q-banner v-else-if="view.election.state !== 'open'" class="bg-grey-3 text-black" rounded>
           Voting has closed.
         </q-banner>
+
+        <ConsistencyCheckCard v-if="integrity !== false" :election-id="electionId" view="ballot" :available="checkable" />
 
         <q-card v-for="c in contests" :key="c.contestId" tag="section" :aria-labelledby="`contest-${c.contestId}`" flat bordered>
           <q-card-section>

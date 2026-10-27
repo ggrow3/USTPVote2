@@ -1,6 +1,7 @@
 // Runs the compiled worker against the local Firebase emulators (`npm run emulators -w apps/server`) and calls
-// /tasks/tick and /tasks/bylaws-checks on a timer, standing in for Cloud Scheduler. Anything already set in the
-// environment wins over these defaults; DEV_TICK_SECONDS sets the interval (Cloud Scheduler calls each once a minute).
+// /tasks/tick, /tasks/bylaws-checks and /tasks/consistency-checks on a timer, standing in for Cloud Scheduler. Anything
+// already set in the environment wins over these defaults; DEV_TICK_SECONDS sets the interval (Cloud Scheduler calls
+// each once a minute).
 const defaults = {
   FIRESTORE_EMULATOR_HOST: '127.0.0.1:8085',
   FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099',
@@ -24,4 +25,4 @@ async function run(task) {
   }
 }
 
-setInterval(() => Promise.all([run('tick'), run('bylaws-checks')]), Number(process.env.DEV_TICK_SECONDS) * 1000);
+setInterval(() => Promise.all([run('tick'), run('bylaws-checks'), run('consistency-checks')]), Number(process.env.DEV_TICK_SECONDS) * 1000);

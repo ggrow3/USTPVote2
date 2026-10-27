@@ -2,8 +2,9 @@
 # flags. Off unless bylaws_check_enabled; turning it on needs a version in the anthropic-api-key secret first
 # (README "Bylaws check").
 
-# Holds the Anthropic API key. Terraform creates the secret but never its value: a person adds it as a version, so the
-# key stays out of Terraform state. Only the worker reads it (worker_secret_accessor), as ANTHROPIC_API_KEY.
+# Holds the Anthropic API key, for this check and the platform consistency check (consistency_check.tf). Terraform
+# creates the secret but never its value: a person adds it as a version, so the key stays out of Terraform state. Only
+# the worker reads it (worker_secret_accessor), as ANTHROPIC_API_KEY.
 resource "google_secret_manager_secret" "anthropic_api_key" {
   project   = var.project_id
   secret_id = "anthropic-api-key"

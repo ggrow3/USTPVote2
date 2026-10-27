@@ -24,7 +24,8 @@ module "ustpvote" {
   operator_members = var.operator_members
   alert_emails     = var.alert_emails
 
-  bylaws_check_enabled = var.bylaws_check_enabled
+  bylaws_check_enabled      = var.bylaws_check_enabled
+  consistency_check_enabled = var.consistency_check_enabled
 
   # Election notices (design §6.8; README "Election notices").
   web_origin           = var.web_origin
