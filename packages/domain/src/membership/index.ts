@@ -36,3 +36,5 @@ export type {
 export { checkApplicantEmail, applicationWindowStart, submitApplication, decideApplication } from './application.js';
 export type { ApplicationChange } from './application.js';
 export type * from './records.js';
+export { MEMBER_SEARCH_DEFAULT_LIMIT, MEMBER_SEARCH_MAX_LIMIT, foldName, matchMembers } from './search.js';
+export type { MemberMatch } from './search.js';

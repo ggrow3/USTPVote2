@@ -76,6 +76,7 @@ export {
   buildDefinition,
   definitionHash,
   validateDefinition,
+  checkCandidateAccount,
 } from './elections.js';
 export type {
   Secrecy,

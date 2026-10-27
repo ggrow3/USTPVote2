@@ -1,6 +1,8 @@
 import { hashCanonical } from 'ustp-audit';
 import { validateContestSpec, type ContestSpec } from 'ustp-tally';
 import type { BylawsAmendment } from './amendments.js';
+import { deny, OK, type Check } from './check.js';
+import type { MemberStatus } from './membership/member-status.js';
 import type { RollCriteria } from './roll.js';
 import type { ElectionState } from './election-state.js';
 import type { SignatureRecord } from './ledger.js';
@@ -137,6 +139,14 @@ export interface CandidateRecord {
   readonly statement: string | null;
   /** The member standing, when the candidate is a person with an account (used for recusal checks). */
   readonly accountId: string | null;
+}
+
+/**
+ * Whether a candidate may be linked to `accountId` (design §6.5): only to an Active member's account, read when the
+ * candidate is added. Linking your own is refused before this, since you could no longer act on the election.
+ */
+export function checkCandidateAccount(accountId: string, member: { readonly status: MemberStatus } | null): Check {
+  return member?.status === 'active' ? OK : deny(`account ${accountId} is not an Active member`);
 }
 
 /** `proposal_snapshots/{snapshotId}` — immutable: the exact text put to a vote. */

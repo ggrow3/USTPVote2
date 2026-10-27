@@ -8,6 +8,7 @@ beforeAll(async () => {
 afterAll(() => api.close());
 
 type Member = User & { accountId: string };
+let sa1: Member;
 let ea: Member;
 let ea2: Member;
 let auditor: Member;
@@ -18,7 +19,7 @@ const MAJORITY = { threshold: { ratio: { num: 1, den: 2 }, comparison: 'gt' }, b
 
 beforeEach(async () => {
   await resetEmulators();
-  const [sa1, sa2] = await api.systemAdmins();
+  [sa1] = await api.systemAdmins();
   ea = await api.member('election.admin@example.test');
   ea2 = await api.member('election.admin2@example.test');
   auditor = await api.member('auditor@example.test');
@@ -27,6 +28,14 @@ beforeEach(async () => {
   await api.grant(ea2.accountId, 'election_admin', sa1);
   await api.grant(auditor.accountId, 'auditor', sa1);
 });
+
+/** Gives the account a member record with this status, as the membership context would. */
+async function activeMember(user: Member, legalName: string, more: Record<string, unknown> = {}) {
+  await api.firebase.db
+    .collection('members')
+    .doc(user.accountId)
+    .set({ accountId: user.accountId, status: 'active', legalName, preferredName: null, state: 'CA', ...more });
+}
 
 async function draft(overrides: Record<string, unknown> = {}) {
   const res = await api.call('POST', '/v1/admin/elections', ea, {
@@ -126,6 +135,7 @@ describe('integrity of the draft', () => {
     const url = `/v1/admin/elections/${electionId}`;
     const chair = (await api.call('POST', `${url}/contests`, ea, { kind: 'irv', title: 'Chair' })).body;
 
+    await activeMember(ea, 'Eve Admin');
     const self = await api.call('POST', `${url}/contests/${chair.contestId}/candidates`, ea, { name: 'Me', accountId: ea.accountId });
     expect(self.status).toBe(403);
 
@@ -142,5 +152,71 @@ describe('integrity of the draft', () => {
     await api.firebase.db.collection('elections').doc(electionId).update({ state: 'scheduled' });
     const res = await api.call('PATCH', `/v1/admin/elections/${electionId}`, ea, { title: 'Late change' });
     expect(res).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/only drafts can be edited/) } });
+  });
+});
+
+describe('candidates who are members', () => {
+  let ada: Member;
+  let bob: Member;
+  let lapsed: Member;
+  beforeEach(async () => {
+    ada = await api.member('ada@example.test');
+    bob = await api.member('bob@example.test');
+    lapsed = await api.member('adam@example.test');
+    const contact = { city: 'Fresno', postalCode: '93650', phone: '+15595550100' };
+    await activeMember(ada, 'Ada Brooks', { contact, bylawsVersion: '2026.1', memberSince: '2026-01-02T00:00:00.000Z' });
+    await activeMember(bob, 'Robert Adams', { preferredName: 'Bob Adams', state: 'NY', contact });
+    await activeMember(lapsed, 'Adam Lapsed', { status: 'lapsed' });
+  });
+  const search = (user: User, query: string) => api.call('GET', `/v1/admin/member-search?${query}`, user);
+
+  it('finds Active members by name for Election Admins, with only what it takes to pick one', async () => {
+    expect(await search(ea, 'name=ad')).toMatchObject({
+      status: 200,
+      body: [
+        { accountId: ada.accountId, legalName: 'Ada Brooks', preferredName: null, state: 'CA' },
+        { accountId: bob.accountId, legalName: 'Robert Adams', preferredName: 'Bob Adams', state: 'NY' },
+      ],
+    });
+    // Exactly these fields: no status, contact, bylaws version or dates.
+    for (const row of (await search(ea, 'name=ad')).body) expect(Object.keys(row).sort()).toEqual(['accountId', 'legalName', 'preferredName', 'state']);
+    expect((await search(ea, 'name=BOB')).body.map((m: { accountId: string }) => m.accountId)).toEqual([bob.accountId]);
+    expect((await search(ea, 'name=lapsed')).body).toEqual([]);
+    expect((await search(ea, 'name=ad&limit=1')).body).toHaveLength(1);
+
+    expect((await search(ea, '')).status).toBe(400);
+    expect((await search(ea, 'name=%20')).status).toBe(400);
+    expect((await search(ea, 'name=ad&limit=21')).status).toBe(400);
+  });
+
+  it('is for Election Admins only', async () => {
+    for (const user of [auditor, member, ada, sa1]) expect((await search(user, 'name=ada')).status).toBe(403);
+  });
+
+  it('links a candidate to an Active member, and refuses any other account', async () => {
+    const { electionId } = await draft();
+    const url = `/v1/admin/elections/${electionId}`;
+    const chair = (await api.call('POST', `${url}/contests`, ea, { kind: 'irv', title: 'Chair' })).body;
+    const add = (body: object) => api.call('POST', `${url}/contests/${chair.contestId}/candidates`, ea, body);
+
+    const linked = await add({ name: 'Ada Brooks', accountId: ada.accountId });
+    expect(linked).toMatchObject({ status: 201, body: { name: 'Ada Brooks', accountId: ada.accountId, contestId: chair.contestId } });
+    expect(await add({ name: 'Write-in' })).toMatchObject({ status: 201, body: { accountId: null } });
+
+    for (const accountId of [lapsed.accountId, member.accountId, '0190f2a3-0000-7000-8000-000000000000']) {
+      expect(await add({ name: 'Someone', accountId })).toMatchObject({
+        status: 400,
+        body: { detail: `account ${accountId} is not an Active member` },
+      });
+    }
+
+    const detail = (await api.call('GET', url, ea)).body;
+    expect(detail.candidates.map((k: { name: string; accountId: string | null }) => [k.name, k.accountId])).toEqual([
+      ['Ada Brooks', ada.accountId],
+      ['Write-in', null],
+    ]);
+    // A linked member who is also an Election Admin can no longer edit the election.
+    await api.grant(ada.accountId, 'election_admin', sa1);
+    expect((await api.call('PATCH', url, ada, { title: 'Renamed' })).status).toBe(403);
   });
 });

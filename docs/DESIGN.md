@@ -687,6 +687,28 @@ an election package gives (§6.7); both fit the `ustp-tally` ID pattern. Only dr
   - **Public:** `GET /v1/public/positions` lists the offices and their active terms; office holders are public, like
     the results they come from. Administrators see every term in the console's Offices tab.
 
+**Candidates who are members.** A candidate is the name the ballot shows, and may be linked to the account of the
+member standing (`accountId`). The link is what recusal checks (§10.1, §10.2) and what a term of office and the Members
+tab use to name the holder (§6.4, §5.2); it is not part of the definition, so the hash and voters see only the name.
+
+- **Only an Active member's account** can be linked, read in the transaction that adds the candidate
+  (`checkCandidateAccount` in `ustp-domain`; 400 for any other account, a lapsed or suspended member, or one with no
+  member record), and the same holds on import (§6.7). Nobody can link their own account (403). A member whose status
+  changes later stays linked.
+- **Picking the member:** the editor's candidate field is a combobox. As the Election Admin types, it asks
+  `GET /v1/admin/member-search?name=…` (Election Admin; 10 matches, `limit` up to 20) for the Active members whose
+  legal or preferred name holds every word typed, in any case and with or without accents: names that start with the
+  text first, then those where each word typed starts a word of the name, then the rest, alphabetically within each
+  (`matchMembers`). A match carries only the account ID, legal and preferred name and state, enough to tell two people
+  with one name apart: the roll already shows Election Admins legal names and states (§6.3), and the search adds no
+  status, contact details or dates. Choosing a member adds them under their legal name, linked; a name typed without
+  choosing anyone is added as typed, unlinked. The search lists but disables the admin's own account and members
+  already standing in that contest, and the candidate list marks each linked candidate.
+- **How it searches:** Firestore has no text search, so the api reads every Active member's names (a projection query,
+  still billed as one read per member) and matches them in memory. At the spec's 1,000–5,000 members that is quick
+  enough for a search that runs once typing pauses (300 ms); a name index can come if membership outgrows it. Like
+  other admin reads it writes nothing and is not ledgered.
+
 ### 6.6 Bylaws amendments
 
 A proposal can change particular lines of the published bylaws, so members vote on exactly the words that change and,
@@ -806,8 +828,8 @@ can be prepared, reviewed, kept, repeated and tested as files instead of being p
 **Importing** (`POST /v1/admin/elections/import`, Election Admin) creates a draft in one transaction, so a refusal
 writes nothing:
 
-- **The editor's rules apply to the whole:** every office, account and named proposal text must exist (400). The
-  importing admin cannot be a candidate (403). The bylaws amendments must fit the current version and not conflict
+- **The editor's rules apply to the whole:** every office and named proposal text must exist, and every candidate's
+  `accountId` must be an Active member's (400, §6.5). The importing admin cannot be a candidate (403). The bylaws amendments must fit the current version and not conflict
   (409, §6.6).
 - **Proposal texts:** each is captured as an immutable snapshot, unless one with the same content hash and source
   exists already, here or earlier in the same file; then that one is used. A `contentHash` in the file must be the
@@ -1396,7 +1418,7 @@ Physically, registration collections are top-level and election data lives under
 | **voting** | | | |
 | `elections/{electionId}` | UUIDv7 | state transitions; deleted with everything under it if cancelled with no ballot cast (§6.1) | definition, definitionHash, seed commitment, k; `amendsBylaws` once scheduled (§6.6) |
 | `elections/{id}/contests/{contestId}` | slug | frozen at schedule | contest spec (`ustp-tally` type) |
-| `elections/{id}/candidates/{candidateId}` | slug | frozen at schedule | contestId, display data, optional accountId |
+| `elections/{id}/candidates/{candidateId}` | slug | frozen at schedule | contestId, display data, optional accountId (an Active member's when added, §6.5) |
 | `elections/{id}/roll_entries/{accountId}` | accountId | immutable | snapshotId |
 | `elections/{id}/participation/{accountId}` | accountId | create-only | castAt; open mode: parts |
 | `elections/{id}/ballot_pool/{randomId}` | random | create, delete by sealer | ciphertext only |
@@ -1458,7 +1480,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /admin/members/{accountId}/status` | Membership Admin | status changes |
 | `GET /admin/photos` · `GET /admin/photos/{id}/image` · `POST /admin/photos/{id}/decision` | Membership Admin | photo review |
 | `GET /admin/elections` · `GET /admin/elections/{id}` (detail, definition hash, problems) · `GET /admin/proposals` | Election Admin, Auditor | read election setup |
-| `POST /admin/elections` · `PATCH /admin/elections/{id}` · `POST\|PUT\|DELETE …/contests[/{cid}]` · `POST\|DELETE …/contests/{cid}/candidates[/{kid}]` · `POST /admin/proposals` | Election Admin | edit drafts |
+| `POST /admin/elections` · `PATCH /admin/elections/{id}` · `POST\|PUT\|DELETE …/contests[/{cid}]` · `POST\|DELETE …/contests/{cid}/candidates[/{kid}]` · `POST /admin/proposals` | Election Admin | edit drafts; a candidate's optional `accountId` must be an Active member's (§6.5) |
+| `GET /admin/member-search?name=…` (`limit` ≤ 20) | Election Admin | Active members whose legal or preferred name matches, to link a candidate: account ID, names and state only (§6.5) |
 | `POST /admin/elections/import` | Election Admin | a whole draft from a `ustp.election` file, in one transaction (400/403/409 write nothing; §6.7) |
 | `GET /admin/elections/{id}/package` | Election Admin, Auditor | any election as a `ustp.election` file (§6.7) |
 | `POST /admin/elections/{id}/roll` · `.../schedule` · `.../cancel` · `.../certify` | Election Admin | roll snapshot (`voters: 'test_voters'` for a rehearsal roll, testing mode only, §6.3), scheduling, cancellation and certification requests (draft cancel is immediate) |

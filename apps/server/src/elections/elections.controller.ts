@@ -1,9 +1,11 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import {
   candidateInputSchema,
   contestInputSchema,
   createElectionSchema,
   electionPackageSchema,
+  MEMBER_SEARCH_DEFAULT_LIMIT,
+  MEMBER_SEARCH_MAX_LIMIT,
   proposalInputSchema,
   reasonInputSchema,
   rollRequestSchema,
@@ -17,9 +19,10 @@ import {
   type RollRequestInput,
   type UpdateElectionInput,
 } from 'ustp-domain';
+import { z } from 'zod';
 import { Ctx, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
-import { ZodPipe } from '../common/validation.js';
+import { parseQuery, ZodPipe } from '../common/validation.js';
 import { ElectionsService } from './elections.service.js';
 
 /** Election setup (design §6). Election Admins edit drafts; Auditors can read everything they will be asked to approve. */
@@ -158,5 +161,23 @@ export class ProposalsController {
   @Post()
   create(@Ctx() ctx: RequestContext, @Body(new ZodPipe(proposalInputSchema)) body: ProposalInput) {
     return this.elections.createProposal(ctx, body);
+  }
+}
+
+/**
+ * Active members by name (design §6.5), so an Election Admin can link a candidate to the member standing: account ID,
+ * names and state only.
+ */
+@Controller('v1/admin/member-search')
+@Roles('election_admin')
+export class MemberSearchController {
+  constructor(private readonly elections: ElectionsService) {}
+
+  @Get()
+  search(@Query('name') name?: string, @Query('limit') limit?: string) {
+    return this.elections.searchMembers(
+      parseQuery(z.string().trim().min(1).max(200), name, 'name'),
+      parseQuery(z.coerce.number().int().min(1).max(MEMBER_SEARCH_MAX_LIMIT).default(MEMBER_SEARCH_DEFAULT_LIMIT), limit, 'limit'),
+    );
   }
 }

@@ -19,7 +19,7 @@ import { CONFIG, type ServerConfig } from '../config.js';
 import { CoreModule } from '../core.module.js';
 import { ElectionApprovals } from '../elections/election-approvals.js';
 import { ElectionReader } from '../elections/election-reader.js';
-import { ElectionsController, ProposalsController } from '../elections/elections.controller.js';
+import { ElectionsController, MemberSearchController, ProposalsController } from '../elections/elections.controller.js';
 import { ElectionsService } from '../elections/elections.service.js';
 import { PublicElectionsController } from '../elections/public-elections.controller.js';
 import { PublicElectionsService } from '../elections/public-elections.service.js';
@@ -58,6 +58,7 @@ import { PositionsService } from '../positions/positions.service.js';
     PhotoReviewController,
     ElectionsController,
     ProposalsController,
+    MemberSearchController,
     VotingController,
     PublicElectionsController,
     PositionsController,

@@ -5,11 +5,11 @@ import { useRoute, useRouter } from 'vue-router';
 import {
   amendmentText,
   buildDefinition,
-  candidateInputSchema,
   checkElectionDeletable,
   isRehearsalRoll,
   updateElectionSchema,
   type ApprovalRequestRecord,
+  type CandidateInput,
   type ContestRecord,
   type ElectionDetail,
   type ElectionPackage,
@@ -22,6 +22,7 @@ import { aRole, describeRequest } from '../approval-text.js';
 import ContestDialog from '../components/admin/ContestDialog.vue';
 import { askReason, attempt, dialog } from '../dialogs.js';
 import { downloadElectionDocx, saveElectionPackage } from '../election-files.js';
+import CandidatePicker from '../elections/CandidatePicker.vue';
 import ElectionWorkflow from '../elections/ElectionWorkflow.vue';
 import { fromLocalInput, KIND_LABELS, rulesText, toLocalInput } from '../election-text.js';
 import { validate } from '../forms.js';
@@ -39,7 +40,6 @@ const proposals = ref<ProposalSnapshotRecord[]>([]);
 const dialogOpen = ref(false);
 const editing = ref<ContestRecord | null>(null);
 const details = reactive({ title: '', description: '', secrecy: 'secret' as 'secret' | 'open', opensAt: '', closesAt: '', kAnonymity: 10 });
-const newCandidate = reactive<Record<string, string>>({});
 
 const canEdit = computed(() => hasRole('election_admin') && detail.value?.election.state === 'draft');
 const candidatesOf = (c: ContestRecord) =>
@@ -93,16 +93,11 @@ function removeContest(c: ContestRecord) {
   });
 }
 
-async function addCandidate(c: ContestRecord) {
-  const checked = validate(candidateInputSchema, { name: newCandidate[c.contestId] ?? '' });
-  if (!checked.ok) {
-    $q.notify({ type: 'negative', message: checked.errors.name ?? 'enter a name' });
-    return;
-  }
-  if (await attempt(() => api('POST', `${url}/contests/${c.contestId}/candidates`, checked.data))) {
-    newCandidate[c.contestId] = '';
-    await load();
-  }
+/** Adds a candidate, linked to a member's account when one was chosen (design §6.5); whether it was added. */
+async function addCandidate(c: ContestRecord, input: CandidateInput): Promise<boolean> {
+  const added = await attempt(() => api('POST', `${url}/contests/${c.contestId}/candidates`, input));
+  if (added) await load();
+  return added;
 }
 
 async function removeCandidate(c: ContestRecord, candidateId: string) {
@@ -533,18 +528,24 @@ onMounted(load);
             <q-separator />
             <q-list dense>
               <q-item v-for="k in candidatesOf(c)" :key="k!.candidateId">
-                <q-item-section>{{ k!.name }}</q-item-section>
+                <q-item-section>
+                  <q-item-label>{{ k!.name }}</q-item-label>
+                  <q-item-label v-if="k!.accountId" caption>
+                    <q-icon name="link" size="14px" aria-hidden="true" /> Linked to a member account
+                  </q-item-label>
+                </q-item-section>
                 <q-item-section v-if="canEdit" side>
                   <q-btn flat dense round size="sm" icon="close" :aria-label="`Remove ${k!.name}`" @click="removeCandidate(c, k!.candidateId)" />
                 </q-item-section>
               </q-item>
               <q-item v-if="!candidatesOf(c).length"><q-item-section class="text-grey-7">No candidates yet.</q-item-section></q-item>
             </q-list>
-            <q-card-section v-if="canEdit" class="ustp-row">
-              <q-input v-model="newCandidate[c.contestId]" outlined dense label="Candidate name" @keyup.enter="addCandidate(c)" />
-              <q-btn outline no-caps color="primary" label="Add candidate" @click="addCandidate(c)">
-                <span class="sr-only"> to {{ c.title }}</span>
-              </q-btn>
+            <q-card-section v-if="canEdit">
+              <CandidatePicker
+                :contest-title="c.title"
+                :standing="candidatesOf(c).flatMap((k) => (k!.accountId ? [k!.accountId] : []))"
+                :add="(input) => addCandidate(c, input)"
+              />
             </q-card-section>
           </template>
         </q-card>

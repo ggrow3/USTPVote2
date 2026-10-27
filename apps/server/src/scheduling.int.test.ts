@@ -191,7 +191,9 @@ describe('recusal', () => {
     const electionId = await readyElection();
     const url = `/v1/admin/elections/${electionId}`;
     const chair = (await api.call('GET', url, ea)).body.contests[1];
-    await api.call('POST', `${url}/contests/${chair.contestId}/candidates`, ea, { name: 'Auditor', accountId: auditor.accountId });
+    await makeActive(auditor);
+    const added = await api.call('POST', `${url}/contests/${chair.contestId}/candidates`, ea, { name: 'Auditor', accountId: auditor.accountId });
+    expect(added.status).toBe(201);
     const roll = (await api.call('POST', `${url}/roll`, ea, { reason: 'r' })).body;
     const res = await decide(auditor, roll.approvalId, 'approve');
     expect(res).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/candidate in this election/) } });

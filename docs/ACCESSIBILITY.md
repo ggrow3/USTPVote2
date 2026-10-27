@@ -316,6 +316,23 @@ lane), and every line of every label was measured in the browser to fit its box 
 with no mark overlapping a label. The list (below the lanes on a phone, beside them on wider screens) holds every word
 of them at full size.
 
+The election editor's candidate field (design §6.5) was checked on 2026-10-26 against the emulators as
+elections@example.test, keyboard only, in both themes at 1280 px and at 320 px. It is Quasar's combobox: an input with
+`role="combobox"` named "Candidate name", `aria-autocomplete="list"`, `aria-expanded`, `aria-controls` naming the
+listbox while it shows, and `aria-activedescendant` following the arrow keys; each match is an `option` with the legal
+name and a caption (preferred name and state, so two people with one name differ). A match that cannot be chosen (the
+admin themself, or someone already standing in that contest) is `aria-disabled` with the reason in its caption, and the
+arrow keys skip it. When the search answers, the live region says how many members match and how many can be chosen
+("2 members match. Use the down arrow to choose.", or that none does and Add candidate adds the name as typed);
+choosing a member and adding a candidate are announced too ("Added Ada Brooks to Review Committee, linked to their
+member account."). A line under the field, which the input names with `aria-describedby`, says whether adding links an
+account; an empty Add sets `aria-invalid` and adds the error to the description. Enter with no option highlighted adds
+what is in the field, Tab only moves on (it never adds), Escape closes the list keeping the text, and focus stays in
+the field after an Enter, ready for the next name. Linked candidates carry "Linked to a member account" with a link
+icon hidden from screen readers. Captions: #757575 on white (4.61), and in the dark theme white at .8 on `#1d1d1d`
+and the line under the field `#b0b0b0` (7.77). At 320 px the field and button stack, nothing scrolls sideways, and the
+matches open in Quasar's full-screen options dialog, where the search and its announcement work the same.
+
 ## Known gaps
 
 - **No screen-reader pass yet** (next section). Live regions next to an open `aria-modal` dialog, and Quasar toasts

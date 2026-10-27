@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { FieldPath, type Transaction } from 'firebase-admin/firestore';
-import { Collections, type MemberRecord, type MemberStatus, type StatusHistoryRecord } from 'ustp-domain';
+import { Collections, type MemberMatch, type MemberRecord, type MemberStatus, type StatusHistoryRecord } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 
 /** `db.getAll` reads at most this many documents per call. */
@@ -35,10 +35,28 @@ export class MemberRepository {
     return found;
   }
 
+  /** The member record of each account, read in `tx`, in order; null where an account has none. */
+  async getAll(tx: Transaction, accountIds: readonly string[]): Promise<(MemberRecord | null)[]> {
+    if (!accountIds.length) return [];
+    const snaps = await tx.getAll(...accountIds.map((id) => this.members().doc(id)));
+    return snaps.map((snap) => (snap.data() as MemberRecord | undefined) ?? null);
+  }
+
   /** The accountId of every Active member, read in `tx`, in no particular order. */
   async activeIds(tx: Transaction): Promise<string[]> {
     const active = await tx.get(this.members().where('status', '==', 'active'));
     return active.docs.map((d) => d.id);
+  }
+
+  /** Every Active member's names and state, and nothing else (a projection), in no particular order. */
+  async activeNames(): Promise<MemberMatch[]> {
+    const active = await this.members().where('status', '==', 'active').select('legalName', 'preferredName', 'state').get();
+    return active.docs.map((d) => ({
+      accountId: d.id,
+      legalName: (d.get('legalName') as string | undefined) ?? '',
+      preferredName: (d.get('preferredName') as string | null | undefined) ?? null,
+      state: (d.get('state') as string | undefined) ?? '',
+    }));
   }
 
   async list(status: MemberStatus | undefined, after: string | undefined, limit: number): Promise<MemberRecord[]> {
