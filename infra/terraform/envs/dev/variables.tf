@@ -81,3 +81,33 @@ variable "bylaws_check_enabled" {
   type        = bool
   default     = false
 }
+
+variable "web_origin" {
+  description = "Where the web app is served, which election notices link to; empty for https://<project>.web.app (design §6.8)."
+  type        = string
+  default     = ""
+}
+
+variable "mail_transport" {
+  description = "How the worker sends election notices: \"ses\" through Amazon SES, or \"off\" (design §6.8; README \"Election notices\")."
+  type        = string
+  default     = "off"
+}
+
+variable "notice_contact" {
+  description = "Where the notices tell members to ask about an election: an email address or an https page. Required for \"ses\"."
+  type        = string
+  default     = ""
+}
+
+variable "ses_region" {
+  description = "AWS region of the SES identity and the bounce queue."
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "ses_events_queue_url" {
+  description = "URL of the SQS queue SES bounce reports arrive on; empty: bounces are not counted."
+  type        = string
+  default     = ""
+}

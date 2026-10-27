@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import type { BylawsRunResult, TickResult } from 'ustp-domain';
 import { BylawsCheckRunner } from '../bylaws-check/bylaws-check-runner.js';
+import { NoticeSender } from '../notifications/notice-sender.js';
 import { BallotSealer } from './ballot-sealer.js';
 import { ElectionClock } from './election-clock.js';
 import { LedgerSealer } from './ledger-sealer.js';
@@ -32,12 +33,14 @@ export class TasksController {
     private readonly tallier: Tallier,
     private readonly sealer: LedgerSealer,
     private readonly bylawsChecks: BylawsCheckRunner,
+    private readonly notices: NoticeSender,
   ) {}
 
   /**
    * Every minute: prepare ballot-pool keys, open and close elections on time, seal ballots, tally elections that are
-   * now fully sealed, destroy the pool keys of certified and cancelled elections, then seal new ledger entries (including
-   * those) into a signed block, sign approved rolls and anchor new blocks. Each step runs even if an earlier one failed.
+   * now fully sealed, destroy the pool keys of certified and cancelled elections, send election notices (for at most
+   * 20 seconds) and record their bounces, then seal new ledger entries (including those) into a signed block, sign
+   * approved rolls and anchor new blocks. Each step runs even if an earlier one failed.
    */
   @Post('tick')
   @HttpCode(200)
@@ -60,6 +63,8 @@ export class TasksController {
       ballotsSealed: await step('seal ballots', () => this.ballots.sealAll(), 0),
       resultsComputed: await step('tally results', () => this.tallier.tallyAll(), 0),
       poolKeysDestroyed: await step('destroy pool keys', () => this.clock.destroyPoolKeys(), 0),
+      noticesSent: await step('send notices', () => this.notices.sendDue(), 0),
+      bouncesRecorded: await step('record bounces', () => this.notices.recordBounces(), 0),
       blocksSealed: (await step('seal blocks', () => this.sealer.sealBlocks(), [])).length,
       rollsSigned: await step('sign rolls', () => this.sealer.signRolls(), 0),
       anchored: await step('anchor blocks', () => this.sealer.anchorBlocks(), 0),

@@ -18,3 +18,11 @@ anchors_retention_locked = false
 
 # Sends bylaws drafts to Anthropic for the advisory check; add the anthropic-api-key secret's version first (README).
 bylaws_check_enabled = false
+
+# Election notices by Amazon SES (design §6.8): set SES up and add the aws-ses-* secret versions first (README
+# "Election notices"). The From address is the module default, USTP Elections <noreply@transhumanist-party.org>.
+# web_origin           = "https://vote.example.org"  # empty: https://<project>.web.app
+# mail_transport       = "ses"
+# notice_contact       = "elections@example.org"
+# ses_region           = "us-east-1"
+# ses_events_queue_url = "https://sqs.us-east-1.amazonaws.com/123456789012/ustp-notice-events"

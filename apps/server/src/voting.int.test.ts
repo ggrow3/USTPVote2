@@ -49,13 +49,20 @@ describe('election clock', () => {
     const opened = (await due.ref.get()).data() as ElectionRecord;
     expect(opened).toMatchObject({ state: 'open', openedAt: expect.any(String), poolKeyVersion: expect.stringMatching(/^emulator\//) });
     expect((await later.ref.get()).data()).toMatchObject({ state: 'scheduled', poolKeyVersion: expect.any(String) });
-    expect(await ledgerTypes(due.electionId)).toEqual(['election.opened']);
+    // The same tick sends the roll its voting-open notice (design §6.8).
+    expect(await ledgerTypes(due.electionId)).toEqual(['election.opened', 'notice.sent']);
 
     await closeNow(api, due);
     expect((await worker.tick()).body).toMatchObject({ poolKeysCreated: 0, electionsOpened: 0, electionsClosed: 1 });
     expect((await due.ref.get()).data()).toMatchObject({ state: 'closed', closedAt: expect.any(String) });
     // Nobody voted, so the same tick finds nothing to seal, records the election as sealed and tallies it.
-    expect(await ledgerTypes(due.electionId)).toEqual(['election.opened', 'election.closed', 'election.sealed', 'results.computed']);
+    expect(await ledgerTypes(due.electionId)).toEqual([
+      'election.opened',
+      'notice.sent',
+      'election.closed',
+      'election.sealed',
+      'results.computed',
+    ]);
   });
 
   it('opens roll-call elections without a pool key', async () => {

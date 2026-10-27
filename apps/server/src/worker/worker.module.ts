@@ -12,6 +12,8 @@ import { AUDIT_SIGNER, EmulatorAuditSigner, KmsAuditSigner } from '../infra/audi
 import { ballotPoolKeysProvider } from '../infra/ballot-pool.js';
 import { Firebase } from '../infra/firebase.js';
 import { secretStoreProvider } from '../infra/secret-store.js';
+import { MEMBER_DIRECTORY_PROVIDERS } from '../membership/providers.js';
+import { NOTIFICATION_WORKER_PROVIDERS } from '../notifications/providers.js';
 import { BallotSealer } from './ballot-sealer.js';
 import { ElectionClock } from './election-clock.js';
 import { LedgerSealer } from './ledger-sealer.js';
@@ -31,6 +33,9 @@ import { TasksController } from './tasks.controller.js';
     BylawsCheckRunner,
     ballotPoolKeysProvider,
     secretStoreProvider,
+    // Election notices greet roll members by name (design §6.8).
+    ...MEMBER_DIRECTORY_PROVIDERS,
+    ...NOTIFICATION_WORKER_PROVIDERS,
     {
       provide: AUDIT_SIGNER,
       inject: [CONFIG, Firebase],

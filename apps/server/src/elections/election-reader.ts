@@ -8,7 +8,9 @@ import {
   type ContestRecord,
   type ElectionDefinition,
   type ElectionRecord,
+  type ElectionState,
   type ProposalSnapshotRecord,
+  type RollSnapshotRecord,
 } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 
@@ -44,6 +46,37 @@ export class ElectionReader {
     const proposalSnaps = proposalRefs.length ? await (tx ? tx.getAll(...proposalRefs) : db.getAll(...proposalRefs)) : [];
     const proposals = proposalSnaps.filter((s) => s.exists).map((s) => s.data() as ProposalSnapshotRecord);
     return { election, contests, candidates, proposals, definition: buildDefinition(election, contests, candidates, proposals) };
+  }
+
+  async find(electionId: string, tx?: Transaction): Promise<ElectionRecord | null> {
+    const ref = this.firebase.db.collection(Collections.elections).doc(electionId);
+    return (((tx ? await tx.get(ref) : await ref.get()).data() as ElectionRecord | undefined) ?? null);
+  }
+
+  /** Every election in `state`, for the worker's steps. */
+  async inState(state: ElectionState): Promise<ElectionRecord[]> {
+    const snap = await this.firebase.db.collection(Collections.elections).where('state', '==', state).get();
+    return snap.docs.map((d) => d.data() as ElectionRecord);
+  }
+
+  /** The roll the election points at (approved before scheduling, design §6.3), or null for none. */
+  async approvedRoll(election: Pick<ElectionRecord, 'rollSnapshotId'>): Promise<RollSnapshotRecord | null> {
+    if (!election.rollSnapshotId) return null;
+    const snap = await this.firebase.db.collection(Collections.eligibilitySnapshots).doc(election.rollSnapshotId).get();
+    return (snap.data() as RollSnapshotRecord | undefined) ?? null;
+  }
+
+  /**
+   * Who on the roll has voted (participation records, never how), for the reminder to those who have not (design
+   * §6.8). With `among`, only those of them; otherwise everyone.
+   */
+  async voted(electionId: string, among?: readonly string[]): Promise<Set<string>> {
+    const participation = this.firebase.db.collection(Collections.elections).doc(electionId).collection(ElectionCollections.participation);
+    if (among) {
+      const snaps = among.length ? await this.firebase.db.getAll(...among.map((id) => participation.doc(id)), { fieldMask: ['castAt'] }) : [];
+      return new Set(snaps.filter((s) => s.exists).map((s) => s.id));
+    }
+    return new Set((await participation.select().get()).docs.map((d) => d.id));
   }
 
   /** Whether the account stands as a candidate in the election (recusal, design §10.1). */

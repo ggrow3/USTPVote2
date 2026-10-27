@@ -23,6 +23,8 @@ export const LEDGER_EVENT_TYPES = [
   'results.computed',
   'results.certified',
   'election.pool_key_destroyed',
+  'notice.sent',
+  'notice.resend_requested',
   'position.defined',
   'position_term.created',
   'position_term.ended',
