@@ -310,7 +310,9 @@ Every transition writes, in one transaction, the new status on `members/{account
   diff against the current version; and publishes it with a change note. The version records `amends` (the version it
   started from) and the api refuses it unless that is still the current version, so two drafts cannot silently
   overwrite each other; `bylaws.published` ledgers `amends` too. While an election whose proposals amend the current
-  version (§6.6) is scheduled, open or closed, publishing is refused (409) until it is certified or cancelled.
+  version (§6.6) is scheduled, open or closed, publishing is refused (409) until it is certified or cancelled. A
+  certified election's passed amendments are published as the next version with `adoptedIn`, which requires the
+  exact adopted text (§6.6).
 - Any version can be downloaded as a stamped Word copy for passing around: a stamp block (party, title, version,
   publish date, amended version, change note, SHA-256 of the text, where to check it), the version and hash in every
   page header, and "page X of Y". The public page `/bylaws/{version}` shows the text, hash, change note and changes
@@ -550,7 +552,8 @@ Delete on a certified rehearsal too (the detail's `ballotsCast` and `officeTerms
 rehearsal is held to the rule above.
 
 **Workflow in the election editor** *(added)*: the editor shows where the election is in this lifecycle and what its
-next step waits on, as a flowchart with the current step highlighted and, beside it, the same steps as a list. The
+next step waits on, as swim lanes of who does each step, with the current step highlighted, and beside them the same
+steps as a list. The
 steps are Draft (readiness checks, voter roll, scheduling), Scheduled, Open, Closed (ballots sealed, results computed,
 certification) and Certified, with Cancelled and Deleted as the ways out. `electionProgress` in `ustp-domain` works
 them out from the admin view of the election (`ElectionDetail`) and the time: each step is done, current (exactly
@@ -561,14 +564,27 @@ while the rule above can still be met (nobody voted, or a rehearsal that seated 
 scheduling, certification) or fixing what the readiness checks list; an Auditor's decision on a pending request
 (roll, scheduling, certification, cancellation), with the time it was asked; or the worker's tick (§13), for a
 secret election's pool key, the opening or closing time (or, once it has passed, the next tick), sealing, the tally
-and destroying the pool key. The flowchart is drawn in the browser with Mermaid (`mermaid`, loaded only by this
-page, `securityLevel: 'strict'`) from fixed labels, never an election's own text, and marks each step's status with
-a symbol as well as a colour, in each theme's palette. The list is what a screen reader reads (the flowchart is one
-image to it): an ordered list with `aria-current="step"` on the current step and its status before every step's
-name. It shows nothing the editor did not already hold: no ballots, no participation, no names. It reflects the
-page as loaded, apart from the times, which it rereads every 30 seconds; reloading shows what the worker has done
-since. The service worker leaves Mermaid's files out of the app shell, so a voter's browser never downloads them,
-and the editor shows the list alone when they cannot be loaded (offline).
+and destroying the pool key.
+
+The swim lanes have a lane for each who acts: the Election Admin, who builds the ballot and requests the roll,
+scheduling, certification and cancelling, cancels a draft at once and deletes; the Auditor, who approves each of those
+requests (§10.2); the worker, which on its clock makes and later destroys a secret election's ballot key, opens and
+closes voting, seals the ballots and counts them; and the voters, the members on the roll. Across the lanes is a band
+for each state, Draft to Certified, then Cancelled and Deleted as the ways out, and in them the actions in the order
+they happen, an arrow from each to the next (a request and its approval side by side in one row). A secret
+election's key steps are left out of a roll-call one. Each action's status is its step's, made finer by what the
+election waits on: while an Auditor's decision is awaited, the Election Admin's request is done and the decision is
+current; while voting is open, voting is current until the closing time and then the worker's closing; a cancelled
+election shows the way it was cancelled as done and the step it would have taken next (opening, closing) as not
+reached. `swimLanes` in the web app works this out from `electionProgress`, so the lanes and the list never disagree.
+The lanes are an SVG the app draws itself from fixed labels, never an election's own text, laid out to the width of
+the card (at most 640 px), so the text stays at 12 px from a 320 px phone up; each action's status is marked with a
+symbol as well as a colour, in each theme's palette. The list is what a screen reader reads (the lanes are one image
+to it): an ordered list with `aria-current="step"` on the current step and its status before every step's name. It
+shows nothing the editor did not already hold: no ballots, no participation, no names. It reflects the page as
+loaded, apart from the times, which it rereads every 30 seconds; reloading shows what the worker has done since.
+(Until 2026-10-26 the picture was a flowchart of the steps alone, drawn with Mermaid, which the editor loaded on its
+own and the service worker kept out of the app shell; the lanes need no library.)
 
 **Calendar event** *(added)*: `GET /v1/public/elections/{id}/calendar.ics` is the voting window as one iCalendar event
 (RFC 5545, made by `votingCalendar` in `ustp-domain`): `UID` the election ID (a UUIDv7, as RFC 7986 recommends),
@@ -728,10 +744,32 @@ amendment, one change per run of changed lines.
   base is the one the definition names; it lists any failure and blocks casting. It shows each amendment's changes in
   words (`amendmentText`) above the reasons, and the election editor shows them on the contest.
 
-*Planned (in order):* after certification the passed amendments give the amended text (its hash in the
-`results.certified` entry), downloadable as a draft .docx and published as the next version by a Membership Admin;
-the verify CLI recomputes it; an editor for writing amendments line by line, with the changes shown as a line diff
-and downloadable as JSON and .docx.
+**After the vote:**
+
+- **The adopted text** is the base with exactly the passed amendments applied together (`adoptedBylaws` in
+  `ustp-domain`, application v1); failed amendments and those without a quorum are left out, and when none passed the
+  bylaws are unchanged. The certify approval, the endpoint below, adoption and the verify CLI all compute it this way.
+- **Certification fixes it in the ledger.** When at least one amendment passed, the `results.certified` entry records
+  `bylaws: {base: {version, contentHash}, contentHash}`, the SHA-256 of the adopted text, so what may be adopted is
+  settled when the results are, whatever later code does.
+- **`GET /v1/public/elections/{id}/amended-bylaws`** (public): 404 when the election amends nothing, 409 until its
+  results are certified, then the base version, every amending contest with its outcome (the full proposal, amendment
+  included, for those that passed), the text and its hash, whether the base is still current, and the version
+  published from it (`adoptedAs`), if any.
+- **Adoption** is publishing that text as the next version (`POST /v1/admin/bylaws` with `adoptedIn: {electionId}`):
+  the election must be certified, at least one amendment must have passed, `amends` must be the base, the text must be
+  exactly the adopted text, and each election is adopted once (409 otherwise). The version records
+  `adoptedIn: {electionId, resultsHash}`, and so does its `bylaws.published` entry. If another version was published
+  after certification, the existing `amends` rule refuses it (409); the amendments then have to be redrafted.
+- **The verify CLI** (section "Bylaws amendments") checks, from public data only: the base is the version the
+  definition names and hashes as named; each outcome is the certified one; each passed amendment is the text the
+  definition froze (v2 hash); the served text is the base with the passed amendments applied, with that hash; the
+  `results.certified` entry records it; and any adopted version is that text, amends the base and names the election
+  in its `bylaws.published` entry.
+
+*Planned (in order):* an editor for writing amendments line by line, with the changes shown as a line diff and
+downloadable as JSON and .docx; on the results page, the amended bylaws as a draft .docx and "Publish as the next
+version" for Membership Admins.
 
 ## 7. Ballot casting and secrecy
 
@@ -1217,7 +1255,7 @@ Physically, registration collections are top-level and election data lives under
 | `members/{accountId}` | accountId | mutable | current status, legal and preferred name, state/district, city + ZIP + phone, email consents, bylaws version, memberSince; details change only as §5.2 says |
 | `member_status_history/{id}` | auto | append-only | from, to, reason, actor, ledger seq |
 | `applications/{applicationId}` | auto | status only | answers (incl. date of birth and attestations, §5.2), bylaws version + hash |
-| `bylaws_versions/{version}` | version | immutable | text, content hash *(added)* |
+| `bylaws_versions/{version}` | version | immutable | text, content hash *(added)*; `adoptedIn` when an election's amendments gave it (§6.6) |
 | `bylaws_checks/{checkId}` | UUIDv7 | queued → running → done / failed | draft text and hash, scope and changed lines, requester, findings, references used, model, token usage (§5.4) *(added)* |
 | `bylaws_check_references/{id}` | reference ID | replaced daily | cached text of a party page, URL, read and modified times, SHA-256 (§5.4) *(added)* |
 | `profile_photos/{photoId}` | auto | status only | storage path, status |
@@ -1274,12 +1312,13 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /elections/{id}/ballots` | V | cast (409 if already voted) |
 | `GET /elections/{id}/participation/me` | V | "have I voted?" |
 | `GET /public/elections/{id}` · `.../sealed-blocks` · `.../results` | P | published record (non-draft): definition, roll size and root, block summaries, results status; block contents once closed; the signed results bundle once tallied (404 until then) |
+| `GET /public/elections/{id}/amended-bylaws` | P | the bylaws as the election's passed amendments give them, once certified (404 if it amends none, 409 before; §6.6) |
 | `GET /public/elections/{id}/results.csv` | P | the results as CSV for spreadsheets (Google Sheets `IMPORTDATA`), an unsigned copy of the bundle served when it is (404 until then; §9) |
 | `GET /public/elections/{id}/calendar.ics` | P | the voting window as an iCalendar event, any non-draft election, the same for every caller; no page links to it (§6.1) |
 | `GET /public/elections/{id}/proofs/{commitment}` | P | inclusion proof for a receipt |
 | `GET /public/ledger/blocks` (paged) · `.../blocks/{index}` · `.../keys` · `GET /public/anchors/latest` | P | signed ledger blocks, signing keys, anchors |
 | `GET /public/ledger/entries/{seq}` | P | a public entry with its block and inclusion proof |
-| `POST /admin/bylaws` | Membership Admin | publish a bylaws version; `amends` must name the current version, and no election amending it may be scheduled, open or closed (409 otherwise, §6.6) |
+| `POST /admin/bylaws` | Membership Admin | publish a bylaws version; `amends` must name the current version, and no election amending it may be scheduled, open or closed (409 otherwise, §6.6); with `adoptedIn`, exactly the text a certified election adopted |
 | `POST /admin/bylaws/checks` · `GET /admin/bylaws/checks/{checkId}` | Membership Admin | queue the advisory bylaws check of a draft (202; 409 while the admin's last one runs, 429 past 20 a day, 503 when off); read it until done (§5.4) |
 | `GET /admin/applications` · `POST /admin/applications/{id}/decision` | Membership Admin | registration triage |
 | `GET /admin/members` · `GET /admin/members/{accountId}/history` | Membership Admin | member list (paged), status history |
@@ -1496,4 +1535,4 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Word export done:* the ballot and results as a `.docx` built in the browser, for Word and Google Docs, from the results page, the ballot page and the election editor (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, not yet applied; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**` or the admin-only diagram library); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, a Mermaid flowchart of where the election is and what its next step waits on, with the same steps as a list (§6.1). *Still to do:* bring up dev for real (first apply, Identity Platform, first release); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list (§6.1); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15). *Still to do:* the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |

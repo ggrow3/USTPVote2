@@ -1,6 +1,8 @@
 import type {
+  AmendedBylawsView,
   AnchorRecord,
   BallotProof,
+  BylawsRecord,
   LedgerBlockRecord,
   PublicElection,
   PublicLedgerEntry,
@@ -104,6 +106,16 @@ export class PublicApi {
   /** The results bundle (M4a); null until published (404, or 409 before tally). */
   results(electionId: string): Promise<ResultsRecord | null> {
     return this.get(`/v1/public/elections/${encodeURIComponent(electionId)}/results`, [404, 409]);
+  }
+
+  /** The bylaws as the election's passed amendments give them; null when it amends none (404) or is not certified (409). */
+  amendedBylaws(electionId: string): Promise<AmendedBylawsView | null> {
+    return this.get(`/v1/public/elections/${encodeURIComponent(electionId)}/amended-bylaws`, [404, 409]);
+  }
+
+  /** A published bylaws version; null if there is none by that name. */
+  bylaws(version: string): Promise<BylawsRecord | null> {
+    return this.get(`/v1/bylaws/${encodeURIComponent(version)}`);
   }
 }
 

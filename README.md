@@ -19,13 +19,14 @@ Docs opens, with no Google integration. While drafting bylaws, a
 Membership Admin can run an advisory check by Claude (Anthropic) that highlights lines which may contradict the US
 Constitution, Transhumanist principles or the USTP Constitution; it is off in real projects until USTP agrees to it, and
 the emulators use a deterministic stand-in (design §5.4). The web app is an
-installable PWA and has had an accessibility pass. For deployment there are Terraform for dev, staging and prod (validated, not yet
-applied), the server image (`apps/server/Dockerfile`) and a release workflow that builds, attests and rolls it out
-with a keyless CI identity; CI builds and starts the image on every pull request. The rest of M5 (bringing up dev, the
+installable PWA and has had an accessibility pass. For deployment there are Terraform for dev, staging and prod (validated; applied for
+dev only), the server image (`apps/server/Dockerfile`) and a release workflow that builds, attests and rolls it out
+with a keyless CI identity; CI builds and starts the image on every pull request. The rest of M5 (the
 "you voted" email, load test, reviews) is next. Dev (`ustpvote2-dev`) is up: Terraform applied, Identity Platform
-configured, and the api and worker running a released image on Cloud Run with the worker ticking every minute; the web
-app is not on Hosting yet. Authenticator-app (TOTP) setup, Cloud Vision photo checks and Cloud KMS have no emulator and
-have not been exercised in dev yet.
+configured, the api and worker running a released image on Cloud Run with the worker ticking every minute, and the web
+app on Firebase Hosting at https://ustpvote2-dev.web.app (deployed as the
+[infra README](infra/terraform/README.md#firebase-hosting) describes). Authenticator-app (TOTP) setup, Cloud Vision
+photo checks and Cloud KMS have no emulator and have not been exercised in dev yet.
 
 ## Documents
 

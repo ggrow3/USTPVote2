@@ -13,6 +13,7 @@ export {
 } from './ledger.js';
 export type { AnchorFiles, BlockProblem, LedgerCheck } from './ledger.js';
 export { checkEntryScan, entryLinkProblems, publicEntryProblems } from './entries.js';
+export { bylawsFindings } from './bylaws.js';
 export type { EntryScan } from './entries.js';
 export {
   checkElection,

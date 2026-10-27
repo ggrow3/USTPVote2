@@ -2,14 +2,18 @@ import { ConflictException, Injectable } from '@nestjs/common';
 import type { Transaction } from 'firebase-admin/firestore';
 import { sha256Hex } from 'ustp-audit';
 import {
+  adoptedBylaws,
+  amendingContests,
   Collections,
   type BylawsRecord,
   type BylawsVersionSummary,
   type ElectionRecord,
   type PublishBylawsInput,
+  type ResultsRecord,
 } from 'ustp-domain';
 import { requireAccount } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
+import { ElectionReader } from '../elections/election-reader.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 
@@ -22,6 +26,7 @@ export class MembershipService {
   constructor(
     private readonly firebase: Firebase,
     private readonly ledger: LedgerService,
+    private readonly reader: ElectionReader,
   ) {}
 
   /** The newest published version; read in `tx` when given, so it cannot change before the transaction commits. */
@@ -91,17 +96,48 @@ export class MembershipService {
           );
         }
       }
+      const adoptedIn = input.adoptedIn ? await this.adoption(tx, input.adoptedIn.electionId, input) : null;
       await this.ledger.record(tx, [
         {
           type: 'bylaws.published',
           actor,
           subject: null,
-          payload: { version: record.version, title: record.title, contentHash: record.contentHash, amends },
+          payload: { version: record.version, title: record.title, contentHash: record.contentHash, amends, ...(adoptedIn && { adoptedIn }) },
         },
       ]);
-      tx.create(ref, record);
-      return record;
+      const published = adoptedIn ? { ...record, adoptedIn } : record;
+      tx.create(ref, published);
+      return published;
     });
+  }
+
+  /**
+   * Publishing the bylaws a certified election adopted (design §6.6): the text must be exactly what its passed
+   * amendments give, amending the version they were written against, and each election is adopted once. Reads only,
+   * so it can run before the publish transaction writes.
+   */
+  private async adoption(tx: Transaction, electionId: string, input: PublishBylawsInput): Promise<NonNullable<BylawsRecord['adoptedIn']>> {
+    const db = this.firebase.db;
+    const { election, definition, proposals } = await this.reader.load(electionId, tx);
+    const results = (await tx.get(db.collection(Collections.results).doc(electionId))).data() as ResultsRecord | undefined;
+    const amending = amendingContests(definition, proposals);
+    const base = amending[0] ? await this.bylawsRecord(amending[0].amendment.base.version, tx) : null;
+    const already = await tx.get(db.collection(Collections.bylawsVersions).where('adoptedIn.electionId', '==', electionId).limit(1));
+    if (election.state !== 'certified' || results?.status !== 'certified') {
+      throw new ConflictException(`the election is ${election.state}; only a certified election's amendments can be adopted`);
+    }
+    if (!amending[0] || !base) throw new ConflictException('the election amends no bylaws');
+    if (!already.empty) throw new ConflictException(`the election's amendments were already published as version ${already.docs[0]!.id}`);
+    const result = adoptedBylaws({ definition, proposals, bundle: results.bundle, base });
+    if (!result.ok) throw new ConflictException(result.problems.join('; '));
+    if (!result.adopted.changed) throw new ConflictException('no amendment passed, so there is nothing to adopt');
+    if (input.amends !== base.version) {
+      throw new ConflictException(`the adopted text amends version ${base.version}; publish it with amends ${base.version}`);
+    }
+    if (input.text !== result.adopted.text) {
+      throw new ConflictException('the text is not exactly what the election adopted; take it from the amended bylaws');
+    }
+    return { electionId, resultsHash: results.resultsHash };
   }
 
   // --- internals --------------------------------------------------------------------------------------------

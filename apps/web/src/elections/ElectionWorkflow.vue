@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { useQuasar } from 'quasar';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref } from 'vue';
 import {
   electionProgress,
   STEP_STATE,
@@ -9,25 +8,15 @@ import {
   type ElectionStep,
   type StepStatus,
 } from 'ustp-domain';
-import {
-  cancelledNote,
-  DARK_COLOURS,
-  LIGHT_COLOURS,
-  STATUS_TEXT,
-  STEP_LABELS,
-  stepNote,
-  waitingText,
-  workflowDiagram,
-} from './workflow.js';
+import ElectionLanes from './ElectionLanes.vue';
+import { cancelledNote, STATUS_TEXT, STEP_LABELS, stepNote, waitingText } from './workflow.js';
 import { session } from '../session.js';
 
 /**
- * Where the election is in its lifecycle (design §6.1): a Mermaid flowchart with the current step highlighted, and
- * beside it the same steps as a list, with what each is waiting on. Mermaid is loaded only when this is shown, and the
- * service worker leaves it out of the app shell (vite.config.ts), so voters never download it.
+ * Where the election is in its lifecycle (design §6.1): swim lanes showing who does each step, with the current one
+ * highlighted, and beside them the same steps as a list, with what each is waiting on.
  */
 const props = defineProps<{ detail: ElectionDetail }>();
-const $q = useQuasar();
 
 // Times pass while the page is open: "voting opens at …" becomes "the opening time has passed".
 const now = ref(new Date());
@@ -76,55 +65,6 @@ const ICONS: Record<StepStatus, string | null> = {
   not_reached: 'remove',
 };
 
-// --- the diagram -----------------------------------------------------------------------------------------------
-
-type Mermaid = (typeof import('mermaid'))['default'];
-let loading: Promise<Mermaid> | null = null;
-const svg = ref<string | null>(null);
-const failed = ref(false);
-let renders = 0;
-
-const source = computed(() => workflowDiagram(progress.value, $q.dark.isActive ? DARK_COLOURS : LIGHT_COLOURS));
-
-async function render(text: string) {
-  const n = ++renders;
-  try {
-    const mermaid = await (loading ??= import('mermaid').then((m) => m.default));
-    const fontFamily = getComputedStyle(document.body).fontFamily;
-    const c = $q.dark.isActive ? DARK_COLOURS : LIGHT_COLOURS;
-    mermaid.initialize({
-      startOnLoad: false,
-      securityLevel: 'strict',
-      theme: 'base',
-      // Mermaid 12's default "neo" look adds shadows and a minimum node width, which make the chart too wide for a phone.
-      look: 'classic',
-      fontFamily,
-      themeVariables: {
-        fontFamily,
-        fontSize: '14px',
-        background: c.node,
-        primaryColor: c.node,
-        primaryTextColor: c.text,
-        primaryBorderColor: c.border,
-        lineColor: c.line,
-        clusterBkg: c.cluster,
-        clusterBorder: c.border,
-        titleColor: c.text,
-      },
-      flowchart: { useMaxWidth: true, minNodeWidth: 0, nodeSpacing: 20, rankSpacing: 28, padding: 6 },
-    });
-    const { svg: drawn } = await mermaid.render(`election-workflow-${n}`, text);
-    if (n === renders) {
-      svg.value = drawn;
-      failed.value = false;
-    }
-  } catch {
-    // Offline, or the library failed: the list beside it still says everything.
-    if (n === renders) failed.value = true;
-  }
-}
-
-watch(source, render, { immediate: true });
 </script>
 
 <template>
@@ -137,16 +77,13 @@ watch(source, render, { immediate: true });
       <div class="workflow__diagram">
         <!-- The list beside it is the text version; the picture is one image to assistive technology. -->
         <div
-          v-if="svg"
-          class="workflow__svg"
           role="img"
-          :aria-label="`Flowchart of the steps listed with it; the current step, ${STEP_LABELS[progress.current]}, is highlighted.`"
-          v-html="svg"
-        />
-        <div v-else-if="failed" class="text-caption text-grey-7">The diagram could not be loaded. The steps are listed here.</div>
-        <div v-else class="text-caption text-grey-7">Loading the diagram…</div>
-        <div v-if="svg" class="text-caption text-grey-7 q-mt-xs" aria-hidden="true">
-          ✓ done · ▶ current step · dashed: a way out, or not reached
+          :aria-label="`Swim lanes of the steps listed with it, showing who does each: an Election Admin, an Auditor, the worker or the members on the roll. The current step, ${STEP_LABELS[progress.current]}, is highlighted.`"
+        >
+          <ElectionLanes :progress="progress" :election="detail.election" />
+        </div>
+        <div class="text-caption text-grey-7 q-mt-xs" aria-hidden="true">
+          ✓ done · ▶ current step · – not reached · dashed: a way out, or not reached
         </div>
       </div>
 
@@ -203,11 +140,6 @@ watch(source, render, { immediate: true });
 .workflow__list {
   flex: 1 1 280px;
   min-width: 0;
-}
-.workflow__svg :deep(svg) {
-  display: block;
-  margin: 0 auto;
-  height: auto;
 }
 .workflow-steps {
   list-style: none;
