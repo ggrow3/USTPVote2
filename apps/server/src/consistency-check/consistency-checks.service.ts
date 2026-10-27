@@ -1,10 +1,14 @@
-import { ConflictException, Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { sha256Hex } from 'ustp-audit';
 import {
+  checkConsistencyMaterial,
   checkConsistencyRequest,
   Collections,
+  CONSISTENCY_DOCUMENTS,
   consistencyCheckId,
+  consistencyDocuments,
   consistencyMaterial,
+  ORIGINAL_CONSISTENCY_DOCUMENTS,
   definitionHash,
   materialCharacters,
   MAX_CONSISTENCY_MATERIAL_CHARACTERS,
@@ -13,6 +17,10 @@ import {
   type ConsistencyCheckState,
   type ConsistencyCheckView,
   type ConsistencyContest,
+  type ConsistencyDocument,
+  type ConsistencyDocumentsInput,
+  type ConsistencyDocumentsRecord,
+  type ElectionRecord,
 } from 'ustp-domain';
 import { requireAccount } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
@@ -87,7 +95,41 @@ export class ConsistencyChecksService {
     const accountId = requireAccount(ctx);
     const snap = await this.firebase.db.collection(Collections.consistencyChecks).doc(consistencyCheckId(electionId, accountId)).get();
     const record = snap.data() as ConsistencyCheckRecord | undefined;
-    return { enabled: await this.key.ready(this.config.consistencyChecker), check: record ? result(record) : null };
+    const [enabled, documents] = await Promise.all([this.key.ready(this.config.consistencyChecker), this.documents(electionId)]);
+    return { enabled, documents, check: record ? result(record) : null };
+  }
+
+  /** What the election's checks compare the questions with: what an Election Admin chose, or every document. */
+  async documents(electionId: string): Promise<ConsistencyDocument[]> {
+    const snap = await this.documentsRef(electionId).get();
+    const record = snap.data() as ConsistencyDocumentsRecord | undefined;
+    return record ? consistencyDocuments(record.documents) : [...CONSISTENCY_DOCUMENTS];
+  }
+
+  /**
+   * An Election Admin chooses the documents while the election is a draft, like the rest of its setup, so every check
+   * of a scheduled election, a voter's or an officer's, compares with the same texts. Not ledgered: it decides nothing.
+   */
+  async chooseDocuments(ctx: RequestContext, electionId: string, input: ConsistencyDocumentsInput): Promise<ConsistencyDocument[]> {
+    const actor = requireAccount(ctx);
+    const db = this.firebase.db;
+    const documents = consistencyDocuments(input.documents);
+    await db.runTransaction(async (tx) => {
+      const snap = await tx.get(db.collection(Collections.elections).doc(electionId));
+      if (!snap.exists) throw new NotFoundException('no such election');
+      const { state } = snap.data() as ElectionRecord;
+      if (state !== 'draft') throw new ConflictException(`the election is ${state}; its documents are chosen while it is a draft`);
+      if (await this.reader.isCandidate(tx, electionId, actor)) {
+        throw new ForbiddenException('you are a candidate in this election, so you cannot administer it');
+      }
+      const record: ConsistencyDocumentsRecord = { electionId, documents, updatedAt: new Date().toISOString(), updatedBy: actor };
+      tx.set(this.documentsRef(electionId), record);
+    });
+    return documents;
+  }
+
+  private documentsRef(electionId: string) {
+    return this.firebase.db.collection(Collections.consistencyDocuments).doc(electionId);
   }
 
   private async assertEnabled(): Promise<void> {
@@ -104,7 +146,8 @@ export class ConsistencyChecksService {
   private async request(ctx: RequestContext, reading: Reading): Promise<ConsistencyCheckResult> {
     const accountId = requireAccount(ctx);
     const { material } = reading;
-    if (!material.length) throw new ConflictException('this election has no proposals or options to check: every contest fills an office');
+    const documents = await this.documents(reading.electionId);
+    assertCheck(checkConsistencyMaterial(material, documents));
     const characters = materialCharacters(material);
     if (characters > MAX_CONSISTENCY_MATERIAL_CHARACTERS) {
       throw new ConflictException(
@@ -115,7 +158,7 @@ export class ConsistencyChecksService {
     const checks = db.collection(Collections.consistencyChecks);
     const now = new Date();
     const [bylaws, today] = await Promise.all([
-      this.membership.currentBylaws(),
+      documents.includes('bylaws') ? this.membership.currentBylaws() : null,
       checks.where('requestedAt', '>=', new Date(now.getTime() - 86_400_000).toISOString()).count().get(),
     ]);
     const record: ConsistencyCheckRecord = {
@@ -127,6 +170,7 @@ export class ConsistencyChecksService {
       definitionHash: reading.definitionHash,
       material,
       materialHash: sha256Hex(JSON.stringify(material)),
+      documents,
       bylaws: bylaws ? { version: bylaws.version, contentHash: bylaws.contentHash } : null,
       requestedBy: accountId,
       requestedAt: now.toISOString(),
@@ -151,6 +195,10 @@ export class ConsistencyChecksService {
   }
 }
 
-export function result({ material, ...rest }: ConsistencyCheckRecord): ConsistencyCheckResult {
-  return { ...rest, contests: material.map(({ position, contestId, title }) => ({ position, contestId, title })) };
+export function result({ material, documents, ...rest }: ConsistencyCheckRecord): ConsistencyCheckResult {
+  return {
+    ...rest,
+    documents: documents ?? ORIGINAL_CONSISTENCY_DOCUMENTS,
+    contests: material.map(({ position, contestId, title }) => ({ position, contestId, title })),
+  };
 }

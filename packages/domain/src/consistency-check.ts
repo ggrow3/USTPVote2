@@ -5,15 +5,58 @@
  */
 import { amendmentText, type BylawsAmendment } from './amendments.js';
 import type { BylawsCheckReference, BylawsCheckSeverity, BylawsCheckUsage } from './bylaws-check.js';
+import { z } from 'zod';
 import { refuse, OK, type Check } from './check.js';
 import type { ElectionDefinition } from './elections.js';
 
 /**
  * What a finding says a question may be inconsistent with: the Platform (Article VI of the USTP Constitution), the rest
- * of the USTP Constitution, the Transhumanist Bill of Rights, the bylaws in force, or another question on the ballot.
+ * of the USTP Constitution, the Transhumanist Bill of Rights, the bylaws in force, the Constitution of the United
+ * States, or another question on the ballot.
  */
-export const CONSISTENCY_CHECK_SOURCES = ['platform', 'constitution', 'bill-of-rights', 'bylaws', 'ballot'] as const;
+export const CONSISTENCY_CHECK_SOURCES = ['platform', 'constitution', 'bill-of-rights', 'bylaws', 'us-constitution', 'ballot'] as const;
 export type ConsistencyCheckSource = (typeof CONSISTENCY_CHECK_SOURCES)[number];
+
+/**
+ * The documents a check can compare the questions with (design §5.5). Each election chooses its own while it is a
+ * draft, all of them unless an Election Admin turns some off; the questions are always compared with each other too.
+ */
+export const CONSISTENCY_DOCUMENTS = ['ustp-constitution', 'transhumanist-bill-of-rights', 'bylaws', 'us-constitution'] as const;
+export type ConsistencyDocument = (typeof CONSISTENCY_DOCUMENTS)[number];
+
+/** What every check compared with before documents could be chosen: a saved result without `documents` used these. */
+export const ORIGINAL_CONSISTENCY_DOCUMENTS: readonly ConsistencyDocument[] = ['ustp-constitution', 'transhumanist-bill-of-rights', 'bylaws'];
+
+/** The sources each document gives a finding: the USTP Constitution holds both the Platform and the rest of it. */
+const DOCUMENT_SOURCES: Readonly<Record<ConsistencyDocument, readonly ConsistencyCheckSource[]>> = {
+  'ustp-constitution': ['platform', 'constitution'],
+  'transhumanist-bill-of-rights': ['bill-of-rights'],
+  bylaws: ['bylaws'],
+  'us-constitution': ['us-constitution'],
+};
+
+/** The chosen documents in their usual order, each once. */
+export function consistencyDocuments(chosen: readonly string[]): ConsistencyDocument[] {
+  return CONSISTENCY_DOCUMENTS.filter((d) => chosen.includes(d));
+}
+
+/** The sources a check with these documents may name, in order, the other questions last. */
+export function consistencySources(documents: readonly ConsistencyDocument[]): ConsistencyCheckSource[] {
+  const sources = new Set(documents.flatMap((d) => DOCUMENT_SOURCES[d]));
+  return CONSISTENCY_CHECK_SOURCES.filter((s) => s === 'ballot' || sources.has(s));
+}
+
+/** `PUT /v1/admin/elections/{id}/consistency-check/documents`. */
+export const consistencyDocumentsSchema = z.object({ documents: z.array(z.enum(CONSISTENCY_DOCUMENTS)).max(CONSISTENCY_DOCUMENTS.length) }).strict();
+export type ConsistencyDocumentsInput = z.infer<typeof consistencyDocumentsSchema>;
+
+/** `consistency_documents/{electionId}`: what the election's checks compare with, when an Election Admin has chosen. */
+export interface ConsistencyDocumentsRecord {
+  readonly electionId: string;
+  readonly documents: readonly ConsistencyDocument[];
+  readonly updatedAt: string;
+  readonly updatedBy: string;
+}
 
 /** Which texts the check was built from: the ballot a voter on the roll reads, or the election editor's. */
 export const CONSISTENCY_CHECK_VIEWS = ['ballot', 'admin'] as const;
@@ -123,11 +166,16 @@ const unquote = (s: string) => squash(s).replace(/^["“”'‘’]+|["“”'�
 
 /**
  * Keeps findings that name questions the check reviewed (deduplicated, ascending), two or more for a conflict within
- * the ballot, and with an explanation; a passage is kept only if one of those questions has exactly those words
- * (spacing aside). The most severe first, in ballot order.
+ * the ballot, a source among the documents compared, and an explanation; a passage is kept only if one of those
+ * questions has exactly those words (spacing aside). The most severe first, in ballot order.
  */
-export function tidyConsistencyFindings(findings: readonly ConsistencyFinding[], material: readonly ConsistencyContest[]): ConsistencyFinding[] {
+export function tidyConsistencyFindings(
+  findings: readonly ConsistencyFinding[],
+  material: readonly ConsistencyContest[],
+  documents: readonly ConsistencyDocument[] = CONSISTENCY_DOCUMENTS,
+): ConsistencyFinding[] {
   const byPosition = new Map(material.map((c) => [c.position, c]));
+  const sources = new Set(consistencySources(documents));
   const rank = { high: 0, medium: 1, low: 2 } as const;
   return findings
     .map((f) => {
@@ -136,7 +184,7 @@ export function tidyConsistencyFindings(findings: readonly ConsistencyFinding[],
       const found = quoted.length > 0 && contests.some((n) => squash(contestText(byPosition.get(n)!)).includes(quoted));
       return { ...f, contests, provision: f.provision.trim(), explanation: f.explanation.trim(), passage: found ? quoted : null };
     })
-    .filter((f) => f.contests.length >= (f.source === 'ballot' ? 2 : 1) && f.explanation)
+    .filter((f) => sources.has(f.source) && f.contests.length >= (f.source === 'ballot' ? 2 : 1) && f.explanation)
     .sort((a, b) => rank[a.severity] - rank[b.severity] || a.contests[0]! - b.contests[0]!);
 }
 
@@ -157,7 +205,12 @@ export interface ConsistencyCheckRecord {
   readonly material: readonly ConsistencyContest[];
   /** SHA-256 of the material as JSON, lowercase hex. */
   readonly materialHash: string;
-  /** The bylaws version in force when asked (its text goes to Claude too), or null if none is published. */
+  /**
+   * What the questions were compared with, as the election had chosen when asked. Missing on checks saved before
+   * documents could be chosen, which compared with {@link ORIGINAL_CONSISTENCY_DOCUMENTS}.
+   */
+  readonly documents?: readonly ConsistencyDocument[];
+  /** The bylaws version in force when asked (its text goes to Claude too); null if none is published or they are not compared. */
   readonly bylaws: { readonly version: string; readonly contentHash: string } | null;
   readonly requestedBy: string;
   readonly requestedAt: string;
@@ -176,12 +229,19 @@ export interface ConsistencyCheckRecord {
 /** A question the check reviewed, for links from its findings. */
 export type ConsistencyContestRef = Pick<ConsistencyContest, 'position' | 'contestId' | 'title'>;
 
-/** What the api returns: the record with the questions named rather than repeated. */
-export type ConsistencyCheckResult = Omit<ConsistencyCheckRecord, 'material'> & { readonly contests: readonly ConsistencyContestRef[] };
+/** What the api returns: the record with the questions named rather than repeated, and what they were compared with. */
+export type ConsistencyCheckResult = Omit<ConsistencyCheckRecord, 'material' | 'documents'> & {
+  readonly contests: readonly ConsistencyContestRef[];
+  readonly documents: readonly ConsistencyDocument[];
+};
 
-/** `GET …/consistency-check`: whether the server can run the check, and the caller's own check of the election, if any. */
+/**
+ * `GET …/consistency-check`: whether the server can run the check, the documents this election's checks compare with
+ * now, and the caller's own check of the election, if any (with what it was compared with then).
+ */
 export interface ConsistencyCheckState {
   readonly enabled: boolean;
+  readonly documents: readonly ConsistencyDocument[];
   readonly check: ConsistencyCheckResult | null;
 }
 
@@ -189,6 +249,18 @@ export interface ConsistencyCheckState {
 export interface ConsistencyRunResult {
   readonly checked: number;
   readonly failed: number;
+}
+
+/**
+ * Whether there is anything to check: at least one question, and with no documents chosen, two questions to compare
+ * with each other.
+ */
+export function checkConsistencyMaterial(material: readonly ConsistencyContest[], documents: readonly ConsistencyDocument[]): Check {
+  if (!material.length) return refuse('conflict', 'this election has no proposals or options to check: every contest fills an office');
+  if (!documents.length && material.length < 2) {
+    return refuse('conflict', 'no documents are chosen for this election, and one question has nothing on the ballot to be compared with');
+  }
+  return OK;
 }
 
 /**

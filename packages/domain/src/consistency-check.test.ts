@@ -4,9 +4,13 @@ import {
   CONSISTENCY_CHECK_TIMEOUT_MINUTES,
   MAX_CONSISTENCY_CHECKS_PER_DAY,
   MAX_PASSAGE_CHARACTERS,
+  checkConsistencyMaterial,
   checkConsistencyRequest,
   consistencyCheckId,
+  consistencyDocuments,
+  consistencyDocumentsSchema,
   consistencyMaterial,
+  consistencySources,
   contestText,
   materialCharacters,
   tidyConsistencyFindings,
@@ -146,6 +150,40 @@ describe('tidyConsistencyFindings', () => {
     expect(invented!.passage).toBeNull();
     const long = tidyConsistencyFindings([finding([1], { passage: 'x'.repeat(MAX_PASSAGE_CHARACTERS + 50) })], material);
     expect(long[0]!.passage).toBeNull();
+  });
+});
+
+describe('the documents a check compares with', () => {
+  it('come in their usual order, each once, and give their sources, the other questions always last', () => {
+    expect(consistencyDocuments(['us-constitution', 'bylaws', 'bylaws', 'nonsense'])).toEqual(['bylaws', 'us-constitution']);
+    expect(consistencySources(['ustp-constitution', 'transhumanist-bill-of-rights', 'bylaws', 'us-constitution'])).toEqual([
+      'platform',
+      'constitution',
+      'bill-of-rights',
+      'bylaws',
+      'us-constitution',
+      'ballot',
+    ]);
+    expect(consistencySources(['us-constitution'])).toEqual(['us-constitution', 'ballot']);
+    expect(consistencySources([])).toEqual(['ballot']);
+    expect(consistencyDocumentsSchema.safeParse({ documents: ['the-federalist'] }).success).toBe(false);
+    expect(consistencyDocumentsSchema.parse({ documents: [] })).toEqual({ documents: [] });
+  });
+
+  it('drop findings against a document that was not compared', () => {
+    const tidy = tidyConsistencyFindings(
+      [finding([1], { source: 'platform' }), finding([3], { source: 'us-constitution' }), finding([1, 3], { source: 'ballot' })],
+      material,
+      ['us-constitution'],
+    );
+    expect(tidy.map((f) => f.source)).toEqual(['ballot', 'us-constitution']); // the same severity, so in ballot order
+  });
+
+  it('need two questions when none is chosen, so they can be compared with each other', () => {
+    expect(checkConsistencyMaterial(material, [])).toEqual({ ok: true });
+    expect(checkConsistencyMaterial(material.slice(0, 1), [])).toMatchObject({ ok: false, reason: expect.stringMatching(/no documents are chosen/) });
+    expect(checkConsistencyMaterial(material.slice(0, 1), ['bylaws'])).toEqual({ ok: true });
+    expect(checkConsistencyMaterial([], ['bylaws'])).toMatchObject({ ok: false, reason: expect.stringMatching(/no proposals or options/) });
   });
 });
 
