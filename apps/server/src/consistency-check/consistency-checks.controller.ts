@@ -1,6 +1,8 @@
-import { Controller, Get, HttpCode, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Put } from '@nestjs/common';
+import { consistencyDocumentsSchema, type ConsistencyDocumentsInput } from 'ustp-domain';
 import { Ctx, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
+import { ZodPipe } from '../common/validation.js';
 import { ConsistencyChecksService } from './consistency-checks.service.js';
 
 /**
@@ -11,7 +13,7 @@ import { ConsistencyChecksService } from './consistency-checks.service.js';
 export class ConsistencyChecksController {
   constructor(private readonly checks: ConsistencyChecksService) {}
 
-  /** Whether the check is on, and the caller's own check of this election, if any. */
+  /** Whether the check is on, what it compares with, and the caller's own check of this election, if any. */
   @Get()
   state(@Ctx() ctx: RequestContext, @Param('id') id: string) {
     return this.checks.state(ctx, id);
@@ -40,5 +42,12 @@ export class AdminConsistencyChecksController {
   @HttpCode(202)
   request(@Ctx() ctx: RequestContext, @Param('id') id: string) {
     return this.checks.requestFromEditor(ctx, id);
+  }
+
+  /** The documents the election's checks compare with, chosen by an Election Admin while it is a draft. */
+  @Put('documents')
+  @Roles('election_admin')
+  async chooseDocuments(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(consistencyDocumentsSchema)) body: ConsistencyDocumentsInput) {
+    return { documents: await this.checks.chooseDocuments(ctx, id, body) };
   }
 }
