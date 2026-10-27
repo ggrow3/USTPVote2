@@ -9,6 +9,7 @@ import {
   SignInMethodsController,
 } from '../administration/administration.controller.js';
 import { ApprovalsService } from '../administration/approvals.service.js';
+import { HomeQuoteAdminController, HomeQuoteService, PublicHomeQuoteController } from '../administration/home-quote.js';
 import { NavigationAdminController, NavigationService, PublicNavigationController } from '../administration/navigation.js';
 import { RoleChanges } from '../administration/role-changes.js';
 import { AuthGuard } from '../auth/auth.guard.js';
@@ -76,6 +77,8 @@ import { PositionsService } from '../positions/positions.service.js';
     SignInMethodsController,
     PublicNavigationController,
     NavigationAdminController,
+    PublicHomeQuoteController,
+    HomeQuoteAdminController,
     AuditController,
     PublicLedgerController,
     PersonasController,
@@ -98,6 +101,7 @@ import { PositionsService } from '../positions/positions.service.js';
     PositionsService,
     ApprovalsService,
     NavigationService,
+    HomeQuoteService,
     PersonasService,
     secretStoreProvider,
     {

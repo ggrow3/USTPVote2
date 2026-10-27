@@ -10,6 +10,7 @@ import PeoplePanel from '../components/admin/PeoplePanel.vue';
 import PhotosPanel from '../components/admin/PhotosPanel.vue';
 import SignInMethodsPanel from '../components/admin/SignInMethodsPanel.vue';
 import TestingPanel from '../components/admin/TestingPanel.vue';
+import HomeQuotePanel from '../governance/HomeQuotePanel.vue';
 import NavigationPanel from '../governance/NavigationPanel.vue';
 import { shown } from '../governance/navigation.js';
 import { SECTION_LABELS } from '../governance/navigation-text.js';
@@ -34,6 +35,7 @@ const PANELS: Record<AdminSection, Component> = {
   audit: AuditPanel,
   testing: TestingPanel,
   navigation: NavigationPanel,
+  quote: HomeQuotePanel,
 };
 
 usePageTitle('Administration');

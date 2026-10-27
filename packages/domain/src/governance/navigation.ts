@@ -27,6 +27,7 @@ export const ADMIN_SECTIONS = [
   'audit',
   'testing',
   'navigation',
+  'quote',
 ] as const;
 export type AdminSection = (typeof ADMIN_SECTIONS)[number];
 
@@ -60,6 +61,7 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   audit: ['auditor'],
   testing: ['system_admin'],
   navigation: ['system_admin'],
+  quote: ['system_admin'],
 };
 
 /** Links that lead a signed-out visitor to sign in: Sign in itself, Register (its first step), and Ballot and Admin. */
