@@ -23,9 +23,10 @@ installable PWA and has had an accessibility pass. For deployment there are Terr
 applied), the server image (`apps/server/Dockerfile`) and a release workflow that builds, attests and rolls it out
 with a keyless CI identity; CI builds and starts the image on every pull request. The rest of M5 (bringing up dev, the
 "you voted" email, load test, reviews) is next. Dev (`ustpvote2-dev`) is up: Terraform applied, Identity Platform
-configured, and the api and worker running a released image on Cloud Run with the worker ticking every minute; the web
-app is not on Hosting yet. Authenticator-app (TOTP) setup, Cloud Vision photo checks and Cloud KMS have no emulator and
-have not been exercised in dev yet.
+configured, the api and worker running a released image on Cloud Run with the worker ticking every minute, and the web
+app on Firebase Hosting at https://ustpvote2-dev.web.app (deployed as the
+[infra README](infra/terraform/README.md#firebase-hosting) describes). Authenticator-app (TOTP) setup, Cloud Vision
+photo checks and Cloud KMS have no emulator and have not been exercised in dev yet.
 
 ## Documents
 
