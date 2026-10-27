@@ -1,7 +1,9 @@
+import { sha256Hex } from 'ustp-audit';
 import { z } from 'zod';
 import { bylawsVersionSchema, hex32Schema } from './api.js';
 import type { ElectionDefinition, ProposalSnapshotRecord } from './elections.js';
 import type { BylawsRecord } from './records.js';
+import type { ResultsBundle } from './results.js';
 import { diffLines, splitLines, type DiffLine } from './text-diff.js';
 
 /**
@@ -255,6 +257,75 @@ export function amendmentProblems(contests: readonly AmendingContest[], current:
     contests.map((c) => ({ id: `"${c.title}"`, amendment: c.amendment })),
   );
   return result.ok ? [] : [...result.problems];
+}
+
+/** How a proposal contest came out: what decides whether its amendment is adopted. */
+export type ProposalOutcome = 'passed' | 'failed' | 'no_quorum';
+
+/** The bylaws an election's results give (design §6.6). */
+export interface AdoptedBylaws {
+  /** Every contest that amends the bylaws, in ballot order, with its outcome. */
+  readonly contests: readonly (AmendingContest & { readonly outcome: ProposalOutcome })[];
+  /** The base with the passed amendments applied; the base text itself when none passed. */
+  readonly text: string;
+  /** SHA-256 of `text`, as a bylaws version's content hash is computed. */
+  readonly contentHash: string;
+  /** At least one amendment passed, so the text differs from the base. */
+  readonly changed: boolean;
+}
+
+/**
+ * The bylaws as an election's results amend them (design §6.6): the base with the amendments of exactly the contests
+ * that passed applied together (`applyAmendments`), whatever failed or lacked a quorum left out. `base` must be the
+ * version the definition names. The certify step, the amended-bylaws endpoint, adoption and the verify CLI all compute
+ * it this way, so they agree on the text and its hash.
+ */
+export function adoptedBylaws(input: {
+  readonly definition: ElectionDefinition;
+  readonly proposals: readonly ProposalSnapshotRecord[];
+  readonly bundle: Pick<ResultsBundle, 'contests'>;
+  readonly base: AmendmentBase;
+}): { readonly ok: true; readonly adopted: AdoptedBylaws } | { readonly ok: false; readonly problems: readonly string[] } {
+  const problems: string[] = [];
+  const contests = amendingContests(input.definition, input.proposals).map((c) => {
+    const result = input.bundle.contests.find((o) => o.contestId === c.contestId)?.result;
+    if (result?.kind !== 'proposal') problems.push(`the results have no outcome for "${c.title}"`);
+    return { ...c, outcome: (result?.kind === 'proposal' ? result.outcome : 'failed') as ProposalOutcome };
+  });
+  if (problems.length) return { ok: false, problems };
+  const passed = contests.filter((c) => c.outcome === 'passed');
+  if (!passed.length) return { ok: true, adopted: { contests, text: input.base.text, contentHash: input.base.contentHash, changed: false } };
+  const applied = applyAmendments(
+    input.base,
+    passed.map((c) => ({ id: `"${c.title}"`, amendment: c.amendment })),
+  );
+  if (!applied.ok) return { ok: false, problems: applied.problems };
+  return { ok: true, adopted: { contests, text: applied.text, contentHash: sha256Hex(applied.text), changed: true } };
+}
+
+/** `GET /v1/public/elections/{id}/amended-bylaws`, once the results are certified (design §6.6). */
+export interface AmendedBylawsView {
+  readonly v: 1;
+  readonly electionId: string;
+  readonly electionTitle: string;
+  readonly resultsHash: string;
+  readonly certifiedAt: string;
+  /** The version the election amended. */
+  readonly base: { readonly version: string; readonly title: string; readonly contentHash: string };
+  /** Each amending contest and its outcome; the full proposal only for those that passed, which the text applies. */
+  readonly contests: readonly {
+    readonly contestId: string;
+    readonly title: string;
+    readonly outcome: ProposalOutcome;
+    readonly proposal: Pick<ProposalSnapshotRecord, 'snapshotId' | 'title' | 'body' | 'contentHash' | 'amendment'> | null;
+  }[];
+  readonly text: string;
+  readonly contentHash: string;
+  readonly changed: boolean;
+  /** The base is still the current version, so the text can be published as the next one. */
+  readonly baseIsCurrent: boolean;
+  /** The version published from this text (its `adoptedIn` names this election), or null. */
+  readonly adoptedAs: string | null;
 }
 
 /**

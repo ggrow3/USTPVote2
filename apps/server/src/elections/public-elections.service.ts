@@ -1,12 +1,16 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { isHex32 } from 'ustp-audit';
 import {
+  adoptedBylaws,
+  amendingContests,
   Collections,
+  definitionHash,
   ElectionCollections,
   resultsCsv,
   resultsSummary,
   sealedInclusionProof,
   votingCalendar,
+  type AmendedBylawsView,
   type BallotProof,
   type ElectionRecord,
   type ElectionState,
@@ -17,6 +21,7 @@ import {
   type SealedBlockSummary,
 } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
+import { MembershipService } from '../membership/membership.service.js';
 import { ElectionReader } from './election-reader.js';
 
 /** States whose block contents are published: voting is over, so they cannot show a running tally. */
@@ -33,7 +38,58 @@ export class PublicElectionsService {
   constructor(
     private readonly firebase: Firebase,
     private readonly reader: ElectionReader,
+    private readonly membership: MembershipService,
   ) {}
+
+  /**
+   * The bylaws as the election's passed amendments give them (design §6.6), once its results are certified: the base,
+   * every amending contest with its outcome (the full proposal for those that passed), the text and its hash, whether
+   * the base is still current, and the version published from it, if any.
+   */
+  async amendedBylaws(electionId: string): Promise<AmendedBylawsView> {
+    const { election, definition, proposals } = await this.reader.load(electionId);
+    if (election.state === 'draft') throw new NotFoundException('no such election');
+    const amending = amendingContests(definition, proposals);
+    if (!amending[0]) throw new NotFoundException('this election amends no bylaws');
+    const results = (await this.resultsRef(electionId).get()).data() as ResultsRecord | undefined;
+    if (results?.status !== 'certified') throw new ConflictException('the amended bylaws follow once the results are certified');
+    if (definitionHash(definition) !== election.definitionHash) {
+      throw new InternalServerErrorException('the stored election no longer matches its frozen definition');
+    }
+    const version = amending[0].amendment.base.version;
+    const [base, current, adopted] = await Promise.all([
+      this.membership.bylawsRecord(version),
+      this.membership.currentBylaws(),
+      this.firebase.db.collection(Collections.bylawsVersions).where('adoptedIn.electionId', '==', electionId).limit(1).get(),
+    ]);
+    if (!base) throw new InternalServerErrorException(`bylaws version ${version}, which this election amends, is missing`);
+    const result = adoptedBylaws({ definition, proposals, bundle: results.bundle, base });
+    if (!result.ok) throw new InternalServerErrorException(result.problems.join('; '));
+    const proposalOf = (contestId: string) => {
+      const snapshotId = definition.contests.find((c) => c.contestId === contestId)?.proposal?.snapshotId;
+      const p = proposals.find((x) => x.snapshotId === snapshotId)!;
+      return { snapshotId: p.snapshotId, title: p.title, body: p.body, contentHash: p.contentHash, amendment: p.amendment ?? null };
+    };
+    return {
+      v: 1,
+      electionId,
+      electionTitle: election.title,
+      resultsHash: results.resultsHash,
+      certifiedAt: results.certifiedAt ?? election.certifiedAt ?? '',
+      base: { version: base.version, title: base.title, contentHash: base.contentHash },
+      contests: result.adopted.contests.map((c) => ({
+        contestId: c.contestId,
+        title: c.title,
+        outcome: c.outcome,
+        proposal: c.outcome === 'passed' ? proposalOf(c.contestId) : null,
+      })),
+      text: result.adopted.text,
+      contentHash: result.adopted.contentHash,
+      changed: result.adopted.changed,
+      baseIsCurrent: current?.version === base.version,
+      adoptedAs: adopted.docs[0]?.id ?? null,
+    };
+  }
 
   async record(electionId: string): Promise<PublicElection> {
     const { election, definition } = await this.reader.load(electionId);

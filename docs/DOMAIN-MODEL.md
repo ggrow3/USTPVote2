@@ -70,8 +70,8 @@ flowchart LR
   MEM -- accountId --> ACC
   MEM -- "current bylaws (apply)" --> BYL
   ELE -- "active members (roll)" --> MEM
-  ELE -- "current bylaws, amendments fit" --> BYL
-  BYL -- "is an amending election under way?" --> ELE
+  ELE -- "current bylaws, amendments fit; base text at certification" --> BYL
+  BYL -- "is an amending election under way? what did a certified one adopt?" --> ELE
   ELE -- "offices exist; create terms at certification" --> OFF
   ELE & OFF -- "two-person requests + handlers" --> GOV
   GOV -- "test voters (rehearsal roll), personas" --> MEM
@@ -92,7 +92,7 @@ commit. What changes is that only the owner touches its documents.
 | Membership | **Member** (`members/{accountId}` → `member_status_history`) | transitions only per §5.1; admin changes need a reason; nobody changes their own status; every change writes member, history and `member.status_changed` together; `memberSince` set once, at first Active; details change only by the member (not the legal name) or by another Membership Admin with a reason (not the opt-ins), ledgered as `member.details_changed` by field name |
 | Membership | **MembershipApplication** | only against the current bylaws (version and hash); verified email; at most 3 per 30 days; pending → approved \| rejected once; decider ≠ applicant; applicant still `applicant` |
 | Membership | **ProfilePhoto** | machine flags, people decide; reviewer ≠ owner; new photo supersedes the old |
-| Bylaws | **BylawsVersion** | immutable; `amends` is the current version; no publishing while an amending election is scheduled, open or closed |
+| Bylaws | **BylawsVersion** | immutable; `amends` is the current version; no publishing while an amending election is scheduled, open or closed; adopted from an election (`adoptedIn`) only once it is certified, with exactly the text its passed amendments give, once per election |
 | Bylaws | **BylawsCheck** | queued → running → done \| failed; one at a time per admin, 20 a day |
 | Elections | **Election** (election → contests, candidates) | lifecycle per §6.1 with the authority it names; edits only in draft; candidate recusal; window opens before it closes; definition frozen by its hash at scheduling and re-checked at opening; delete only if cancelled, no ballots, pool key destroyed |
 | Elections | **VoterRoll** (eligibility snapshot) | pending → approved \| rejected \| superseded; frozen once approved; rehearsal rolls only in testing mode |
