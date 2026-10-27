@@ -182,3 +182,44 @@ h3 {
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
+
+/*
+ * Printing (the results synopsis, design §9): the page's own content, black on white in either theme, without the
+ * header, the menu or anything marked `ustp-no-print` (controls, banners the printed page repeats).
+ */
+@media print {
+  .q-header,
+  .ustp-skip-link,
+  .ustp-no-print {
+    display: none !important;
+  }
+  /* Quasar sets these inline, from the header's height and the window's. */
+  .q-layout,
+  .q-page-container {
+    padding-top: 0 !important;
+  }
+  .q-page {
+    min-height: 0 !important;
+    padding: 0 !important;
+  }
+  body,
+  .q-page,
+  .q-card,
+  .q-markup-table {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .q-page :is(.text-grey-7, .text-primary, .text-positive, .text-negative) {
+    color: #000 !important;
+  }
+  .q-page a:not([class*='q-']) {
+    color: #000;
+  }
+  /* The dark theme's light rules would vanish on paper. */
+  .q-page .q-separator {
+    background: rgba(0, 0, 0, 0.12) !important;
+  }
+  .q-page .q-markup-table :is(th, td) {
+    border-color: rgba(0, 0, 0, 0.12) !important;
+  }
+}

@@ -259,6 +259,20 @@ a toast. The file itself uses Word's own structure, which Word, Google Docs and 
 title and Heading 1–3 styles, real bullet lists, tables with a header row that repeats on each page, links as links, a
 document title and the language (en-US).
 
+The results synopsis (design §9) was checked on 2026-10-26 against the emulators, on "Platform Vote #9 (demo)" (20
+contests) provisional and certified, in both themes at 1024 px and at 320 px, and in its print layout (from the dark
+theme). Synopsis and Full results are Quasar tabs (`role="tab"`, `aria-selected`, `aria-controls` naming each
+`tabpanel`, which is labelled by its tab). The synopsis is an `h2` with one `h3` per contest ("1. Question I. …") and
+"Altogether"; the facts at the top are a `dl`. Each table has a hidden caption naming its contest and ballots, column
+headers, and the choice or candidate as the row header. Outcomes are words in a tinted pill ("Passed", "Failed", "No
+quorum", "3 elected, 1 vacant") with a tick, cross or dash hidden from screen readers, not `QBadge`, so twenty
+contests are not twenty live regions; a candidate's "Elected" or "Not elected" is a word in its own column, Elected
+in bold. The pills reuse the members table's tones (green, red and grey, figures above: 4.56, 4.92 and 5.34 light,
+6.73, 6.96 and 7.23 dark). "Print" is named "Print the synopsis". A ranked-choice entry's "Every round" link selects
+the Full results tab and moves focus to it. At 320 px names and results wrap in their cells and the first column
+starts on the headings' edge, so no table scrolls sideways, nor does the page. Printed, it is black on white whatever
+the theme, without the header, menu, banners or buttons, and a contest is not split across pages.
+
 The election editor's workflow (design §6.1) was checked on 2026-10-26 against the emulators, in both themes and at
 320 px, for elections in draft, scheduled, open, closed, certified and cancelled. The card "Where this election is"
 (an `h2`) says the current step and what it waits on in its caption. The steps are an `ol` named "Steps of this
