@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Transaction } from 'firebase-admin/firestore';
-import { Collections, type IdentityRecord, type Role, type RoleAssignmentRecord } from 'ustp-domain';
+import { Collections, type AccountRecord, type IdentityRecord, type Role, type RoleAssignmentRecord } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 
 /** Lookups every request needs: which account a login belongs to and which roles that account holds. */
@@ -28,6 +28,22 @@ export class DirectoryService {
     return snap.docs.map((d) => (d.data() as RoleAssignmentRecord).role).sort();
   }
 
+  /**
+   * Each account's mailbox, by accountId, for election notices (design §6.8); an account that does not exist is
+   * missing from the map. Only the notice sender reads addresses, and only to send.
+   */
+  async mailboxes(accountIds: readonly string[]): Promise<Map<string, Mailbox>> {
+    const db = this.firebase.db;
+    const refs = accountIds.map((id) => db.collection(Collections.accounts).doc(id));
+    const snaps = refs.length ? await db.getAll(...refs) : [];
+    const found = new Map<string, Mailbox>();
+    for (const snap of snaps) {
+      const account = snap.data() as AccountRecord | undefined;
+      if (account) found.set(account.accountId, { email: account.primaryEmail, verified: account.emailVerified });
+    }
+    return found;
+  }
+
   /** Every account's active roles, by accountId. Role holders are the few admins, so one query reads them all. */
   async allActiveRoles(): Promise<Map<string, Role[]>> {
     const snap = await this.firebase.db.collection(Collections.roleAssignments).where('revokedAt', '==', null).get();
@@ -38,6 +54,12 @@ export class DirectoryService {
     }
     return byAccount;
   }
+}
+
+/** An account's primary email address and whether it is verified. */
+export interface Mailbox {
+  readonly email: string | null;
+  readonly verified: boolean;
 }
 
 export function roleAssignmentId(accountId: string, role: Role): string {

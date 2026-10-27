@@ -93,6 +93,20 @@ test. Keep it current when pages change.
   table (office descriptions, "4 days ago", "Member", the headers) are `#616161` rather than `text-grey-7`, so they keep
   4.5:1 on a row under Quasar's hover tint (figures below). At 375 and 320 px the search and State take a row each,
   the filters wrap, nothing on the page scrolls sideways, and the table scrolls inside its card.
+- **Added 2026-10-26, the election emails and their card in the election editor** (against the emulators as
+  elections@example.test, open, scheduled and reminded seeded elections; light at desktop width, dark at 375 px): the
+  card is a `section` named by its `h2` "Email to voters", with an `h3` per email ("Voting is open", "Closing soon:
+  reminder to those who have not voted"). Each caption says in words where that email stands ("Sent to 12 of the 12
+  people on the roll…", or when it will go, or why there is none), and the counts are a `dl` (Sent, Still to send,
+  Failed, Bounced, Skipped), each with what it means. A resend button names the email and how many it is for (visible
+  "Resend to the 1 it failed for"; its name adds which email); its dialog's focus starts on Cancel, and the new status
+  is announced when it is done. Each preview is that message's plain text in a `pre` that wraps, so at 375 px nothing
+  scrolls sideways; captions are `#b0b0b0` on `#1d1d1d` in the dark theme. The emails themselves
+  (`votingOpenMessage`, `closingSoonMessage`): `lang="en"`, a title, an `h1` and `h2`s, real text with no images, the
+  times as tables with `th scope="col"` and `scope="row"`, links named for what they open ("Open your ballot for
+  “2026 Officer Election”", "Add the voting window to your calendar", "open the Verify page", the contact address),
+  black on white with links in `#bd4e00` (4.9:1), and a plain-text part with the same content. Not yet seen in mail
+  clients, which differ in what HTML they keep.
 
 - **Added 2026-10-26, who sees which link and the home page** (design §10.5; against the emulators signed out, as a
   new login with no membership, an applicant, lapsed, suspended, resigned and rejected members, v1, elections@,

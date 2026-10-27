@@ -48,7 +48,7 @@ API-side limits are only checked by Google on the first apply.
 | | `signer` and `publicKeyViewer` on `audit-signing` | Only the worker signs ledger blocks and rolls (§8.3) |
 | | Create, get, decrypt with and destroy `ballot-pool` versions (custom role, on that key only) | One version per election, unwrapping at sealing, destruction after certification (§7.3, §13) |
 | | Create and read objects in the anchors bucket; never delete | Write-once anchors; overwriting needs delete, which it lacks (§8.4) |
-| | Access secrets | Tie-break seeds at tally (§9), the Anthropic API key for the bylaws check (§5.2), later the email provider's credentials |
+| | Access secrets | Tie-break seeds at tally (§9), the Anthropic API key for the bylaws check (§5.2), the AWS key for election notices by SES (§6.8) |
 | `ustp-worker-invoker` | Invoke the worker | Identity of the Scheduler tick and of Cloud Tasks; nothing else |
 | `ustp-release` | Push to the `ustpvote` Artifact Registry repository | The release workflow builds the server image |
 | | Sign attestations for `ustpvote-reviewed` (attestor key, note, occurrences) | Binary Authorization lets only attested images run |
@@ -101,8 +101,13 @@ for running the server locally against a real project. Variable names are those 
 | Environment variable | Output | api | worker |
 |---|---|:-:|:-:|
 | `GOOGLE_CLOUD_PROJECT` | in `api_env` / `worker_env` | ● | ● |
-| `DEPLOYMENT_ENVIRONMENT` | the `environment` variable (`dev`, `staging`, `prod`) | ● | |
-| `TESTING_MODE` | `true` only when the `testing_mode` variable is (dev sets it; prod refuses it) | ● | |
+| `DEPLOYMENT_ENVIRONMENT` | the `environment` variable (`dev`, `staging`, `prod`) | ● | ● |
+| `TESTING_MODE` | `true` only when the `testing_mode` variable is (dev sets it; prod refuses it); the worker sends a rehearsal's election notice to the outbox only then (design §6.8) | ● | ● |
+| `WEB_ORIGIN` | in `worker_env`: the `web_origin` variable, else `https://<project>.web.app`; election notices link to it | | ● |
+| `MAIL_TRANSPORT`, `NOTICE_CONTACT` | in `api_env` / `worker_env`: `ses` or `off` from `mail_transport`, and `notice_contact` when set (the api shows them in the election editor; only the worker sends) | ● | ● |
+| `MAIL_FROM`, `MAIL_REPLY_TO` | in `worker_env`: the `mail_from` variable, and `mail_reply_to` when set (it is not, as agreed) | | ● |
+| `SES_REGION`, `SES_CONFIGURATION_SET`, `SES_MAX_SEND_RATE`, `SES_EVENTS_QUEUE_URL` | in `worker_env` when `mail_transport` is `ses` (the queue when `ses_events_queue_url` is set) | | ● |
+| `AWS_SES_ACCESS_KEY_ID`, `AWS_SES_SECRET_ACCESS_KEY` | not output: the `aws-ses-*` secrets' latest versions, when `mail_transport` is `ses` ("Election notices") | | ● |
 | `AUDIT_SIGNING_KEY_VERSION` | `audit_signing_key_version` (`…/cryptoKeys/audit-signing/cryptoKeyVersions/1`) | | ● |
 | `BALLOT_POOL_KEY` | `ballot_pool_key` (`…/cryptoKeys/ballot-pool`) | ● | ● |
 | `ANCHORS_BUCKET` | `anchors_bucket` (`<project>-anchors`) | ● | ● |
@@ -115,8 +120,8 @@ for running the server locally against a real project. Variable names are those 
 
 Never set: `APP_CHECK_ENFORCED`, `ADMIN_MFA_REQUIRED`, `PHOTO_CHECKER`, `SECRET_STORE`, `AUDIT_SIGNER`, `BALLOT_POOL`
 or an emulator host. Every safety switch then keeps its production default (§4). Testing mode (design §10.4) is
-refused twice in prod: the `testing_mode` variable's validation, and the api, which will not start with `TESTING_MODE`
-unless `DEPLOYMENT_ENVIRONMENT` is `dev` or `staging`.
+refused twice in prod: the `testing_mode` variable's validation, and the api and worker, which will not start with
+`TESTING_MODE` unless `DEPLOYMENT_ENVIRONMENT` is `dev` or `staging`.
 
 | Consumer | Output |
 |---|---|
@@ -347,6 +352,83 @@ Terraform or its state.
 
 To rotate the key, add a new version and roll the worker (a release, or a new revision); Cloud Run reads `latest` when an
 instance starts. To switch the check off, set the variable back to `false` and apply; the secret and past checks stay.
+
+### Election notices
+
+The worker emails everyone on an election's roll when voting opens, and a day before it closes reminds those who have
+not voted (design §6.8), through **Amazon SES**. Until `mail_transport = "ses"` nothing is sent. The AWS side is set up
+by hand; this Terraform creates only the two empty secrets (`aws-ses-access-key-id`, `aws-ses-secret-access-key`), and
+the key never passes through Terraform or its state. USTP has no AWS account or verified domain for this yet. In the
+commands, `us-east-1` is `ses_region`, `<account>` the AWS account ID, `<env>` the environment.
+
+1. **AWS account and SES identity.** In an AWS account of USTP's, open SES in `us-east-1` and verify the domain
+   `transhumanist-party.org` (Identities → Create identity → Domain, Easy DKIM, RSA 2048): publish the three DKIM `CNAME`
+   records it lists in the domain's DNS. For SPF alignment set a custom MAIL FROM domain (`mail.transhumanist-party.org`:
+   the `MX` and `TXT` records SES lists). If the domain has no DMARC record yet, add one (`_dmarc` `TXT`
+   `v=DMARC1; p=none; rua=mailto:<a mailbox USTP reads>`), and tighten it later.
+2. **Leave the sandbox.** A new account may only send to verified addresses, 200 a day. Request production access
+   (Account dashboard → Request production access): transactional mail, election notices to party members who are
+   registered voters in the party's elections, one or two a member per election, bounces handled automatically. The
+   sending quota (often 50,000 a day, 14 a second) must exceed the largest roll; `ses_max_send_rate` (10 a second) must
+   stay under the rate.
+3. **Bounce queue.** Bounces reach the worker through SNS and SQS, so nothing outside calls the api:
+   ```
+   aws sns create-topic --name ustp-notice-events-<env>
+   aws sqs create-queue --queue-name ustp-notice-events-<env> --attributes MessageRetentionPeriod=1209600
+   ```
+   Give the queue an access policy that lets only that topic send to it (`sqs:SendMessage`, condition `aws:SourceArn` =
+   the topic's ARN), then subscribe the queue to the topic with raw message delivery:
+   `aws sns subscribe --topic-arn <topic arn> --protocol sqs --notification-endpoint <queue arn> --attributes RawMessageDelivery=true`.
+   Create the configuration set and send its bounces (and complaints, which the worker ignores) to the topic:
+   ```
+   aws sesv2 create-configuration-set --configuration-set-name ustp-notices
+   aws sesv2 create-configuration-set-event-destination --configuration-set-name ustp-notices \
+     --event-destination-name to-sqs \
+     --event-destination 'Enabled=true,MatchingEventTypes=BOUNCE,COMPLAINT,SnsDestination={TopicArn=<topic arn>}'
+   ```
+   One configuration set per AWS account is enough; give each environment its own topic and queue, or the environments'
+   workers would take each other's reports.
+4. **An access key that can do only this.** Create an IAM user `ustpvote-worker-<env>` with no console access and this
+   inline policy, then an access key for it:
+   ```json
+   {
+     "Version": "2012-10-17",
+     "Statement": [
+       {
+         "Effect": "Allow",
+         "Action": "ses:SendEmail",
+         "Resource": [
+           "arn:aws:ses:us-east-1:<account>:identity/transhumanist-party.org",
+           "arn:aws:ses:us-east-1:<account>:configuration-set/ustp-notices"
+         ],
+         "Condition": { "StringEquals": { "ses:FromAddress": "noreply@transhumanist-party.org" } }
+       },
+       {
+         "Effect": "Allow",
+         "Action": ["sqs:ReceiveMessage", "sqs:DeleteMessage"],
+         "Resource": "arn:aws:sqs:us-east-1:<account>:ustp-notice-events-<env>"
+       }
+     ]
+   }
+   ```
+5. **The key into Secret Manager**, typed or pasted on standard input so it stays out of shell history:
+   `gcloud secrets versions add aws-ses-access-key-id --project <project> --data-file=-`, and the same for
+   `aws-ses-secret-access-key`. Cloud Run will not start the worker with `mail_transport = "ses"` until both have a
+   version.
+6. **Switch it on** in the environment's `terraform.tfvars`: `mail_transport = "ses"`, `notice_contact` (where members
+   ask about an election: an address or an https page; the emails say replies are not read), `ses_events_queue_url`
+   (the queue's URL), `ses_region` if not `us-east-1`, and `web_origin` if the web app is not at
+   `https://<project>.web.app`. Apply. The From address is `mail_from` (default `USTP Elections
+   <noreply@transhumanist-party.org>`), with no Reply-To. The worker refuses to start if the key, the contact or the
+   web origin is missing.
+
+Then send yourself one: in testing mode, a rehearsal records its notices in the outbox only; to see a real one, put an
+account of your own on a small election's roll. The election editor's "Email to voters" card shows how many went,
+failed, bounced or were skipped.
+
+To rotate the key, create a new one for the IAM user, add it as new versions of both secrets, roll the worker, then
+delete the old key in IAM. To stop sending, set `mail_transport = "off"` and apply: notices already started wait, and
+resume if it is switched back on while voting is still open.
 
 ## Things to know
 

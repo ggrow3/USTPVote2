@@ -1,0 +1,154 @@
+import { SendEmailCommand, SESv2Client, type SendEmailCommandInput } from '@aws-sdk/client-sesv2';
+import { DeleteMessageBatchCommand, ReceiveMessageCommand, SQSClient } from '@aws-sdk/client-sqs';
+import type { ServerConfig } from '../config.js';
+import { MailNotSent, type BounceReport, type BounceSource, type MailMessage, type MailTransport } from './mail-transport.js';
+
+/**
+ * Amazon SES for election notices (design §6.8): SESv2 `SendEmail`, and bounces from the SQS queue that the
+ * configuration set's SNS topic feeds. Only the worker builds these, with an access key from Secret Manager that may
+ * only send from the agreed address and read that queue (infra README "Election notices").
+ */
+
+/** The message tag that names the notice, which SES copies into its bounce reports. */
+export const SES_NOTICE_TAG = 'notice';
+
+export class SesTransport implements MailTransport {
+  readonly delivery = 'mail';
+  private next = 0;
+
+  constructor(
+    private readonly client: Pick<SESv2Client, 'send'>,
+    private readonly options: { readonly configurationSet: string | null; readonly maxSendRate: number },
+  ) {}
+
+  /** Refuses to start without what sending needs, so a misconfigured worker fails loudly rather than mail nobody. */
+  static fromConfig(config: ServerConfig): SesTransport {
+    const { region, accessKeyId, secretAccessKey, configurationSet, maxSendRate } = config.ses;
+    const missing = [
+      !region && 'SES_REGION',
+      !accessKeyId && 'AWS_SES_ACCESS_KEY_ID',
+      !secretAccessKey && 'AWS_SES_SECRET_ACCESS_KEY',
+      !config.noticeContact && 'NOTICE_CONTACT',
+      !config.webOrigin && 'WEB_ORIGIN',
+    ].filter(Boolean);
+    if (missing.length) throw new Error(`MAIL_TRANSPORT=ses needs ${missing.join(', ')}`);
+    // One attempt: SES has no idempotency key, so a retry after a lost answer could send a second copy (design §6.8).
+    const client = new SESv2Client({ region: region!, credentials: { accessKeyId: accessKeyId!, secretAccessKey: secretAccessKey! }, maxAttempts: 1 });
+    return new SesTransport(client, { configurationSet, maxSendRate });
+  }
+
+  async send(message: MailMessage): Promise<{ messageId: string }> {
+    if (!message.to) throw new MailNotSent('refused', 'no address to send to');
+    await this.pace();
+    try {
+      const out = await this.client.send(new SendEmailCommand(sesEmail(message, this.options.configurationSet)));
+      if (!out.MessageId) throw new Error('SES answered without a message ID');
+      return { messageId: out.MessageId };
+    } catch (e) {
+      const outcome = sesFailure(e);
+      if (outcome) throw new MailNotSent(outcome, `SES ${(e as { name?: string }).name ?? 'error'}`);
+      throw e;
+    }
+  }
+
+  /** Spaces sends out to `maxSendRate` a second, however many run side by side. */
+  private async pace(): Promise<void> {
+    const now = Date.now();
+    const at = Math.max(now, this.next);
+    this.next = at + 1000 / this.options.maxSendRate;
+    if (at > now) await new Promise((resolve) => setTimeout(resolve, at - now));
+  }
+}
+
+/** The `SendEmail` request: plain text and HTML in UTF-8, tagged with the notice so bounce reports name it. */
+export function sesEmail(message: MailMessage, configurationSet: string | null): SendEmailCommandInput {
+  const utf8 = (Data: string) => ({ Data, Charset: 'UTF-8' });
+  return {
+    FromEmailAddress: message.from,
+    Destination: { ToAddresses: [message.to!] },
+    ...(message.replyTo && { ReplyToAddresses: [message.replyTo] }),
+    Content: { Simple: { Subject: utf8(message.subject), Body: { Text: utf8(message.text), Html: utf8(message.html) } } },
+    ...(configurationSet && { ConfigurationSetName: configurationSet }),
+    EmailTags: [{ Name: SES_NOTICE_TAG, Value: message.tags.noticeId }],
+  };
+}
+
+/** Errors in which SES answered, so the message was certainly not sent, but for a reason of its own (quota, keys). */
+const UNAVAILABLE = new Set([
+  'TooManyRequestsException',
+  'LimitExceededException',
+  'SendingPausedException',
+  'ThrottlingException',
+  'AccountSuspendedException',
+  'MailFromDomainNotVerifiedException',
+  'NotFoundException',
+]);
+/** Errors about this message or address: sending it again would fail the same way. */
+const REFUSED = new Set(['MessageRejected', 'BadRequestException']);
+/** Network errors raised before a request could reach SES. */
+const NOT_CONNECTED = new Set(['ECONNREFUSED', 'ENOTFOUND', 'EAI_AGAIN', 'ENETUNREACH', 'EHOSTUNREACH']);
+
+/**
+ * What a failed `SendEmail` means: `refused` (not this message), `unavailable` (not now: SES answered with an error, or
+ * could not be reached), or null when SES may have taken it (a timeout or a dropped connection), which is never sent
+ * again by itself.
+ */
+export function sesFailure(e: unknown): 'refused' | 'unavailable' | null {
+  const err = (e ?? {}) as { name?: string; code?: string; $metadata?: { httpStatusCode?: number } };
+  if (err.name && REFUSED.has(err.name)) return 'refused';
+  if ((err.name && UNAVAILABLE.has(err.name)) || err.$metadata?.httpStatusCode !== undefined) return 'unavailable';
+  if (err.code && NOT_CONNECTED.has(err.code)) return 'unavailable';
+  return null;
+}
+
+/**
+ * A permanent bounce from an SQS message body: an SES event (event publishing, `eventType`, or a notification,
+ * `notificationType`), raw or inside the SNS envelope. Null for anything else (deliveries, complaints, transient
+ * bounces, which SES retries) or anything that is not a notice's.
+ */
+export function sesBounce(body: string): BounceReport | null {
+  try {
+    let event = JSON.parse(body) as Record<string, any>;
+    if (event?.Type === 'Notification' && typeof event.Message === 'string') event = JSON.parse(event.Message);
+    if ((event?.eventType ?? event?.notificationType) !== 'Bounce' || event.bounce?.bounceType !== 'Permanent') return null;
+    const messageId = event.mail?.messageId;
+    const noticeId = event.mail?.tags?.[SES_NOTICE_TAG]?.[0];
+    return typeof messageId === 'string' && typeof noticeId === 'string' ? { noticeId, messageId } : null;
+  } catch {
+    return null;
+  }
+}
+
+/** The SQS queue SES bounce reports arrive on, read by the worker; nothing reaches the api from outside. */
+export class SesBounceQueue implements BounceSource {
+  constructor(
+    private readonly client: Pick<SQSClient, 'send'>,
+    private readonly queueUrl: string,
+  ) {}
+
+  static fromConfig(config: ServerConfig): SesBounceQueue | null {
+    const { region, accessKeyId, secretAccessKey, eventsQueueUrl } = config.ses;
+    if (!eventsQueueUrl) return null;
+    const client = new SQSClient({ region: region!, credentials: { accessKeyId: accessKeyId!, secretAccessKey: secretAccessKey! } });
+    return new SesBounceQueue(client, eventsQueueUrl);
+  }
+
+  async receive(): Promise<{ bounces: BounceReport[]; receipts: string[] }> {
+    const out = await this.client.send(
+      new ReceiveMessageCommand({ QueueUrl: this.queueUrl, MaxNumberOfMessages: 10, WaitTimeSeconds: 0, VisibilityTimeout: 60 }),
+    );
+    const messages = out.Messages ?? [];
+    return {
+      bounces: messages.map((m) => sesBounce(m.Body ?? '')).filter((b) => b !== null),
+      receipts: messages.map((m) => m.ReceiptHandle).filter((r): r is string => !!r),
+    };
+  }
+
+  /** Removes handled reports; any the queue does not remove come back and are recorded again, to the same effect. */
+  async acknowledge(receipts: readonly string[]): Promise<void> {
+    if (!receipts.length) return;
+    await this.client.send(
+      new DeleteMessageBatchCommand({ QueueUrl: this.queueUrl, Entries: receipts.map((ReceiptHandle, i) => ({ Id: String(i), ReceiptHandle })) }),
+    );
+  }
+}

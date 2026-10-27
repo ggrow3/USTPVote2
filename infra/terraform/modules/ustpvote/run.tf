@@ -10,7 +10,8 @@
 
 locals {
   # api: Secret Manager (creating tie-break seeds), encrypting ballots to an election's pool key, Auditor verification
-  # of anchors, profile photos, bootstrap System Admins, and testing mode, which the api also refuses in prod.
+  # of anchors, profile photos, bootstrap System Admins, testing mode, which the api also refuses in prod, and how
+  # election notices go out (notices.tf).
   api_env = merge(
     {
       GOOGLE_CLOUD_PROJECT          = var.project_id
@@ -21,18 +22,28 @@ locals {
       BOOTSTRAP_SYSTEM_ADMIN_EMAILS = join(",", var.bootstrap_system_admin_emails)
       BYLAWS_CHECKER                = local.bylaws_checker
     },
+    local.notices_env,
     var.testing_mode ? { TESTING_MODE = "true" } : {},
   )
 
   # worker: Secret Manager (reading seeds at tally), signing ledger blocks and rolls, pool key versions and sealing,
-  # writing anchors, running bylaws checks (with ANTHROPIC_API_KEY from Secret Manager, below).
-  worker_env = {
-    GOOGLE_CLOUD_PROJECT      = var.project_id
-    AUDIT_SIGNING_KEY_VERSION = local.audit_signing_key_version
-    BALLOT_POOL_KEY           = google_kms_crypto_key.ballot_pool.id
-    ANCHORS_BUCKET            = google_storage_bucket.anchors.name
-    BYLAWS_CHECKER            = local.bylaws_checker
-  }
+  # writing anchors, running bylaws checks (with ANTHROPIC_API_KEY from Secret Manager, below), and sending election
+  # notices, which link to the web app (design §6.8; notices.tf, and the AWS key from Secret Manager, below).
+  worker_env = merge(
+    {
+      GOOGLE_CLOUD_PROJECT      = var.project_id
+      DEPLOYMENT_ENVIRONMENT    = var.environment
+      AUDIT_SIGNING_KEY_VERSION = local.audit_signing_key_version
+      BALLOT_POOL_KEY           = google_kms_crypto_key.ballot_pool.id
+      ANCHORS_BUCKET            = google_storage_bucket.anchors.name
+      BYLAWS_CHECKER            = local.bylaws_checker
+      WEB_ORIGIN                = var.web_origin != "" ? var.web_origin : "https://${var.project_id}.web.app"
+    },
+    local.notices_env,
+    local.notices_worker_env,
+    # Rehearsals' notices go to the outbox in testing mode (design §10.4), so the worker must know it is on too.
+    var.testing_mode ? { TESTING_MODE = "true" } : {},
+  )
 
   # The api queues bylaws checks and the worker runs them, so both must agree.
   bylaws_checker = var.bylaws_check_enabled ? "claude" : "off"
@@ -186,6 +197,20 @@ resource "google_cloud_run_v2_service" "worker" {
         for_each = var.bylaws_check_enabled ? [google_secret_manager_secret.anthropic_api_key.secret_id] : []
         content {
           name = "ANTHROPIC_API_KEY"
+          value_source {
+            secret_key_ref {
+              secret  = env.value
+              version = "latest"
+            }
+          }
+        }
+      }
+
+      # The AWS access key for election notices by SES (notices.tf), likewise read when an instance starts.
+      dynamic "env" {
+        for_each = local.notices_worker_secrets
+        content {
+          name = env.key
           value_source {
             secret_key_ref {
               secret  = env.value

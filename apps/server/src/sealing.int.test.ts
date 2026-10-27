@@ -91,6 +91,7 @@ describe('sealing secret ballots', () => {
     expect(((await election.ref.get()).data() as ElectionRecord).sealedAt).toEqual(expect.any(String));
     expect(await ledgerTypes(api, election.electionId)).toEqual([
       'election.opened',
+      'notice.sent',
       'ballots.sealed',
       'election.closed',
       'ballots.sealed',
@@ -126,6 +127,7 @@ describe('sealing secret ballots', () => {
     expect((await api.call('GET', `${publicUrl(election)}/sealed-blocks`)).body).toEqual([]);
     expect(await ledgerTypes(api, election.electionId)).toEqual([
       'election.opened',
+      'notice.sent',
       'election.closed',
       'election.sealed',
       'results.computed',
