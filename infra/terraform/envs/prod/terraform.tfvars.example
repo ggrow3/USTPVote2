@@ -16,11 +16,11 @@ alert_emails     = ["ustp-voting-alerts@example.org"]
 anchors_retention_days   = 3653
 anchors_retention_locked = false
 
-# Sends bylaws drafts to Anthropic for the advisory check; add the anthropic-api-key secret's version first (README).
+# Sends bylaws drafts to Anthropic for the advisory check; a System Admin then adds the API key in the app (README).
 bylaws_check_enabled = false
 
 # Sends an election's proposals to Anthropic when a voter on its roll, or an Election Admin or Auditor, asks for the
-# platform consistency check (once each per election); uses the same anthropic-api-key secret (README).
+# platform consistency check (once each per election); uses the same API key (README).
 consistency_check_enabled = false
 
 # Election notices by Amazon SES (design §6.8): set SES up and add the aws-ses-* secret versions first (README

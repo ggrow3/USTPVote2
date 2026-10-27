@@ -103,9 +103,10 @@ npm run dev:emulators -w apps/web
 
 The worker ticks every 15 seconds in place of Cloud Scheduler: it opens and closes elections on time and seals,
 signs and anchors the ledger. On the same timer it runs queued bylaws checks and platform consistency checks, with the
-emulator-only stand-ins unless the api and worker both get `BYLAWS_CHECKER=claude` or `CONSISTENCY_CHECKER=claude` and
-the worker an `ANTHROPIC_API_KEY` (each check then costs money and sends the draft, or the election's proposals, to
-Anthropic; design §5.4, §5.5).
+emulator-only stand-ins unless the api and worker both get `BYLAWS_CHECKER=claude` or `CONSISTENCY_CHECKER=claude`,
+and a System Admin adds an Anthropic API key under Admin › Claude, which the emulators keep in their stand-in secret
+store and do not try with Anthropic first (each check then costs money and sends the draft, or the election's
+proposals, to Anthropic; design §5.4–§5.6).
 
 The emulators start empty. To fill them with test data, run this once the api and worker are up (about a minute):
 

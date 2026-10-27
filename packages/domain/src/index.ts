@@ -208,6 +208,8 @@ export {
   materialCharacters,
   tidyConsistencyFindings,
 } from './consistency-check.js';
+export { ANTHROPIC_KEY_HINT_CHARACTERS, ANTHROPIC_KEY_SECRET, anthropicKeyHint, anthropicKeySchema, checkAnthropicKey } from './anthropic-key.js';
+export type { AnthropicKeyChangedPayload, AnthropicKeyInput, AnthropicKeyRecord, AnthropicKeyStatus, ClaudeCheckSwitch } from './anthropic-key.js';
 export type {
   ConsistencyCheckRecord,
   ConsistencyCheckResult,

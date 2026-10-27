@@ -105,7 +105,7 @@ describe('the Claude checker', () => {
   it('sends the references as a cached prefix and the numbered draft, and keeps the findings on real lines', async () => {
     const captured: CapturedRequest = {};
     const review = { summary: 'One conflict.', findings: [{ ...finding([2, 40], 'high'), source: 'us-constitution', provision: 'Amendment I' }] };
-    const checker = new ClaudeBylawsChecker('sk-test', 'claude-opus-5-5', { load: async () => references }, { fetch: fakeApi(review, captured) });
+    const checker = new ClaudeBylawsChecker({ read: async () => 'sk-test' }, 'claude-opus-5-5', { load: async () => references }, { fetch: fakeApi(review, captured) });
     const out = await checker.check({ title: 'Bylaws', text: 'A\nB\nC', focusLines: null, amends: null, removed: [] });
 
     expect(out).toMatchObject({
@@ -128,9 +128,9 @@ describe('the Claude checker', () => {
     expect(content[3]!.text).toContain('[2] B');
   });
 
-  it('refuses to run without an API key', async () => {
-    const checker = new ClaudeBylawsChecker(null, 'claude-opus-5-5', { load: async () => references });
-    await expect(checker.check({ title: 'B', text: 'A', focusLines: null, amends: null, removed: [] })).rejects.toThrow(/ANTHROPIC_API_KEY/);
+  it('refuses to run until a System Admin adds an API key', async () => {
+    const checker = new ClaudeBylawsChecker({ read: async () => null }, 'claude-opus-5-5', { load: async () => references });
+    await expect(checker.check({ title: 'B', text: 'A', focusLines: null, amends: null, removed: [] })).rejects.toThrow(/no Anthropic API key has been added .*Admin › Claude/);
   });
 });
 
@@ -192,8 +192,8 @@ describe('bylaws check configuration', () => {
   const emulators = { FIRESTORE_EMULATOR_HOST: 'x', FIREBASE_AUTH_EMULATOR_HOST: 'y', GCLOUD_PROJECT: 'demo-p' };
 
   it('is off in real projects unless switched on, and refuses the stand-in there', () => {
-    expect(loadConfig({})).toMatchObject({ bylawsChecker: 'off', anthropicApiKey: null, bylawsCheckModel: 'claude-opus-5-5' });
-    expect(loadConfig({ BYLAWS_CHECKER: 'claude', ANTHROPIC_API_KEY: 'sk-x' })).toMatchObject({ bylawsChecker: 'claude', anthropicApiKey: 'sk-x' });
+    expect(loadConfig({})).toMatchObject({ bylawsChecker: 'off', bylawsCheckModel: 'claude-opus-5-5' });
+    expect(loadConfig({ BYLAWS_CHECKER: 'claude' })).toMatchObject({ bylawsChecker: 'claude' });
     expect(() => loadConfig({ BYLAWS_CHECKER: 'stub' })).toThrow(/only allowed with the Firebase emulators/);
     expect(() => loadConfig({ BYLAWS_CHECKER: 'gpt' })).toThrow(/must be "claude", "stub" or "off"/);
   });

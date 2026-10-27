@@ -4,6 +4,7 @@ import { BYLAWS_CHECKER } from '../bylaws-check/checker.js';
 import { ClaudeBylawsChecker } from '../bylaws-check/claude-checker.js';
 import { ReferenceLibrary } from '../bylaws-check/references.js';
 import { StubBylawsChecker } from '../bylaws-check/stub-checker.js';
+import { AnthropicKey } from '../claude-checks/anthropic-key.js';
 import { HealthController } from '../common/health.controller.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { CONSISTENCY_CHECKER } from '../consistency-check/checker.js';
@@ -38,6 +39,7 @@ import { TasksController } from './tasks.controller.js';
     ConsistencyCheckRunner,
     ballotPoolKeysProvider,
     secretStoreProvider,
+    AnthropicKey,
     // Election notices greet roll members by name (design §6.8).
     ...MEMBER_DIRECTORY_PROVIDERS,
     ...NOTIFICATION_WORKER_PROVIDERS,
@@ -51,20 +53,20 @@ import { TasksController } from './tasks.controller.js';
     },
     {
       provide: BYLAWS_CHECKER,
-      inject: [CONFIG, Firebase],
-      useFactory: (config: ServerConfig, firebase: Firebase) =>
+      inject: [CONFIG, Firebase, AnthropicKey],
+      useFactory: (config: ServerConfig, firebase: Firebase, key: AnthropicKey) =>
         config.bylawsChecker === 'claude'
-          ? new ClaudeBylawsChecker(config.anthropicApiKey, config.bylawsCheckModel, new ReferenceLibrary(firebase.db))
+          ? new ClaudeBylawsChecker(key, config.bylawsCheckModel, new ReferenceLibrary(firebase.db))
           : config.bylawsChecker === 'stub'
             ? new StubBylawsChecker()
             : null,
     },
     {
       provide: CONSISTENCY_CHECKER,
-      inject: [CONFIG, Firebase],
-      useFactory: (config: ServerConfig, firebase: Firebase) =>
+      inject: [CONFIG, Firebase, AnthropicKey],
+      useFactory: (config: ServerConfig, firebase: Firebase, key: AnthropicKey) =>
         config.consistencyChecker === 'claude'
-          ? new ClaudeConsistencyChecker(config.anthropicApiKey, config.consistencyCheckModel, new ReferenceLibrary(firebase.db))
+          ? new ClaudeConsistencyChecker(key, config.consistencyCheckModel, new ReferenceLibrary(firebase.db))
           : config.consistencyChecker === 'stub'
             ? new StubConsistencyChecker()
             : null,

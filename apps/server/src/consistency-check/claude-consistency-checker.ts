@@ -3,6 +3,7 @@ import { BYLAWS_CHECK_SEVERITIES, CONSISTENCY_CHECK_SOURCES, tidyConsistencyFind
 import { z } from 'zod';
 import { referenceBlock } from '../bylaws-check/claude-checker.js';
 import type { ReferenceLibrary } from '../bylaws-check/references.js';
+import { NO_KEY_REASON, type AnthropicKey } from '../claude-checks/anthropic-key.js';
 import { claudeReview, reviewClient } from '../claude-checks/claude-review.js';
 import type { ConsistencyChecker, ConsistencyCheckInput, ConsistencyCheckOutput } from './checker.js';
 
@@ -53,10 +54,10 @@ Report each inconsistency once, most serious first, at most 40. Then give a one-
  */
 export class ClaudeConsistencyChecker implements ConsistencyChecker {
   readonly name = 'claude';
-  private client: Anthropic | null = null;
 
   constructor(
-    private readonly apiKey: string | null,
+    /** Read for each check, so a key a System Admin replaces is used from the next one (design §5.6). */
+    private readonly key: Pick<AnthropicKey, 'read'>,
     private readonly model: string,
     private readonly references: Pick<ReferenceLibrary, 'load'>,
     /** For tests (a fake `fetch`). */
@@ -64,10 +65,10 @@ export class ClaudeConsistencyChecker implements ConsistencyChecker {
   ) {}
 
   async check(input: ConsistencyCheckInput): Promise<ConsistencyCheckOutput> {
-    if (!this.apiKey) throw new Error('the consistency check is not configured on the worker (no ANTHROPIC_API_KEY)');
-    this.client ??= reviewClient(this.apiKey, this.clientOptions);
+    const apiKey = await this.key.read();
+    if (!apiKey) throw new Error(NO_KEY_REASON);
     const references = (await this.references.load()).filter((ref) => PARTY_REFERENCES.has(ref.id));
-    const { review, model, usage } = await claudeReview(this.client, {
+    const { review, model, usage } = await claudeReview(reviewClient(apiKey, this.clientOptions), {
       model: this.model,
       system: SYSTEM_PROMPT,
       blocks: [
