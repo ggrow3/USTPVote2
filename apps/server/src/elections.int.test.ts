@@ -210,11 +210,14 @@ describe('candidates who are members', () => {
       });
     }
 
+    // In ballot order, which the contest's spec gives; the refused accounts left nothing behind.
     const detail = (await api.call('GET', url, ea)).body;
-    expect(detail.candidates.map((k: { name: string; accountId: string | null }) => [k.name, k.accountId])).toEqual([
-      ['Ada Brooks', ada.accountId],
-      ['Write-in', null],
+    const candidates = new Map(detail.candidates.map((k: { candidateId: string }) => [k.candidateId, k]));
+    expect(detail.contests[0].spec.candidates.map((id: string) => candidates.get(id))).toMatchObject([
+      { name: 'Ada Brooks', accountId: ada.accountId },
+      { name: 'Write-in', accountId: null },
     ]);
+    expect(detail.candidates).toHaveLength(2);
     // A linked member who is also an Election Admin can no longer edit the election.
     await api.grant(ada.accountId, 'election_admin', sa1);
     expect((await api.call('PATCH', url, ada, { title: 'Renamed' })).status).toBe(403);
