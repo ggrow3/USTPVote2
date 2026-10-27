@@ -40,6 +40,8 @@ export interface BylawsRecord {
   readonly amends?: string | null;
   /** What changed and why, as the publisher wrote it. */
   readonly changeNote?: string | null;
+  /** When the text is what an election's passed amendments gave (design §6.6): that election and its results. */
+  readonly adoptedIn?: { readonly electionId: string; readonly resultsHash: string } | null;
 }
 
 /** `GET /v1/bylaws`: every version without its text, newest first. */
