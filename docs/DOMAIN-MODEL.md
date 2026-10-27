@@ -169,8 +169,9 @@ import moved code). Ordered by gain against risk, and around work in flight.
    moved to `ustp-domain`; `Check` has an optional refusal kind and commands return an `Outcome`, so `assertCheck` and
    `accepted` keep each status code; server `MemberRepository`, `ApplicationRepository`, application services
    `MembershipApplications` and `Members`, registered from `membership/providers.ts`; a `MemberDirectory` port that
-   elections (roll and roll names), accounts (`/me`, People list), photos and personas use instead of reading
-   `members`; `boundaries.test.ts` keeps it so. Bylaws stays in `MembershipService` for now (see step 2).
+   elections (roll and roll names, finding and checking members who stand as candidates), accounts (`/me`, People
+   list), photos and personas use instead of reading `members`; `boundaries.test.ts` keeps it so. Bylaws stays in
+   `MembershipService` for now (see step 2).
 2. **Bylaws** — out of `MembershipService` into `bylaws/` with the bylaws check; domain `bylaws/` (versions,
    amendments, text diff); a `BylawsRegistry` port for elections; an `AmendingElections` port from elections so bylaws
    stops reading `elections`. After the adopted-bylaws work in progress has merged, since it changes these methods.

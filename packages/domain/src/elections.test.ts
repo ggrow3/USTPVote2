@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { bylawsAmendmentSchema } from './amendments.js';
-import { contestInputSchema, createElectionSchema } from './election-api.js';
+import { candidateInputSchema, contestInputSchema, createElectionSchema } from './election-api.js';
 import {
   buildDefinition,
+  checkCandidateAccount,
   definitionHash,
   proposalContentHash,
   validateDefinition,
@@ -183,5 +184,21 @@ describe('election request schemas', () => {
       passRule: { threshold: { ratio: { num: 3, den: 2 }, comparison: 'gte' }, base: 'yes_no' },
     });
     expect(badRatio.success).toBe(false);
+  });
+});
+
+describe('candidates', () => {
+  it('links a candidate only to an Active member', () => {
+    expect(checkCandidateAccount('a1', { status: 'active' })).toEqual({ ok: true });
+    for (const member of [null, { status: 'lapsed' as const }, { status: 'suspended' as const }, { status: 'applicant' as const }]) {
+      expect(checkCandidateAccount('a1', member)).toEqual({ ok: false, reason: 'account a1 is not an Active member' });
+    }
+  });
+
+  it('takes a name, with an account ID when the candidate is a member', () => {
+    expect(candidateInputSchema.parse({ name: ' Ada Brooks ', accountId: 'a1' })).toEqual({ name: 'Ada Brooks', accountId: 'a1' });
+    expect(candidateInputSchema.parse({ name: 'Write-in' })).toEqual({ name: 'Write-in' });
+    expect(candidateInputSchema.safeParse({ name: ' ', accountId: 'a1' }).success).toBe(false);
+    expect(candidateInputSchema.safeParse({ name: 'Ada', accountId: '' }).success).toBe(false);
   });
 });

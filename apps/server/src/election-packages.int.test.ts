@@ -55,6 +55,7 @@ beforeEach(async () => {
   ea = await api.member('election.admin@example.test');
   auditor = await api.member('auditor@example.test');
   ada = await api.member('ada@example.test');
+  await api.firebase.db.collection('members').doc(ada.accountId).set({ accountId: ada.accountId, status: 'active', legalName: 'Ada', state: 'CA' });
   await api.grant(ma.accountId, 'membership_admin', sa1);
   await api.grant(ea.accountId, 'election_admin', sa1);
   await api.grant(auditor.accountId, 'auditor', sa1);
@@ -119,10 +120,13 @@ describe('election packages', () => {
       return p;
     };
 
-    expect(await importPackage(withContest(0, { candidates: ['Grace', { name: 'Nobody', accountId: '0190f2a3-0000-7000-8000-000000000000' }] }))).toMatchObject({
-      status: 400,
-      body: { detail: 'there is no account 0190f2a3-0000-7000-8000-000000000000' },
-    });
+    // Candidates are linked only to Active members' accounts, as in the editor.
+    for (const accountId of ['0190f2a3-0000-7000-8000-000000000000', auditor.accountId]) {
+      expect(await importPackage(withContest(0, { candidates: ['Grace', { name: 'Nobody', accountId }] }))).toMatchObject({
+        status: 400,
+        body: { detail: `account ${accountId} is not an Active member` },
+      });
+    }
     expect((await importPackage(withContest(0, { positionId: 'treasurer' }))).body.detail).toBe('there is no office treasurer');
     expect((await importPackage(withContest(1, { proposal: { snapshotId: 'gone' } }))).body.detail).toBe('there is no proposal text gone');
     expect(await importPackage(withContest(0, { candidates: [{ name: 'Me', accountId: ea.accountId }] }))).toMatchObject({

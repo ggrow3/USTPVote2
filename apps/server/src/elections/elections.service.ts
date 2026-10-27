@@ -5,6 +5,7 @@ import {
   amendmentProblems,
   applyAmendment,
   APPROVAL_MAX_AUTH_AGE_SECONDS,
+  checkCandidateAccount,
   checkElectionDeletable,
   Collections,
   contestRecord,
@@ -35,6 +36,7 @@ import {
   type ElectionDetail,
   type ElectionPackage,
   type ElectionRecord,
+  type MemberMatch,
   type ProposalInput,
   type ProposalSnapshotRecord,
   type ResultsRecord,
@@ -176,19 +178,18 @@ export class ElectionsService {
     await this.db.runTransaction(async (tx) => {
       const snapshots = this.db.collection(Collections.proposalSnapshots);
       const referenced = [...new Set(proposals.flatMap((p) => (p && 'snapshotId' in p ? [p.snapshotId] : [])))];
-      const [existing, matches, offices, accounts, current] = await Promise.all([
+      const [existing, matches, offices, members, current] = await Promise.all([
         referenced.length ? tx.getAll(...referenced.map((id) => snapshots.doc(id))) : [],
         Promise.all(proposals.map((p) => (p && 'input' in p ? tx.get(snapshots.where('contentHash', '==', p.contentHash).limit(20)) : null))),
         positionIds.length ? tx.getAll(...positionIds.map((id) => this.db.collection(Collections.positions).doc(id))) : [],
-        accountIds.length ? tx.getAll(...accountIds.map((id) => this.db.collection(Collections.accounts).doc(id))) : [],
+        this.members.getAll(tx, accountIds),
         this.membership.currentBylaws(tx),
       ]);
       const missingText = existing.find((s) => !s.exists);
       if (missingText) throw new BadRequestException(`there is no proposal text ${missingText.id}`);
       const missingOffice = offices.find((s) => !s.exists);
       if (missingOffice) throw new BadRequestException(`there is no office ${missingOffice.id}`);
-      const missingAccount = accounts.find((s) => !s.exists);
-      if (missingAccount) throw new BadRequestException(`there is no account ${missingAccount.id}`);
+      accountIds.forEach((id, i) => assertCheck(checkCandidateAccount(id, members[i] ?? null), BadRequestException));
 
       // Each proposal contest's text: the one referenced, one already captured (here or earlier in this package) with the
       // same hash and source, or a new one.
@@ -576,6 +577,11 @@ export class ElectionsService {
 
   // --- candidates -------------------------------------------------------------------------------------------
 
+  /** Active members by name, for the Election Admin to link a candidate to the member standing (design §6.5). */
+  searchMembers(name: string, limit: number): Promise<MemberMatch[]> {
+    return this.members.searchActive(name, limit);
+  }
+
   async addCandidate(ctx: RequestContext, electionId: string, contestId: string, input: CandidateInput): Promise<CandidateRecord> {
     const actor = requireAccount(ctx);
     if (input.accountId === actor) throw new ForbiddenException('you cannot add yourself as a candidate in an election you administer');
@@ -584,8 +590,9 @@ export class ElectionsService {
       const contestRef = this.electionRef(electionId).collection(ElectionCollections.contests).doc(contestId);
       const contest = await this.contest(tx, contestRef);
       if (contest.spec.kind === 'proposal') throw new ConflictException('proposal contests have no candidates');
-      if (input.accountId && !(await tx.get(this.db.collection(Collections.accounts).doc(input.accountId))).exists) {
-        throw new BadRequestException('no account with that ID');
+      if (input.accountId) {
+        const [member] = await this.members.getAll(tx, [input.accountId]);
+        assertCheck(checkCandidateAccount(input.accountId, member ?? null), BadRequestException);
       }
       const ref = this.electionRef(electionId).collection(ElectionCollections.candidates).doc();
       const record: CandidateRecord = {
