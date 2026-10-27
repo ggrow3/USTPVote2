@@ -1,6 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { DocumentReference, Transaction } from 'firebase-admin/firestore';
-import type { ContestSpec } from 'ustp-tally';
 import {
   amendingContests,
   amendmentProblems,
@@ -8,10 +7,14 @@ import {
   APPROVAL_MAX_AUTH_AGE_SECONDS,
   checkElectionDeletable,
   Collections,
+  contestRecord,
   definitionHash,
   ElectionCollections,
+  electionPackageFrom,
   electionTransitionAuthority,
   isRehearsalRoll,
+  packageProposals,
+  packageRecords,
   PROBLEM_TYPES,
   proposalContentHash,
   resultsSummary,
@@ -19,7 +22,9 @@ import {
   sortRoll,
   uuidv7,
   validateDefinition,
+  type AmendingContest,
   type ApprovalRequestRecord,
+  type BylawsAmendment,
   type CancelPayload,
   type CertifyPayload,
   type CandidateInput,
@@ -28,6 +33,7 @@ import {
   type ContestRecord,
   type CreateElectionInput,
   type ElectionDetail,
+  type ElectionPackage,
   type ElectionRecord,
   type ProposalInput,
   type ProposalSnapshotRecord,
@@ -149,6 +155,93 @@ export class ElectionsService {
     };
     await this.db.collection(Collections.elections).doc(record.electionId).create(record);
     return record;
+  }
+
+  /**
+   * Imports an election package (design §6.7) as a new draft, in one transaction: its proposal texts (reusing one
+   * already captured with the same content hash and source), the election, its contests and candidates. The rules of
+   * the piecewise editor apply to the whole, and any refusal leaves nothing behind. What would block scheduling, such
+   * as a window in the past, is listed in the returned detail's problems, as for any draft.
+   */
+  async importPackage(ctx: RequestContext, pkg: ElectionPackage): Promise<ElectionDetail> {
+    const createdBy = requireAccount(ctx);
+    const proposals = packageProposals(pkg);
+    const standing = pkg.contests.flatMap((c) => (c.kind === 'proposal' ? [] : c.candidates));
+    const accountIds = [...new Set(standing.map((k) => ('accountId' in k && k.accountId) || null).filter((id): id is string => !!id))];
+    if (accountIds.includes(createdBy)) throw new ForbiddenException('you cannot add yourself as a candidate in an election you administer');
+    const positionIds = [...new Set(pkg.contests.map((c) => (c.kind === 'proposal' ? null : c.positionId)).filter((id): id is string => !!id))];
+    const electionId = uuidv7();
+    await this.db.runTransaction(async (tx) => {
+      const snapshots = this.db.collection(Collections.proposalSnapshots);
+      const referenced = [...new Set(proposals.flatMap((p) => (p && 'snapshotId' in p ? [p.snapshotId] : [])))];
+      const [existing, matches, offices, accounts, current] = await Promise.all([
+        referenced.length ? tx.getAll(...referenced.map((id) => snapshots.doc(id))) : [],
+        Promise.all(proposals.map((p) => (p && 'input' in p ? tx.get(snapshots.where('contentHash', '==', p.contentHash).limit(20)) : null))),
+        positionIds.length ? tx.getAll(...positionIds.map((id) => this.db.collection(Collections.positions).doc(id))) : [],
+        accountIds.length ? tx.getAll(...accountIds.map((id) => this.db.collection(Collections.accounts).doc(id))) : [],
+        this.membership.currentBylaws(tx),
+      ]);
+      const missingText = existing.find((s) => !s.exists);
+      if (missingText) throw new BadRequestException(`there is no proposal text ${missingText.id}`);
+      const missingOffice = offices.find((s) => !s.exists);
+      if (missingOffice) throw new BadRequestException(`there is no office ${missingOffice.id}`);
+      const missingAccount = accounts.find((s) => !s.exists);
+      if (missingAccount) throw new BadRequestException(`there is no account ${missingAccount.id}`);
+
+      // Each proposal contest's text: the one referenced, one already captured (here or earlier in this package) with the
+      // same hash and source, or a new one.
+      const randomId = () => snapshots.doc().id;
+      const capturedAt = new Date().toISOString();
+      const created: ProposalSnapshotRecord[] = [];
+      const texts = proposals.map((p, i): ProposalSnapshotRecord | null => {
+        if (!p) return null;
+        if ('snapshotId' in p) return existing.find((s) => s.id === p.snapshotId)!.data() as ProposalSnapshotRecord;
+        const source = p.input.source || null;
+        const known = [...(matches[i]?.docs.map((d) => d.data() as ProposalSnapshotRecord) ?? []), ...created];
+        const same = known.find((s) => s.contentHash === p.contentHash && s.source === source);
+        if (same) return same;
+        const record: ProposalSnapshotRecord = {
+          snapshotId: randomId(),
+          title: p.input.title,
+          body: p.input.body,
+          source,
+          ...(p.input.amendment && { amendment: p.input.amendment }),
+          contentHash: p.contentHash,
+          capturedAt,
+          capturedBy: createdBy,
+        };
+        created.push(record);
+        return record;
+      });
+      const amending = pkg.contests.flatMap((c, i): AmendingContest[] => {
+        const amendment: BylawsAmendment | null | undefined = texts[i]?.amendment;
+        return amendment ? [{ contestId: c.id ?? `${i + 1}`, title: c.title, amendment }] : [];
+      });
+      const problems = amendmentProblems(amending, current);
+      if (problems.length) throw new ConflictException(problems.join('; '));
+
+      const records = packageRecords(pkg, {
+        electionId,
+        createdBy,
+        now: new Date(),
+        newId: randomId,
+        snapshotIds: texts.map((t) => t?.snapshotId ?? null),
+      });
+      for (const record of created) tx.create(snapshots.doc(record.snapshotId), record);
+      tx.create(this.electionRef(electionId), records.election);
+      for (const c of records.contests) tx.create(this.electionRef(electionId).collection(ElectionCollections.contests).doc(c.contestId), c);
+      for (const k of records.candidates) tx.create(this.electionRef(electionId).collection(ElectionCollections.candidates).doc(k.candidateId), k);
+    });
+    return this.detail(electionId);
+  }
+
+  /** Any election as a package (design §6.7), to import again here or elsewhere. */
+  async exportPackage(electionId: string): Promise<ElectionPackage> {
+    const { election, contests, candidates, proposals, definition } = await this.reader.load(electionId);
+    return electionPackageFrom(
+      { election, contests, candidates, proposals },
+      { electionId, definitionHash: definitionHash(definition), exportedAt: new Date().toISOString() },
+    );
   }
 
   async list(): Promise<ElectionRecord[]> {
@@ -598,36 +691,4 @@ function withoutList(snapshot: RollSnapshotRecord): Omit<RollSnapshotRecord, 'ac
 
 function assertWindow(opensAt: string, closesAt: string): void {
   if (Date.parse(closesAt) <= Date.parse(opensAt)) throw new BadRequestException('voting must close after it opens');
-}
-
-/** Builds the stored contest, with a tally spec whose id is the contest id. */
-function contestRecord(contestId: string, order: number, input: ContestInput, candidateIds: string[]): ContestRecord {
-  let spec: ContestSpec;
-  switch (input.kind) {
-    case 'proposal':
-      spec = { kind: 'proposal', id: contestId, passRule: input.passRule, ...(input.quorum && { quorum: input.quorum }) };
-      break;
-    case 'choose_n':
-      spec = {
-        kind: 'choose_n',
-        id: contestId,
-        candidates: candidateIds,
-        seats: input.seats,
-        maxSelections: input.maxSelections,
-        ...(input.supportFloor && { supportFloor: input.supportFloor }),
-      };
-      break;
-    case 'irv':
-      spec = { kind: 'irv', id: contestId, candidates: candidateIds, ...(input.maxRanks !== undefined && { maxRanks: input.maxRanks }) };
-      break;
-  }
-  return {
-    contestId,
-    order,
-    title: input.title,
-    description: input.description,
-    spec,
-    proposalSnapshotId: input.kind === 'proposal' ? input.proposalSnapshotId : null,
-    positionId: input.kind === 'proposal' ? null : (input.positionId ?? null),
-  };
 }

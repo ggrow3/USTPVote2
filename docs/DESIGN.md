@@ -148,7 +148,7 @@ this structure one at a time, without changing routes, documents or the ledger.
 | Bylaws | §5.2, §5.4, §6.6 | `bylaws_versions`, `bylaws_checks`, `bylaws_check_references` |
 | Elections | §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results` |
 | Offices | §6.4 | `positions`, `position_terms` |
-| Governance | §10 | `role_assignments`, `approval_requests`, `testing_personas` |
+| Governance | §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation` |
 | Audit ledger | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` |
 
 **Layers.** Records stay plain data (Firestore stores them, JCS hashes them, the browser reads them), so an aggregate
@@ -186,7 +186,8 @@ each converted context has a folder with its typed client (`api.ts`, the only pl
 and panels, and its wording. The browser runs `ustp-domain`'s rules to offer only what the API will accept and keeps
 no copy of its own; `apps/web/src/boundaries.test.ts` fails if a context's routes appear outside its client. Converted
 so far: `membership/` (the Register page and the Applications and Members panels; the status changes the Members panel
-offers come from `adminStatusChanges` in `ustp-domain`).
+offers come from `adminStatusChanges` in `ustp-domain`), and the start of `governance/`: the navigation settings'
+client, panel and wording, and the store the menu, the console's tabs and the home page read (§10.5).
 
 ## 4. Identity and accounts
 
@@ -293,8 +294,10 @@ Every transition writes, in one transaction, the new status on `members/{account
      submit is stopped in the browser with the answers kept. The api still refuses any application from an unverified
      address.
   3. *Membership review*: the submitted application's status, until a Membership Admin decides it.
-- **Who sees what.** The web app's menu shows the same four links to everyone, signed in or not: Register, Ballot,
-  Verify and Admin; each page tells people it is not for what they can do instead. On Register, signed-out visitors
+- **Who sees what.** The web app's menu links (Register, Ballot, Verify, Admin) are the ones the navigation settings
+  give the person's membership state and roles (§10.5). By default everyone sees all four, signed in or not, and each
+  page tells people it is not for what they can do instead, as it does for anyone who reaches it by its address. On
+  Register, signed-out visitors
   start at step 1, and people who may apply (no membership, or a rejected or resigned one: `mayApply` in
   `ustp-domain`) at step 2. An applicant sees step 3. An Active, lapsed or suspended member sees their status instead
   of the form, and what can change it: a Membership Admin renews a lapsed membership or reinstates a suspended one,
@@ -659,8 +662,8 @@ one canonical object: election fields, then contests in order, each with its `us
 snapshot ID and content hash, and its candidates in the order the spec lists them. `definitionHash = H(JCS(definition))`
 is shown live in the editor and to Auditors, and `validateDefinition` lists what blocks scheduling (no contests,
 voting not in the future, missing proposal text or candidates, any `ustp-tally` spec problem such as more seats than
-candidates). Scheduling (M2b) freezes exactly this hash. Contest and candidate IDs are random Firestore IDs, which
-fit the `ustp-tally` ID pattern. Only drafts can be edited.
+candidates). Scheduling (M2b) freezes exactly this hash. Contest and candidate IDs are random Firestore IDs, or those
+an election package gives (§6.7); both fit the `ustp-tally` ID pattern. Only drafts can be edited.
 - `positions` define offices (title, seats, term length). Certifying an election that fills an office creates
   `position_terms` that reference the certified results hash. Ending a term early is a two-person action. Implemented
   in M4b:
@@ -770,6 +773,62 @@ amendment, one change per run of changed lines.
 *Planned (in order):* an editor for writing amendments line by line, with the changes shown as a line diff and
 downloadable as JSON and .docx; on the results page, the amended bylaws as a draft .docx and "Publish as the next
 version" for Membership Admins.
+
+### 6.7 Election packages
+
+A whole election can be written as one JSON file, imported as a new draft and exported from any election, so elections
+can be prepared, reviewed, kept, repeated and tested as files instead of being put together one click at a time.
+
+**Format** (`ustp.election` v1, `electionPackageSchema` in `ustp-domain`; the api and the browser check files with it):
+
+```
+{ format: 'ustp.election', v: 1, title, description?, secrecy, kAnonymity?,
+  window: { opensAt, closesAt } | { opensInSeconds, votingSeconds },
+  contests: [ { id?, kind: 'proposal', title, description?, passRule, quorum?,
+                proposal: { title?, body, source?, amendment?, contentHash? } | { snapshotId } }
+            | { id?, kind: 'choose_n' | 'irv', title, …the contest's rules, positionId?,
+                candidates: [ name | { id?, name, statement?, accountId? } ] } ],
+  exportedFrom? }
+```
+
+- **Contests** take the same fields as `POST …/contests` (§12), in ballot order. A proposal contest carries its text
+  (its title defaults to the contest's) or names a text already captured. A candidate contest lists its candidates,
+  each a name or the full form.
+- **IDs:** a contest's or candidate's `id`, when given, becomes its ID, so a file and what is imported from it refer to
+  contests and candidates the same way. Without one, the ID is random. IDs are unique within the file and fit the
+  `ustp-tally` pattern.
+- **Window:** absolute, or relative to the import (`opensInSeconds`, then `votingSeconds` of voting, at least a minute),
+  for rehearsals that should open soon after they are imported.
+- **Limits:** at most 100 contests and 100 candidates per contest, and at most 450 records in all (the election, its
+  contests, candidates and new proposal texts), since an import is one Firestore transaction; and the api's 1 MiB
+  request limit.
+
+**Importing** (`POST /v1/admin/elections/import`, Election Admin) creates a draft in one transaction, so a refusal
+writes nothing:
+
+- **The editor's rules apply to the whole:** every office, account and named proposal text must exist (400). The
+  importing admin cannot be a candidate (403). The bylaws amendments must fit the current version and not conflict
+  (409, §6.6).
+- **Proposal texts:** each is captured as an immutable snapshot, unless one with the same content hash and source
+  exists already, here or earlier in the same file; then that one is used. A `contentHash` in the file must be the
+  text's (the schema refuses the file otherwise), so an exported text that was edited is not imported as the original.
+- **Not refused:** what would block scheduling, such as a window already past or a contest without candidates. It is
+  listed in the new draft's problems, as for any draft.
+- **Problems are listed by path** (`contests.2.title: enter a title`), by the browser before sending and by the api
+  (400) for anything the browser did not check.
+- **Allowed in production:** it only creates drafts, which still need a roll and an Auditor's scheduling approval.
+
+**Exporting** (`GET /v1/admin/elections/{id}/package`, Election Admin and Auditor) works in any state. The file gives:
+
+- the absolute window;
+- every contest and candidate with its ID;
+- each proposal's full text with its content hash;
+- `exportedFrom: {electionId, definitionHash, exportedAt}`, which import ignores.
+
+Importing an export gives the same definition, apart from the election's own ID (tested).
+
+**Web:** "Import JSON" on the Elections tab, which lists any problems by path. "Download as JSON" in the election
+editor, next to the Word ballot.
 
 ## 7. Ballot casting and secrecy
 
@@ -945,7 +1004,7 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   `approval.requested`, `approval.decided`, `signin_method.changed`. Added since: `photo.decided`, `roll.approved`,
   `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled` (M2–M3a), `ballots.sealed`,
   `election.sealed` (M3b), `results.computed` (M4a), `results.certified`, `election.pool_key_destroyed`,
-  `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed` (M5). The authoritative list is
+  `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed`, `navigation.changed` (M5). The authoritative list is
   `LEDGER_EVENT_TYPES` in `ustp-domain`.
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
   entries are public. A public verifier checks a public entry by Merkle inclusion in its ledger block (§8.3) without
@@ -1154,10 +1213,11 @@ results page, the CLI and the tests pass it that entry.
 act on that election (Q12; enforced on every edit, and nobody can add themselves as a candidate). All admin roles require MFA. The first System Admin is bootstrapped once from deployment
 configuration and ledgered.
 
-The admin console is in the web app's menu for everyone (§5.2). Signed out, it leads to sign-in and back; signed in
-with no role, to a page saying it is for party officers and that a System Admin grants roles (§10.2). Each officer
-sees the tabs their roles allow, and a page their roles do not cover (an election, for a Membership Admin) returns to
-the console.
+The admin console is in the web app's menu for whoever the navigation settings show it to: by default everyone
+(§5.2, §10.5). Signed out, it leads to sign-in and back; signed in with no role, to a page saying it is for party
+officers and that a System Admin grants roles (§10.2). Each officer sees the tabs the settings give their roles, which
+are never more than the roles allow, and a page their roles do not cover (an election, for a Membership Admin) returns
+to the console.
 
 ### 10.2 Two-person rule
 
@@ -1256,6 +1316,59 @@ different account on each side. Testing mode lets one System Admin do that alone
 - **Effect on the record:** what a persona does is real data in that deployment's ledger, rolls and results. That is
   acceptable only because testing mode is confined to test deployments.
 
+### 10.5 Who sees which link
+
+System Admins choose which main-menu links and admin console sections each membership state and staff role is shown,
+and the page each starts on (Admin → Navigation). The settings decide what the web app **shows, never what anyone may
+do**: the API's role checks (§10.1, §12) are unchanged, and a page reached by its address refuses or explains itself
+as before.
+
+- **Columns (audiences):** signed out; signed in with no membership; each member status (applicant, Active, lapsed,
+  suspended, resigned, rejected; §5.1); then each staff role. **Rows:** Register, Ballot, Verify and Admin; the admin
+  sections (Applications, Members, Photos, Bylaws, Elections, Offices, Approvals, People, Sign-in methods, Audit
+  ledger, Testing, Navigation); and "Starts on". The vocabulary, defaults and rules are `MENU_LINKS`,
+  `ADMIN_SECTIONS`, `AUDIENCES` and the functions beside them in `ustp-domain` (`governance/navigation.ts`), shared
+  by the API and the web app.
+- **Union.** A person is shown everything their membership state is shown plus everything each role they hold is
+  shown: roles add, never take away. Signed out, only the signed-out column applies. A test persona (§10.4) is shown
+  what the persona would be.
+- **Locked cells.** Admin sections exist only for roles: a membership state alone has none. A section is locked off
+  for every role the API does not let use it (`SECTION_ROLES`, the `@Roles` of the routes it calls; a server unit
+  test compares the two route by route). Offices and Approvals are open to every role, since every admin may read
+  the offices and look at pending requests. A role's Admin link is not switched on its own: it shows while the role
+  has any section. **Lock-out guard:** People (where roles change) and Navigation stay on for System Admins, so
+  nobody can hide from them the tools that put everything else back; the API refuses settings that try (409).
+- **Defaults** (version 0, before anyone saves) are the menu as it was: all four links for every membership state,
+  each role its own sections (System Admins without Offices, which they may read but not change), roles adding Ballot
+  and Verify (and Admin, from their sections) so a staff member with no membership keeps them.
+- **Start page.** Each signed-in audience starts on home, their account, a menu page it is shown, or (a role) one of
+  its sections; by default Register with no membership, as signing in did before, and home otherwise. A person with
+  roles starts where the first role they hold says, in the order Membership Admin, Election Admin, Auditor, System
+  Admin (staff come for their tools, and System Admin's are the occasional ones); without one, where their membership
+  state says; and on home if that page is not shown to them. It applies after signing in without a page to return
+  to, and when a browser tab first opens the app at home (not on reloads). Signed out, the start is always the public
+  home page.
+- **Home page.** Signed out, `/` is the public page, whose buttons follow the signed-out column. Signed in, it is a
+  card for each menu page and section the person is shown, plus their account, with what is waiting where a count is
+  cheap: ballots to cast and opening soon, applications and photos waiting for review, elections by state, and
+  two-person requests the person could decide (their role approves it, and it is neither theirs nor about them). The
+  Register card is worded for where they are in joining (apply, your application, your membership, apply again).
+- **Storage and API.** `navigation/current` holds the whole matrix with a `version` counter. `GET /v1/navigation`
+  (public, cached by each api instance for a minute like the sign-in switches) serves it without who changed it;
+  `GET|PUT /v1/admin/navigation` (System Admin) reads it and saves the whole matrix. A save names the version it was
+  edited from and is refused (409) if someone saved since, so one admin cannot silently undo another's change; cells
+  are resolved (locks applied, a role's Admin link from its sections, start pages still shown) and refused if a locked
+  cell was switched or a start page is one its audience is not shown. Every save that changes something is ledgered
+  as `navigation.changed` with the System Admin as actor and each changed cell in the payload (audience, link or
+  section, shown or the new start page); like the sign-in switches it is an internal setting, visible to Auditors only.
+  Saving nothing new writes nothing.
+- **Web app.** The menu, the console's tabs and the home page follow the settings; they load with the page (the
+  defaults stand in until then, and if they cannot be loaded). A System Admin's save applies at once in their own tab;
+  everyone else gets it the next time they open the app. The matrix is a table: column groups for membership and staff
+  roles, row groups for the menu, the sections and the start page, a checkbox per switchable cell named for what it
+  does ("Show Ballot to Applicant"), locked cells as text saying why, and the unsaved changes listed in words before
+  saving.
+
 ## 11. Data model (Firestore `(default)` database)
 
 Firestore Native mode has no namespaces. The spec's two namespaces are **module boundaries in code**: each bounded
@@ -1300,6 +1413,7 @@ Physically, registration collections are top-level and election data lives under
 | `role_assignments/{accountId}_{role}` | composite | grant/revoke | grantedBy (approvedBy, approvalId only for two-person grants made before §10.2's change) |
 | `approval_requests/{id}` | auto | status only; pending ones go with a deleted election | two-person requests *(added)* |
 | `testing_personas/{accountId}` | accountId | immutable | kind, label, number, createdBy; testing mode only (§10.4) *(added)* |
+| `navigation/current` | `current` | replaced whole, by one System Admin | menu links and admin sections per membership state and role, start pages, version, updatedAt, updatedBy (§10.5) *(added)* |
 
 The spec places `role_assignments` and `audit_events` in the voting namespace; they serve both modules, so the
 design treats them as a shared audit/admin module. Path constants and document shapes live in `ustp-domain`
@@ -1320,6 +1434,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /bylaws/current` | P | current bylaws version and hash |
 | `GET /bylaws` · `GET /bylaws/{version}` | P | every version without its text, newest first; one version in full |
 | `GET /sign-in-methods` | P | which sign-in providers are switched on (sign-in buttons) |
+| `GET /navigation` | P | who sees which menu link and admin section, and where each starts (§10.5) |
 | `POST /registration/applications` · `GET /registration/applications/me` | M | apply; status |
 | `POST /me/resign` | M | resign membership |
 | `POST /me/details` | M | own preferred name, state, city, ZIP, phone and email opt-ins (§5.2) |
@@ -1344,6 +1459,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/photos` · `GET /admin/photos/{id}/image` · `POST /admin/photos/{id}/decision` | Membership Admin | photo review |
 | `GET /admin/elections` · `GET /admin/elections/{id}` (detail, definition hash, problems) · `GET /admin/proposals` | Election Admin, Auditor | read election setup |
 | `POST /admin/elections` · `PATCH /admin/elections/{id}` · `POST\|PUT\|DELETE …/contests[/{cid}]` · `POST\|DELETE …/contests/{cid}/candidates[/{kid}]` · `POST /admin/proposals` | Election Admin | edit drafts |
+| `POST /admin/elections/import` | Election Admin | a whole draft from a `ustp.election` file, in one transaction (400/403/409 write nothing; §6.7) |
+| `GET /admin/elections/{id}/package` | Election Admin, Auditor | any election as a `ustp.election` file (§6.7) |
 | `POST /admin/elections/{id}/roll` · `.../schedule` · `.../cancel` · `.../certify` | Election Admin | roll snapshot (`voters: 'test_voters'` for a rehearsal roll, testing mode only, §6.3), scheduling, cancellation and certification requests (draft cancel is immediate) |
 | `POST /admin/elections/{id}/delete` | Election Admin | permanently delete a cancelled election nobody voted in, or in testing mode a certified or cancelled rehearsal with its ballots, at once (204; 409 otherwise; §6.1) |
 | `GET /admin/positions` · `POST /admin/positions` · `POST /admin/positions/{id}/terms/{termId}/end` | any admin (read); Membership or Election Admin | offices and terms; define or change an office (at once), end a term (→ approval) |
@@ -1353,6 +1470,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/audit/events` · `GET /admin/audit/verify` | Auditor | ledger (paged by seq); verification of chain, blocks, signatures and anchors |
 | `GET\|PUT /admin/sign-in-methods` · `POST /admin/roles` | System Admin | auth switches; grant or revoke a role, at once (returns the account's roles afterwards; §10.2) |
 | `GET /admin/accounts` (paged; `email` prefix, `role` filter) | System Admin | People list: accounts with member status and active roles, read-only (§10.3) |
+| `GET\|PUT /admin/navigation` | System Admin | the navigation settings with who saved them; save the whole matrix from the version it was edited from (409 if someone saved since, or a locked cell is switched), ledgered (§10.5) |
 | `GET\|POST /testing/personas` · header `X-Act-As` on any signed-in route | System Admin, testing mode only (404 otherwise) | test personas and acting as them (§10.4) |
 
 Errors use RFC 9457 problem details. Request bodies are validated against schemas shared with the web app.
@@ -1552,4 +1670,4 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Word export done:* the ballot and results as a `.docx` built in the browser, for Word and Google Docs, from the results page, the ballot page and the election editor (§9). *Synopsis done:* the results in brief, as the party publishes them, first on the results page (printable) and first in the Word file (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list (§6.1); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15). *Still to do:* the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15). *Still to do:* the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |

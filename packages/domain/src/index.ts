@@ -3,6 +3,7 @@ export { uuidv7, isUuidV7, uuidv7Timestamp } from './ids.js';
 export { ROLES, conflictingRoles, isRole, checkRoleChange } from './roles.js';
 export type { Role } from './roles.js';
 export * from './membership/index.js';
+export * from './governance/index.js';
 export { diffLines, splitLines } from './text-diff.js';
 export {
   MAX_AMENDMENT_CHANGES,
@@ -94,6 +95,19 @@ export type {
 export { rollLeaf, sortRoll, rollMerkleRoot, rollInclusionProof, rollStatement, rollSigningInput, isRehearsalRoll } from './roll.js';
 export type { RollCriteria, RollStatement } from './roll.js';
 export * from './election-api.js';
+export {
+  ELECTION_PACKAGE_FORMAT,
+  MAX_PACKAGE_CANDIDATES,
+  MAX_PACKAGE_CONTESTS,
+  MAX_PACKAGE_DOCUMENTS,
+  contestRecord,
+  electionPackageFrom,
+  electionPackageSchema,
+  packageProposals,
+  packageRecords,
+  packageWindow,
+} from './election-package.js';
+export type { ElectionPackage, ElectionPackageInput, PackageContest, PackageProposal } from './election-package.js';
 export { castBallotSchema, ballotProblems, ballotViewProblems, commitmentsOf } from './ballots.js';
 export {
   buildSealedBlock,

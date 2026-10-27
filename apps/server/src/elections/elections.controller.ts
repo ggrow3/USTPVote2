@@ -3,6 +3,7 @@ import {
   candidateInputSchema,
   contestInputSchema,
   createElectionSchema,
+  electionPackageSchema,
   proposalInputSchema,
   reasonInputSchema,
   rollRequestSchema,
@@ -10,6 +11,7 @@ import {
   type CandidateInput,
   type ContestInput,
   type CreateElectionInput,
+  type ElectionPackage,
   type ProposalInput,
   type ReasonInput,
   type RollRequestInput,
@@ -37,10 +39,23 @@ export class ElectionsController {
     return this.elections.create(ctx, body);
   }
 
+  /** A whole draft from one `ustp.election` file (design §6.7), written at once or not at all. */
+  @Post('import')
+  importPackage(@Ctx() ctx: RequestContext, @Body(new ZodPipe(electionPackageSchema)) body: ElectionPackage) {
+    return this.elections.importPackage(ctx, body);
+  }
+
   @Get(':id')
   @Roles('election_admin', 'auditor')
   detail(@Param('id') id: string) {
     return this.elections.detail(id);
+  }
+
+  /** The election as a `ustp.election` file, whatever its state. */
+  @Get(':id/package')
+  @Roles('election_admin', 'auditor')
+  exportPackage(@Param('id') id: string) {
+    return this.elections.exportPackage(id);
   }
 
   @Patch(':id')

@@ -29,7 +29,7 @@ import {
   type ResultsSynopsis,
 } from 'ustp-domain';
 import { INK, LETTER_PAGE, STAMP_PARAGRAPH_STYLE, stampLine, textParagraph } from './bylaws-docx.js';
-import { KIND_LABELS, rulesText, tieBreakText } from './election-text.js';
+import { electionSlug, fileDate, KIND_LABELS, rulesText, tieBreakText } from './election-text.js';
 import {
   ballotsText,
   chooseNText,
@@ -472,13 +472,6 @@ export function electionDocxFileName(
   definition: Pick<ElectionDefinition, 'title'>,
   options: { readonly withResults: boolean; readonly exportedAt: Date; readonly timeZone?: string },
 ): string {
-  const slug =
-    definition.title
-      .normalize('NFKD')
-      .replace(/[̀-ͯ]/g, '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .slice(0, 60)
-      .replace(/^-+|-+$/g, '') || 'election';
-  return `ustp-vote-${slug}${options.withResults ? '' : '-ballot'}-${clock(options.timeZone).day(options.exportedAt)}.docx`;
+  const kind = options.withResults ? '' : '-ballot';
+  return `ustp-vote-${electionSlug(definition.title)}${kind}-${fileDate(options.exportedAt, options.timeZone)}.docx`;
 }

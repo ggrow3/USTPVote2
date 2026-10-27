@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { createElectionSchema, type ElectionRecord } from 'ustp-domain';
-import { api } from '../../api.js';
+import { createElectionSchema, type ElectionDetail, type ElectionRecord } from 'ustp-domain';
+import { api, ApiError } from '../../api.js';
 import { focusFirstInvalid } from '../../a11y.js';
 import { attempt } from '../../dialogs.js';
+import { packageProblem, readElectionPackage } from '../../election-files.js';
 import { fromLocalInput, toLocalInput } from '../../election-text.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../../forms.js';
 import { hasRole } from '../../session.js';
@@ -51,6 +52,43 @@ async function create() {
   }
 }
 
+/**
+ * Imports a `ustp.election` file as a new draft (design §6.7). The browser checks it first with the api's schema; what
+ * is wrong is listed by path, from the browser or from the api, until the next import.
+ */
+const packageInput = ref<HTMLInputElement | null>(null);
+const importing = ref(false);
+const importProblems = ref<{ readonly file: string; readonly problems: readonly string[] } | null>(null);
+
+async function importPackage(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  importing.value = true;
+  importProblems.value = null;
+  try {
+    const read = await readElectionPackage(file);
+    if (!read.ok) {
+      importProblems.value = { file: file.name, problems: read.problems };
+      return;
+    }
+    let imported: ElectionDetail | null = null;
+    const ok = await attempt(async () => {
+      try {
+        imported = await api<ElectionDetail>('POST', '/v1/admin/elections/import', read.pkg);
+      } catch (e) {
+        const errors = e instanceof ApiError ? (e.problem.errors ?? []) : [];
+        if (errors.length) importProblems.value = { file: file.name, problems: errors.map((i) => packageProblem(i.path, i.message)) };
+        throw e;
+      }
+    }, 'Draft imported');
+    if (ok && imported) await router.push(`/admin/elections/${(imported as ElectionDetail).election.electionId}`);
+  } finally {
+    importing.value = false;
+  }
+}
+
 onMounted(load);
 </script>
 
@@ -58,8 +96,28 @@ onMounted(load);
   <div class="ustp-content">
     <div class="ustp-toolbar">
       <q-btn v-if="hasRole('election_admin')" color="primary" no-caps label="New election" @click="creating = true" />
+      <q-btn
+        v-if="hasRole('election_admin')"
+        outline
+        no-caps
+        color="primary"
+        icon="upload_file"
+        label="Import JSON"
+        :loading="importing"
+        @click="packageInput?.click()"
+      />
+      <input ref="packageInput" type="file" accept=".json,application/json" hidden @change="importPackage" />
       <q-btn flat dense icon="refresh" aria-label="Refresh elections" @click="load" />
     </div>
+    <q-banner v-if="importProblems" class="bg-negative text-white" rounded role="alert">
+      <p class="q-mb-xs">{{ importProblems.file }} was not imported:</p>
+      <ul class="q-my-none">
+        <li v-for="p in importProblems.problems" :key="p">{{ p }}</li>
+      </ul>
+      <template #action>
+        <q-btn flat no-caps color="white" label="Dismiss" @click="importProblems = null" />
+      </template>
+    </q-banner>
     <div v-if="listState === 'failed'" class="text-grey-7">Could not load elections.</div>
     <div v-else-if="listState === 'ready' && !rows.length" class="text-grey-7">No elections yet.</div>
     <q-list v-else-if="rows.length" bordered separator>
