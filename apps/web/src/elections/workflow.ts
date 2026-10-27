@@ -1,10 +1,13 @@
 import {
   cancelledFrom,
+  hasReminder,
   STEP_STATE,
   type ElectionProgress,
   type ElectionRecord,
   type ElectionState,
   type ElectionStep,
+  type NoticeKind,
+  type NoticeStep,
   type StepStatus,
   type Waiting,
   type WaitingFor,
@@ -238,6 +241,8 @@ interface ActionSpec {
   readonly waits: readonly WaitingFor[];
   /** Only in a secret election, which has a ballot encryption key. */
   readonly secret?: boolean;
+  /** One of the election emails (design §6.8), whose status comes from its counts, not from the lifecycle. */
+  readonly email?: NoticeKind;
   /** It moves the election to its next state, which a cancelled election left by the way out instead. */
   readonly ends?: boolean;
 }
@@ -248,7 +253,7 @@ const act = (
   step: ElectionStep,
   label: readonly string[],
   waits: readonly WaitingFor[] = [],
-  more: Pick<ActionSpec, 'secret' | 'ends'> = {},
+  more: Pick<ActionSpec, 'secret' | 'ends' | 'email'> = {},
 ): ActionSpec => ({ id, lane, step, label, waits, ...more });
 
 /**
@@ -272,8 +277,13 @@ const ROWS: Record<Band, readonly (readonly ActionSpec[])[]> = {
     [act('open', 'worker', 'scheduled', ['Opens', 'voting'], ['opening_time', 'open_tick'], { ends: true })],
   ],
   open: [
-    // Voting is what happens until the closing time; then the worker's tick is what the election waits on.
-    [act('vote', 'members', 'open', ['Vote'], ['closing_time'])],
+    // The worker emails the roll that voting is open, and voting is what happens until the closing time, when the
+    // worker's tick is what the election waits on. A day before the close it reminds those who have not voted.
+    [
+      act('email_open', 'worker', 'open', ['Emails', 'the roll'], [], { email: 'voting_open' }),
+      act('vote', 'members', 'open', ['Vote'], ['closing_time']),
+    ],
+    [act('remind', 'worker', 'open', ['Sends a', 'reminder'], [], { email: 'closing_soon' })],
     [act('close', 'worker', 'open', ['Closes', 'voting'], ['close_tick'], { ends: true })],
   ],
   closed: [
@@ -320,19 +330,21 @@ export interface SwimLanes {
 
 type LaneElection = Pick<
   ElectionRecord,
-  'state' | 'secrecy' | 'scheduledAt' | 'openedAt' | 'closedAt' | 'poolKeyVersion' | 'poolKeyDestroyedAt'
+  'state' | 'secrecy' | 'opensAt' | 'closesAt' | 'scheduledAt' | 'openedAt' | 'closedAt' | 'poolKeyVersion' | 'poolKeyDestroyedAt'
 >;
 
 /**
  * Who does what in the lifecycle, and where the election is: each action has the status of its step, refined by what
- * the election waits on (an Election Admin's request is done while the Auditor's decision on it is awaited).
+ * the election waits on (an Election Admin's request is done while the Auditor's decision on it is awaited). The
+ * emails take the status `noticeSteps` gives them from their counts; an election open a day or less has no reminder.
  */
-export function swimLanes(progress: ElectionProgress, election: LaneElection): SwimLanes {
+export function swimLanes(progress: ElectionProgress, election: LaneElection, emails: readonly NoticeStep[] = []): SwimLanes {
   const stepStatus = new Map(progress.steps.map((s) => [s.step, s.status]));
   const waited = new Set(progress.waiting.map((w) => w.for));
   const isWaited = (a: ActionSpec) => a.waits.some((w) => waited.has(w));
   const secret = election.secrecy === 'secret';
-  const present = (a: ActionSpec) => secret || !a.secret;
+  const present = (a: ActionSpec) => (secret || !a.secret) && (a.email !== 'closing_soon' || hasReminder(election));
+  const emailStatus = (a: ActionSpec) => (a.email ? emails.find((e) => e.kind === a.email)?.status : undefined);
   const cancelled = election.state === 'cancelled';
   const from = cancelledFrom(election);
 
@@ -388,7 +400,7 @@ export function swimLanes(progress: ElectionProgress, election: LaneElection): S
     const rows = ROWS[band].map((row) => row.filter(present)).filter((row) => row.length > 0);
     const main = (MAIN_BANDS as readonly Band[]).includes(band);
     const status = (a: ActionSpec) =>
-      main ? mainStatus(a, rows.flat().filter((b) => b.step === a.step)) : wayOutStatus(a);
+      emailStatus(a) ?? (main ? mainStatus(a, rows.flat().filter((b) => b.step === a.step)) : wayOutStatus(a));
     return {
       band,
       status: bandStatus(band),
