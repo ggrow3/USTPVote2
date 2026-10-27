@@ -30,11 +30,13 @@ describe('navigation settings wording', () => {
     expect(lockText('guarded', 'system_admin', 'people')).toMatch(/cannot be locked out/);
     expect(lockText('follows_sections', 'auditor', undefined, true)).toBe('Shown while Auditors have any admin section');
     expect(lockText('follows_sections', 'auditor', undefined, false)).toBe('Hidden while Auditors have no admin section');
+    expect(lockText('signed_in', 'active')).toBe('Not applicable: already signed in');
   });
 
   it('describes each change in words', () => {
     expect(describeChange({ audience: 'applicant', link: 'ballot', shown: false })).toBe('Hide Ballot from Applicant');
     expect(describeChange({ audience: 'system_admin', section: 'offices', shown: true })).toBe('Show Admin › Offices to System Admin');
     expect(describeChange({ audience: 'active', startsOn: 'admin/elections' })).toBe('Active member starts on Admin › Elections');
+    expect(describeChange({ audience: 'signed_out', link: 'signin', shown: false })).toBe('Hide Sign in from Signed out');
   });
 });

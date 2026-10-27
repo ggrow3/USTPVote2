@@ -294,9 +294,10 @@ Every transition writes, in one transaction, the new status on `members/{account
      submit is stopped in the browser with the answers kept. The api still refuses any application from an unverified
      address.
   3. *Membership review*: the submitted application's status, until a Membership Admin decides it.
-- **Who sees what.** The web app's menu links (Register, Ballot, Verify, Admin) are the ones the navigation settings
-  give the person's membership state and roles (§10.5). By default everyone sees all four, signed in or not, and each
-  page tells people it is not for what they can do instead, as it does for anyone who reaches it by its address. On
+- **Who sees what.** The web app's menu links (Register, Ballot, Verify, Admin) and the header's Sign in button are the
+  ones the navigation settings give the person's membership state and roles (§10.5). By default everyone sees all four
+  links, signed in or not, visitors see Sign in, and each page tells people it is not for what they can do instead, as
+  it does for anyone who reaches it by its address. On
   Register, signed-out visitors
   start at step 1, and people who may apply (no membership, or a rejected or resigned one: `mayApply` in
   `ustp-domain`) at step 2. An applicant sees step 3. An Active, lapsed or suspended member sees their status instead
@@ -1324,11 +1325,11 @@ do**: the API's role checks (§10.1, §12) are unchanged, and a page reached by 
 as before.
 
 - **Columns (audiences):** signed out; signed in with no membership; each member status (applicant, Active, lapsed,
-  suspended, resigned, rejected; §5.1); then each staff role. **Rows:** Register, Ballot, Verify and Admin; the admin
-  sections (Applications, Members, Photos, Bylaws, Elections, Offices, Approvals, People, Sign-in methods, Audit
-  ledger, Testing, Navigation); and "Starts on". The vocabulary, defaults and rules are `MENU_LINKS`,
-  `ADMIN_SECTIONS`, `AUDIENCES` and the functions beside them in `ustp-domain` (`governance/navigation.ts`), shared
-  by the API and the web app.
+  suspended, resigned, rejected; §5.1); then each staff role. **Rows:** Register, Ballot, Verify and Admin; Sign in
+  (the header's button for visitors); the admin sections (Applications, Members, Photos, Bylaws, Elections, Offices,
+  Approvals, People, Sign-in methods, Audit ledger, Testing, Navigation); and "Starts on". The vocabulary, defaults
+  and rules are `MENU_LINKS`, `ADMIN_SECTIONS`, `AUDIENCES` and the functions beside them in `ustp-domain`
+  (`governance/navigation.ts`), shared by the API and the web app.
 - **Union.** A person is shown everything their membership state is shown plus everything each role they hold is
   shown: roles add, never take away. Signed out, only the signed-out column applies. A test persona (§10.4) is shown
   what the persona would be.
@@ -1336,11 +1337,15 @@ as before.
   for every role the API does not let use it (`SECTION_ROLES`, the `@Roles` of the routes it calls; a server unit
   test compares the two route by route). Offices and Approvals are open to every role, since every admin may read
   the offices and look at pending requests. A role's Admin link is not switched on its own: it shows while the role
-  has any section. **Lock-out guard:** People (where roles change) and Navigation stay on for System Admins, so
-  nobody can hide from them the tools that put everything else back; the API refuses settings that try (409).
-- **Defaults** (version 0, before anyone saves) are the menu as it was: all four links for every membership state,
-  each role its own sections (System Admins without Offices, which they may read but not change), roles adding Ballot
-  and Verify (and Admin, from their sections) so a staff member with no membership keeps them.
+  has any section. Sign in is for signed-out visitors only, so it is locked off for everyone signed in. **Lock-out
+  guard:** People (where roles change) and Navigation stay on for System Admins, so nobody can hide from them the tools
+  that put everything else back; and signed-out visitors keep at least one way to sign in (Sign in, Register's first
+  step, or Ballot or Admin, which send them to sign in), since every admin arrives as a visitor. The API refuses
+  settings that break either (409), and the matrix says why before Save.
+- **Defaults** (version 0, before anyone saves) are the menu as it was: all four links for every membership state and
+  Sign in for visitors, each role its own sections (System Admins without Offices, which they may read but not
+  change), roles adding Ballot and Verify (and Admin, from their sections) so a staff member with no membership keeps
+  them. Settings saved before the Sign in row existed show it to visitors.
 - **Start page.** Each signed-in audience starts on home, their account, a menu page it is shown, or (a role) one of
   its sections; by default Register with no membership, as signing in did before, and home otherwise. A person with
   roles starts where the first role they hold says, in the order Membership Admin, Election Admin, Auditor, System

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import {
   ADMIN_SECTIONS,
   AUDIENCES,
+  checkNavigationSettings,
   DEFAULT_NAVIGATION,
   MEMBERSHIP_AUDIENCES,
   MENU_LINKS,
@@ -52,6 +53,11 @@ const draft = ref<Draft | null>(null);
 /** What the draft amounts to: locked cells at their value, Admin links from sections, start pages still shown. */
 const resolved = computed(() => draft.value && resolveNavigation(draft.value));
 const changes = computed(() => (saved.value && resolved.value ? navigationChanges(saved.value, resolved.value) : []));
+/** Why the API would refuse the draft, if it would (a locked cell cannot be switched here, so: visitors left no way to sign in). */
+const refusal = computed(() => {
+  const check = resolved.value && checkNavigationSettings(resolved.value);
+  return check && !check.ok ? check.reason : null;
+});
 const isDefault = computed(() => !!resolved.value && navigationChanges(DEFAULT_NAVIGATION, resolved.value).length === 0);
 
 const columns = ref<'all' | 'membership' | 'roles'>('all');
@@ -264,8 +270,11 @@ onMounted(load);
           <li v-for="(c, i) in changes" :key="i">{{ describeChange(c) }}</li>
         </ul>
       </q-card-section>
+      <q-card-section v-if="refusal">
+        <q-banner class="bg-orange-2 text-black" rounded>Cannot save: {{ refusal }}.</q-banner>
+      </q-card-section>
       <q-card-section class="ustp-actions">
-        <q-btn color="primary" label="Save changes" :disable="!changes.length" @click="save" />
+        <q-btn color="primary" label="Save changes" :disable="!changes.length || !!refusal" @click="save" />
         <q-btn flat color="primary" label="Discard changes" :disable="!changes.length" @click="load" />
         <q-btn flat color="primary" label="Restore defaults" :disable="isDefault" @click="restoreDefaults" />
       </q-card-section>
@@ -391,7 +400,10 @@ onMounted(load);
 .nav-item {
   min-width: 11rem;
 }
+/* Positioned (as the sticky headers are), so a cell's hidden text (absolute, .sr-only) stays inside the scrolling
+   table instead of widening the admin panel around it. */
 .nav-cell {
+  position: relative;
   text-align: center;
 }
 

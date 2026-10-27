@@ -115,7 +115,11 @@ test. Keep it current when pages change.
   sticky row headers repaint the card's own colour in both themes. The home page is one `h1` ("Welcome, Ada
   Brooks"), a caption naming the membership state and roles, and a list named "What you can do" of cards, each an
   `h2` with a button whose text names its destination ("Open your ballots", "Open Applications"); one column at
-  320 px with nothing scrolling sideways.
+  320 px with nothing scrolling sideways. The Sign in row, added afterwards, was checked the same way: one checkbox
+  ("Show Sign in to Signed out") and text in every other column ("Not applicable: already signed in"). Hiding every way
+  for visitors to sign in shows a light banner (`orange-2`, black text) saying why, and Save stays disabled. Fixed on
+  the way: the cells' hidden text was positioned against the admin panel rather than the table, which gave the panel a
+  second sideways scrollbar below the matrix's own.
 
 ## What was fixed
 

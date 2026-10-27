@@ -9,8 +9,8 @@ import { ROLES, type Role } from '../roles.js';
  * role checks stay as they are, and a section a role may not use stays hidden from it.
  */
 
-/** The main menu's links, in menu order. */
-export const MENU_LINKS = ['register', 'ballot', 'verify', 'admin'] as const;
+/** The menu bar's links in menu order, then the header's Sign in button (which only signed-out visitors can use). */
+export const MENU_LINKS = ['register', 'ballot', 'verify', 'admin', 'signin'] as const;
 export type MenuLink = (typeof MENU_LINKS)[number];
 
 /** The admin console's sections (tabs), in tab order. */
@@ -62,6 +62,9 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   navigation: ['system_admin'],
 };
 
+/** Links that lead a signed-out visitor to sign in: Sign in itself, Register (its first step), and Ballot and Admin. */
+export const SIGN_IN_WAYS: readonly MenuLink[] = ['signin', 'register', 'ballot', 'admin'];
+
 /**
  * Sections System Admins always see: these settings and People (where roles change). Without them nobody could give
  * System Admins their tools back.
@@ -69,7 +72,7 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
 export const GUARDED_SECTIONS: readonly AdminSection[] = ['people', 'navigation'];
 
 /** A page someone can start on: home, their account, a menu page, or an admin section. */
-export type StartPage = 'home' | 'account' | Exclude<MenuLink, 'admin'> | `admin/${AdminSection}`;
+export type StartPage = 'home' | 'account' | Exclude<MenuLink, 'admin' | 'signin'> | `admin/${AdminSection}`;
 export const START_PAGES: readonly StartPage[] = [
   'home',
   'account',
@@ -108,11 +111,14 @@ export type CellLock =
   /** The lock-out guard: always shown. */
   | 'guarded'
   /** A role's Admin link: shown while the role has any section. */
-  | 'follows_sections';
+  | 'follows_sections'
+  /** Sign in, for someone already signed in: always hidden. */
+  | 'signed_in';
 
 const isRole = (audience: Audience): audience is Role => (ROLES as readonly string[]).includes(audience);
 
 export function menuLock(audience: Audience, link: MenuLink): CellLock | null {
+  if (link === 'signin') return audience === 'signed_out' ? null : 'signed_in';
   return link === 'admin' && isRole(audience) ? 'follows_sections' : null;
 }
 
@@ -133,13 +139,20 @@ function defaultSection(role: Role, section: AdminSection): boolean {
 
 /**
  * The menu as it was before these settings (design §5.2): Register, Ballot, Verify and Admin for everyone, each page
- * explaining itself to people it is not for; admin sections by role. Roles add Ballot and Verify, so a staff member with
+ * explaining itself to people it is not for, and Sign in while signed out; admin sections by role. Roles add Ballot and Verify, so a staff member with
  * no membership keeps them, and Admin (from their sections). Signing in lands on Register with no membership, as it
  * did, and on the home page otherwise.
  */
 export const DEFAULT_NAVIGATION: NavigationSettings = {
   menu: Object.fromEntries(
-    AUDIENCES.map((a) => [a, isRole(a) ? links('ballot', 'verify', 'admin') : links('register', 'ballot', 'verify', 'admin')]),
+    AUDIENCES.map((a) => [
+      a,
+      isRole(a)
+        ? links('ballot', 'verify', 'admin')
+        : a === 'signed_out'
+          ? links('register', 'ballot', 'verify', 'admin', 'signin')
+          : links('register', 'ballot', 'verify', 'admin'),
+    ]),
   ) as Record<Audience, Record<MenuLink, boolean>>,
   sections: Object.fromEntries(ROLES.map((r) => [r, sectionsOf(r)])) as Record<Role, Record<AdminSection, boolean>>,
   startsOn: Object.fromEntries(SIGNED_IN_AUDIENCES.map((a) => [a, a === 'no_membership' ? 'register' : 'home'])) as Record<
@@ -185,12 +198,11 @@ export function resolveNavigation(stored: Stored | null | undefined): Navigation
     AUDIENCES.map((a) => [
       a,
       Object.fromEntries(
-        MENU_LINKS.map((l) => [
-          l,
-          menuLock(a, l) === 'follows_sections'
-            ? Object.values(sections[a as Role]).some(Boolean)
-            : flag(stored?.menu?.[a]?.[l], DEFAULT_NAVIGATION.menu[a][l]),
-        ]),
+        MENU_LINKS.map((l) => {
+          const lock = menuLock(a, l);
+          if (lock === 'follows_sections') return [l, Object.values(sections[a as Role]).some(Boolean)];
+          return [l, lock === 'signed_in' ? false : flag(stored?.menu?.[a]?.[l], DEFAULT_NAVIGATION.menu[a][l])];
+        }),
       ),
     ]),
   ) as Record<Audience, Record<MenuLink, boolean>>;
@@ -208,9 +220,16 @@ export function resolveNavigation(stored: Stored | null | undefined): Navigation
 
 /**
  * Whether settings can be saved as sent: no section for a role the API refuses it to, no guarded section hidden from
- * System Admins, and every start page one its audience sees. A role's Admin link is recomputed, not checked.
+ * System Admins, Sign in only for visitors and always some way for them to sign in, and every start page one its
+ * audience sees. A role's Admin link is recomputed, not checked.
  */
 export function checkNavigationSettings(settings: NavigationSettings): Check {
+  for (const a of AUDIENCES) {
+    if (menuLock(a, 'signin') === 'signed_in' && settings.menu[a].signin) return deny(`signin cannot be shown to ${a}: they are signed in`);
+  }
+  if (!SIGN_IN_WAYS.some((l) => settings.menu.signed_out[l])) {
+    return refuse('conflict', 'signed-out visitors need a way to sign in: show them Sign in, Register, Ballot or Admin');
+  }
   for (const role of ROLES) {
     for (const s of ADMIN_SECTIONS) {
       const lock = sectionLock(role, s);
