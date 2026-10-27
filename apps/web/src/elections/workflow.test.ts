@@ -4,6 +4,7 @@ import {
   type ApprovalRequestRecord,
   type ElectionRecord,
   type ProgressInput,
+  type StepStatus,
 } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
 import {
@@ -169,8 +170,9 @@ describe('swimLanes', () => {
       ['approve_roll', 'request_scheduling'],
       ['approve_scheduling', 'make_key'],
       ['make_key', 'open'],
-      ['open', 'vote'],
-      ['vote', 'close'],
+      ['open', 'email_open'],
+      ['vote', 'remind'],
+      ['remind', 'close'],
       ['close', 'seal'],
       ['seal', 'tally'],
       ['tally', 'request_certification'],
@@ -179,6 +181,46 @@ describe('swimLanes', () => {
     ]);
     expect(statuses(lanes)).toMatchObject({ certify: 'done', destroy_key: 'current', cancel_draft: 'not_reached' });
     expect(bands(lanes)).toMatchObject({ closed: 'done', certified: 'current', cancelled: 'not_reached' });
+  });
+
+  it('shows the emails to voters with the status their counts give, beside voting', () => {
+    const input = { ...detail, election };
+    const progress = electionProgress(input, now);
+    const emails = (open: StepStatus, soon: StepStatus) =>
+      swimLanes(progress, election, [
+        { kind: 'voting_open', status: open, notice: null, absent: null },
+        { kind: 'closing_soon', status: soon, notice: null, absent: null },
+      ]);
+    expect(statuses(emails('done', 'upcoming'))).toMatchObject({ email_open: 'done', vote: 'current', remind: 'upcoming', close: 'upcoming' });
+    expect(statuses(emails('current', 'upcoming'))).toMatchObject({ email_open: 'current', vote: 'current' });
+    // Email not set up: neither goes, and the lines into them are dashed.
+    const off = laneLayout(emails('not_reached', 'not_reached'), 400);
+    // The line coming down into each from the row above.
+    const into = (id: string) => {
+      const box = off.boxes.find((b) => b.action.id === id)!;
+      return off.lines.find((l) => l.points.at(-1)![0] === box.x + box.width / 2 && l.points.at(-1)![1] === box.y);
+    };
+    expect(into('email_open')).toMatchObject({ dashed: true });
+    expect(into('remind')).toMatchObject({ dashed: true });
+    expect(into('close')).toMatchObject({ dashed: false });
+    expect(statuses(emails('not_reached', 'not_reached'))).toMatchObject({ vote: 'current' });
+  });
+
+  it('leaves the reminder out where the emails say voting is too short for its lead time', () => {
+    const input = { ...detail, election };
+    const lanes = swimLanes(electionProgress(input, now), election, [
+      { kind: 'voting_open', status: 'done', notice: null, absent: null },
+      { kind: 'closing_soon', status: 'not_reached', notice: null, absent: 'short_window' },
+    ]);
+    expect(Object.keys(statuses(lanes))).not.toContain('remind');
+    expect(lanes.links).toContainEqual(['vote', 'close']);
+  });
+
+  it('leaves the reminder out where voting is open a day or less', () => {
+    const { lanes } = lanesOf({ opensAt: '2026-11-01T11:00:00Z', closesAt: '2026-11-02T11:00:00Z' });
+    expect(Object.keys(statuses(lanes))).not.toContain('remind');
+    expect(lanes.links).toContainEqual(['vote', 'close']);
+    expect(Object.keys(statuses(lanes))).toContain('email_open');
   });
 });
 
@@ -203,14 +245,14 @@ describe('laneLayout', () => {
     const layout = laneLayout(lanes, 400);
     const box = new Map(layout.boxes.map((b) => [b.action.id, b]));
     const vote = box.get('vote')!;
-    const close = box.get('close')!;
-    // From the bottom of "Vote" round into the top of "Closes voting", turning above it.
+    const remind = box.get('remind')!;
+    // From the bottom of "Vote" round into the top of "Sends a reminder", turning above it.
     expect(layout.lines).toContainEqual({
       points: [
         [vote.x + vote.width / 2, vote.y + LANE_SIZES.box],
-        [vote.x + vote.width / 2, close.y - LANE_SIZES.turn],
-        [close.x + close.width / 2, close.y - LANE_SIZES.turn],
-        [close.x + close.width / 2, close.y],
+        [vote.x + vote.width / 2, remind.y - LANE_SIZES.turn],
+        [remind.x + remind.width / 2, remind.y - LANE_SIZES.turn],
+        [remind.x + remind.width / 2, remind.y],
       ],
       dashed: false,
     });

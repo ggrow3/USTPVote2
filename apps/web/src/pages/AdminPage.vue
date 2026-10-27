@@ -13,6 +13,7 @@ import SignInMethodsPanel from '../components/admin/SignInMethodsPanel.vue';
 import TestingPanel from '../components/admin/TestingPanel.vue';
 import HomeQuotePanel from '../governance/HomeQuotePanel.vue';
 import NavigationPanel from '../governance/NavigationPanel.vue';
+import NoticeSettingsPanel from '../notifications/NoticeSettingsPanel.vue';
 import { shown } from '../governance/navigation.js';
 import { SECTION_LABELS } from '../governance/navigation-text.js';
 import ApplicationsPanel from '../membership/ApplicationsPanel.vue';
@@ -34,6 +35,7 @@ const PANELS: Record<AdminSection, Component> = {
   people: PeoplePanel,
   signin: SignInMethodsPanel,
   claude: ClaudeKeyPanel,
+  email: NoticeSettingsPanel,
   audit: AuditPanel,
   testing: TestingPanel,
   navigation: NavigationPanel,

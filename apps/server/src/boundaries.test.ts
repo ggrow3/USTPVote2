@@ -12,7 +12,7 @@ const CONTEXTS: Readonly<Record<string, { readonly collections: readonly string[
     repositories: ['member.repository', 'application.repository'],
   },
   notifications: {
-    collections: ['notices', 'noticeOutbox'],
+    collections: ['notices', 'noticeOutbox', 'noticeSettings'],
     repositories: ['notice.repository'],
   },
 };

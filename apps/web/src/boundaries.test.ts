@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
  */
 const CONTEXTS: Readonly<Record<string, readonly string[]>> = {
   membership: ['/v1/registration/', '/v1/admin/applications', '/v1/admin/members', '/v1/me/resign', '/v1/me/details'],
-  notifications: ['/notices'],
+  notifications: ['/notices', '/notice-settings'],
   governance: ['/v1/navigation', '/v1/admin/navigation', '/v1/home-quote', '/v1/admin/home-quote'],
   // Its routes end the path after an election ID; the folder's own name appears in imports.
   'consistency-check': ['}/consistency-check'],

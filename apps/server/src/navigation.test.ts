@@ -9,6 +9,7 @@ import { ROLES_KEY } from './auth/decorators.js';
 import { AnthropicKeyController } from './claude-checks/anthropic-key-admin.js';
 import { ElectionsController } from './elections/elections.controller.js';
 import { MembershipAdminController } from './membership/membership.controller.js';
+import { NoticeSettingsController } from './notifications/notice-settings.js';
 import { PersonasController } from './personas/personas.controller.js';
 import { PhotoReviewController } from './photos/photos.controller.js';
 import { PositionsController } from './positions/positions.controller.js';
@@ -27,6 +28,7 @@ const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
   people: [AccountsAdminController, 'list'],
   signin: [SignInMethodsController, 'current'],
   claude: [AnthropicKeyController, 'status'],
+  email: [NoticeSettingsController, 'current'],
   audit: [AuditController, 'events'],
   testing: [PersonasController, 'list'],
   navigation: [NavigationAdminController, 'current'],

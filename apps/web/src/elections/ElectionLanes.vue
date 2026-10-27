@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useQuasar } from 'quasar';
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
-import type { ElectionProgress, ElectionRecord } from 'ustp-domain';
+import type { ElectionProgress, ElectionRecord, NoticeStep } from 'ustp-domain';
 import {
   BAND_LABELS,
   DARK_COLOURS,
@@ -18,7 +18,7 @@ import {
  * order they happen, each marked with its status. Drawn to the width it is given, so its text stays one size on a phone
  * and on a desktop. It is a picture: ElectionWorkflow names it, and its list says the same in words.
  */
-const props = defineProps<{ progress: ElectionProgress; election: ElectionRecord }>();
+const props = defineProps<{ progress: ElectionProgress; election: ElectionRecord; emails: readonly NoticeStep[] }>();
 const $q = useQuasar();
 
 /** Wider than this, the lanes only spread the actions out. */
@@ -35,7 +35,7 @@ onMounted(() => {
 });
 onBeforeUnmount(() => observer?.disconnect());
 
-const layout = computed(() => (width.value ? laneLayout(swimLanes(props.progress, props.election), width.value) : null));
+const layout = computed(() => (width.value ? laneLayout(swimLanes(props.progress, props.election, props.emails), width.value) : null));
 const colours = computed(() => {
   const c = $q.dark.isActive ? DARK_COLOURS : LIGHT_COLOURS;
   return {

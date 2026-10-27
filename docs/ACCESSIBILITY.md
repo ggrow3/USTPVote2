@@ -107,6 +107,26 @@ test. Keep it current when pages change.
   “2026 Officer Election”", "Add the voting window to your calendar", "open the Verify page", the contact address),
   black on white with links in `#bd4e00` (4.9:1), and a plain-text part with the same content. Not yet seen in mail
   clients, which differ in what HTML they keep.
+- **Added 2026-10-27, Admin › Election emails** (against the emulators as admin1@example.test, a System Admin; light at
+  desktop width, dark at 375 px): the panel's `h2` is "Election emails", each email a `section` named by its `h3`
+  ("Voting is open", "Closing soon: reminder…") and the contact another. Every field has a visible label (the two
+  switches "Send this email" and "Send the reminder", "Hours before voting closes", "Subject", "Opening paragraph, after
+  the greeting", "Contact for election questions"); the built-in wording is the placeholder and, in words, the hint
+  ("Empty: Voting is open: {title}"), and the lead time's hint says it in days ("2 days before the close…"). A wording
+  the checks refuse (an unknown placeholder such as `{name}`) is said under its field and marks it `aria-invalid`, and
+  Save stays disabled until it is fixed; the count of unsaved changes is shown beside Save. The previews are plain text
+  in a `pre` that wraps, so at 375 px nothing scrolls sideways; captions are `#b0b0b0` on `#1d1d1d` in the dark theme.
+  An Election Admin does not get the tab, and `?tab=email` falls back to their first section.
+- **Added 2026-10-27, the emails in the election workflow** (against the emulators as elections@example.test: an open
+  election with its reminder to come, then due, then sent; a scheduled one-day election with email switched off; light
+  at desktop width, dark at 375 px): the list has an "Email to voters" item after Open for voting, with its status in
+  words before its name ("Sent:", "Sending:", "To come:", "Not sent:") and a marker (✓, ▶, none, –) that is
+  decoration; it never takes `aria-current`, which stays on the election's one current step. Its lines name each email
+  and say how far it got in words. In the lanes, "Emails the roll" and "Sends a reminder" use the actions' existing
+  colours and marks, so the contrast figures below hold; a step that will not come is dashed and marked –. The longest
+  new label, "reminder", is narrower than "ballot key" already in the worker's lane, and at 375 px every label stays
+  inside its box with nothing scrolling sideways. The counts in the list update while an email goes out (the card's
+  reread, every 20 seconds).
 
 - **Added 2026-10-26, who sees which link and the home page** (design §10.5; against the emulators signed out, as a
   new login with no membership, an applicant, lapsed, suspended, resigned and rejected members, v1, elections@,
