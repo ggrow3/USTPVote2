@@ -11,7 +11,8 @@ import { SECTION_CAPTIONS, SECTION_LABELS } from './governance/navigation-text.j
 
 /** The signed-in home page (design §10.5): a card for each menu page and admin section the person is shown. */
 
-export type HomeCardKey = Exclude<MenuLink, 'admin' | 'signin'> | AdminSection | 'account';
+/** A menu page, an admin section (as a start page names it: Offices is both), or the account. */
+export type HomeCardKey = Exclude<MenuLink, 'admin' | 'signin'> | `admin/${AdminSection}` | 'account';
 
 export interface HomeCard {
   readonly key: HomeCardKey;
@@ -86,11 +87,20 @@ export function homeCards(
       action: 'Verify a receipt',
     });
   }
+  if (shown.menu.includes('offices')) {
+    cards.push({
+      key: 'offices',
+      title: 'Party offices',
+      text: 'Who holds each office now, and whether they were elected or appointed.',
+      to: '/offices',
+      action: 'See the offices',
+    });
+  }
   if (shown.menu.includes('admin')) {
     for (const section of shown.sections) {
       if (section === 'testing' && !testingEnabled) continue;
       const title = SECTION_LABELS[section];
-      cards.push({ key: section, title, text: SECTION_CAPTIONS[section], to: `/admin?tab=${section}`, action: `Open ${title}` });
+      cards.push({ key: `admin/${section}`, title, text: SECTION_CAPTIONS[section], to: `/admin?tab=${section}`, action: `Open ${title}` });
     }
   }
   cards.push({
@@ -116,6 +126,7 @@ const VISITOR_LINKS: readonly VisitorLink[] = [
   { key: 'register', before: 'New to USTP? ', label: 'Register as a member', after: ': creating your login is the first step.', to: '/register' },
   { key: 'ballot', before: 'Members: ', label: 'see your ballots and vote', after: '.', to: '/ballot' },
   { key: 'verify', before: 'Voted already? ', label: 'Verify your receipt', after: ' to check that your vote was counted.', to: '/verify' },
+  { key: 'offices', before: 'Who leads the party? ', label: 'See who holds each office', after: ', elected or appointed.', to: '/offices' },
   { key: 'admin', before: 'Party officers: ', label: 'open the admin console', after: '.', to: '/admin' },
 ];
 

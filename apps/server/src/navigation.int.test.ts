@@ -1,4 +1,4 @@
-import { DEFAULT_NAVIGATION, type NavigationSettings } from 'ustp-domain';
+import { Collections, DEFAULT_NAVIGATION, type NavigationSettings } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { NavigationService } from './administration/navigation.js';
 import { resetEmulators, TestApi, type User } from './testing/emulator.js';
@@ -122,6 +122,25 @@ describe('navigation settings (design §10.5)', () => {
     );
     expect(res.body.menu.auditor.admin).toBe(false);
     expect((await ledger()).at(-1)!.payload.changes).toContainEqual({ audience: 'auditor', link: 'admin', shown: false });
+  });
+
+  it('give a link added since the settings were saved its default, keeping what was saved', async () => {
+    const older = edit((s) => {
+      for (const audience of Object.keys(s.menu)) delete s.menu[audience].offices;
+      s.menu.applicant.ballot = false;
+    });
+    await api.firebase.db
+      .collection(Collections.navigation)
+      .doc('current')
+      .set({ ...older, version: 2, updatedAt: '2026-10-26T00:00:00.000Z', updatedBy: sa1.accountId });
+    api.app.get(NavigationService).invalidate();
+    const resolved = edit((s) => (s.menu.applicant.ballot = false));
+    expect((await api.call('GET', '/v1/navigation')).body).toEqual({ ...resolved, version: 2 });
+
+    const offices = !DEFAULT_NAVIGATION.menu.signed_out.offices;
+    const res = await put(sa1, edit((s) => (s.menu.signed_out.offices = offices), resolved), 2);
+    expect(res.body).toMatchObject({ version: 3, menu: { signed_out: { offices }, applicant: { ballot: false } } });
+    expect((await ledger()).at(-1)!.payload.changes).toEqual([{ audience: 'signed_out', link: 'offices', shown: offices }]);
   });
 
   it('validate the body: every audience and cell, and the version it was edited from', async () => {

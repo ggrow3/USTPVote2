@@ -1,11 +1,22 @@
 import { ADMIN_SECTIONS, AUDIENCES, MENU_LINKS, START_PAGES } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
-import { AUDIENCE_LABELS, cellName, describeChange, lockText, SECTION_LABELS, startPageLabel } from './navigation-text.js';
+import {
+  AUDIENCE_LABELS,
+  cellName,
+  describeChange,
+  lockText,
+  MENU_CAPTIONS,
+  MENU_LABELS,
+  SECTION_LABELS,
+  startPageLabel,
+} from './navigation-text.js';
 
 describe('navigation settings wording', () => {
   it('names every cell by what it shows and to whom', () => {
     expect(cellName('ballot', 'applicant', 'link')).toBe('Show Ballot to Applicant');
-    expect(cellName('members', 'membership_admin', 'section')).toBe('Show Members to Membership Admin');
+    expect(cellName('members', 'membership_admin', 'section')).toBe('Show Admin › Members to Membership Admin');
+    expect(cellName('offices', 'auditor', 'link')).toBe('Show Offices to Auditor');
+    expect(cellName('offices', 'auditor', 'section')).toBe('Show Admin › Offices to Auditor');
     const names = AUDIENCES.flatMap((a) => [
       ...MENU_LINKS.map((l) => cellName(l, a, 'link')),
       ...ADMIN_SECTIONS.map((s) => cellName(s, a, 'section')),
@@ -19,6 +30,8 @@ describe('navigation settings wording', () => {
     expect(START_PAGES.map(startPageLabel)).toContain('Admin › Sign-in methods');
     expect(startPageLabel('home')).toBe('Home');
     expect(startPageLabel('ballot')).toBe('Ballot');
+    expect(MENU_LINKS.every((l) => MENU_LABELS[l] && MENU_CAPTIONS[l])).toBe(true);
+    expect(startPageLabel('offices')).toBe('Offices');
   });
 
   it('says why a cell is locked', () => {

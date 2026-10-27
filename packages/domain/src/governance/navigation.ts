@@ -10,7 +10,7 @@ import { ROLES, type Role } from '../roles.js';
  */
 
 /** The menu bar's links in menu order, then the header's Sign in button (which only signed-out visitors can use). */
-export const MENU_LINKS = ['register', 'ballot', 'verify', 'admin', 'signin'] as const;
+export const MENU_LINKS = ['register', 'ballot', 'verify', 'offices', 'admin', 'signin'] as const;
 export type MenuLink = (typeof MENU_LINKS)[number];
 
 /** The admin console's sections (tabs), in tab order. */
@@ -86,6 +86,7 @@ export const START_PAGES: readonly StartPage[] = [
   'register',
   'ballot',
   'verify',
+  'offices',
   ...ADMIN_SECTIONS.map((s) => `admin/${s}` as const),
 ];
 
@@ -146,19 +147,20 @@ function defaultSection(role: Role, section: AdminSection): boolean {
 
 /**
  * The menu as it was before these settings (design §5.2): Register, Ballot, Verify and Admin for everyone, each page
- * explaining itself to people it is not for, and Sign in while signed out; admin sections by role. Roles add Ballot and Verify, so a staff member with
- * no membership keeps them, and Admin (from their sections). Signing in lands on Register with no membership, as it
- * did, and on the home page otherwise.
+ * explaining itself to people it is not for, and Sign in while signed out; admin sections by role. Offices, the public
+ * list of who holds each office, came later and is for everyone too. Roles add Ballot, Verify and Offices, so a staff
+ * member with no membership keeps them, and Admin (from their sections). Signing in lands on Register with no
+ * membership, as it did, and on the home page otherwise.
  */
 export const DEFAULT_NAVIGATION: NavigationSettings = {
   menu: Object.fromEntries(
     AUDIENCES.map((a) => [
       a,
       isRole(a)
-        ? links('ballot', 'verify', 'admin')
+        ? links('ballot', 'verify', 'offices', 'admin')
         : a === 'signed_out'
-          ? links('register', 'ballot', 'verify', 'admin', 'signin')
-          : links('register', 'ballot', 'verify', 'admin'),
+          ? links('register', 'ballot', 'verify', 'offices', 'admin', 'signin')
+          : links('register', 'ballot', 'verify', 'offices', 'admin'),
     ]),
   ) as Record<Audience, Record<MenuLink, boolean>>,
   sections: Object.fromEntries(ROLES.map((r) => [r, sectionsOf(r)])) as Record<Role, Record<AdminSection, boolean>>,
@@ -184,7 +186,7 @@ type Stored = {
 };
 
 /**
- * The settings in force from what was saved: defaults for anything missing (a section added since, say), locked
+ * The settings in force from what was saved: defaults for anything missing (a link or section added since, say), locked
  * cells at their locked value, and a start page the audience no longer sees replaced by its default, or home.
  */
 export function resolveNavigation(stored: Stored | null | undefined): NavigationSettings {

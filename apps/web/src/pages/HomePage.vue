@@ -47,11 +47,11 @@ const who = computed(() => [membership.value, ...viewer.value.roles].map((a) => 
 const status = reactive<Partial<Record<HomeCardKey, string>>>({});
 const LOADERS: Partial<Record<HomeCardKey, () => Promise<string>>> = {
   ballot: async () => ballotStatus(await api<VoterElection[]>('GET', '/v1/elections')),
-  applications: async () => waitingStatus((await applications('pending')).length, 'application', 100),
-  photos: async () =>
+  'admin/applications': async () => waitingStatus((await applications('pending')).length, 'application', 100),
+  'admin/photos': async () =>
     waitingStatus((await api<ProfilePhotoRecord[]>('GET', '/v1/admin/photos?status=needs_review')).length, 'photo', 50),
-  elections: async () => electionsStatus(await api<ElectionRecord[]>('GET', '/v1/admin/elections')),
-  approvals: async () =>
+  'admin/elections': async () => electionsStatus(await api<ElectionRecord[]>('GET', '/v1/admin/elections')),
+  'admin/approvals': async () =>
     approvalsStatus(
       await api<ApprovalRequestRecord[]>('GET', '/v1/admin/approvals?status=pending'),
       session.me?.account?.accountId,

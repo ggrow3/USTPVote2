@@ -62,7 +62,7 @@ test. Keep it current when pages change.
   `#eeeeee` (5.05) in both themes, the card's link accent on `#1d1d1d` (5.84) and its caption 7.77 in the dark theme.
   At 320 px the four links fit on one row (Quasar's xs breakpoint narrows their padding and letter spacing; Admin
   ends 5 px inside the bar), each 38 px tall, and nothing scrolls sideways; enlarged text wraps them onto a second
-  row.
+  row (since 2026-10-27 the bar keeps one row and puts what does not fit behind More; see Offices in the menu).
 - **Added 2026-10-26, member profiles and member details** (against the emulators as elections@example.test, the
   seeded Membership Admin, and as v2; the profile at 1024 px light and 320 px dark): names in the Members and
   Applications tabs are links to `/admin/members/{accountId}`, whose `h1` is the member's name (and the page title),
@@ -214,6 +214,28 @@ test. Keep it current when pages change.
   public Offices page (`/offices`, page title "Offices · USTP Vote") has an `h1`, an `h2` per office and a list of
   holders, each "Appointed · since … · until …" with the reason, or "Elected (results)" linking to the results; at
   320 px nothing scrolls sideways on it, in the Offices tab or in the dialog, whose buttons wrap.
+- **Added 2026-10-27, Offices in the menu, and its More button** (design §10.5; against the emulators signed out, as
+  elections@example.test (Membership and Election Admin, no membership) and as admin1@example.test, at 320, 375, 396,
+  400 and 600 px; 320 px in the light and the dark theme): Offices, the public Offices page, is a fifth menu link,
+  shown to everyone by default; under the signed-out home page's sign-in form a line "Who leads the party? See who
+  holds each office, elected or appointed." links to it, and the signed-in home page has a "Party offices" card ("See
+  the offices"), apart from the admin section's "Offices" card ("Open Offices"). The bar keeps one
+  row: the links that do not fit go, in menu order, behind "More" at its end, a native `button` with `aria-expanded`
+  and `aria-controls` naming a `ul` of the same links, which follows it inside the `nav` and in the tab order. At 320
+  and 375 px that is Register, Ballot, Verify and More (Offices, Admin), More ending 8 px inside the bar; from 396 px
+  all five fit and there is no More; with Offices hidden from visitors, their four links fit with no More (Admin ends
+  at 307 px). With the menu text at 28 px it is Register and More, with WCAG 1.4.12 text spacing Register, Ballot and
+  More: the bar never wraps and nothing scrolls sideways. More opens with a click, Enter or Space; Tab goes on into the
+  list; Escape closes it and returns focus to More; tabbing past the list, clicking outside it or following one of its
+  links closes it. The list is white on black (21:1) with the white focus ring, an edge of white at 30% so it stands
+  out on the dark page, and the current page marked by an accent bar on its left (7.27, as the bar's underline) and
+  `aria-current="page"`; More is underlined while the current page is behind it. The copy of the row that is measured
+  is `aria-hidden` and `visibility: hidden` in a box of no size. In the navigation settings the Offices link and the
+  Offices section are both rows, so the sections' checkboxes are now named as their changes are listed ("Show Offices
+  to Signed out", "Show Admin › Offices to Election Admin", "Show Admin › Members to Membership Admin"). Measured in
+  the browser pane while it was hidden, which delivers no resize notices: the bar fits when it loads, when its links
+  change (signing out re-fitted it) and on every check above, but refitting as a window is dragged narrower was
+  reviewed in code only (a `ResizeObserver` on the bar and on the measured copy).
 - **Added 2026-10-27, choosing the consistency check's documents** (design §5.5; against the emulators as
   elections@example.test on "2027 Bylaws Review (draft)" and "Platform Vote #9 (demo)"; desktop width dark, 320 px
   light): in the editor's consistency card an Election Admin on a draft has a `fieldset` whose `legend` is "Compare
@@ -508,3 +530,5 @@ Android if time allows), on staging or the emulators:
 6. Dialogs from the Dialog plugin (reasons, codes, confirmations): name and prompt label read; focus returns afterwards.
 7. Admin console: tab and panel relationship, row action names, the status-history dialog, the contest dialog.
 8. Zoom to 200 % and 400 % (desktop) and large text on iOS: no clipped controls.
+9. The menu bar at 320 px: More is read as a collapsed or expanded button in the "Main" navigation, and its list's
+   links follow it, the current page announced.

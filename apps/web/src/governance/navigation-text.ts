@@ -45,6 +45,7 @@ export const MENU_LABELS: Readonly<Record<MenuLink, string>> = {
   register: 'Register',
   ballot: 'Ballot',
   verify: 'Verify',
+  offices: 'Offices',
   admin: 'Admin',
   signin: 'Sign in',
 };
@@ -53,6 +54,7 @@ export const MENU_CAPTIONS: Readonly<Record<MenuLink, string>> = {
   register: 'Create a login and apply; the application and membership status',
   ballot: 'Cast votes, see results',
   verify: 'Check a vote receipt',
+  offices: 'The public page of who holds each office',
   admin: 'The admin console',
   signin: "The header's button, for visitors",
 };
@@ -102,9 +104,12 @@ export function startPageLabel(page: StartPage): string {
   return MENU_LABELS[page as MenuLink];
 }
 
-/** A cell's accessible name: "Show Ballot to Applicant". */
+/**
+ * A cell's accessible name, worded as its change is: "Show Ballot to Applicant", "Show Admin › Offices to Auditor" (the
+ * Offices link and the Offices section are both rows).
+ */
 export function cellName(item: MenuLink | AdminSection, audience: Audience, kind: 'link' | 'section'): string {
-  const label = kind === 'link' ? MENU_LABELS[item as MenuLink] : SECTION_LABELS[item as AdminSection];
+  const label = kind === 'link' ? MENU_LABELS[item as MenuLink] : `Admin › ${SECTION_LABELS[item as AdminSection]}`;
   return `Show ${label} to ${AUDIENCE_LABELS[audience]}`;
 }
 

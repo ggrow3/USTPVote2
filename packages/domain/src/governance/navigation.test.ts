@@ -34,12 +34,17 @@ function edit(base: NavigationSettings, change: (s: { -readonly [K in keyof Navi
 const viewer = (membership: Viewer['membership'], ...roles: Role[]): Viewer => ({ membership, roles });
 
 describe('defaults', () => {
-  it('show Register, Ballot, Verify and Admin to everyone, and Sign in while signed out, as before the settings', () => {
+  it('show Register, Ballot, Verify, Offices and Admin to everyone, and Sign in while signed out', () => {
+    const all = ['register', 'ballot', 'verify', 'offices', 'admin'];
     expect(shownTo(DEFAULT_NAVIGATION, viewer('signed_out')).menu).toEqual(MENU_LINKS);
     for (const membership of ['no_membership', ...MEMBER_STATUSES] as const) {
-      expect(shownTo(DEFAULT_NAVIGATION, viewer(membership)).menu).toEqual(['register', 'ballot', 'verify', 'admin']);
+      expect(shownTo(DEFAULT_NAVIGATION, viewer(membership)).menu).toEqual(all);
     }
-    expect(shownTo(DEFAULT_NAVIGATION, viewer('active', 'election_admin')).menu).toEqual(['register', 'ballot', 'verify', 'admin']);
+    expect(shownTo(DEFAULT_NAVIGATION, viewer('active', 'election_admin')).menu).toEqual(all);
+  });
+
+  it('let every role keep Ballot, Verify and Offices without a membership', () => {
+    for (const role of ROLES) expect(DEFAULT_NAVIGATION.menu[role]).toMatchObject({ ballot: true, verify: true, offices: true, register: false });
   });
 
   it('give each role the console tabs it had, and System Admins the home page quote', () => {
@@ -197,12 +202,13 @@ describe('start pages', () => {
   });
 
   it('offer home, account and what the audience sees', () => {
-    expect(startPageOptions(DEFAULT_NAVIGATION, 'applicant')).toEqual(['home', 'account', 'register', 'ballot', 'verify']);
+    expect(startPageOptions(DEFAULT_NAVIGATION, 'applicant')).toEqual(['home', 'account', 'register', 'ballot', 'verify', 'offices']);
     expect(startPageOptions(DEFAULT_NAVIGATION, 'election_admin')).toEqual([
       'home',
       'account',
       'ballot',
       'verify',
+      'offices',
       'admin/elections',
       'admin/offices',
       'admin/approvals',
@@ -226,6 +232,7 @@ describe('start pages', () => {
   it('have paths in the web app', () => {
     expect(startPagePath('home')).toBe('/');
     expect(startPagePath('ballot')).toBe('/ballot');
+    expect(startPagePath('offices')).toBe('/offices');
     expect(startPagePath('admin/elections')).toBe('/admin?tab=elections');
   });
 });
@@ -234,7 +241,40 @@ describe('saved settings', () => {
   it('show Sign in to visitors when saved before it was a row', () => {
     const { signin: _, ...older } = DEFAULT_NAVIGATION.menu.signed_out;
     const stored = edit(DEFAULT_NAVIGATION, (s) => (s.menu.signed_out = { ...older, ballot: false }));
-    expect(resolveNavigation(stored).menu.signed_out).toEqual({ register: true, ballot: false, verify: true, admin: true, signin: true });
+    expect(resolveNavigation(stored).menu.signed_out).toEqual({
+      register: true,
+      ballot: false,
+      verify: true,
+      offices: true,
+      admin: true,
+      signin: true,
+    });
+  });
+
+  it('show Offices as its default when saved before it was a row, keeping every other saved cell', () => {
+    const before = edit(DEFAULT_NAVIGATION, (s) => {
+      for (const a of AUDIENCES) delete s.menu[a].offices;
+      s.menu.applicant.ballot = false;
+      s.startsOn.active = 'verify';
+    });
+    const resolved = resolveNavigation(before);
+    for (const a of AUDIENCES) expect(resolved.menu[a].offices).toBe(DEFAULT_NAVIGATION.menu[a].offices);
+    expect(resolved.menu.applicant.ballot).toBe(false);
+    expect(resolved.startsOn.active).toBe('verify');
+    expect(navigationChanges(DEFAULT_NAVIGATION, resolved)).toEqual([
+      { audience: 'applicant', link: 'ballot', shown: false },
+      { audience: 'active', startsOn: 'verify' },
+    ]);
+    expect(checkNavigationSettings(resolved)).toEqual({ ok: true });
+  });
+
+  it('let an audience start on Offices only while it is shown to them', () => {
+    const starts = edit(DEFAULT_NAVIGATION, (s) => (s.startsOn.active = 'offices'));
+    expect(checkNavigationSettings(starts)).toEqual({ ok: true });
+    expect(startPageFor(starts, viewer('active'))).toBe('offices');
+    const hidden = edit(starts, (s) => (s.menu.active.offices = false));
+    expect(checkNavigationSettings(hidden)).toMatchObject({ ok: false, reason: expect.stringMatching(/active cannot start on offices/) });
+    expect(resolveNavigation(hidden).startsOn.active).toBe('home');
   });
 
   it('fill in anything missing from the defaults, such as a section added since', () => {
