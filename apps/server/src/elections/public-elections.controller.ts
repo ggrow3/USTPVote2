@@ -24,6 +24,12 @@ export class PublicElectionsController {
     return this.elections.results(id);
   }
 
+  /** The bylaws as the election's passed amendments give them, once certified (design §6.6). */
+  @Get(':id/amended-bylaws')
+  amendedBylaws(@Param('id') id: string) {
+    return this.elections.amendedBylaws(id);
+  }
+
   /** The results for spreadsheets, e.g. Google Sheets' IMPORTDATA; no Google account or API involved. */
   @Get(':id/results.csv')
   @Header('Content-Type', 'text/csv; charset=utf-8')

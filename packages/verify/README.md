@@ -144,6 +144,20 @@ withheld). A bundle that cannot be read is a failure.
 *Does not prove:* that the results are certified (two-person certification arrives with M4b), or anything the receipt
 and election checks above do not.
 
+### Bylaws amendments (with `--election`, when its proposals amend the bylaws)
+
+For an election whose definition names a bylaws version (design §6.6). Until the results are certified it waits; then,
+from `GET /v1/public/elections/{id}/amended-bylaws` and the published versions:
+- the base is the version every amending contest names, and its text hashes as named;
+- each amendment's outcome is the one in the certified results;
+- each passed amendment is the text the definition froze (its v2 content hash covers the changed lines);
+- the served text is the base with exactly the passed amendments applied (application v1), with that SHA-256;
+- the `results.certified` entry records that hash;
+- a version adopted from it is that text, amends the base, and its `bylaws.published` entry names this election.
+
+*Does not prove:* that failed amendments said what their titles claim (their texts are not served), or that anyone
+reads the adopted bylaws.
+
 ## Cost
 
 The api has no index of an election's ledger entries. So `--election` (and `--entries`) request every entry the

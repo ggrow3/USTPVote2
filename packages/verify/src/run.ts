@@ -1,5 +1,6 @@
 import type { BallotReceipt, PartEvidence } from 'ustp-domain';
 import { mapLimited, type PublicApi } from './api.js';
+import { bylawsFindings } from './bylaws.js';
 import { checkElection, missingElectionFindings } from './election.js';
 import { checkEntryScan } from './entries.js';
 import { anchorObjectFindings, checkLedger, type AnchorFiles } from './ledger.js';
@@ -72,6 +73,14 @@ export async function verify(api: PublicApi, options: VerifyOptions = {}): Promi
       verified: ledger.verified,
     }),
   });
+  if (record.definition.contests.some((c) => c.proposal?.amendsBylaws)) {
+    const view = results?.status === 'certified' ? await api.amendedBylaws(id) : null;
+    const [base, adopted] = await Promise.all([
+      view ? api.bylaws(view.base.version) : null,
+      view?.adoptedAs ? api.bylaws(view.adoptedAs) : null,
+    ]);
+    sections.push({ title: 'Bylaws amendments', findings: bylawsFindings({ record, results, certification, view, base, adopted, entries: scan.entries }) });
+  }
 
   const { receipt } = options;
   if (receipt) {

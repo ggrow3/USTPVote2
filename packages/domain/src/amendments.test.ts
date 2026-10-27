@@ -1,6 +1,7 @@
 import { sha256Hex } from 'ustp-audit';
 import { describe, expect, it } from 'vitest';
 import {
+  adoptedBylaws,
   amendingContests,
   amendmentConflicts,
   amendmentDiff,
@@ -218,6 +219,54 @@ describe('the amendments of one election', () => {
     ]);
     const edited = { ...base, text: text.replace('Article II', 'Part II') };
     expect(amendmentProblems(ok, edited)).toEqual([expect.stringMatching(/"Amend members", change 1: line 4 no longer read as quoted/)]);
+  });
+});
+
+describe('the bylaws an election adopts', () => {
+  const name = amend(replace(3, 3, ['The party is the United States Transhumanist Party.']));
+  const membership = amend(replace(5, 5, ['Membership is open to every adult.']));
+  const definition = {
+    contests: [
+      { contestId: 'name', title: 'Name', proposal: { snapshotId: 'p-name', title: 'Name', contentHash: 'h1' } },
+      { contestId: 'members', title: 'Membership', proposal: { snapshotId: 'p-members', title: 'Membership', contentHash: 'h2' } },
+      { contestId: 'plank', title: 'Plank', proposal: { snapshotId: 'p-plank', title: 'Plank', contentHash: 'h3' } },
+    ],
+  } as never;
+  const proposals = [
+    { snapshotId: 'p-name', amendment: name },
+    { snapshotId: 'p-members', amendment: membership },
+    { snapshotId: 'p-plank', amendment: null },
+  ] as never;
+  const bundle = (name: string, members: string) => ({
+    contests: [
+      { contestId: 'name', tieBreakOrder: null, result: { kind: 'proposal', outcome: name } },
+      { contestId: 'members', tieBreakOrder: null, result: { kind: 'proposal', outcome: members } },
+      { contestId: 'plank', tieBreakOrder: null, result: { kind: 'proposal', outcome: 'passed' } },
+    ],
+  }) as never;
+
+  it('applies exactly the amendments that passed, and hashes the text as a bylaws version is hashed', () => {
+    const result = adoptedBylaws({ definition, proposals, bundle: bundle('failed', 'passed'), base });
+    const expected = text.replace('open to all', 'open to every adult');
+    expect(result).toEqual({
+      ok: true,
+      adopted: {
+        contests: [
+          { contestId: 'name', title: 'Name', amendment: name, outcome: 'failed' },
+          { contestId: 'members', title: 'Membership', amendment: membership, outcome: 'passed' },
+        ],
+        text: expected,
+        contentHash: sha256Hex(expected),
+        changed: true,
+      },
+    });
+  });
+
+  it('leaves the bylaws as they were when nothing passed, and needs an outcome for every amendment', () => {
+    const none = adoptedBylaws({ definition, proposals, bundle: bundle('no_quorum', 'failed'), base });
+    expect(none).toMatchObject({ ok: true, adopted: { text, contentHash: base.contentHash, changed: false } });
+    const missing = adoptedBylaws({ definition, proposals, bundle: { contests: [] } as never, base });
+    expect(missing).toEqual({ ok: false, problems: ['the results have no outcome for "Name"', 'the results have no outcome for "Membership"'] });
   });
 });
 

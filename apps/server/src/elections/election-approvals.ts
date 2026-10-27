@@ -3,6 +3,7 @@ import { ConflictException, ForbiddenException, Inject, Injectable, InternalServ
 import type { Transaction } from 'firebase-admin/firestore';
 import { seedCommitment } from 'ustp-audit';
 import {
+  adoptedBylaws,
   amendingContests,
   amendmentProblems,
   Collections,
@@ -206,8 +207,10 @@ export class ElectionApprovals implements ApprovalHandler {
   private async approveCertify(tx: Transaction, request: ApprovalRequestRecord, approver: Actor): Promise<PreparedDecision> {
     const payload = request.payload as unknown as CertifyPayload;
     const { electionId } = payload;
-    const { election, definition, candidates } = await this.reader.load(electionId, tx);
+    const { election, definition, candidates, proposals } = await this.reader.load(electionId, tx);
     if (election.state !== 'closed') throw new ConflictException(`the election is ${election.state}; only closed elections are certified`);
+    const amending = amendingContests(definition, proposals);
+    const bylawsBase = amending[0] ? await this.membership.bylawsRecord(amending[0].amendment.base.version, tx) : null;
     const resultsRef = this.firebase.db.collection(Collections.results).doc(electionId);
     const results = (await tx.get(resultsRef)).data() as ResultsRecord | undefined;
     if (!results || results.status !== 'provisional' || results.resultsHash !== payload.resultsHash) {
@@ -233,6 +236,17 @@ export class ElectionApprovals implements ApprovalHandler {
     } catch (e) {
       throw new ConflictException(e instanceof Error ? e.message : String(e));
     }
+    // The bylaws the passed amendments give (design §6.6): their hash goes into the ledger with the certification, so
+    // the text to adopt is fixed now, whatever happens to the code that computes it.
+    let bylaws: { base: { version: string; contentHash: string }; contentHash: string } | null = null;
+    if (amending[0]) {
+      if (!bylawsBase) throw new ConflictException(`bylaws version ${amending[0].amendment.base.version}, which this election amends, is missing`);
+      const result = adoptedBylaws({ definition, proposals, bundle: results.bundle, base: bylawsBase });
+      if (!result.ok) throw new ConflictException(result.problems.join('; '));
+      if (result.adopted.changed) {
+        bylaws = { base: { version: bylawsBase.version, contentHash: bylawsBase.contentHash }, contentHash: result.adopted.contentHash };
+      }
+    }
     const termRefs = terms.map(() => this.firebase.db.collection(Collections.positionTerms).doc());
     return {
       events: [
@@ -240,7 +254,7 @@ export class ElectionApprovals implements ApprovalHandler {
           type: 'results.certified',
           actor: approver.accountId,
           subject: electionId,
-          payload: { electionId, resultsHash: results.resultsHash, approvalId: request.id, terms: terms.length },
+          payload: { electionId, resultsHash: results.resultsHash, approvalId: request.id, terms: terms.length, ...(bylaws && { bylaws }) },
         },
         ...terms.map((term, i) => ({
           type: 'position_term.created' as const,

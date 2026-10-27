@@ -14,12 +14,15 @@ export {
   applyAmendments,
   amendingContests,
   amendmentProblems,
+  adoptedBylaws,
   amendmentConflicts,
   amendmentDiff,
   amendmentText,
   amendmentFromTexts,
 } from './amendments.js';
 export type {
+  AdoptedBylaws,
+  AmendedBylawsView,
   AmendingContest,
   AmendmentBase,
   AmendmentChange,
@@ -27,6 +30,7 @@ export type {
   AmendmentResult,
   BylawsAmendment,
   NamedAmendment,
+  ProposalOutcome,
 } from './amendments.js';
 export { ACT_AS_HEADER, ADMIN_PERSONAS, MAX_TEST_VOTERS, PERSONA_KINDS, voterPersonaLabel } from './testing.js';
 export type { PersonaKind, PersonaRecord, PersonaSummary } from './testing.js';

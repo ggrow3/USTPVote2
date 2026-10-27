@@ -250,7 +250,9 @@ Every transition writes, in one transaction, the new status on `members/{account
   diff against the current version; and publishes it with a change note. The version records `amends` (the version it
   started from) and the api refuses it unless that is still the current version, so two drafts cannot silently
   overwrite each other; `bylaws.published` ledgers `amends` too. While an election whose proposals amend the current
-  version (§6.6) is scheduled, open or closed, publishing is refused (409) until it is certified or cancelled.
+  version (§6.6) is scheduled, open or closed, publishing is refused (409) until it is certified or cancelled. A
+  certified election's passed amendments are published as the next version with `adoptedIn`, which requires the
+  exact adopted text (§6.6).
 - Any version can be downloaded as a stamped Word copy for passing around: a stamp block (party, title, version,
   publish date, amended version, change note, SHA-256 of the text, where to check it), the version and hash in every
   page header, and "page X of Y". The public page `/bylaws/{version}` shows the text, hash, change note and changes
@@ -627,10 +629,32 @@ amendment, one change per run of changed lines.
   base is the one the definition names; it lists any failure and blocks casting. It shows each amendment's changes in
   words (`amendmentText`) above the reasons, and the election editor shows them on the contest.
 
-*Planned (in order):* after certification the passed amendments give the amended text (its hash in the
-`results.certified` entry), downloadable as a draft .docx and published as the next version by a Membership Admin;
-the verify CLI recomputes it; an editor for writing amendments line by line, with the changes shown as a line diff
-and downloadable as JSON and .docx.
+**After the vote:**
+
+- **The adopted text** is the base with exactly the passed amendments applied together (`adoptedBylaws` in
+  `ustp-domain`, application v1); failed amendments and those without a quorum are left out, and when none passed the
+  bylaws are unchanged. The certify approval, the endpoint below, adoption and the verify CLI all compute it this way.
+- **Certification fixes it in the ledger.** When at least one amendment passed, the `results.certified` entry records
+  `bylaws: {base: {version, contentHash}, contentHash}`, the SHA-256 of the adopted text, so what may be adopted is
+  settled when the results are, whatever later code does.
+- **`GET /v1/public/elections/{id}/amended-bylaws`** (public): 404 when the election amends nothing, 409 until its
+  results are certified, then the base version, every amending contest with its outcome (the full proposal, amendment
+  included, for those that passed), the text and its hash, whether the base is still current, and the version
+  published from it (`adoptedAs`), if any.
+- **Adoption** is publishing that text as the next version (`POST /v1/admin/bylaws` with `adoptedIn: {electionId}`):
+  the election must be certified, at least one amendment must have passed, `amends` must be the base, the text must be
+  exactly the adopted text, and each election is adopted once (409 otherwise). The version records
+  `adoptedIn: {electionId, resultsHash}`, and so does its `bylaws.published` entry. If another version was published
+  after certification, the existing `amends` rule refuses it (409); the amendments then have to be redrafted.
+- **The verify CLI** (section "Bylaws amendments") checks, from public data only: the base is the version the
+  definition names and hashes as named; each outcome is the certified one; each passed amendment is the text the
+  definition froze (v2 hash); the served text is the base with the passed amendments applied, with that hash; the
+  `results.certified` entry records it; and any adopted version is that text, amends the base and names the election
+  in its `bylaws.published` entry.
+
+*Planned (in order):* an editor for writing amendments line by line, with the changes shown as a line diff and
+downloadable as JSON and .docx; on the results page, the amended bylaws as a draft .docx and "Publish as the next
+version" for Membership Admins.
 
 ## 7. Ballot casting and secrecy
 
@@ -1092,7 +1116,7 @@ registration collections are top-level and election data lives under each electi
 | `members/{accountId}` | accountId | mutable | current status, state/district, city + ZIP + phone, email consents, bylaws version, memberSince |
 | `member_status_history/{id}` | auto | append-only | from, to, reason, actor, ledger seq |
 | `applications/{applicationId}` | auto | status only | answers (incl. date of birth and attestations, §5.2), bylaws version + hash |
-| `bylaws_versions/{version}` | version | immutable | text, content hash *(added)* |
+| `bylaws_versions/{version}` | version | immutable | text, content hash *(added)*; `adoptedIn` when an election's amendments gave it (§6.6) |
 | `bylaws_checks/{checkId}` | UUIDv7 | queued → running → done / failed | draft text and hash, scope and changed lines, requester, findings, references used, model, token usage (§5.4) *(added)* |
 | `bylaws_check_references/{id}` | reference ID | replaced daily | cached text of a party page, URL, read and modified times, SHA-256 (§5.4) *(added)* |
 | `profile_photos/{photoId}` | auto | status only | storage path, status |
@@ -1148,12 +1172,13 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /elections/{id}/ballots` | V | cast (409 if already voted) |
 | `GET /elections/{id}/participation/me` | V | "have I voted?" |
 | `GET /public/elections/{id}` · `.../sealed-blocks` · `.../results` | P | published record (non-draft): definition, roll size and root, block summaries, results status; block contents once closed; the signed results bundle once tallied (404 until then) |
+| `GET /public/elections/{id}/amended-bylaws` | P | the bylaws as the election's passed amendments give them, once certified (404 if it amends none, 409 before; §6.6) |
 | `GET /public/elections/{id}/results.csv` | P | the results as CSV for spreadsheets (Google Sheets `IMPORTDATA`), an unsigned copy of the bundle served when it is (404 until then; §9) |
 | `GET /public/elections/{id}/calendar.ics` | P | the voting window as an iCalendar event for "Add to calendar", any non-draft election, the same for every caller (§6.1) |
 | `GET /public/elections/{id}/proofs/{commitment}` | P | inclusion proof for a receipt |
 | `GET /public/ledger/blocks` (paged) · `.../blocks/{index}` · `.../keys` · `GET /public/anchors/latest` | P | signed ledger blocks, signing keys, anchors |
 | `GET /public/ledger/entries/{seq}` | P | a public entry with its block and inclusion proof |
-| `POST /admin/bylaws` | Membership Admin | publish a bylaws version; `amends` must name the current version, and no election amending it may be scheduled, open or closed (409 otherwise, §6.6) |
+| `POST /admin/bylaws` | Membership Admin | publish a bylaws version; `amends` must name the current version, and no election amending it may be scheduled, open or closed (409 otherwise, §6.6); with `adoptedIn`, exactly the text a certified election adopted |
 | `POST /admin/bylaws/checks` · `GET /admin/bylaws/checks/{checkId}` | Membership Admin | queue the advisory bylaws check of a draft (202; 409 while the admin's last one runs, 429 past 20 a day, 503 when off); read it until done (§5.4) |
 | `GET /admin/applications` · `POST /admin/applications/{id}/decision` | Membership Admin | registration triage |
 | `GET /admin/members` · `GET /admin/members/{accountId}/history` | Membership Admin | member list (paged), status history |

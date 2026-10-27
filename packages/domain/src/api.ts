@@ -96,6 +96,8 @@ export const publishBylawsSchema = z.strictObject({
   /** The current version this draft started from; must still be current when publishing (design §5.2). */
   amends: bylawsVersion.nullable().optional(),
   changeNote: optionalText(2000),
+  /** Publishing the text a certified election's passed amendments gave (design §6.6); it must match exactly. */
+  adoptedIn: z.strictObject({ electionId: uuidV7 }).optional(),
 });
 export type PublishBylawsInput = z.infer<typeof publishBylawsSchema>;
 
