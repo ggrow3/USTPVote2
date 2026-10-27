@@ -22,6 +22,8 @@ export const Collections = {
   proposalReviews: 'proposal_reviews',
   /** `consistency_checks/{electionId}_{accountId}`: one platform consistency check per person per election (design §5.5). */
   consistencyChecks: 'consistency_checks',
+  /** `consistency_documents/{electionId}`: the documents an election's consistency checks compare with (design §5.5). */
+  consistencyDocuments: 'consistency_documents',
   results: 'results',
   // audit & admin
   auditEvents: 'audit_events',

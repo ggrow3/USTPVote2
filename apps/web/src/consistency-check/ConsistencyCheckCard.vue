@@ -1,16 +1,26 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
-import type { ConsistencyCheckView } from 'ustp-domain';
+import { CONSISTENCY_DOCUMENTS, type ConsistencyCheckView, type ConsistencyDocument } from 'ustp-domain';
 import { focusElement, focusSoon } from '../a11y.js';
 import { referenceNote, SEVERITY_ICONS, SEVERITY_LABELS } from '../bylaws-check-text.js';
 import { dialog } from '../dialogs.js';
-import { changedSince, confirmText, findingContests, introText, sourceText, statusText, usedText } from './consistency-check-text.js';
+import {
+  changedSince,
+  comparedParts,
+  confirmText,
+  documentLabel,
+  findingContests,
+  introText,
+  sourceText,
+  statusText,
+  usedText,
+} from './consistency-check-text.js';
 import { useConsistencyCheck } from './use-consistency-check.js';
 
 /**
  * The platform consistency check (design §5.5) on the ballot page or in the election editor: what it does, the person's
- * one run, its progress and its findings, which link to the questions they concern. Shown while the server offers the
- * check, and afterwards to anyone who ran it.
+ * one run, its progress and its findings, which link to the questions they concern, and in the editor the documents it
+ * compares with. Shown while the server offers the check, and afterwards to anyone who ran it.
  */
 const props = defineProps<{
   electionId: string;
@@ -19,9 +29,11 @@ const props = defineProps<{
   available: boolean;
   /** The definition the editor shows now, to say when a draft has changed since the check. */
   definitionHash?: string | null;
+  /** An Election Admin on a draft may choose the documents the election's checks compare with. */
+  chooseDocuments?: boolean;
 }>();
 
-const { state, load, start } = useConsistencyCheck(props.electionId, props.view);
+const { state, load, start, choose } = useConsistencyCheck(props.electionId, props.view);
 onMounted(load);
 
 const check = computed(() => state.check);
@@ -30,6 +42,12 @@ const busy = computed(() => state.requesting || check.value?.status === 'queued'
 const canRun = computed(() => !!state.enabled && props.available && !busy.value && (!check.value || check.value.status === 'failed'));
 const shown = computed(() => state.enabled === true || !!check.value);
 const checkedAt = computed(() => (check.value?.finishedAt ? new Date(check.value.finishedAt).toLocaleString() : ''));
+/** The check was compared with other documents than the election's checks use now. */
+const otherDocuments = computed(() => !!check.value && check.value.documents.join() !== state.documents.join());
+
+function toggle(document: ConsistencyDocument, on: boolean) {
+  void choose(CONSISTENCY_DOCUMENTS.filter((d) => (d === document ? on : state.documents.includes(d))));
+}
 
 function run() {
   dialog({
@@ -54,7 +72,28 @@ function goTo(contestId: string) {
   <q-card v-if="shown" flat bordered tag="section" aria-labelledby="consistency-heading">
     <q-card-section>
       <h2 id="consistency-heading" class="text-subtitle1">Consistency with the platform</h2>
-      <div class="text-caption text-grey-7">{{ introText(view) }}</div>
+      <div class="text-caption text-grey-7">{{ introText(view, state.documents) }}</div>
+    </q-card-section>
+
+    <!-- Others read what is chosen in the intro above. -->
+    <q-card-section v-if="view === 'admin' && chooseDocuments" class="q-pt-none">
+      <fieldset class="ustp-fieldset">
+        <legend class="text-weight-medium">Compare the questions with</legend>
+        <div class="ustp-options">
+          <q-checkbox
+            v-for="d in CONSISTENCY_DOCUMENTS"
+            :key="d"
+            :model-value="state.documents.includes(d)"
+            :label="documentLabel(d)"
+            :disable="state.choosing"
+            @update:model-value="(on: boolean) => toggle(d, on)"
+          />
+        </div>
+        <div class="text-caption text-grey-7">
+          The questions are always compared with each other too. These are chosen while the election is a draft; every
+          check of it, a voter's or an officer's, then compares with the same documents.
+        </div>
+      </fieldset>
     </q-card-section>
 
     <q-card-section class="q-pt-none">
@@ -90,6 +129,9 @@ function goTo(contestId: string) {
         <div v-if="view === 'admin' && changedSince(check, definitionHash ?? null)" class="text-caption text-deep-orange-10 q-mb-sm">
           The election has changed since this check, which read it as it was then.
         </div>
+        <div v-if="view === 'admin' && otherDocuments" class="text-caption text-deep-orange-10 q-mb-sm">
+          This check compared with other documents than the ones chosen for the election now.
+        </div>
         <ol v-if="check.findings.length" class="consistency-findings q-pl-none q-my-sm">
           <li v-for="(f, i) in check.findings" :key="i" class="consistency-finding">
             <div class="ustp-toolbar">
@@ -122,10 +164,12 @@ function goTo(contestId: string) {
           <template v-if="check.checker === 'stub'">Checked by the local stand-in, which only exists with the emulators and is not an AI review.</template>
           <template v-else>Checked by {{ check.model }} on {{ checkedAt }}.</template>
           Compared with:
-          <span v-for="r in check.references" :key="r.id">
-            <a :href="r.url" target="_blank" rel="noopener">{{ r.title }}</a> ({{ referenceNote(r) }});
+          <span v-for="(part, i) in comparedParts(check)" :key="i">
+            <template v-if="part.reference">
+              <a :href="part.reference.url" target="_blank" rel="noopener">{{ part.text }}</a> ({{ referenceNote(part.reference) }})</template
+            ><template v-else>{{ part.text }}</template>;
           </span>
-          {{ check.bylaws ? `the bylaws, version ${check.bylaws.version}` : 'no bylaws (none are published)' }}.
+          and the other questions {{ view === 'admin' ? 'in this election' : 'on this ballot' }}.
         </div>
       </template>
     </q-card-section>

@@ -190,6 +190,19 @@ test. Keep it current when pages change.
   after it, focus returns to the status line and "Key removed." is announced. The section is a row in the Navigation
   settings ("Show Claude to System Admin"). Captions `#757575` on white (4.61), read back from the computed styles; at
   320 px nothing scrolls sideways and the check states stack.
+- **Added 2026-10-27, choosing the consistency check's documents** (design §5.5; against the emulators as
+  elections@example.test on "2027 Bylaws Review (draft)" and "Platform Vote #9 (demo)"; desktop width dark, 320 px
+  light): in the editor's consistency card an Election Admin on a draft has a `fieldset` whose `legend` is "Compare
+  the questions with", with one checkbox per document, each named by its visible label ("The Constitution of the
+  United States"), and a caption saying the questions are always compared with each other and when the choice is
+  fixed. Space toggles a box; focus stays on it, the change is saved at once and announced politely ("Saved. Compares
+  the questions with the bylaws in force and the Constitution of the United States, and with each other."), and the
+  boxes are disabled while it saves; a refused save is the card's alert banner and the boxes go back. The card's
+  first sentence names only the documents chosen, on the ballot as in the editor; on an election that is no longer a
+  draft, or for an Auditor, that sentence is the only place they are listed (no checkboxes). A result ends with what it
+  was compared with, from its own record, each text it read a link; when the choice has changed since, a caption says
+  so in words (`text-deep-orange-10`, 5.60 on white). At 320 px the labels wrap beside their boxes and nothing
+  scrolls sideways.
 
 ## What was fixed
 
