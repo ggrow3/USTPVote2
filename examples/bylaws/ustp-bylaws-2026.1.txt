@@ -1,0 +1,22 @@
+Bylaws of the United States Transhumanist Party (example text for development and tests, not the party's bylaws)
+
+Article I. Name.
+The name of this organization is the United States Transhumanist Party.
+
+Article II. Purpose.
+The Party promotes science, technology and reason to improve the human condition.
+
+Article III. Membership.
+Membership is open to any person who supports the Party's platform.
+Members in good standing may vote in Party elections.
+
+Article IV. Officers.
+The officers of the Party are the Chair, the Secretary and the Treasurer.
+Officers serve terms of two years.
+
+Article V. Conventions.
+The Party holds a convention every year.
+Notice of a convention is given thirty days in advance.
+
+Article VI. Amendments.
+These bylaws may be amended by a majority of the members voting.

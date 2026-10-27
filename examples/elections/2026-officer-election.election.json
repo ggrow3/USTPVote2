@@ -1,0 +1,52 @@
+{
+  "format": "ustp.election",
+  "v": 1,
+  "title": "2026 Officer Election",
+  "description": "Annual election of party officers and one platform plank.",
+  "secrecy": "secret",
+  "kAnonymity": 3,
+  "window": {
+    "opensInSeconds": 40,
+    "votingSeconds": 7160
+  },
+  "contests": [
+    {
+      "kind": "proposal",
+      "title": "Plank 12: Right to repair",
+      "passRule": {
+        "threshold": {
+          "ratio": {
+            "num": 1,
+            "den": 2
+          },
+          "comparison": "gt"
+        },
+        "base": "yes_no"
+      },
+      "proposal": {
+        "body": "The party supports the right to repair.\n\nOwners of devices should be able to repair them or have them repaired by anyone they choose."
+      }
+    },
+    {
+      "kind": "irv",
+      "title": "Chair",
+      "positionId": "chair",
+      "candidates": [
+        "Alex Rivera",
+        "Blair Chen",
+        "Casey Okafor"
+      ]
+    },
+    {
+      "kind": "choose_n",
+      "title": "Board (2 seats)",
+      "seats": 2,
+      "maxSelections": 2,
+      "candidates": [
+        "Dana Ito",
+        "Eli Moreno",
+        "Fran Novak"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "format": "ustp.test-votes",
+  "v": 1,
+  "description": "Twelve test voters, each with a random ballot over all 20 questions, the same every time (seeded).",
+  "random": { "voters": 12, "seed": "platform-vote-9" }
+}

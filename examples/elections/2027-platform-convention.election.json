@@ -1,0 +1,40 @@
+{
+  "format": "ustp.election",
+  "v": 1,
+  "title": "2027 Platform Convention",
+  "description": "Scheduled for later: voters can read the ballot before it opens.",
+  "secrecy": "secret",
+  "kAnonymity": 3,
+  "window": {
+    "opensInSeconds": 259200,
+    "votingSeconds": 86400
+  },
+  "contests": [
+    {
+      "kind": "proposal",
+      "title": "Plank 14: Open science",
+      "passRule": {
+        "threshold": {
+          "ratio": {
+            "num": 1,
+            "den": 2
+          },
+          "comparison": "gt"
+        },
+        "base": "yes_no"
+      },
+      "proposal": {
+        "body": "Publicly funded research should be openly published."
+      }
+    },
+    {
+      "kind": "irv",
+      "title": "Convention Chair",
+      "candidates": [
+        "Yara Cole",
+        "Zed Hart",
+        "Abe Lin"
+      ]
+    }
+  ]
+}

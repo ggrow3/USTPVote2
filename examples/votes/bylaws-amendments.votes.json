@@ -1,0 +1,18 @@
+{
+  "format": "ustp.test-votes",
+  "v": 1,
+  "description": "Five test voters. Amendments A and B pass, C fails, so the adopted bylaws are version 2026.1 with lines 14 and 15 changed (bylaws/ustp-bylaws-2026.1-amended.txt).",
+  "ballots": [
+    { "voter": 1, "choices": { "vice-chair": "yes", "terms": "yes", "remote": "no" } },
+    { "voter": 2, "choices": { "vice-chair": "yes", "terms": "yes", "remote": "no" } },
+    { "voter": 3, "choices": { "vice-chair": "yes", "terms": "no", "remote": "no" } },
+    { "voter": 4, "choices": { "vice-chair": "no", "terms": "yes", "remote": "yes" } },
+    { "voter": 5, "choices": { "vice-chair": "yes", "terms": "abstain", "remote": "no" } }
+  ],
+  "expect": {
+    "vice-chair": "passed",
+    "terms": "passed",
+    "remote": "failed"
+  },
+  "expectBylawsSha256": "6d7858baaf28dec45348859c11730b1870faf3f1a947667d5876800c73cee918"
+}

@@ -108,6 +108,15 @@ export {
   packageWindow,
 } from './election-package.js';
 export type { ElectionPackage, ElectionPackageInput, PackageContest, PackageProposal } from './election-package.js';
+export {
+  TEST_VOTES_FORMAT,
+  expectedResultProblems,
+  planTestBallots,
+  randomBallot,
+  seededRandom,
+  testVotesSchema,
+} from './test-votes.js';
+export type { PlannedBallot, Random, TestVotes, TestVotesInput } from './test-votes.js';
 export { castBallotSchema, ballotProblems, ballotViewProblems, commitmentsOf } from './ballots.js';
 export {
   buildSealedBlock,

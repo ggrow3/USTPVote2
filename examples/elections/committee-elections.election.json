@@ -1,0 +1,49 @@
+{
+  "format": "ustp.election",
+  "v": 1,
+  "title": "Committee Elections (15-minute window)",
+  "description": "A short voting window, to watch an election close.",
+  "secrecy": "secret",
+  "kAnonymity": 3,
+  "window": {
+    "opensInSeconds": 40,
+    "votingSeconds": 860
+  },
+  "contests": [
+    {
+      "kind": "choose_n",
+      "title": "Outreach Coordinator",
+      "positionId": "outreach-coordinator",
+      "seats": 1,
+      "maxSelections": 1,
+      "candidates": [
+        "Mira Hale",
+        "Noor Aziz",
+        "Owen Park"
+      ]
+    },
+    {
+      "kind": "choose_n",
+      "title": "Policy Committee (approve any)",
+      "seats": 3,
+      "maxSelections": 5,
+      "candidates": [
+        "Pia Ruiz",
+        "Quinn Lowe",
+        "Ravi Shah",
+        "Sam Diaz",
+        "Tess Bauer"
+      ]
+    },
+    {
+      "kind": "irv",
+      "title": "Newsletter Editor",
+      "candidates": [
+        "Uma Reid",
+        "Vic Stone",
+        "Wen Zhao",
+        "Xan Price"
+      ]
+    }
+  ]
+}

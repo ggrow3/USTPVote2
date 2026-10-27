@@ -828,7 +828,7 @@ writes nothing:
 Importing an export gives the same definition, apart from the election's own ID (tested).
 
 **Web:** "Import JSON" on the Elections tab, which lists any problems by path. "Download as JSON" in the election
-editor, next to the Word ballot.
+editor, next to the Word ballot. Example packages, the dev seed's elections among them, are in `examples/elections` (§10.4).
 
 ## 7. Ballot casting and secrecy
 
@@ -1294,6 +1294,24 @@ different account on each side. Testing mode lets one System Admin do that alone
 - **Rehearsal roll:** the Election Admin can request a roll of the test voters only (§6.3), which the editor offers as
   "Request rehearsal roll" in testing mode and marks "Rehearsal roll: test voters only". The verify CLI reads who the
   roll holds from the ledger and reports a rehearsal as one.
+- **Test votes** (`ustp.test-votes` v1, `testVotesSchema` in `ustp-domain`): a JSON file of how test voters 1, 2, …
+  vote in a rehearsal, and what the results must then be.
+  - **Ballots:** each test voter's choices, by contest title or ID and candidate name or ID. A proposal takes `yes`,
+    `no` or `abstain`; a candidate contest takes the candidates chosen or ranked, `[]` for a blank; any contest takes
+    `random`. A contest left out is skipped.
+  - **`random: {voters, seed?, skipRate?}`:** voters 1 to `voters` without a ballot of their own cast a random one.
+    With a `seed` the ballots are the same everywhere (SHA-256 of `seed:n`), so a rehearsal can be repeated exactly.
+  - **`expect`:** a proposal's outcome, or a contest's winners in any order. **`expectBylawsSha256`:** the SHA-256
+    of the bylaws its passed amendments give (§6.6).
+  - `planTestBallots` resolves a file against the frozen definition and checks every ballot with `ballotProblems`, as
+    the api would. `expectedResultProblems` compares the results bundle with `expect`.
+  - The test voters cast the ballots through the ordinary ballot endpoint, with the browser's checks. No endpoint
+    takes a votes file, so it cannot be used to cast ballots for anyone else.
+- **Examples** (`examples/`, with a `manifest.json`): the offices, the example bylaws (not the party's), the dev
+  seed's elections and a bylaws-amendments election as `ustp.election` files (§6.7), and votes files for three of
+  them. The local seed (`npm run seed:emulators -w apps/server`) imports them. A server unit test checks that every
+  file parses, makes a draft ready to schedule and plans its votes, and that the amended bylaws file is what the
+  amendments its votes pass give.
 - **Clearing a rehearsal away:** once certified or cancelled, a rehearsal can be deleted permanently, ballots and
   results included, unless it seated someone in an office (§6.1, "Deleting a rehearsal"). Its ledger entries stay.
 - **Effect on the record:** what a persona does is real data in that deployment's ledger, rolls and results. That is
@@ -1572,7 +1590,15 @@ worker against the emulators and calls the tick and the bylaws checks every 15 s
 - **Server:** integration tests against the Firestore and Auth emulators (`npm run test:int -w apps/server`; needs
   Java 21). They use the emulator-only project `demo-ustpvote`, real ID tokens from the Auth emulator, and run in CI.
 - **Election simulation:** build a roll, cast N ballots through the API, seal, tally, certify, then run every
-  [§2 invariant](#2-threat-model-and-trust-assumptions) — in CI.
+  [§2 invariant](#2-threat-model-and-trust-assumptions) — in CI. `examples.int.test.ts` does this for every example
+  votes file (§10.4), as a rehearsal:
+  - the Test Election Admin imports the example with a short window;
+  - the Test Auditor approves the rehearsal roll and scheduling;
+  - the clock (`Date`) moves to the opening, and each test voter checks the ballot as the browser does
+    (`ballotViewProblems`), casts the planned choices and checks the commitments;
+  - the clock moves past the closing; the worker seals and counts; the results must be what the file expects;
+  - certification, and for amendments the adopted bylaws (their hash as expected, adopted once);
+  - `ustp-verify` runs in the same process against the api and must report nothing failed or pending.
 - **Web:** component tests; Playwright end-to-end for register → vote → verify.
 - **Independent verification:** the `ustp-verify` CLI (`packages/verify`, M4) consumes only public artifacts: the
   `/v1/public/...` endpoints and, optionally, anchor objects downloaded from the bucket. It checks the ledger chain,
