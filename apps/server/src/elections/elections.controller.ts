@@ -165,11 +165,11 @@ export class ProposalsController {
 }
 
 /**
- * Active members by name (design §6.5), so an Election Admin can link a candidate to the member standing: account ID,
- * names and state only.
+ * Active members by name (design §6.5), so an Election Admin can link a candidate to the member standing, and a
+ * Membership or Election Admin can appoint a member to an office (§6.4): account ID, names and state only.
  */
 @Controller('v1/admin/member-search')
-@Roles('election_admin')
+@Roles('election_admin', 'membership_admin')
 export class MemberSearchController {
   constructor(private readonly elections: ElectionsService) {}
 

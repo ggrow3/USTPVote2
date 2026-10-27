@@ -1,26 +1,35 @@
 import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import type { Transaction } from 'firebase-admin/firestore';
 import {
+  appointTerm,
   Collections,
   type Actor,
+  type AppointPayload,
   type ApprovalRequestRecord,
   type PositionModifyPayload,
   type PositionRecord,
   type PositionTermRecord,
 } from 'ustp-domain';
 import type { ApprovalHandler, PreparedDecision } from '../administration/approval-handler.js';
+import { accepted } from '../common/validation.js';
 import { Firebase } from '../infra/firebase.js';
+import { MemberDirectory } from '../membership/member-directory.js';
+import { appointmentContext } from './appointment-context.js';
 
 /**
- * Executes `position.modify` (design §6.4, §10.2): ending a term early, and defining or changing an office for requests
- * made before offices were defined directly (`PositionsService.define`). Terms are otherwise only created by
- * certification (`ElectionApprovals`).
+ * Executes `position.appoint` and `position.modify` (design §6.4, §10.2): appointing a member to an office, ending a
+ * term early, and defining or changing an office for requests made before offices were defined directly
+ * (`PositionsService.define`). Terms are otherwise created only by certification (`ElectionApprovals`).
  */
 @Injectable()
 export class PositionApprovals implements ApprovalHandler {
-  constructor(private readonly firebase: Firebase) {}
+  constructor(
+    private readonly firebase: Firebase,
+    private readonly members: MemberDirectory,
+  ) {}
 
   async approve(tx: Transaction, request: ApprovalRequestRecord, approver: Actor): Promise<PreparedDecision> {
+    if (request.action === 'position.appoint') return this.approveAppointment(tx, request, approver);
     const payload = request.payload as unknown as PositionModifyPayload;
     const now = new Date().toISOString();
     if (payload.change === 'define') {
@@ -62,5 +71,15 @@ export class PositionApprovals implements ApprovalHandler {
       ],
       apply: () => tx.update(ref, { status: 'ended', endedAt: now, endReason: request.reason }),
     };
+  }
+
+  /** The appointment as requested, if it can still take effect now: the member Active, a seat free, the dates fit. */
+  private async approveAppointment(tx: Transaction, request: ApprovalRequestRecord, approver: Actor): Promise<PreparedDecision> {
+    const payload = request.payload as unknown as AppointPayload;
+    const context = await appointmentContext(tx, this.firebase, this.members, payload.positionId, payload.accountId);
+    const ref = this.firebase.db.collection(Collections.positionTerms).doc();
+    const approval = { termId: ref.id, approvalId: request.id, reason: request.reason, approvedBy: approver.accountId };
+    const { term, event } = accepted(appointTerm(payload, context, approval, new Date().toISOString()));
+    return { events: [event], apply: () => tx.create(ref, term) };
   }
 }

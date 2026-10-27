@@ -149,15 +149,26 @@ export type {
 } from './results-synopsis.js';
 export { votingCalendar, CALENDAR_PRODID } from './calendar.js';
 export type { CalendarElection } from './calendar.js';
-export { positionInputSchema, addMonths, winnersOf, termsFromResults } from './positions.js';
+export { positionInputSchema, addMonths, winnersOf, termsFromResults, isAppointed } from './positions.js';
 export type {
   PositionInput,
   PositionRecord,
   PositionTermRecord,
+  ElectedTermRecord,
+  AppointedTermRecord,
   PositionModifyPayload,
   CertifyPayload,
   PositionsView,
 } from './positions.js';
+export {
+  appointmentInputSchema,
+  appointmentDates,
+  appointTerm,
+  checkAppointment,
+  freeSeats,
+  planAppointment,
+} from './appointments.js';
+export type { AppointmentContext, AppointmentInput, AppointPayload } from './appointments.js';
 export type { ResultsEvidence, ResultsCheck } from './results-check.js';
 export type { BallotProof, PartEvidence, CheckStep, PartCheck } from './receipt-check.js';
 export type {
@@ -197,6 +208,12 @@ export type {
 export {
   CONSISTENCY_CHECK_SOURCES,
   CONSISTENCY_CHECK_VIEWS,
+  CONSISTENCY_DOCUMENTS,
+  ORIGINAL_CONSISTENCY_DOCUMENTS,
+  checkConsistencyMaterial,
+  consistencyDocuments,
+  consistencyDocumentsSchema,
+  consistencySources,
   CONSISTENCY_CHECK_TIMEOUT_MINUTES,
   MAX_CONSISTENCY_CHECKS_PER_DAY,
   MAX_CONSISTENCY_MATERIAL_CHARACTERS,
@@ -219,6 +236,9 @@ export type {
   ConsistencyCheckView,
   ConsistencyContest,
   ConsistencyContestRef,
+  ConsistencyDocument,
+  ConsistencyDocumentsInput,
+  ConsistencyDocumentsRecord,
   ConsistencyFinding,
   ConsistencyRunResult,
   ProposalText,

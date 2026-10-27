@@ -489,7 +489,13 @@ onMounted(load);
           </q-card-section>
         </q-card>
 
-        <ConsistencyCheckCard :election-id="electionId" view="admin" :available="checkable" :definition-hash="detail.definitionHash" />
+        <ConsistencyCheckCard
+          :election-id="electionId"
+          view="admin"
+          :available="checkable"
+          :definition-hash="detail.definitionHash"
+          :choose-documents="canEdit"
+        />
 
         <div class="ustp-header">
           <h2 class="text-h6">Contests</h2>

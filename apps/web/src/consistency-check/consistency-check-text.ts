@@ -1,4 +1,11 @@
-import type { ConsistencyCheckResult, ConsistencyCheckSource, ConsistencyCheckView, ConsistencyFinding } from 'ustp-domain';
+import type {
+  BylawsCheckReference,
+  ConsistencyCheckResult,
+  ConsistencyCheckSource,
+  ConsistencyCheckView,
+  ConsistencyDocument,
+  ConsistencyFinding,
+} from 'ustp-domain';
 
 /**
  * Wording for the platform consistency check (design §5.5). Severities use the bylaws check's words
@@ -10,8 +17,56 @@ export const SOURCE_LABELS: Record<ConsistencyCheckSource, string> = {
   constitution: 'the USTP Constitution',
   'bill-of-rights': 'the Transhumanist Bill of Rights',
   bylaws: 'the bylaws',
+  'us-constitution': 'the Constitution of the United States',
   ballot: 'another question on this ballot',
 };
+
+/** Each document, as a sentence names it and as its checkbox is labelled. */
+export const DOCUMENT_LABELS: Record<ConsistencyDocument, string> = {
+  'ustp-constitution': 'the USTP Constitution (whose Article VI is the Platform)',
+  'transhumanist-bill-of-rights': 'the Transhumanist Bill of Rights',
+  bylaws: 'the bylaws in force',
+  'us-constitution': 'the Constitution of the United States',
+};
+
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** "a", "a and b", "a, b and c". */
+function inWords(items: readonly string[]): string {
+  return items.length < 2 ? (items[0] ?? '') : `${items.slice(0, -1).join(', ')} and ${items.at(-1)}`;
+}
+
+/** A checkbox's label: "The Transhumanist Bill of Rights". */
+export function documentLabel(document: ConsistencyDocument): string {
+  return cap(DOCUMENT_LABELS[document]);
+}
+
+/** What the checks compare with, for those who cannot change it: "Compares the questions with …, and with each other." */
+export function documentsText(documents: readonly ConsistencyDocument[]): string {
+  if (!documents.length) return 'Compares the questions with each other only: no documents are chosen.';
+  return `Compares the questions with ${inWords(documents.map((d) => DOCUMENT_LABELS[d]))}, and with each other.`;
+}
+
+/** Said when an Election Admin's change is saved. */
+export function documentsAnnouncement(documents: readonly ConsistencyDocument[]): string {
+  return `Saved. ${documentsText(documents)}`;
+}
+
+/**
+ * What a result was compared with, in a sentence: each document (a reference with where it was read from), the
+ * bylaws version, and the other questions.
+ */
+export function comparedParts(
+  check: Pick<ConsistencyCheckResult, 'documents' | 'references' | 'bylaws'>,
+): { readonly text: string; readonly reference: BylawsCheckReference | null }[] {
+  return check.documents.map((d) => {
+    const reference = check.references.find((r) => r.id === d) ?? null;
+    if (d === 'bylaws') {
+      return { text: check.bylaws ? `the bylaws, version ${check.bylaws.version}` : 'the bylaws (none were published)', reference: null };
+    }
+    return { text: reference?.title ?? DOCUMENT_LABELS[d], reference };
+  });
+}
 
 /** "With the Platform: Article VI, Section CIV", or "Between questions on this ballot". */
 export function sourceText(finding: Pick<ConsistencyFinding, 'source' | 'provision'>): string {
@@ -19,14 +74,15 @@ export function sourceText(finding: Pick<ConsistencyFinding, 'source' | 'provisi
   return `With ${SOURCE_LABELS[finding.source]}${finding.provision ? `: ${finding.provision}` : ''}`;
 }
 
-/** What the check does, before it is run: who reads what, what leaves the system, and the once-only rule. */
-export function introText(view: ConsistencyCheckView): string {
+/** What the check does, before it is run: what it reads and compares, naming only the documents chosen. */
+export function introText(view: ConsistencyCheckView, documents: readonly ConsistencyDocument[]): string {
   const what = view === 'admin' ? "this election's proposals, as they stand now," : "this ballot's proposals";
+  const compare = documents.length
+    ? `with ${inWords(documents.map((d) => DOCUMENT_LABELS[d]))}, and point out where they may disagree with those texts or with each other`
+    : 'and point out where they may disagree with each other';
   return (
-    `Claude, an AI model made by Anthropic, can read ${what} with the party's adopted texts (the USTP Constitution, ` +
-    'whose Article VI is the Platform, the Transhumanist Bill of Rights and the bylaws in force) and point out where ' +
-    'they may disagree with those texts or with each other. It is advisory: it can miss things or flag things that ' +
-    'are not there, and it changes nothing on the ballot.'
+    `Claude, an AI model made by Anthropic, can read ${what} ${compare}. It is advisory: it can miss things or flag ` +
+    'things that are not there, and it changes nothing on the ballot.'
   );
 }
 

@@ -4,9 +4,9 @@ import type { CandidateRecord, ElectionDefinition } from './elections.js';
 import type { ResultsBundle } from './results.js';
 
 /**
- * Offices and who holds them (design §6.4). A Membership or Election Admin defines or changes an office directly; a
- * term is ended early only through the two-person `position.modify` action, and otherwise created only by certifying
- * an election whose candidate contests are tied to the office.
+ * Offices and who holds them (design §6.4). A Membership or Election Admin defines or changes an office directly. A
+ * term is created by certifying an election whose candidate contests are tied to the office, or by an appointment two
+ * people approve (`position.appoint`, appointments.ts), and ended early only through the two-person `position.modify`.
  */
 
 const slug = z.string().regex(/^[a-z0-9][a-z0-9-]{1,47}$/, 'use 2–48 lowercase letters, digits and dashes');
@@ -37,24 +37,44 @@ export interface PositionRecord {
   readonly approvalId: string | null;
 }
 
-/** `position_terms/{termId}`: one person in one office, from one certified result. */
-export interface PositionTermRecord {
+/** What every term of office has, however it came about. */
+interface TermFields {
   readonly termId: string;
   readonly positionId: string;
-  readonly electionId: string;
-  readonly contestId: string;
-  readonly candidateId: string;
   readonly holderName: string;
-  /** The holder's account, when the candidate was entered with one. */
+  /** The holder's account: always for an appointment, for an elected term when the candidate was entered with one. */
   readonly accountId: string | null;
   readonly startsAt: string;
   readonly endsAt: string;
-  /** The certified results the term comes from. */
-  readonly resultsHash: string;
   readonly status: 'active' | 'ended';
   readonly endedAt: string | null;
   readonly endReason: string | null;
 }
+
+/** `position_terms/{termId}`: one person in one office, from one certified result. */
+export interface ElectedTermRecord extends TermFields {
+  /** Absent on terms certified before appointments existed (design §6.4). */
+  readonly basis?: 'election';
+  readonly electionId: string;
+  readonly contestId: string;
+  readonly candidateId: string;
+  /** The certified results the term comes from. */
+  readonly resultsHash: string;
+}
+
+/** `position_terms/{termId}`: one member in one office, from one approved appointment (design §6.4). */
+export interface AppointedTermRecord extends TermFields {
+  readonly basis: 'appointment';
+  readonly accountId: string;
+  /** The `position.appoint` request an Auditor approved. */
+  readonly approvalId: string;
+  /** Why the member was appointed, as requested; public, like the term. */
+  readonly reason: string;
+}
+
+export type PositionTermRecord = ElectedTermRecord | AppointedTermRecord;
+
+export const isAppointed = (term: PositionTermRecord): term is AppointedTermRecord => term.basis === 'appointment';
 
 /**
  * Two-person payloads (design §10.2). Nothing requests `define` any more (offices are defined directly); requests made
@@ -114,9 +134,9 @@ export function termsFromResults(input: {
   readonly candidates: readonly CandidateRecord[];
   readonly positions: ReadonlyMap<string, Pick<PositionRecord, 'termMonths'>>;
   readonly startsAt: string;
-}): Omit<PositionTermRecord, 'termId' | 'status' | 'endedAt' | 'endReason'>[] {
+}): Omit<ElectedTermRecord, 'termId' | 'status' | 'endedAt' | 'endReason'>[] {
   const { definition, bundle, resultsHash, candidates, positions, startsAt } = input;
-  const terms: Omit<PositionTermRecord, 'termId' | 'status' | 'endedAt' | 'endReason'>[] = [];
+  const terms: Omit<ElectedTermRecord, 'termId' | 'status' | 'endedAt' | 'endReason'>[] = [];
   for (const contest of definition.contests) {
     if (!contest.positionId) continue;
     const position = positions.get(contest.positionId);
@@ -126,6 +146,7 @@ export function termsFromResults(input: {
     for (const candidateId of winnersOf(outcome.result)) {
       const candidate = candidates.find((k) => k.candidateId === candidateId && k.contestId === contest.contestId);
       terms.push({
+        basis: 'election',
         positionId: contest.positionId,
         electionId: definition.electionId,
         contestId: contest.contestId,

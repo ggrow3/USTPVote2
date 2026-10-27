@@ -505,7 +505,7 @@ export class ElectionsService {
     await this.notices.forgetElection(electionId).catch((e: unknown) => {
       this.logger.warn(`election ${electionId} deleted, but not its notices: ${e instanceof Error ? e.message : String(e)}`);
     });
-    // Its consistency checks quote its texts, one per person who asked (design §5.5); the same goes for them.
+    // Its consistency checks quote its texts, one per person who asked, and what they compare with go too (design §5.5).
     await this.forgetConsistencyChecks(electionId).catch((e: unknown) => {
       this.logger.warn(`election ${electionId} deleted, but not its consistency checks: ${e instanceof Error ? e.message : String(e)}`);
     });
@@ -515,6 +515,7 @@ export class ElectionsService {
     const checks = await this.db.collection(Collections.consistencyChecks).where('electionId', '==', electionId).select().get();
     const writer = this.db.bulkWriter();
     for (const doc of checks.docs) void writer.delete(doc.ref);
+    void writer.delete(this.db.collection(Collections.consistencyDocuments).doc(electionId));
     await writer.close();
   }
 

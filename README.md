@@ -11,7 +11,8 @@ membership administration, profile photos, role changes by one System Admin (wit
 role), admin two-step verification, election setup with Auditor-approved rolls and scheduling, ledger blocks signed by the
 worker and anchored, casting secret (encrypted) or
 roll-call ballots, sealing them into k-anonymous published blocks, tallying them into signed results, two-person
-certification that seats the winners in their offices and destroys the ballot key, and checking a receipt or the
+certification that seats the winners in their offices and destroys the ballot key, appointing members to offices
+without an election (one admin asks, an Auditor approves), and checking a receipt or the
 results in the browser all work end to end against the Firebase emulators, in the API (emulator integration tests)
 and the web app. The `ustp-verify` CLI checks all of it independently from public data. Published results can also be
 downloaded as CSV or loaded into Google Sheets with `IMPORTDATA`, and the ballot and results as a Word file that Google
