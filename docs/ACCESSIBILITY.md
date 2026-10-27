@@ -131,6 +131,25 @@ test. Keep it current when pages change.
   `h2` with a button whose text names its destination ("Open your ballots", "Open Applications"); one column at
   320 px with nothing scrolling sideways.
 
+- **Added 2026-10-26, the platform consistency check** (design §5.5; against the emulators with the stand-in checker,
+  as v1 on "Platform Vote #9 (demo)" and as elections@example.test in its election editor and in "2027 Bylaws Review
+  (draft)"; the ballot at desktop width dark, 320 px light and 375 px dark, the editor at 375 px dark): the card is a
+  `section` named by its `h2` "Consistency with the platform", above the questions on the ballot and above Contests in
+  the editor, with a caption saying what Claude reads and that the check is advisory. "Check consistency with Claude"
+  opens a dialog named by its title ("Check consistency with Claude?") saying what is sent to Anthropic and that it runs
+  once per election; focus starts on Cancel. Once asked, the button is gone, so focus moves to the status line under
+  it ("Waiting for the server to start the check…", then the outcome), which stays in the page while the check runs
+  and when it ends, so focus is never lost; the start and the finish ("Consistency check finished: 4 possible
+  inconsistencies found.") are announced politely, and a failure is the card's alert banner, not announced again.
+  Findings are an ordered list: "Finding 1", the severity in words beside an icon hidden from screen readers ("Possible
+  tension", in `deep-orange-10`), the source in words ("With the Platform: Article VI", "Between questions on this
+  ballot"), the passage concerned as a `blockquote`, the explanation, and a button per question named "Go to" and the
+  question's title, which moves focus to that question's heading. Long titles wrap and start at the left. When a
+  draft has changed since the check, a caption says so in words. Reloading shows the person's one check again, with
+  no button. Colours are existing pairs: links `#bd4e00` on white (4.94) and `#ff6900` on the dark card (5.84),
+  severity `#bf360c` (5.60) and `#ffb74d` (9.74), captions `#757575` (4.61) and `#b0b0b0` (7.77), read back from the
+  computed styles. At 320 and 375 px nothing scrolls sideways.
+
 ## What was fixed
 
 | WCAG 2.2 | Before | Now |

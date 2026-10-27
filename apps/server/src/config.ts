@@ -34,9 +34,15 @@ export interface ServerConfig {
    * stand-in) or `off` (requests answer 503). Off unless set, outside the emulators.
    */
   readonly bylawsChecker: 'claude' | 'stub' | 'off';
-  /** Anthropic API key for `claude`; the worker's only (Secret Manager in Cloud Run). Never logged. */
+  /**
+   * The platform consistency check (design §5.5), switched on its own because voters can ask for it: `claude`, `stub`
+   * (the emulator-only stand-in) or `off` (requests answer 503). Off unless set, outside the emulators.
+   */
+  readonly consistencyChecker: 'claude' | 'stub' | 'off';
+  /** Anthropic API key for either check's `claude`; the worker's only (Secret Manager in Cloud Run). Never logged. */
   readonly anthropicApiKey: string | null;
   readonly bylawsCheckModel: string;
+  readonly consistencyCheckModel: string;
   /**
    * How election notices are sent (design §6.8): `ses` through Amazon SES, `outbox` recorded in Firestore instead of
    * mailed (the emulator-only stand-in), `off` not at all. Off unless set, outside the emulators.
@@ -67,6 +73,8 @@ export interface ServerConfig {
 
 /** Claude Opus 5.5; `BYLAWS_CHECK_MODEL` overrides it. */
 export const DEFAULT_BYLAWS_CHECK_MODEL = 'claude-opus-5-5';
+/** Claude Opus 5.5; `CONSISTENCY_CHECK_MODEL` overrides it. */
+export const DEFAULT_CONSISTENCY_CHECK_MODEL = 'claude-opus-5-5';
 
 export const CONFIG = Symbol('ServerConfig');
 
@@ -106,6 +114,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const bylawsChecker = (env.BYLAWS_CHECKER ?? (usingEmulators ? 'stub' : 'off')) as ServerConfig['bylawsChecker'];
   if (!['claude', 'stub', 'off'].includes(bylawsChecker)) throw new Error('BYLAWS_CHECKER must be "claude", "stub" or "off"');
   if (bylawsChecker === 'stub' && !usingEmulators) throw new Error('BYLAWS_CHECKER=stub is only allowed with the Firebase emulators');
+  const consistencyChecker = (env.CONSISTENCY_CHECKER ?? (usingEmulators ? 'stub' : 'off')) as ServerConfig['consistencyChecker'];
+  if (!['claude', 'stub', 'off'].includes(consistencyChecker)) throw new Error('CONSISTENCY_CHECKER must be "claude", "stub" or "off"');
+  if (consistencyChecker === 'stub' && !usingEmulators) {
+    throw new Error('CONSISTENCY_CHECKER=stub is only allowed with the Firebase emulators');
+  }
 
   const mailTransport = (env.MAIL_TRANSPORT ?? (usingEmulators ? 'outbox' : 'off')) as ServerConfig['mailTransport'];
   if (!['ses', 'outbox', 'off'].includes(mailTransport)) throw new Error('MAIL_TRANSPORT must be "ses", "outbox" or "off"');
@@ -133,8 +146,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     deploymentEnvironment,
     testingMode,
     bylawsChecker,
+    consistencyChecker,
     anthropicApiKey: env.ANTHROPIC_API_KEY || null,
     bylawsCheckModel: env.BYLAWS_CHECK_MODEL || DEFAULT_BYLAWS_CHECK_MODEL,
+    consistencyCheckModel: env.CONSISTENCY_CHECK_MODEL || DEFAULT_CONSISTENCY_CHECK_MODEL,
     mailTransport,
     mailFrom: env.MAIL_FROM || DEFAULT_MAIL_FROM,
     mailReplyTo: env.MAIL_REPLY_TO || null,

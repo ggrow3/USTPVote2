@@ -16,6 +16,8 @@ import { BylawsChecksController } from '../bylaws-check/bylaws-checks.controller
 import { BylawsChecksService } from '../bylaws-check/bylaws-checks.service.js';
 import { HealthController } from '../common/health.controller.js';
 import { CONFIG, type ServerConfig } from '../config.js';
+import { AdminConsistencyChecksController, ConsistencyChecksController } from '../consistency-check/consistency-checks.controller.js';
+import { ConsistencyChecksService } from '../consistency-check/consistency-checks.service.js';
 import { CoreModule } from '../core.module.js';
 import { ElectionApprovals } from '../elections/election-approvals.js';
 import { ElectionReader } from '../elections/election-reader.js';
@@ -46,7 +48,7 @@ import { PositionsService } from '../positions/positions.service.js';
  * M1: accounts, registration, membership administration, profile photos, roles and approvals, auth switches, ledger.
  * M2: election setup, rolls, scheduling and cancellation; the published ledger (blocks, keys, proofs, anchors).
  * M3: voting. M4: results, certification, offices and terms. Testing mode: test personas (design §10.4). M5: who sees
- * which link (design §10.5).
+ * which link (design §10.5); the platform consistency check (design §5.5).
  */
 @Module({
   imports: [CoreModule],
@@ -62,6 +64,8 @@ import { PositionsService } from '../positions/positions.service.js';
     ProposalsController,
     NoticesController,
     VotingController,
+    ConsistencyChecksController,
+    AdminConsistencyChecksController,
     PublicElectionsController,
     PositionsController,
     PublicPositionsController,
@@ -85,6 +89,7 @@ import { PositionsService } from '../positions/positions.service.js';
     ElectionReader,
     ElectionApprovals,
     VotingService,
+    ConsistencyChecksService,
     PublicElectionsService,
     ballotPoolKeysProvider,
     RoleChanges,

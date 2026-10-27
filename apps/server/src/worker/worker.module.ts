@@ -6,6 +6,10 @@ import { ReferenceLibrary } from '../bylaws-check/references.js';
 import { StubBylawsChecker } from '../bylaws-check/stub-checker.js';
 import { HealthController } from '../common/health.controller.js';
 import { CONFIG, type ServerConfig } from '../config.js';
+import { CONSISTENCY_CHECKER } from '../consistency-check/checker.js';
+import { ClaudeConsistencyChecker } from '../consistency-check/claude-consistency-checker.js';
+import { ConsistencyCheckRunner } from '../consistency-check/consistency-check-runner.js';
+import { StubConsistencyChecker } from '../consistency-check/stub-consistency-checker.js';
 import { CoreModule } from '../core.module.js';
 import { ElectionReader } from '../elections/election-reader.js';
 import { AUDIT_SIGNER, EmulatorAuditSigner, KmsAuditSigner } from '../infra/audit-signer.js';
@@ -31,6 +35,7 @@ import { TasksController } from './tasks.controller.js';
     LedgerSealer,
     Tallier,
     BylawsCheckRunner,
+    ConsistencyCheckRunner,
     ballotPoolKeysProvider,
     secretStoreProvider,
     // Election notices greet roll members by name (design §6.8).
@@ -52,6 +57,16 @@ import { TasksController } from './tasks.controller.js';
           ? new ClaudeBylawsChecker(config.anthropicApiKey, config.bylawsCheckModel, new ReferenceLibrary(firebase.db))
           : config.bylawsChecker === 'stub'
             ? new StubBylawsChecker()
+            : null,
+    },
+    {
+      provide: CONSISTENCY_CHECKER,
+      inject: [CONFIG, Firebase],
+      useFactory: (config: ServerConfig, firebase: Firebase) =>
+        config.consistencyChecker === 'claude'
+          ? new ClaudeConsistencyChecker(config.anthropicApiKey, config.consistencyCheckModel, new ReferenceLibrary(firebase.db))
+          : config.consistencyChecker === 'stub'
+            ? new StubConsistencyChecker()
             : null,
     },
   ],

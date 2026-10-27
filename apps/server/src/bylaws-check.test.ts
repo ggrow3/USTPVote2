@@ -8,6 +8,7 @@ import { htmlToText, ReferenceLibrary, type ReferenceText } from './bylaws-check
 import { StubBylawsChecker } from './bylaws-check/stub-checker.js';
 import { US_CONSTITUTION_SHA256, US_CONSTITUTION_TEXT } from './bylaws-check/us-constitution.js';
 import { loadConfig } from './config.js';
+import { fakeAnthropic as fakeApi, type CapturedRequest } from './testing/fake-anthropic.js';
 
 const finding = (lines: number[], severity: BylawsFinding['severity'] = 'medium'): BylawsFinding => ({
   lines,
@@ -101,28 +102,8 @@ describe('the Claude checker', () => {
     text: `text of ${id}`,
   }));
 
-  /** Answers like the Messages API's event stream, with `review` as the structured output. */
-  function fakeApi(review: unknown, captured: { url?: string; headers?: Headers; body?: Record<string, unknown> }) {
-    const events = [
-      ['message_start', { type: 'message_start', message: { id: 'msg_1', type: 'message', role: 'assistant', model: 'claude-opus-5-5', content: [], stop_reason: null, stop_sequence: null, usage: { input_tokens: 40, output_tokens: 1, cache_read_input_tokens: 30, cache_creation_input_tokens: 0 } } }],
-      ['content_block_start', { type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }],
-      ['content_block_delta', { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: JSON.stringify(review) } }],
-      ['content_block_stop', { type: 'content_block_stop', index: 0 }],
-      ['message_delta', { type: 'message_delta', delta: { stop_reason: 'end_turn', stop_sequence: null }, usage: { output_tokens: 120 } }],
-      ['message_stop', { type: 'message_stop' }],
-    ];
-    const fetch = async (url: string | URL | Request, init?: RequestInit) => {
-      captured.url = String(url);
-      captured.headers = new Headers(init?.headers);
-      captured.body = JSON.parse(String(init?.body));
-      const sse = events.map(([event, data]) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`).join('');
-      return new Response(sse, { status: 200, headers: { 'content-type': 'text/event-stream' } });
-    };
-    return fetch as typeof globalThis.fetch;
-  }
-
   it('sends the references as a cached prefix and the numbered draft, and keeps the findings on real lines', async () => {
-    const captured: { url?: string; headers?: Headers; body?: Record<string, unknown> } = {};
+    const captured: CapturedRequest = {};
     const review = { summary: 'One conflict.', findings: [{ ...finding([2, 40], 'high'), source: 'us-constitution', provision: 'Amendment I' }] };
     const checker = new ClaudeBylawsChecker('sk-test', 'claude-opus-5-5', { load: async () => references }, { fetch: fakeApi(review, captured) });
     const out = await checker.check({ title: 'Bylaws', text: 'A\nB\nC', focusLines: null, amends: null, removed: [] });
