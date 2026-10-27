@@ -54,6 +54,7 @@ describe('navigation settings (design §10.5)', () => {
 
   it('save the whole matrix, ledgering each changed cell with the admin as actor', async () => {
     const settings = edit((s) => {
+      s.menu.signed_out.signin = false;
       s.menu.applicant.ballot = false;
       s.sections.system_admin.offices = true;
       s.startsOn.active = 'ballot';
@@ -70,6 +71,7 @@ describe('navigation settings (design §10.5)', () => {
       payload: {
         version: 1,
         changes: [
+          { audience: 'signed_out', link: 'signin', shown: false },
           { audience: 'applicant', link: 'ballot', shown: false },
           { audience: 'system_admin', section: 'offices', shown: true },
           { audience: 'active', startsOn: 'ballot' },
@@ -91,13 +93,22 @@ describe('navigation settings (design §10.5)', () => {
     expect((await api.call('GET', '/v1/navigation')).body.menu.lapsed.ballot).toBe(false);
   });
 
-  it('refuse a section the API does not let that role use, and hiding guarded sections from System Admins', async () => {
+  it('refuse a section the API does not let that role use, hiding guarded sections, and stranding visitors', async () => {
     const forbidden = await put(sa1, edit((s) => (s.sections.election_admin.members = true)));
     expect(forbidden).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/does not let that role use it/) } });
     const lockOut = await put(sa1, edit((s) => (s.sections.system_admin.navigation = false)));
     expect(lockOut).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/lock them out/) } });
     const hiddenStart = await put(sa1, edit((s) => ((s.menu.active.verify = false), (s.startsOn.active = 'verify'))));
     expect(hiddenStart).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/not shown to them/) } });
+    const signedIn = await put(sa1, edit((s) => (s.menu.active.signin = true)));
+    expect(signedIn).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/they are signed in/) } });
+    const stranded = await put(
+      sa1,
+      edit((s) => {
+        for (const link of ['signin', 'register', 'ballot', 'admin']) s.menu.signed_out[link] = false;
+      }),
+    );
+    expect(stranded).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/need a way to sign in/) } });
     expect((await api.call('GET', '/v1/navigation')).body.version).toBe(0);
   });
 

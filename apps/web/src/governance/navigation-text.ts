@@ -46,6 +46,7 @@ export const MENU_LABELS: Readonly<Record<MenuLink, string>> = {
   ballot: 'Ballot',
   verify: 'Verify',
   admin: 'Admin',
+  signin: 'Sign in',
 };
 
 export const MENU_CAPTIONS: Readonly<Record<MenuLink, string>> = {
@@ -53,6 +54,7 @@ export const MENU_CAPTIONS: Readonly<Record<MenuLink, string>> = {
   ballot: 'Cast votes, see results',
   verify: 'Check a vote receipt',
   admin: 'The admin console',
+  signin: "The header's button, for visitors",
 };
 
 /** The admin console's tab names. */
@@ -117,6 +119,8 @@ export function lockText(lock: CellLock, audience: Audience, section?: AdminSect
       return shown
         ? `Shown while ${plural(audience as Role)} have any admin section`
         : `Hidden while ${plural(audience as Role)} have no admin section`;
+    case 'signed_in':
+      return 'Not applicable: already signed in';
   }
 }
 

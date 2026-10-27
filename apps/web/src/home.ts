@@ -11,7 +11,7 @@ import { SECTION_CAPTIONS, SECTION_LABELS } from './governance/navigation-text.j
 
 /** The signed-in home page (design §10.5): a card for each menu page and admin section the person is shown. */
 
-export type HomeCardKey = Exclude<MenuLink, 'admin'> | AdminSection | 'account';
+export type HomeCardKey = Exclude<MenuLink, 'admin' | 'signin'> | AdminSection | 'account';
 
 export interface HomeCard {
   readonly key: HomeCardKey;

@@ -14,6 +14,7 @@ import {
   resolveNavigation,
   SECTION_ROLES,
   sectionLock,
+  SIGN_IN_WAYS,
   shownTo,
   startPageFor,
   startPageOptions,
@@ -33,11 +34,12 @@ function edit(base: NavigationSettings, change: (s: { -readonly [K in keyof Navi
 const viewer = (membership: Viewer['membership'], ...roles: Role[]): Viewer => ({ membership, roles });
 
 describe('defaults', () => {
-  it('show Register, Ballot, Verify and Admin to everyone, as the menu did before the settings', () => {
-    for (const membership of ['signed_out', 'no_membership', ...MEMBER_STATUSES] as const) {
+  it('show Register, Ballot, Verify and Admin to everyone, and Sign in while signed out, as before the settings', () => {
+    expect(shownTo(DEFAULT_NAVIGATION, viewer('signed_out')).menu).toEqual(MENU_LINKS);
+    for (const membership of ['no_membership', ...MEMBER_STATUSES] as const) {
       expect(shownTo(DEFAULT_NAVIGATION, viewer(membership)).menu).toEqual(['register', 'ballot', 'verify', 'admin']);
     }
-    expect(shownTo(DEFAULT_NAVIGATION, viewer('active', 'election_admin')).menu).toEqual(MENU_LINKS);
+    expect(shownTo(DEFAULT_NAVIGATION, viewer('active', 'election_admin')).menu).toEqual(['register', 'ballot', 'verify', 'admin']);
   });
 
   it('give each role the console tabs it had', () => {
@@ -85,15 +87,35 @@ describe('locked cells', () => {
     expect(guarded).toEqual(['system_admin:people', 'system_admin:navigation']);
   });
 
-  it("make a role's Admin link follow its sections, and leave every other link free", () => {
+  it("make a role's Admin link follow its sections, and leave the other links free", () => {
     expect(menuLock('election_admin', 'admin')).toBe('follows_sections');
     expect(menuLock('active', 'admin')).toBeNull();
     expect(menuLock('auditor', 'ballot')).toBeNull();
+    expect(menuLock('signed_out', 'signin')).toBeNull();
     const noSections = edit(DEFAULT_NAVIGATION, (s) => {
       for (const sec of ADMIN_SECTIONS) s.sections.auditor[sec] = false;
     });
     expect(resolveNavigation(noSections).menu.auditor.admin).toBe(false);
     expect(resolveNavigation(DEFAULT_NAVIGATION).menu.auditor.admin).toBe(true);
+  });
+
+  it('lock off Sign in for everyone signed in', () => {
+    expect(AUDIENCES.filter((a) => menuLock(a, 'signin') === 'signed_in')).toEqual(AUDIENCES.filter((a) => a !== 'signed_out'));
+    const tampered = edit(DEFAULT_NAVIGATION, (s) => (s.menu.active.signin = true));
+    expect(resolveNavigation(tampered).menu.active.signin).toBe(false);
+    expect(checkNavigationSettings(tampered)).toMatchObject({ ok: false, reason: expect.stringMatching(/they are signed in/) });
+  });
+
+  it('keep signed-out visitors a way to sign in: Sign in, Register, Ballot or Admin', () => {
+    const only = (link: (typeof SIGN_IN_WAYS)[number]) =>
+      edit(DEFAULT_NAVIGATION, (s) => {
+        for (const l of MENU_LINKS) s.menu.signed_out[l] = l === link || l === 'verify';
+      });
+    for (const link of SIGN_IN_WAYS) expect(checkNavigationSettings(only(link))).toEqual({ ok: true });
+    const stranded = edit(DEFAULT_NAVIGATION, (s) => {
+      for (const l of SIGN_IN_WAYS) s.menu.signed_out[l] = false;
+    });
+    expect(checkNavigationSettings(stranded)).toMatchObject({ ok: false, refusal: 'conflict', reason: expect.stringMatching(/way to sign in/) });
   });
 
   it('are put back to their locked value when resolving', () => {
@@ -202,6 +224,12 @@ describe('start pages', () => {
 });
 
 describe('saved settings', () => {
+  it('show Sign in to visitors when saved before it was a row', () => {
+    const { signin: _, ...older } = DEFAULT_NAVIGATION.menu.signed_out;
+    const stored = edit(DEFAULT_NAVIGATION, (s) => (s.menu.signed_out = { ...older, ballot: false }));
+    expect(resolveNavigation(stored).menu.signed_out).toEqual({ register: true, ballot: false, verify: true, admin: true, signin: true });
+  });
+
   it('fill in anything missing from the defaults, such as a section added since', () => {
     const { navigation: _, ...older } = DEFAULT_NAVIGATION.sections.system_admin;
     const stored = { ...DEFAULT_NAVIGATION, sections: { ...DEFAULT_NAVIGATION.sections, system_admin: older }, startsOn: {} };

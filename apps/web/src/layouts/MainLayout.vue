@@ -15,10 +15,12 @@ const router = useRouter();
 const who = computed(() => acting.persona?.label || session.me?.account?.displayName || session.user?.email || 'Signed in');
 /**
  * The links the navigation settings give this person (design §10.5), once their account and the settings are known.
- * Each page still explains itself to someone who reaches it without being one it is for.
+ * Each page still explains itself to someone who reaches it without being one it is for. Sign in is the header's button.
  */
 const links = computed(() =>
-  session.ready && navigationState.loaded ? shown.value.menu.map((link) => ({ to: `/${link}`, label: MENU_LABELS[link] })) : [],
+  session.ready && navigationState.loaded
+    ? shown.value.menu.filter((link) => link !== 'signin').map((link) => ({ to: `/${link}`, label: MENU_LABELS[link] }))
+    : [],
 );
 
 async function onSignOut() {
@@ -66,7 +68,7 @@ function onHeaderResize({ height }: { height: number }) {
               <q-item v-close-popup clickable @click="onSignOut"><q-item-section>Sign out</q-item-section></q-item>
             </q-list>
           </q-btn-dropdown>
-          <q-btn v-else flat no-caps label="Sign in" to="/signin" />
+          <q-btn v-else-if="shown.menu.includes('signin')" flat no-caps label="Sign in" to="/signin" />
         </template>
       </q-toolbar>
       <!-- Links, not tabs: each one loads a page (tab semantics would promise panels on this page). -->
