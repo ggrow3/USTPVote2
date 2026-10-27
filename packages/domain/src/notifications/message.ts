@@ -1,7 +1,7 @@
 import type { ElectionRecord } from '../elections.js';
 
 /**
- * The voting-open email (design §6.7), as plain text and simple HTML with the same content: real text, no images, and
+ * The voting-open email (design §6.8), as plain text and simple HTML with the same content: real text, no images, and
  * links named for what they open. Built from the election as frozen at scheduling, the web app's address and the
  * member's name; nothing else about the member goes in. Pure, so the worker sends exactly what the tests check.
  */

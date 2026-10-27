@@ -83,19 +83,19 @@ variable "bylaws_check_enabled" {
 }
 
 variable "web_origin" {
-  description = "Where the web app is served, which election notices link to; empty for https://<project>.web.app (design §6.7)."
+  description = "Where the web app is served, which election notices link to; empty for https://<project>.web.app (design §6.8)."
   type        = string
   default     = ""
 }
 
 variable "mail_from" {
-  description = "From header of election notices, e.g. \"USTP Elections <elections@example.org>\" (design §6.7)."
+  description = "From header of election notices, e.g. \"USTP Elections <elections@example.org>\" (design §6.8)."
   type        = string
   default     = ""
 }
 
 variable "mail_reply_to" {
-  description = "Reply-To header of election notices; empty for none (design §6.7)."
+  description = "Reply-To header of election notices; empty for none (design §6.8)."
   type        = string
   default     = ""
 }

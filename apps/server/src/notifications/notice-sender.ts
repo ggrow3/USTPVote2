@@ -33,7 +33,7 @@ const BATCH = 10;
 export const NOTICE_TICK_BUDGET_MS = 20_000;
 
 /**
- * Sends election notices (design §6.7), a step of the worker's tick. Once an election is open it creates its
+ * Sends election notices (design §6.8), a step of the worker's tick. Once an election is open it creates its
  * voting-open notice with one `pending` record per person on the roll, then sends them a batch at a time, within a
  * time budget per tick, and ledgers `notice.sent` with the counts when a round has finished.
  *

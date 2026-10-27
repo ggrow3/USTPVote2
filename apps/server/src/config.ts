@@ -38,7 +38,7 @@ export interface ServerConfig {
   readonly anthropicApiKey: string | null;
   readonly bylawsCheckModel: string;
   /**
-   * How election notices are sent (design §6.7): `outbox` records each message in Firestore instead of mailing it
+   * How election notices are sent (design §6.8): `outbox` records each message in Firestore instead of mailing it
    * (the emulator-only stand-in) and `off` sends none. Off unless set, outside the emulators.
    */
   readonly mailTransport: 'outbox' | 'off';

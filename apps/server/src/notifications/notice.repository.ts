@@ -15,7 +15,7 @@ import { Firebase } from '../infra/firebase.js';
 const ALREADY_EXISTS = 6;
 
 /**
- * The notices and their recipient records (design §6.7, §11), and the outbox. The only code that knows their paths.
+ * The notices and their recipient records (design §6.8, §11), and the outbox. The only code that knows their paths.
  */
 @Injectable()
 export class NoticeRepository {

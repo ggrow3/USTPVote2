@@ -18,15 +18,29 @@ import {
   amendmentText,
   definitionHash,
   proposalContentHash,
+  resultsSynopsis,
   splitLines,
   type BylawsAmendment,
   type ContestOutcome,
+  type ContestSynopsis,
   type ElectionDefinition,
   type ElectionState,
   type ResultsRecord,
+  type ResultsSynopsis,
 } from 'ustp-domain';
 import { INK, LETTER_PAGE, STAMP_PARAGRAPH_STYLE, stampLine, textParagraph } from './bylaws-docx.js';
-import { KIND_LABELS, rulesText, tieBreakText } from './election-text.js';
+import { electionSlug, fileDate, KIND_LABELS, rulesText, tieBreakText } from './election-text.js';
+import {
+  ballotsText,
+  chooseNText,
+  irvText,
+  outcomeLabel,
+  quorumText,
+  share,
+  synopsisFacts,
+  tallyText,
+  yesShareText,
+} from './elections/synopsis-text.js';
 
 /**
  * An election as a Word document (design §9), so it can be opened in Word or Google Docs (which opens .docx itself):
@@ -249,6 +263,61 @@ function outcomeBlocks(c: Contest, n: number, outcome: ContestOutcome): (Paragra
   ];
 }
 
+// --- The synopsis ----------------------------------------------------------------------------------------------------
+
+/** One contest in brief, as on the results page's Synopsis tab: its outcome, counts and shares. */
+function synopsisContestBlocks(c: ContestSynopsis): (Paragraph | Table)[] {
+  const head = [
+    heading(`${c.number}. ${c.title}`, HeadingLevel.HEADING_2),
+    labelled('Outcome', new TextRun({ text: outcomeLabel(c).text, bold: true })),
+  ];
+  switch (c.kind) {
+    case 'proposal':
+      return [
+        ...head,
+        table(
+          ['Choice', 'Votes', 'Share'],
+          [
+            ['Yes', c.yes.part, share(c.yes)],
+            ['No', c.no.part, share(c.no)],
+            ['Abstain', c.abstain.part, share(c.abstain)],
+          ],
+        ),
+        new Paragraph(yesShareText(c)),
+        new Paragraph([`${ballotsText(c)}.`, quorumText(c)].filter(Boolean).join(' ')),
+      ];
+    case 'choose_n':
+      return [
+        ...head,
+        table(
+          ['Candidate', 'Votes', 'Share', 'Result'],
+          [
+            ...c.candidates.map((k) => [k.name, k.votes.part, share(k.votes), k.elected ? 'Elected' : 'Not elected']),
+            ...(c.blank.part ? [['Blank (no choice)', c.blank.part, share(c.blank), '']] : []),
+          ],
+        ),
+        new Paragraph(chooseNText(c)),
+      ];
+    case 'irv':
+      return [
+        ...head,
+        new Paragraph(irvText(c)),
+        new Paragraph(`${ballotsText(c)}.${c.rounds > 1 ? ' Every round is in the results below.' : ''}`),
+      ];
+  }
+}
+
+/** The results in brief, first in the document, as the party's own results documents open. */
+function synopsisBlocks(s: ResultsSynopsis, when: (at: string) => string): (Paragraph | Table)[] {
+  return [
+    heading('Synopsis', HeadingLevel.HEADING_1),
+    ...synopsisFacts(s, when).map((f) => labelled(f.label, new TextRun({ text: f.value, bold: f.label === 'Status' }))),
+    ...s.contests.flatMap(synopsisContestBlocks),
+    heading('Altogether', HeadingLevel.HEADING_2),
+    ...tallyText(s.tally).map((line) => new Paragraph(line)),
+  ];
+}
+
 // --- The document ----------------------------------------------------------------------------------------------------
 
 export function electionDocument(input: ElectionDocxInput): Document {
@@ -288,8 +357,8 @@ export function electionDocument(input: ElectionDocxInput): Document {
     new Paragraph({ style: STAMP_PARAGRAPH_STYLE.id, children: [] }),
   ];
 
+  const title = new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun(def.title)] });
   const overview = [
-    new Paragraph({ heading: HeadingLevel.TITLE, children: [new TextRun(def.title)] }),
     labelled('Voting opens', new TextRun(when(def.opensAt))),
     labelled('Voting closes', new TextRun(when(def.closesAt))),
     labelled(
@@ -299,10 +368,12 @@ export function electionDocument(input: ElectionDocxInput): Document {
     ...lines(def.description),
   ];
 
-  const ballot = [
-    heading('Ballot', HeadingLevel.HEADING_1),
-    ...(def.contests.length ? def.contests.flatMap((c, i) => contestBlocks(c, i + 1, texts)) : [new Paragraph('No contests yet.')]),
-  ];
+  const contests = def.contests.length ? def.contests.flatMap((c, i) => contestBlocks(c, i + 1, texts)) : [new Paragraph('No contests yet.')];
+  // With results, the synopsis comes first and the ballot's overview moves under its heading.
+  const ballotHeading = heading('Ballot', HeadingLevel.HEADING_1);
+  const opening = results
+    ? [title, ...synopsisBlocks(resultsSynopsis({ results, definition: def }), when), ballotHeading, ...overview]
+    : [title, ...overview, ballotHeading];
 
   const counted = results
     ? [
@@ -386,7 +457,7 @@ export function electionDocument(input: ElectionDocxInput): Document {
             ],
           }),
         },
-        children: [...stamp, ...overview, ...ballot, ...counted],
+        children: [...stamp, ...opening, ...contests, ...counted],
       },
     ],
   });
@@ -401,13 +472,6 @@ export function electionDocxFileName(
   definition: Pick<ElectionDefinition, 'title'>,
   options: { readonly withResults: boolean; readonly exportedAt: Date; readonly timeZone?: string },
 ): string {
-  const slug =
-    definition.title
-      .normalize('NFKD')
-      .replace(/[̀-ͯ]/g, '')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .slice(0, 60)
-      .replace(/^-+|-+$/g, '') || 'election';
-  return `ustp-vote-${slug}${options.withResults ? '' : '-ballot'}-${clock(options.timeZone).day(options.exportedAt)}.docx`;
+  const kind = options.withResults ? '' : '-ballot';
+  return `ustp-vote-${electionSlug(definition.title)}${kind}-${fileDate(options.exportedAt, options.timeZone)}.docx`;
 }

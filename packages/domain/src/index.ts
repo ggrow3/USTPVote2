@@ -4,6 +4,7 @@ export { ROLES, conflictingRoles, isRole, checkRoleChange } from './roles.js';
 export type { Role } from './roles.js';
 export * from './membership/index.js';
 export * from './notifications/index.js';
+export * from './governance/index.js';
 export { diffLines, splitLines } from './text-diff.js';
 export {
   MAX_AMENDMENT_CHANGES,
@@ -95,6 +96,19 @@ export type {
 export { rollLeaf, sortRoll, rollMerkleRoot, rollInclusionProof, rollStatement, rollSigningInput, isRehearsalRoll } from './roll.js';
 export type { RollCriteria, RollStatement } from './roll.js';
 export * from './election-api.js';
+export {
+  ELECTION_PACKAGE_FORMAT,
+  MAX_PACKAGE_CANDIDATES,
+  MAX_PACKAGE_CONTESTS,
+  MAX_PACKAGE_DOCUMENTS,
+  contestRecord,
+  electionPackageFrom,
+  electionPackageSchema,
+  packageProposals,
+  packageRecords,
+  packageWindow,
+} from './election-package.js';
+export type { ElectionPackage, ElectionPackageInput, PackageContest, PackageProposal } from './election-package.js';
 export { castBallotSchema, ballotProblems, ballotViewProblems, commitmentsOf } from './ballots.js';
 export {
   buildSealedBlock,
@@ -112,6 +126,17 @@ export { buildResultsBundle, resultsHash, resultsSigningInput, tieBreakOrders, m
 export type { ResultsBundle, ResultsRecord, ResultsSummary, ContestOutcome } from './results.js';
 export { checkResults } from './results-check.js';
 export { csvCell, resultsCsv, RESULTS_CSV_NOTICE } from './results-csv.js';
+export { comparedPercents, percent, resultsSynopsis, synopsisTally } from './results-synopsis.js';
+export type {
+  CandidateLine,
+  ChooseNSynopsis,
+  ContestSynopsis,
+  IrvSynopsis,
+  ProposalSynopsis,
+  ResultsSynopsis,
+  Share,
+  SynopsisTally,
+} from './results-synopsis.js';
 export { votingCalendar, CALENDAR_PRODID } from './calendar.js';
 export type { CalendarElection } from './calendar.js';
 export { positionInputSchema, addMonths, winnersOf, termsFromResults } from './positions.js';

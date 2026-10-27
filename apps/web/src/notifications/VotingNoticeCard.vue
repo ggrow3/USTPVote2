@@ -8,7 +8,7 @@ import { electionNotices, resendNotice } from './api.js';
 import { countRows, noNoticeText, noticeStatus } from './notice-text.js';
 
 /**
- * The voting-open email (design §6.7) on the election editor: whether it went out and how it went, as counts only,
+ * The voting-open email (design §6.8) on the election editor: whether it went out and how it went, as counts only,
  * resending to those it failed for, and a preview of the message.
  */
 const props = defineProps<{ detail: ElectionDetail }>();

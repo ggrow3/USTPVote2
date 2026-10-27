@@ -26,7 +26,7 @@ module "ustpvote" {
 
   bylaws_check_enabled = var.bylaws_check_enabled
 
-  # Election notices (design §6.7).
+  # Election notices (design §6.8).
   web_origin    = var.web_origin
   mail_from     = var.mail_from
   mail_reply_to = var.mail_reply_to

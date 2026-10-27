@@ -102,7 +102,7 @@ for running the server locally against a real project. Variable names are those 
 |---|---|:-:|:-:|
 | `GOOGLE_CLOUD_PROJECT` | in `api_env` / `worker_env` | ● | ● |
 | `DEPLOYMENT_ENVIRONMENT` | the `environment` variable (`dev`, `staging`, `prod`) | ● | ● |
-| `TESTING_MODE` | `true` only when the `testing_mode` variable is (dev sets it; prod refuses it); the worker sends a rehearsal's election notice to the outbox only then (design §6.7) | ● | ● |
+| `TESTING_MODE` | `true` only when the `testing_mode` variable is (dev sets it; prod refuses it); the worker sends a rehearsal's election notice to the outbox only then (design §6.8) | ● | ● |
 | `WEB_ORIGIN` | in `worker_env`: the `web_origin` variable, else `https://<project>.web.app`; election notices link to it | | ● |
 | `MAIL_FROM`, `MAIL_REPLY_TO` | in `worker_env` when the `mail_from` / `mail_reply_to` variables are set: the election notices' headers | | ● |
 | `AUDIT_SIGNING_KEY_VERSION` | `audit_signing_key_version` (`…/cryptoKeys/audit-signing/cryptoKeyVersions/1`) | | ● |

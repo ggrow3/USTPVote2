@@ -19,7 +19,7 @@ import { NoticeRepository } from './notice.repository.js';
 
 /**
  * What Election Admins and Auditors see of an election's notices, and resending to those a notice failed for (design
- * §6.7). Counts only: no address and nobody's status. The api never sends mail and holds no mail credentials.
+ * §6.8). Counts only: no address and nobody's status. The api never sends mail and holds no mail credentials.
  */
 @Injectable()
 export class NoticesService {

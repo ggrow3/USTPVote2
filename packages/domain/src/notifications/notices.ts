@@ -2,7 +2,7 @@ import { deny, OK, refuse, type Check } from '../check.js';
 import type { ElectionRecord } from '../elections.js';
 
 /**
- * Election notices (design §6.7): the email telling everyone on an election's roll that voting is open. The worker
+ * Election notices (design §6.8): the email telling everyone on an election's roll that voting is open. The worker
  * sends it once per voter per election and keeps one record per recipient, without the address, which it reads from
  * the account only when sending. An official election notice, not marketing: it goes to everyone on the roll whatever
  * their newsletter and announcement choices.

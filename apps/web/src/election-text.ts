@@ -2,6 +2,25 @@ import type { ContestSpec, ProposalContest, Ratio, Threshold, TieBreakRecord } f
 
 /** Plain-language descriptions of contest rules (design §9), so admins and voters see what a rule means. */
 
+/** An election's title as it goes into file names: `2026 Officer Election!` → `2026-officer-election`. */
+export function electionSlug(title: string): string {
+  return (
+    title
+      .normalize('NFKD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .slice(0, 60)
+      .replace(/^-+|-+$/g, '') || 'election'
+  );
+}
+
+/** A file's date, YYYY-MM-DD, in `timeZone` (the browser's when left out). */
+export function fileDate(at: Date, timeZone?: string): string {
+  // en-CA writes dates as YYYY-MM-DD.
+  return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(at);
+}
+
 export const KIND_LABELS: Record<ContestSpec['kind'], string> = {
   proposal: 'Proposal (yes / no / abstain)',
   choose_n: 'Choose candidates',
@@ -14,7 +33,7 @@ export function ratioText(r: Ratio): string {
   return NAMED[`${r.num}/${r.den}`] ?? (r.den === 100 ? `${r.num}%` : `${r.num}/${r.den}`);
 }
 
-function thresholdText(t: Threshold): string {
+export function thresholdText(t: Threshold): string {
   return `${t.comparison === 'gt' ? 'more than' : 'at least'} ${ratioText(t.ratio)}`;
 }
 

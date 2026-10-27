@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import {
   checkResults,
+  resultsSynopsis,
   type AnchorRecord,
   type BallotView,
   type ContestOutcome,
@@ -20,6 +21,7 @@ import { usePageTitle } from '../a11y.js';
 import { api, ApiError, errorMessage } from '../api.js';
 import { downloadElectionDocx } from '../election-files.js';
 import { rulesText, tieBreakText } from '../election-text.js';
+import ResultsSynopsis from '../elections/ResultsSynopsis.vue';
 import { session } from '../session.js';
 
 type Contest = ElectionDefinition['contests'][number];
@@ -70,6 +72,18 @@ onMounted(async () => {
     loading.value = false;
   }
 });
+
+/** The synopsis first, as the party's own results documents open; the full results have every count and round. */
+const view = ref<'synopsis' | 'full'>('synopsis');
+const resultsUrl = `${window.location.origin}/results/${encodeURIComponent(electionId)}`;
+const synopsis = computed(() =>
+  results.value && record.value ? resultsSynopsis({ results: results.value, definition: record.value.definition }) : null,
+);
+
+function showFullResults() {
+  view.value = 'full';
+  document.getElementById('results-tab-full')?.focus();
+}
 
 const outcomes = computed(() => {
   const r = results.value;
@@ -161,7 +175,7 @@ const summary = computed(() => {
 <template>
   <q-page padding>
     <div class="ustp-content">
-      <q-btn flat dense no-caps icon="arrow_back" label="Your ballots" to="/ballot" class="ustp-back" />
+      <q-btn flat dense no-caps icon="arrow_back" label="Your ballots" to="/ballot" class="ustp-back ustp-no-print" />
       <q-banner v-if="error" class="bg-negative text-white" rounded>{{ error }}</q-banner>
       <div v-else-if="loading" class="ustp-toolbar">
         <q-spinner size="sm" /><span>Loading and checking the results…</span>
@@ -189,120 +203,141 @@ const summary = computed(() => {
         </q-banner>
 
         <template v-else>
-          <q-banner v-if="results.status === 'provisional'" class="bg-grey-3 text-black" rounded>
+          <q-banner v-if="results.status === 'provisional'" class="bg-grey-3 text-black ustp-no-print" rounded>
             Provisional: these results are signed and in the audit ledger, but not yet certified.
           </q-banner>
-          <q-banner v-else class="bg-positive text-white" rounded>
+          <q-banner v-else class="bg-positive text-white ustp-no-print" rounded>
             Certified {{ results.certifiedAt ? new Date(results.certifiedAt).toLocaleString() : '' }} by an Election Admin and an
             Auditor.
           </q-banner>
-          <q-banner v-if="summary" :class="summary.cls" rounded>{{ summary.text }}</q-banner>
+          <q-banner v-if="summary" :class="summary.cls" class="ustp-no-print" rounded>{{ summary.text }}</q-banner>
 
-          <q-card v-for="{ contest, outcome } in outcomes" :key="contest.contestId" flat bordered>
-            <q-card-section>
-              <div class="ustp-header">
-                <h2 class="text-subtitle1">{{ contest.title }}</h2>
-                <q-badge
-                  v-if="outcome.result.kind === 'proposal'"
-                  :color="PROPOSAL_OUTCOME[outcome.result.outcome].color"
-                  :label="PROPOSAL_OUTCOME[outcome.result.outcome].label"
-                />
-              </div>
-              <div v-for="line in rulesText(contest.spec)" :key="line" class="text-caption text-grey-7">{{ line }}</div>
-            </q-card-section>
+          <div class="ustp-no-print">
+            <q-tabs v-model="view" dense align="left" class="text-primary" no-caps>
+              <q-tab id="results-tab-synopsis" name="synopsis" label="Synopsis" aria-controls="results-panel-synopsis" />
+              <q-tab id="results-tab-full" name="full" label="Full results" aria-controls="results-panel-full" />
+            </q-tabs>
+            <q-separator />
+          </div>
+          <!-- Transparent and without padding, so the panels' cards sit on the page in line with the tabs. -->
+          <q-tab-panels v-model="view" keep-alive class="bg-transparent">
+            <q-tab-panel id="results-panel-synopsis" name="synopsis" aria-labelledby="results-tab-synopsis" class="q-pa-none">
+              <ResultsSynopsis
+                v-if="synopsis"
+                :synopsis="synopsis"
+                :results-hash="results.resultsHash"
+                :results-url="resultsUrl"
+                @full-results="showFullResults"
+              />
+            </q-tab-panel>
+            <q-tab-panel id="results-panel-full" name="full" aria-labelledby="results-tab-full" class="q-pa-none ustp-stack">
+              <q-card v-for="{ contest, outcome } in outcomes" :key="contest.contestId" flat bordered>
+                <q-card-section>
+                  <div class="ustp-header">
+                    <h2 class="text-subtitle1">{{ contest.title }}</h2>
+                    <q-badge
+                      v-if="outcome.result.kind === 'proposal'"
+                      :color="PROPOSAL_OUTCOME[outcome.result.outcome].color"
+                      :label="PROPOSAL_OUTCOME[outcome.result.outcome].label"
+                    />
+                  </div>
+                  <div v-for="line in rulesText(contest.spec)" :key="line" class="text-caption text-grey-7">{{ line }}</div>
+                </q-card-section>
 
-            <q-card-section v-if="outcome.result.kind === 'proposal'" class="q-pt-none">
-              <q-markup-table flat dense separator="horizontal">
-                <thead>
-                  <tr><th scope="col" class="text-left">Choice</th><th scope="col" class="text-right">Votes</th></tr>
-                </thead>
-                <tbody>
-                  <tr><td>Yes</td><td class="text-right">{{ outcome.result.counts.yes }}</td></tr>
-                  <tr><td>No</td><td class="text-right">{{ outcome.result.counts.no }}</td></tr>
-                  <tr><td>Abstain</td><td class="text-right">{{ outcome.result.counts.abstain }}</td></tr>
-                </tbody>
-              </q-markup-table>
-              <div v-if="outcome.result.quorum.required > 0" class="text-caption q-mt-sm">
-                Quorum: {{ outcome.result.ballots }} of {{ outcome.result.quorum.required }} needed
-                ({{ outcome.result.quorum.met ? 'met' : 'not met' }}).
-              </div>
-            </q-card-section>
+                <q-card-section v-if="outcome.result.kind === 'proposal'" class="q-pt-none">
+                  <q-markup-table flat dense separator="horizontal">
+                    <thead>
+                      <tr><th scope="col" class="text-left">Choice</th><th scope="col" class="text-right">Votes</th></tr>
+                    </thead>
+                    <tbody>
+                      <tr><td>Yes</td><td class="text-right">{{ outcome.result.counts.yes }}</td></tr>
+                      <tr><td>No</td><td class="text-right">{{ outcome.result.counts.no }}</td></tr>
+                      <tr><td>Abstain</td><td class="text-right">{{ outcome.result.counts.abstain }}</td></tr>
+                    </tbody>
+                  </q-markup-table>
+                  <div v-if="outcome.result.quorum.required > 0" class="text-caption q-mt-sm">
+                    Quorum: {{ outcome.result.ballots }} of {{ outcome.result.quorum.required }} needed
+                    ({{ outcome.result.quorum.met ? 'met' : 'not met' }}).
+                  </div>
+                </q-card-section>
 
-            <q-card-section v-else-if="outcome.result.kind === 'choose_n'" class="q-pt-none">
-              <div class="text-body1 q-mb-sm">
-                Elected: <strong>{{ names(contest, outcome.result.winners) }}</strong>
-                <span v-if="outcome.result.vacantSeats > 0">
-                  · {{ outcome.result.vacantSeats }} {{ outcome.result.vacantSeats === 1 ? 'seat' : 'seats' }} left vacant
-                </span>
-              </div>
-              <q-markup-table flat dense separator="horizontal">
-                <thead>
-                  <tr>
-                    <th scope="col" class="text-left">Candidate</th>
-                    <th scope="col" class="text-right">Votes</th>
-                    <th v-if="'supportFloor' in contest.spec && contest.spec.supportFloor" scope="col" class="text-left">Support floor</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="r in outcome.result.ranking" :key="r.candidateId">
-                    <td>
-                      {{ nameOf(contest, r.candidateId) }}
-                      <q-icon v-if="outcome.result.winners.includes(r.candidateId)" name="how_to_reg" color="positive" aria-label="elected" />
-                    </td>
-                    <td class="text-right">{{ r.votes }}</td>
-                    <td v-if="'supportFloor' in contest.spec && contest.spec.supportFloor">{{ r.meetsFloor ? 'met' : 'not met' }}</td>
-                  </tr>
-                </tbody>
-              </q-markup-table>
-            </q-card-section>
+                <q-card-section v-else-if="outcome.result.kind === 'choose_n'" class="q-pt-none">
+                  <div class="text-body1 q-mb-sm">
+                    Elected: <strong>{{ names(contest, outcome.result.winners) }}</strong>
+                    <span v-if="outcome.result.vacantSeats > 0">
+                      · {{ outcome.result.vacantSeats }} {{ outcome.result.vacantSeats === 1 ? 'seat' : 'seats' }} left vacant
+                    </span>
+                  </div>
+                  <q-markup-table flat dense separator="horizontal">
+                    <thead>
+                      <tr>
+                        <th scope="col" class="text-left">Candidate</th>
+                        <th scope="col" class="text-right">Votes</th>
+                        <th v-if="'supportFloor' in contest.spec && contest.spec.supportFloor" scope="col" class="text-left">Support floor</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr v-for="r in outcome.result.ranking" :key="r.candidateId">
+                        <td>
+                          {{ nameOf(contest, r.candidateId) }}
+                          <q-icon v-if="outcome.result.winners.includes(r.candidateId)" name="how_to_reg" color="positive" aria-label="elected" />
+                        </td>
+                        <td class="text-right">{{ r.votes }}</td>
+                        <td v-if="'supportFloor' in contest.spec && contest.spec.supportFloor">{{ r.meetsFloor ? 'met' : 'not met' }}</td>
+                      </tr>
+                    </tbody>
+                  </q-markup-table>
+                </q-card-section>
 
-            <q-card-section v-else class="q-pt-none">
-              <div class="text-body1 q-mb-sm">
-                Elected: <strong>{{ outcome.result.winner ? nameOf(contest, outcome.result.winner) : 'nobody (no ranked ballots)' }}</strong>
-              </div>
-              <div v-if="outcome.result.rounds.length" class="scroll">
-                <q-markup-table flat dense separator="cell">
-                  <thead>
-                    <tr>
-                      <th scope="col" class="text-left">Candidate</th>
-                      <th v-for="r in outcome.result.rounds" :key="r.round" scope="col" class="text-right">Round {{ r.round }}</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-for="k in contest.candidates" :key="k.candidateId">
-                      <th scope="row" class="text-left text-weight-regular">{{ k.name }}</th>
-                      <td v-for="(r, i) in outcome.result.rounds" :key="r.round" class="text-right">
-                        {{ roundCount(outcome, i, k.candidateId) }}
-                      </td>
-                    </tr>
-                    <tr>
-                      <th scope="row" class="text-left text-weight-regular text-grey-7">Exhausted</th>
-                      <td v-for="r in outcome.result.rounds" :key="r.round" class="text-right text-grey-7">{{ r.exhausted }}</td>
-                    </tr>
-                    <tr>
-                      <th scope="row" class="text-left text-weight-regular text-grey-7">Outcome</th>
-                      <td v-for="r in outcome.result.rounds" :key="r.round" class="text-right text-grey-7">
-                        {{ r.elected ? `${nameOf(contest, r.elected)} elected` : r.eliminated ? `${nameOf(contest, r.eliminated)} out` : '—' }}
-                      </td>
-                    </tr>
-                  </tbody>
-                </q-markup-table>
-              </div>
-            </q-card-section>
+                <q-card-section v-else class="q-pt-none">
+                  <div class="text-body1 q-mb-sm">
+                    Elected: <strong>{{ outcome.result.winner ? nameOf(contest, outcome.result.winner) : 'nobody (no ranked ballots)' }}</strong>
+                  </div>
+                  <div v-if="outcome.result.rounds.length" class="scroll">
+                    <q-markup-table flat dense separator="cell">
+                      <thead>
+                        <tr>
+                          <th scope="col" class="text-left">Candidate</th>
+                          <th v-for="r in outcome.result.rounds" :key="r.round" scope="col" class="text-right">Round {{ r.round }}</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr v-for="k in contest.candidates" :key="k.candidateId">
+                          <th scope="row" class="text-left text-weight-regular">{{ k.name }}</th>
+                          <td v-for="(r, i) in outcome.result.rounds" :key="r.round" class="text-right">
+                            {{ roundCount(outcome, i, k.candidateId) }}
+                          </td>
+                        </tr>
+                        <tr>
+                          <th scope="row" class="text-left text-weight-regular text-grey-7">Exhausted</th>
+                          <td v-for="r in outcome.result.rounds" :key="r.round" class="text-right text-grey-7">{{ r.exhausted }}</td>
+                        </tr>
+                        <tr>
+                          <th scope="row" class="text-left text-weight-regular text-grey-7">Outcome</th>
+                          <td v-for="r in outcome.result.rounds" :key="r.round" class="text-right text-grey-7">
+                            {{ r.elected ? `${nameOf(contest, r.elected)} elected` : r.eliminated ? `${nameOf(contest, r.eliminated)} out` : '—' }}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </q-markup-table>
+                  </div>
+                </q-card-section>
 
-            <q-card-section v-if="outcome.result.kind !== 'proposal'" class="q-pt-none text-caption">
-              <div v-for="(t, i) in outcome.result.tieBreaks" :key="i">{{ tieText(contest, t) }}</div>
-              <div class="text-grey-7">
-                {{ outcome.result.ballots }} ballots ({{ outcome.result.blank }} blank)<span v-if="outcome.result.invalid">,
-                {{ outcome.result.invalid }} invalid</span>. Tie-break order: {{ names(contest, outcome.tieBreakOrder ?? []) }}.
-              </div>
-            </q-card-section>
-            <q-card-section v-else-if="outcome.result.invalid" class="q-pt-none text-caption text-grey-7">
-              {{ outcome.result.invalid }} invalid
-            </q-card-section>
-          </q-card>
+                <q-card-section v-if="outcome.result.kind !== 'proposal'" class="q-pt-none text-caption">
+                  <div v-for="(t, i) in outcome.result.tieBreaks" :key="i">{{ tieText(contest, t) }}</div>
+                  <div class="text-grey-7">
+                    {{ outcome.result.ballots }} ballots ({{ outcome.result.blank }} blank)<span v-if="outcome.result.invalid">,
+                    {{ outcome.result.invalid }} invalid</span>. Tie-break order: {{ names(contest, outcome.tieBreakOrder ?? []) }}.
+                  </div>
+                </q-card-section>
+                <q-card-section v-else-if="outcome.result.invalid" class="q-pt-none text-caption text-grey-7">
+                  {{ outcome.result.invalid }} invalid
+                </q-card-section>
+              </q-card>
+            </q-tab-panel>
+          </q-tab-panels>
 
-          <q-card v-if="check" flat bordered>
+          <q-card v-if="check" flat bordered class="ustp-no-print">
             <q-card-section>
               <h2 class="text-subtitle1">How these results were checked</h2>
               <div class="text-caption text-grey-7">
@@ -323,7 +358,7 @@ const summary = computed(() => {
             </q-list>
           </q-card>
 
-          <q-card flat bordered>
+          <q-card flat bordered class="ustp-no-print">
             <q-card-section>
               <h2 class="text-subtitle1">Use these results in a spreadsheet or document</h2>
               <div class="text-caption text-grey-7">
@@ -348,8 +383,8 @@ const summary = computed(() => {
                   </q-btn>
                 </div>
                 <div id="word-help" class="ustp-message text-grey-7">
-                  The Word file has the ballot and these results. To open it in Google Docs, upload it to Google Drive and
-                  choose Open with, then Google Docs.
+                  The Word file has the synopsis, the ballot and these results. To open it in Google Docs, upload it to
+                  Google Drive and choose Open with, then Google Docs.
                 </div>
               </div>
               <div>

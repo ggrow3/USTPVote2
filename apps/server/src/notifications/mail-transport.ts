@@ -15,7 +15,7 @@ export interface MailMessage {
   readonly tags: { readonly noticeId: string; readonly electionId: string; readonly accountId: string };
 }
 
-/** Sends election notices (design §6.7). */
+/** Sends election notices (design §6.8). */
 export interface MailTransport {
   readonly delivery: NoticeDelivery;
   /** Resolves with the provider's ID for the message once it has taken it; throws `MailNotSent` when it has not. */

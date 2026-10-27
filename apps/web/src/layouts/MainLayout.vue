@@ -4,6 +4,8 @@ import { useRoute, useRouter } from 'vue-router';
 import { focusElement, liveRegions } from '../a11y.js';
 import { acting } from '../acting.js';
 import { usingEmulators } from '../firebase.js';
+import { navigationState, shown } from '../governance/navigation.js';
+import { MENU_LABELS } from '../governance/navigation-text.js';
 import { session, signOut } from '../session.js';
 
 const TestingBar = defineAsyncComponent(() => import('../components/TestingBar.vue'));
@@ -11,13 +13,13 @@ const TestingBar = defineAsyncComponent(() => import('../components/TestingBar.v
 const route = useRoute();
 const router = useRouter();
 const who = computed(() => acting.persona?.label || session.me?.account?.displayName || session.user?.email || 'Signed in');
-/** The same four for everyone; each page explains itself to people it is not for. */
-const LINKS = [
-  { to: '/register', label: 'Register' },
-  { to: '/ballot', label: 'Ballot' },
-  { to: '/verify', label: 'Verify' },
-  { to: '/admin', label: 'Admin' },
-] as const;
+/**
+ * The links the navigation settings give this person (design §10.5), once their account and the settings are known.
+ * Each page still explains itself to someone who reaches it without being one it is for.
+ */
+const links = computed(() =>
+  session.ready && navigationState.loaded ? shown.value.menu.map((link) => ({ to: `/${link}`, label: MENU_LABELS[link] })) : [],
+);
 
 async function onSignOut() {
   await signOut();
@@ -68,9 +70,9 @@ function onHeaderResize({ height }: { height: number }) {
         </template>
       </q-toolbar>
       <!-- Links, not tabs: each one loads a page (tab semantics would promise panels on this page). -->
-      <nav aria-label="Main" class="row q-px-sm bg-black">
+      <nav aria-label="Main" class="row q-px-sm bg-black ustp-nav">
         <router-link
-          v-for="l in LINKS"
+          v-for="l in links"
           :key="l.to"
           :to="l.to"
           class="ustp-nav-link"
@@ -96,6 +98,10 @@ function onHeaderResize({ height }: { height: number }) {
 </template>
 
 <style scoped>
+/* Its links' height while they load, so the page does not move when they appear. */
+.ustp-nav {
+  min-height: 38px;
+}
 .ustp-nav-link {
   padding: 8px 16px 6px;
   border-bottom: 3px solid transparent;
@@ -112,7 +118,7 @@ function onHeaderResize({ height }: { height: number }) {
 .ustp-nav-link--active {
   border-bottom-color: var(--q-accent);
 }
-/* Phones (Quasar's xs): tighter, so the four links keep to one row at 320 px; they still wrap if text is enlarged. */
+/* Phones (Quasar's xs): tighter, so all four links keep to one row at 320 px; they still wrap if text is enlarged. */
 @media (max-width: 599.98px) {
   .ustp-nav-link {
     padding: 8px 8px 6px;

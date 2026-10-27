@@ -5,7 +5,7 @@ import { NoticeRepository } from './notice.repository.js';
 import { NoticesService } from './notices.service.js';
 
 /**
- * The notifications context (design §6.7). The api reads counts and starts resends; only the worker sends, so only it
+ * The notifications context (design §6.8). The api reads counts and starts resends; only the worker sends, so only it
  * gets the mail transport and its credentials. Elections use `NoticeRepository.deleteForElection` when one is deleted.
  */
 export const NOTIFICATION_API_PROVIDERS: Provider[] = [NoticeRepository, NoticesService];

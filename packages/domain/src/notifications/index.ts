@@ -1,4 +1,4 @@
-/** The notifications context (design §6.7): official election notices by email, recorded per recipient. */
+/** The notifications context (design §6.8): official election notices by email, recorded per recipient. */
 export {
   NOTICE_KINDS,
   RECIPIENT_STATUSES,

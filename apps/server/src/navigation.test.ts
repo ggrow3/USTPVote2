@@ -1,0 +1,48 @@
+import { Reflector } from '@nestjs/core';
+import { ADMIN_SECTIONS, ROLES, SECTION_ROLES, type AdminSection, type Role } from 'ustp-domain';
+import { describe, expect, it } from 'vitest';
+import { AccountsAdminController } from './accounts/accounts.controller.js';
+import { ApprovalsController, AuditController, SignInMethodsController } from './administration/administration.controller.js';
+import { NavigationAdminController } from './administration/navigation.js';
+import { ROLES_KEY } from './auth/decorators.js';
+import { ElectionsController } from './elections/elections.controller.js';
+import { MembershipAdminController } from './membership/membership.controller.js';
+import { PersonasController } from './personas/personas.controller.js';
+import { PhotoReviewController } from './photos/photos.controller.js';
+import { PositionsController } from './positions/positions.controller.js';
+
+type Route = readonly [controller: abstract new (...args: never[]) => object, method: string];
+
+/** The route each admin console section opens with: what it lists, or (Bylaws) what it is for. */
+const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
+  applications: [MembershipAdminController, 'listApplications'],
+  members: [MembershipAdminController, 'listMembers'],
+  photos: [PhotoReviewController, 'list'],
+  bylaws: [MembershipAdminController, 'publishBylaws'],
+  elections: [ElectionsController, 'list'],
+  offices: [PositionsController, 'all'],
+  approvals: [ApprovalsController, 'list'],
+  people: [AccountsAdminController, 'list'],
+  signin: [SignInMethodsController, 'current'],
+  audit: [AuditController, 'events'],
+  testing: [PersonasController, 'list'],
+  navigation: [NavigationAdminController, 'current'],
+};
+
+function rolesOf([controller, method]: Route): readonly Role[] {
+  const handler = (controller.prototype as Record<string, unknown>)[method];
+  if (typeof handler !== 'function') throw new Error(`${controller.name}.${method} is not a route`);
+  return new Reflector().getAllAndOverride<Role[] | undefined>(ROLES_KEY, [handler, controller]) ?? [];
+}
+
+describe('who sees which section (design §10.5)', () => {
+  // The settings lock off a section for every role outside SECTION_ROLES; this keeps that list the API's own.
+  it.each(ADMIN_SECTIONS)('%s: the locked-off roles are the ones the API refuses', (section) => {
+    expect([...rolesOf(SECTION_ROUTES[section])].sort()).toEqual([...SECTION_ROLES[section]].sort());
+  });
+
+  it('lets every role use Approvals and read Offices', () => {
+    expect(SECTION_ROLES.approvals).toEqual(ROLES);
+    expect(SECTION_ROLES.offices).toEqual(ROLES);
+  });
+});

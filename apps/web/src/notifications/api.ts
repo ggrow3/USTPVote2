@@ -2,7 +2,7 @@ import type { NoticeKind, NoticesView, NoticeSummary } from 'ustp-domain';
 import { api } from '../api.js';
 
 /**
- * The notifications context's API (design §6.7, §12): an election's notices as counts, and resending one to those it
+ * The notifications context's API (design §6.8, §12): an election's notices as counts, and resending one to those it
  * failed for. The only place its routes are written.
  */
 

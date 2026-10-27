@@ -33,7 +33,7 @@ import { TasksController } from './tasks.controller.js';
     BylawsCheckRunner,
     ballotPoolKeysProvider,
     secretStoreProvider,
-    // Election notices greet roll members by name (design §6.7).
+    // Election notices greet roll members by name (design §6.8).
     ...MEMBER_DIRECTORY_PROVIDERS,
     ...NOTIFICATION_WORKER_PROVIDERS,
     {

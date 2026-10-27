@@ -26,7 +26,7 @@ locals {
 
   # worker: Secret Manager (reading seeds at tally), signing ledger blocks and rolls, pool key versions and sealing,
   # writing anchors, running bylaws checks (with ANTHROPIC_API_KEY from Secret Manager, below), and sending election
-  # notices, which link to the web app (design §6.7).
+  # notices, which link to the web app (design §6.8).
   worker_env = merge(
     {
       GOOGLE_CLOUD_PROJECT      = var.project_id

@@ -12,6 +12,7 @@ import {
   type ApprovalRequestRecord,
   type ContestRecord,
   type ElectionDetail,
+  type ElectionPackage,
   type ProposalSnapshotRecord,
   type RollView,
 } from 'ustp-domain';
@@ -20,7 +21,7 @@ import { api } from '../api.js';
 import { aRole, describeRequest } from '../approval-text.js';
 import ContestDialog from '../components/admin/ContestDialog.vue';
 import { askReason, attempt, dialog } from '../dialogs.js';
-import { downloadElectionDocx } from '../election-files.js';
+import { downloadElectionDocx, saveElectionPackage } from '../election-files.js';
 import ElectionWorkflow from '../elections/ElectionWorkflow.vue';
 import { fromLocalInput, KIND_LABELS, rulesText, toLocalInput } from '../election-text.js';
 import { validate } from '../forms.js';
@@ -127,6 +128,11 @@ async function downloadWord() {
     }),
   );
   exporting.value = false;
+}
+
+/** The election as a `ustp.election` file (design §6.7), to import again here or elsewhere. */
+async function downloadJson() {
+  await attempt(async () => saveElectionPackage(await api<ElectionPackage>('GET', `${url}/package`)));
 }
 
 function copyHash() {
@@ -486,6 +492,9 @@ onMounted(load);
           <div class="ustp-actions">
             <q-btn v-if="canEdit" color="primary" no-caps label="Add contest" @click="openContest(null)" />
             <q-btn outline no-caps color="primary" icon="description" label="Download ballot as Word" :loading="exporting" @click="downloadWord">
+              <span class="sr-only">: {{ detail.election.title }}</span>
+            </q-btn>
+            <q-btn outline no-caps color="primary" icon="data_object" label="Download as JSON" @click="downloadJson">
               <span class="sr-only">: {{ detail.election.title }}</span>
             </q-btn>
           </div>

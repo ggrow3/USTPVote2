@@ -5,7 +5,7 @@ import { NoticesService } from './notifications/notices.service.js';
 import { closeNow, minutes, seedElection, type SeededElection } from './testing/elections.js';
 import { resetEmulators, TestApi, TestWorker, type User } from './testing/emulator.js';
 
-/** The voting-open notice (design §6.7): one message per person on the roll, recorded, counted, resent on request. */
+/** The voting-open notice (design §6.8): one message per person on the roll, recorded, counted, resent on request. */
 
 let api: TestApi;
 let worker: TestWorker;

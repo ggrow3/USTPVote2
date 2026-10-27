@@ -216,7 +216,7 @@ variable "bylaws_check_enabled" {
   default     = false
 }
 
-# --- Election notices (design §6.7) -----------------------------------------------------------------------------------
+# --- Election notices (design §6.8) -----------------------------------------------------------------------------------
 
 variable "web_origin" {
   description = "Where the web app is served, which election notices link to (WEB_ORIGIN). Empty: the Firebase Hosting default, https://<project_id>.web.app."

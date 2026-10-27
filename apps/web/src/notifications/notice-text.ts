@@ -1,6 +1,6 @@
 import { isRehearsalRoll, isVotingOpen, type ElectionDetail, type NoticesView, type NoticeSummary, type RecipientCounts } from 'ustp-domain';
 
-/** Wording for the election editor's notice card (design §6.7). */
+/** Wording for the election editor's notice card (design §6.8). */
 
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 

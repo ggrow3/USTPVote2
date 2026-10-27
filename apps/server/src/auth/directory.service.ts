@@ -29,7 +29,7 @@ export class DirectoryService {
   }
 
   /**
-   * Each account's mailbox, by accountId, for election notices (design §6.7); an account that does not exist is
+   * Each account's mailbox, by accountId, for election notices (design §6.8); an account that does not exist is
    * missing from the map. Only the notice sender reads addresses, and only to send.
    */
   async mailboxes(accountIds: readonly string[]): Promise<Map<string, Mailbox>> {

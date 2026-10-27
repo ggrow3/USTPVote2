@@ -10,6 +10,7 @@ export const LEDGER_EVENT_TYPES = [
   'approval.requested',
   'approval.decided',
   'signin_method.changed',
+  'navigation.changed',
   'photo.decided',
   'roll.approved',
   'election.scheduled',

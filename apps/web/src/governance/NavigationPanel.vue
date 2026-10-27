@@ -1,0 +1,480 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue';
+import {
+  ADMIN_SECTIONS,
+  AUDIENCES,
+  DEFAULT_NAVIGATION,
+  MEMBERSHIP_AUDIENCES,
+  MENU_LINKS,
+  menuLock,
+  navigationChanges,
+  resolveNavigation,
+  ROLES,
+  sectionLock,
+  startPageOptions,
+  type AdminSection,
+  type Audience,
+  type MenuLink,
+  type NavigationRecord,
+  type NavigationSettings,
+  type Role,
+  type SignedInAudience,
+  type StartPage,
+} from 'ustp-domain';
+import { attempt } from '../dialogs.js';
+import { navigationSettings, saveNavigation } from './api.js';
+import { applyNavigation } from './navigation.js';
+import {
+  AUDIENCE_CAPTIONS,
+  AUDIENCE_LABELS,
+  cellName,
+  describeChange,
+  lockText,
+  MENU_CAPTIONS,
+  MENU_LABELS,
+  SECTION_CAPTIONS,
+  SECTION_LABELS,
+  startPageLabel,
+} from './navigation-text.js';
+
+/** Who sees which link (design §10.5): System Admins edit the whole matrix, then save it in one go. */
+
+type Draft = {
+  menu: Record<Audience, Record<MenuLink, boolean>>;
+  sections: Record<Role, Record<AdminSection, boolean>>;
+  startsOn: Record<SignedInAudience, StartPage>;
+};
+
+const copy = ({ menu, sections, startsOn }: NavigationSettings): Draft => JSON.parse(JSON.stringify({ menu, sections, startsOn }));
+
+const saved = ref<NavigationRecord | null>(null);
+const draft = ref<Draft | null>(null);
+/** What the draft amounts to: locked cells at their value, Admin links from sections, start pages still shown. */
+const resolved = computed(() => draft.value && resolveNavigation(draft.value));
+const changes = computed(() => (saved.value && resolved.value ? navigationChanges(saved.value, resolved.value) : []));
+const isDefault = computed(() => !!resolved.value && navigationChanges(DEFAULT_NAVIGATION, resolved.value).length === 0);
+
+const columns = ref<'all' | 'membership' | 'roles'>('all');
+const COLUMN_OPTIONS = [
+  { value: 'all', label: 'All' },
+  { value: 'membership', label: 'Membership' },
+  { value: 'roles', label: 'Staff roles' },
+];
+const membershipColumns = computed(() => (columns.value === 'roles' ? [] : MEMBERSHIP_AUDIENCES));
+const roleColumns = computed(() => (columns.value === 'membership' ? [] : ROLES));
+const audiences = computed<Audience[]>(() => [...membershipColumns.value, ...roleColumns.value]);
+
+async function load() {
+  await attempt(async () => {
+    saved.value = await navigationSettings();
+    draft.value = copy(saved.value);
+  });
+}
+
+async function save() {
+  if (!saved.value || !resolved.value) return;
+  const settings = resolved.value;
+  await attempt(async () => {
+    saved.value = await saveNavigation({ basedOn: saved.value!.version, ...settings });
+    draft.value = copy(saved.value);
+    applyNavigation(saved.value);
+  }, 'Saved. Menus follow it as each person next opens the app.');
+}
+
+function restoreDefaults() {
+  draft.value = copy(DEFAULT_NAVIGATION);
+}
+
+/** An audience's start pages: the menu pages, then its admin sections (grouped, so their names can be short). */
+const pagesOf = (a: SignedInAudience) => startPageOptions(resolved.value!, a).filter((p) => !p.startsWith('admin/'));
+const sectionsOf = (a: SignedInAudience) => startPageOptions(resolved.value!, a).filter((p) => p.startsWith('admin/'));
+
+function setStart(audience: SignedInAudience, event: Event) {
+  draft.value!.startsOn[audience] = (event.target as HTMLSelectElement).value as StartPage;
+}
+
+const savedAt = computed(() => (saved.value?.updatedAt ? new Date(saved.value.updatedAt).toLocaleString() : null));
+
+onMounted(load);
+</script>
+
+<template>
+  <div class="ustp-content nav-panel" :class="{ 'nav-panel--dark': $q.dark.isActive }">
+    <div>
+      <h2 class="text-subtitle1">Who sees which link</h2>
+      <div class="text-caption text-grey-7">
+        <template v-if="saved?.version">Version {{ saved.version }}, saved {{ savedAt }}.</template>
+        <template v-else-if="saved">The defaults: nobody has changed these settings yet.</template>
+      </div>
+    </div>
+    <p>
+      Choose which menu links and admin sections each membership state and staff role sees, and the page each starts on
+      after signing in. A person sees everything their membership state and each of their roles is given: roles add to
+      membership, never take away. This changes what is shown, not what is allowed: the API still checks every
+      request, and pages reached by their address still explain themselves.
+    </p>
+
+    <q-card v-if="draft && resolved" flat bordered>
+      <q-card-section class="ustp-header">
+        <div>
+          <h3 class="text-subtitle2">The matrix</h3>
+          <ul class="nav-legend text-caption">
+            <li><span class="nav-check nav-check--sample" aria-hidden="true" data-on></span> Shown</li>
+            <li><span class="nav-check nav-check--sample" aria-hidden="true"></span> Hidden</li>
+            <li>
+              <span class="nav-fixed" aria-hidden="true">—</span> Not available: admin sections are for staff roles, and
+              each role only gets the sections the API lets it use
+            </li>
+            <li>
+              <span class="nav-fixed nav-fixed--on" aria-hidden="true">✓</span> Always shown: People and Navigation stay
+              with System Admins, and a role's Admin link follows its sections
+            </li>
+          </ul>
+        </div>
+        <q-btn-toggle
+          v-model="columns"
+          :options="COLUMN_OPTIONS"
+          no-caps
+          dense
+          unelevated
+          toggle-color="primary"
+          aria-label="Columns to show"
+        />
+      </q-card-section>
+      <div class="nav-scroll" role="region" aria-labelledby="nav-matrix-caption" tabindex="0">
+        <table class="nav-matrix">
+          <caption id="nav-matrix-caption" class="sr-only">
+            Who sees which link: links and admin sections by membership state and staff role
+          </caption>
+          <colgroup>
+            <col class="nav-matrix__head-col" />
+          </colgroup>
+          <colgroup v-if="membershipColumns.length" :span="membershipColumns.length" />
+          <colgroup v-if="roleColumns.length" :span="roleColumns.length" />
+          <thead>
+            <tr>
+              <td class="nav-sticky"></td>
+              <th v-if="membershipColumns.length" scope="colgroup" :colspan="membershipColumns.length" class="nav-group">
+                Membership
+              </th>
+              <th v-if="roleColumns.length" scope="colgroup" :colspan="roleColumns.length" class="nav-group nav-group--staff">
+                Staff roles · added to membership
+              </th>
+            </tr>
+            <tr>
+              <th scope="col" class="nav-sticky nav-kind">Link</th>
+              <th v-for="a in audiences" :key="a" scope="col" class="nav-audience">
+                <span class="nav-audience__name">{{ AUDIENCE_LABELS[a] }}</span>
+                <span class="nav-caption">{{ AUDIENCE_CAPTIONS[a] }}</span>
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            <tr>
+              <th scope="rowgroup" :colspan="audiences.length + 1" class="nav-rowgroup"><span class="nav-sticky-inner">Main menu</span></th>
+            </tr>
+            <tr v-for="l in MENU_LINKS" :key="l">
+              <th scope="row" class="nav-sticky nav-item">
+                <span class="nav-item__name">{{ MENU_LABELS[l] }}</span>
+                <span class="nav-caption">{{ MENU_CAPTIONS[l] }}</span>
+              </th>
+              <td v-for="a in audiences" :key="a" class="nav-cell">
+                <input
+                  v-if="!menuLock(a, l)"
+                  v-model="draft.menu[a][l]"
+                  type="checkbox"
+                  class="nav-check"
+                  :aria-label="cellName(l, a, 'link')"
+                />
+                <span
+                  v-else
+                  class="nav-fixed"
+                  :class="{ 'nav-fixed--on': resolved.menu[a][l] }"
+                  :title="lockText(menuLock(a, l)!, a, undefined, resolved.menu[a][l])"
+                >
+                  <span aria-hidden="true">{{ resolved.menu[a][l] ? '✓' : '—' }}</span>
+                  <span class="sr-only">{{ lockText(menuLock(a, l)!, a, undefined, resolved.menu[a][l]) }}</span>
+                </span>
+              </td>
+            </tr>
+          </tbody>
+
+          <tbody>
+            <tr>
+              <th scope="rowgroup" :colspan="audiences.length + 1" class="nav-rowgroup"><span class="nav-sticky-inner">Admin sections</span></th>
+            </tr>
+            <tr v-for="s in ADMIN_SECTIONS" :key="s">
+              <th scope="row" class="nav-sticky nav-item">
+                <span class="nav-item__name">{{ SECTION_LABELS[s] }}</span>
+                <span class="nav-caption">{{ SECTION_CAPTIONS[s] }}</span>
+              </th>
+              <td v-for="a in audiences" :key="a" class="nav-cell">
+                <input
+                  v-if="!sectionLock(a, s)"
+                  v-model="draft.sections[a as Role][s]"
+                  type="checkbox"
+                  class="nav-check"
+                  :aria-label="cellName(s, a, 'section')"
+                />
+                <span
+                  v-else
+                  class="nav-fixed"
+                  :class="{ 'nav-fixed--on': sectionLock(a, s) === 'guarded' }"
+                  :title="lockText(sectionLock(a, s)!, a, s)"
+                >
+                  <span aria-hidden="true">{{ sectionLock(a, s) === 'guarded' ? '✓' : '—' }}</span>
+                  <span class="sr-only">{{ lockText(sectionLock(a, s)!, a, s) }}</span>
+                </span>
+              </td>
+            </tr>
+          </tbody>
+
+          <tbody>
+            <tr>
+              <th scope="rowgroup" :colspan="audiences.length + 1" class="nav-rowgroup"><span class="nav-sticky-inner">After sign-in</span></th>
+            </tr>
+            <tr>
+              <th scope="row" class="nav-sticky nav-item">
+                <span class="nav-item__name">Starts on</span>
+                <span class="nav-caption">The page that opens first</span>
+              </th>
+              <td v-for="a in audiences" :key="a" class="nav-cell">
+                <span v-if="a === 'signed_out'" class="nav-caption">Public home</span>
+                <select
+                  v-else
+                  class="nav-select"
+                  :aria-label="`${AUDIENCE_LABELS[a]} starts on`"
+                  :value="resolved.startsOn[a]"
+                  @change="setStart(a, $event)"
+                >
+                  <option v-for="page in pagesOf(a)" :key="page" :value="page">{{ startPageLabel(page) }}</option>
+                  <optgroup v-if="sectionsOf(a).length" label="Admin sections">
+                    <option v-for="page in sectionsOf(a)" :key="page" :value="page">{{ SECTION_LABELS[page.slice(6) as AdminSection] }}</option>
+                  </optgroup>
+                </select>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <q-card-section v-if="changes.length">
+        <h3 class="text-subtitle2">Not saved yet: {{ changes.length === 1 ? '1 change' : `${changes.length} changes` }}</h3>
+        <ul class="q-mt-sm q-mb-none">
+          <li v-for="(c, i) in changes" :key="i">{{ describeChange(c) }}</li>
+        </ul>
+      </q-card-section>
+      <q-card-section class="ustp-actions">
+        <q-btn color="primary" label="Save changes" :disable="!changes.length" @click="save" />
+        <q-btn flat color="primary" label="Discard changes" :disable="!changes.length" @click="load" />
+        <q-btn flat color="primary" label="Restore defaults" :disable="isDefault" @click="restoreDefaults" />
+      </q-card-section>
+    </q-card>
+  </div>
+</template>
+
+<style scoped>
+/* As wide as the page: the matrix has 13 columns. Its text keeps the usual measure. */
+.nav-panel {
+  max-width: none;
+}
+.nav-panel > p {
+  max-width: 860px;
+}
+.nav-panel {
+  --nav-bg: #fff;
+  --nav-line: rgba(0, 0, 0, 0.12);
+  --nav-off: #757575;
+  --nav-strong: #000;
+}
+.nav-panel--dark {
+  --nav-bg: #1d1d1d;
+  --nav-line: rgba(255, 255, 255, 0.28);
+  --nav-off: #b0b0b0;
+  --nav-strong: #fff;
+}
+
+.nav-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 20px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.nav-legend li {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+.nav-legend :is(.nav-check, .nav-fixed) {
+  flex: none;
+}
+.nav-legend .nav-fixed {
+  width: 20px;
+  height: 20px;
+}
+
+/* The table scrolls sideways inside the card when it is wider than the screen; the row headers stay in view. */
+.nav-scroll {
+  overflow-x: auto;
+}
+.nav-matrix {
+  border-collapse: separate;
+  border-spacing: 0;
+  min-width: 100%;
+}
+.nav-matrix__head-col {
+  width: 14rem;
+}
+.nav-matrix th,
+.nav-matrix td {
+  padding: 8px;
+  border-bottom: 1px solid var(--nav-line);
+  font-weight: normal;
+  vertical-align: middle;
+}
+.nav-sticky,
+.nav-sticky-inner {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--nav-bg);
+}
+.nav-sticky {
+  padding-left: 16px !important;
+  text-align: left;
+}
+.nav-group {
+  padding: 16px 8px 6px !important;
+  border-bottom: 2px solid var(--nav-strong) !important;
+  font-size: 12px;
+  font-weight: 500 !important;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+}
+.nav-group--staff {
+  border-bottom-color: var(--q-primary) !important;
+}
+.nav-kind,
+.nav-rowgroup {
+  color: var(--nav-off);
+  font-size: 12px;
+  font-weight: 500 !important;
+  letter-spacing: 0.08em;
+  text-align: left;
+  text-transform: uppercase;
+}
+.nav-rowgroup {
+  padding: 20px 16px 8px !important;
+}
+.nav-sticky-inner {
+  display: inline-block;
+}
+.nav-audience {
+  min-width: 5.5rem;
+  text-align: center;
+  vertical-align: bottom !important;
+}
+.nav-audience__name,
+.nav-item__name {
+  display: block;
+  font-weight: 500;
+}
+.nav-caption {
+  display: block;
+  color: var(--nav-off);
+  font-size: 12px;
+  line-height: 1.3;
+}
+.nav-item {
+  min-width: 11rem;
+}
+.nav-cell {
+  text-align: center;
+}
+
+/* A switchable cell: a filled circle with a tick when shown, an empty one with a dash when hidden (as in the mock-up). */
+.nav-check {
+  display: inline-grid;
+  place-content: center;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  border: 2px solid var(--nav-off);
+  border-radius: 50%;
+  background: transparent;
+  appearance: none;
+  cursor: pointer;
+  vertical-align: middle;
+}
+.nav-check::before {
+  content: '';
+  width: 10px;
+  height: 2px;
+  background: var(--nav-off);
+}
+.nav-check:checked,
+.nav-check[data-on] {
+  border-color: var(--q-primary);
+  background: var(--q-primary);
+}
+.nav-check:checked::before,
+.nav-check[data-on]::before {
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+}
+.nav-check:hover {
+  box-shadow: 0 0 0 4px var(--nav-line);
+}
+.nav-check--sample {
+  width: 20px;
+  height: 20px;
+  cursor: default;
+}
+.nav-check--sample::before {
+  width: 8px;
+}
+.nav-check--sample[data-on]::before {
+  width: 10px;
+  height: 10px;
+}
+
+/* A fixed cell: no circle, so it does not look like something to press. */
+.nav-fixed {
+  display: inline-grid;
+  place-content: center;
+  width: 28px;
+  height: 28px;
+  color: var(--nav-off);
+  font-size: 16px;
+}
+.nav-fixed--on {
+  color: var(--ustp-link);
+  font-weight: 700;
+}
+
+.nav-select {
+  max-width: 7.5rem;
+  padding: 4px;
+  border: 1px solid var(--nav-off);
+  border-radius: 4px;
+  background: var(--nav-bg);
+  color: var(--nav-strong);
+  font: inherit;
+  font-size: 13px;
+}
+
+/* Phones: a narrower row header, so more of the matrix shows beside it. */
+@media (max-width: 599.98px) {
+  .nav-matrix__head-col {
+    width: 9rem;
+  }
+  .nav-item {
+    min-width: 8rem;
+  }
+}
+</style>

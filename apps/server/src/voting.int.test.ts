@@ -49,7 +49,7 @@ describe('election clock', () => {
     const opened = (await due.ref.get()).data() as ElectionRecord;
     expect(opened).toMatchObject({ state: 'open', openedAt: expect.any(String), poolKeyVersion: expect.stringMatching(/^emulator\//) });
     expect((await later.ref.get()).data()).toMatchObject({ state: 'scheduled', poolKeyVersion: expect.any(String) });
-    // The same tick sends the roll its voting-open notice (design §6.7).
+    // The same tick sends the roll its voting-open notice (design §6.8).
     expect(await ledgerTypes(due.electionId)).toEqual(['election.opened', 'notice.sent']);
 
     await closeNow(api, due);

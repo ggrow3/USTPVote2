@@ -30,7 +30,9 @@ export const Collections = {
   roleAssignments: 'role_assignments',
   approvalRequests: 'approval_requests',
   locks: 'locks',
-  // notifications (design §6.7)
+  /** `navigation/current`: what the web app shows each membership state and role (design §10.5). */
+  navigation: 'navigation',
+  // notifications (design §6.8)
   notices: 'notices',
   noticeOutbox: 'notice_outbox',
   // testing mode (design §10.4)
