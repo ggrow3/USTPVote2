@@ -155,6 +155,21 @@ test. Keep it current when pages change.
   disabled button, which would drop out of the tab order and fail contrast. Colours are existing pairs: links `#bd4e00` on white (4.94) and `#ff6900` on the dark card (5.84),
   severity `#bf360c` (5.60) and `#ffb74d` (9.74), captions `#757575` (4.61) and `#b0b0b0` (7.77), read back from the
   computed styles. At 320 and 375 px nothing scrolls sideways.
+- **Added 2026-10-27, Admin › Claude, the Anthropic API key** (design §5.6; against the emulators as
+  admin1@example.test, with both checks switched to Claude and a made-up key; desktop width dark, 320 px light): the
+  panel is a `section` named by its `h2` "Anthropic API key", with a caption saying what the key is for and that
+  nobody can see it once saved. A line in the page's text colour says whether a key is set ("No key is set, so neither
+  Claude check can run." / "A key is set. It ends in TEST and was added on Oct 27, 2026 by …"), its key icon hidden
+  from screen readers; each check's state is a `dl` ("Bylaws check": "On, but it cannot run until a key is added.").
+  The key is a labelled password field ("Anthropic API key", "New key, to replace the one in use" when one is set) with
+  `autocomplete="off"` and a hint linked to it. Saving an empty field, or a paste that is not an API key (an Admin key,
+  spaces), focuses the field, marks it `aria-invalid` and links the message to it, and sends nothing; a key Anthropic
+  refuses comes back the same way. Once saved, the field is emptied, focus moves to the status line and "Key saved. It
+  ends in TEST." is announced politely; the button becomes "Replace the key", beside "Remove the key", whose dialog is
+  named by its title ("Remove the Anthropic API key?"), says the key stays valid at Anthropic, and starts on Cancel;
+  after it, focus returns to the status line and "Key removed." is announced. The section is a row in the Navigation
+  settings ("Show Claude to System Admin"). Captions `#757575` on white (4.61), read back from the computed styles; at
+  320 px nothing scrolls sideways and the check states stack.
 
 - **Added 2026-10-27, the home page as a sign-in landing page, and its quote** (design §10.5; against the emulators
   signed out, as v1 and as admin1 signing in from the home page's card, and as admin1 changing the quote, switching it

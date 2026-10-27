@@ -24,6 +24,7 @@ import {
 } from 'ustp-domain';
 import { requireAccount } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
+import { AnthropicKey, NO_KEY_REASON } from '../claude-checks/anthropic-key.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 
@@ -35,12 +36,14 @@ import { Firebase } from '../infra/firebase.js';
 export class BylawsChecksService {
   constructor(
     private readonly firebase: Firebase,
+    private readonly key: AnthropicKey,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
   async request(ctx: RequestContext, input: RequestBylawsCheckInput): Promise<BylawsCheckView> {
     const actor = requireAccount(ctx);
     if (this.config.bylawsChecker === 'off') throw new ServiceUnavailableException('the bylaws check is not set up on this server');
+    if (!(await this.key.ready(this.config.bylawsChecker))) throw new ServiceUnavailableException(`the bylaws check cannot run yet: ${NO_KEY_REASON}`);
     const db = this.firebase.db;
     const amends = input.amends ?? null;
     let focusLines: number[] | null = null;

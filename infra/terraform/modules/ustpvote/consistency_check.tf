@@ -1,8 +1,8 @@
 # The platform consistency check (design §5.5): the worker sends an election's proposals to Claude (Anthropic's API),
 # with the party's constitution, the Transhumanist Bill of Rights and the bylaws in force, and records what it finds
 # inconsistent. Voters on a roll and Election Admins and Auditors may each ask once per election. Off unless
-# consistency_check_enabled; it reads the same anthropic-api-key secret as the bylaws check (bylaws_check.tf), which
-# needs a version first (README "Consistency check").
+# consistency_check_enabled; it uses the same Anthropic API key as the bylaws check (bylaws_check.tf), which a System
+# Admin adds in the app (README "Consistency check").
 
 # Its own job, like the bylaws check's, so a review never holds up the tick or waits behind a bylaws check.
 resource "google_cloud_scheduler_job" "consistency_checks" {

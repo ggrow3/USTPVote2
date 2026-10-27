@@ -9,9 +9,10 @@
 # CONSISTENCY_CHECKER are "claude" or "off" (bylaws_check.tf, consistency_check.tf), never the emulator-only stand-ins.
 
 locals {
-  # api: Secret Manager (creating tie-break seeds), encrypting ballots to an election's pool key, Auditor verification
-  # of anchors, profile photos, bootstrap System Admins, testing mode, which the api also refuses in prod, and how
-  # election notices go out (notices.tf).
+  # api: Secret Manager (creating tie-break seeds, and keeping the Anthropic API key a System Admin adds, which it tries
+  # with Anthropic first), encrypting ballots to an election's pool key, Auditor verification of anchors, profile
+  # photos, bootstrap System Admins, testing mode, which the api also refuses in prod, and how election notices go out
+  # (notices.tf).
   api_env = merge(
     {
       GOOGLE_CLOUD_PROJECT          = var.project_id
@@ -28,7 +29,7 @@ locals {
   )
 
   # worker: Secret Manager (reading seeds at tally), signing ledger blocks and rolls, pool key versions and sealing,
-  # writing anchors, running bylaws and consistency checks (with ANTHROPIC_API_KEY from Secret Manager, below), and
+  # writing anchors, running bylaws and consistency checks (reading the Anthropic API key from Secret Manager), and
   # sending election notices, which link to the web app (design §6.8; notices.tf, and the AWS key from Secret Manager,
   # below).
   worker_env = merge(
@@ -48,12 +49,9 @@ locals {
     var.testing_mode ? { TESTING_MODE = "true" } : {},
   )
 
-  # The api queues the checks and the worker runs them, so both must agree.
+  # The api queues the checks and the worker runs them, so both must agree. Either waits for a key (design §5.6).
   bylaws_checker      = var.bylaws_check_enabled ? "claude" : "off"
   consistency_checker = var.consistency_check_enabled ? "claude" : "off"
-
-  # Either check needs the worker to hold the Anthropic API key.
-  anthropic_key_needed = var.bylaws_check_enabled || var.consistency_check_enabled
 }
 
 # --- api ---------------------------------------------------------------------------------------------------------------
@@ -199,21 +197,7 @@ resource "google_cloud_run_v2_service" "worker" {
         }
       }
 
-      # Read when an instance starts, so a new key version takes effect on the next release or restart.
-      dynamic "env" {
-        for_each = local.anthropic_key_needed ? [google_secret_manager_secret.anthropic_api_key.secret_id] : []
-        content {
-          name = "ANTHROPIC_API_KEY"
-          value_source {
-            secret_key_ref {
-              secret  = env.value
-              version = "latest"
-            }
-          }
-        }
-      }
-
-      # The AWS access key for election notices by SES (notices.tf), likewise read when an instance starts.
+      # The AWS access key for election notices by SES (notices.tf), read when an instance starts.
       dynamic "env" {
         for_each = local.notices_worker_secrets
         content {

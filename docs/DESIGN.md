@@ -149,7 +149,7 @@ this structure one at a time, without changing routes, documents or the ledger.
 | Bylaws | §5.2, §5.4, §6.6 | `bylaws_versions`, `bylaws_checks`, `bylaws_check_references` |
 | Elections | §5.5, §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results`, `consistency_checks` |
 | Offices | §6.4 | `positions`, `position_terms` |
-| Governance | §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation` |
+| Governance | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `anthropic_key` |
 | Audit ledger | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` |
 | Notifications | §6.8 | `notices` (with `recipients`), `notice_outbox` |
 
@@ -465,15 +465,15 @@ loses its highlight and the finding says so. Nothing about the check is shown on
 refused outside them) runs a deterministic stand-in that flags three test phrases ("religious test", opposing "life
 extension", "without a vote of the members") and reads no references; CI and local development use it. A real
 project has `BYLAWS_CHECKER=off` until it is switched on (`bylaws_check_enabled` in Terraform), which sets it to
-`claude` on both services and gives the worker `ANTHROPIC_API_KEY` from the Secret Manager secret
-`anthropic-api-key`. Only the worker holds the key; the internet-facing api never does.
+`claude` on both services; it then runs once a System Admin has added the Anthropic API key (§5.6). Only the worker
+reads the key; the internet-facing api can store one a System Admin pastes but never read it back.
 
 **Cost and privacy.** See §14 and §15. The draft text leaves Google Cloud for Anthropic's API; it is the party's own
 working text, and the check sends nothing about who asked. USTP should agree to that before switching it on (Q18).
 
 **Shared with the consistency check.** The worker's queue (`runCheckQueue`: claim in a transaction, run side by side,
 fail after the timeout), the request to Claude (`claudeReview`), the party's texts and their cache, and the
-`anthropic-api-key` secret also serve the platform consistency check (§5.5), which is switched on separately.
+Anthropic API key (§5.6) also serve the platform consistency check (§5.5), which is switched on separately.
 
 ### 5.5 Platform consistency check *(added)*
 
@@ -556,9 +556,43 @@ it is public, ledgered or shown to anyone else.
 deterministic stand-in that flags three test phrases (opposing "life extension", acting "without a vote of the
 members", "replace") and questions that name the same platform section ("Section E9-A"), and reads no references. A
 real project has `CONSISTENCY_CHECKER=off` until `consistency_check_enabled` in Terraform sets it to `claude` on
-both services; the worker then gets `ANTHROPIC_API_KEY` from the same `anthropic-api-key` secret as the bylaws
-check. It is switched on separately because voters can ask for it, so what it costs and what leaves Google Cloud
+both services; it then runs once a System Admin has added the Anthropic API key (§5.6), the one the bylaws check uses,
+and until then the card is not shown. It is switched on separately because voters can ask for it, so what it costs and what leaves Google Cloud
 differ (§14, §15, Q18). Deleting an election (§6.1) removes its checks after the transaction, as it does its notices.
+
+### 5.6 The Anthropic API key *(added)*
+
+Both Claude checks (§5.4, §5.5) call Anthropic's API with one key, USTP's. A System Admin adds, replaces or removes it
+in the app, under **Admin › Claude**, without a terminal or the Google Cloud console, and nobody can read it back.
+
+- **Where it is kept.** As the newest version of the Secret Manager secret `anthropic-api-key`, which Terraform
+  creates empty, so the key is never in Terraform state. Adding a key adds a version and destroys every older one, so
+  one key is live at a time; removing it destroys them all. `anthropic_key/current` records who added the key in use,
+  when, its Secret Manager version and its last four characters (to match it with the keys in Anthropic's Console),
+  never more of it.
+- **Who touches it.** The browser sends it once, in the body of `PUT /v1/admin/anthropic-key`, from a password field
+  that is cleared once the key is saved. The api tries it (below), writes it as a version and keeps nothing: its
+  account has `secretVersionManager` on that one secret, which adds, lists and destroys versions but cannot read them.
+  The worker reads the newest version each time it runs a check, so a key added, replaced or removed counts from the
+  next check, without a release or restart. No record, ledger entry, log line or API answer holds the key.
+- **Tried first.** The api first checks the paste's shape: an Anthropic API key starts `sk-ant-`, has no spaces and is
+  not an Admin API key (which manages the whole Anthropic organization and cannot run a check); a paste that fails is
+  sent nowhere (400), so another service's secret pasted by mistake never reaches Anthropic. It then asks Anthropic's
+  Models API for each model the checks use, sending only the key and the model names. A key Anthropic refuses (wrong,
+  revoked, or not offered that model) is not kept (422), and nothing is saved when Anthropic cannot be asked (502).
+  With the emulators nothing goes to Anthropic: a key of the right shape is kept untried, in the emulator-only
+  stand-in secret store.
+- **What the panel shows.** Whether a key is set; for one added in the app, its last four characters, when and by
+  whom; for one added another way (`gcloud secrets versions add`), only that it is set and when. And how the
+  deployment switches each check: on (saying when it waits for a key), the stand-in, or off, naming the Terraform
+  setting that turns it on. The switches stay in Terraform, not the panel: turning a check on decides what leaves
+  Google Cloud and what it costs (Q18), which is the deployment's decision.
+- **Until there is a key** a check switched to `claude` cannot be asked for: the consistency check's card is not shown,
+  and a request for either check answers 503, saying that a System Admin adds the key under Admin › Claude. A check
+  already queued when the key is removed fails with that reason.
+- **Ledgered** as `anthropic_key.changed` (`added` or `removed`), with the System Admin as actor and nothing about the
+  key; Auditors only. Removing a key does not revoke it at Anthropic, which the confirmation says: that is done in
+  Anthropic's Console.
 
 ## 6. Elections
 
@@ -1212,7 +1246,7 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled` (M2–M3a), `ballots.sealed`,
   `election.sealed` (M3b), `results.computed` (M4a), `results.certified`, `election.pool_key_destroyed`,
   `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed`,
-  `navigation.changed`, `home_quote.changed`, `notice.sent`, `notice.resend_requested` (M5). The authoritative list is `LEDGER_EVENT_TYPES` in
+  `navigation.changed`, `home_quote.changed`, `notice.sent`, `notice.resend_requested`, `anthropic_key.changed` (M5). The authoritative list is `LEDGER_EVENT_TYPES` in
   `ustp-domain`.
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
   entries are public; the election notice entries (`notice.*`, §6.8), about delivering mail rather than the election's
@@ -1416,7 +1450,7 @@ results page, the CLI and the tests pass it that entry.
 | Define or change offices (at once; §6.4) | ● | ● | | |
 | Approve roll, scheduling, certification, cancellation, ending a term of office | | | ● | |
 | Read full ledger, run verifications | | | ● | |
-| Grant/revoke roles (one System Admin, at once; §10.2), see who holds them (§10.3), sign-in switches, operations | | | | ● |
+| Grant/revoke roles (one System Admin, at once; §10.2), see who holds them (§10.3), sign-in switches, the Anthropic API key (§5.6), operations | | | | ● |
 
 **Incompatible role pairs:** Auditor with any other role. An Election Admin who is a candidate in an election may not
 act on that election (Q12; enforced on every edit, and nobody can add themselves as a candidate). All admin roles require MFA. The first System Admin is bootstrapped once from deployment
@@ -1553,7 +1587,7 @@ as before. They also choose the quote on the home page, or switch it off (Admin 
 - **Columns (audiences):** signed out; signed in with no membership; each member status (applicant, Active, lapsed,
   suspended, resigned, rejected; §5.1); then each staff role. **Rows:** Register, Ballot, Verify and Admin; Sign in
   (the header's button for visitors); the admin sections (Applications, Members, Photos, Bylaws, Elections, Offices,
-  Approvals, People, Sign-in methods, Audit ledger, Testing, Navigation, Home page quote); and "Starts on". The vocabulary, defaults
+  Approvals, People, Sign-in methods, Claude, Audit ledger, Testing, Navigation, Home page quote); and "Starts on". The vocabulary, defaults
   and rules are `MENU_LINKS`, `ADMIN_SECTIONS`, `AUDIENCES` and the functions beside them in `ustp-domain`
   (`governance/navigation.ts`), shared by the API and the web app.
 - **Union.** A person is shown everything their membership state is shown plus everything each role they hold is
@@ -1681,6 +1715,7 @@ Physically, registration collections are top-level and election data lives under
 | `role_assignments/{accountId}_{role}` | composite | grant/revoke | grantedBy (approvedBy, approvalId only for two-person grants made before §10.2's change) |
 | `approval_requests/{id}` | auto | status only; pending ones go with a deleted election | two-person requests *(added)* |
 | `testing_personas/{accountId}` | accountId | immutable | kind, label, number, createdBy; testing mode only (§10.4) *(added)* |
+| `anthropic_key/current` | `current` | replaced by each key a System Admin adds; deleted when the key is removed | who added the key in use and when, its Secret Manager version and last four characters; never the key, which only Secret Manager holds (§5.6) *(added)* |
 | `navigation/current` | `current` | replaced whole, by one System Admin | menu links and admin sections per membership state and role, start pages, version, updatedAt, updatedBy (§10.5) *(added)* |
 | `home_quote/current` | `current` | replaced whole, by one System Admin | the home page quote: shown, text, attribution, source, version, updatedAt, updatedBy (§10.5) *(added)* |
 
@@ -1745,6 +1780,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/audit/events` · `GET /admin/audit/verify` | Auditor | ledger (paged by seq); verification of chain, blocks, signatures and anchors |
 | `GET\|PUT /admin/sign-in-methods` · `POST /admin/roles` | System Admin | auth switches; grant or revoke a role, at once (returns the account's roles afterwards; §10.2) |
 | `GET /admin/accounts` (paged; `email` prefix, `role` filter) | System Admin | People list: accounts with member status and active roles, read-only (§10.3) |
+| `GET\|PUT\|DELETE /admin/anthropic-key` | System Admin | whether a key is set, its last four characters, who added it and when, and how each Claude check is switched; add a key in place of any before it, after trying it with Anthropic (400 not an API key, 422 refused, 502 Anthropic unreachable; nothing kept); remove it (404 if none); never returns the key; ledgered (§5.6) |
 | `GET\|PUT /admin/navigation` | System Admin | the navigation settings with who saved them; save the whole matrix from the version it was edited from (409 if someone saved since, or a locked cell is switched), ledgered (§10.5) |
 | `GET\|PUT /admin/home-quote` | System Admin | the home page quote with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if shown without its words or who said them, or a part over its limit), ledgered (§10.5) |
 | `GET\|POST /testing/personas` · header `X-Act-As` on any signed-in route | System Admin, testing mode only (404 otherwise) | test personas and acting as them (§10.4) |
@@ -1794,16 +1830,19 @@ of Cloud Scheduler.
     `ustpvote-reviewed`, and update the two Cloud Run services (`run.developer` on each, acting as their accounts). It
     has no key and is reachable only through Workload Identity Federation from `release.yml` on `main`, in the GitHub
     environment of the same name as the project's environment.
-  - The api can create `tiebreak-seed-*` secrets and add versions to them, but cannot read any.
+  - The api can create `tiebreak-seed-*` secrets and add versions to them, and add, list and destroy versions of
+    `anthropic-api-key` (§5.6), but cannot read any of them.
   - The worker's Cloud Run service takes internal traffic only, and only the `ustp-worker-invoker` account (Scheduler,
     Tasks) may call it.
   - "No human has Firestore data access" in production means no human holds a basic role (Owner, Editor and even Viewer
     include data access) there; access goes through the break-glass group, with an alert.
   - Cloud Vision appears to need only the enabled API, no role (to confirm in a real project).
   - An optional alert fires when anyone but the worker uses the signing or ballot-pool keys.
-- **Bylaws check (§5.4):** the Anthropic API key is a Secret Manager secret that only the worker reads (as
-  `ANTHROPIC_API_KEY`, mounted by Cloud Run); Terraform creates the secret but a person adds the key, so it is never in
-  Terraform state, and the api never holds it. The draft text and the party's published texts go to Anthropic's API
+- **Bylaws check (§5.4):** the Anthropic API key is a Secret Manager secret that only the worker reads, each time it
+  runs checks; Terraform creates the secret but a System Admin adds the key in the app (§5.6), so it is never in
+  Terraform state. The api holds a key only while it tries and stores one a System Admin pasted: it may add and destroy
+  versions but not read them, so the internet-facing service cannot give the key back, and no answer, record, ledger
+  entry or log line contains it. The draft text and the party's published texts go to Anthropic's API
   over TLS; nothing identifying the requester does. Under Anthropic's commercial terms API inputs are not used to train
   models by default; check the current terms and the organization's retention settings before enabling. The bylaws
   and references are marked as material, not instructions, in the prompt; the answer is held to a JSON schema,
@@ -1974,8 +2013,9 @@ Decisions for USTP; the design's proposed default is in brackets.
     Article I of the USTP Constitution plus the Transhumanist Bill of Rights 3.0, and "the platform" Article VI with
     the rest of the Constitution, that Bill of Rights and the bylaws in force? Is one check per person per election, and
     100 a day for the server, right for voters? Should the repository instead carry dated copies of the party's texts
-    (they are USTP's own, marked "All Rights Reserved")? [both off until agreed; those texts; once each and 100 a day;
-    read from the party's site]
+    (they are USTP's own, marked "All Rights Reserved")? Should System Admins add the Anthropic API key in the app
+    (§5.6), or only operators, in Secret Manager? [both off until agreed; those texts; once each and 100 a day; read from
+    the party's site; System Admins, in the app, ledgered]
 19. **Contact for election questions** in the election notices (§6.8), whose From address takes no replies: an address
     or a page members can write to about an election. [none yet: a placeholder in the emulators; SES needs one before it
     sends]
@@ -1989,4 +2029,4 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Word export done:* the ballot and results as a `.docx` built in the browser, for Word and Google Docs, from the results page, the ballot page and the election editor (§9). *Synopsis done:* the results in brief, as the party publishes them, first on the results page (printable) and first in the Word file (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); the home page laid out as a sign-in landing page, a quote about voting over a sunrise drawn for the project beside the sign-in card or the signed-in cards, the quote FDR's from his 1938 Marietta, Ohio address with its source recorded, changed or switched off by one System Admin and ledgered as `home_quote.changed` (§10.5); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES with bounces read from SQS, and an outbox in place of mail with the emulators (§6.8; SES itself not yet set up in any project); the platform consistency check with Claude, once per person per election, from the ballot for voters on the roll and from the election editor for Election Admins and Auditors, comparing the proposals with the USTP Constitution (its Article VI is the Platform), the Transhumanist Bill of Rights, the bylaws in force and each other (§5.5; off in real projects until Q18 is settled, and not yet run against Anthropic's API). *Still to do:* the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); the home page laid out as a sign-in landing page, a quote about voting over a sunrise drawn for the project beside the sign-in card or the signed-in cards, the quote FDR's from his 1938 Marietta, Ohio address with its source recorded, changed or switched off by one System Admin and ledgered as `home_quote.changed` (§10.5); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES with bounces read from SQS, and an outbox in place of mail with the emulators (§6.8; SES itself not yet set up in any project); the platform consistency check with Claude, once per person per election, from the ballot for voters on the roll and from the election editor for Election Admins and Auditors, comparing the proposals with the USTP Constitution (its Article VI is the Platform), the Transhumanist Bill of Rights, the bylaws in force and each other (§5.5; off in real projects until Q18 is settled, and not yet run against Anthropic's API); the Anthropic API key added, replaced or removed by a System Admin under Admin › Claude, tried with Anthropic first and kept in Secret Manager, where the api can store it but not read it, ledgered as `anthropic_key.changed` (§5.6). *Still to do:* the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |

@@ -1,6 +1,7 @@
 import type Anthropic from '@anthropic-ai/sdk';
 import { BYLAWS_CHECK_SEVERITIES, BYLAWS_CHECK_SOURCES, splitLines } from 'ustp-domain';
 import { z } from 'zod';
+import { NO_KEY_REASON, type AnthropicKey } from '../claude-checks/anthropic-key.js';
 import { claudeReview, reviewClient } from '../claude-checks/claude-review.js';
 import { tidyFindings, type BylawsChecker, type BylawsCheckInput, type BylawsCheckOutput } from './checker.js';
 import type { ReferenceLibrary, ReferenceText } from './references.js';
@@ -46,10 +47,10 @@ Report each conflict once, most serious first, at most 50. Then give a one- or t
  */
 export class ClaudeBylawsChecker implements BylawsChecker {
   readonly name = 'claude';
-  private client: Anthropic | null = null;
 
   constructor(
-    private readonly apiKey: string | null,
+    /** Read for each check, so a key a System Admin replaces is used from the next one (design §5.6). */
+    private readonly key: Pick<AnthropicKey, 'read'>,
     private readonly model: string,
     private readonly references: Pick<ReferenceLibrary, 'load'>,
     /** For tests (a fake `fetch`). */
@@ -57,10 +58,10 @@ export class ClaudeBylawsChecker implements BylawsChecker {
   ) {}
 
   async check(input: BylawsCheckInput): Promise<BylawsCheckOutput> {
-    if (!this.apiKey) throw new Error('the bylaws check is not configured on the worker (no ANTHROPIC_API_KEY)');
-    this.client ??= reviewClient(this.apiKey, this.clientOptions);
+    const apiKey = await this.key.read();
+    if (!apiKey) throw new Error(NO_KEY_REASON);
     const references = await this.references.load();
-    const { review, model, usage } = await claudeReview(this.client, {
+    const { review, model, usage } = await claudeReview(reviewClient(apiKey, this.clientOptions), {
       model: this.model,
       system: SYSTEM_PROMPT,
       blocks: [...references.map((ref, i) => ({ text: referenceBlock(ref), cache: i === references.length - 1 })), { text: draftBlock(input) }],

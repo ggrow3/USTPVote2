@@ -12,6 +12,7 @@ const CONTEXTS: Readonly<Record<string, readonly string[]>> = {
   governance: ['/v1/navigation', '/v1/admin/navigation', '/v1/home-quote', '/v1/admin/home-quote'],
   // Its routes end the path after an election ID; the folder's own name appears in imports.
   'consistency-check': ['}/consistency-check'],
+  'claude-key': ['/v1/admin/anthropic-key'],
 };
 
 const SRC = import.meta.dirname;

@@ -15,6 +15,9 @@ import { RoleChanges } from '../administration/role-changes.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { BylawsChecksController } from '../bylaws-check/bylaws-checks.controller.js';
 import { BylawsChecksService } from '../bylaws-check/bylaws-checks.service.js';
+import { AnthropicKey } from '../claude-checks/anthropic-key.js';
+import { AnthropicKeyAdminService, AnthropicKeyController } from '../claude-checks/anthropic-key-admin.js';
+import { ANTHROPIC_KEY_TESTER, ClaudeKeyTester, UntriedKeyTester } from '../claude-checks/key-tester.js';
 import { HealthController } from '../common/health.controller.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { AdminConsistencyChecksController, ConsistencyChecksController } from '../consistency-check/consistency-checks.controller.js';
@@ -49,7 +52,7 @@ import { PositionsService } from '../positions/positions.service.js';
  * M1: accounts, registration, membership administration, profile photos, roles and approvals, auth switches, ledger.
  * M2: election setup, rolls, scheduling and cancellation; the published ledger (blocks, keys, proofs, anchors).
  * M3: voting. M4: results, certification, offices and terms. Testing mode: test personas (design §10.4). M5: who sees
- * which link (design §10.5); the platform consistency check (design §5.5).
+ * which link (design §10.5); the platform consistency check (design §5.5) and the Anthropic API key (design §5.6).
  */
 @Module({
   imports: [CoreModule],
@@ -75,6 +78,7 @@ import { PositionsService } from '../positions/positions.service.js';
     AccountsAdminController,
     PublicSignInMethodsController,
     SignInMethodsController,
+    AnthropicKeyController,
     PublicNavigationController,
     NavigationAdminController,
     PublicHomeQuoteController,
@@ -94,6 +98,8 @@ import { PositionsService } from '../positions/positions.service.js';
     ElectionApprovals,
     VotingService,
     ConsistencyChecksService,
+    AnthropicKey,
+    AnthropicKeyAdminService,
     PublicElectionsService,
     ballotPoolKeysProvider,
     RoleChanges,
@@ -109,6 +115,11 @@ import { PositionsService } from '../positions/positions.service.js';
       inject: [CONFIG],
       useFactory: (config: ServerConfig) =>
         config.photoChecker === 'vision' ? new VisionPhotoChecker() : new LocalPhotoChecker(),
+    },
+    {
+      provide: ANTHROPIC_KEY_TESTER,
+      inject: [CONFIG],
+      useFactory: (config: ServerConfig) => (config.usingEmulators ? new UntriedKeyTester() : new ClaudeKeyTester()),
     },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],

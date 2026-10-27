@@ -16,6 +16,7 @@ import {
 } from 'ustp-domain';
 import { requireAccount } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
+import { AnthropicKey, NO_KEY_REASON } from '../claude-checks/anthropic-key.js';
 import { assertCheck } from '../common/validation.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { ElectionReader } from '../elections/election-reader.js';
@@ -46,12 +47,13 @@ export class ConsistencyChecksService {
     private readonly voting: VotingService,
     private readonly reader: ElectionReader,
     private readonly membership: MembershipService,
+    private readonly key: AnthropicKey,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
   /** A voter on the roll, from the ballot: refused as the ballot is (404 for drafts and cancelled, 403 off the roll). */
   async requestFromBallot(ctx: RequestContext, electionId: string): Promise<ConsistencyCheckResult> {
-    this.assertEnabled();
+    await this.assertEnabled();
     const ballot = await this.voting.ballot(ctx, electionId);
     return this.request(ctx, {
       view: 'ballot',
@@ -65,7 +67,7 @@ export class ConsistencyChecksService {
 
   /** An Election Admin or Auditor, from the election as the editor shows it: a draft as it stands, in any state. */
   async requestFromEditor(ctx: RequestContext, electionId: string): Promise<ConsistencyCheckResult> {
-    this.assertEnabled();
+    await this.assertEnabled();
     const { definition, proposals } = await this.reader.load(electionId);
     return this.request(ctx, {
       view: 'admin',
@@ -77,16 +79,22 @@ export class ConsistencyChecksService {
     });
   }
 
-  /** Whether the check is on, and the caller's own check of the election, if any. Nobody reads anyone else's. */
+  /**
+   * Whether the check can run (switched on and, for Claude, a key added), and the caller's own check of the election, if
+   * any. Nobody reads anyone else's.
+   */
   async state(ctx: RequestContext, electionId: string): Promise<ConsistencyCheckState> {
     const accountId = requireAccount(ctx);
     const snap = await this.firebase.db.collection(Collections.consistencyChecks).doc(consistencyCheckId(electionId, accountId)).get();
     const record = snap.data() as ConsistencyCheckRecord | undefined;
-    return { enabled: this.config.consistencyChecker !== 'off', check: record ? result(record) : null };
+    return { enabled: await this.key.ready(this.config.consistencyChecker), check: record ? result(record) : null };
   }
 
-  private assertEnabled(): void {
+  private async assertEnabled(): Promise<void> {
     if (this.config.consistencyChecker === 'off') throw new ServiceUnavailableException('the consistency check is not set up on this server');
+    if (!(await this.key.ready(this.config.consistencyChecker))) {
+      throw new ServiceUnavailableException(`the consistency check cannot run yet: ${NO_KEY_REASON}`);
+    }
   }
 
   /**

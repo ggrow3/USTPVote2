@@ -211,13 +211,13 @@ variable "alert_emails" {
 }
 
 variable "bylaws_check_enabled" {
-  description = "Run the advisory bylaws check, which sends bylaws drafts to Anthropic's API (design §5.2). Add the API key as a version of the anthropic-api-key secret before turning it on."
+  description = "Run the advisory bylaws check, which sends bylaws drafts to Anthropic's API (design §5.2). It waits for a System Admin to add the API key in the app (Admin › Claude, design §5.6)."
   type        = bool
   default     = false
 }
 
 variable "consistency_check_enabled" {
-  description = "Run the platform consistency check, which voters on a roll and Election Admins and Auditors may each ask for once per election, and which sends the election's proposals to Anthropic's API (design §5.5). Uses the same anthropic-api-key secret as the bylaws check."
+  description = "Run the platform consistency check, which voters on a roll and Election Admins and Auditors may each ask for once per election, and which sends the election's proposals to Anthropic's API (design §5.5). Uses the same Anthropic API key as the bylaws check, which a System Admin adds in the app."
   type        = bool
   default     = false
 }

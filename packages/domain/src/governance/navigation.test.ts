@@ -47,7 +47,7 @@ describe('defaults', () => {
     expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'offices', 'approvals']);
     expect(tabs('election_admin')).toEqual(['elections', 'offices', 'approvals']);
     expect(tabs('auditor')).toEqual(['elections', 'offices', 'approvals', 'audit']);
-    expect(tabs('system_admin')).toEqual(['approvals', 'people', 'signin', 'testing', 'navigation', 'quote']);
+    expect(tabs('system_admin')).toEqual(['approvals', 'people', 'signin', 'claude', 'testing', 'navigation', 'quote']);
   });
 
   it('give settings saved before the Home page quote section existed its default', () => {
