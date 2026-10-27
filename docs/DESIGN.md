@@ -662,8 +662,8 @@ one canonical object: election fields, then contests in order, each with its `us
 snapshot ID and content hash, and its candidates in the order the spec lists them. `definitionHash = H(JCS(definition))`
 is shown live in the editor and to Auditors, and `validateDefinition` lists what blocks scheduling (no contests,
 voting not in the future, missing proposal text or candidates, any `ustp-tally` spec problem such as more seats than
-candidates). Scheduling (M2b) freezes exactly this hash. Contest and candidate IDs are random Firestore IDs, which
-fit the `ustp-tally` ID pattern. Only drafts can be edited.
+candidates). Scheduling (M2b) freezes exactly this hash. Contest and candidate IDs are random Firestore IDs, or those
+an election package gives (§6.7); both fit the `ustp-tally` ID pattern. Only drafts can be edited.
 - `positions` define offices (title, seats, term length). Certifying an election that fills an office creates
   `position_terms` that reference the certified results hash. Ending a term early is a two-person action. Implemented
   in M4b:
@@ -773,6 +773,62 @@ amendment, one change per run of changed lines.
 *Planned (in order):* an editor for writing amendments line by line, with the changes shown as a line diff and
 downloadable as JSON and .docx; on the results page, the amended bylaws as a draft .docx and "Publish as the next
 version" for Membership Admins.
+
+### 6.7 Election packages
+
+A whole election can be written as one JSON file, imported as a new draft and exported from any election, so elections
+can be prepared, reviewed, kept, repeated and tested as files instead of being put together one click at a time.
+
+**Format** (`ustp.election` v1, `electionPackageSchema` in `ustp-domain`; the api and the browser check files with it):
+
+```
+{ format: 'ustp.election', v: 1, title, description?, secrecy, kAnonymity?,
+  window: { opensAt, closesAt } | { opensInSeconds, votingSeconds },
+  contests: [ { id?, kind: 'proposal', title, description?, passRule, quorum?,
+                proposal: { title?, body, source?, amendment?, contentHash? } | { snapshotId } }
+            | { id?, kind: 'choose_n' | 'irv', title, …the contest's rules, positionId?,
+                candidates: [ name | { id?, name, statement?, accountId? } ] } ],
+  exportedFrom? }
+```
+
+- **Contests** take the same fields as `POST …/contests` (§12), in ballot order. A proposal contest carries its text
+  (its title defaults to the contest's) or names a text already captured. A candidate contest lists its candidates,
+  each a name or the full form.
+- **IDs:** a contest's or candidate's `id`, when given, becomes its ID, so a file and what is imported from it refer to
+  contests and candidates the same way. Without one, the ID is random. IDs are unique within the file and fit the
+  `ustp-tally` pattern.
+- **Window:** absolute, or relative to the import (`opensInSeconds`, then `votingSeconds` of voting, at least a minute),
+  for rehearsals that should open soon after they are imported.
+- **Limits:** at most 100 contests and 100 candidates per contest, and at most 450 records in all (the election, its
+  contests, candidates and new proposal texts), since an import is one Firestore transaction; and the api's 1 MiB
+  request limit.
+
+**Importing** (`POST /v1/admin/elections/import`, Election Admin) creates a draft in one transaction, so a refusal
+writes nothing:
+
+- **The editor's rules apply to the whole:** every office, account and named proposal text must exist (400). The
+  importing admin cannot be a candidate (403). The bylaws amendments must fit the current version and not conflict
+  (409, §6.6).
+- **Proposal texts:** each is captured as an immutable snapshot, unless one with the same content hash and source
+  exists already, here or earlier in the same file; then that one is used. A `contentHash` in the file must be the
+  text's (the schema refuses the file otherwise), so an exported text that was edited is not imported as the original.
+- **Not refused:** what would block scheduling, such as a window already past or a contest without candidates. It is
+  listed in the new draft's problems, as for any draft.
+- **Problems are listed by path** (`contests.2.title: enter a title`), by the browser before sending and by the api
+  (400) for anything the browser did not check.
+- **Allowed in production:** it only creates drafts, which still need a roll and an Auditor's scheduling approval.
+
+**Exporting** (`GET /v1/admin/elections/{id}/package`, Election Admin and Auditor) works in any state. The file gives:
+
+- the absolute window;
+- every contest and candidate with its ID;
+- each proposal's full text with its content hash;
+- `exportedFrom: {electionId, definitionHash, exportedAt}`, which import ignores.
+
+Importing an export gives the same definition, apart from the election's own ID (tested).
+
+**Web:** "Import JSON" on the Elections tab, which lists any problems by path. "Download as JSON" in the election
+editor, next to the Word ballot.
 
 ## 7. Ballot casting and secrecy
 
@@ -1386,6 +1442,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/photos` · `GET /admin/photos/{id}/image` · `POST /admin/photos/{id}/decision` | Membership Admin | photo review |
 | `GET /admin/elections` · `GET /admin/elections/{id}` (detail, definition hash, problems) · `GET /admin/proposals` | Election Admin, Auditor | read election setup |
 | `POST /admin/elections` · `PATCH /admin/elections/{id}` · `POST\|PUT\|DELETE …/contests[/{cid}]` · `POST\|DELETE …/contests/{cid}/candidates[/{kid}]` · `POST /admin/proposals` | Election Admin | edit drafts |
+| `POST /admin/elections/import` | Election Admin | a whole draft from a `ustp.election` file, in one transaction (400/403/409 write nothing; §6.7) |
+| `GET /admin/elections/{id}/package` | Election Admin, Auditor | any election as a `ustp.election` file (§6.7) |
 | `POST /admin/elections/{id}/roll` · `.../schedule` · `.../cancel` · `.../certify` | Election Admin | roll snapshot (`voters: 'test_voters'` for a rehearsal roll, testing mode only, §6.3), scheduling, cancellation and certification requests (draft cancel is immediate) |
 | `POST /admin/elections/{id}/delete` | Election Admin | permanently delete a cancelled election nobody voted in, or in testing mode a certified or cancelled rehearsal with its ballots, at once (204; 409 otherwise; §6.1) |
 | `GET /admin/positions` · `POST /admin/positions` · `POST /admin/positions/{id}/terms/{termId}/end` | any admin (read); Membership or Election Admin | offices and terms; define or change an office (at once), end a term (→ approval) |
