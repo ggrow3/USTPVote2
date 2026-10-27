@@ -1,16 +1,19 @@
 import {
   cancelledFrom,
+  STEP_STATE,
   type ElectionProgress,
   type ElectionRecord,
+  type ElectionState,
   type ElectionStep,
   type StepStatus,
   type Waiting,
+  type WaitingFor,
 } from 'ustp-domain';
 import { aRole } from '../approval-text.js';
 
 /**
- * The election editor's workflow (design §6.1) in words and as a Mermaid flowchart. Where the election is and what it
- * waits on come from `electionProgress` in ustp-domain; this module only says it.
+ * The election editor's workflow (design §6.1) in words and as swim lanes, one for each who acts. Where the election is
+ * and what it waits on come from `electionProgress` in ustp-domain; this module only says it, and draws it.
  */
 
 export const STEP_LABELS: Record<ElectionStep, string> = {
@@ -176,70 +179,319 @@ export const DARK_COLOURS: DiagramColours = {
   clusterCurrent: '#ff6900',
 };
 
-/** Shown before a step's name in the diagram, so its status does not rest on colour (WCAG 1.4.1). */
+
+/** Marks a step's status in the diagram, so it does not rest on colour (WCAG 1.4.1). */
 export const DIAGRAM_MARKS: Record<StepStatus, string> = {
-  done: '✓ ',
-  current: '▶ ',
+  done: '✓',
+  current: '▶',
   upcoming: '',
   possible: '',
-  not_reached: '– ',
+  not_reached: '–',
 };
 
-/** Long names on two lines, so the chart stays narrow enough for a phone. */
-const DIAGRAM_LABELS: Partial<Record<ElectionStep, string>> = {
-  readiness: 'Readiness<br/>checks',
-  open: 'Open for<br/>voting',
-  sealing: 'Ballots<br/>sealed',
-  tally: 'Results<br/>computed',
-};
-
-const id = (step: ElectionStep) => `step_${step}`;
-const DRAFT: readonly ElectionStep[] = ['readiness', 'roll', 'scheduling'];
-const CLOSED: readonly ElectionStep[] = ['sealing', 'tally', 'certification'];
+// --- the swim lanes -------------------------------------------------------------------------------------------------
 
 /**
- * The lifecycle as Mermaid flowchart source, with each step styled by its status. It holds only fixed labels, never an
- * election's own text, so nothing typed into an election reaches the diagram's parser.
+ * Who acts (design §6.1, §10.2): an Election Admin builds the ballot and requests each two-person step, an Auditor
+ * approves it, the worker acts on its clock, and the members on the roll vote.
  */
-export function workflowDiagram(progress: ElectionProgress, c: DiagramColours): string {
-  const status = new Map(progress.steps.map((s) => [s.step, s.status]));
-  const node = (step: ElectionStep) =>
-    `    ${id(step)}["${DIAGRAM_MARKS[status.get(step)!]}${DIAGRAM_LABELS[step] ?? STEP_LABELS[step]}"]`;
-  const cluster = (name: string, steps: readonly ElectionStep[]) => {
-    const here = steps.includes(progress.current);
-    return `  style ${name} fill:${c.cluster},stroke:${here ? c.clusterCurrent : c.border},stroke-width:${here ? 2 : 1}px,color:${c.text}`;
+export type Lane = 'election_admin' | 'auditor' | 'worker' | 'members';
+
+/**
+ * The lanes left to right: each one's name, a word on who that is, and its share of the width, which follows its
+ * longest label (an Election Admin "Requests certification"; the voters only "Vote").
+ */
+export const LANES: readonly {
+  readonly lane: Lane;
+  readonly name: readonly string[];
+  readonly detail?: string;
+  readonly share: number;
+}[] = [
+  { lane: 'election_admin', name: ['Election', 'Admin'], share: 0.28 },
+  { lane: 'auditor', name: ['Auditor'], detail: 'approves', share: 0.26 },
+  { lane: 'worker', name: ['Worker'], detail: 'automatic', share: 0.25 },
+  { lane: 'members', name: ['Voters'], detail: 'on the roll', share: 0.21 },
+];
+
+/** The diagram's bands, top to bottom: the states in order, then the two ways out. */
+export type Band = ElectionState | 'deleted';
+const MAIN_BANDS = ['draft', 'scheduled', 'open', 'closed', 'certified'] as const;
+const BANDS: readonly Band[] = [...MAIN_BANDS, 'cancelled', 'deleted'];
+export const BAND_LABELS: Record<Band, string> = {
+  draft: 'Draft',
+  scheduled: 'Scheduled',
+  open: 'Open',
+  closed: 'Closed',
+  certified: 'Certified',
+  cancelled: 'Cancelled (a way out)',
+  deleted: 'Deleted (a way out)',
+};
+
+interface ActionSpec {
+  readonly id: string;
+  readonly lane: Lane;
+  /** The step it belongs to; the action's band is that step's state. */
+  readonly step: ElectionStep;
+  /** Its name in the diagram, a line each: short words, so a lane fits a phone. */
+  readonly label: readonly string[];
+  /** What the election waits on while this is the thing to do next. */
+  readonly waits: readonly WaitingFor[];
+  /** Only in a secret election, which has a ballot encryption key. */
+  readonly secret?: boolean;
+  /** It moves the election to its next state, which a cancelled election left by the way out instead. */
+  readonly ends?: boolean;
+}
+
+const act = (
+  id: string,
+  lane: Lane,
+  step: ElectionStep,
+  label: readonly string[],
+  waits: readonly WaitingFor[] = [],
+  more: Pick<ActionSpec, 'secret' | 'ends'> = {},
+): ActionSpec => ({ id, lane, step, label, waits, ...more });
+
+/**
+ * Each band's rows. Actions in one row follow one another left to right (an Election Admin's request, then the
+ * Auditor's decision); each row of a state leads to the next row, and the last row of a state to the next state.
+ */
+const ROWS: Record<Band, readonly (readonly ActionSpec[])[]> = {
+  draft: [
+    [act('build', 'election_admin', 'readiness', ['Builds the', 'ballot'], ['fix_definition'])],
+    [
+      act('request_roll', 'election_admin', 'roll', ['Requests', 'the roll'], ['request_roll']),
+      act('approve_roll', 'auditor', 'roll', ['Approves', 'the roll'], ['approve_roll']),
+    ],
+    [
+      act('request_scheduling', 'election_admin', 'scheduling', ['Requests', 'scheduling'], ['request_scheduling']),
+      act('approve_scheduling', 'auditor', 'scheduling', ['Approves', 'scheduling'], ['approve_scheduling'], { ends: true }),
+    ],
+  ],
+  scheduled: [
+    [act('make_key', 'worker', 'scheduled', ['Makes', 'ballot key'], ['pool_key'], { secret: true })],
+    [act('open', 'worker', 'scheduled', ['Opens', 'voting'], ['opening_time', 'open_tick'], { ends: true })],
+  ],
+  open: [
+    // Voting is what happens until the closing time; then the worker's tick is what the election waits on.
+    [act('vote', 'members', 'open', ['Vote'], ['closing_time'])],
+    [act('close', 'worker', 'open', ['Closes', 'voting'], ['close_tick'], { ends: true })],
+  ],
+  closed: [
+    [act('seal', 'worker', 'sealing', ['Seals the', 'ballots'], ['seal'])],
+    [act('tally', 'worker', 'tally', ['Counts', 'the votes'], ['tally'])],
+    [
+      act('request_certification', 'election_admin', 'certification', ['Requests', 'certification'], ['request_certification']),
+      act('certify', 'auditor', 'certification', ['Certifies', 'the results'], ['approve_certification']),
+    ],
+  ],
+  certified: [[act('destroy_key', 'worker', 'certified', ['Destroys', 'ballot key'], ['destroy_pool_key'], { secret: true })]],
+  cancelled: [
+    [act('cancel_draft', 'election_admin', 'cancelled', ['Cancels', 'a draft'])],
+    [
+      act('request_cancel', 'election_admin', 'cancelled', ['Requests', 'cancelling']),
+      act('approve_cancel', 'auditor', 'cancelled', ['Approves', 'cancelling'], ['approve_cancellation']),
+    ],
+    [act('destroy_cancelled_key', 'worker', 'cancelled', ['Destroys', 'ballot key'], ['destroy_pool_key'], { secret: true })],
+  ],
+  deleted: [[act('delete', 'election_admin', 'deleted', ['Deletes', 'it'])]],
+};
+
+/** Between the ways out's rows, only the key's destruction follows from what is above it. */
+const WAY_OUT_LINKS: readonly (readonly [string, string])[] = [['approve_cancel', 'destroy_cancelled_key']];
+
+export interface LaneAction {
+  readonly id: string;
+  readonly lane: Lane;
+  readonly label: readonly string[];
+  readonly status: StepStatus;
+}
+
+export interface LaneBand {
+  readonly band: Band;
+  readonly status: StepStatus;
+  readonly rows: readonly (readonly LaneAction[])[];
+}
+
+export interface SwimLanes {
+  readonly bands: readonly LaneBand[];
+  /** From an action to the one in a later row that follows it; within a row each action leads to the next. */
+  readonly links: readonly (readonly [string, string])[];
+}
+
+type LaneElection = Pick<
+  ElectionRecord,
+  'state' | 'secrecy' | 'scheduledAt' | 'openedAt' | 'closedAt' | 'poolKeyVersion' | 'poolKeyDestroyedAt'
+>;
+
+/**
+ * Who does what in the lifecycle, and where the election is: each action has the status of its step, refined by what
+ * the election waits on (an Election Admin's request is done while the Auditor's decision on it is awaited).
+ */
+export function swimLanes(progress: ElectionProgress, election: LaneElection): SwimLanes {
+  const stepStatus = new Map(progress.steps.map((s) => [s.step, s.status]));
+  const waited = new Set(progress.waiting.map((w) => w.for));
+  const isWaited = (a: ActionSpec) => a.waits.some((w) => waited.has(w));
+  const secret = election.secrecy === 'secret';
+  const present = (a: ActionSpec) => secret || !a.secret;
+  const cancelled = election.state === 'cancelled';
+  const from = cancelledFrom(election);
+
+  const mainStatus = (a: ActionSpec, step: readonly ActionSpec[]): StepStatus => {
+    if (isWaited(a)) return 'current';
+    const i = step.indexOf(a);
+    if (step.slice(i + 1).some(isWaited)) return 'done';
+    if (step.slice(0, i).some(isWaited)) return 'upcoming';
+    const s = stepStatus.get(a.step)!;
+    // A cancelled election counts the state it was cancelled from as done, but it never took the step out of it.
+    if (cancelled && s === 'done' && STEP_STATE[a.step] === from) {
+      if (a.id === 'make_key') return election.poolKeyVersion ? 'done' : 'not_reached';
+      if (a.ends) return 'not_reached';
+    }
+    // The step is current but waits on nothing of its own: what it needed is behind it (the key destroyed).
+    return s === 'current' ? 'done' : s;
   };
-  const dashed = 'stroke-dasharray:5 4';
-  return [
-    'flowchart TD',
-    '  accTitle: Steps of this election',
-    `  accDescr: A flowchart of the steps listed beside it. The current step, ${STEP_LABELS[progress.current]}, is highlighted.`,
-    '  subgraph draft["Draft"]',
-    ...DRAFT.map(node),
-    '  end',
-    node('scheduled'),
-    node('open'),
-    '  subgraph closed["Closed"]',
-    ...CLOSED.map(node),
-    '  end',
-    node('certified'),
-    node('cancelled'),
-    node('deleted'),
-    // The states follow one another (design §6.1); the steps inside Draft and Closed follow one another within it.
-    `  ${id('readiness')} --> ${id('roll')} --> ${id('scheduling')}`,
-    `  ${id('sealing')} --> ${id('tally')} --> ${id('certification')}`,
-    `  draft --> ${id('scheduled')} --> ${id('open')} --> closed --> ${id('certified')}`,
-    `  draft -.-> ${id('cancelled')}`,
-    `  ${id('scheduled')} -.-> ${id('cancelled')}`,
-    `  ${id('open')} -.-> ${id('cancelled')}`,
-    ...progress.deletedFrom.map((state) => `  ${id(state)} -.-> ${id('deleted')}`),
-    `  classDef done fill:${c.done},stroke:${c.doneBorder},color:${c.text}`,
-    `  classDef current fill:${c.current},stroke:${c.current},stroke-width:3px,color:${c.currentText},font-weight:bold`,
-    `  classDef upcoming fill:${c.node},stroke:${c.border},color:${c.text}`,
-    `  classDef possible fill:${c.node},stroke:${c.border},${dashed},color:${c.text}`,
-    `  classDef not_reached fill:${c.node},stroke:${c.muted},${dashed},color:${c.muted}`,
-    ...progress.steps.map((s) => `  class ${id(s.step)} ${s.status}`),
-    cluster('draft', DRAFT),
-    cluster('closed', CLOSED),
-  ].join('\n');
+
+  const wayOutStatus = (a: ActionSpec): StepStatus => {
+    if (a.id === 'delete') return stepStatus.get('deleted')!;
+    const s = stepStatus.get('cancelled')!;
+    if (s === 'not_reached') return s;
+    if (s === 'current') {
+      if (a.id === 'cancel_draft') return from === 'draft' ? 'done' : 'not_reached';
+      if (a.id === 'destroy_cancelled_key') {
+        return isWaited(a) ? 'current' : election.poolKeyDestroyedAt ? 'done' : 'not_reached';
+      }
+      return from === 'draft' ? 'not_reached' : 'done';
+    }
+    // Still possible: a draft is cancelled at once, a scheduled or open election by request and approval.
+    if (a.id === 'cancel_draft') return election.state === 'draft' ? 'possible' : 'not_reached';
+    if (waited.has('approve_cancellation')) {
+      if (a.id === 'request_cancel') return 'done';
+      if (a.id === 'approve_cancel') return 'current';
+    }
+    return 'possible';
+  };
+
+  const bandStatus = (band: Band): StepStatus => {
+    if (band === 'cancelled' || band === 'deleted') return stepStatus.get(band)!;
+    if (election.state === band) return 'current';
+    const passed = {
+      draft: true,
+      scheduled: !!election.scheduledAt,
+      open: !!election.openedAt,
+      closed: !!election.closedAt,
+      certified: false,
+    }[band];
+    return passed ? 'done' : cancelled ? 'not_reached' : 'upcoming';
+  };
+
+  const bands = BANDS.map((band): LaneBand => {
+    const rows = ROWS[band].map((row) => row.filter(present)).filter((row) => row.length > 0);
+    const main = (MAIN_BANDS as readonly Band[]).includes(band);
+    const status = (a: ActionSpec) =>
+      main ? mainStatus(a, rows.flat().filter((b) => b.step === a.step)) : wayOutStatus(a);
+    return {
+      band,
+      status: bandStatus(band),
+      rows: rows.map((row) => row.map((a) => ({ id: a.id, lane: a.lane, label: a.label, status: status(a) }))),
+    };
+  });
+
+  const mainRows = bands.filter((b) => (MAIN_BANDS as readonly Band[]).includes(b.band)).flatMap((b) => b.rows);
+  const ids = new Set(bands.flatMap((b) => b.rows.flat().map((a) => a.id)));
+  const links = [
+    ...mainRows.slice(1).map((row, i) => [mainRows[i]!.at(-1)!.id, row[0]!.id] as const),
+    ...WAY_OUT_LINKS.filter(([a, b]) => ids.has(a) && ids.has(b)),
+  ];
+  return { bands, links };
+}
+
+/** The diagram's sizes in CSS pixels; each lane takes its share of the width. */
+export const LANE_SIZES = {
+  /** The lanes' names. */
+  heading: 44,
+  /** A band's name, and the space under it. */
+  band: 24,
+  bandGap: 14,
+  /** An action, with two lines of text, and the space under it. */
+  box: 40,
+  rowGap: 16,
+  /** Between an action and the edge of its lane. */
+  inset: 4,
+  /** Above an action, where a line coming from another lane turns down into it. */
+  turn: 11,
+} as const;
+
+export interface LaneBox {
+  readonly action: LaneAction;
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+}
+
+export interface LaneLine {
+  readonly points: readonly (readonly [number, number])[];
+  /** Into a way out, or a step not taken. */
+  readonly dashed: boolean;
+}
+
+export interface LaneLayout {
+  readonly width: number;
+  readonly height: number;
+  /** Each lane's left edge and width, in `LANES` order. */
+  readonly lanes: readonly { readonly x: number; readonly width: number }[];
+  readonly bands: readonly { readonly band: LaneBand; readonly y: number }[];
+  readonly boxes: readonly LaneBox[];
+  readonly lines: readonly LaneLine[];
+}
+
+/** Where everything goes in a diagram `width` pixels wide: a row of actions under each band's name. */
+export function laneLayout(lanes: SwimLanes, width: number): LaneLayout {
+  const S = LANE_SIZES;
+  let left = 0;
+  const columns = LANES.map((l) => {
+    const lane = { x: left, width: l.share * width };
+    left += lane.width;
+    return lane;
+  });
+  const column = new Map(LANES.map((l, i) => [l.lane, columns[i]!]));
+  const bands: { band: LaneBand; y: number }[] = [];
+  const boxes = new Map<string, LaneBox>();
+  let y = S.heading;
+  for (const band of lanes.bands) {
+    bands.push({ band, y });
+    y += S.band + S.bandGap;
+    for (const row of band.rows) {
+      for (const action of row) {
+        const lane = column.get(action.lane)!;
+        boxes.set(action.id, { action, x: lane.x + S.inset, y, width: lane.width - 2 * S.inset });
+      }
+      y += S.box + S.rowGap;
+    }
+  }
+
+  const dashed = (to: LaneBox, band: Band) =>
+    band === 'cancelled' || band === 'deleted' || to.action.status === 'possible' || to.action.status === 'not_reached';
+  const bandOf = new Map(lanes.bands.flatMap((b) => b.rows.flat().map((a) => [a.id, b.band] as const)));
+  const lines: LaneLine[] = [];
+  for (const band of lanes.bands) {
+    for (const row of band.rows) {
+      row.slice(1).forEach((action, i) => {
+        const a = boxes.get(row[i]!.id)!;
+        const b = boxes.get(action.id)!;
+        const mid = a.y + S.box / 2;
+        lines.push({ points: [[a.x + a.width, mid], [b.x, mid]], dashed: dashed(b, band.band) });
+      });
+    }
+  }
+  for (const [from, to] of lanes.links) {
+    const a = boxes.get(from)!;
+    const b = boxes.get(to)!;
+    const [x1, y1, x2, y2] = [a.x + a.width / 2, a.y + S.box, b.x + b.width / 2, b.y];
+    const points: [number, number][] =
+      x1 === x2
+        ? [[x1, y1], [x2, y2]]
+        : [[x1, y1], [x1, y2 - S.turn], [x2, y2 - S.turn], [x2, y2]];
+    lines.push({ points, dashed: dashed(b, bandOf.get(to)!) });
+  }
+  return { width, height: y - S.rowGap + S.inset, lanes: columns, bands, boxes: [...boxes.values()], lines };
 }

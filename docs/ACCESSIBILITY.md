@@ -141,8 +141,8 @@ menus and dialogs `#1d1d1d`.
 | Under the tint, light theme (the text's own colour at .08, hover and focus): primary on white (flat and outline buttons, tabs, the current menu item); negative on white; black on white | `#bd4e00` on `#fbf6f3`; `#c10015` on `#fbf3f4`; `#000` on `#f3f3f3` | 4.60; 5.87; 18.93 |
 | Under the tint, dark theme (the text's own colour at .12): accent on the page / a card; `#ef9a9a` on a card; white on a card | `#ff6900` on `#2d231c` / `#362d26`; on `#353030`; on `#363636` | 5.31 / 4.66; 6.04; 12.08 |
 | App icon: white ballot box on primary | `#fff` on `#bd4e00` | 4.94 |
-| Election workflow diagram, light (on a white card; groups `#f5f5f5`): the current step, white on primary, and its border on the card / group; a done step, black on `#e8f5e9`, its border on that fill / the card; other steps black on white, their border and a not-reached step's text `#757575` on the card / group; lines `#757575` | `#fff` on `#bd4e00`; `#bd4e00` on `#fff` / `#f5f5f5`; `#000` on `#e8f5e9`; `#2e7d32` on `#e8f5e9` / `#fff`; `#757575` on `#fff` / `#f5f5f5` | 4.94; 4.94 / 4.53; 18.67; 4.56 / 5.13; 4.61 / 4.23 |
-| Election workflow diagram, dark (on `#1d1d1d`; groups `#262626`): the current step, black on the accent, and its border on the card / group; a done step, white on `#203123`, its border on that fill / the card; other steps white on the card, their border and a not-reached step's text `#b0b0b0` on the card / group | `#000` on `#ff6900`; `#ff6900` on `#1d1d1d` / `#262626`; `#fff` on `#203123`; `#81c784` on `#203123` / `#1d1d1d`; `#b0b0b0` on `#1d1d1d` / `#262626` | 7.27; 5.84 / 5.24; 13.77; 6.84 / 8.38; 7.77 / 6.98 |
+| Election workflow swim lanes, light (on a white card; bands `#f5f5f5`): the current action, white on primary, and its border, its ▶ mark (on white) and the current band's name on the card / band; a done action, black on `#e8f5e9`, its border on that fill / the card, and its ✓ mark, white on that border colour; other actions black on white; their border, a not-reached action's text and – mark, the lane notes, lane lines and arrows `#757575` on the card / band (other band names are black) | `#fff` on `#bd4e00`; `#bd4e00` on `#fff` / `#f5f5f5`; `#000` on `#e8f5e9`; `#2e7d32` on `#e8f5e9` / `#fff`; `#fff` on `#2e7d32`; `#757575` on `#fff` / `#f5f5f5` | 4.94; 4.94 / 4.53; 18.67; 4.56 / 5.13; 5.13; 4.61 / 4.23 |
+| Election workflow swim lanes, dark (on `#1d1d1d`; bands `#262626`): the current action, black on the accent, and its border, its ▶ mark (on the card) and the current band's name on the card / band; a done action, white on `#203123`, its border on that fill / the card, and its ✓ mark, the card's colour on that border colour; other actions white on the card; their border, a not-reached action's text and – mark, the lane notes, lane lines and arrows `#b0b0b0` on the card / band | `#000` on `#ff6900`; `#ff6900` on `#1d1d1d` / `#262626`; `#fff` on `#203123`; `#81c784` on `#203123` / `#1d1d1d`; `#1d1d1d` on `#81c784`; `#b0b0b0` on `#1d1d1d` / `#262626` | 7.27; 5.84 / 5.24; 13.77; 6.84 / 8.38; 8.38; 7.77 / 6.98 |
 
 Corrections to the first audit: `orange-10` (`#e65100`) is 3.79:1 on white, not 5.60 (5.60 is `deep-orange-10`), so
 warning text failed until it moved to `deep-orange-10`; `orange-9` was 3.08; `text-grey-7` on white is 4.61, not 6.19.
@@ -243,13 +243,19 @@ The election editor's workflow (design §6.1) was checked on 2026-10-26 against 
 election" and a `ul` named "Ways out"; the current step has `aria-current="step"`, and every step's name is read after
 its status ("Done:", "Current step:", "To come:", "Possible:", "Not reached:"), which sighted readers get from the
 marker (a tick, a filled play symbol, an empty or dashed circle, a dash) and the current step's bold text. What a step
-waits on is a nested list under it ("Waiting: An Auditor approves scheduling (requested …)"). The Mermaid flowchart is
-one `role="img"` whose name says it shows the listed steps and names the current one; inside it the status is in the
-labels (✓, ▶, –) as well as the colours, and a legend under it says so. Mermaid's SVG scales to the card. It is drawn
-288–315 px wide, depending on the marks (14 px text, long names on two lines, Mermaid's classic look, whose nodes
-are only as wide as their names), so at 320 px it shrinks to 86–94% and its text stays at 12–13 px, with no
-sideways scrolling; the list
-(below it on a phone, beside it on wider screens) holds every word of it at full size.
+waits on is a nested list under it ("Waiting: An Auditor approves scheduling (requested …)").
+
+The swim lanes replaced the flowchart on 2026-10-26 and were checked the same way (draft, open, open with a
+cancellation pending, roll-call, cancelled while scheduled, certified), in both themes and at 320, 700, 1024 and
+1280 px. They are one `role="img"` whose name says they show who does each listed step (an Election Admin, an
+Auditor, the worker or the members on the roll) and names the current step; inside, an action's status is a mark on
+its corner (✓, ▶, –) and a band's before its name, as well as the colours and the dashed border of a way out or a step
+not reached, and a legend under the lanes says so. They are drawn to the width of the card rather than scaled: 12 px
+action text, 13 px lane names, 11 px lane notes at every width, with no sideways scrolling. At 320 px the diagram is
+270 px wide, the lanes 57–76 px (each lane's share follows its longest word, "certification" in the Election Admin's
+lane), and every line of every label was measured in the browser to fit its box with at least 2 px either side,
+with no mark overlapping a label. The list (below the lanes on a phone, beside them on wider screens) holds every word
+of them at full size.
 
 ## Known gaps
 
