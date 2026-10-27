@@ -38,6 +38,8 @@ export const Collections = {
   anthropicKey: 'anthropic_key',
   /** `navigation/current`: what the web app shows each membership state and role (design §10.5). */
   navigation: 'navigation',
+  /** `home_quote/current`: the quote on the home page (design §10.5). */
+  homeQuote: 'home_quote',
   // notifications (design §6.8)
   notices: 'notices',
   noticeOutbox: 'notice_outbox',
