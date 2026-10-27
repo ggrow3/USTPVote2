@@ -8,6 +8,7 @@ import {
   introText,
   sourceText,
   statusText,
+  usedText,
 } from './consistency-check-text.js';
 
 const check = (fields: Partial<ConsistencyCheckResult>): ConsistencyCheckResult => ({
@@ -68,6 +69,12 @@ describe('consistency check wording', () => {
     expect(introText('ballot')).toMatch(/^Claude, an AI model made by Anthropic, can read this ballot's proposals with/);
     expect(introText('admin')).toMatch(/this election's proposals, as they stand now,/);
     expect(confirmText('ballot')).toMatch(/sent to Anthropic for this; nothing about you, or how or whether you voted, is\. You can run the check once for this election/);
+  });
+
+  it('says in the button\'s place that the one run has been used, and when', () => {
+    expect(usedText(check({ status: 'done' }), 'en-US')).toBe(
+      'You have used your one consistency check of this election (asked for on Oct 27, 2026). Its result is kept here for you to read again.',
+    );
   });
 
   it('notices a draft edited since its check', () => {

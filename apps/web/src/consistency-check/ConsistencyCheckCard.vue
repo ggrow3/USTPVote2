@@ -4,7 +4,7 @@ import type { ConsistencyCheckView } from 'ustp-domain';
 import { focusElement, focusSoon } from '../a11y.js';
 import { referenceNote, SEVERITY_ICONS, SEVERITY_LABELS } from '../bylaws-check-text.js';
 import { dialog } from '../dialogs.js';
-import { changedSince, confirmText, findingContests, introText, sourceText, statusText } from './consistency-check-text.js';
+import { changedSince, confirmText, findingContests, introText, sourceText, statusText, usedText } from './consistency-check-text.js';
 import { useConsistencyCheck } from './use-consistency-check.js';
 
 /**
@@ -65,6 +65,10 @@ function goTo(contestId: string) {
           {{ check?.status === 'failed' ? 'A failed check does not count: you can run it again.' : 'Each person can run it once per election.' }}
         </span>
       </div>
+      <!-- The button's place, once the person has had their one run. -->
+      <div v-else-if="check?.status === 'done'" class="consistency-used">
+        <q-icon name="task_alt" size="20px" aria-hidden="true" class="q-mr-xs" />{{ usedText(check) }}
+      </div>
 
       <div id="consistency-status" class="q-mt-sm">
         <template v-if="busy">
@@ -121,8 +125,7 @@ function goTo(contestId: string) {
           <span v-for="r in check.references" :key="r.id">
             <a :href="r.url" target="_blank" rel="noopener">{{ r.title }}</a> ({{ referenceNote(r) }});
           </span>
-          {{ check.bylaws ? `the bylaws, version ${check.bylaws.version}` : 'no bylaws (none are published)' }}. This was your one
-          consistency check of this election.
+          {{ check.bylaws ? `the bylaws, version ${check.bylaws.version}` : 'no bylaws (none are published)' }}.
         </div>
       </template>
     </q-card-section>
@@ -130,6 +133,10 @@ function goTo(contestId: string) {
 </template>
 
 <style scoped>
+.consistency-used {
+  display: flex;
+  align-items: flex-start;
+}
 .consistency-findings {
   list-style: none;
 }

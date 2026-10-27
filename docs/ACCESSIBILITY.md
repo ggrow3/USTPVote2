@@ -145,8 +145,10 @@ test. Keep it current when pages change.
   tension", in `deep-orange-10`), the source in words ("With the Platform: Article VI", "Between questions on this
   ballot"), the passage concerned as a `blockquote`, the explanation, and a button per question named "Go to" and the
   question's title, which moves focus to that question's heading. Long titles wrap and start at the left. When a
-  draft has changed since the check, a caption says so in words. Reloading shows the person's one check again, with
-  no button. Colours are existing pairs: links `#bd4e00` on white (4.94) and `#ff6900` on the dark card (5.84),
+  draft has changed since the check, a caption says so in words. Reloading shows the person's one check again: in the
+  button's place a sentence in the page's text colour says the run is used and when ("You have used your one
+  consistency check of this election (asked for on …)"), with a tick icon hidden from screen readers, rather than a
+  disabled button, which would drop out of the tab order and fail contrast. Colours are existing pairs: links `#bd4e00` on white (4.94) and `#ff6900` on the dark card (5.84),
   severity `#bf360c` (5.60) and `#ffb74d` (9.74), captions `#757575` (4.61) and `#b0b0b0` (7.77), read back from the
   computed styles. At 320 and 375 px nothing scrolls sideways.
 

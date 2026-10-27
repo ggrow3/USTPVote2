@@ -57,6 +57,12 @@ export function statusText(check: ConsistencyCheckResult | null, requesting = fa
   }
 }
 
+/** In the button's place once the person has had their check: it runs once, so here is the saved result. */
+export function usedText(check: Pick<ConsistencyCheckResult, 'requestedAt'>, locale?: string): string {
+  const day = new Date(check.requestedAt).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
+  return `You have used your one consistency check of this election (asked for on ${day}). Its result is kept here for you to read again.`;
+}
+
 /** What screen readers hear when a check finishes (a failure is the card's alert banner, read as it appears). */
 export function finishedAnnouncement(check: ConsistencyCheckResult): string {
   return `Consistency check finished: ${statusText(check)}`;

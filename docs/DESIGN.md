@@ -518,7 +518,9 @@ it once per election"), from the ballot or the editor alike, and two at once can
 for again. The whole server takes at most `MAX_CONSISTENCY_CHECKS_PER_DAY` (100) checks in 24 hours (429), a cost
 bound across all voters, counted outside the transaction. 503 when the check is off.
 
-**Flow.** As in §5.4: the api stores the record `queued` and answers 202; a Cloud Scheduler job of its own calls
+**Flow.** Nothing runs on its own: a check starts only when a person clicks the button, never when a ballot is
+published, an election opens or a draft changes, and the worker only runs checks people have asked for. As in §5.4,
+the click's request makes the api store the record `queued` and answer 202; a Cloud Scheduler job of its own calls
 `POST /tasks/consistency-checks` every minute, which claims up to three queued checks and reviews them side by side,
 and fails one still running after `CONSISTENCY_CHECK_TIMEOUT_MINUTES` (10); the browser polls
 `GET …/consistency-check` every 3 seconds. That `GET` says whether the check is on and returns the caller's own
@@ -543,8 +545,10 @@ editor (above Contests) says what the check reads and that it is advisory. "Chec
 confirmation that the proposals go to Anthropic and nothing about the person or their vote does, and that it runs once;
 its focus starts on Cancel. The progress and then the outcome take the button's place, focus moves there, and the end
 is announced. Each finding gives its severity in words with an icon, the source and provision, the passage, the
-explanation, and buttons that go to the questions it concerns, by title. The person can come back and read their one
-check, also after the check is switched off. Nothing about it is public, ledgered or shown to anyone else.
+explanation, and buttons that go to the questions it concerns, by title. Once the person has had their run, the
+button's place says so ("You have used your one consistency check of this election…") and their saved result follows,
+whenever they come back, also after the check is switched off; after a failed check the button returns. Nothing about
+it is public, ledgered or shown to anyone else.
 
 **Without Anthropic.** With the emulators `CONSISTENCY_CHECKER=stub` (the default there, refused outside them) runs a
 deterministic stand-in that flags three test phrases (opposing "life extension", acting "without a vote of the
