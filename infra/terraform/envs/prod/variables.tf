@@ -101,7 +101,7 @@ variable "mail_transport" {
 }
 
 variable "notice_contact" {
-  description = "Where the notices tell members to ask about an election: an email address or an https page. Required for \"ses\"."
+  description = "Where the notices tell members to ask about an election: an email address or an https page; System Admins can set it in the app instead."
   type        = string
   default     = ""
 }

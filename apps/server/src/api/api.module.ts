@@ -35,6 +35,7 @@ import { secretStoreProvider } from '../infra/secret-store.js';
 import { PublicLedgerController } from '../ledger/ledger.controller.js';
 import { MembershipAdminController, RegistrationController } from '../membership/membership.controller.js';
 import { MEMBERSHIP_PROVIDERS } from '../membership/providers.js';
+import { NoticeSettingsController } from '../notifications/notice-settings.js';
 import { NoticesController } from '../notifications/notices.controller.js';
 import { NOTIFICATION_API_PROVIDERS } from '../notifications/providers.js';
 import { LocalPhotoChecker, PHOTO_CHECKER, VisionPhotoChecker } from '../photos/checker.js';
@@ -67,6 +68,7 @@ import { PositionsService } from '../positions/positions.service.js';
     ProposalsController,
     MemberSearchController,
     NoticesController,
+    NoticeSettingsController,
     VotingController,
     ConsistencyChecksController,
     AdminConsistencyChecksController,

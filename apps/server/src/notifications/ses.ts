@@ -21,14 +21,16 @@ export class SesTransport implements MailTransport {
     private readonly options: { readonly configurationSet: string | null; readonly maxSendRate: number },
   ) {}
 
-  /** Refuses to start without what sending needs, so a misconfigured worker fails loudly rather than mail nobody. */
+  /**
+   * Refuses to start without what sending needs, so a misconfigured worker fails loudly rather than mail nobody. The
+   * contact for questions may be set in the app instead of `NOTICE_CONTACT`, so the sender checks it, not this.
+   */
   static fromConfig(config: ServerConfig): SesTransport {
     const { region, accessKeyId, secretAccessKey, configurationSet, maxSendRate } = config.ses;
     const missing = [
       !region && 'SES_REGION',
       !accessKeyId && 'AWS_SES_ACCESS_KEY_ID',
       !secretAccessKey && 'AWS_SES_SECRET_ACCESS_KEY',
-      !config.noticeContact && 'NOTICE_CONTACT',
       !config.webOrigin && 'WEB_ORIGIN',
     ].filter(Boolean);
     if (missing.length) throw new Error(`MAIL_TRANSPORT=ses needs ${missing.join(', ')}`);
