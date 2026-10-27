@@ -32,6 +32,8 @@ export const Collections = {
   roleAssignments: 'role_assignments',
   approvalRequests: 'approval_requests',
   locks: 'locks',
+  /** `anthropic_key/current`: who added the Anthropic API key in the app, never the key (design §5.6). */
+  anthropicKey: 'anthropic_key',
   /** `navigation/current`: what the web app shows each membership state and role (design §10.5). */
   navigation: 'navigation',
   // notifications (design §6.8)

@@ -1,10 +1,12 @@
 # The advisory bylaws check (design §5.2): the worker sends a draft to Claude (Anthropic's API) and records what it
-# flags. Off unless bylaws_check_enabled; turning it on needs a version in the anthropic-api-key secret first
-# (README "Bylaws check").
+# flags. Off unless bylaws_check_enabled; it runs once a System Admin adds the Anthropic API key in the app (README
+# "Bylaws check").
 
 # Holds the Anthropic API key, for this check and the platform consistency check (consistency_check.tf). Terraform
-# creates the secret but never its value: a person adds it as a version, so the key stays out of Terraform state. Only
-# the worker reads it (worker_secret_accessor), as ANTHROPIC_API_KEY.
+# creates the secret but never its value: a System Admin adds the key in the app (Admin › Claude, design §5.6), which
+# keeps it as the only live version, so the key stays out of Terraform state. The api may add and destroy versions but
+# never read one (api_anthropic_key_versions); the worker reads the newest (worker_secret_accessor) each time it runs
+# checks, so a key added or removed counts from the next run without a restart.
 resource "google_secret_manager_secret" "anthropic_api_key" {
   project   = var.project_id
   secret_id = "anthropic-api-key"
@@ -15,6 +17,16 @@ resource "google_secret_manager_secret" "anthropic_api_key" {
   }
 
   depends_on = [google_project_service.this]
+}
+
+# The api keeps the key a System Admin pastes, after trying it with Anthropic, as the newest version and destroys the
+# older ones. secretVersionManager adds, lists and destroys versions but has no secretmanager.versions.access, so the
+# internet-facing api can never read a key back.
+resource "google_secret_manager_secret_iam_member" "api_anthropic_key_versions" {
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.anthropic_api_key.secret_id
+  role      = "roles/secretmanager.secretVersionManager"
+  member    = google_service_account.api.member
 }
 
 # Its own job rather than a tick step: a review takes a minute or two, longer than the tick's deadline, and must never

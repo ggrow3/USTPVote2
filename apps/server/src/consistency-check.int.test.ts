@@ -170,7 +170,7 @@ describe('the platform consistency check', () => {
         { contests: [7], source: 'bylaws', provision: 'Article I', passage: '', severity: 'high', explanation: 'Names a question that was never sent.' },
       ],
     };
-    const checker = new ClaudeConsistencyChecker('sk-test', 'claude-opus-5-5', new ReferenceLibrary(api.firebase.db, site), {
+    const checker = new ClaudeConsistencyChecker({ read: async () => 'sk-test' }, 'claude-opus-5-5', new ReferenceLibrary(api.firebase.db, site), {
       fetch: fakeAnthropic(review, captured),
     });
     expect(await new ConsistencyCheckRunner(api.firebase, checker).runQueued()).toEqual({ checked: 1, failed: 0 });

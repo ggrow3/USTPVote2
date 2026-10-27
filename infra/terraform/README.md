@@ -40,6 +40,7 @@ API-side limits are only checked by Google on the first apply.
 | `ustp-api` | Firestore (`datastore.user`) | All client-facing reads and writes (§11) |
 | | Read Identity Platform users (`firebaseauth.viewer`) | `verifyIdToken(…, checkRevoked)` on admin routes and casting (§4) |
 | | Create secrets; add versions to `tiebreak-seed-*` secrets only (IAM condition) | Tie-break seed per scheduling attempt (§6.1); it never reads a seed back |
+| | `secretVersionManager` on `anthropic-api-key` only: add, list and destroy versions, never read one | Keeps the key a System Admin adds under Admin › Claude (§5.6); it cannot read it back |
 | | `publicKeyViewer` on `ballot-pool` | Encrypts ballots locally to an election's public key; cannot decrypt (§7.3) |
 | | Read, write, delete objects in the photos bucket | Profile photos (§5.3) |
 | | Read objects in the anchors bucket | Auditor verification downloads every anchor (`GET /v1/admin/audit/verify`) |
@@ -48,7 +49,7 @@ API-side limits are only checked by Google on the first apply.
 | | `signer` and `publicKeyViewer` on `audit-signing` | Only the worker signs ledger blocks and rolls (§8.3) |
 | | Create, get, decrypt with and destroy `ballot-pool` versions (custom role, on that key only) | One version per election, unwrapping at sealing, destruction after certification (§7.3, §13) |
 | | Create and read objects in the anchors bucket; never delete | Write-once anchors; overwriting needs delete, which it lacks (§8.4) |
-| | Access secrets | Tie-break seeds at tally (§9), the Anthropic API key for the bylaws and consistency checks (§5.4, §5.5), the AWS key for election notices by SES (§6.8) |
+| | Access secrets | Tie-break seeds at tally (§9), the Anthropic API key for the bylaws and consistency checks, read each time it runs them (§5.4–§5.6), the AWS key for election notices by SES (§6.8) |
 | `ustp-worker-invoker` | Invoke the worker | Identity of the Scheduler tick and of Cloud Tasks; nothing else |
 | `ustp-release` | Push to the `ustpvote` Artifact Registry repository | The release workflow builds the server image |
 | | Sign attestations for `ustpvote-reviewed` (attestor key, note, occurrences) | Binary Authorization lets only attested images run |
@@ -116,7 +117,6 @@ for running the server locally against a real project. Variable names are those 
 | `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` | from the variable, not output | ● | |
 | `BYLAWS_CHECKER` | in `api_env` / `worker_env`: `claude` when `bylaws_check_enabled`, else `off` | ● | ● |
 | `CONSISTENCY_CHECKER` | in `api_env` / `worker_env`: `claude` when `consistency_check_enabled`, else `off` | ● | ● |
-| `ANTHROPIC_API_KEY` | not output: the `anthropic-api-key` secret's latest version, when `bylaws_check_enabled` or `consistency_check_enabled` | | ● |
 | `BYLAWS_CHECK_MODEL`, `CONSISTENCY_CHECK_MODEL` | not set; the server defaults to `claude-opus-5-5` | | (●) |
 | `PORT` | set by Cloud Run (8080) | ● | ● |
 
@@ -346,14 +346,18 @@ Terraform or its state.
 
 1. Create an API key for USTP's Anthropic organization (Console → API keys), ideally in a workspace of its own with a
    monthly spend limit.
-2. Add it as the secret's first version, typed or pasted on standard input so it stays out of shell history:
-   `gcloud secrets versions add anthropic-api-key --project <project> --data-file=-`.
+2. A System Admin adds it in the app, under **Admin › Claude** (design §5.6). The api tries it with Anthropic, keeps it
+   as the secret's only live version and ledgers who added it; nobody can read it back through the app. (Adding it as a
+   version with `gcloud secrets versions add anthropic-api-key --project <project> --data-file=-` works too; the panel
+   then shows it as added outside the app.)
 3. Set `bylaws_check_enabled = true` in the environment's `terraform.tfvars` and apply: both services get
-   `BYLAWS_CHECKER=claude`, the worker gets `ANTHROPIC_API_KEY` from the secret, and the `worker-bylaws-checks` Scheduler
-   job starts calling `POST /tasks/bylaws-checks` every minute.
+   `BYLAWS_CHECKER=claude`, and the `worker-bylaws-checks` Scheduler job starts calling `POST /tasks/bylaws-checks` every
+   minute. Steps 2 and 3 can come in either order: until there is a key, asking for a check answers that none has been
+   added.
 
-To rotate the key, add a new version and roll the worker (a release, or a new revision); Cloud Run reads `latest` when an
-instance starts. To switch the check off, set the variable back to `false` and apply; the secret and past checks stay.
+The worker reads the key each time it runs checks, so replacing it under Admin › Claude takes effect from the next run,
+with no release or restart; the older versions are destroyed. Removing it there stops both checks. To switch the check
+off, set the variable back to `false` and apply; the secret and past checks stay.
 
 ### Consistency check
 
@@ -361,13 +365,13 @@ The platform consistency check (design §5.5) is switched on separately from the
 for it: anyone on an election's roll, and each Election Admin and Auditor, may run it once per election. When on, the
 worker sends the election's proposals, the party's constitution and Bill of Rights (read from transhumanist-party.org)
 and the bylaws in force to Anthropic's API; each check costs money (design §15), and the server takes at most 100 a day.
-USTP should agree to it first (design Q18). It uses the same `anthropic-api-key` secret as the bylaws check.
+USTP should agree to it first (design Q18). It uses the same Anthropic API key as the bylaws check.
 
-1. If the secret has no version yet, add the key as in [Bylaws check](#bylaws-check), steps 1 and 2.
+1. If no key has been added yet, a System Admin adds one as in [Bylaws check](#bylaws-check), steps 1 and 2. Until
+   then the button stays hidden.
 2. Set `consistency_check_enabled = true` in the environment's `terraform.tfvars` and apply: both services get
-   `CONSISTENCY_CHECKER=claude`, the worker gets `ANTHROPIC_API_KEY` from the secret (if the bylaws check had not
-   already given it), and the `worker-consistency-checks` Scheduler job starts calling `POST /tasks/consistency-checks`
-   every minute.
+   `CONSISTENCY_CHECKER=claude`, and the `worker-consistency-checks` Scheduler job starts calling
+   `POST /tasks/consistency-checks` every minute.
 3. Deploy the Firestore indexes (`npx firebase deploy --project <project> --only firestore`): the worker's query for
    queued checks needs the `consistency_checks` index.
 

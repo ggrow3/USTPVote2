@@ -130,7 +130,7 @@ describe('the Claude checker', () => {
         { contests: [3], source: 'bylaws', provision: 'Article I', passage: '', severity: 'high', explanation: 'Not a question it sent.' },
       ],
     };
-    const checker = new ClaudeConsistencyChecker('sk-test', 'claude-opus-5-5', { load: async () => references }, { fetch: fakeAnthropic(review, captured) });
+    const checker = new ClaudeConsistencyChecker({ read: async () => 'sk-test' }, 'claude-opus-5-5', { load: async () => references }, { fetch: fakeAnthropic(review, captured) });
     const out = await checker.check(input);
 
     expect(out).toMatchObject({ summary: 'Two inconsistencies.', model: 'claude-opus-5-5', usage: { inputTokens: 40, outputTokens: 120 } });
@@ -155,9 +155,9 @@ describe('the Claude checker', () => {
     expect(JSON.stringify(body)).not.toMatch(/us-constitution/);
   });
 
-  it('refuses to run without an API key', async () => {
-    const checker = new ClaudeConsistencyChecker(null, 'claude-opus-5-5', { load: async () => references });
-    await expect(checker.check(input)).rejects.toThrow(/ANTHROPIC_API_KEY/);
+  it('refuses to run until a System Admin adds an API key', async () => {
+    const checker = new ClaudeConsistencyChecker({ read: async () => null }, 'claude-opus-5-5', { load: async () => references });
+    await expect(checker.check(input)).rejects.toThrow(/no Anthropic API key has been added .*Admin › Claude/);
   });
 });
 
@@ -166,11 +166,7 @@ describe('consistency check configuration', () => {
 
   it('is off in real projects unless switched on, separately from the bylaws check, and refuses the stand-in there', () => {
     expect(loadConfig({})).toMatchObject({ consistencyChecker: 'off', consistencyCheckModel: 'claude-opus-5-5' });
-    expect(loadConfig({ CONSISTENCY_CHECKER: 'claude', ANTHROPIC_API_KEY: 'sk-x' })).toMatchObject({
-      consistencyChecker: 'claude',
-      bylawsChecker: 'off',
-      anthropicApiKey: 'sk-x',
-    });
+    expect(loadConfig({ CONSISTENCY_CHECKER: 'claude' })).toMatchObject({ consistencyChecker: 'claude', bylawsChecker: 'off' });
     expect(() => loadConfig({ CONSISTENCY_CHECKER: 'stub' })).toThrow(/only allowed with the Firebase emulators/);
     expect(() => loadConfig({ CONSISTENCY_CHECKER: 'on' })).toThrow(/must be "claude", "stub" or "off"/);
   });

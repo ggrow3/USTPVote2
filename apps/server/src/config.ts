@@ -30,8 +30,9 @@ export interface ServerConfig {
   /** System Admins may create test personas and act as them (design §10.4). Never in production. */
   readonly testingMode: boolean;
   /**
-   * The advisory bylaws check (design §5.2): `claude` (the worker sends drafts to Anthropic), `stub` (the emulator-only
-   * stand-in) or `off` (requests answer 503). Off unless set, outside the emulators.
+   * The advisory bylaws check (design §5.2): `claude` (the worker sends drafts to Anthropic, with the key a System Admin
+   * adds, §5.6), `stub` (the emulator-only stand-in) or `off` (requests answer 503). Off unless set, outside the
+   * emulators.
    */
   readonly bylawsChecker: 'claude' | 'stub' | 'off';
   /**
@@ -39,8 +40,6 @@ export interface ServerConfig {
    * (the emulator-only stand-in) or `off` (requests answer 503). Off unless set, outside the emulators.
    */
   readonly consistencyChecker: 'claude' | 'stub' | 'off';
-  /** Anthropic API key for either check's `claude`; the worker's only (Secret Manager in Cloud Run). Never logged. */
-  readonly anthropicApiKey: string | null;
   readonly bylawsCheckModel: string;
   readonly consistencyCheckModel: string;
   /**
@@ -147,7 +146,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     testingMode,
     bylawsChecker,
     consistencyChecker,
-    anthropicApiKey: env.ANTHROPIC_API_KEY || null,
     bylawsCheckModel: env.BYLAWS_CHECK_MODEL || DEFAULT_BYLAWS_CHECK_MODEL,
     consistencyCheckModel: env.CONSISTENCY_CHECK_MODEL || DEFAULT_CONSISTENCY_CHECK_MODEL,
     mailTransport,

@@ -47,7 +47,7 @@ describe('defaults', () => {
     expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'offices', 'approvals']);
     expect(tabs('election_admin')).toEqual(['elections', 'offices', 'approvals']);
     expect(tabs('auditor')).toEqual(['elections', 'offices', 'approvals', 'audit']);
-    expect(tabs('system_admin')).toEqual(['approvals', 'people', 'signin', 'testing', 'navigation']);
+    expect(tabs('system_admin')).toEqual(['approvals', 'people', 'signin', 'claude', 'testing', 'navigation']);
   });
 
   it('give no admin section to anyone without a role', () => {

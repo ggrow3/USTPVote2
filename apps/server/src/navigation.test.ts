@@ -5,6 +5,7 @@ import { AccountsAdminController } from './accounts/accounts.controller.js';
 import { ApprovalsController, AuditController, SignInMethodsController } from './administration/administration.controller.js';
 import { NavigationAdminController } from './administration/navigation.js';
 import { ROLES_KEY } from './auth/decorators.js';
+import { AnthropicKeyController } from './claude-checks/anthropic-key-admin.js';
 import { ElectionsController } from './elections/elections.controller.js';
 import { MembershipAdminController } from './membership/membership.controller.js';
 import { PersonasController } from './personas/personas.controller.js';
@@ -24,6 +25,7 @@ const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
   approvals: [ApprovalsController, 'list'],
   people: [AccountsAdminController, 'list'],
   signin: [SignInMethodsController, 'current'],
+  claude: [AnthropicKeyController, 'status'],
   audit: [AuditController, 'events'],
   testing: [PersonasController, 'list'],
   navigation: [NavigationAdminController, 'current'],

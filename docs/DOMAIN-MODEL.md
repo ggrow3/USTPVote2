@@ -51,7 +51,7 @@ What is not domain-centred:
 | **Bylaws** | §5.2, §5.4, §6.6 | `bylaws_versions`, `bylaws_checks`, `bylaws_check_references` | core |
 | **Elections** (setup, roll, voting, sealing, results) | §5.5, §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results`, `consistency_checks` | core |
 | **Offices** | §6.4 | `positions`, `position_terms` | supporting |
-| **Governance** (roles, two-person rule, testing mode, who sees which link) | §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation` | core rule, generic mechanism |
+| **Governance** (roles, two-person rule, testing mode, who sees which link, the Anthropic API key) | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `anthropic_key` | core rule, generic mechanism |
 | **Audit ledger** | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` | shared kernel |
 | **Notifications** (election notices by email) | §6.8 | `notices` (with `recipients`), `notice_outbox` | supporting |
 | **Verification** (`ustp-verify`, `/verify`, receipt and results checks) | §7.5, §16 | — (reads the public record) | conformist |
@@ -105,6 +105,7 @@ commit. What changes is that only the owner touches its documents.
 | Governance | **ApprovalRequest** | one pending per action and subject; approver ≠ requester ≠ subject; approver's role, MFA, sign-in ≤ 15 min; 7-day expiry; executes exactly the approved payload hash |
 | Governance | **RoleAssignment** | one System Admin, not on their own account; Auditor holds no other role |
 | Governance | **NavigationSettings** (`navigation/current`) | shows, never permits; no section for a role the API refuses it to, and none for membership alone; People and Navigation always shown to System Admins; a role's Admin link follows its sections; every start page one its audience is shown; saved whole from the version it was edited from, each changed cell ledgered as `navigation.changed` |
+| Governance | **AnthropicKey** (`anthropic_key/current`, the `anthropic-api-key` secret) | System Admins only; the key's shape checked before it is sent anywhere, and tried with Anthropic before it is kept; one live version, older ones destroyed; never returned, recorded or ledgered (only its last four characters and who added it); each add or removal ledgered as `anthropic_key.changed` |
 | Ledger | **Ledger** (head → entries) | append-only, gap-free, hash-chained; blocks signed only by the worker |
 
 **Value objects** (plain types, most exist already): `AccountId` (UUIDv7), `Role`, `MemberStatus`, `ElectionState`,
