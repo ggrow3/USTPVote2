@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   checkNoticeResend,
   closingSoonMessage,
+  emailStepStatus,
   hasReminder,
   isClaimable,
   isNoticeKind,
@@ -12,6 +13,7 @@ import {
   noticeDelivery,
   noticeId,
   noticeMessage,
+  noticeSteps,
   noticeSummary,
   RECIPIENT_STATUSES,
   reminderTime,
@@ -22,7 +24,10 @@ import {
   type NoticeMessageInput,
   type NoticeRecipientRecord,
   type NoticeRecord,
+  type NoticesView,
+  type NoticeSummary,
   type RecipientStatus,
+  type StepStatus,
 } from '../index.js';
 
 const ELECTION = {
@@ -305,5 +310,56 @@ describe('notice rules', () => {
       createdAt: record.createdAt,
       completedAt: record.completedAt,
     });
+  });
+});
+
+describe('the emails in the workflow', () => {
+  const election = { state: 'open' as const, opensAt: ELECTION.opensAt, closesAt: ELECTION.closesAt };
+  const summary = (kind: NoticeSummary['kind'], status: NoticeSummary['status']): NoticeSummary => ({
+    kind,
+    delivery: 'mail',
+    rehearsal: false,
+    status,
+    round: 1,
+    recipients: 3,
+    counts: { pending: 0, sent: 3, failed: 0, bounced: 0, skipped: 0 },
+    createdAt: ELECTION.opensAt,
+    completedAt: null,
+  });
+  const view = (delivery: NoticesView['delivery'], notices: NoticeSummary[] = []): NoticesView => ({ delivery, contact: null, notices });
+  const steps = (over: Partial<Parameters<typeof noticeSteps>[0]> = {}) =>
+    noticeSteps({ election, rehearsal: false, testingMode: false, view: view('mail'), now: new Date('2026-11-03T12:00:00Z'), ...over }).map(
+      (s) => `${s.kind}:${s.status}`,
+    );
+
+  it('follows the notices the worker started: sending, or done', () => {
+    const started = view('mail', [summary('voting_open', 'done'), summary('closing_soon', 'sending')]);
+    expect(steps({ view: started })).toEqual(['voting_open:done', 'closing_soon:current']);
+  });
+
+  it('says what is due, to come or past before the worker starts one', () => {
+    expect(steps()).toEqual(['voting_open:current', 'closing_soon:upcoming']);
+    expect(steps({ now: new Date('2026-11-06T06:00:00Z') })).toEqual(['voting_open:current', 'closing_soon:current']);
+    expect(steps({ election: { ...election, state: 'scheduled' } })).toEqual(['voting_open:upcoming', 'closing_soon:upcoming']);
+    expect(steps({ election: { ...election, state: 'closed' } })).toEqual(['voting_open:not_reached', 'closing_soon:not_reached']);
+    // Before the view loads, how email goes out is not known yet; it is taken to be set up.
+    expect(steps({ view: null })).toEqual(['voting_open:current', 'closing_soon:upcoming']);
+  });
+
+  it('marks what will not come: email not set up, a rehearsal outside testing mode, no reminder in a short window', () => {
+    expect(steps({ view: view('none') })).toEqual(['voting_open:not_reached', 'closing_soon:not_reached']);
+    expect(steps({ rehearsal: true })).toEqual(['voting_open:not_reached', 'closing_soon:not_reached']);
+    expect(steps({ rehearsal: true, testingMode: true, view: view('none') })).toEqual(['voting_open:current', 'closing_soon:upcoming']);
+    const day = { ...election, opensAt: '2026-11-06T04:59:00.000Z' };
+    expect(steps({ election: day, now: new Date('2026-11-06T06:00:00Z') })).toEqual(['voting_open:current', 'closing_soon:not_reached']);
+  });
+
+  it('sums them up for the list: going, none, to come, or done', () => {
+    const of = (...s: StepStatus[]) => emailStepStatus(s.map((status, i) => ({ kind: i ? 'closing_soon' : 'voting_open', status, notice: null })));
+    expect(of('done', 'current')).toBe('current');
+    expect(of('not_reached', 'not_reached')).toBe('not_reached');
+    expect(of('done', 'upcoming')).toBe('upcoming');
+    expect(of('done', 'not_reached')).toBe('done');
+    expect(of('done', 'done')).toBe('done');
   });
 });
