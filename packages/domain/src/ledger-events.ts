@@ -26,6 +26,7 @@ export const LEDGER_EVENT_TYPES = [
   'election.pool_key_destroyed',
   'notice.sent',
   'notice.resend_requested',
+  'notice.settings_changed',
   'position.defined',
   'position_term.created',
   'position_term.appointed',

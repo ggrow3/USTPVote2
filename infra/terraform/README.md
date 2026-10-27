@@ -106,7 +106,7 @@ for running the server locally against a real project. Variable names are those 
 | `DEPLOYMENT_ENVIRONMENT` | the `environment` variable (`dev`, `staging`, `prod`) | ● | ● |
 | `TESTING_MODE` | `true` only when the `testing_mode` variable is (dev sets it; prod refuses it); the worker sends a rehearsal's election notice to the outbox only then (design §6.8) | ● | ● |
 | `WEB_ORIGIN` | in `worker_env`: the `web_origin` variable, else `https://<project>.web.app`; election notices link to it | | ● |
-| `MAIL_TRANSPORT`, `NOTICE_CONTACT` | in `api_env` / `worker_env`: `ses` or `off` from `mail_transport`, and `notice_contact` when set (the api shows them in the election editor; only the worker sends) | ● | ● |
+| `MAIL_TRANSPORT`, `NOTICE_CONTACT` | in `api_env` / `worker_env`: `ses` or `off` from `mail_transport`, and `notice_contact` when set, the default for the app's own setting (the api shows them in the election editor; only the worker sends) | ● | ● |
 | `MAIL_FROM`, `MAIL_REPLY_TO` | in `worker_env`: the `mail_from` variable, and `mail_reply_to` when set (it is not, as agreed) | | ● |
 | `SES_REGION`, `SES_CONFIGURATION_SET`, `SES_MAX_SEND_RATE`, `SES_EVENTS_QUEUE_URL` | in `worker_env` when `mail_transport` is `ses` (the queue when `ses_events_queue_url` is set) | | ● |
 | `AWS_SES_ACCESS_KEY_ID`, `AWS_SES_SECRET_ACCESS_KEY` | not output: the `aws-ses-*` secrets' latest versions, when `mail_transport` is `ses` ("Election notices") | | ● |
@@ -439,12 +439,15 @@ commands, `us-east-1` is `ses_region`, `<account>` the AWS account ID, `<env>` t
    `gcloud secrets versions add aws-ses-access-key-id --project <project> --data-file=-`, and the same for
    `aws-ses-secret-access-key`. Cloud Run will not start the worker with `mail_transport = "ses"` until both have a
    version.
-6. **Switch it on** in the environment's `terraform.tfvars`: `mail_transport = "ses"`, `notice_contact` (where members
-   ask about an election: an address or an https page; the emails say replies are not read), `ses_events_queue_url`
-   (the queue's URL), `ses_region` if not `us-east-1`, and `web_origin` if the web app is not at
-   `https://<project>.web.app`. Apply. The From address is `mail_from` (default `USTP Elections
-   <noreply@transhumanist-party.org>`), with no Reply-To. The worker refuses to start if the key, the contact or the
-   web origin is missing.
+6. **Switch it on** in the environment's `terraform.tfvars`: `mail_transport = "ses"`, `ses_events_queue_url` (the
+   queue's URL), `ses_region` if not `us-east-1`, `web_origin` if the web app is not at `https://<project>.web.app`,
+   and optionally `notice_contact` (where members ask about an election: an address or an https page; the emails say
+   replies are not read). Apply. The From address is `mail_from` (default `USTP Elections
+   <noreply@transhumanist-party.org>`), with no Reply-To. The worker refuses to start without the key or the web
+   origin.
+7. **In the app**, a System Admin opens Admin › Election emails: each email on or off, the reminder's lead time (a
+   day by default), the contact for questions (it overrides `notice_contact`; with neither, nothing is mailed) and each
+   email's subject and opening. Changes are ledgered as `notice.settings_changed`.
 
 Then send yourself one: in testing mode, a rehearsal records its notices in the outbox only; to see a real one, put an
 account of your own on a small election's roll. The election editor's "Email to voters" card shows how many went,

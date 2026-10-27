@@ -1,5 +1,6 @@
 import { deny, OK, refuse, type Check } from '../check.js';
 import type { ElectionRecord } from '../elections.js';
+import type { NoticeSettings } from './notice-settings.js';
 
 /**
  * Election notices (design §6.8): the emails telling everyone on an election's roll that voting is open, and, a day
@@ -12,7 +13,10 @@ import type { ElectionRecord } from '../elections.js';
 export const NOTICE_KINDS = ['voting_open', 'closing_soon'] as const;
 export type NoticeKind = (typeof NOTICE_KINDS)[number];
 
-/** The reminder goes this long before voting closes, and only where voting is open longer than that. */
+/**
+ * The reminder goes this long before voting closes, and only where voting is open longer than that, unless a System
+ * Admin sets another lead time (`NoticeSettings.reminderHours`).
+ */
 export const REMINDER_HOURS_BEFORE_CLOSE = 24;
 
 /**
@@ -144,8 +148,13 @@ export interface NoticeSummary {
 export interface NoticesView {
   /** How this deployment sends notices: `none` when email is off (`MAIL_TRANSPORT=off`). */
   readonly delivery: NoticeDelivery | 'none';
-  /** Where the emails tell members to ask questions (`NOTICE_CONTACT`), for the preview; null until it is set. */
+  /**
+   * Where the emails tell members to ask questions: the System Admins' setting, else the deployment's
+   * `NOTICE_CONTACT`; null when neither is set, and then nothing is mailed.
+   */
   readonly contact: string | null;
+  /** What System Admins have set about the emails (design §6.8). */
+  readonly settings: NoticeSettings;
   readonly notices: readonly NoticeSummary[];
 }
 
@@ -215,22 +224,26 @@ export function isVotingOpen(election: Pick<ElectionRecord, 'state' | 'closesAt'
   return election.state === 'open' && Date.parse(election.closesAt) > now.getTime();
 }
 
-/** When the reminder is due: a day before the close. */
-export function reminderTime(election: Pick<ElectionRecord, 'closesAt'>): Date {
-  return new Date(Date.parse(election.closesAt) - REMINDER_HOURS_BEFORE_CLOSE * 3_600_000);
+/** When the reminder is due: `hours` (by default a day) before the close. */
+export function reminderTime(election: Pick<ElectionRecord, 'closesAt'>, hours: number = REMINDER_HOURS_BEFORE_CLOSE): Date {
+  return new Date(Date.parse(election.closesAt) - hours * 3_600_000);
 }
 
 /**
- * Whether an election gets a reminder at all: only when voting is open for longer than a day, so the reminder never
- * comes with, or before, the notice that voting is open.
+ * Whether an election gets a reminder at all: only when voting is open for longer than the lead time, so the reminder
+ * never comes with, or before, the notice that voting is open.
  */
-export function hasReminder(election: Pick<ElectionRecord, 'opensAt' | 'closesAt'>): boolean {
-  return reminderTime(election).getTime() > Date.parse(election.opensAt);
+export function hasReminder(election: Pick<ElectionRecord, 'opensAt' | 'closesAt'>, hours: number = REMINDER_HOURS_BEFORE_CLOSE): boolean {
+  return reminderTime(election, hours).getTime() > Date.parse(election.opensAt);
 }
 
 /** Whether the reminder is due now: the election has one, voting is open, and the reminder time has come. */
-export function isReminderDue(election: Pick<ElectionRecord, 'state' | 'opensAt' | 'closesAt'>, now: Date): boolean {
-  return hasReminder(election) && isVotingOpen(election, now) && now.getTime() >= reminderTime(election).getTime();
+export function isReminderDue(
+  election: Pick<ElectionRecord, 'state' | 'opensAt' | 'closesAt'>,
+  now: Date,
+  hours: number = REMINDER_HOURS_BEFORE_CLOSE,
+): boolean {
+  return hasReminder(election, hours) && isVotingOpen(election, now) && now.getTime() >= reminderTime(election, hours).getTime();
 }
 
 /**

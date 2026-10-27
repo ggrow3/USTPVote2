@@ -259,14 +259,9 @@ variable "mail_reply_to" {
 }
 
 variable "notice_contact" {
-  description = "Where the notices tell members to ask about an election (NOTICE_CONTACT): an email address or an https page. Required for \"ses\"; until it is set the emails show a placeholder."
+  description = "Where the notices tell members to ask about an election (NOTICE_CONTACT): an email address or an https page. The default for System Admins' setting in the app (Admin, Election emails); with neither, the worker mails nothing."
   type        = string
   default     = ""
-
-  validation {
-    condition     = var.mail_transport != "ses" || trimspace(var.notice_contact) != ""
-    error_message = "Set notice_contact, where members ask about an election, before mail_transport = \"ses\"."
-  }
 }
 
 variable "ses_region" {

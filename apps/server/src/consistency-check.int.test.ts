@@ -1,6 +1,9 @@
+import { FieldValue } from 'firebase-admin/firestore';
 import {
+  CONSISTENCY_DOCUMENTS,
   Collections,
   MAX_CONSISTENCY_CHECKS_PER_DAY,
+  ORIGINAL_CONSISTENCY_DOCUMENTS,
   consistencyCheckId,
   type ConsistencyCheckRecord,
   type ConsistencyCheckResult,
@@ -58,7 +61,10 @@ const stored = async (e: SeededElection, who: Account) =>
 describe('the platform consistency check', () => {
   it('runs once per voter from the ballot, through the worker (the stand-in, with the emulators)', async () => {
     const election = await seedElection(api, { voters: [voter.accountId, voter2.accountId] });
-    expect(await api.call('GET', ballotRoute(election), voter)).toMatchObject({ status: 200, body: { enabled: true, check: null } });
+    expect(await api.call('GET', ballotRoute(election), voter)).toMatchObject({
+      status: 200,
+      body: { enabled: true, documents: [...CONSISTENCY_DOCUMENTS], check: null },
+    });
 
     const queued = await api.call('POST', ballotRoute(election), voter);
     expect(queued.status).toBe(202);
@@ -74,7 +80,8 @@ describe('the platform consistency check', () => {
     const done = (await api.call('GET', ballotRoute(election), voter)).body.check as ConsistencyCheckResult;
     expect(done).toMatchObject({ status: 'done', checker: 'stub', model: null, error: null, findings: [] });
     expect(done.summary).toMatch(/not an AI review/);
-    expect(done.references.map((r) => r.id)).toEqual(['ustp-constitution', 'transhumanist-bill-of-rights']);
+    expect(done.documents).toEqual([...CONSISTENCY_DOCUMENTS]);
+    expect(done.references.map((r) => r.id)).toEqual(['us-constitution', 'ustp-constitution', 'transhumanist-bill-of-rights']);
     expect(await runWorker()).toEqual({ status: 200, body: { checked: 0, failed: 0 } });
 
     // Once: the same person is refused, from the ballot or the editor, while someone else may still ask.
@@ -150,6 +157,59 @@ describe('the platform consistency check', () => {
     });
   });
 
+  it('compares with what an Election Admin chose while the election was a draft, and keeps that with each result', async () => {
+    const draft = await seedElection(api, { voters: [voter.accountId], state: 'draft' });
+    const documentsRoute = `${editorRoute(draft)}/documents`;
+    expect((await api.call('GET', editorRoute(draft), auditor)).body.documents).toEqual([...CONSISTENCY_DOCUMENTS]);
+    for (const who of [auditor, voter]) expect((await api.call('PUT', documentsRoute, who, { documents: [] })).status).toBe(403);
+    expect((await api.call('PUT', documentsRoute, ea, { documents: ['the-federalist'] })).status).toBe(400);
+
+    const chosen = await api.call('PUT', documentsRoute, ea, { documents: ['us-constitution', 'bylaws', 'bylaws'] });
+    expect(chosen).toMatchObject({ status: 200, body: { documents: ['bylaws', 'us-constitution'] } });
+    expect((await api.call('GET', editorRoute(draft), auditor)).body.documents).toEqual(['bylaws', 'us-constitution']);
+    expect((await api.call('POST', editorRoute(draft), ea)).body.documents).toEqual(['bylaws', 'us-constitution']);
+    expect(await runWorker()).toEqual({ status: 200, body: { checked: 1, failed: 0 } });
+    const first = (await api.call('GET', editorRoute(draft), ea)).body.check as ConsistencyCheckResult;
+    expect(first).toMatchObject({ status: 'done', documents: ['bylaws', 'us-constitution'] });
+    expect(first.references.map((r) => r.id)).toEqual(['us-constitution']);
+
+    // Changed later, for checks asked for after it; a result keeps what it was compared with.
+    expect((await api.call('PUT', documentsRoute, ea, { documents: [] })).body.documents).toEqual([]);
+    expect((await api.call('POST', editorRoute(draft), auditor)).body).toMatchObject({ documents: [], bylaws: null });
+    expect((await api.call('GET', editorRoute(draft), ea)).body).toMatchObject({ documents: [], check: { documents: ['bylaws', 'us-constitution'] } });
+
+    // With nothing chosen, one question has nothing to be compared with.
+    await draft.ref.collection('contests').doc('chair').delete();
+    const other = await api.member('ea2@example.test');
+    await api.grant(other.accountId, 'election_admin', sa1);
+    expect(await api.call('POST', editorRoute(draft), other)).toMatchObject({
+      status: 409,
+      body: { detail: expect.stringMatching(/no documents are chosen for this election/) },
+    });
+
+    // Fixed once the election is scheduled, so every voter's check compares with the same texts.
+    const scheduled = await seedElection(api, { voters: [voter.accountId], state: 'scheduled' });
+    expect(await api.call('PUT', `${editorRoute(scheduled)}/documents`, ea, { documents: ['bylaws'] })).toMatchObject({
+      status: 409,
+      body: { detail: expect.stringMatching(/the election is scheduled; its documents are chosen while it is a draft/) },
+    });
+  });
+
+  it('reads a check saved before documents could be chosen as compared with the original three', async () => {
+    const election = await seedElection(api, { voters: [voter.accountId] });
+    await api.call('POST', ballotRoute(election), voter);
+    await api.firebase.db
+      .collection(Collections.consistencyChecks)
+      .doc(consistencyCheckId(election.electionId, voter.accountId))
+      .update({ documents: FieldValue.delete() });
+    expect((await api.call('GET', ballotRoute(election), voter)).body.check.documents).toEqual([...ORIGINAL_CONSISTENCY_DOCUMENTS]);
+    expect(await runWorker()).toEqual({ status: 200, body: { checked: 1, failed: 0 } });
+    expect((await api.call('GET', ballotRoute(election), voter)).body.check.references.map((r: { id: string }) => r.id)).toEqual([
+      'ustp-constitution',
+      'transhumanist-bill-of-rights',
+    ]);
+  });
+
   it('with Claude (faked), sends the ballot, the party texts and the bylaws, and nothing about who asked', async () => {
     const membership = await api.member('membership.admin@example.test');
     await api.grant(membership.accountId, 'membership_admin', sa1);
@@ -181,6 +241,7 @@ describe('the platform consistency check', () => {
       { contests: [1], source: 'platform', provision: 'Article VI, Section XII', passage: 'supports the right to repair', severity: 'low', explanation: 'Overlaps an adopted section.' },
     ]);
     expect(done.references.map((r) => [r.id, r.sha256?.length])).toEqual([
+      ['us-constitution', 64],
       ['ustp-constitution', 64],
       ['transhumanist-bill-of-rights', 64],
     ]);
@@ -190,6 +251,7 @@ describe('the platform consistency check', () => {
     expect(sent).toContain('The party supports the right to repair.');
     expect(sent).toContain('The name of this organization is the United States Transhumanist Party.');
     expect(sent).toContain('Article VI. Platform.');
+    expect(sent).toContain('<reference id=\\"us-constitution\\"');
     expect(sent).toContain('[Question 2] Chair');
     for (const secret of [voter.accountId, voter.email, voter.uid]) expect(sent).not.toContain(secret);
   });
@@ -206,11 +268,13 @@ describe('the platform consistency check', () => {
     expect((await api.call('POST', ballotRoute(election), voter)).status).toBe(202);
   });
 
-  it('goes when its election is deleted', async () => {
+  it('goes when its election is deleted, with the documents it compares with', async () => {
     const election = await seedElection(api, { voters: [voter.accountId], state: 'cancelled' });
+    await api.firebase.db.collection(Collections.consistencyDocuments).doc(election.electionId).set({ electionId: election.electionId, documents: ['bylaws'] });
     expect((await api.call('POST', editorRoute(election), ea)).status).toBe(202);
     expect((await api.call('POST', ballotRoute(election), voter)).status).toBe(404); // cancelled: no ballot
     expect((await api.call('POST', `/v1/admin/elections/${election.electionId}/delete`, ea, { reason: 'set up by mistake' })).status).toBe(204);
     expect(await stored(election, ea)).toBeUndefined();
+    expect((await api.firebase.db.collection(Collections.consistencyDocuments).doc(election.electionId).get()).exists).toBe(false);
   });
 });

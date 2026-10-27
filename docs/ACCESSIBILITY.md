@@ -107,6 +107,16 @@ test. Keep it current when pages change.
   “2026 Officer Election”", "Add the voting window to your calendar", "open the Verify page", the contact address),
   black on white with links in `#bd4e00` (4.9:1), and a plain-text part with the same content. Not yet seen in mail
   clients, which differ in what HTML they keep.
+- **Added 2026-10-27, Admin › Election emails** (against the emulators as admin1@example.test, a System Admin; light at
+  desktop width, dark at 375 px): the panel's `h2` is "Election emails", each email a `section` named by its `h3`
+  ("Voting is open", "Closing soon: reminder…") and the contact another. Every field has a visible label (the two
+  switches "Send this email" and "Send the reminder", "Hours before voting closes", "Subject", "Opening paragraph, after
+  the greeting", "Contact for election questions"); the built-in wording is the placeholder and, in words, the hint
+  ("Empty: Voting is open: {title}"), and the lead time's hint says it in days ("2 days before the close…"). A wording
+  the checks refuse (an unknown placeholder such as `{name}`) is said under its field and marks it `aria-invalid`, and
+  Save stays disabled until it is fixed; the count of unsaved changes is shown beside Save. The previews are plain text
+  in a `pre` that wraps, so at 375 px nothing scrolls sideways; captions are `#b0b0b0` on `#1d1d1d` in the dark theme.
+  An Election Admin does not get the tab, and `?tab=email` falls back to their first section.
 - **Added 2026-10-27, the emails in the election workflow** (against the emulators as elections@example.test: an open
   election with its reminder to come, then due, then sent; a scheduled one-day election with email switched off; light
   at desktop width, dark at 375 px): the list has an "Email to voters" item after Open for voting, with its status in
@@ -204,6 +214,19 @@ test. Keep it current when pages change.
   public Offices page (`/offices`, page title "Offices · USTP Vote") has an `h1`, an `h2` per office and a list of
   holders, each "Appointed · since … · until …" with the reason, or "Elected (results)" linking to the results; at
   320 px nothing scrolls sideways on it, in the Offices tab or in the dialog, whose buttons wrap.
+- **Added 2026-10-27, choosing the consistency check's documents** (design §5.5; against the emulators as
+  elections@example.test on "2027 Bylaws Review (draft)" and "Platform Vote #9 (demo)"; desktop width dark, 320 px
+  light): in the editor's consistency card an Election Admin on a draft has a `fieldset` whose `legend` is "Compare
+  the questions with", with one checkbox per document, each named by its visible label ("The Constitution of the
+  United States"), and a caption saying the questions are always compared with each other and when the choice is
+  fixed. Space toggles a box; focus stays on it, the change is saved at once and announced politely ("Saved. Compares
+  the questions with the bylaws in force and the Constitution of the United States, and with each other."), and the
+  boxes are disabled while it saves; a refused save is the card's alert banner and the boxes go back. The card's
+  first sentence names only the documents chosen, on the ballot as in the editor; on an election that is no longer a
+  draft, or for an Auditor, that sentence is the only place they are listed (no checkboxes). A result ends with what it
+  was compared with, from its own record, each text it read a link; when the choice has changed since, a caption says
+  so in words (`text-deep-orange-10`, 5.60 on white). At 320 px the labels wrap beside their boxes and nothing
+  scrolls sideways.
 
 ## What was fixed
 

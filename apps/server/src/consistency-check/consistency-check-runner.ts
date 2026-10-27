@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   CONSISTENCY_CHECK_TIMEOUT_MINUTES,
   Collections,
+  ORIGINAL_CONSISTENCY_DOCUMENTS,
   type BylawsRecord,
   type ConsistencyCheckRecord,
   type ConsistencyRunResult,
@@ -50,7 +51,10 @@ export class ConsistencyCheckRunner {
     );
   }
 
-  /** The questions as they were when asked for, and the bylaws version in force then (versions never change). */
+  /**
+   * The questions as they were when asked for, the documents chosen then, and the bylaws version in force then
+   * (versions never change).
+   */
   private async input(check: ConsistencyCheckRecord): Promise<ConsistencyCheckInput> {
     let bylaws: ConsistencyCheckInput['bylaws'] = null;
     if (check.bylaws) {
@@ -60,6 +64,12 @@ export class ConsistencyCheckRunner {
       if (!record) throw new Error(`bylaws version ${check.bylaws.version} no longer exists`);
       bylaws = { version: record.version, title: record.title, text: record.text };
     }
-    return { electionTitle: check.electionTitle, electionDescription: check.electionDescription, material: check.material, bylaws };
+    return {
+      electionTitle: check.electionTitle,
+      electionDescription: check.electionDescription,
+      material: check.material,
+      documents: check.documents ?? ORIGINAL_CONSISTENCY_DOCUMENTS,
+      bylaws,
+    };
   }
 }
