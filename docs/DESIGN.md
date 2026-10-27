@@ -296,10 +296,11 @@ Every transition writes, in one transaction, the new status on `members/{account
      submit is stopped in the browser with the answers kept. The api still refuses any application from an unverified
      address.
   3. *Membership review*: the submitted application's status, until a Membership Admin decides it.
-- **Who sees what.** The web app's menu links (Register, Ballot, Verify, Admin) and the header's Sign in button are the
-  ones the navigation settings give the person's membership state and roles (§10.5). By default everyone sees all four
-  links, signed in or not, visitors see Sign in, and each page tells people it is not for what they can do instead, as
-  it does for anyone who reaches it by its address. On
+- **Who sees what.** The web app's menu links (Register, Ballot, Verify, Offices, Admin) and the header's Sign in button
+  are the ones the navigation settings give the person's membership state and roles (§10.5). By default everyone sees
+  all five links, signed in or not, visitors see Sign in, and each page tells people it is not for what they can do
+  instead, as it does for anyone who reaches it by its address. Offices is the public list of who holds each office
+  (§6.4). On a phone the links that do not fit the bar's one row are behind its More button (§10.5). On
   Register, signed-out visitors
   start at step 1, and people who may apply (no membership, or a rejected or resigned one: `mayApply` in
   `ustp-domain`) at step 2. An applicant sees step 3. An Active, lapsed or suspended member sees their status instead
@@ -1622,8 +1623,8 @@ do**: the API's role checks (§10.1, §12) are unchanged, and a page reached by 
 as before.
 
 - **Columns (audiences):** signed out; signed in with no membership; each member status (applicant, Active, lapsed,
-  suspended, resigned, rejected; §5.1); then each staff role. **Rows:** Register, Ballot, Verify and Admin; Sign in
-  (the header's button for visitors); the admin sections (Applications, Members, Photos, Bylaws, Elections, Offices,
+  suspended, resigned, rejected; §5.1); then each staff role. **Rows:** Register, Ballot, Verify, Offices (the public
+  list of office holders, §6.4) and Admin; Sign in (the header's button for visitors); the admin sections (Applications, Members, Photos, Bylaws, Elections, Offices,
   Approvals, People, Sign-in methods, Claude, Election emails, Audit ledger, Testing, Navigation); and "Starts on". The vocabulary, defaults
   and rules are `MENU_LINKS`, `ADMIN_SECTIONS`, `AUDIENCES` and the functions beside them in `ustp-domain`
   (`governance/navigation.ts`), shared by the API and the web app.
@@ -1639,12 +1640,14 @@ as before.
   that put everything else back; and signed-out visitors keep at least one way to sign in (Sign in, Register's first
   step, or Ballot or Admin, which send them to sign in), since every admin arrives as a visitor. The API refuses
   settings that break either (409), and the matrix says why before Save.
-- **Defaults** (version 0, before anyone saves) are the menu as it was: all four links for every membership state and
-  Sign in for visitors, each role its own sections (System Admins without Offices, which they may read but not
-  change), roles adding Ballot and Verify (and Admin, from their sections) so a staff member with no membership keeps
-  them. Settings saved before the Sign in row existed show it to visitors.
-- **Start page.** Each signed-in audience starts on home, their account, a menu page it is shown, or (a role) one of
-  its sections; by default Register with no membership, as signing in did before, and home otherwise. A person with
+- **Defaults** (version 0, before anyone saves) are the menu as it was, with Offices added: all five links for every
+  membership state and Sign in for visitors, each role its own sections (System Admins without the Offices section,
+  which they may read but not change), roles adding Ballot, Verify and Offices (and Admin, from their sections) so a
+  staff member with no membership keeps them. A link or section added later takes its default in settings saved
+  before it existed, and every other saved cell stays: settings saved before the Sign in row show it to visitors, and
+  those saved before the Offices row show Offices to everyone.
+- **Start page.** Each signed-in audience starts on home, their account, a menu page it is shown (Offices included),
+  or (a role) one of its sections; by default Register with no membership, as signing in did before, and home otherwise. A person with
   roles starts where the first role they hold says, in the order Membership Admin, Election Admin, Auditor, System
   Admin (staff come for their tools, and System Admin's are the occasional ones); without one, where their membership
   state says; and on home if that page is not shown to them. It applies after signing in without a page to return
@@ -1668,8 +1671,16 @@ as before.
   defaults stand in until then, and if they cannot be loaded). A System Admin's save applies at once in their own tab;
   everyone else gets it the next time they open the app. The matrix is a table: column groups for membership and staff
   roles, row groups for the menu, the sections and the start page, a checkbox per switchable cell named for what it
-  does ("Show Ballot to Applicant"), locked cells as text saying why, and the unsaved changes listed in words before
+  does, as its change is listed ("Show Ballot to Applicant", "Show Admin › Offices to Auditor", so the Offices link
+  and the Offices section differ), locked cells as text saying why, and the unsaved changes listed in words before
   saving.
+- **One row of links.** The menu bar never wraps, whatever links the settings give and however large the text: the
+  links that do not fit, in menu order, go behind a More button at the end of the row, a disclosure button
+  (`aria-expanded`) whose list of the same links opens under it, inside the bar's width. The fit is measured from the
+  links as rendered (`linksInRow` in the web app), so it follows the font, enlarged text and the window's width. With
+  the five default links, a 320 px phone keeps Register, Ballot and Verify in the row and puts Offices and Admin
+  behind More; all five fit from about 400 px. More is underlined while the current page is behind it. The list
+  closes on Escape (focus returns to More), when focus or a click leaves it, and on going to another page.
 
 ## 11. Data model (Firestore `(default)` database)
 

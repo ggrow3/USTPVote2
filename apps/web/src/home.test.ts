@@ -3,11 +3,27 @@ import { describe, expect, it } from 'vitest';
 import { approvalsStatus, ballotStatus, electionsStatus, homeCards, waitingStatus } from './home.js';
 
 describe('home cards', () => {
-  it('follow what the person is shown: ballot first, then membership, verify, admin sections and the account', () => {
-    const cards = homeCards({ menu: ['register', 'ballot', 'verify', 'admin'], sections: ['elections', 'approvals'] }, 'active', false);
-    expect(cards.map((c) => c.key)).toEqual(['ballot', 'register', 'verify', 'elections', 'approvals', 'account']);
-    expect(cards.find((c) => c.key === 'elections')).toMatchObject({ to: '/admin?tab=elections', action: 'Open Elections' });
+  it('follow what the person is shown: ballot first, then membership, verify, offices, admin sections and the account', () => {
+    const cards = homeCards(
+      { menu: ['register', 'ballot', 'verify', 'offices', 'admin'], sections: ['elections', 'offices', 'approvals'] },
+      'active',
+      false,
+    );
+    expect(cards.map((c) => c.key)).toEqual([
+      'ballot',
+      'register',
+      'verify',
+      'offices',
+      'admin/elections',
+      'admin/offices',
+      'admin/approvals',
+      'account',
+    ]);
+    expect(cards.find((c) => c.key === 'admin/elections')).toMatchObject({ to: '/admin?tab=elections', action: 'Open Elections' });
+    expect(cards.find((c) => c.key === 'offices')).toMatchObject({ to: '/offices', action: 'See the offices' });
+    expect(cards.find((c) => c.key === 'admin/offices')).toMatchObject({ to: '/admin?tab=offices', action: 'Open Offices' });
     expect(new Set(cards.map((c) => c.action)).size).toBe(cards.length);
+    expect(new Set(cards.map((c) => c.title)).size).toBe(cards.length);
   });
 
   it('word the Register card for where someone is in joining', () => {
@@ -22,10 +38,13 @@ describe('home cards', () => {
   it('leave out sections without the Admin link, and Testing outside testing mode', () => {
     expect(homeCards({ menu: ['verify'], sections: ['people'] }, 'no_membership', false).map((c) => c.key)).toEqual(['verify', 'account']);
     expect(homeCards({ menu: ['admin'], sections: ['people', 'testing'] }, 'no_membership', false).map((c) => c.key)).toEqual([
-      'people',
+      'admin/people',
       'account',
     ]);
-    expect(homeCards({ menu: ['admin'], sections: ['testing'] }, 'no_membership', true).map((c) => c.key)).toEqual(['testing', 'account']);
+    expect(homeCards({ menu: ['admin'], sections: ['testing'] }, 'no_membership', true).map((c) => c.key)).toEqual([
+      'admin/testing',
+      'account',
+    ]);
   });
 });
 

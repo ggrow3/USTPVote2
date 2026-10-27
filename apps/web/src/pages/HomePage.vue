@@ -15,6 +15,7 @@ const PUBLIC_BUTTONS = [
   { link: 'register', to: '/register', label: 'Register' },
   { link: 'ballot', to: '/ballot', label: 'Vote' },
   { link: 'verify', to: '/verify', label: 'Verify a receipt' },
+  { link: 'offices', to: '/offices', label: 'Offices' },
 ] as const;
 const publicButtons = computed(() => PUBLIC_BUTTONS.filter((b) => shown.value.menu.includes(b.link)));
 usePageTitle(() => (signedIn.value ? 'Home' : 'Member voting'));
@@ -33,11 +34,11 @@ const who = computed(() => [membership.value, ...viewer.value.roles].map((a) => 
 const status = reactive<Partial<Record<HomeCardKey, string>>>({});
 const LOADERS: Partial<Record<HomeCardKey, () => Promise<string>>> = {
   ballot: async () => ballotStatus(await api<VoterElection[]>('GET', '/v1/elections')),
-  applications: async () => waitingStatus((await applications('pending')).length, 'application', 100),
-  photos: async () =>
+  'admin/applications': async () => waitingStatus((await applications('pending')).length, 'application', 100),
+  'admin/photos': async () =>
     waitingStatus((await api<ProfilePhotoRecord[]>('GET', '/v1/admin/photos?status=needs_review')).length, 'photo', 50),
-  elections: async () => electionsStatus(await api<ElectionRecord[]>('GET', '/v1/admin/elections')),
-  approvals: async () =>
+  'admin/elections': async () => electionsStatus(await api<ElectionRecord[]>('GET', '/v1/admin/elections')),
+  'admin/approvals': async () =>
     approvalsStatus(
       await api<ApprovalRequestRecord[]>('GET', '/v1/admin/approvals?status=pending'),
       session.me?.account?.accountId,
