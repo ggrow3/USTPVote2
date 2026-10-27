@@ -3,9 +3,7 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join, relative, resolve } from 'node:path';
 import { quasar, transformAssetUrls } from '@quasar/vite-plugin';
 import vue from '@vitejs/plugin-vue';
-import { defineConfig, type Plugin, type ResolvedConfig, type Rolldown } from 'vite';
-
-type OutputChunk = Rolldown.OutputChunk;
+import { defineConfig, type Plugin, type ResolvedConfig } from 'vite';
 
 export default defineConfig({
   plugins: [vue({ template: { transformAssetUrls } }), quasar(), serviceWorker()],
@@ -17,9 +15,9 @@ export default defineConfig({
 });
 
 /**
- * Builds dist/sw.js from service-worker.js: the files to cache are the whole build (the app shell, index.html first)
- * except the diagram library, and the version is a hash of their contents, so every deploy that changes the app
- * installs a new worker. Builds only; the dev server has no service worker.
+ * Builds dist/sw.js from service-worker.js: the files to cache are the whole build (the app shell, index.html first),
+ * and the version is a hash of their contents, so every deploy that changes the app installs a new worker. Builds
+ * only; the dev server has no service worker.
  */
 function serviceWorker(): Plugin {
   let config: ResolvedConfig;
@@ -29,11 +27,10 @@ function serviceWorker(): Plugin {
     configResolved(resolved) {
       config = resolved;
     },
-    writeBundle(_options, bundle) {
+    writeBundle() {
       const outDir = resolve(config.root, config.build.outDir);
-      const diagrams = diagramFiles(bundle);
       const files = listFiles(outDir)
-        .filter((f) => f !== 'sw.js' && !f.endsWith('.map') && !diagrams.has(f))
+        .filter((f) => f !== 'sw.js' && !f.endsWith('.map'))
         .sort((a, b) => (a === 'index.html' ? -1 : b === 'index.html' ? 1 : a.localeCompare(b)));
       const template = readFileSync(resolve(config.root, 'service-worker.js'), 'utf8');
       const hash = createHash('sha256').update(template);
@@ -45,32 +42,6 @@ function serviceWorker(): Plugin {
       writeFileSync(join(outDir, 'sw.js'), source);
     },
   };
-}
-
-/**
- * The build files only Mermaid needs (its own chunks and the libraries only they import): the election editor's
- * workflow diagram loads them when it is shown. Left out of the shell, they are fetched from the network like any file
- * not in it, and a voter's browser never downloads them. A chunk the app reaches without going through Mermaid stays.
- */
-function diagramFiles(bundle: Rolldown.OutputBundle): Set<string> {
-  const chunks = new Map(
-    Object.values(bundle)
-      .filter((f): f is OutputChunk => f.type === 'chunk')
-      .map((c) => [c.fileName, c]),
-  );
-  const isMermaid = (c: OutputChunk) => c.moduleIds.some((id) => /[\\/]node_modules[\\/]mermaid[\\/]/.test(id));
-  const reached = new Set<string>();
-  const visit = (c: OutputChunk | undefined) => {
-    if (!c || reached.has(c.fileName) || isMermaid(c)) return;
-    reached.add(c.fileName);
-    for (const f of [...c.imports, ...c.dynamicImports]) visit(chunks.get(f));
-  };
-  for (const c of chunks.values()) if (c.isEntry) visit(c);
-  const left = [...chunks.values()].filter((c) => !reached.has(c.fileName));
-  const kept = [...reached].map((f) => chunks.get(f)!);
-  const assets = (c: OutputChunk) => [...(c.viteMetadata?.importedCss ?? []), ...(c.viteMetadata?.importedAssets ?? [])];
-  const keptAssets = new Set(kept.flatMap(assets));
-  return new Set([...left.map((c) => c.fileName), ...left.flatMap(assets).filter((a) => !keptAssets.has(a))]);
 }
 
 function listFiles(dir: string, root = dir): string[] {
