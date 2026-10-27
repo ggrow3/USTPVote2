@@ -73,6 +73,7 @@ export const SECTION_LABELS: Readonly<Record<AdminSection, string>> = {
   audit: 'Audit ledger',
   testing: 'Testing',
   navigation: 'Navigation',
+  quote: 'Home page quote',
 };
 
 export const SECTION_CAPTIONS: Readonly<Record<AdminSection, string>> = {
@@ -90,6 +91,7 @@ export const SECTION_CAPTIONS: Readonly<Record<AdminSection, string>> = {
   audit: 'Read and verify the audit ledger',
   testing: 'Test personas, where testing mode is on',
   navigation: 'Who sees which link (this page)',
+  quote: 'Change the quote on the home page, or switch it off',
 };
 
 /** "Ballot", "Admin › Elections". */

@@ -1,5 +1,6 @@
 import { createRouter, createWebHistory, START_LOCATION } from 'vue-router';
 import type { Role } from 'ustp-domain';
+import { homeQuoteReady } from './governance/home-quote.js';
 import { navigationReady, startPath } from './governance/navigation.js';
 import MainLayout from './layouts/MainLayout.vue';
 import { hasRole, session, sessionReady } from './session.js';
@@ -64,7 +65,8 @@ function firstOpenInTab(): boolean {
 }
 
 router.beforeEach(async (to, from) => {
-  await Promise.all([sessionReady, navigationReady]);
+  // Home waits for its quote too, so the sign-in card does not move down when the quote arrives.
+  await Promise.all([sessionReady, navigationReady, to.path === '/' && homeQuoteReady()]);
   // A tab that opens the app at home, signed in, starts where the navigation settings say (design §10.5).
   if (from === START_LOCATION && firstOpenInTab() && to.path === '/' && session.user) {
     const start = startPath();

@@ -103,6 +103,33 @@ export function homeCards(
   return cards;
 }
 
+/** A line under the signed-out home page's sign-in form: words, then a link, then the rest of the sentence. */
+export interface VisitorLink {
+  readonly key: Exclude<MenuLink, 'signin'>;
+  readonly before: string;
+  readonly label: string;
+  readonly after: string;
+  readonly to: string;
+}
+
+const VISITOR_LINKS: readonly VisitorLink[] = [
+  { key: 'register', before: 'New to USTP? ', label: 'Register as a member', after: ': creating your login is the first step.', to: '/register' },
+  { key: 'ballot', before: 'Members: ', label: 'see your ballots and vote', after: '.', to: '/ballot' },
+  { key: 'verify', before: 'Voted already? ', label: 'Verify your receipt', after: ' to check that your vote was counted.', to: '/verify' },
+  { key: 'admin', before: 'Party officers: ', label: 'open the admin console', after: '.', to: '/admin' },
+];
+
+/**
+ * The signed-out home page's card (design §10.5): the sign-in form while visitors are shown Sign in, and a line for
+ * each other menu page they are shown. Ballot and Admin only send a visitor to sign in, so they have a line only when
+ * the form is not there.
+ */
+export function visitorCard(menu: readonly MenuLink[]): { signIn: boolean; links: VisitorLink[] } {
+  const signIn = menu.includes('signin');
+  const links = VISITOR_LINKS.filter((l) => menu.includes(l.key) && !(signIn && (l.key === 'ballot' || l.key === 'admin')));
+  return { signIn, links };
+}
+
 /** "1 application", "3 applications". */
 export function count(n: number, one: string, many = `${one}s`): string {
   return `${n} ${n === 1 ? one : many}`;
