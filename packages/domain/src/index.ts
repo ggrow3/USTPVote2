@@ -1,9 +1,8 @@
-export type { Check } from './check.js';
+export type { Check, Outcome, Refusal, Refused } from './check.js';
 export { uuidv7, isUuidV7, uuidv7Timestamp } from './ids.js';
 export { ROLES, conflictingRoles, isRole, checkRoleChange } from './roles.js';
 export type { Role } from './roles.js';
-export { MEMBER_STATUSES, checkStatusChange, mayApply } from './member-status.js';
-export type { MemberStatus, StatusChange } from './member-status.js';
+export * from './membership/index.js';
 export { diffLines, splitLines } from './text-diff.js';
 export {
   MAX_AMENDMENT_CHANGES,
@@ -35,19 +34,10 @@ export type {
 export { ACT_AS_HEADER, ADMIN_PERSONAS, MAX_TEST_VOTERS, PERSONA_KINDS, voterPersonaLabel } from './testing.js';
 export type { PersonaKind, PersonaRecord, PersonaSummary } from './testing.js';
 export type { DiffLine } from './text-diff.js';
-export {
-  APPLICATION_WINDOW_DAYS,
-  MAX_APPLICATIONS_PER_WINDOW,
-  MINIMUM_MEMBER_AGE,
-  US_POSTAL_CODE,
-  ageOn,
-  checkApplicantAge,
-  isCalendarDate,
-  normalizePhone,
-  normalizePostalCode,
-} from './registration.js';
 export { ELECTION_STATES, checkElectionDeletable, electionTransitionAuthority, isTerminal } from './election-state.js';
-export type { ElectionState, TransitionAuthority } from './election-state.js';
+export type { ElectionState, RehearsalDeletion, TransitionAuthority } from './election-state.js';
+export { ELECTION_STEPS, STEP_STATE, cancelledFrom, electionProgress } from './election-progress.js';
+export type { ElectionProgress, ElectionStep, ProgressInput, StepStatus, Waiting, WaitingFor } from './election-progress.js';
 export {
   TWO_PERSON_ACTIONS,
   APPROVAL_MAX_AUTH_AGE_SECONDS,
@@ -62,7 +52,7 @@ export type { ElectionCollection } from './collections.js';
 export { SIGN_IN_PROVIDERS, isSignInProvider } from './identity.js';
 export type { SignInProvider } from './identity.js';
 export { LEDGER_EVENT_TYPES } from './ledger-events.js';
-export type { LedgerEventType, LedgerEntry } from './ledger-events.js';
+export type { LedgerEventType, LedgerEvent, LedgerEntry } from './ledger-events.js';
 export { PUBLIC_LEDGER_EVENT_TYPES, isPublicLedgerEvent, signingKeyId } from './ledger.js';
 export type {
   SignatureRecord,

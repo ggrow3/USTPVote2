@@ -1,17 +1,25 @@
-import { deny, OK, type Check } from './check.js';
+import { deny, OK, type Check } from '../check.js';
 
 export const MEMBER_STATUSES = ['applicant', 'active', 'lapsed', 'suspended', 'resigned', 'rejected'] as const;
 export type MemberStatus = (typeof MEMBER_STATUSES)[number];
 
-/** Allowed status changes (design §5.1). `null` is "no membership record yet". */
+/**
+ * Allowed status changes (design §5.1), each list in the order the admin console offers them. `null` is "no
+ * membership record yet".
+ */
 const TRANSITIONS: Readonly<Record<MemberStatus, readonly MemberStatus[]>> = {
   applicant: ['active', 'rejected'],
-  active: ['lapsed', 'suspended', 'resigned'],
+  active: ['suspended', 'lapsed', 'resigned'],
   lapsed: ['active', 'resigned'],
   suspended: ['active', 'resigned'],
   rejected: ['applicant'],
   resigned: ['applicant'],
 };
+
+/** The statuses `from` may change to, by whoever may make each change, in the order to offer them. */
+export function nextStatuses(from: MemberStatus): readonly MemberStatus[] {
+  return TRANSITIONS[from];
+}
 
 /** Changes a member makes for themselves: applying (again) and resigning. Everything else is an admin decision. */
 function isSelfService(from: MemberStatus | null, to: MemberStatus): boolean {

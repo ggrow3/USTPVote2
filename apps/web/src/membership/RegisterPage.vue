@@ -26,6 +26,7 @@ import {
   type FederatedProvider,
 } from '../sign-in.js';
 import { useSignInFlow } from '../sign-in-flow.js';
+import { myApplications, submitApplication } from './api.js';
 
 const $q = useQuasar();
 usePageTitle('Register');
@@ -74,6 +75,12 @@ const optional = (value: string) => value.trim() || undefined;
 
 const status = computed(() => session.me?.member?.status ?? null);
 const canApply = computed(() => mayApply(status.value));
+/** Members can't apply again; the page says where they stand instead (design §5.1). */
+const memberTitle = computed(() => {
+  if (status.value === 'lapsed') return 'Your membership has lapsed';
+  if (status.value === 'suspended') return 'Your membership is suspended';
+  return 'You are already a member';
+});
 const lastDecision = computed(() => applications.value.find((a) => a.status !== 'pending') ?? null);
 const stateOptions = STATES.map((s) => ({ label: `${s.name} (${s.code})`, value: s.code }));
 /** The current step, or null for members, who have nothing left to do here. */
@@ -104,7 +111,7 @@ watch(
   () => session.me?.account?.accountId,
   async (accountId) => {
     if (!accountId) return;
-    applications.value = await api<ApplicationRecord[]>('GET', '/v1/registration/applications/me').catch(() => []);
+    applications.value = await myApplications().catch(() => []);
     if (canApply.value && !bylaws.value) {
       bylaws.value = await api<BylawsRecord>('GET', '/v1/bylaws/current').catch((e) => {
         bylawsError.value = errorMessage(e);
@@ -158,7 +165,7 @@ async function createLogin() {
 /** After signing in here the login form is gone, so start the person at the step that replaced it. */
 async function toNextStep() {
   await nextTick();
-  focusElement(document.querySelector('#apply-heading, #application-status') ?? document.querySelector('main h1'));
+  focusElement(document.querySelector('#apply-heading, #application-status, #membership-status') ?? document.querySelector('main h1'));
 }
 
 /**
@@ -236,9 +243,9 @@ async function submit() {
       };
       return;
     }
-    await api('POST', '/v1/registration/applications', checked.data);
+    await submitApplication(checked.data);
     await refreshMe();
-    applications.value = await api<ApplicationRecord[]>('GET', '/v1/registration/applications/me');
+    applications.value = await myApplications();
     $q.notify({ type: 'positive', message: 'Application submitted' });
     await focusSoon('#application-status');
   } catch (e) {
@@ -360,12 +367,31 @@ async function submit() {
             Admin will decide it; you will see the outcome here.
           </div>
         </q-card-section>
+        <q-card-section>
+          There is nothing more to fill in. Once you are admitted you can vote in elections set up after that, on the
+          <router-link to="/ballot">Ballot</router-link> page.
+        </q-card-section>
       </q-card>
 
+      <!-- Active, lapsed and suspended members: their status and what they can do, instead of the form. -->
       <q-card v-else-if="!canApply" flat bordered>
         <q-card-section>
-          You are a member (status <q-badge :label="status ?? ''" color="primary" />).
-          <router-link to="/account">Manage your account</router-link>.
+          <h2 id="membership-status" class="text-subtitle1">{{ memberTitle }}</h2>
+          <div v-if="session.me.member?.memberSince" class="text-caption text-grey-7">
+            Member since {{ new Date(session.me.member.memberSince).toLocaleDateString() }}
+          </div>
+        </q-card-section>
+        <q-card-section v-if="status === 'active'">
+          There is nothing to register. Vote on the <router-link to="/ballot">Ballot</router-link> page, and manage
+          your membership on your <router-link to="/account">Account page</router-link>.
+        </q-card-section>
+        <q-card-section v-else>
+          <template v-if="status === 'lapsed'">
+            You don't need to apply again: a Membership Admin can renew your membership.
+          </template>
+          <template v-else>A Membership Admin can reinstate it; you can't apply again while it is suspended.</template>
+          Voter rolls are taken from Active members, so until then you won't be on the roll of new elections. Your
+          <router-link to="/account">Account page</router-link> shows your membership, and you can resign there.
         </q-card-section>
       </q-card>
 

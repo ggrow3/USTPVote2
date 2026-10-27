@@ -4,6 +4,7 @@ import {
   Document,
   Footer,
   Header,
+  type IParagraphOptions,
   Packer,
   PageNumber,
   Paragraph,
@@ -253,9 +254,17 @@ export interface StampOptions {
   readonly exportedAt: Date;
 }
 
-const INK = '1F3A5F';
+/** The stamp's ink, also used for running headers and footers. */
+export const INK = '1F3A5F';
 
-function stampLine(text: string, options: { bold?: boolean; size?: number } = {}): Paragraph {
+/** US Letter with one-inch margins, in twentieths of a point. */
+export const LETTER_PAGE = { size: { width: 12240, height: 15840 }, margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 } };
+
+/** For a document's `styles.paragraphStyles`, so its stamp lines sit together as one block. */
+export const STAMP_PARAGRAPH_STYLE = { id: STAMP_STYLE, name: 'USTP stamp', basedOn: 'Normal', paragraph: { spacing: { after: 0 } } };
+
+/** One line of a stamp block: centred, boxed and shaded. */
+export function stampLine(text: string, options: { bold?: boolean; size?: number } = {}): Paragraph {
   const side = { style: BorderStyle.SINGLE, size: 12, color: INK, space: 6 };
   return new Paragraph({
     style: STAMP_STYLE,
@@ -266,13 +275,14 @@ function stampLine(text: string, options: { bold?: boolean; size?: number } = {}
   });
 }
 
-function textParagraph(line: string): Paragraph {
+/** One line of plain text as a paragraph, its tabs kept as Word tabs. */
+export function textParagraph(line: string, options: Omit<IParagraphOptions, 'children'> = {}): Paragraph {
   const parts = line.split('\t');
   const children = parts.flatMap((part, i) => [
     ...(i > 0 ? [new TextRun({ children: [new Tab()] })] : []),
     ...(part ? [new TextRun(part)] : []),
   ]);
-  return new Paragraph({ children });
+  return new Paragraph({ ...options, children });
 }
 
 const day = (iso: string | Date) => new Date(iso).toISOString().slice(0, 10);
@@ -297,11 +307,11 @@ export function bylawsDocument(b: BylawsRecord, options: StampOptions): Document
     keywords: `bylaws; version ${b.version}; sha256:${b.contentHash}`,
     description: b.changeNote ?? undefined,
     styles: {
-      paragraphStyles: [{ id: STAMP_STYLE, name: 'USTP stamp', basedOn: 'Normal', paragraph: { spacing: { after: 0 } } }],
+      paragraphStyles: [STAMP_PARAGRAPH_STYLE],
     },
     sections: [
       {
-        properties: { page: { size: { width: 12240, height: 15840 }, margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 } } },
+        properties: { page: LETTER_PAGE },
         headers: {
           default: new Header({
             children: [
@@ -334,7 +344,7 @@ export function bylawsDocument(b: BylawsRecord, options: StampOptions): Document
             ],
           }),
         },
-        children: [...stamp, ...splitLines(b.text).map(textParagraph)],
+        children: [...stamp, ...splitLines(b.text).map((line) => textParagraph(line))],
       },
     ],
   });

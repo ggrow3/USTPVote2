@@ -1,6 +1,5 @@
 import type { Transaction } from 'firebase-admin/firestore';
-import type { Actor, ApprovalRequestRecord } from 'ustp-domain';
-import type { LedgerEvent } from '../ledger/ledger.service.js';
+import type { Actor, ApprovalRequestRecord, LedgerEvent } from 'ustp-domain';
 
 /** What an approved (or rejected) request does, computed after all of the transaction's reads. */
 export interface PreparedDecision {

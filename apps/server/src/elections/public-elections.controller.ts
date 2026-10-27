@@ -40,7 +40,7 @@ export class PublicElectionsController {
   }
 
   /**
-   * The voting window as an iCalendar event, for "Add to calendar". A link, not a fetch, so it carries no credentials;
+   * The voting window as an iCalendar event (design §6.1). Opened as a link, not fetched, so it needs no credentials;
    * `inline` lets iOS offer to add it to Calendar, and other browsers download it, as they cannot show text/calendar.
    */
   @Get(':id/calendar.ics')

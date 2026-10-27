@@ -1,0 +1,38 @@
+import type { MemberRecord } from 'ustp-domain';
+import { STATES } from '../forms.js';
+
+/** Wording for members' details (design §5.2), shared by the profile page, the application answers and the account page. */
+
+/** The state picker's options, as on the application. */
+export const STATE_OPTIONS = STATES.map((s) => ({ label: `${s.name} (${s.code})`, value: s.code }));
+
+/** "New York (NY)". */
+export function stateName(code: string): string {
+  const state = STATES.find((s) => s.code === code);
+  return state ? `${state.name} (${state.code})` : code;
+}
+
+/** An email opt-in: "Yes, since 25 Oct 2026", or "No". */
+export function consentText(since: string | null | undefined): string {
+  return since ? `Yes, since ${new Date(since).toLocaleDateString()}` : 'No';
+}
+
+/** Where a member lives and how to reach them, as form fields. */
+export interface DetailsForm {
+  preferredName: string;
+  state: string | null;
+  city: string;
+  postalCode: string;
+  phone: string;
+}
+
+/** The form filled in from the member record; empty where nothing was given. */
+export function detailsForm(member: MemberRecord): DetailsForm {
+  return {
+    preferredName: member.preferredName ?? '',
+    state: member.state,
+    city: member.contact?.city ?? '',
+    postalCode: member.contact?.postalCode ?? '',
+    phone: member.contact?.phone ?? '',
+  };
+}

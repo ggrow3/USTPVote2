@@ -13,17 +13,21 @@ export function bylawsPageUrl(version: string): string {
   return `${location.origin}/bylaws/${encodeURIComponent(version)}`;
 }
 
-export async function downloadBylawsDocx(b: BylawsRecord): Promise<void> {
-  const { bylawsDocxBytes, bylawsDocxFileName } = await import('./bylaws-docx.js');
-  const bytes = await bylawsDocxBytes(b, { verifyUrl: bylawsPageUrl(b.version), exportedAt: new Date() });
+/** Hands a Word file to the browser to save. */
+export function saveDocx(bytes: ArrayBuffer, fileName: string): void {
   const url = URL.createObjectURL(new Blob([bytes], { type: DOCX_TYPE }));
   const link = document.createElement('a');
   link.href = url;
-  link.download = bylawsDocxFileName(b);
+  link.download = fileName;
   document.body.append(link);
   link.click();
   link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
+export async function downloadBylawsDocx(b: BylawsRecord): Promise<void> {
+  const { bylawsDocxBytes, bylawsDocxFileName } = await import('./bylaws-docx.js');
+  saveDocx(await bylawsDocxBytes(b, { verifyUrl: bylawsPageUrl(b.version), exportedAt: new Date() }), bylawsDocxFileName(b));
 }
 
 export async function importBylawsDocx(file: File) {

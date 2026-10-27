@@ -11,6 +11,7 @@ import {
   definitionHash,
   ElectionCollections,
   electionTransitionAuthority,
+  isRehearsalRoll,
   PROBLEM_TYPES,
   proposalContentHash,
   resultsSummary,
@@ -28,7 +29,6 @@ import {
   type CreateElectionInput,
   type ElectionDetail,
   type ElectionRecord,
-  type MemberRecord,
   type ProposalInput,
   type ProposalSnapshotRecord,
   type ResultsRecord,
@@ -49,6 +49,7 @@ import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { SECRET_STORE, type SecretStore } from '../infra/secret-store.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { MemberDirectory } from '../membership/member-directory.js';
 import { MembershipService } from '../membership/membership.service.js';
 import { ElectionReader } from './election-reader.js';
 
@@ -66,6 +67,7 @@ export class ElectionsService {
     private readonly approvals: ApprovalsService,
     private readonly reader: ElectionReader,
     private readonly membership: MembershipService,
+    private readonly members: MemberDirectory,
     @Inject(SECRET_STORE) private readonly secrets: SecretStore,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
@@ -167,13 +169,15 @@ export class ElectionsService {
     ]);
     const { election, contests, candidates, proposals, definition } = loaded;
     const results = resultsSnap.data() as ResultsRecord | undefined;
-    const ballotsCast =
-      election.state === 'cancelled'
-        ? (await this.electionRef(electionId).collection(ElectionCollections.participation).count().get()).data().count
-        : null;
+    const final = election.state === 'cancelled' || election.state === 'certified';
+    const [ballotsCast, officeTerms] = await Promise.all([
+      final ? this.electionRef(electionId).collection(ElectionCollections.participation).count().get().then((s) => s.data().count) : null,
+      election.state === 'certified' ? this.termsFrom(electionId).count().get().then((s) => s.data().count) : null,
+    ]);
     return {
       results: results ? resultsSummary(results) : null,
       ballotsCast,
+      officeTerms,
       election,
       contests,
       candidates,
@@ -207,8 +211,7 @@ export class ElectionsService {
     }
     return this.db.runTransaction(async (tx) => {
       await this.editable(tx, ctx, electionId);
-      const active = await tx.get(this.db.collection(Collections.members).where('status', '==', 'active'));
-      let accountIds = sortRoll(active.docs.map((d) => d.id));
+      let accountIds = sortRoll(await this.members.activeIds(tx));
       let criteria: RollCriteria = { status: 'active' };
       if (voters === 'test_voters') {
         const personas = await tx.get(this.db.collection(Collections.testingPersonas).where('kind', '==', 'voter'));
@@ -255,14 +258,12 @@ export class ElectionsService {
   async roll(electionId: string): Promise<RollView> {
     const snapshot = await this.latestRoll(electionId);
     if (!snapshot) throw new NotFoundException('no voter roll yet');
-    const entries: { accountId: string; legalName: string; state: string }[] = [];
-    for (let i = 0; i < snapshot.accountIds.length; i += 300) {
-      const refs = snapshot.accountIds.slice(i, i + 300).map((id) => this.db.collection(Collections.members).doc(id));
-      for (const s of await this.db.getAll(...refs)) {
-        const m = s.data() as MemberRecord | undefined;
-        entries.push({ accountId: s.id, legalName: m?.legalName ?? '(no member record)', state: m?.state ?? '' });
-      }
-    }
+    const members = await this.members.findMany(snapshot.accountIds);
+    const entries = snapshot.accountIds.map((accountId, i) => ({
+      accountId,
+      legalName: members[i]?.legalName ?? '(no member record)',
+      state: members[i]?.state ?? '',
+    }));
     return { snapshot: withoutList(snapshot), entries };
   }
 
@@ -356,9 +357,11 @@ export class ElectionsService {
   }
 
   /**
-   * Deletes a cancelled election nobody voted in, permanently (design §6.1): the election and everything stored under
-   * it, its voter rolls, any request about it still pending, and its tie-break seed. One Election Admin does it at
-   * once, signed in within the last 15 minutes. The ledger keeps every entry about the election and records this one.
+   * Deletes an election permanently (design §6.1): a cancelled one nobody voted in or, where testing mode is on, a
+   * rehearsal once it is certified or cancelled, with its ballots (§10.4). Goes with it: the election and everything
+   * stored under it, its results, its voter rolls, any request about it still pending, and its tie-break seed. One
+   * Election Admin does it at once, signed in within the last 15 minutes. The ledger keeps every entry about the
+   * election and records this one, saying when it was a rehearsal and how many ballots went with it.
    */
   async delete(ctx: RequestContext, electionId: string, reason: string): Promise<void> {
     const actor = actorOf(ctx, this.config.adminMfaRequired);
@@ -366,6 +369,7 @@ export class ElectionsService {
       throw new ForbiddenException({ message: 'sign in again to delete an election', type: PROBLEM_TYPES.reauthRequired });
     }
     const ref = this.electionRef(electionId);
+    const resultsRef = this.db.collection(Collections.results).doc(electionId);
     const seedRef = await this.db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
       if (!snap.exists) throw new NotFoundException('no such election');
@@ -373,22 +377,28 @@ export class ElectionsService {
       if (await this.reader.isCandidate(tx, electionId, actor.accountId)) {
         throw new ForbiddenException('you are a candidate in this election, so you cannot administer it');
       }
-      const ballots = (await tx.get(ref.collection(ElectionCollections.participation).count())).data().count;
-      assertCheck(checkElectionDeletable(election, ballots));
+      const [ballots, roll, officeTerms] = await Promise.all([
+        tx.get(ref.collection(ElectionCollections.participation).count()).then((s) => s.data().count),
+        election.rollSnapshotId ? tx.get(this.snapshotRef(election.rollSnapshotId)) : null,
+        tx.get(this.termsFrom(electionId).count()).then((s) => s.data().count),
+      ]);
+      const rehearsal = isRehearsalRoll((roll?.data() as RollSnapshotRecord | undefined)?.criteria);
+      assertCheck(checkElectionDeletable(election, ballots, { rehearsal, testingMode: this.config.testingMode, officeTerms }));
+      // A rehearsal's roll is at most MAX_TEST_VOTERS, so its ballots fit in this one transaction with the rest.
       const [children, rolls, pending] = await Promise.all([
         Promise.all(Object.values(ElectionCollections).map((c) => tx.get(ref.collection(c)))),
         tx.get(this.db.collection(Collections.eligibilitySnapshots).where('electionId', '==', electionId)),
         tx.get(this.db.collection(Collections.approvalRequests).where('subject', '==', electionId).where('status', '==', 'pending')),
       ]);
-      await this.ledger.record(tx, [
-        { type: 'election.deleted', actor: actor.accountId, subject: electionId, payload: { electionId, title: election.title, reason } },
-      ]);
+      const payload = { electionId, title: election.title, reason, ...(rehearsal && { rehearsal: true, ballotsCast: ballots }) };
+      await this.ledger.record(tx, [{ type: 'election.deleted', actor: actor.accountId, subject: electionId, payload }]);
       for (const doc of [...children.flatMap((s) => s.docs), ...rolls.docs, ...pending.docs]) tx.delete(doc.ref);
+      tx.delete(resultsRef);
       tx.delete(ref);
       return election.tieBreakSeedRef;
     });
-    // Secret Manager is not transactional. The seed of a cancelled election is never read, so a failure here leaves an
-    // unused secret behind rather than failing a deletion that has already happened.
+    // Secret Manager is not transactional. The seed of a deleted election is never read again, so a failure here leaves
+    // an unused secret behind rather than failing a deletion that has already happened.
     if (seedRef) {
       await this.secrets.delete(seedRef).catch((e: unknown) => {
         this.logger.warn(`election ${electionId} deleted, but not its tie-break seed ${seedRef}: ${e instanceof Error ? e.message : String(e)}`);
@@ -518,6 +528,15 @@ export class ElectionsService {
 
   private electionRef(electionId: string) {
     return this.db.collection(Collections.elections).doc(electionId);
+  }
+
+  private snapshotRef(snapshotId: string) {
+    return this.db.collection(Collections.eligibilitySnapshots).doc(snapshotId);
+  }
+
+  /** Terms of office started by the election's certification (§6.4). */
+  private termsFrom(electionId: string) {
+    return this.db.collection(Collections.positionTerms).where('electionId', '==', electionId);
   }
 
   /** Reads the election inside `tx` and checks the caller may still edit it. */

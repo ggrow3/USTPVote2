@@ -3,7 +3,7 @@ import { checkCanApprove, checkCanChangeRole, checkCanRequest, type Actor, type 
 import { electionDocPath, sequenceId } from './collections.js';
 import { checkElectionDeletable, electionTransitionAuthority, isTerminal } from './election-state.js';
 import { isUuidV7, uuidv7, uuidv7Timestamp } from './ids.js';
-import { checkStatusChange, mayApply, type MemberStatus } from './member-status.js';
+import { checkStatusChange, mayApply, type MemberStatus } from './membership/member-status.js';
 import { checkRoleChange, conflictingRoles } from './roles.js';
 
 describe('uuidv7', () => {
@@ -83,6 +83,21 @@ describe('election lifecycle', () => {
     const keyed = { ...cancelled, poolKeyVersion: 'emulator/pool/1' };
     expect(checkElectionDeletable(keyed, 0)).toMatchObject({ ok: false, reason: expect.stringMatching(/encryption key/) });
     expect(checkElectionDeletable({ ...keyed, poolKeyDestroyedAt: '2026-10-23T00:00:00Z' }, 0)).toEqual({ ok: true });
+  });
+
+  it('deletes a rehearsal once certified or cancelled, ballots and all, only where testing mode is on', () => {
+    const certified = { state: 'certified' as const, poolKeyVersion: 'kms/pool/1', poolKeyDestroyedAt: '2026-10-26T00:00:00Z' };
+    const rehearsal = { rehearsal: true, testingMode: true, officeTerms: 0 };
+    expect(checkElectionDeletable(certified, 12, rehearsal)).toEqual({ ok: true });
+    expect(checkElectionDeletable({ ...certified, state: 'cancelled' }, 3, rehearsal)).toEqual({ ok: true });
+    expect(checkElectionDeletable({ ...certified, state: 'closed' }, 12, rehearsal)).toMatchObject({ ok: false, reason: /once its results are certified/ });
+    expect(checkElectionDeletable({ ...certified, state: 'open' }, 12, rehearsal)).toMatchObject({ ok: false, reason: /an? open rehearsal cannot/ });
+    expect(checkElectionDeletable({ ...certified, poolKeyDestroyedAt: null }, 12, rehearsal)).toMatchObject({ ok: false, reason: /encryption key/ });
+    expect(checkElectionDeletable(certified, 12, { ...rehearsal, officeTerms: 1 })).toMatchObject({ ok: false, reason: /started a term of office/ });
+    // A real election, or a rehearsal where testing mode is off (production), keeps the ordinary rule.
+    expect(checkElectionDeletable(certified, 12, { ...rehearsal, rehearsal: false })).toMatchObject({ ok: false, reason: /only cancelled/ });
+    expect(checkElectionDeletable(certified, 12, { ...rehearsal, testingMode: false })).toMatchObject({ ok: false, reason: /only cancelled/ });
+    expect(checkElectionDeletable({ ...certified, state: 'cancelled' }, 3, { ...rehearsal, testingMode: false }).ok).toBe(false);
   });
 });
 

@@ -38,6 +38,17 @@ const { busy, error, challenge, code, run, submitCode } = useSignInFlow(() => {
   return router.replace(redirect ?? (session.me?.member ? '/account' : '/register'));
 });
 
+/** Why the visitor is here, when a page that needs a sign-in sent them (the router passes it as `redirect`). */
+const PURPOSES: readonly (readonly [string, string])[] = [
+  ['/ballot', 'see your ballots and vote'],
+  ['/admin', 'use the admin console'],
+  ['/account', 'manage your account'],
+];
+const purpose = computed(() => {
+  const page = typeof route.query.redirect === 'string' ? route.query.redirect.split(/[?#]/)[0] : null;
+  return PURPOSES.find(([path]) => page === path || page?.startsWith(`${path}/`))?.[1];
+});
+
 onMounted(async () => {
   try {
     enabled.value = await api<Record<SignInProvider, boolean>>('GET', '/v1/sign-in-methods');
@@ -69,6 +80,7 @@ function submitEmail() {
   <q-page padding>
     <div class="ustp-content ustp-narrow">
       <h1 class="text-h5">Sign in</h1>
+      <p v-if="purpose">Sign in to {{ purpose }}.</p>
       <q-banner v-if="error" class="bg-negative text-white" rounded>{{ error }}</q-banner>
       <q-banner v-if="notice" class="bg-positive text-white" rounded role="status">{{ notice }}</q-banner>
 

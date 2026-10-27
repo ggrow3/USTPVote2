@@ -104,7 +104,7 @@ flowchart LR
 | `apps/server` → **worker** | Same image, different entrypoint, Cloud Run service (internal ingress, callable only by the Scheduler/Tasks invoker account) | Election clock, pool sealing, tally, ledger blocks, anchoring, email. |
 | `packages/tally` (`ustp-tally`) | Pure TypeScript, zero dependencies | Ballot validation and deterministic counting for every contest type. Published publicly (spec §1.1). |
 | `packages/audit` (`ustp-audit`) | Pure TypeScript, depends only on `@noble/hashes` | JCS, SHA-256, hash chains, RFC 9162 Merkle trees and proofs, ballot commitments, tie-break ordering. Isomorphic (Node + browser). Published publicly. |
-| `packages/domain` (`ustp-domain`) | Pure TypeScript | Shared types, state machines, role rules, two-person checks, Firestore path constants, sealed blocks, results bundles, and the receipt and results checks the browser, the CLI and the tests share. |
+| `packages/domain` (`ustp-domain`) | Pure TypeScript | The domain layer (§3.3): shared types, state machines, role rules, two-person checks, aggregate commands, Firestore path constants, sealed blocks, results bundles, and the receipt and results checks the browser, the CLI and the tests share. |
 | `packages/verify` (`ustp-verify`) | Node CLI, depends only on `ustp-audit` and `ustp-domain` | Independent verification from public artifacts only (§16). |
 
 **Why one server package with two entrypoints:** the API and worker share Firestore repositories, KMS adapters and
@@ -128,11 +128,65 @@ packages/domain    ustp-domain  (internal)
 packages/verify    ustp-verify  independent verifier CLI (public)
 infra/firebase     firestore.rules, storage.rules, indexes (firebase.json at the root: hosting, emulators)
 infra/terraform    project, IAM, KMS, buckets, Cloud Run, scheduler, Binary Authorization (see its README)
-docs/              this design, the source spec, ADRs
+docs/              this design, the domain model (DOMAIN-MODEL.md), the source spec, ADRs
 ```
 
 Toolchain: npm workspaces, TypeScript 6 (ESM, `nodenext`), Vitest, Vite 8 with `@quasar/vite-plugin`.
 Builds use the committed lockfile with `npm ci --ignore-scripts` (spec §7).
+
+### 3.3 Domain structure
+
+The code follows domain-driven design: bounded contexts that match this document's sections, each owning its
+collections, with the rules in the pure core and the GCP code around them. [DOMAIN-MODEL.md](DOMAIN-MODEL.md) holds
+the context map, the aggregates and their invariants, the ubiquitous language and the migration path; contexts move to
+this structure one at a time, without changing routes, documents or the ledger.
+
+| Context | Sections | Owns |
+|---|---|---|
+| Accounts & identity | §4 | `accounts`, `account_identities`, `sign_in_methods` |
+| Membership | §5.1–5.3 | `members`, `member_status_history`, `applications`, `profile_photos`, `photo_checks` |
+| Bylaws | §5.2, §5.4, §6.6 | `bylaws_versions`, `bylaws_checks`, `bylaws_check_references` |
+| Elections | §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results` |
+| Offices | §6.4 | `positions`, `position_terms` |
+| Governance | §10 | `role_assignments`, `approval_requests`, `testing_personas` |
+| Audit ledger | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` |
+
+**Layers.** Records stay plain data (Firestore stores them, JCS hashes them, the browser reads them), so an aggregate
+is its record types plus pure functions in `ustp-domain`:
+
+- **Domain** (`packages/domain/src/<context>/`): records, rule checks and *commands*, such as
+  `decideApplication(...)`, that take the current records and a request and return an `Outcome`: the next records and
+  the domain events, or a refusal saying why and of what kind (`forbidden`, `not_found`, `conflict`, `rate_limited`).
+  No I/O and no clock: the time comes in as an argument. The ledger entries are the domain events (`LedgerEvent`, §8.2).
+  The package keeps one entry point; the folders only organise it.
+- **Application** (`apps/server/src/<context>/*.service.ts`): authorise the caller, open the transaction, load through
+  repositories, run the command, append its events to the ledger and save, in that order (Firestore reads come before
+  writes). `assertCheck` and `accepted` turn a refusal into the HTTP status it has always had (409 by default).
+- **Infrastructure** (`*.repository.ts`, `infra/`): one repository per aggregate, which alone knows its collection
+  paths; the KMS, Secret Manager and Vision adapters.
+- **Interface**: the controllers and worker routes of §12 and §13, unchanged.
+
+**Ports.** A context publishes a small read or command interface for the others, called inside their transaction
+where they need it, and keeps its repositories to itself. `apps/server/src/boundaries.test.ts` fails if code outside a
+converted context names its collections or imports its repositories; the API module registers each context's
+providers from its `providers.ts`.
+
+**Converted so far: Membership** (members and applications). `ustp-domain/membership/` holds the member-status
+machine, the application rules, the records, the Member aggregate (`memberStatusTransition`, `resignMembership`,
+`changeMemberStatus`, `testVoterAdmission`) and the MembershipApplication aggregate (`submitApplication`,
+`decideApplication`). In the server, `MemberRepository` and `ApplicationRepository` store them, and `Members` and
+`MembershipApplications` are the application services. Elections take the roll's Active members, accounts and testing
+show statuses and photos require a member record through the `MemberDirectory` port; testing admits a voter persona
+through `Members`. Bylaws versions are still served by `MembershipService` until the bylaws context is split out.
+
+**The web app** follows the same contexts ([DOMAIN-MODEL.md](DOMAIN-MODEL.md) §7). The root of `apps/web/src` holds the
+app shell (router, layout and menu, the admin console that composes each context's panels, PWA), the client kernel
+(`api.ts`, `session.ts`, `firebase.ts`, `acting.ts`) and the UI kit (`a11y.ts`, `dialogs.ts`, `forms.ts`, the CSS);
+each converted context has a folder with its typed client (`api.ts`, the only place its routes are written), its pages
+and panels, and its wording. The browser runs `ustp-domain`'s rules to offer only what the API will accept and keeps
+no copy of its own; `apps/web/src/boundaries.test.ts` fails if a context's routes appear outside its client. Converted
+so far: `membership/` (the Register page and the Applications and Members panels; the status changes the Members panel
+offers come from `adminStatusChanges` in `ustp-domain`).
 
 ## 4. Identity and accounts
 
@@ -192,8 +246,7 @@ Builds use the committed lockfile with `npm ci --ignore-scripts` (spec §7).
 - **Safety switches.** `APP_CHECK_ENFORCED=false` and `ADMIN_MFA_REQUIRED=false` exist for local development and
   integration tests; the server refuses to start with either unless the Firestore and Auth emulators are configured.
   The emulator stand-ins `PHOTO_CHECKER=local`, `SECRET_STORE=emulator`, `AUDIT_SIGNER=emulator` (a local P-256
-  key kept in Firestore), `BALLOT_POOL=emulator` (local RSA keys) and `GRAVATAR_URL` (any address but Gravatar's) are
-  refused the same way.
+  key kept in Firestore) and `BALLOT_POOL=emulator` (local RSA keys) are refused the same way.
 - **Bootstrap.** Emails listed in `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` become System Admins once their account exists and
   the email is verified (checked on every `POST /v1/accounts`, which the web app calls on each sign-in and after
   verification; ledgered with actor `bootstrap`). An account that has ever held the role is never re-granted, so a
@@ -240,6 +293,13 @@ Every transition writes, in one transaction, the new status on `members/{account
      submit is stopped in the browser with the answers kept. The api still refuses any application from an unverified
      address.
   3. *Membership review*: the submitted application's status, until a Membership Admin decides it.
+- **Who sees what.** The web app's menu shows the same four links to everyone, signed in or not: Register, Ballot,
+  Verify and Admin; each page tells people it is not for what they can do instead. On Register, signed-out visitors
+  start at step 1, and people who may apply (no membership, or a rejected or resigned one: `mayApply` in
+  `ustp-domain`) at step 2. An applicant sees step 3. An Active, lapsed or suspended member sees their status instead
+  of the form, and what can change it: a Membership Admin renews a lapsed membership or reinstates a suspended one,
+  and the member can resign on the Account page. Ballot needs a sign-in, and someone on no current roll is told why
+  from their membership status (not a member yet, an applicant, lapsed or suspended, or Active but on no roll).
 - `applications/{applicationId}` stores the answers, the bylaws version accepted and that version's content hash
   (`bylaws_versions/{version}`), so it is provable which text the applicant agreed to. An application is accepted
   only against the *current* bylaws (version and hash must both match) and only from a verified email address.
@@ -273,6 +333,22 @@ Every transition writes, in one transaction, the new status on `members/{account
 - Separation of duties within membership: an admin cannot decide their own application or change their own status.
   Status changes other than application decisions (suspend, reinstate, lapse) use a separate endpoint so an
   application can never be bypassed.
+- **Member profiles.** A Membership Admin opens any member from the Members or Applications tab:
+  `GET /v1/admin/members/{accountId}` gives the member record, every application the account made with all its
+  answers (date of birth included, as it is for the review), and the status history. The profile page shows them, with
+  Change status and Correct details. Opening a profile is not ledgered or logged, like every other admin read. System
+  Admins do not see profiles: their People list stays as in §10.3.
+- **Changing details after joining.** The record keeps what membership uses, and it changes in two ways, each ledgered
+  as `member.details_changed` with the names of the fields that changed (`legalName`, `contact.phone`,
+  `communications.newsletter`…) and never their values, since the ledger cannot be erased:
+  - *The member*, on their Account page (`POST /v1/me/details`): preferred name, state, city, ZIP, phone, and the two
+    email opt-ins. An opt-in keeps the time it was first given; withdrawing it clears it. Not the legal name.
+  - *A Membership Admin*, on the profile (`POST /v1/admin/members/{accountId}/details`): legal and preferred name,
+    state, city, ZIP and phone, with a written reason; never the opt-ins, which are the member's to give, and never
+    their own record.
+
+  Both use the application's rules for the fields they share (`ustp-domain`), and a change that changes nothing is
+  refused. The applications themselves are never edited: they stay the record of what was agreed to.
 - **Address minimization:** the street address is used once to look up state/district, then discarded — never
   written to Firestore, logs or task payloads. Only the derived `state` / `district` are stored. The lookup provider is
   open (Q8).
@@ -307,33 +383,11 @@ Optional, for members with a membership record (applicants included).
    that runs only while its window is open, and the photo taken is not mirrored. Either way the photo goes through
    the same review and upload; nothing leaves the browser before that. Hosting already allows the camera for the
    site's own pages (`Permissions-Policy: camera=(self)`).
-9. **Using a Gravatar:** the member opens "Use Gravatar", which says what will be sent, and chooses "Get my
-   Gravatar". Only then does the api, never the browser, call `GET /v1/me/photo/gravatar` →
-   `https://gravatar.com/avatar/{hash}?s=1024&d=404&r=g`, where the hash is SHA-256 of the email the member signed in
-   with, trimmed and lowercased (Gravatar's current scheme). The address must be verified and the member must have a
-   membership record, as for an upload (409 otherwise, and Gravatar is not asked); a System Admin acting as a test
-   persona cannot use it (§10.4). `d=404` makes "no picture" a 404, which the member sees as "Gravatar has no picture
-   for that address, or none rated G" with an offer to upload instead; `r=g` takes only pictures rated G. The fetch
-   allows 5 s for the whole answer and stops reading past 5 MB, follows no redirects and takes only image content
-   (503 if Gravatar does not answer, 502 if the answer cannot be used). The api normalizes the picture as in step 2
-   (GIFs too, first frame) and returns the JPEG without storing anything. The member reviews it like any other photo
-   and uploads it with `PUT /v1/me/photo`, so the image bytes are stored in the photos bucket (never a link to
-   Gravatar) and get the same check and review: there is no other way in.
-
-   **Privacy.** Each lookup sends Gravatar (Automattic) the hash, with the api's address and the time; no name,
-   account ID or cookie. A hash is not anonymous: Gravatar uses it to find the account it belongs to, and anyone with a
-   list of addresses can match it. Gravatar can also tell the request came from this service, so it may infer that the
-   address belongs to a USTP member or applicant. That is why it happens only on the member's request, after the
-   dialog says so, and never for anyone else's address. The browser never contacts Gravatar, and nothing about the
-   lookup is stored; a failed one is logged without the address. The camera (step 8) sends nothing anywhere until the
-   member uploads the photo.
 
 With the emulators there is no Vision API, so a local stand-in (`PHOTO_CHECKER=local`, refused outside the emulators)
-assumes one clear face and flags only dark images, so the review flow can be exercised. Gravatar has no emulator:
-`GRAVATAR_URL` points the api at a stand-in (the integration tests run one), and without it the emulators use the real
-Gravatar. Deployment needs: the `PHOTOS_BUCKET` (private, uniform bucket-level access), the Vision API enabled, the api
-service account allowed to read, write and delete objects in that bucket, and outbound internet access for the api to
-reach Gravatar (Cloud Run's default; Terraform sets no VPC egress).
+assumes one clear face and flags only dark images, so the review flow can be exercised. Deployment needs: the
+`PHOTOS_BUCKET` (private, uniform bucket-level access), the Vision API enabled, and the api service account allowed
+to read, write and delete objects in that bucket.
 
 ### 5.4 Bylaws check
 
@@ -471,14 +525,63 @@ cancelled election (the detail's `ballotsCast` says how many ballots were cast) 
 gives up: an election that was scheduled, and perhaps opened, loses its published definition and roll; its ledger
 entries still hold their hashes, so nobody can quietly rewrite what was scheduled, but the texts themselves are gone.
 
+**Deleting a rehearsal** *(added)*: where testing mode is on (§10.4, never in production), a rehearsal, an election
+whose approved roll is test voters only, can also be deleted once it is certified or cancelled, whatever was cast in
+it, so a demonstration can run through voting and certification and then be cleared away. `checkElectionDeletable`
+takes whether the roll is a rehearsal, whether testing mode is on and how many terms of office the certification
+started: a closed rehearsal must be certified first (a closed election cannot be cancelled), its ballot-pool key must
+be destroyed as above, and one that seated anybody in an office stays on record, since its terms are part of the
+office holders' history. The delete also removes `results/{electionId}`, and its ballots, participation records and
+sealed blocks go with the election's subcollections; a rehearsal's roll is at most 50 test voters, so this fits the
+one transaction. The `election.deleted` entry adds `rehearsal: true` and `ballotsCast`. The verify CLI accepts a
+deletion after `results.certified` only when the election's `roll.approved` entry records a roll of test voters only,
+and reports it as a rehearsal; what the deletion entry says about itself is not taken on trust. The editor shows
+Delete on a certified rehearsal too (the detail's `ballotsCast` and `officeTerms`). Where testing mode is off, a
+rehearsal is held to the rule above.
+
+**Workflow in the election editor** *(added)*: the editor shows where the election is in this lifecycle and what its
+next step waits on, as swim lanes of who does each step, with the current step highlighted, and beside them the same
+steps as a list. The
+steps are Draft (readiness checks, voter roll, scheduling), Scheduled, Open, Closed (ballots sealed, results computed,
+certification) and Certified, with Cancelled and Deleted as the ways out. `electionProgress` in `ustp-domain` works
+them out from the admin view of the election (`ElectionDetail`) and the time: each step is done, current (exactly
+one), to come, possible (a way out still open) or not reached (after a cancellation; cancelling once closed). The draft
+steps follow the editor's own order, so a roll approved before the checks pass shows as done out of order; a
+cancelled election keeps the steps it reached, read from `scheduledAt` and `openedAt`, and Deleted stays possible
+while the rule above can still be met (nobody voted, or a rehearsal that seated nobody, where testing mode is on). What it waits on is what the data says, nothing more: an Election Admin's request (roll,
+scheduling, certification) or fixing what the readiness checks list; an Auditor's decision on a pending request
+(roll, scheduling, certification, cancellation), with the time it was asked; or the worker's tick (§13), for a
+secret election's pool key, the opening or closing time (or, once it has passed, the next tick), sealing, the tally
+and destroying the pool key.
+
+The swim lanes have a lane for each who acts: the Election Admin, who builds the ballot and requests the roll,
+scheduling, certification and cancelling, cancels a draft at once and deletes; the Auditor, who approves each of those
+requests (§10.2); the worker, which on its clock makes and later destroys a secret election's ballot key, opens and
+closes voting, seals the ballots and counts them; and the voters, the members on the roll. Across the lanes is a band
+for each state, Draft to Certified, then Cancelled and Deleted as the ways out, and in them the actions in the order
+they happen, an arrow from each to the next (a request and its approval side by side in one row). A secret
+election's key steps are left out of a roll-call one. Each action's status is its step's, made finer by what the
+election waits on: while an Auditor's decision is awaited, the Election Admin's request is done and the decision is
+current; while voting is open, voting is current until the closing time and then the worker's closing; a cancelled
+election shows the way it was cancelled as done and the step it would have taken next (opening, closing) as not
+reached. `swimLanes` in the web app works this out from `electionProgress`, so the lanes and the list never disagree.
+The lanes are an SVG the app draws itself from fixed labels, never an election's own text, laid out to the width of
+the card (at most 640 px), so the text stays at 12 px from a 320 px phone up; each action's status is marked with a
+symbol as well as a colour, in each theme's palette. The list is what a screen reader reads (the lanes are one image
+to it): an ordered list with `aria-current="step"` on the current step and its status before every step's name. It
+shows nothing the editor did not already hold: no ballots, no participation, no names. It reflects the page as
+loaded, apart from the times, which it rereads every 30 seconds; reloading shows what the worker has done since.
+(Until 2026-10-26 the picture was a flowchart of the steps alone, drawn with Mermaid, which the editor loaded on its
+own and the service worker kept out of the app shell; the lanes need no library.)
+
 **Calendar event** *(added)*: `GET /v1/public/elections/{id}/calendar.ics` is the voting window as one iCalendar event
 (RFC 5545, made by `votingCalendar` in `ustp-domain`): `UID` the election ID (a UUIDv7, as RFC 7986 recommends),
 `DTSTART` `opensAt` and `DTEND` `closesAt` in UTC, `SUMMARY` "USTP vote: " and the title, the election's description
 and the ballot page's address in `DESCRIPTION`, the ballot page as `URL`, `DTSTAMP` the time it was made, and
 `TRANSP:TRANSPARENT` so a week of voting does not show as busy. It is served for every election past its draft and holds
 only what the public record shows, so it is one file for everyone: the link carries no credentials and says nothing
-about who is on the roll. The ballot list and the ballot page link to it ("Add to calendar") while an election is
-scheduled or open and the voter has not voted; the results page does not, since voting is over by then. The window is
+about who is on the roll. No page links to it any more (the ballot list and the ballot page did, as "Add to
+calendar", until 2026-10-26); the address stays public, for anyone who wants the event. The window is
 frozen at scheduling and drafts are never published, so a downloaded event's times cannot go stale and `SEQUENCE`
 stays 0. Cancelling is the one change: the event becomes `STATUS:CANCELLED` with `SEQUENCE:1`, which replaces the
 earlier copy when the file is opened again, but a file already imported is not updated by itself. Once a cancelled
@@ -830,7 +933,7 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   `approval.requested`, `approval.decided`, `signin_method.changed`. Added since: `photo.decided`, `roll.approved`,
   `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled` (M2–M3a), `ballots.sealed`,
   `election.sealed` (M3b), `results.computed` (M4a), `results.certified`, `election.pool_key_destroyed`,
-  `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted` (M5). The authoritative list is
+  `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed` (M5). The authoritative list is
   `LEDGER_EVENT_TYPES` in `ustp-domain`.
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
   entries are public. A public verifier checks a public entry by Merkle inclusion in its ledger block (§8.3) without
@@ -974,6 +1077,23 @@ resultsHash = H(JCS(bundle))
   UTF-8 without a byte-order mark, and any cell starting with `=`, `+`, `-`, `@`, tab or carriage return gets a
   leading `'` so a spreadsheet cannot run it as a formula. Links use the host the request arrived at:
   `X-Forwarded-Host` (sent by the Vite dev proxy, and expected from Firebase Hosting's rewrite), else `Host`.
+- **Word document** *(added)*: "Download as Word" on the results page (beside the CSV), and "Download ballot as Word"
+  on the ballot page and in the election editor, save the election as a `.docx`, which Google Docs opens as it is
+  (upload it to Drive, then Open with Google Docs). The browser builds it with the `docx` library the bylaws copies use
+  (`apps/web/src/election-docx.ts`, loaded only on download), so no endpoint, Google API or sign-in is involved. The
+  ballot: title, voting window, secret or roll-call, and every contest in order with its description, its rules in
+  words (seats, choices, ranking limit, pass rule, quorum), candidates and statements, and each proposal's text (for an
+  amendment, the bylaws lines it changes, then the reasons). On the results page the results follow: provisional, or
+  certified with the date; turnout; per contest the outcome, the counts, the IRV rounds, tie-breaks and the tie-break
+  order; then the results hash, definition hash and revealed seed, with links to the results page and the signed
+  bundle. A stamp block like the bylaws copies' gives the hashes and says the signed bundle is the record; a draft's is
+  marked as not final, with the definition hash as it stands. It holds only what the page already shows: the
+  definition, the signed results, and the proposal texts the viewer may read. The public record names proposals by
+  title and content hash only, so the results page fetches the ballot (`GET /v1/elections/{id}/ballot`) for a
+  signed-in voter on the roll and otherwise names each text by its hash; no roll, participation or voter identity goes
+  in. The builder refuses a proposal text that does not hash to the definition's `contentHash`, and results whose
+  `definitionHash` is not the definition's. File name `ustp-vote-<title>-<date>.docx`, with `-ballot` before the date
+  for the ballot alone.
 
 **Checking results** (`checkResults` in `ustp-domain`, run by the results page `/results/{id}` and by the integration
 tests): the bundle's hash and signature; that it names the frozen definition and the approved roll; that the revealed
@@ -993,8 +1113,8 @@ results page, the CLI and the tests pass it that entry.
 
 | Capability | Membership Admin | Election Admin | Auditor | System Admin |
 |---|:-:|:-:|:-:|:-:|
-| Triage applications and photos; change member status | ● | | | |
-| Create/edit draft elections, contests, proposals; delete a cancelled election nobody voted in (at once; §6.1) | | ● | | |
+| Triage applications and photos; view member profiles; change member status; correct member details (§5.2) | ● | | | |
+| Create/edit draft elections, contests, proposals; delete a cancelled election nobody voted in, or a finished rehearsal in testing mode (at once; §6.1) | | ● | | |
 | Request roll snapshot, scheduling, certification, cancellation | | ● | | |
 | Define or change offices (at once; §6.4) | ● | ● | | |
 | Approve roll, scheduling, certification, cancellation, ending a term of office | | | ● | |
@@ -1004,6 +1124,11 @@ results page, the CLI and the tests pass it that entry.
 **Incompatible role pairs:** Auditor with any other role. An Election Admin who is a candidate in an election may not
 act on that election (Q12; enforced on every edit, and nobody can add themselves as a candidate). All admin roles require MFA. The first System Admin is bootstrapped once from deployment
 configuration and ledgered.
+
+The admin console is in the web app's menu for everyone (§5.2). Signed out, it leads to sign-in and back; signed in
+with no role, to a page saying it is for party officers and that a System Admin grants roles (§10.2). Each officer
+sees the tabs their roles allow, and a page their roles do not cover (an election, for a Membership Admin) returns to
+the console.
 
 ### 10.2 Two-person rule
 
@@ -1097,14 +1222,16 @@ different account on each side. Testing mode lets one System Admin do that alone
 - **Rehearsal roll:** the Election Admin can request a roll of the test voters only (§6.3), which the editor offers as
   "Request rehearsal roll" in testing mode and marks "Rehearsal roll: test voters only". The verify CLI reads who the
   roll holds from the ledger and reports a rehearsal as one.
+- **Clearing a rehearsal away:** once certified or cancelled, a rehearsal can be deleted permanently, ballots and
+  results included, unless it seated someone in an office (§6.1, "Deleting a rehearsal"). Its ledger entries stay.
 - **Effect on the record:** what a persona does is real data in that deployment's ledger, rolls and results. That is
   acceptable only because testing mode is confined to test deployments.
 
 ## 11. Data model (Firestore `(default)` database)
 
-Firestore Native mode has no namespaces. The spec's two namespaces are **module boundaries in code**: each module owns
-its collections through its own repository classes, and other modules go through its service. Physically,
-registration collections are top-level and election data lives under each election.
+Firestore Native mode has no namespaces. The spec's two namespaces are **module boundaries in code**: each bounded
+context (§3.3) owns its collections through its own repositories, and other contexts go through the port it publishes.
+Physically, registration collections are top-level and election data lives under each election.
 
 | Path | Key | Mutability | Notes |
 |---|---|---|---|
@@ -1113,7 +1240,7 @@ registration collections are top-level and election data lives under each electi
 | `account_identities/{uid}` | Identity Platform uid | create/delete | → `accountId`, provider, linkedAt |
 | `account_factors/{accountId}/factors/{factorId}` | | mutable | mirror of MFA enrollment, no secrets |
 | `sign_in_methods/{method}` | provider ID | mutable | enabled flag (auth switches) |
-| `members/{accountId}` | accountId | mutable | current status, state/district, city + ZIP + phone, email consents, bylaws version, memberSince |
+| `members/{accountId}` | accountId | mutable | current status, legal and preferred name, state/district, city + ZIP + phone, email consents, bylaws version, memberSince; details change only as §5.2 says |
 | `member_status_history/{id}` | auto | append-only | from, to, reason, actor, ledger seq |
 | `applications/{applicationId}` | auto | status only | answers (incl. date of birth and attestations, §5.2), bylaws version + hash |
 | `bylaws_versions/{version}` | version | immutable | text, content hash *(added)*; `adoptedIn` when an election's amendments gave it (§6.6) |
@@ -1147,7 +1274,8 @@ registration collections are top-level and election data lives under each electi
 
 The spec places `role_assignments` and `audit_events` in the voting namespace; they serve both modules, so the
 design treats them as a shared audit/admin module. Path constants and document shapes live in `ustp-domain`
-(`Collections`, `records.ts`) as the single source of truth. Timestamps are ISO 8601 strings from the server clock:
+(`Collections`; `records.ts`, or a converted context's own, such as `membership/records.ts`) as the single source of
+truth. Timestamps are ISO 8601 strings from the server clock:
 they sort lexically, survive JSON unchanged and can be JCS-hashed. Member status history is ordered by ledger sequence
 number, not time.
 
@@ -1165,8 +1293,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /sign-in-methods` | P | which sign-in providers are switched on (sign-in buttons) |
 | `POST /registration/applications` · `GET /registration/applications/me` | M | apply; status |
 | `POST /me/resign` | M | resign membership |
+| `POST /me/details` | M | own preferred name, state, city, ZIP, phone and email opt-ins (§5.2) |
 | `PUT /me/photo` · `GET /me/photo` · `GET /me/photo/image` · `DELETE /me/photo` | M (member record) | profile photo |
-| `GET /me/photo/gravatar` | M (member record, verified sign-in email) | the member's Gravatar, fetched now, for review; nothing stored |
 | `GET /elections` | M | elections the caller is eligible for |
 | `GET /elections/{id}/ballot` | V | ballot definition and hash |
 | `POST /elections/{id}/ballots` | V | cast (409 if already voted) |
@@ -1174,7 +1302,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /public/elections/{id}` · `.../sealed-blocks` · `.../results` | P | published record (non-draft): definition, roll size and root, block summaries, results status; block contents once closed; the signed results bundle once tallied (404 until then) |
 | `GET /public/elections/{id}/amended-bylaws` | P | the bylaws as the election's passed amendments give them, once certified (404 if it amends none, 409 before; §6.6) |
 | `GET /public/elections/{id}/results.csv` | P | the results as CSV for spreadsheets (Google Sheets `IMPORTDATA`), an unsigned copy of the bundle served when it is (404 until then; §9) |
-| `GET /public/elections/{id}/calendar.ics` | P | the voting window as an iCalendar event for "Add to calendar", any non-draft election, the same for every caller (§6.1) |
+| `GET /public/elections/{id}/calendar.ics` | P | the voting window as an iCalendar event, any non-draft election, the same for every caller; no page links to it (§6.1) |
 | `GET /public/elections/{id}/proofs/{commitment}` | P | inclusion proof for a receipt |
 | `GET /public/ledger/blocks` (paged) · `.../blocks/{index}` · `.../keys` · `GET /public/anchors/latest` | P | signed ledger blocks, signing keys, anchors |
 | `GET /public/ledger/entries/{seq}` | P | a public entry with its block and inclusion proof |
@@ -1182,12 +1310,13 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /admin/bylaws/checks` · `GET /admin/bylaws/checks/{checkId}` | Membership Admin | queue the advisory bylaws check of a draft (202; 409 while the admin's last one runs, 429 past 20 a day, 503 when off); read it until done (§5.4) |
 | `GET /admin/applications` · `POST /admin/applications/{id}/decision` | Membership Admin | registration triage |
 | `GET /admin/members` · `GET /admin/members/{accountId}/history` | Membership Admin | member list (paged), status history |
+| `GET /admin/members/{accountId}` · `POST /admin/members/{accountId}/details` | Membership Admin | member profile (record, applications with answers, history); correct names, state, contact with a reason (§5.2) |
 | `POST /admin/members/{accountId}/status` | Membership Admin | status changes |
 | `GET /admin/photos` · `GET /admin/photos/{id}/image` · `POST /admin/photos/{id}/decision` | Membership Admin | photo review |
 | `GET /admin/elections` · `GET /admin/elections/{id}` (detail, definition hash, problems) · `GET /admin/proposals` | Election Admin, Auditor | read election setup |
 | `POST /admin/elections` · `PATCH /admin/elections/{id}` · `POST\|PUT\|DELETE …/contests[/{cid}]` · `POST\|DELETE …/contests/{cid}/candidates[/{kid}]` · `POST /admin/proposals` | Election Admin | edit drafts |
 | `POST /admin/elections/{id}/roll` · `.../schedule` · `.../cancel` · `.../certify` | Election Admin | roll snapshot (`voters: 'test_voters'` for a rehearsal roll, testing mode only, §6.3), scheduling, cancellation and certification requests (draft cancel is immediate) |
-| `POST /admin/elections/{id}/delete` | Election Admin | permanently delete a cancelled election nobody voted in, at once (204; 409 otherwise; §6.1) |
+| `POST /admin/elections/{id}/delete` | Election Admin | permanently delete a cancelled election nobody voted in, or in testing mode a certified or cancelled rehearsal with its ballots, at once (204; 409 otherwise; §6.1) |
 | `GET /admin/positions` · `POST /admin/positions` · `POST /admin/positions/{id}/terms/{termId}/end` | any admin (read); Membership or Election Admin | offices and terms; define or change an office (at once), end a term (→ approval) |
 | `GET /public/positions` | P | offices and who holds them now |
 | `GET /admin/elections/{id}/roll` | Election Admin, Auditor | latest roll with member names, for review |
@@ -1255,11 +1384,6 @@ worker against the emulators and calls the tick and the bylaws checks every 15 s
   and references are marked as material, not instructions, in the prompt; the answer is held to a JSON schema,
   findings naming lines that do not exist are dropped, and the browser shows them as plain text. A wrong or manipulated
   answer can only mislead a reader: it publishes, blocks and ledgers nothing.
-- **Gravatar (§5.3):** the api fetches from one fixed address (`GRAVATAR_URL` is refused outside the emulators) built
-  from a hash, so a member cannot steer the request; redirects are refused, so it cannot be bounced to the metadata
-  server or anywhere else. The answer is limited in time (5 s) and size (5 MB), must be an image, and is decoded with
-  `sharp` under the same pixel limit as an upload before anything is returned. Only the signed-in member's own verified
-  address is looked up, only on their request.
 - **Logging:** structured logs with redaction; no request bodies on cast; Firestore Data Access audit logs off in
   production (they would record write paths and times; pool encryption makes them harmless, but there is no need for
   them); KMS Data Access audit logs on.
@@ -1370,7 +1494,13 @@ Decisions for USTP; the design's proposed default is in brackets.
 7. **Anonymity threshold k** and minimum election size. [k = 10]
 8. **District lookup provider** for addresses (Google's Civic Information representatives API was retired in 2025). [state only in V1]
 9. **Breached-password screening:** acceptable to query a third-party k-anonymity range API (e.g. HIBP) from the browser? [yes, browser-side]
-10. **Participation transparency:** after close, who sees *who voted* — auditors only, or all members? [auditors; members on request]
+10. **Participation transparency:** who sees *who voted*, while voting is open and after close: Election Admins,
+    Auditors, all members? [Election Admins see turnout counts only (ballots cast against the roll), never who
+    voted, so whoever runs an election cannot chase or pressure particular members, and a misused admin account
+    gives away a number; Auditors see the participation list after close, to catch ballots cast in a member's name
+    (§2); each member sees only their own status (`GET /v1/elections/{id}/participation/me`). Not built yet: no admin
+    view shows turnout before the results or the participation list. Roll-call ballots are published with names
+    after close anyway (§7.4)]
 11. **Anchor retention period** for the production Bucket Lock (irreversible once locked). [10 years]
 12. **Recusal:** must an Election Admin who is a candidate step aside for that election? [yes]
 13. **Infrastructure as code:** Terraform acceptable? [yes]
@@ -1383,8 +1513,6 @@ Decisions for USTP; the design's proposed default is in brackets.
     environments? Is "Transhumanist principles" rightly Article I of the USTP Constitution plus the Transhumanist Bill of
     Rights 3.0? Should the repository instead carry dated copies of the party's texts (they are USTP's own, marked "All
     Rights Reserved")? [off until agreed; those two texts; read from the party's site]
-19. **Gravatar (§5.3):** should the privacy notice name Gravatar (Automattic) as a service a member may choose to send
-    a hash of their address to, and should the option be offered at all? [offered; named in the notice]
 
 ## 19. Roadmap
 
@@ -1394,5 +1522,5 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M1 — Identity & registration** | *Done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes (two-person at first, one System Admin since M5; §10.2), auth switches, Auditor ledger verification; web sign-in (Google, Microsoft, Apple, email/password, email link), registration, account and admin console. admin two-step verification (authenticator-app setup, code step at sign-in, re-authentication for approvals, typed MFA/re-auth problems); profile photos (normalized upload, automatic checks, admin review). *Still to exercise against a real project:* authenticator-app setup and sign-in (TOTP), and Cloud Vision photo checks — neither has an emulator |
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
-| **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, not yet applied; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell and never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); a profile photo from the member's Gravatar, fetched by the api only on request and then reviewed and uploaded like any photo (§5.3); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1); "Add to calendar" for a voting window, an iCalendar event from the public record linked from the ballot list and ballot page (§6.1). *Still to do:* bring up dev for real (first apply, Identity Platform, first release); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
+| **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Word export done:* the ballot and results as a `.docx` built in the browser, for Word and Google Docs, from the results page, the ballot page and the election editor (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, not yet applied; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list (§6.1). *Still to do:* bring up dev for real (first apply, Identity Platform, first release); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |

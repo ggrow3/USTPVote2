@@ -25,13 +25,6 @@ test. Keep it current when pages change.
   each change.
 - **Both themes** (light, and dark via `prefers-color-scheme`), and **320 px wide** for reflow.
 - **Contrast** computed from the actual colours (WCAG relative luminance), not estimated.
-- **Added 2026-10-22, profile photo from Gravatar** (account page, against the emulators with a Gravatar stand-in):
-  keyboard only from "Use Gravatar" through "Get my Gravatar" to the review dialog and the upload; Escape returns
-  focus to "Use Gravatar"; both dialogs are named by their titles; "Asking Gravatar for your picture…" goes to the
-  status region and a missing or slow picture is a `role="alert"` message in the dialog with an "Upload a photo"
-  alternative; nothing can be dismissed half-way through the request. At 320 px the card's buttons wrap with no
-  horizontal scrolling; the new text is 4.94:1 or better in both themes (primary on white and white on primary 4.94,
-  error text 6.41 light / 7.83 dark, accent on the dark card 5.84).
 - **Added 2026-10-23, registering as one flow** (Register page, against the emulators, signed out): the step list
   (an `ol` named "Steps to register", `aria-current="step"` on the current step, hidden "Done:" before finished ones);
   the create-login form (empty submit focuses Email, both messages linked to their fields, the password message follows
@@ -57,15 +50,32 @@ test. Keep it current when pages change.
   keeps its place in the reading order, and the election editor's back button now shows its name, "Administration"
   (it was an icon named "Back to administration"). Dark-theme admin panels now sit on the page background (#121212)
   like every other page rather than Quasar's #1d1d1d panel, which only raises the contrast of text on them.
-- **Added 2026-10-23, "Add to calendar"** (ballot list and ballot page, against the emulators as v1 and v2, light and
-  dark, 1280 px and 320 px): both are links (`<a href>` to the public `.ics`), not buttons, since they fetch a file.
-  On the list each is its own row under its election, like "Results of …", named by its visible text ("Add 2026
-  Officer Election to your calendar"); on the ballot page the visible "Add to calendar" is followed by hidden text, so
-  its name is "Add to calendar: voting in 2027 Platform Convention" (visible text first, 2.5.3). The icons are hidden
-  from the accessibility tree. On the ballot page Tab goes from the back link to it, with the 2 px focus ring; it is
-  36 px tall and starts on the title's left edge. Primary on white 4.94, accent on the dark page 6.49, list rows black
-  on white. At 320 px long titles wrap inside the row and nothing scrolls sideways. Neither appears once the voter has
-  voted or voting is over.
+- **Added 2026-10-25, the same four menu links for everyone** (every page, against the emulators signed out and as a
+  new login with no membership, an applicant, rejected, resigned, Active (v1), lapsed and suspended members, admin1,
+  elections, auditor, and admin1 acting as a test voter, each on every page at desktop width; then Home, Admin, Register
+  and Ballot at 320 px, Admin in the light theme and the others in the dark): Register, Ballot, Verify
+  and Admin are always there, and the current page's link keeps `aria-current="page"` and its underline. Each page
+  still has one `h1` and its title. Ballot and Admin send signed-out visitors to sign-in, which now says why in a line
+  under its heading ("Sign in to see your ballots and vote.") and returns them afterwards, focus on the page's `h1`.
+  Admin for someone with no role, Register for applicants and members, and the empty ballot list for people on no roll
+  are plain text with ordinary links, in a card or the existing grey banner: the banner's link is `#aa4600` on
+  `#eeeeee` (5.05) in both themes, the card's link accent on `#1d1d1d` (5.84) and its caption 7.77 in the dark theme.
+  At 320 px the four links fit on one row (Quasar's xs breakpoint narrows their padding and letter spacing; Admin
+  ends 5 px inside the bar), each 38 px tall, and nothing scrolls sideways; enlarged text wraps them onto a second
+  row.
+- **Added 2026-10-26, member profiles and member details** (against the emulators as elections@example.test, the
+  seeded Membership Admin, and as v2; the profile at 1024 px light and 320 px dark): names in the Members and
+  Applications tabs are links to `/admin/members/{accountId}`, whose `h1` is the member's name (and the page title),
+  focused on arrival, with the Admin link still marked. Its cards have `h2` headings; the applications are expansion
+  items (buttons with `aria-expanded`), the newest open, each answer group an `h3` over a `dl` of question and answer.
+  Correct details is a dialog named by its title; an empty reason focuses the Reason field with its message, and on
+  close focus returns to Correct details. Change status is the members list's menu and reason prompt. Your own record
+  says so in a banner and offers neither. On the account page, Edit details replaces the facts with the form and
+  focuses Preferred name; an invalid phone focuses the phone field with its message; after Save or Cancel focus goes
+  back to Edit details. Someone else's details are typed with `autocomplete="off"`, your own with the usual tokens.
+  Labels are medium weight and values normal weight, both in the page's text colour; "Not given" is `text-grey-7`
+  (4.61 on a light card, 7.77 on a dark one). At 320 px the facts stack, label over value, and nothing scrolls sideways (the bylaws
+  hash breaks).
 
 ## What was fixed
 
@@ -131,6 +141,8 @@ menus and dialogs `#1d1d1d`.
 | Under the tint, light theme (the text's own colour at .08, hover and focus): primary on white (flat and outline buttons, tabs, the current menu item); negative on white; black on white | `#bd4e00` on `#fbf6f3`; `#c10015` on `#fbf3f4`; `#000` on `#f3f3f3` | 4.60; 5.87; 18.93 |
 | Under the tint, dark theme (the text's own colour at .12): accent on the page / a card; `#ef9a9a` on a card; white on a card | `#ff6900` on `#2d231c` / `#362d26`; on `#353030`; on `#363636` | 5.31 / 4.66; 6.04; 12.08 |
 | App icon: white ballot box on primary | `#fff` on `#bd4e00` | 4.94 |
+| Election workflow swim lanes, light (on a white card; bands `#f5f5f5`): the current action, white on primary, and its border, its ▶ mark (on white) and the current band's name on the card / band; a done action, black on `#e8f5e9`, its border on that fill / the card, and its ✓ mark, white on that border colour; other actions black on white; their border, a not-reached action's text and – mark, the lane notes, lane lines and arrows `#757575` on the card / band (other band names are black) | `#fff` on `#bd4e00`; `#bd4e00` on `#fff` / `#f5f5f5`; `#000` on `#e8f5e9`; `#2e7d32` on `#e8f5e9` / `#fff`; `#fff` on `#2e7d32`; `#757575` on `#fff` / `#f5f5f5` | 4.94; 4.94 / 4.53; 18.67; 4.56 / 5.13; 5.13; 4.61 / 4.23 |
+| Election workflow swim lanes, dark (on `#1d1d1d`; bands `#262626`): the current action, black on the accent, and its border, its ▶ mark (on the card) and the current band's name on the card / band; a done action, white on `#203123`, its border on that fill / the card, and its ✓ mark, the card's colour on that border colour; other actions white on the card; their border, a not-reached action's text and – mark, the lane notes, lane lines and arrows `#b0b0b0` on the card / band | `#000` on `#ff6900`; `#ff6900` on `#1d1d1d` / `#262626`; `#fff` on `#203123`; `#81c784` on `#203123` / `#1d1d1d`; `#1d1d1d` on `#81c784`; `#b0b0b0` on `#1d1d1d` / `#262626` | 7.27; 5.84 / 5.24; 13.77; 6.84 / 8.38; 8.38; 7.77 / 6.98 |
 
 Corrections to the first audit: `orange-10` (`#e65100`) is 3.79:1 on white, not 5.60 (5.60 is `deep-orange-10`), so
 warning text failed until it moved to `deep-orange-10`; `orange-9` was 3.08; `text-grey-7` on white is 4.61, not 6.19.
@@ -205,6 +217,8 @@ right of the fields around them.
   the fields' right edge.
 - **Dialog**: `q-card class="ustp-dialog"` (480 px) or `"ustp-dialog ustp-dialog--wide"` (640 px, for long text and
   previews); on a phone either is the screen less Quasar's 24 px margins. Its body is a `q-card-section class="ustp-form"`.
+- **Facts** (a member's details, an application's answers): `<dl class="ustp-facts">` of `dt` and `dd` pairs, labels
+  in one 14rem column everywhere so values line up across cards; stacked, label over value, on phones.
 - **Long sections of one form** (the application): each `fieldset class="ustp-fieldset"` is a card's section, its
   `legend` the heading, then an optional caption, then `<div class="ustp-form">` with the fields.
 
@@ -214,6 +228,34 @@ severity and source ("Flagged by the check: finding 2, likely conflict with the 
 named "Edit line 6 (flagged)"; each finding gives its severity in words ("Clear conflict", "Likely conflict",
 "Possible tension"), and its line buttons ("Go to line 6") switch to the line list, scroll the line into view and move
 focus to its edit button. Start and finish are announced through the live region; a failure is a banner.
+
+The Word downloads (design §9) were checked on 2026-10-25 against the emulators, in both themes and at 320 px. Each
+button's name starts with its visible text and adds the election ("Download ballot as Word: 2026 Officer Election",
+"Download as Word: …, ballot and results"); on the results page it is described by the line under it, which says what
+the file holds and how to open it in Google Docs. The button shows a spinner while the file is built, and a failure is
+a toast. The file itself uses Word's own structure, which Word, Google Docs and screen readers in both navigate: the
+title and Heading 1–3 styles, real bullet lists, tables with a header row that repeats on each page, links as links, a
+document title and the language (en-US).
+
+The election editor's workflow (design §6.1) was checked on 2026-10-26 against the emulators, in both themes and at
+320 px, for elections in draft, scheduled, open, closed, certified and cancelled. The card "Where this election is"
+(an `h2`) says the current step and what it waits on in its caption. The steps are an `ol` named "Steps of this
+election" and a `ul` named "Ways out"; the current step has `aria-current="step"`, and every step's name is read after
+its status ("Done:", "Current step:", "To come:", "Possible:", "Not reached:"), which sighted readers get from the
+marker (a tick, a filled play symbol, an empty or dashed circle, a dash) and the current step's bold text. What a step
+waits on is a nested list under it ("Waiting: An Auditor approves scheduling (requested …)").
+
+The swim lanes replaced the flowchart on 2026-10-26 and were checked the same way (draft, open, open with a
+cancellation pending, roll-call, cancelled while scheduled, certified), in both themes and at 320, 700, 1024 and
+1280 px. They are one `role="img"` whose name says they show who does each listed step (an Election Admin, an
+Auditor, the worker or the members on the roll) and names the current step; inside, an action's status is a mark on
+its corner (✓, ▶, –) and a band's before its name, as well as the colours and the dashed border of a way out or a step
+not reached, and a legend under the lanes says so. They are drawn to the width of the card rather than scaled: 12 px
+action text, 13 px lane names, 11 px lane notes at every width, with no sideways scrolling. At 320 px the diagram is
+270 px wide, the lanes 57–76 px (each lane's share follows its longest word, "certification" in the Election Admin's
+lane), and every line of every label was measured in the browser to fit its box with at least 2 px either side,
+with no mark overlapping a label. The list (below the lanes on a phone, beside them on wider screens) holds every word
+of them at full size.
 
 ## Known gaps
 
@@ -256,6 +298,3 @@ Android if time allows), on staging or the emulators:
 6. Dialogs from the Dialog plugin (reasons, codes, confirmations): name and prompt label read; focus returns afterwards.
 7. Admin console: tab and panel relationship, row action names, the status-history dialog, the contest dialog.
 8. Zoom to 200 % and 400 % (desktop) and large text on iOS: no clipped controls.
-9. Profile photo from Gravatar: the dialog's name and its explanation are read; "Asking Gravatar for your picture…"
-   and a "no picture" message are each read once; the review dialog reads "Review your photo" and the picture as
-   "Your Gravatar picture".

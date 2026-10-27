@@ -89,7 +89,9 @@ withheld entries where the record implies them: lifecycle steps, rolls and seale
 - **Deleted elections.** An election cancelled with no ballots cast may be deleted permanently (design §6.1), and then
   has no record. The check looks for its `election.deleted` entry instead: it must follow an `election.cancelled`
   entry and be the election's last, and no `ballots.sealed` or `election.sealed` entry may record ballots for it.
-  Without a deletion entry, a missing record is a failure.
+  A rehearsal, whose `roll.approved` entry records a roll of test voters only, may instead be deleted after its
+  `results.certified` entry, ballots and all (testing mode, design §10.4); it is reported as a rehearsal. A deletion
+  entry's own `rehearsal` field is not trusted. Without a deletion entry, a missing record is a failure.
 - **Roll.** A `roll.approved` entry records the published roll (count, Merkle root, as-of time), and the snapshot it
   approved is the one `election.scheduled` names. The roll signature verifies over `rollSigningInput` (JCS of the roll
   statement). The statement's snapshot and approval IDs come from that ledger entry, and so do its criteria:

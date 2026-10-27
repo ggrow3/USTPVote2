@@ -1,13 +1,16 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import type { VoterElection } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
 import { attempt } from '../dialogs.js';
+import { session } from '../session.js';
 
 usePageTitle('Your ballots');
 const elections = ref<VoterElection[] | null>(null);
 const failed = ref(false);
+/** Anyone signed in can open this page; an empty list means something different for each membership status. */
+const memberStatus = computed(() => session.me?.member?.status ?? null);
 
 onMounted(async () => {
   failed.value = !(await attempt(async () => {
@@ -16,11 +19,6 @@ onMounted(async () => {
 });
 
 const when = (iso: string) => new Date(iso).toLocaleString();
-
-/** Voting has not closed and the voter has not voted: the window is worth a calendar entry. */
-const upcoming = (e: VoterElection) => (e.state === 'scheduled' || e.state === 'open') && !e.castAt;
-/** The public calendar event (design §12): a plain link, the same file for everyone. */
-const calendarPath = (electionId: string) => `/v1/public/elections/${encodeURIComponent(electionId)}/calendar.ics`;
 
 function status(e: VoterElection): { label: string; color: string } {
   if (e.castAt) return { label: 'voted', color: 'positive' };
@@ -40,8 +38,22 @@ function status(e: VoterElection): { label: string; color: string } {
     <div class="ustp-content">
       <h1 class="text-h5">Your ballots</h1>
       <q-banner v-if="elections && elections.length === 0" class="bg-grey-3 text-black" rounded>
-        You are not on the voter roll of any current election. Rolls are taken from Active members when an election is set
-        up.
+        <template v-if="memberStatus === 'active'">
+          You are not on the voter roll of any current election. Rolls are taken from Active members when an election is
+          set up.
+        </template>
+        <template v-else-if="memberStatus === 'applicant'">
+          Your membership application is still being reviewed. Voter rolls are taken from Active members when an election
+          is set up, so once you are admitted you can vote in the elections that follow.
+        </template>
+        <template v-else-if="memberStatus === 'lapsed' || memberStatus === 'suspended'">
+          Your membership is {{ memberStatus }}, so you are not on the voter roll of any current election. Rolls are
+          taken from Active members when an election is set up.
+        </template>
+        <template v-else>
+          Voting is for USTP members. <router-link to="/register">Register as a member</router-link> to vote in the
+          elections set up after you are admitted.
+        </template>
       </q-banner>
       <q-list v-else-if="elections" bordered separator aria-label="Elections you can vote in">
         <template v-for="e in elections" :key="e.electionId">
@@ -66,10 +78,6 @@ function status(e: VoterElection): { label: string; color: string } {
           >
             <q-item-section avatar><q-icon name="leaderboard" /></q-item-section>
             <q-item-section>Results of {{ e.title }}</q-item-section>
-          </q-item>
-          <q-item v-else-if="upcoming(e)" clickable dense :inset-level="0.25" :href="calendarPath(e.electionId)">
-            <q-item-section avatar><q-icon name="event" /></q-item-section>
-            <q-item-section>Add {{ e.title }} to your calendar</q-item-section>
           </q-item>
         </template>
       </q-list>

@@ -14,7 +14,8 @@ roll-call ballots, sealing them into k-anonymous published blocks, tallying them
 certification that seats the winners in their offices and destroys the ballot key, and checking a receipt or the
 results in the browser all work end to end against the Firebase emulators, in the API (emulator integration tests)
 and the web app. The `ustp-verify` CLI checks all of it independently from public data. Published results can also be
-downloaded as CSV or loaded into Google Sheets with `IMPORTDATA`, with no Google integration. While drafting bylaws, a
+downloaded as CSV or loaded into Google Sheets with `IMPORTDATA`, and the ballot and results as a Word file that Google
+Docs opens, with no Google integration. While drafting bylaws, a
 Membership Admin can run an advisory check by Claude (Anthropic) that highlights lines which may contradict the US
 Constitution, Transhumanist principles or the USTP Constitution; it is off in real projects until USTP agrees to it, and
 the emulators use a deterministic stand-in (design §5.4). The web app is an

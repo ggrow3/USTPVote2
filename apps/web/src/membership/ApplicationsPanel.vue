@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { ageOn, type ApplicationRecord, type ApplicationStatus } from 'ustp-domain';
-import { api } from '../../api.js';
-import { askReason, attempt } from '../../dialogs.js';
-import { session } from '../../session.js';
+import { askReason, attempt } from '../dialogs.js';
+import { session } from '../session.js';
+import { applications, decideApplication } from './api.js';
 
 const status = ref<ApplicationStatus>('pending');
 const rows = ref<ApplicationRecord[]>([]);
@@ -14,7 +14,7 @@ const listState = ref<'loading' | 'ready' | 'failed'>('loading');
 async function load() {
   loading.value = true;
   const ok = await attempt(async () => {
-    rows.value = await api<ApplicationRecord[]>('GET', `/v1/admin/applications?status=${status.value}`);
+    rows.value = await applications(status.value);
   });
   listState.value = ok ? 'ready' : 'failed';
   loading.value = false;
@@ -28,10 +28,16 @@ async function decide(app: ApplicationRecord, decision: 'approve' | 'reject') {
   );
   if (reason === null) return;
   const ok = await attempt(
-    () => api('POST', `/v1/admin/applications/${app.applicationId}/decision`, { decision, reason }),
+    () => decideApplication(app.applicationId, { decision, reason }),
     decision === 'approve' ? `${app.legalName} is now a member` : 'Application rejected',
   );
   if (ok) rows.value = rows.value.filter((r) => r.applicationId !== app.applicationId);
+}
+
+/** Which party email the applicant opted into. */
+function partyEmail(a: ApplicationRecord): string {
+  const chosen = [a.communications?.newsletter && 'newsletter', a.communications?.announcements && 'announcements'].filter(Boolean);
+  return chosen.length ? chosen.join(' and ') : 'none';
 }
 
 onMounted(load);
@@ -61,7 +67,8 @@ onMounted(load);
       <q-item v-for="a in rows" :key="a.applicationId">
         <q-item-section>
           <q-item-label>
-            {{ a.legalName }}<span v-if="a.preferredName"> ({{ a.preferredName }})</span> · {{ a.state }}
+            <router-link :to="`/admin/members/${a.accountId}`">{{ a.legalName }}</router-link
+            ><span v-if="a.preferredName"> ({{ a.preferredName }})</span> · {{ a.state }}
           </q-item-label>
           <q-item-label v-if="a.contact" caption>
             {{ a.contact.city }} {{ a.contact.postalCode }}<span v-if="a.contact.phone"> · {{ a.contact.phone }}</span>
@@ -70,6 +77,9 @@ onMounted(load);
           <q-item-label v-if="a.attestations" caption>
             Confirmed: at least {{ a.attestations.minimumAge }}, supports the platform<span v-if="a.volunteer"> · wants to volunteer</span
             ><span v-if="a.runForOffice"> · interested in running for office</span>
+          </q-item-label>
+          <q-item-label caption>
+            Party email: {{ partyEmail(a) }}
           </q-item-label>
           <q-item-label caption>
             Submitted {{ new Date(a.submittedAt).toLocaleString() }} · bylaws {{ a.bylawsVersion }} · account

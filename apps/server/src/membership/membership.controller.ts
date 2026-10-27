@@ -3,11 +3,15 @@ import {
   createApplicationSchema,
   decisionSchema,
   MEMBER_STATUSES,
+  memberCorrectionSchema,
+  memberDetailsSchema,
   memberStatusSchema,
   publishBylawsSchema,
   resignSchema,
   type CreateApplicationInput,
   type DecisionInput,
+  type MemberCorrectionInput,
+  type MemberDetailsInput,
   type MemberStatusInput,
   type PublishBylawsInput,
   type ResignInput,
@@ -16,6 +20,8 @@ import { z } from 'zod';
 import { Ctx, Public, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { parseQuery, ZodPipe } from '../common/validation.js';
+import { MembershipApplications } from './applications.service.js';
+import { Members } from './members.service.js';
 import { MembershipService } from './membership.service.js';
 
 const limitParam = z.coerce.number().int().min(1).max(500).default(100);
@@ -23,7 +29,11 @@ const limitParam = z.coerce.number().int().min(1).max(500).default(100);
 /** Member-facing registration (design §5, §12). */
 @Controller('v1')
 export class RegistrationController {
-  constructor(private readonly membership: MembershipService) {}
+  constructor(
+    private readonly membership: MembershipService,
+    private readonly applications: MembershipApplications,
+    private readonly members: Members,
+  ) {}
 
   @Public()
   @Get('bylaws/current')
@@ -50,17 +60,23 @@ export class RegistrationController {
 
   @Post('registration/applications')
   apply(@Ctx() ctx: RequestContext, @Body(new ZodPipe(createApplicationSchema)) body: CreateApplicationInput) {
-    return this.membership.submitApplication(ctx, body);
+    return this.applications.submit(ctx, body);
   }
 
   @Get('registration/applications/me')
   myApplications(@Ctx() ctx: RequestContext) {
-    return this.membership.myApplications(ctx);
+    return this.applications.mine(ctx);
   }
 
   @Post('me/resign')
   resign(@Ctx() ctx: RequestContext, @Body(new ZodPipe(resignSchema)) body: ResignInput) {
-    return this.membership.resign(ctx, body.reason);
+    return this.members.resign(ctx, body.reason);
+  }
+
+  /** The signed-in member's own details and email opt-ins (design §5.2). */
+  @Post('me/details')
+  updateDetails(@Ctx() ctx: RequestContext, @Body(new ZodPipe(memberDetailsSchema)) body: MemberDetailsInput) {
+    return this.members.updateOwnDetails(ctx, body);
   }
 }
 
@@ -68,7 +84,11 @@ export class RegistrationController {
 @Controller('v1/admin')
 @Roles('membership_admin')
 export class MembershipAdminController {
-  constructor(private readonly membership: MembershipService) {}
+  constructor(
+    private readonly membership: MembershipService,
+    private readonly applications: MembershipApplications,
+    private readonly members: Members,
+  ) {}
 
   @Post('bylaws')
   publishBylaws(@Ctx() ctx: RequestContext, @Body(new ZodPipe(publishBylawsSchema)) body: PublishBylawsInput) {
@@ -77,7 +97,7 @@ export class MembershipAdminController {
 
   @Get('applications')
   listApplications(@Query('status') status?: string, @Query('limit') limit?: string) {
-    return this.membership.listApplications(
+    return this.applications.list(
       parseQuery(z.enum(['pending', 'approved', 'rejected']).default('pending'), status, 'status'),
       parseQuery(limitParam, limit, 'limit'),
     );
@@ -85,12 +105,12 @@ export class MembershipAdminController {
 
   @Post('applications/:id/decision')
   decide(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(decisionSchema)) body: DecisionInput) {
-    return this.membership.decideApplication(ctx, id, body);
+    return this.applications.decide(ctx, id, body);
   }
 
   @Get('members')
   listMembers(@Query('status') status?: string, @Query('after') after?: string, @Query('limit') limit?: string) {
-    return this.membership.listMembers(
+    return this.members.list(
       parseQuery(z.enum(MEMBER_STATUSES).optional(), status, 'status'),
       parseQuery(z.string().min(1).optional(), after, 'after'),
       parseQuery(limitParam, limit, 'limit'),
@@ -103,11 +123,26 @@ export class MembershipAdminController {
     @Param('accountId') accountId: string,
     @Body(new ZodPipe(memberStatusSchema)) body: MemberStatusInput,
   ) {
-    return this.membership.setStatus(ctx, accountId, body);
+    return this.members.setStatus(ctx, accountId, body);
   }
 
   @Get('members/:accountId/history')
   history(@Param('accountId') accountId: string) {
-    return this.membership.history(accountId);
+    return this.members.history(accountId);
+  }
+
+  /** One member's profile: record, applications with every answer, status history (design §5.2). */
+  @Get('members/:accountId')
+  member(@Param('accountId') accountId: string) {
+    return this.members.detail(accountId);
+  }
+
+  @Post('members/:accountId/details')
+  correctDetails(
+    @Ctx() ctx: RequestContext,
+    @Param('accountId') accountId: string,
+    @Body(new ZodPipe(memberCorrectionSchema)) body: MemberCorrectionInput,
+  ) {
+    return this.members.correctDetails(ctx, accountId, body);
   }
 }

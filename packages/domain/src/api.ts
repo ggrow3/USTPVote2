@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { BYLAWS_CHECK_SCOPES } from './bylaws-check.js';
 import { SIGN_IN_PROVIDERS } from './identity.js';
-import { MEMBER_STATUSES } from './member-status.js';
-import { checkApplicantAge, isCalendarDate, MINIMUM_MEMBER_AGE, normalizePhone, US_POSTAL_CODE } from './registration.js';
+import { MEMBER_STATUSES } from './membership/member-status.js';
+import { checkApplicantAge, isCalendarDate, MINIMUM_MEMBER_AGE, normalizePhone, US_POSTAL_CODE } from './membership/registration.js';
 import { ROLES } from './roles.js';
 import { MAX_TEST_VOTERS } from './testing.js';
 
@@ -25,6 +25,15 @@ export const hex32Schema = hex32;
 const uuidV7 = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/, 'expected a UUIDv7');
 const optionalText = (max: number) => z.string().trim().max(max).optional();
 
+/** Where a member lives and how to reach them: the same rules on the application and on later changes (design §5.2). */
+const state = z.string().regex(/^[A-Z]{2}$/, 'choose your state or territory (two-letter code)');
+const city = z.string().trim().min(1, 'enter your city').max(100);
+const postalCode = z.string().trim().regex(US_POSTAL_CODE, 'enter a 5-digit ZIP code');
+const phone = optionalText(32).refine(
+  (v) => !v || normalizePhone(v) !== null,
+  'enter a phone number with its area code, or with +country code outside the US',
+);
+
 export const createApplicationSchema = z
   .strictObject({
     bylawsVersion: z.string().min(1).max(64),
@@ -36,13 +45,10 @@ export const createApplicationSchema = z
     dateOfBirth: z.string().trim().refine(isCalendarDate, 'enter your date of birth'),
     attestsAge: z.literal(true, { error: `confirm that you are at least ${MINIMUM_MEMBER_AGE}` }),
     supportsPlatform: z.literal(true, { error: 'confirm that you support the USTP platform' }),
-    state: z.string().regex(/^[A-Z]{2}$/, 'choose your state or territory (two-letter code)'),
-    city: z.string().trim().min(1, 'enter your city').max(100),
-    postalCode: z.string().trim().regex(US_POSTAL_CODE, 'enter a 5-digit ZIP code'),
-    phone: optionalText(32).refine(
-      (v) => !v || normalizePhone(v) !== null,
-      'enter a phone number with its area code, or with +country code outside the US',
-    ),
+    state,
+    city,
+    postalCode,
+    phone,
     statement: optionalText(5000),
     interests: optionalText(1000),
     skills: optionalText(1000),
@@ -80,6 +86,37 @@ export type MemberStatusInput = z.infer<typeof memberStatusSchema>;
 
 export const resignSchema = z.strictObject({ reason: optionalText(2000) });
 export type ResignInput = z.infer<typeof resignSchema>;
+
+/**
+ * `POST /v1/me/details`: a member's own preferred name, where they live, phone and email opt-ins (design §5.2). The
+ * legal name is not here: a Membership Admin corrects it.
+ */
+export const memberDetailsSchema = z.strictObject({
+  preferredName: optionalText(200),
+  state,
+  city,
+  postalCode,
+  phone,
+  newsletter: z.boolean(),
+  announcements: z.boolean(),
+});
+export type MemberDetailsInput = z.infer<typeof memberDetailsSchema>;
+
+/**
+ * `POST /v1/admin/members/{accountId}/details`: a Membership Admin corrects a member's names, state or contact
+ * details, with a reason (design §5.2). Never the email opt-ins, which are the member's to give.
+ */
+export const memberCorrectionSchema = z.strictObject({
+  legalName: z.string().trim().min(1, 'enter the legal name').max(200),
+  preferredName: optionalText(200),
+  state,
+  city,
+  postalCode,
+  phone,
+  reason,
+});
+export type MemberCorrectionInput = z.infer<typeof memberCorrectionSchema>;
+
 
 /** A second ID token proving control of the login method being linked. */
 export const linkIdentitySchema = z.strictObject({ idToken: z.string().min(1).max(8192) });
