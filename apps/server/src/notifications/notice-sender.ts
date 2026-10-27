@@ -15,6 +15,7 @@ import {
   type NoticeRecipientRecord,
   type NoticeRecord,
   type NoticeSentPayload,
+  type NoticeSettings,
 } from 'ustp-domain';
 import { DirectoryService, type Mailbox } from '../auth/directory.service.js';
 import { CONFIG, type ServerConfig } from '../config.js';
@@ -23,6 +24,7 @@ import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { MemberDirectory } from '../membership/member-directory.js';
 import { BOUNCE_SOURCE, MAIL_TRANSPORT, MailNotSent, OutboxTransport, type BounceSource, type MailTransport } from './mail-transport.js';
+import { NoticeSettingsService } from './notice-settings.js';
 import { NoticeRepository } from './notice.repository.js';
 
 /** gRPC status ALREADY_EXISTS. */
@@ -51,6 +53,8 @@ export const BOUNCE_TICK_BUDGET_MS = 5_000;
 export class NoticeSender {
   private readonly logger = new Logger(NoticeSender.name);
   private readonly outbox: OutboxTransport;
+  /** The System Admins' settings for this run, and the contact the emails give (theirs, else `NOTICE_CONTACT`). */
+  private run: { readonly settings: NoticeSettings; readonly contact: string | null } | null = null;
 
   constructor(
     private readonly firebase: Firebase,
@@ -59,6 +63,7 @@ export class NoticeSender {
     private readonly elections: ElectionReader,
     private readonly directory: DirectoryService,
     private readonly members: MemberDirectory,
+    private readonly settings: NoticeSettingsService,
     @Inject(MAIL_TRANSPORT) private readonly transport: MailTransport | null,
     @Inject(BOUNCE_SOURCE) private readonly bounces: BounceSource | null,
     @Inject(CONFIG) private readonly config: ServerConfig,
@@ -73,6 +78,8 @@ export class NoticeSender {
       return 0;
     }
     const deadline = Date.now() + budgetMs;
+    const { version: _v, updatedAt: _at, updatedBy: _by, ...settings } = await this.settings.current();
+    this.run = { settings, contact: settings.contact ?? this.config.noticeContact };
     for (const election of await this.elections.inState('open')) {
       await this.start(election, 'voting_open');
       await this.start(election, 'closing_soon');
@@ -82,10 +89,15 @@ export class NoticeSender {
     return sent;
   }
 
-  /** Creates the election's notice of this kind once it is due, unless it has one or nobody is to get it. */
+  /**
+   * Creates the election's notice of this kind once it is due, unless it has one, nobody is to get it, or a System
+   * Admin has switched it off.
+   */
   private async start(election: ElectionRecord, kind: NoticeKind): Promise<void> {
     const now = new Date();
-    const due = kind === 'voting_open' ? isVotingOpen(election, now) : isReminderDue(election, now);
+    const { settings } = this.run!;
+    if (!settings.kinds[kind].enabled) return;
+    const due = kind === 'voting_open' ? isVotingOpen(election, now) : isReminderDue(election, now, settings.reminderHours);
     const id = noticeId(election.electionId, kind);
     if (!due || (await this.notices.find(id))) return;
     if (kind === 'closing_soon') {
@@ -105,6 +117,10 @@ export class NoticeSender {
       transport: this.transport?.delivery ?? 'none',
     });
     if (!delivery) return;
+    if (delivery === 'mail' && !this.run!.contact) {
+      this.logger.warn(`no notice for ${election.electionId} yet: no contact for election questions is set (NOTICE_CONTACT or the app's setting)`);
+      return;
+    }
     const at = now.toISOString();
     const record: NoticeRecord = {
       noticeId: id,
@@ -136,6 +152,12 @@ export class NoticeSender {
     const transport = notice.delivery === 'outbox' ? this.outbox : this.transport;
     if (!transport) {
       this.logger.warn(`notice ${notice.noticeId} is waiting: this deployment sends no email (MAIL_TRANSPORT=off)`);
+      return 0;
+    }
+    // Switched off by a System Admin, or nowhere for members to ask: what is left waits, and goes if that changes.
+    if (!this.run!.settings.kinds[notice.kind].enabled) return 0;
+    if (notice.delivery === 'mail' && !this.run!.contact) {
+      this.logger.warn(`notice ${notice.noticeId} is waiting: no contact for election questions is set (NOTICE_CONTACT or the app's setting)`);
       return 0;
     }
     if (notice.status === 'preparing') {
@@ -239,12 +261,14 @@ export class NoticeSender {
       if (!mailbox?.email) return finish({ status: 'skipped', outcome: 'no_address' }).then(() => 'not_sent');
       if (!mailbox.verified) return finish({ status: 'skipped', outcome: 'unverified_address' }).then(() => 'not_sent');
     }
+    const { settings, contact } = this.run!;
     const message = noticeMessage(notice.kind, {
       election,
       origin: this.config.webOrigin!,
       name,
-      contact: this.config.noticeContact,
+      contact,
       now: new Date(),
+      text: settings.kinds[notice.kind],
     });
     try {
       const { messageId } = await transport.send({

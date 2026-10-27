@@ -1,12 +1,11 @@
 import {
-  hasReminder,
+  DEFAULT_NOTICE_SETTINGS,
   isRehearsalRoll,
-  isReminderDue,
-  isVotingOpen,
   reminderTime,
   type ElectionDetail,
   type NoticeKind,
   type NoticesView,
+  type NoticeStep,
   type NoticeSummary,
   type RecipientCounts,
   type StepStatus,
@@ -41,6 +40,16 @@ export const EMAIL_DESCRIPTION =
 /** Where this deployment sends no email (`MAIL_TRANSPORT=off`). */
 export const NOT_SET_UP = 'Nothing is sent until email (Amazon SES) is set up for this deployment.';
 
+/** Where no contact for questions is set, in the app or the deployment. */
+export const NO_CONTACT = 'Nothing is mailed until a contact for election questions is set (Admin › Election emails).';
+
+/** The reminder's lead time in words: "a day", "2 days", "an hour", "36 hours". */
+export function leadTimeText(hours: number): string {
+  if (hours === 1) return 'an hour';
+  if (hours % 24 === 0) return hours === 24 ? 'a day' : `${hours / 24} days`;
+  return `${hours} hours`;
+}
+
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 /** The counts, in the order an admin reads them, each with what it means. */
@@ -64,7 +73,7 @@ export function noticeStatus(notice: NoticeSummary): string {
   const round = notice.round > 1 ? ` (resend ${notice.round - 1})` : '';
   const of =
     notice.kind === 'closing_soon'
-      ? `of the ${count(notice.recipients, 'person', 'people')} who had not voted a day before the close`
+      ? `of the ${count(notice.recipients, 'person', 'people')} who had not voted when it was prepared`
       : `of the ${count(notice.recipients, 'person', 'people')} on the roll`;
   if (notice.status === 'done') {
     const finished = notice.completedAt ? `, finished ${new Date(notice.completedAt).toLocaleString()}` : '';
@@ -73,26 +82,36 @@ export function noticeStatus(notice: NoticeSummary): string {
   return `Sending${round}: ${notice.counts.sent} ${of} so far.${where}`;
 }
 
-/** What happens, or happened, when there is no notice of this kind yet. */
-export function noNoticeText(kind: NoticeKind, detail: ElectionDetail, view: NoticesView | null, testingMode: boolean, now: Date): string {
+/**
+ * What happens, or happened, when the worker has not started this email: when it will go, or why it will not (from
+ * `noticeSteps`), in the editor's card and the workflow's list.
+ */
+export function noNoticeText(step: NoticeStep, detail: ElectionDetail, view: NoticesView | null): string {
   const { election } = detail;
-  const rehearsal = isRehearsalRoll(detail.roll?.criteria);
-  if (rehearsal && !testingMode) return 'A rehearsal roll gets no email.';
-  if (!rehearsal && view?.delivery === 'none') return NOT_SET_UP;
-  const outbox = rehearsal ? ' It goes to the outbox, addressed to nobody: test voters have no email address.' : '';
-  if (kind === 'voting_open') {
+  const hours = (view?.settings ?? DEFAULT_NOTICE_SETTINGS).reminderHours;
+  const lead = leadTimeText(hours);
+  const outbox = isRehearsalRoll(detail.roll?.criteria) ? ' It goes to the outbox, addressed to nobody: test voters have no email address.' : '';
+  switch (step.absent) {
+    case 'rehearsal':
+      return 'A rehearsal roll gets no email.';
+    case 'not_set_up':
+      return NOT_SET_UP;
+    case 'no_contact':
+      return NO_CONTACT;
+    case 'off':
+      return `A System Admin has switched ${step.kind === 'closing_soon' ? 'the reminder' : 'this email'} off (Admin › Election emails).`;
+    case 'short_window':
+      return `Voting is open for ${lead} or less, so there is no reminder.`;
+    case 'closed':
+      return step.kind === 'closing_soon' ? 'No reminder was sent for this election.' : 'No notice was sent for this election.';
+  }
+  if (step.kind === 'voting_open') {
     const who = 'the worker emails everyone on the roll that it is time to vote, once each';
-    if (election.state === 'draft' || election.state === 'scheduled') return `When voting opens, ${who}.${outbox}`;
-    if (isVotingOpen(election, now)) return `Voting is open: ${who}, starting within a minute.${outbox}`;
-    return 'No notice was sent for this election.';
+    return step.status === 'current' ? `Voting is open: ${who}, starting within a minute.${outbox}` : `When voting opens, ${who}.${outbox}`;
   }
-  if (!hasReminder(election)) return 'Voting is open for a day or less, so there is no reminder.';
-  if (isReminderDue(election, now)) return `The reminder is due: the worker starts it within a minute, after the voting-open email.${outbox}`;
-  if (['draft', 'scheduled', 'open'].includes(election.state)) {
-    return (
-      `On ${reminderTime(election).toLocaleString()}, a day before voting closes, the worker reminds those on the roll ` +
-      `who have not voted yet, once each. The mail service then learns who had not voted, never how anyone votes.${outbox}`
-    );
-  }
-  return 'No reminder was sent for this election.';
+  if (step.status === 'current') return `The reminder is due: the worker starts it within a minute, after the voting-open email.${outbox}`;
+  return (
+    `On ${reminderTime(election, hours).toLocaleString()}, ${lead} before voting closes, the worker reminds those on the roll ` +
+    `who have not voted yet, once each. The mail service then learns who had not voted, never how anyone votes.${outbox}`
+  );
 }

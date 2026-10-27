@@ -15,6 +15,7 @@ import { CONFIG, type ServerConfig } from '../config.js';
 import { ElectionReader } from '../elections/election-reader.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { NoticeSettingsService } from './notice-settings.js';
 import { NoticeRepository } from './notice.repository.js';
 
 /**
@@ -28,15 +29,18 @@ export class NoticesService {
     private readonly ledger: LedgerService,
     private readonly notices: NoticeRepository,
     private readonly elections: ElectionReader,
+    private readonly settings: NoticeSettingsService,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
   async view(electionId: string): Promise<NoticesView> {
     if (!(await this.elections.find(electionId))) throw new NotFoundException('no such election');
-    const notices = await this.notices.ofElection(electionId);
+    const [notices, settings] = await Promise.all([this.notices.ofElection(electionId), this.settings.current()]);
+    const { version: _v, updatedAt: _at, updatedBy: _by, ...current } = settings;
     return {
       delivery: { ses: 'mail' as const, outbox: 'outbox' as const, off: 'none' as const }[this.config.mailTransport],
-      contact: this.config.noticeContact,
+      contact: current.contact ?? this.config.noticeContact,
+      settings: current,
       notices: await Promise.all(notices.map(async (n) => noticeSummary(n, await this.notices.counts(n.noticeId)))),
     };
   }

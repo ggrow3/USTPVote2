@@ -1,4 +1,5 @@
 import type { ElectionRecord } from '../elections.js';
+import { DEFAULT_NOTICE_TEXT, fillNoticeText, type NoticePlaceholder } from './notice-settings.js';
 import type { NoticeKind } from './notices.js';
 
 /**
@@ -26,6 +27,8 @@ export interface NoticeMessageInput {
   readonly contact: string | null;
   /** When the message is made: the reminder says how long is left. */
   readonly now: Date;
+  /** A System Admin's subject and opening (design §6.8); null or absent for the built-in wording. */
+  readonly text?: { readonly subject: string | null; readonly intro: string | null } | null;
 }
 
 /** The time zones the window is given in: the US zones members live in, then UTC. Eastern leads. */
@@ -46,6 +49,10 @@ export const NOTICE_CONTACT_PLACEHOLDER = '[contact for election questions, to b
 const PARTY_COLOUR = '#bd4e00';
 
 const SUBJECT_TITLE_MAX = 150;
+/** However the subject is worded, mail clients show about this much. */
+const SUBJECT_MAX = 200;
+
+const capped = (s: string) => (s.length > SUBJECT_MAX ? `${s.slice(0, SUBJECT_MAX - 1)}…` : s);
 
 export function noticeMessage(kind: NoticeKind, input: NoticeMessageInput): NoticeMessage {
   return kind === 'closing_soon' ? closingSoonMessage(input) : votingOpenMessage(input);
@@ -58,9 +65,10 @@ export function votingOpenMessage(input: NoticeMessageInput): NoticeMessage {
   const links = linksOf(input);
   const window = votingWindow(election.opensAt, election.closesAt);
   const description = paragraphs(election.description);
-  return render(`Voting is open: ${subjectTitle(title)}`, `Voting is open: ${title}`, [
+  const words = wording('voting_open', input, window[0]!.closes);
+  return render(words.subject, words.heading, [
     greeting(input.name),
-    { p: `Voting is open in “${title}”, an election of the US Transhumanist Party, and you are on its voter roll.` },
+    ...words.intro.map((p) => ({ p })),
     { strong: `Vote by ${window[0]!.closes} (${window[0]!.name}).` },
     { ballot: links.ballot, title },
     { h2: 'When you can vote' },
@@ -78,20 +86,17 @@ export function votingOpenMessage(input: NoticeMessageInput): NoticeMessage {
   ]);
 }
 
-/** "Voting closes soon": a day before the close, to those on the roll who have not voted. */
+/** "Voting closes soon": before the close (by default a day), to those on the roll who have not voted. */
 export function closingSoonMessage(input: NoticeMessageInput): NoticeMessage {
   const { election } = input;
   const title = oneLine(election.title);
   const links = linksOf(input);
   const window = votingWindow(election.opensAt, election.closesAt);
-  return render(`Voting closes soon: ${subjectTitle(title)}`, `Voting closes soon: ${title}`, [
+  const words = wording('closing_soon', input, window[0]!.closes);
+  return render(words.subject, words.heading, [
     greeting(input.name),
-    {
-      p:
-        `You have not voted yet in “${title}”, an election of the US Transhumanist Party, and voting closes in ` +
-        `${timeLeft(election.closesAt, input.now)}. If you have voted since this was sent, thank you: there is nothing ` +
-        'more to do.',
-    },
+    ...words.intro.map((p) => ({ p })),
+    { p: 'If you have voted since this was sent, thank you: there is nothing more to do.' },
     { strong: `Vote by ${window[0]!.closes} (${window[0]!.name}).` },
     { ballot: links.ballot, title },
     { h2: 'When voting closes' },
@@ -100,8 +105,8 @@ export function closingSoonMessage(input: NoticeMessageInput): NoticeMessage {
     { hr: true },
     {
       small:
-        'You are getting this reminder because you are on the voter roll of this election and had not voted a day ' +
-        'before it closes. It is sent once. Only whether you had voted was used to send it, never how anyone votes.',
+        'You are getting this reminder because you are on the voter roll of this election and had not voted when it ' +
+        'was sent. It is sent once. Only whether you had voted was used to send it, never how anyone votes.',
     },
     ...footer(input.contact, links.site),
   ]);
@@ -182,6 +187,26 @@ function linksOf({ election, origin }: NoticeMessageInput) {
 
 function subjectTitle(title: string): string {
   return title.length > SUBJECT_TITLE_MAX ? `${title.slice(0, SUBJECT_TITLE_MAX - 1)}…` : title;
+}
+
+/**
+ * The subject, the heading (the subject with the whole title) and the opening paragraphs, from a System Admin's
+ * wording or the built-in one, with the election's details filled in. The text is plain: the HTML escapes it.
+ */
+function wording(kind: NoticeKind, input: NoticeMessageInput, closes: string) {
+  const title = oneLine(input.election.title);
+  const values = (t: string): Record<NoticePlaceholder, string> => ({
+    title: t,
+    closes: `${closes} (Eastern Time)`,
+    time_left: timeLeft(input.election.closesAt, input.now),
+  });
+  const subject = input.text?.subject ?? DEFAULT_NOTICE_TEXT[kind].subject;
+  const intro = input.text?.intro ?? DEFAULT_NOTICE_TEXT[kind].intro;
+  return {
+    subject: capped(oneLine(fillNoticeText(subject, values(subjectTitle(title))))),
+    heading: oneLine(fillNoticeText(subject, values(title))),
+    intro: paragraphs(fillNoticeText(intro, values(title))),
+  };
 }
 
 function greeting(name: string | null): Block {

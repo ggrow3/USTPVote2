@@ -188,8 +188,8 @@ describe('swimLanes', () => {
     const progress = electionProgress(input, now);
     const emails = (open: StepStatus, soon: StepStatus) =>
       swimLanes(progress, election, [
-        { kind: 'voting_open', status: open, notice: null },
-        { kind: 'closing_soon', status: soon, notice: null },
+        { kind: 'voting_open', status: open, notice: null, absent: null },
+        { kind: 'closing_soon', status: soon, notice: null, absent: null },
       ]);
     expect(statuses(emails('done', 'upcoming'))).toMatchObject({ email_open: 'done', vote: 'current', remind: 'upcoming', close: 'upcoming' });
     expect(statuses(emails('current', 'upcoming'))).toMatchObject({ email_open: 'current', vote: 'current' });
@@ -204,6 +204,16 @@ describe('swimLanes', () => {
     expect(into('remind')).toMatchObject({ dashed: true });
     expect(into('close')).toMatchObject({ dashed: false });
     expect(statuses(emails('not_reached', 'not_reached'))).toMatchObject({ vote: 'current' });
+  });
+
+  it('leaves the reminder out where the emails say voting is too short for its lead time', () => {
+    const input = { ...detail, election };
+    const lanes = swimLanes(electionProgress(input, now), election, [
+      { kind: 'voting_open', status: 'done', notice: null, absent: null },
+      { kind: 'closing_soon', status: 'not_reached', notice: null, absent: 'short_window' },
+    ]);
+    expect(Object.keys(statuses(lanes))).not.toContain('remind');
+    expect(lanes.links).toContainEqual(['vote', 'close']);
   });
 
   it('leaves the reminder out where voting is open a day or less', () => {
