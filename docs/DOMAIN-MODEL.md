@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Agreed 2026-10-25; step 1 (Membership) done, steps 2–7 to follow (§6). Web app (§7): agreed 2026-10-26; W1 (Membership) done |
+| Status | Agreed 2026-10-25; step 1 (Membership) done, steps 2–7 to follow (§6). Web app (§7): agreed 2026-10-26; W1 (Membership) and W4 (Offices) done |
 | Date | 2026-10-25 |
 | Scope | Structure of `packages/domain`, `apps/server/src` and, lightly, `apps/web/src`. No change to API routes, Firestore layout, ledger format or hashing. |
 
@@ -74,6 +74,7 @@ flowchart LR
   ELE -- "current bylaws, amendments fit; base text at certification" --> BYL
   BYL -- "is an amending election under way? what did a certified one adopt?" --> ELE
   ELE -- "offices exist; create terms at certification" --> OFF
+  OFF -- "is the appointee an Active member? (appointment)" --> MEM
   ELE & OFF -- "two-person requests + handlers" --> GOV
   GOV -- "test voters (rehearsal roll), personas" --> MEM
   ACC & MEM & BYL & ELE & OFF & GOV -- "domain events, same transaction" --> LED
@@ -101,7 +102,7 @@ commit. What changes is that only the owner touches its documents.
 | Elections | **Participation** + ballot pool | one per voter (create-only); voter on the roll; election open within its window |
 | Elections | **Results** | computed once from sealed blocks; provisional → certified only for the hash requested |
 | Offices | **Office** (position) | defined or changed at once with a reason; running terms untouched |
-| Offices | **Term** | created only by certification; active → ended by two persons; holder neither requests nor approves |
+| Offices | **Term** | created by certification, or by an appointment two persons approve (an Active member, a free seat, starting no later than approved, no longer than the office's term; the appointee neither requests nor approves); marked elected or appointed (`basis`); active → ended by two persons; holder neither requests nor approves |
 | Governance | **ApprovalRequest** | one pending per action and subject; approver ≠ requester ≠ subject; approver's role, MFA, sign-in ≤ 15 min; 7-day expiry; executes exactly the approved payload hash |
 | Governance | **RoleAssignment** | one System Admin, not on their own account; Auditor holds no other role |
 | Governance | **NavigationSettings** (`navigation/current`) | shows, never permits; no section for a role the API refuses it to, and none for membership alone; People and Navigation always shown to System Admins; a role's Admin link follows its sections; every start page one its audience is shown; saved whole from the version it was edited from, each changed cell ledgered as `navigation.changed` |
@@ -153,7 +154,8 @@ change only where a context is being reworked anyway.
 | Ballot, participation, receipt | a cast vote; the fact someone voted; the voter's commitment | `ballot_pool`, `participation`, `BallotReceipt` |
 | Sealed block | anonymised batch of ballots | `sealed_blocks` |
 | Results, certification | signed tally bundle; the Auditor's approval of it | `results` |
-| Office, term | a position people are elected to; one holder's period in it | `positions`, `position_terms` (code says *position*) |
+| Office, term | a position people are elected or appointed to; one holder's period in it | `positions`, `position_terms` (code says *position*) |
+| Appointment | a term given without an election, asked for by one admin and approved by an Auditor | `position.appoint`, `basis: 'appointment'`, `position_term.appointed` |
 | Role | Membership Admin, Election Admin, Auditor, System Admin | `role_assignments` |
 | Audience; navigation settings; start page | a column of the settings (a membership state or a role); who is shown which link and section; where each lands | `AUDIENCES`, `navigation/current`, `StartPage` |
 | Request, approval (two-person rule) | an action one admin asks and another decides | `approval_requests`, `TWO_PERSON_ACTIONS` |
@@ -183,7 +185,9 @@ import moved code). Ordered by gain against risk, and around work in flight.
    `governance/` in `ustp-domain`; their services are `administration/navigation.ts` and `administration/home-quote.ts`
    in the server until this step moves the context.
 4. **Offices** — `Office` and `Term` aggregates; an `Offices` port (`assertExist`, `createTermsFromResults`) so
-   certification stops writing `position_terms`; the term rules shared by request and approval.
+   certification stops writing `position_terms`; the term rules shared by request and approval. *Begun:* appointments
+   (DESIGN §6.4) put their rules in `ustp-domain` (`appointments.ts`: `planAppointment` at the request, `appointTerm` at
+   the approval, both through `checkAppointment`), and the server reads what they need in `positions/appointment-context.ts`.
 5. **Elections**, in two PRs. (a) Setup and lifecycle: one `transitionElection` used by all six state changes,
    recusal and the draft guard as one rule, repositories for election, contests, candidates, rolls and results.
    (b) Voting, sealing and tallying (the worker steps) on the same repositories.
@@ -267,6 +271,9 @@ Each step behaviour-preserving: same routes and URLs, page titles, headings, lab
 - **W2. Bylaws**, **W3. Governance** (begun: `governance/` holds the navigation settings' client, panel, wording
   and store, and the home page quote's, and the admin tabs come from `ADMIN_SECTIONS` and `SECTION_ROLES` in `ustp-domain`, which a server test
   checks against the `@Roles` of each section's routes; still to move: approvals, people, role changes, testing),
-  **W4. Offices**, **W5. Elections** (`votingAhead(election)` in `ustp-domain` for "upcoming"), **W6. Ledger and
+  **W4. Offices** (*done*: `offices/api.ts` is the only place the offices routes are written, and the contest dialog
+  and the Members tab call it; `offices/` holds the Offices panel, the appointment dialog and its member picker, the
+  profile's Offices card and the public Offices page, with their wording in `office-text.ts`; the boundary test
+  includes it), **W5. Elections** (`votingAhead(election)` in `ustp-domain` for "upcoming"), **W6. Ledger and
   verification** (one public-ledger client for the audit panel, results and verify), **W7. Accounts and photos**
   (photo limits into `ustp-domain`), each following the matching server step where there is one.

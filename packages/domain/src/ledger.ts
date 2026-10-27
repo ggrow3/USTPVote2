@@ -70,6 +70,7 @@ export const PUBLIC_LEDGER_EVENT_TYPES = [
   'election.pool_key_destroyed',
   'position.defined',
   'position_term.created',
+  'position_term.appointed',
   'position_term.ended',
 ] as const satisfies readonly LedgerEventType[];
 

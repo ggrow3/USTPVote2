@@ -32,6 +32,7 @@ export const router = createRouter({
         { path: 'verify', component: () => import('./pages/VerifyPage.vue') },
         { path: 'bylaws/:version?', component: () => import('./pages/BylawsPage.vue') },
         { path: 'results/:id', component: () => import('./pages/ResultsPage.vue') },
+        { path: 'offices', component: () => import('./offices/OfficesPage.vue') },
         // Open to anyone signed in: the page tells people without an admin role who it is for.
         { path: 'admin', component: () => import('./pages/AdminPage.vue'), meta: { requiresAuth: true } },
         {

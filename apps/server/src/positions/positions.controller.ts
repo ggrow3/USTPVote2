@@ -1,11 +1,19 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
-import { positionInputSchema, reasonInputSchema, ROLES, type PositionInput, type ReasonInput } from 'ustp-domain';
+import {
+  appointmentInputSchema,
+  positionInputSchema,
+  reasonInputSchema,
+  ROLES,
+  type AppointmentInput,
+  type PositionInput,
+  type ReasonInput,
+} from 'ustp-domain';
 import { Ctx, Public, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { ZodPipe } from '../common/validation.js';
 import { PositionsService } from './positions.service.js';
 
-/** Offices and terms for administrators (design §6.4); ending a term goes to an Auditor. */
+/** Offices and terms for administrators (design §6.4); appointing a member and ending a term go to an Auditor. */
 @Controller('v1/admin/positions')
 @Roles('membership_admin', 'election_admin')
 export class PositionsController {
@@ -21,6 +29,12 @@ export class PositionsController {
   @Post()
   define(@Ctx() ctx: RequestContext, @Body(new ZodPipe(positionInputSchema)) body: PositionInput) {
     return this.positions.define(ctx, body);
+  }
+
+  /** Appoint an Active member to a free seat without an election; an Auditor must approve. */
+  @Post(':id/appointments')
+  appoint(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(appointmentInputSchema)) body: AppointmentInput) {
+    return this.positions.requestAppointment(ctx, id, body);
   }
 
   /** End a term now; an Auditor must approve. */

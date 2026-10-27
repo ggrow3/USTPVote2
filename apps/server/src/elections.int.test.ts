@@ -189,7 +189,7 @@ describe('candidates who are members', () => {
     expect((await search(ea, 'name=ad&limit=21')).status).toBe(400);
   });
 
-  it('is for Election Admins only', async () => {
+  it('is for Election Admins (and Membership Admins, who appoint members to offices) only', async () => {
     for (const user of [auditor, member, ada, sa1]) expect((await search(user, 'name=ada')).status).toBe(403);
   });
 
