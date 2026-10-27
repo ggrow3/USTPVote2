@@ -1,6 +1,26 @@
 import type { ApprovalRequestRecord, ElectionRecord, VoterElection } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
-import { approvalsStatus, ballotStatus, electionsStatus, homeCards, waitingStatus } from './home.js';
+import { approvalsStatus, ballotStatus, electionsStatus, homeCards, visitorCard, waitingStatus } from './home.js';
+
+describe('the signed-out card', () => {
+  it('holds the sign-in form, then Register, Verify and Offices, by default', () => {
+    const card = visitorCard(['register', 'ballot', 'verify', 'offices', 'admin', 'signin']);
+    expect(card.signIn).toBe(true);
+    expect(card.links.map((l) => l.key)).toEqual(['register', 'verify', 'offices']);
+    expect(card.links[2]).toMatchObject({ label: 'See who holds each office', to: '/offices' });
+    expect(card.links[0]).toMatchObject({ label: 'Register as a member', to: '/register' });
+  });
+
+  it('offers Ballot and Admin, which send visitors to sign in, when the form is hidden', () => {
+    expect(visitorCard(['ballot', 'admin']).links.map((l) => l.key)).toEqual(['ballot', 'admin']);
+    expect(visitorCard(['ballot', 'admin']).signIn).toBe(false);
+  });
+
+  it('follows what visitors are shown', () => {
+    expect(visitorCard(['signin']).links).toEqual([]);
+    expect(visitorCard(['register', 'signin']).links.map((l) => l.key)).toEqual(['register']);
+  });
+});
 
 describe('home cards', () => {
   it('follow what the person is shown: ballot first, then membership, verify, offices, admin sections and the account', () => {

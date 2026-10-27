@@ -47,12 +47,19 @@ describe('defaults', () => {
     for (const role of ROLES) expect(DEFAULT_NAVIGATION.menu[role]).toMatchObject({ ballot: true, verify: true, offices: true, register: false });
   });
 
-  it('give each role the console tabs it had', () => {
+  it('give each role the console tabs it had, and System Admins the home page quote', () => {
     const tabs = (role: Role) => shownTo(DEFAULT_NAVIGATION, viewer('active', role)).sections;
     expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'offices', 'approvals']);
     expect(tabs('election_admin')).toEqual(['elections', 'offices', 'approvals']);
     expect(tabs('auditor')).toEqual(['elections', 'offices', 'approvals', 'audit']);
-    expect(tabs('system_admin')).toEqual(['approvals', 'people', 'signin', 'claude', 'email', 'testing', 'navigation']);
+    expect(tabs('system_admin')).toEqual(['approvals', 'people', 'signin', 'claude', 'email', 'testing', 'navigation', 'quote']);
+  });
+
+  it('give settings saved before the Home page quote section existed its default', () => {
+    const { quote: _, ...saved } = DEFAULT_NAVIGATION.sections.system_admin;
+    const stored = { ...DEFAULT_NAVIGATION, sections: { ...DEFAULT_NAVIGATION.sections, system_admin: saved } };
+    expect(resolveNavigation(stored).sections.system_admin.quote).toBe(true);
+    expect(sectionLock('membership_admin', 'quote')).toBe('not_permitted');
   });
 
   it('give no admin section to anyone without a role', () => {

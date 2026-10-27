@@ -217,8 +217,9 @@ test. Keep it current when pages change.
 - **Added 2026-10-27, Offices in the menu, and its More button** (design §10.5; against the emulators signed out, as
   elections@example.test (Membership and Election Admin, no membership) and as admin1@example.test, at 320, 375, 396,
   400 and 600 px; 320 px in the light and the dark theme): Offices, the public Offices page, is a fifth menu link,
-  shown to everyone by default; the public home page has an "Offices" button and the signed-in home page a "Party
-  offices" card ("See the offices"), apart from the admin section's "Offices" card ("Open Offices"). The bar keeps one
+  shown to everyone by default; under the signed-out home page's sign-in form a line "Who leads the party? See who
+  holds each office, elected or appointed." links to it, and the signed-in home page has a "Party offices" card ("See
+  the offices"), apart from the admin section's "Offices" card ("Open Offices"). The bar keeps one
   row: the links that do not fit go, in menu order, behind "More" at its end, a native `button` with `aria-expanded`
   and `aria-controls` naming a `ul` of the same links, which follows it inside the `nav` and in the tab order. At 320
   and 375 px that is Register, Ballot, Verify and More (Offices, Admin), More ending 8 px inside the bar; from 396 px
@@ -248,6 +249,26 @@ test. Keep it current when pages change.
   was compared with, from its own record, each text it read a link; when the choice has changed since, a caption says
   so in words (`text-deep-orange-10`, 5.60 on white). At 320 px the labels wrap beside their boxes and nothing
   scrolls sideways.
+
+- **Added 2026-10-27, the home page as a sign-in landing page, and its quote** (design §10.5; against the emulators
+  signed out, as v1 and as admin1 signing in from the home page's card, and as admin1 changing the quote, switching it
+  off and restoring the default; light at 1024 and 375 px, dark at 1024, 375 and 320 px): signed out, the page's one
+  `h1` is the party's name ("United States Transhumanist Party — Member Voting"), its icon `alt=""`. The quote is a
+  `figure`: the words in a `blockquote`, then a `figcaption` with who said them and the source in a `cite`; the
+  quotation marks and the dash are CSS, so the stored words carry none. The card is the sign-in page's own form (one
+  component, so the same names, order and two-step step), under an `h2` "Sign in to USTP Vote", with Register and
+  Verify as links in sentences, named for where they go ("Register as a member", "Verify your receipt"). Signing in on
+  the page replaces the form with the cards, so focus moves to their `h1` ("Welcome, Ada Brooks") rather than being
+  lost with the form. Reading and tab order follow the layout, the quote then the card; under 1024 px the card stacks
+  under the quote, and at 320 and 375 px nothing scrolls sideways. The quote's size follows its column (22 to 25 px
+  on phones, smaller for a long quote), so 200% text zoom reflows it like any text. The picture is an inline SVG,
+  `aria-hidden="true"`. Text over it sits on a translucent panel, and the figures below are its colours over the
+  picture's worst colour for each theme, computed from the code's colours and checked against the computed styles;
+  they rest on the panel's opacity alone, so a browser without `backdrop-filter` (the blur) gets the same. The Home
+  page quote tab: a switch "Show a quote on the home page", three labelled fields with hints giving their limits and a
+  character count, errors in words under a field ("Needed while the quote is shown", "Over 80 characters") read out as
+  alerts, a preview on the picture in the current theme, the unsaved changes listed in words ("Hide the quote", "Who
+  said it: Lyndon B. Johnson"), and Save disabled while a field is in error.
 
 ## What was fixed
 
@@ -318,6 +339,8 @@ menus and dialogs `#1d1d1d`.
 | Under the tint, light theme (the text's own colour at .08, hover and focus): primary on white (flat and outline buttons, tabs, the current menu item); negative on white; black on white | `#bd4e00` on `#fbf6f3`; `#c10015` on `#fbf3f4`; `#000` on `#f3f3f3` | 4.60; 5.87; 18.93 |
 | Under the tint, dark theme (the text's own colour at .12): accent on the page / a card; `#ef9a9a` on a card; white on a card | `#ff6900` on `#2d231c` / `#362d26`; on `#353030`; on `#363636` | 5.31 / 4.66; 6.04; 12.08 |
 | App icon: white ballot box on primary | `#fff` on `#bd4e00` | 4.94 |
+| Home page, light: text on the panel (white at 80%) over the picture's darkest colour, `#bd4e00` (together `#f2dccc`): the quote, the party's name and who said it; the quotation marks; the source | `#1a1a1a`; `#a34400`; `#4a4a4a` on `#f2dccc` | 13.12; 4.68; 6.68 |
+| Home page, dark: text on the panel (`#0c0a0e` at 72%) over the picture's brightest colour, a star (white at 70% on the sky, `#c2bbb4`; together `#3f3c3c`): the quote, the party's name and who said it; the quotation marks; the source | `#fff`; `#ff8a3d`; `#d0d0d0` on `#3f3c3c` | 10.97; 4.68; 7.11 |
 | Election workflow swim lanes, light (on a white card; bands `#f5f5f5`): the current action, white on primary, and its border, its ▶ mark (on white) and the current band's name on the card / band; a done action, black on `#e8f5e9`, its border on that fill / the card, and its ✓ mark, white on that border colour; other actions black on white; their border, a not-reached action's text and – mark, the lane notes, lane lines and arrows `#757575` on the card / band (other band names are black) | `#fff` on `#bd4e00`; `#bd4e00` on `#fff` / `#f5f5f5`; `#000` on `#e8f5e9`; `#2e7d32` on `#e8f5e9` / `#fff`; `#fff` on `#2e7d32`; `#757575` on `#fff` / `#f5f5f5` | 4.94; 4.94 / 4.53; 18.67; 4.56 / 5.13; 5.13; 4.61 / 4.23 |
 | Election workflow swim lanes, dark (on `#1d1d1d`; bands `#262626`): the current action, black on the accent, and its border, its ▶ mark (on the card) and the current band's name on the card / band; a done action, white on `#203123`, its border on that fill / the card, and its ✓ mark, the card's colour on that border colour; other actions white on the card; their border, a not-reached action's text and – mark, the lane notes, lane lines and arrows `#b0b0b0` on the card / band | `#000` on `#ff6900`; `#ff6900` on `#1d1d1d` / `#262626`; `#fff` on `#203123`; `#81c784` on `#203123` / `#1d1d1d`; `#1d1d1d` on `#81c784`; `#b0b0b0` on `#1d1d1d` / `#262626` | 7.27; 5.84 / 5.24; 13.77; 6.84 / 8.38; 8.38; 7.77 / 6.98 |
 

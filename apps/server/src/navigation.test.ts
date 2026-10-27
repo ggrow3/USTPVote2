@@ -3,6 +3,7 @@ import { ADMIN_SECTIONS, ROLES, SECTION_ROLES, type AdminSection, type Role } fr
 import { describe, expect, it } from 'vitest';
 import { AccountsAdminController } from './accounts/accounts.controller.js';
 import { ApprovalsController, AuditController, SignInMethodsController } from './administration/administration.controller.js';
+import { HomeQuoteAdminController } from './administration/home-quote.js';
 import { NavigationAdminController } from './administration/navigation.js';
 import { ROLES_KEY } from './auth/decorators.js';
 import { AnthropicKeyController } from './claude-checks/anthropic-key-admin.js';
@@ -31,6 +32,7 @@ const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
   audit: [AuditController, 'events'],
   testing: [PersonasController, 'list'],
   navigation: [NavigationAdminController, 'current'],
+  quote: [HomeQuoteAdminController, 'current'],
 };
 
 function rolesOf([controller, method]: Route): readonly Role[] {

@@ -1,4 +1,7 @@
-/** The governance context (design §10): what the web app shows each membership state and staff role (§10.5). */
+/**
+ * The governance context (design §10): what the web app shows each membership state and staff role, and the quote on
+ * the home page (§10.5).
+ */
 export {
   MENU_LINKS,
   ADMIN_SECTIONS,
@@ -38,3 +41,21 @@ export type {
   Viewer,
   NavigationSettingsInput,
 } from './navigation.js';
+export {
+  HOME_QUOTE_LIMITS,
+  DEFAULT_HOME_QUOTE,
+  tidyQuoteText,
+  tidyAttribution,
+  resolveHomeQuote,
+  checkHomeQuote,
+  homeQuoteChanges,
+  homeQuoteSchema,
+} from './home-quote.js';
+export type {
+  HomeQuote,
+  HomeQuoteRecord,
+  PublicHomeQuote,
+  HomeQuoteChange,
+  HomeQuoteChangedPayload,
+  HomeQuoteInput,
+} from './home-quote.js';
