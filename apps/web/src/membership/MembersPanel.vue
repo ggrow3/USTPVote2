@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { useQuasar } from 'quasar';
 import { computed, onMounted, ref, watch } from 'vue';
-import { adminStatusChanges, type MemberRecord, type MemberStatus, type PositionsView, type StatusHistoryRecord } from 'ustp-domain';
-import { api } from '../api.js';
+import { adminStatusChanges, type MemberRecord, type MemberStatus, type StatusHistoryRecord } from 'ustp-domain';
 import { askReason, attempt } from '../dialogs.js';
+import { offices as fetchOffices } from '../offices/api.js';
 import { session } from '../session.js';
 import { changeMemberStatus, memberHistory, members } from './api.js';
 import { stateName } from './member-text.js';
@@ -46,7 +46,7 @@ const selected = ref(new Set<string>());
 async function load() {
   const ok = await attempt(async () => {
     const found: MemberRecord[] = [];
-    const offices = api<PositionsView>('GET', '/v1/admin/positions');
+    const offices = fetchOffices();
     for (;;) {
       const batch = await members({ status: null, after: found.at(-1)?.accountId, limit: FETCH });
       found.push(...batch);

@@ -1,6 +1,8 @@
 import { ConflictException, ForbiddenException, Injectable } from '@nestjs/common';
 import {
   Collections,
+  planAppointment,
+  type AppointmentInput,
   type ApprovalRequestRecord,
   type PositionInput,
   type PositionModifyPayload,
@@ -11,12 +13,15 @@ import {
 import { ApprovalsService } from '../administration/approvals.service.js';
 import { requireAccount } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
+import { accepted } from '../common/validation.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { MemberDirectory } from '../membership/member-directory.js';
+import { appointmentContext } from './appointment-context.js';
 
 /**
- * Offices and terms (design §6.4). A Membership or Election Admin defines or changes an office at once; ending a term
- * is a `position.modify` request an Auditor approves.
+ * Offices and terms (design §6.4). A Membership or Election Admin defines or changes an office at once; appointing a
+ * member to it (`position.appoint`) and ending a term (`position.modify`) are requests an Auditor approves.
  */
 @Injectable()
 export class PositionsService {
@@ -24,6 +29,7 @@ export class PositionsService {
     private readonly firebase: Firebase,
     private readonly approvals: ApprovalsService,
     private readonly ledger: LedgerService,
+    private readonly members: MemberDirectory,
   ) {}
 
   /** Every office and every term, for administrators. */
@@ -61,6 +67,21 @@ export class PositionsService {
       ]);
       tx.set(this.firebase.db.collection(Collections.positions).doc(position.positionId), record);
       return record;
+    });
+  }
+
+  /**
+   * Asks an Auditor to appoint an Active member to a free seat of the office, without an election. The appointee may
+   * neither ask nor approve: they are the request's subject.
+   */
+  async requestAppointment(ctx: RequestContext, positionId: string, input: AppointmentInput): Promise<ApprovalRequestRecord> {
+    const requestedBy = requireAccount(ctx);
+    const { reason, ...appointment } = input;
+    this.approvals.assertCanRequest(ctx, 'position.appoint', appointment.accountId);
+    return this.firebase.db.runTransaction(async (tx) => {
+      const context = await appointmentContext(tx, this.firebase, this.members, positionId, appointment.accountId);
+      const payload = accepted(planAppointment(positionId, appointment, context, new Date().toISOString()));
+      return this.approvals.createRequest(tx, { action: 'position.appoint', subject: payload.accountId, payload, reason, requestedBy });
     });
   }
 

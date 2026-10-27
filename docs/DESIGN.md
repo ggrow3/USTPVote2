@@ -23,8 +23,8 @@ marks it; decisions that belong to USTP (bylaws, policy) are collected in [§18 
    can check (d) that their own ballot is included.
 3. **Secret ballot** (per election) against members, observers, administrators and anyone with database read
    access. See [§2](#2-threat-model-and-trust-assumptions) for the precise boundary.
-4. **Separation of duties**: no single administrator can approve a roll, certify a result or end a term of office
-   alone.
+4. **Separation of duties**: no single administrator can approve a roll, certify a result, appoint someone to an
+   office or end a term of office alone.
 
 ### Non-goals for V1
 - Cryptographic end-to-end verifiability that removes trust in the server at cast time (homomorphic tallying,
@@ -52,7 +52,7 @@ marks it; decisions that belong to USTP (bylaws, policy) are collected in [§18 
 | Voter | Vote once, see own receipt | Vote twice; vote without being on the frozen roll | `transaction.create()` on `participation/{accountId}`; roll check in the same request |
 | Member / public observer | Read published blocks, results, anchors | Link a ballot to a voter | Sealed blocks carry no voter IDs, ordered by random commitment, ≥ k ballots each |
 | Firestore reader (insider with DB access, leaked backup/export/PITR) | See *who* voted and when | See *how* anyone voted, during or after the election | Pool entries are KMS-encrypted; pool key version destroyed after certification ([§7.3](#73-ballot-pool-encryption)) |
-| Single administrator | Act within their role; a System Admin can grant or revoke any role, System Admin and Auditor included, alone; a Membership or Election Admin can define or change an office alone | Approve their own request; certify, freeze a roll or end a term of office alone; change their own roles; change roles or offices unrecorded | Two-person rule; role and office changes in the ledger ([§10](#10-administration-and-separation-of-duties)) |
+| Single administrator | Act within their role; a System Admin can grant or revoke any role, System Admin and Auditor included, alone; a Membership or Election Admin can define or change an office alone | Approve their own request; certify, freeze a roll, appoint to an office or end a term of office alone; change their own roles; change roles or offices unrecorded | Two-person rule; role and office changes in the ledger ([§10](#10-administration-and-separation-of-duties)) |
 | Anyone with write access to the DB | Edit documents out of band | Do so undetected | Ledger hash chain, KMS-signed blocks, WORM anchors in Bucket Lock ([§8](#8-audit-ledger-hash-chain-merkle-blocks-anchors)) |
 | GCP project owner / deployer | Deploy new code, change IAM | Rewrite already-anchored history | Bucket Lock; recommended public mirroring of anchors; Binary Authorization; reviewed deploys |
 | Release workflow (GitHub Actions as `ustp-release`) | Build, attest and run any code on `main` | Change IAM, read Firestore, use the signing or ballot-pool keys; run from another branch or workflow | Workload Identity Federation bound to `release.yml` on `main` in one GitHub environment; required reviewers on staging and production; pull-request review of `main` ([§15](#15-environments-deployment-cost)) |
@@ -188,8 +188,9 @@ each converted context has a folder with its typed client (`api.ts`, the only pl
 and panels, and its wording. The browser runs `ustp-domain`'s rules to offer only what the API will accept and keeps
 no copy of its own; `apps/web/src/boundaries.test.ts` fails if a context's routes appear outside its client. Converted
 so far: `membership/` (the Register page and the Applications and Members panels; the status changes the Members panel
-offers come from `adminStatusChanges` in `ustp-domain`), and the start of `governance/`: the navigation settings'
-client, panel and wording, and the store the menu, the console's tabs and the home page read (§10.5).
+offers come from `adminStatusChanges` in `ustp-domain`), the start of `governance/`: the navigation settings'
+client, panel and wording, and the store the menu, the console's tabs and the home page read (§10.5), and `offices/`:
+the Offices panel, the appointment dialog, the member profile's Offices card and the public Offices page (§6.4).
 
 ## 4. Identity and accounts
 
@@ -345,8 +346,8 @@ Every transition writes, in one transaction, the new status on `members/{account
   Change status and Correct details. Opening a profile is not ledgered or logged, like every other admin read. System
   Admins do not see profiles: their People list stays as in §10.3.
 - **Members tab.** The Membership Admin's list loads every member from `GET /v1/admin/members`, 500 a request, and
-  each member's offices from `GET /v1/admin/positions`: the active terms whose candidate was entered with the member's
-  account, each shown as the office's title over its description; anyone else is "Member" while they have a
+  each member's offices from `GET /v1/admin/positions`: the active terms held under the member's account (a candidate
+  entered with it, or an appointment, §6.4), each shown as the office's title over its description; anyone else is "Member" while they have a
   membership (active, lapsed, suspended). The browser does the rest, over the whole list: a search of legal and
   preferred names, a state filter, status filters with counts (Active, Lapsed, Suspended and Resigned always;
   Applicant and Rejected while someone has that status, since applications are decided on their own tab), sorting by
@@ -793,8 +794,8 @@ voting not in the future, missing proposal text or candidates, any `ustp-tally` 
 candidates). Scheduling (M2b) freezes exactly this hash. Contest and candidate IDs are random Firestore IDs, or those
 an election package gives (§6.7); both fit the `ustp-tally` ID pattern. Only drafts can be edited.
 - `positions` define offices (title, seats, term length). Certifying an election that fills an office creates
-  `position_terms` that reference the certified results hash. Ending a term early is a two-person action. Implemented
-  in M4b:
+  `position_terms` that reference the certified results hash. Ending a term early is a two-person action, and so is
+  appointing someone to an office without an election (added in M5). Implemented in M4b:
   - **Offices** (`positions/{positionId}`, a slug: `{title, description, seats, termMonths, definedAt, approvalId}`)
     are defined or changed by one Membership or Election Admin, at once and with a written reason
     (`POST /v1/admin/positions`; `position.defined` ledgered with that admin as actor and the reason; `approvalId`
@@ -808,12 +809,49 @@ an election package gives (§6.7); both fit the `ustp-tally` ID pattern. Only dr
     exist); it is part of the frozen definition, so the Auditor scheduling the election sees which office each contest
     fills. Proposals cannot fill an office.
   - **Terms** (`position_terms/{termId}`: holder name and account if the candidate had one, contest, election,
-    `startsAt`, `endsAt`, `resultsHash`, `status`) are created only by certification: one per winner, starting at
+    `startsAt`, `endsAt`, `resultsHash`, `status`) are created by certification, one per winner, starting at
     certification and lasting the office's `termMonths` (same day of the month, or its last day). Ending one early
     (resignation, removal) is `position.modify` with `{change: 'end_term', termId}`; the holder may neither request
     nor approve it (`position_term.ended` ledgered).
-  - **Public:** `GET /v1/public/positions` lists the offices and their active terms; office holders are public, like
-    the results they come from. Administrators see every term in the console's Offices tab.
+  - **Appointments** *(added)*: a term can also come from an appointment instead of an election: for an office no
+    election has filled yet (its first holders when the system starts, including people already serving then), or
+    for someone who must be appointed between elections (to fill a vacancy, or as an interim holder). An appointment
+    is the two-person action `position.appoint` (§10.2), never one person's: a Membership or Election Admin, the
+    roles that define offices, asks (`POST /v1/admin/positions/{id}/appointments` with the member's `accountId`, the
+    dates and a written reason) and an Auditor approves. The request's subject is the appointee's account, so the
+    appointee may neither ask nor approve, and only one appointment per member waits at a time. The rules are
+    `planAppointment` (at the request) and `appointTerm` (in the decision's transaction, with the approval's time) in
+    `ustp-domain`, which check the same things again:
+    - **Only an Active member** can be appointed, read from their member record as for linking a candidate (§6.5).
+      The term carries their account and their legal name as the request recorded it, which is what the Auditor saw.
+    - **Dates:** the term starts when the appointment is approved, or on an earlier date the request gives, for
+      someone already serving when it is recorded; never a later one, since an appointment takes effect when it is
+      approved. It ends on a date the request gives, or after a number of months, by default the office's
+      `termMonths`, counted with `addMonths` as for elected terms. It may be shorter than a full term (to the end of
+      a vacated term, or until the next election) but never longer than the office's `termMonths` from its start, and
+      it must not already be over when it is approved.
+    - **A sitting holder is never displaced:** an appointment only fills a free seat, so it is refused while the
+      office has as many active terms as seats, and for a member who already holds the office. To replace someone,
+      end their term first (`position.modify` as above, approved by an Auditor), then appoint. A term counts as
+      active until it is ended, whatever its end date (whether holders serve on until a successor is chosen is Q1).
+    - **The reason is required and public.** It is in the request (`approval.requested`, Auditors only) and in the
+      `position_term.appointed` entry, which is public like `position_term.created` (`termId, positionId,
+      holderName, accountId, startsAt, endsAt, reason, approvalId`, the Auditor as actor), so it should name the
+      authority for the appointment (the bylaws article, the officers' vote). The term records `basis:
+      'appointment'`, the request's `approvalId` and the reason, and no election, contest or results hash. Elected
+      terms record `basis: 'election'`; those certified before appointments existed have no `basis` and are elected.
+    - **Ending an appointed term early**, or removing an appointee, is the same `position.modify` `end_term` request
+      as for an elected term, approved by an Auditor, which the holder may neither request nor approve.
+
+    In the web app, the Offices tab offers Appoint on each office and the member profile (Membership Admins, §5.2)
+    Appoint to an office. Both ask for the member (the profile's own member there), the office, the dates and the
+    reason, show the term's dates before sending, explain a refusal with the same rules, and list the appointments
+    and term endings waiting for an Auditor, who decides them in the Approvals tab. The member is found with the
+    candidate search (§6.5), which Membership Admins may use for this.
+  - **Public:** `GET /v1/public/positions` lists the offices and their active terms, each marked elected or appointed
+    (`basis`); office holders are public, like the results and appointments they come from. The web app's Offices
+    page (`/offices`, public) shows each office's holders, since and until when, and for an appointment that it was
+    one and why. Administrators see every term in the console's Offices tab.
 
 **Candidates who are members.** A candidate is the name the ballot shows, and may be linked to the account of the
 member standing (`accountId`). The link is what recusal checks (§10.1, §10.2) and what a term of office and the Members
@@ -824,7 +862,8 @@ tab use to name the holder (§6.4, §5.2); it is not part of the definition, so 
   member record), and the same holds on import (§6.7). Nobody can link their own account (403). A member whose status
   changes later stays linked.
 - **Picking the member:** the editor's candidate field is a combobox. As the Election Admin types, it asks
-  `GET /v1/admin/member-search?name=…` (Election Admin; 10 matches, `limit` up to 20) for the Active members whose
+  `GET /v1/admin/member-search?name=…` (Election Admin, and Membership Admin to appoint a member to an office, §6.4;
+  10 matches, `limit` up to 20) for the Active members whose
   legal or preferred name holds every word typed, in any case and with or without accents: names that start with the
   text first, then those where each word typed starts a word of the name, then the rest, alphabetically within each
   (`matchMembers`). A match carries only the account ID, legal and preferred name and state, enough to tell two people
@@ -1245,7 +1284,7 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled` (M2–M3a), `ballots.sealed`,
   `election.sealed` (M3b), `results.computed` (M4a), `results.certified`, `election.pool_key_destroyed`,
   `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed`,
-  `navigation.changed`, `notice.sent`, `notice.resend_requested`, `anthropic_key.changed` (M5). The authoritative list is `LEDGER_EVENT_TYPES` in
+  `navigation.changed`, `notice.sent`, `notice.resend_requested`, `anthropic_key.changed`, `position_term.appointed` (M5). The authoritative list is `LEDGER_EVENT_TYPES` in
   `ustp-domain`.
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
   entries are public; the election notice entries (`notice.*`, §6.8), about delivering mail rather than the election's
@@ -1253,7 +1292,7 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   seeing the private entries in that block. Public types (`PUBLIC_LEDGER_EVENT_TYPES`): `bylaws.published`,
   `roll.approved`, `election.scheduled`, `election.opened`, `election.closed`, `ballots.sealed`, `election.sealed`,
   `election.cancelled`, `election.deleted`, `results.computed`, `results.certified`, `election.pool_key_destroyed`,
-  `position.defined`, `position_term.created`, `position_term.ended`.
+  `position.defined`, `position_term.created`, `position_term.appointed`, `position_term.ended`.
   `GET /v1/public/ledger/entries/{seq}` returns a public entry with its block and inclusion proof; anything else, or an
   entry not yet in a block, is 404.
 
@@ -1446,8 +1485,8 @@ results page, the CLI and the tests pass it that entry.
 | Triage applications and photos; view member profiles; change member status; correct member details (§5.2) | ● | | | |
 | Create/edit draft elections, contests, proposals; delete a cancelled election nobody voted in, or a finished rehearsal in testing mode (at once; §6.1) | | ● | | |
 | Request roll snapshot, scheduling, certification, cancellation | | ● | | |
-| Define or change offices (at once; §6.4) | ● | ● | | |
-| Approve roll, scheduling, certification, cancellation, ending a term of office | | | ● | |
+| Define or change offices (at once; §6.4); request an appointment to an office or the end of a term (§6.4) | ● | ● | | |
+| Approve roll, scheduling, certification, cancellation, an appointment to an office, ending a term of office | | | ● | |
 | Read full ledger, run verifications | | | ● | |
 | Grant/revoke roles (one System Admin, at once; §10.2), see who holds them (§10.3), sign-in switches, the Anthropic API key (§5.6), operations | | | | ● |
 
@@ -1484,6 +1523,7 @@ decidedBy, decidedAt, reason, expiresAt}`.
 | `election.certify` | Election Admin | Auditor |
 | `election.cancel` (Scheduled/Open) | Election Admin | Auditor |
 | `position.modify` (ending a term; §6.4) | Membership or Election Admin | Auditor |
+| `position.appoint` (a term by appointment; §6.4) | Membership or Election Admin | Auditor |
 
 Defining or changing an office is no longer two-person: one Membership or Election Admin does it at once (§6.4).
 Deleting a cancelled election nobody voted in is one Election Admin's action too, like cancelling a draft (§6.1).
@@ -1655,7 +1695,7 @@ Physically, registration collections are top-level and election data lives under
 | `profile_photos/{photoId}` | auto | status only | storage path, status |
 | `photo_checks/{checkId}` | auto | immutable | Vision signals, verdict |
 | `positions/{positionId}` | slug | Membership or Election Admin, at once | title, description, seats, term months, approval if any (§6.4) |
-| `position_terms/{termId}` | auto | created by certification; ended two-person | holder, contest, start/end, results hash, status |
+| `position_terms/{termId}` | auto | created by certification or an approved appointment; ended two-person | holder, `basis` (election or appointment), contest and results hash or the appointment's approval and reason, start/end, status |
 | `eligibility_snapshots/{snapshotId}` | auto | immutable once approved; deleted with its election (§6.1) | criteria (`testVotersOnly` on a rehearsal roll, §6.3), count, Merkle root, signature |
 | **voting** | | | |
 | `elections/{electionId}` | UUIDv7 | state transitions; deleted with everything under it if cancelled with no ballot cast (§6.1) | definition, definitionHash, seed commitment, k; `amendsBylaws` once scheduled (§6.6) |
@@ -1730,14 +1770,15 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/photos` · `GET /admin/photos/{id}/image` · `POST /admin/photos/{id}/decision` | Membership Admin | photo review |
 | `GET /admin/elections` · `GET /admin/elections/{id}` (detail, definition hash, problems) · `GET /admin/proposals` | Election Admin, Auditor | read election setup |
 | `POST /admin/elections` · `PATCH /admin/elections/{id}` · `POST\|PUT\|DELETE …/contests[/{cid}]` · `POST\|DELETE …/contests/{cid}/candidates[/{kid}]` · `POST /admin/proposals` | Election Admin | edit drafts; a candidate's optional `accountId` must be an Active member's (§6.5) |
-| `GET /admin/member-search?name=…` (`limit` ≤ 20) | Election Admin | Active members whose legal or preferred name matches, to link a candidate: account ID, names and state only (§6.5) |
+| `GET /admin/member-search?name=…` (`limit` ≤ 20) | Election Admin, Membership Admin | Active members whose legal or preferred name matches, to link a candidate or appoint a member: account ID, names and state only (§6.5) |
 | `POST /admin/elections/import` | Election Admin | a whole draft from a `ustp.election` file, in one transaction (400/403/409 write nothing; §6.7) |
 | `GET /admin/elections/{id}/package` | Election Admin, Auditor | any election as a `ustp.election` file (§6.7) |
 | `GET /admin/elections/{id}/consistency-check` · `POST …` | Election Admin, Auditor | the same check from the election editor, on the election as it stands, a draft included; the same one-run record (§5.5) |
 | `POST /admin/elections/{id}/roll` · `.../schedule` · `.../cancel` · `.../certify` | Election Admin | roll snapshot (`voters: 'test_voters'` for a rehearsal roll, testing mode only, §6.3), scheduling, cancellation and certification requests (draft cancel is immediate) |
 | `POST /admin/elections/{id}/delete` | Election Admin | permanently delete a cancelled election nobody voted in, or in testing mode a certified or cancelled rehearsal with its ballots, at once (204; 409 otherwise; §6.1) |
 | `GET /admin/positions` · `POST /admin/positions` · `POST /admin/positions/{id}/terms/{termId}/end` | any admin (read); Membership or Election Admin | offices and terms; define or change an office (at once), end a term (→ approval) |
-| `GET /public/positions` | P | offices and who holds them now |
+| `POST /admin/positions/{id}/appointments` | Membership or Election Admin | appoint an Active member to a free seat: `accountId`, optional earlier `startsAt`, `endsAt` or `termMonths` (neither: a full term), reason (→ approval; 404 no such office, 409 not Active, no free seat, already a holder or dates outside the office's term; §6.4) |
+| `GET /public/positions` | P | offices and who holds them now, each term marked elected or appointed |
 | `GET /admin/elections/{id}/roll` | Election Admin, Auditor | latest roll with member names, for review |
 | `GET /admin/elections/{id}/notices` | Election Admin, Auditor | the election's notices as counts (sent, still to send, failed, bounced, skipped), never addresses (§6.8) |
 | `POST /admin/elections/{id}/notices/{kind}/resend` | Election Admin | send the notice again to those it failed for, while voting is open and once its last round has finished (409 otherwise; §6.8) |
@@ -1924,7 +1965,7 @@ of Cloud Scheduler.
 | §2 worker as "Cloud Run Worker / Jobs" | Cloud Run service, HTTP-triggered | Per-minute Jobs would exceed the free tier |
 | §4 sealer only | + KMS encryption of pool entries with per-election key versions destroyed after certification | Sealing does not protect the pool while it exists, nor backups |
 | §4 lifecycle | + `Cancelled`; scheduling is two-person; a cancelled election nobody voted in can be deleted | Need a terminal state for aborted elections; the contest rules matter as much as the roll; elections set up by mistake or for practice should not stay in every list, and the ledger keeps their record (§6.1) |
-| §5 two-person list | + scheduling, cancellation; officer position modifications only for ending a term | Same reasoning. Role changes were two-person too until USTP chose one System Admin for them (§10.2), and defining or changing an office until USTP chose one Membership or Election Admin for it (§6.4) |
+| §5 two-person list | + scheduling, cancellation; officer position modifications only for ending a term and appointing to an office | Same reasoning. Role changes were two-person too until USTP chose one System Admin for them (§10.2), and defining or changing an office until USTP chose one Membership or Election Admin for it (§6.4) |
 | §6 collections | + `approval_requests`, `bylaws_versions`, `ledger_head` | Two-person workflow, provable bylaws agreement, chain head |
 | §4 "1-minute anchors" | Anchor only when a new block exists, ≤ 1/min | Matches spec §8 "smart anchoring" |
 | §7 "Binary Authorization: reproducible builds" | Lockfile + `--ignore-scripts` **and** an actual Binary Authorization policy on Cloud Run | They are separate controls |
@@ -1936,7 +1977,7 @@ of Cloud Scheduler.
 | §4 sealed blocks published as sealed | Contents published once voting closes; summaries and inclusion proofs while open | Publishing contents during voting would show a running tally |
 | (design) §13 tally as a Cloud Task after close | A step of the minute tick, right after the sealer | No queue to run or secure, results within a tick of close, and the next tick retries a failed tally |
 | (added) §13 `destroy-pool-key` Cloud Task after certification | A tick step for certified and cancelled elections | Same idempotent pattern as sealing and tallying; no Cloud Tasks queue or enqueue permission needed |
-| §6 position terms | Terms start at certification and last the office's `termMonths` | The bylaws' term dates are Q1; a later start date can be added to the office if USTP needs one |
+| §6 position terms | Terms start at certification and last the office's `termMonths`, or come from an appointment two people approve, at most that long (§6.4) | The bylaws' term dates are Q1; a later start date can be added to the office if USTP needs one. Offices need holders before any election has run, and vacancies filled between elections |
 | §2.1 projects `ustp-voting-dev`, `-staging`, `-prod` | `ustpvote2-dev`, `-staging`, `-prod` | Project IDs are global, and the `ustp-voting-*` IDs already belong to the separate USTP Hub system in the vernalfuture.com organization (its own voting app); USTPVote2 stays out of those projects |
 | (design) §14 "Cloud Build provenance" | The image is built by a GitHub Actions workflow and attested there; no provenance yet | One workflow builds, attests and deploys with a keyless identity; Cloud Build would add a build service account, a source bucket and its IAM. Provenance can come from Cloud Build or GitHub's artifact attestations later |
 | (design) §15 deploys through `terraform apply -var=server_image=…` | Terraform creates the services with a first image; the release workflow rolls them onto later images and Terraform ignores the image | Deploying through Terraform would need an identity able to refresh everything, including IAM and Firestore metadata; the release identity needs only the two services |
@@ -1946,7 +1987,10 @@ of Cloud Scheduler.
 
 Decisions for USTP; the design's proposed default is in brackets.
 
-1. **Bylaws texts:** which provisions govern elections — quorum, pass thresholds per proposal type, vacancy filling? [configurable per contest]
+1. **Bylaws texts:** which provisions govern elections — quorum, pass thresholds per proposal type, vacancy filling?
+   Who may appoint to a vacant office, and do holders serve on past their term's end until a successor is chosen?
+   [configurable per contest; an appointment is a Membership or Election Admin's request an Auditor approves, its
+   reason naming the authority for it (§6.4); a term stays active until it is ended]
 2. **Lapse rule:** what moves Active → Lapsed (dues, renewal period, inactivity)? [manual admin action in V1]
 3. **Voter eligibility:** Active on the snapshot date only, or also a minimum membership age? [Active at `asOf`]
 4. **Frozen roll:** if a member is suspended after the roll is frozen, can they still vote? [yes; roll is frozen]
@@ -1993,4 +2037,4 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Word export done:* the ballot and results as a `.docx` built in the browser, for Word and Google Docs, from the results page, the ballot page and the election editor (§9). *Synopsis done:* the results in brief, as the party publishes them, first on the results page (printable) and first in the Word file (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES with bounces read from SQS, and an outbox in place of mail with the emulators (§6.8; SES itself not yet set up in any project); the platform consistency check with Claude, once per person per election, from the ballot for voters on the roll and from the election editor for Election Admins and Auditors, comparing the proposals with the USTP Constitution (its Article VI is the Platform), the Transhumanist Bill of Rights, the bylaws in force and each other (§5.5; off in real projects until Q18 is settled, and not yet run against Anthropic's API); the Anthropic API key added, replaced or removed by a System Admin under Admin › Claude, tried with Anthropic first and kept in Secret Manager, where the api can store it but not read it, ledgered as `anthropic_key.changed` (§5.6). *Still to do:* the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES with bounces read from SQS, and an outbox in place of mail with the emulators (§6.8; SES itself not yet set up in any project); the platform consistency check with Claude, once per person per election, from the ballot for voters on the roll and from the election editor for Election Admins and Auditors, comparing the proposals with the USTP Constitution (its Article VI is the Platform), the Transhumanist Bill of Rights, the bylaws in force and each other (§5.5; off in real projects until Q18 is settled, and not yet run against Anthropic's API); the Anthropic API key added, replaced or removed by a System Admin under Admin › Claude, tried with Anthropic first and kept in Secret Manager, where the api can store it but not read it, ledgered as `anthropic_key.changed` (§5.6); appointments to offices without an election, for first holders and between elections, requested by a Membership or Election Admin and approved by an Auditor, only an Active member and only to a free seat, ledgered as the public `position_term.appointed`, with Appoint in the Offices tab and on the member profile and a public Offices page (§6.4). *Still to do:* the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |

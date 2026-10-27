@@ -170,6 +170,30 @@ test. Keep it current when pages change.
   after it, focus returns to the status line and "Key removed." is announced. The section is a row in the Navigation
   settings ("Show Claude to System Admin"). Captions `#757575` on white (4.61), read back from the computed styles; at
   320 px nothing scrolls sideways and the check states stack.
+- **Added 2026-10-27, appointing members to offices** (design §6.4; against the emulators as elections@example.test,
+  the seeded Membership and Election Admin, then as auditor@example.test, and signed out; desktop width dark, 320 px
+  light and dark): each office's card in the Offices tab has Appoint (named "Appoint to Chair" by a screen-reader-only
+  suffix, like Change and End term), and the member profile has an Offices card (`h2`) with Appoint to an office for an
+  Active member other than yourself, and says why not for anyone else. Both open one dialog, `aria-modal`, named by its
+  `h2` ("Appoint to Chair", "Appoint Ben Cruz to an office"); focus moves into it and returns to the button that opened
+  it on Cancel or after sending, and like the app's other form dialogs it is persistent, so Escape does not throw the
+  typed reason away. The member is a combobox labelled "Member", described by the line under it (what choosing does,
+  then who is chosen), that searches as typing pauses and announces how many members match and how many can be
+  chosen; members who cannot be chosen (yourself, a holder of the office, one with an appointment waiting) stay in the
+  list, disabled, with the reason in their caption. Starts and Ends are `fieldset`s whose `legend` names their radios
+  ("When an Auditor approves", "After a full term of 24 months"…); the date and months fields appear under the radio
+  that needs them, labelled "Started on", "Months", "Ends on", with `max` set to today or to the office's longest term.
+  The term the choices give ("Term if approved now: Oct 27, 2026 – Apr 27, 2027") and any reason it cannot be asked for
+  ("Chair has no free seat: end a term first, then appoint.", "The term would already be over.") are shown as text and
+  announced politely once they change; the reason is a light banner (`bg-orange-1`, black text) in both themes, never
+  colour alone. Sending with a field missing focuses the first invalid field with its message. The Reason field's hint
+  says the reason is published. Pending appointments and term endings are listed under "Waiting for an Auditor" (`h3`)
+  on the office's card and the profile, and in the Approvals tab as "appoint Ada Brooks to the office chair, from Nov 1,
+  2025, for 24 months", whose Approve and Reject buttons carry the same text for screen readers; the requester's own
+  request says "You requested this; another admin must decide." Each term says Elected or Appointed in words. The
+  public Offices page (`/offices`, page title "Offices · USTP Vote") has an `h1`, an `h2` per office and a list of
+  holders, each "Appointed · since … · until …" with the reason, or "Elected (results)" linking to the results; at
+  320 px nothing scrolls sideways on it, in the Offices tab or in the dialog, whose buttons wrap.
 
 ## What was fixed
 
@@ -393,7 +417,8 @@ matches open in Quasar's full-screen options dialog, where the search and its an
   shown while one is open, are announced inconsistently by some reader and browser pairs; the cast flow avoids depending
   on them by moving focus to the receipt.
 - **Not exercised in a browser**: two-step sign-in and the authenticator QR step (the Auth emulator does not support
-  authenticator apps), the rows of pending applications, photos and approval requests (the seed has none), and the
+  authenticator apps), the rows of pending applications, photos and approval requests other than appointments (the
+  seed has none), and the
   federated buttons' popups in the desktop app's browser pane (it opens popups in the same tab, so a federated
   newcomer was checked by signing in with an emulator Google credential instead). These were reviewed in code only.
 - Quasar's radios, checkboxes and toggles are ARIA widgets on `div`s rather than native inputs. They behave correctly

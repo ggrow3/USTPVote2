@@ -1,4 +1,5 @@
-import { isRehearsalRoll, type ApprovalRequestRecord, type Role, type RollCriteria } from 'ustp-domain';
+import { isRehearsalRoll, type ApprovalRequestRecord, type AppointPayload, type Role, type RollCriteria } from 'ustp-domain';
+import { appointmentTerm } from './offices/office-text.js';
 
 const ROLE_LABELS: Record<Role, string> = {
   membership_admin: 'Membership Admin',
@@ -41,6 +42,10 @@ export function describeRequest(r: ApprovalRequestRecord): string {
         ? `define the office ${position?.title} (${position?.seats} ${position?.seats === 1 ? 'seat' : 'seats'}, ${position?.termMonths}-month term)`
         : `end a term in the office ${String(p.positionId)}`;
     }
+    case 'position.appoint': {
+      const appointment = p as unknown as AppointPayload;
+      return `appoint ${appointment.holderName} to the office ${appointment.positionId}, ${appointmentTerm(appointment)}`;
+    }
     default:
       return r.action;
   }
@@ -50,5 +55,5 @@ export function describeRequest(r: ApprovalRequestRecord): string {
 export function reviewLink(r: ApprovalRequestRecord): string | null {
   const electionId = (r.payload as { electionId?: unknown }).electionId;
   if (typeof electionId === 'string') return `/admin/elections/${electionId}`;
-  return r.action === 'position.modify' ? '/admin?tab=offices' : null;
+  return r.action === 'position.modify' || r.action === 'position.appoint' ? '/admin?tab=offices' : null;
 }

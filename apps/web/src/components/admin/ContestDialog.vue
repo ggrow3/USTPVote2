@@ -4,7 +4,6 @@ import {
   contestInputSchema,
   proposalInputSchema,
   type ContestRecord,
-  type PositionsView,
   type ProposalSnapshotRecord,
 } from 'ustp-domain';
 import type { ProposalContest } from 'ustp-tally';
@@ -13,6 +12,7 @@ import { focusFirstInvalid } from '../../a11y.js';
 import { attempt } from '../../dialogs.js';
 import { KIND_LABELS, PASS_RULE_PRESETS } from '../../election-text.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../../forms.js';
+import { offices } from '../../offices/api.js';
 
 const open = defineModel<boolean>({ required: true });
 const props = defineProps<{ electionId: string; contest: ContestRecord | null; proposals: readonly ProposalSnapshotRecord[] }>();
@@ -66,7 +66,7 @@ watch(open, (isOpen) => {
     maxRanks: null,
     positionId: c?.positionId ?? null,
   });
-  void api<PositionsView>('GET', '/v1/admin/positions')
+  void offices()
     .then(({ positions }) => {
       officeOptions.value = [
         { label: 'No office', value: null },

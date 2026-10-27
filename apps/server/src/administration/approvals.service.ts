@@ -183,7 +183,7 @@ export class ApprovalsService {
   private handlerFor(action: TwoPersonAction): ApprovalHandler {
     // Role requests come only from before role changes needed one admin (design §10.2).
     if (action === 'role.grant' || action === 'role.revoke') return this.roles;
-    if (action === 'position.modify') return this.positions;
+    if (action === 'position.modify' || action === 'position.appoint') return this.positions;
     return this.elections; // roll.approve, election.schedule, election.certify, election.cancel
   }
 }

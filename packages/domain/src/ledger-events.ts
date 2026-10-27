@@ -28,6 +28,7 @@ export const LEDGER_EVENT_TYPES = [
   'notice.resend_requested',
   'position.defined',
   'position_term.created',
+  'position_term.appointed',
   'position_term.ended',
 ] as const;
 export type LedgerEventType = (typeof LEDGER_EVENT_TYPES)[number];

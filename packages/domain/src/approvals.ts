@@ -13,6 +13,8 @@ export const TWO_PERSON_ACTIONS = {
   'election.certify': { requesters: ['election_admin'], approver: 'auditor' },
   'election.cancel': { requesters: ['election_admin'], approver: 'auditor' },
   'position.modify': { requesters: ['membership_admin', 'election_admin'], approver: 'auditor' },
+  // Appointing a member to an office without an election; the subject is the appointee (design §6.4).
+  'position.appoint': { requesters: ['membership_admin', 'election_admin'], approver: 'auditor' },
   // Role changes now take effect on one System Admin's word (checkCanChangeRole). Nobody requests these any more;
   // they stay so that requests made before can still be decided until they expire.
   'role.grant': { requesters: [], approver: 'system_admin' },

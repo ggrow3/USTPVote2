@@ -7,6 +7,7 @@ import { focusFirstInvalid, usePageTitle } from '../a11y.js';
 import { ApiError, errorMessage } from '../api.js';
 import { askReason, attempt } from '../dialogs.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../forms.js';
+import MemberOffices from '../offices/MemberOffices.vue';
 import { session } from '../session.js';
 import ApplicationAnswers from './ApplicationAnswers.vue';
 import DetailsFields from './DetailsFields.vue';
@@ -152,6 +153,8 @@ watch(
             </dl>
           </q-card-section>
         </q-card>
+
+        <MemberOffices :member="m" :is-self="isSelf" />
 
         <q-card flat bordered>
           <q-card-section class="ustp-header">
