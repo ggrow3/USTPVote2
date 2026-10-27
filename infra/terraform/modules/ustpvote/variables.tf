@@ -229,16 +229,72 @@ variable "web_origin" {
   }
 }
 
+variable "mail_transport" {
+  description = "How the worker sends election notices (MAIL_TRANSPORT): \"ses\" through Amazon SES, or \"off\". Before \"ses\": set up SES and add the two aws-ses-* secret versions (README \"Election notices\")."
+  type        = string
+  default     = "off"
+
+  validation {
+    condition     = contains(["off", "ses"], var.mail_transport)
+    error_message = "mail_transport is \"off\" or \"ses\"."
+  }
+}
+
 variable "mail_from" {
-  description = "From header of election notices (MAIL_FROM), e.g. \"USTP Elections <elections@example.org>\". Its domain must be verified with the mail provider."
+  description = "From header of election notices (MAIL_FROM). Its domain must be verified in SES. It takes no replies."
+  type        = string
+  default     = "USTP Elections <noreply@transhumanist-party.org>"
+}
+
+variable "mail_reply_to" {
+  description = "Reply-To header of election notices (MAIL_REPLY_TO); empty for none, as agreed."
   type        = string
   default     = ""
 }
 
-variable "mail_reply_to" {
-  description = "Reply-To header of election notices (MAIL_REPLY_TO); empty for none."
+variable "notice_contact" {
+  description = "Where the notices tell members to ask about an election (NOTICE_CONTACT): an email address or an https page. Required for \"ses\"; until it is set the emails show a placeholder."
   type        = string
   default     = ""
+
+  validation {
+    condition     = var.mail_transport != "ses" || trimspace(var.notice_contact) != ""
+    error_message = "Set notice_contact, where members ask about an election, before mail_transport = \"ses\"."
+  }
+}
+
+variable "ses_region" {
+  description = "AWS region of the SES identity, configuration set and bounce queue (SES_REGION)."
+  type        = string
+  default     = "us-east-1"
+}
+
+variable "ses_configuration_set" {
+  description = "SES configuration set that publishes bounces to the SNS topic feeding the bounce queue (SES_CONFIGURATION_SET)."
+  type        = string
+  default     = "ustp-notices"
+}
+
+variable "ses_events_queue_url" {
+  description = "URL of the SQS queue SES bounce reports arrive on (SES_EVENTS_QUEUE_URL); empty: bounces are not counted."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.ses_events_queue_url == "" || can(regex("^https://sqs\\.[a-z0-9-]+\\.amazonaws\\.com/[0-9]{12}/[A-Za-z0-9_-]+$", var.ses_events_queue_url))
+    error_message = "ses_events_queue_url is an SQS queue URL, such as https://sqs.us-east-1.amazonaws.com/123456789012/ustp-notice-events."
+  }
+}
+
+variable "ses_max_send_rate" {
+  description = "Messages a second the worker sends through SES at most (SES_MAX_SEND_RATE), under the account's sending quota."
+  type        = number
+  default     = 10
+
+  validation {
+    condition     = var.ses_max_send_rate > 0
+    error_message = "ses_max_send_rate must be positive."
+  }
 }
 
 # --- Sizing ----------------------------------------------------------------------------------------------------------

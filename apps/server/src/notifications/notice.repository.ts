@@ -105,6 +105,11 @@ export class NoticeRepository {
     return { pending: pending! + sending!, sent: sent!, failed: failed!, bounced: bounced!, skipped: skipped! };
   }
 
+  /** How many recipient records the notice has. */
+  async total(noticeId: string): Promise<number> {
+    return (await this.ref(noticeId).collection(NOTICE_RECIPIENTS).count().get()).data().count;
+  }
+
   /** Recipients an earlier round failed for, which a resend round tries again. */
   async failedBefore(noticeId: string, round: number, tx: Transaction): Promise<number> {
     const query = this.ref(noticeId).collection(NOTICE_RECIPIENTS).where('status', '==', 'failed').where('round', '<', round);

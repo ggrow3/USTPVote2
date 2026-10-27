@@ -2,14 +2,18 @@ import { deny, OK, refuse, type Check } from '../check.js';
 import type { ElectionRecord } from '../elections.js';
 
 /**
- * Election notices (design §6.8): the email telling everyone on an election's roll that voting is open. The worker
- * sends it once per voter per election and keeps one record per recipient, without the address, which it reads from
- * the account only when sending. An official election notice, not marketing: it goes to everyone on the roll whatever
- * their newsletter and announcement choices.
+ * Election notices (design §6.8): the emails telling everyone on an election's roll that voting is open, and, a day
+ * before it closes, reminding those who have not voted. The worker sends each once per voter per election and keeps
+ * one record per recipient, without the address, which it reads from the account only when sending. Official election
+ * notices, not marketing: they go out whatever the member's newsletter and announcement choices.
  */
 
-export const NOTICE_KINDS = ['voting_open'] as const;
+/** `voting_open`: everyone on the roll, at opening. `closing_soon`: those who have not voted, a day before the close. */
+export const NOTICE_KINDS = ['voting_open', 'closing_soon'] as const;
 export type NoticeKind = (typeof NOTICE_KINDS)[number];
+
+/** The reminder goes this long before voting closes, and only where voting is open longer than that. */
+export const REMINDER_HOURS_BEFORE_CLOSE = 24;
 
 /**
  * `mail`: through the mail provider. `outbox`: recorded in `notice_outbox`, never mailed: the mail stand-in with the
@@ -34,7 +38,8 @@ export type RecipientStatus = (typeof RECIPIENT_STATUSES)[number];
  * Failures: `refused` (the provider will not take it), `unavailable` (the provider was down for every attempt),
  * `interrupted` (the worker stopped while sending, so whether it went is unknown; never resent automatically, so
  * nobody gets it twice), `error` (anything else, the outcome unknown), `voting_closed` (voting ended before it was
- * sent, so it was not). Skips: `no_address` (the account has no email), `unverified_address`.
+ * sent, so it was not). Skips: `no_address` (the account has no email), `unverified_address`, `voted` (a reminder to
+ * someone who voted after it was prepared).
  */
 export const NOTICE_OUTCOMES = [
   'refused',
@@ -44,6 +49,7 @@ export const NOTICE_OUTCOMES = [
   'voting_closed',
   'no_address',
   'unverified_address',
+  'voted',
 ] as const;
 export type NoticeOutcome = (typeof NOTICE_OUTCOMES)[number];
 
@@ -62,7 +68,10 @@ export interface NoticeRecord {
   readonly delivery: NoticeDelivery;
   /** The roll is test voters only (design §10.4). */
   readonly rehearsal: boolean;
-  /** People on the roll, one recipient record each. */
+  /**
+   * One recipient record each: everyone on the roll for `voting_open`; for `closing_soon`, those who had not voted
+   * when the reminder was prepared.
+   */
   readonly recipients: number;
   /**
    * `preparing` while the worker writes the recipient records, `sending` until every recipient of the round has an
@@ -135,6 +144,8 @@ export interface NoticeSummary {
 export interface NoticesView {
   /** How this deployment sends notices: `none` when email is off (`MAIL_TRANSPORT=off`). */
   readonly delivery: NoticeDelivery | 'none';
+  /** Where the emails tell members to ask questions (`NOTICE_CONTACT`), for the preview; null until it is set. */
+  readonly contact: string | null;
   readonly notices: readonly NoticeSummary[];
 }
 
@@ -202,6 +213,24 @@ export function isStaleClaim(recipient: Pick<NoticeRecipientRecord, 'status' | '
 /** The election is open and its window has not ended: the only time "voting is open" is true. */
 export function isVotingOpen(election: Pick<ElectionRecord, 'state' | 'closesAt'>, now: Date): boolean {
   return election.state === 'open' && Date.parse(election.closesAt) > now.getTime();
+}
+
+/** When the reminder is due: a day before the close. */
+export function reminderTime(election: Pick<ElectionRecord, 'closesAt'>): Date {
+  return new Date(Date.parse(election.closesAt) - REMINDER_HOURS_BEFORE_CLOSE * 3_600_000);
+}
+
+/**
+ * Whether an election gets a reminder at all: only when voting is open for longer than a day, so the reminder never
+ * comes with, or before, the notice that voting is open.
+ */
+export function hasReminder(election: Pick<ElectionRecord, 'opensAt' | 'closesAt'>): boolean {
+  return reminderTime(election).getTime() > Date.parse(election.opensAt);
+}
+
+/** Whether the reminder is due now: the election has one, voting is open, and the reminder time has come. */
+export function isReminderDue(election: Pick<ElectionRecord, 'state' | 'opensAt' | 'closesAt'>, now: Date): boolean {
+  return hasReminder(election) && isVotingOpen(election, now) && now.getTime() >= reminderTime(election).getTime();
 }
 
 /**

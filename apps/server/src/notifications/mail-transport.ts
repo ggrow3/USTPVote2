@@ -1,7 +1,5 @@
 import type { Firestore } from 'firebase-admin/firestore';
 import { Collections, type NoticeDelivery, type NoticeOutcome, type OutboxMessageRecord } from 'ustp-domain';
-import { CONFIG, type ServerConfig } from '../config.js';
-import { Firebase } from '../infra/firebase.js';
 
 /** One email. `to` is null only in the outbox, for a test voter, who has no address. */
 export interface MailMessage {
@@ -32,21 +30,33 @@ export class MailNotSent extends Error {
   }
 }
 
+/** A message the provider took and later reported undeliverable (a permanent bounce). */
+export interface BounceReport {
+  readonly noticeId: string;
+  readonly messageId: string;
+}
+
+/** Where bounce reports wait until the worker reads them. */
+export interface BounceSource {
+  /** Up to a batch of reports, with the receipts that remove them once handled. */
+  receive(): Promise<{ readonly bounces: BounceReport[]; readonly receipts: string[] }>;
+  acknowledge(receipts: readonly string[]): Promise<void>;
+}
+
 /** The mail provider, or null when this deployment sends no email (`MAIL_TRANSPORT=off`). */
 export const MAIL_TRANSPORT = Symbol('MailTransport');
 
-export const mailTransportProvider = {
-  provide: MAIL_TRANSPORT,
-  inject: [CONFIG, Firebase],
-  useFactory: (config: ServerConfig, firebase: Firebase): MailTransport | null =>
-    config.mailTransport === 'outbox' ? new OutboxTransport(firebase.db) : null,
-};
+/** Where bounce reports come from, or null when there is no such feed. */
+export const BOUNCE_SOURCE = Symbol('BounceSource');
+
+/** Emulator-only: the bounces the outbox acts out, as SES would report them. */
+const EMULATOR_BOUNCES = 'emulator_bounces';
 
 /**
  * Records each message in `notice_outbox` instead of mailing it. The mail stand-in with the emulators (refused
  * elsewhere, like the other stand-ins), and the delivery of a rehearsal's notice in testing mode, whose test voters have
- * no address. With the emulators it acts out a provider's answers for tests: an address at `refused.test` is refused
- * and one at `unavailable.test` meets a provider that is down.
+ * no address. With the emulators it acts out a provider's answers for tests: an address at `refused.test` is refused,
+ * one at `unavailable.test` meets a provider that is down, and one at `bounce.test` is taken and then bounces.
  */
 export class OutboxTransport implements MailTransport {
   readonly delivery = 'outbox';
@@ -72,6 +82,24 @@ export class OutboxTransport implements MailTransport {
       recordedAt: new Date().toISOString(),
     };
     await ref.create(record);
+    if (domain === 'bounce.test') {
+      const report: BounceReport = { noticeId: message.tags.noticeId, messageId: ref.id };
+      await this.db.collection(EMULATOR_BOUNCES).add(report);
+    }
     return { messageId: ref.id };
+  }
+}
+
+/** The bounces `OutboxTransport` acts out, read like SES's queue. Emulators only. */
+export class OutboxBounces implements BounceSource {
+  constructor(private readonly db: Firestore) {}
+
+  async receive(): Promise<{ bounces: BounceReport[]; receipts: string[] }> {
+    const snap = await this.db.collection(EMULATOR_BOUNCES).limit(10).get();
+    return { bounces: snap.docs.map((d) => d.data() as BounceReport), receipts: snap.docs.map((d) => d.id) };
+  }
+
+  async acknowledge(receipts: readonly string[]): Promise<void> {
+    await Promise.all(receipts.map((id) => this.db.collection(EMULATOR_BOUNCES).doc(id).delete()));
   }
 }

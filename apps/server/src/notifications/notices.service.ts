@@ -35,7 +35,8 @@ export class NoticesService {
     if (!(await this.elections.find(electionId))) throw new NotFoundException('no such election');
     const notices = await this.notices.ofElection(electionId);
     return {
-      delivery: this.config.mailTransport === 'off' ? 'none' : 'outbox',
+      delivery: { ses: 'mail' as const, outbox: 'outbox' as const, off: 'none' as const }[this.config.mailTransport],
+      contact: this.config.noticeContact,
       notices: await Promise.all(notices.map(async (n) => noticeSummary(n, await this.notices.counts(n.noticeId)))),
     };
   }

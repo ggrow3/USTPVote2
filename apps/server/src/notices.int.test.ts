@@ -65,7 +65,10 @@ describe('the voting-open notice', () => {
     expect(new Set(messages.map((m) => m.accountId)).size).toBe(4);
     const [first] = messages;
     expect(first!.subject).toBe('Voting is open: Officers');
-    expect(first!.from).toBe('USTP Elections <elections@ustpvote.test>');
+    expect(first!.from).toBe('USTP Elections <noreply@transhumanist-party.org>');
+    expect(first!.replyTo).toBeNull();
+    // No NOTICE_CONTACT with the emulators: the placeholder says so, and SES would refuse to start without one.
+    expect(first!.text).toContain('Replies to this email are not read; write to [contact for election questions, to be confirmed].');
     expect(first!.text).toContain(`http://localhost:5173/ballot/${election.electionId}`);
     expect(first!.text).toContain(`http://localhost:5173/v1/public/elections/${election.electionId}/calendar.ics`);
     expect(first!.text).toContain('http://localhost:5173/verify');
@@ -194,13 +197,83 @@ describe('the voting-open notice', () => {
   });
 });
 
+describe('bounces', () => {
+  it('marks a message the provider took and then bounced, and never resends it', async () => {
+    const bouncing = await memberAt('gone@bounce.test');
+    const election = await seedElection(api, { voters: [voters[0]!.accountId, bouncing.accountId] });
+    expect((await worker.tick()).body).toMatchObject({ noticesSent: 2, bouncesRecorded: 1 });
+    expect(await recipient(election, bouncing.accountId)).toMatchObject({ status: 'bounced', messageId: expect.any(String) });
+    expect(await recipient(election, voters[0]!.accountId)).toMatchObject({ status: 'sent' });
+    expect((await view(election)).body.notices[0].counts).toEqual({ pending: 0, sent: 1, failed: 0, bounced: 1, skipped: 0 });
+    expect((await worker.tick()).body).toMatchObject({ bouncesRecorded: 0 });
+    expect((await resend(election)).status).toBe(409); // a bounced address is not retried
+  });
+});
+
+describe('the closing-soon reminder', () => {
+  const reminders = async (e: SeededElection) => (await outbox(e)).filter((m) => m.subject === 'Voting closes soon: Officers');
+  const vote = (e: SeededElection, accountId: string) =>
+    e.ref.collection('participation').doc(accountId).set({ accountId, castAt: new Date().toISOString() });
+  /** Open for two days, closing in 23 hours: the reminder is due. */
+  const closingTomorrow = () =>
+    seedElection(api, { voters: voters.map((v) => v.accountId), state: 'open', secrecy: 'open', opensAt: minutes(-60 * 48), closesAt: minutes(60 * 23) });
+
+  it('goes a day before the close, after the voting-open notice, only to those who have not voted', async () => {
+    const election = await closingTomorrow();
+    await vote(election, voters[0]!.accountId);
+    await vote(election, voters[1]!.accountId);
+
+    expect((await worker.tick()).body).toMatchObject({ noticesSent: 4 }); // voting is open, to all four
+    expect(await reminders(election)).toHaveLength(0);
+    expect((await worker.tick()).body).toMatchObject({ noticesSent: 2 }); // the reminder, once that has gone
+    await worker.tick();
+
+    const sent = await reminders(election);
+    expect(sent.map((m) => m.to).sort()).toEqual([voters[2]!.email, voters[3]!.email].sort());
+    expect(sent[0]!.text).toContain('You have not voted yet in “Officers”');
+    expect(sent[0]!.text).toMatch(/voting closes in about 2[23] hours/);
+    const summary = (await view(election)).body.notices.find((n: { kind: string }) => n.kind === 'closing_soon');
+    expect(summary).toMatchObject({ status: 'done', recipients: 2, counts: { sent: 2, skipped: 0 } });
+    const ledgered = (await ledger('notice.sent', election)).map((e) => e.payload);
+    expect(ledgered).toEqual(
+      expect.arrayContaining([expect.objectContaining({ kind: 'voting_open', sent: 4 }), expect.objectContaining({ kind: 'closing_soon', recipients: 2, sent: 2 })]),
+    );
+  });
+
+  it('is not sent to someone who votes before their turn comes', async () => {
+    const election = await closingTomorrow();
+    await worker.tick(); // the voting-open notice
+    await worker.app.get(NoticeSender).sendDue(0); // the reminder is prepared for all four, nothing sent yet
+    await vote(election, voters[0]!.accountId);
+    await worker.tick();
+    const skipped = (await db().collection('notices').doc(`${election.electionId}_closing_soon`).collection('recipients').doc(voters[0]!.accountId).get()).data();
+    expect(skipped).toMatchObject({ status: 'skipped', outcome: 'voted' });
+    expect((await reminders(election)).map((m) => m.accountId)).not.toContain(voters[0]!.accountId);
+    expect(await reminders(election)).toHaveLength(3);
+  });
+
+  it('does not come where voting is open for a day or less', async () => {
+    const election = await seedElection(api, {
+      voters: voters.map((v) => v.accountId),
+      state: 'open',
+      secrecy: 'open',
+      opensAt: minutes(-60),
+      closesAt: minutes(60 * 20),
+    });
+    await worker.tick();
+    await worker.tick();
+    expect(await reminders(election)).toHaveLength(0);
+    expect((await db().collection('notices').doc(`${election.electionId}_closing_soon`).get()).exists).toBe(false);
+  });
+});
+
 describe('a rehearsal roll', () => {
   it('gets no notice where testing mode is off', async () => {
     const election = await seedElection(api, { voters: voters.map((v) => v.accountId), rehearsal: true });
     expect((await worker.tick()).body).toMatchObject({ electionsOpened: 1, noticesSent: 0 });
     expect(await notice(election)).toBeUndefined();
     expect(await outbox(election)).toHaveLength(0);
-    expect((await view(election)).body).toEqual({ delivery: 'outbox', notices: [] });
+    expect((await view(election)).body).toEqual({ delivery: 'outbox', contact: null, notices: [] });
   });
 
   it('gets its notice in the outbox, addressed to nobody, where testing mode is on', async () => {

@@ -66,6 +66,19 @@ export class ElectionReader {
     return (snap.data() as RollSnapshotRecord | undefined) ?? null;
   }
 
+  /**
+   * Who on the roll has voted (participation records, never how), for the reminder to those who have not (design
+   * §6.8). With `among`, only those of them; otherwise everyone.
+   */
+  async voted(electionId: string, among?: readonly string[]): Promise<Set<string>> {
+    const participation = this.firebase.db.collection(Collections.elections).doc(electionId).collection(ElectionCollections.participation);
+    if (among) {
+      const snaps = among.length ? await this.firebase.db.getAll(...among.map((id) => participation.doc(id)), { fieldMask: ['castAt'] }) : [];
+      return new Set(snaps.filter((s) => s.exists).map((s) => s.id));
+    }
+    return new Set((await participation.select().get()).docs.map((d) => d.id));
+  }
+
   /** Whether the account stands as a candidate in the election (recusal, design §10.1). */
   async isCandidate(tx: Transaction, electionId: string, accountId: string): Promise<boolean> {
     const standing = await tx.get(

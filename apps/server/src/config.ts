@@ -38,16 +38,31 @@ export interface ServerConfig {
   readonly anthropicApiKey: string | null;
   readonly bylawsCheckModel: string;
   /**
-   * How election notices are sent (design §6.8): `outbox` records each message in Firestore instead of mailing it
-   * (the emulator-only stand-in) and `off` sends none. Off unless set, outside the emulators.
+   * How election notices are sent (design §6.8): `ses` through Amazon SES, `outbox` recorded in Firestore instead of
+   * mailed (the emulator-only stand-in), `off` not at all. Off unless set, outside the emulators.
    */
-  readonly mailTransport: 'outbox' | 'off';
-  /** The notices' From header, e.g. `USTP Elections <elections@example.org>`. */
+  readonly mailTransport: 'ses' | 'outbox' | 'off';
+  /** The notices' From header. */
   readonly mailFrom: string;
-  /** Their Reply-To header; null for none. */
+  /** Their Reply-To header; null for none (the agreed From address takes no replies). */
   readonly mailReplyTo: string | null;
+  /** Where the notices tell members to ask about an election (an address or a web page); null until set. */
+  readonly noticeContact: string | null;
   /** Where the web app is served (an origin, e.g. `https://ustpvote2-dev.web.app`); notices link to it. */
   readonly webOrigin: string | null;
+  /**
+   * Amazon SES (worker only, `MAIL_TRANSPORT=ses`): its region, the configuration set that publishes bounces, the SQS
+   * queue they arrive on, and the access key (from Secret Manager in Cloud Run; never logged).
+   */
+  readonly ses: {
+    readonly region: string | null;
+    readonly configurationSet: string | null;
+    readonly eventsQueueUrl: string | null;
+    readonly accessKeyId: string | null;
+    readonly secretAccessKey: string | null;
+    /** Messages a second at most, within the account's SES sending quota. */
+    readonly maxSendRate: number;
+  };
 }
 
 /** Claude Opus 5.5; `BYLAWS_CHECK_MODEL` overrides it. */
@@ -93,7 +108,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   if (bylawsChecker === 'stub' && !usingEmulators) throw new Error('BYLAWS_CHECKER=stub is only allowed with the Firebase emulators');
 
   const mailTransport = (env.MAIL_TRANSPORT ?? (usingEmulators ? 'outbox' : 'off')) as ServerConfig['mailTransport'];
-  if (mailTransport !== 'outbox' && mailTransport !== 'off') throw new Error('MAIL_TRANSPORT must be "outbox" or "off"');
+  if (!['ses', 'outbox', 'off'].includes(mailTransport)) throw new Error('MAIL_TRANSPORT must be "ses", "outbox" or "off"');
   if (mailTransport === 'outbox' && !usingEmulators) throw new Error('MAIL_TRANSPORT=outbox is only allowed with the Firebase emulators');
   const webOrigin = env.WEB_ORIGIN ? originOf(env.WEB_ORIGIN, 'WEB_ORIGIN') : usingEmulators ? 'http://localhost:5173' : null;
 
@@ -123,12 +138,31 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     mailTransport,
     mailFrom: env.MAIL_FROM || DEFAULT_MAIL_FROM,
     mailReplyTo: env.MAIL_REPLY_TO || null,
+    noticeContact: env.NOTICE_CONTACT?.trim() || null,
     webOrigin,
+    ses: {
+      region: env.SES_REGION || null,
+      configurationSet: env.SES_CONFIGURATION_SET || null,
+      eventsQueueUrl: env.SES_EVENTS_QUEUE_URL || null,
+      accessKeyId: env.AWS_SES_ACCESS_KEY_ID || null,
+      secretAccessKey: env.AWS_SES_SECRET_ACCESS_KEY || null,
+      maxSendRate: positiveNumber(env.SES_MAX_SEND_RATE, 'SES_MAX_SEND_RATE') ?? DEFAULT_SES_MAX_SEND_RATE,
+    },
   };
 }
 
-/** The emulators' From address; a real transport is given its own. */
-export const DEFAULT_MAIL_FROM = 'USTP Elections <elections@ustpvote.test>';
+/** The From address USTP agreed for election notices (Q15); it takes no replies. */
+export const DEFAULT_MAIL_FROM = 'USTP Elections <noreply@transhumanist-party.org>';
+
+/** A new SES account in production may send 14 a second; stay under it. */
+export const DEFAULT_SES_MAX_SEND_RATE = 10;
+
+function positiveNumber(value: string | undefined, name: string): number | null {
+  if (!value) return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) throw new Error(`${name} must be a positive number`);
+  return n;
+}
 
 /** An http(s) origin with nothing after it, as links are built from it. */
 function originOf(value: string, name: string): string {

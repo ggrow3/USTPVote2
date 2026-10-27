@@ -1,17 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import {
   checkNoticeResend,
+  closingSoonMessage,
+  hasReminder,
   isClaimable,
   isNoticeKind,
+  isReminderDue,
   isStaleClaim,
   isVotingOpen,
+  NOTICE_CONTACT_PLACEHOLDER,
   noticeDelivery,
   noticeId,
+  noticeMessage,
   noticeSummary,
   RECIPIENT_STATUSES,
+  reminderTime,
+  timeLeft,
   votingOpenMessage,
   votingWindow,
   zoneTime,
+  type NoticeMessageInput,
   type NoticeRecipientRecord,
   type NoticeRecord,
   type RecipientStatus,
@@ -25,14 +33,22 @@ const ELECTION = {
   closesAt: '2026-11-07T04:59:00.000Z',
 };
 const ORIGIN = 'https://vote.example.org';
+const input = (over: Partial<NoticeMessageInput> = {}): NoticeMessageInput => ({
+  election: ELECTION,
+  origin: ORIGIN,
+  name: 'Alex Rivera',
+  contact: 'elections@example.org',
+  now: new Date('2026-11-06T04:59:00.000Z'),
+  ...over,
+});
 
 describe('votingOpenMessage', () => {
-  const message = votingOpenMessage({ election: ELECTION, origin: ORIGIN, name: 'Alex Rivera' });
+  const message = votingOpenMessage(input());
 
   it('names the election in the subject and greets the member', () => {
     expect(message.subject).toBe('Voting is open: Officers 2026');
     expect(message.text.startsWith('Hello Alex Rivera,\n\n')).toBe(true);
-    expect(votingOpenMessage({ election: ELECTION, origin: ORIGIN, name: null }).text.startsWith('Hello,\n\n')).toBe(true);
+    expect(votingOpenMessage(input({ name: null })).text.startsWith('Hello,\n\n')).toBe(true);
   });
 
   it('links the ballot, the calendar event and the Verify page, by what they open', () => {
@@ -43,6 +59,9 @@ describe('votingOpenMessage', () => {
       expect(body).toContain(calendar);
       expect(body).toContain(`${ORIGIN}/verify`);
     }
+    expect(message.text).toContain(`Open your ballot (you will be asked to sign in): ${ballot}`);
+    expect(message.text).toContain(`Add the voting window to your calendar (an .ics file): ${calendar}`);
+    expect(message.text).toContain(`Once voting has closed, open the Verify page, ${ORIGIN}/verify, and load the receipt.`);
     expect(message.html).toContain(`<a href="${ballot}" style="color:#bd4e00">Open your ballot for “Officers 2026”</a>`);
     expect(message.html).toContain(`<a href="${calendar}" style="color:#bd4e00">Add the voting window to your calendar</a>`);
     expect(message.html).toContain('<a href="https://vote.example.org/verify" style="color:#bd4e00">open the Verify page</a>');
@@ -69,34 +88,80 @@ describe('votingOpenMessage', () => {
     expect(message.text).toContain('About this election\n\nChoose the chair.\n\nAnd vote on plank 12.');
     expect(message.html).toContain('<p>Choose the chair.</p>\n<p>And vote on plank 12.</p>');
     expect(message.text).toContain('keep it to yourself: it shows how you voted');
-    expect(votingOpenMessage({ election: { ...ELECTION, description: '  ' }, origin: ORIGIN, name: null }).text).not.toContain('About this election');
+    expect(votingOpenMessage(input({ election: { ...ELECTION, description: '  ' } })).text).not.toContain('About this election');
+  });
+
+  it('says replies are not read and where to ask, linking an address or a page', () => {
+    expect(message.text).toContain('Questions about this election? Replies to this email are not read; write to elections@example.org.');
+    expect(message.html).toContain('write to <a href="mailto:elections@example.org" style="color:#bd4e00">elections@example.org</a>.');
+    const page = votingOpenMessage(input({ contact: 'https://transhumanist-party.org/contact/' }));
+    expect(page.html).toContain('<a href="https://transhumanist-party.org/contact/" style="color:#bd4e00">');
+    const unknown = votingOpenMessage(input({ contact: null }));
+    expect(unknown.text).toContain(`write to ${NOTICE_CONTACT_PLACEHOLDER}.`);
+    expect(unknown.html).toContain('write to [contact for election questions, to be confirmed].');
   });
 
   it('escapes what admins and members typed, and keeps the subject to one line', () => {
-    const hostile = votingOpenMessage({
-      election: { ...ELECTION, title: 'Chair\r\nBcc: everyone@example.org <script>', description: '<img src=x onerror=alert(1)>' },
-      origin: ORIGIN,
-      name: 'Eve "<b>"',
-    });
+    const hostile = votingOpenMessage(
+      input({
+        election: { ...ELECTION, title: 'Chair\r\nBcc: everyone@example.org <script>', description: '<img src=x onerror=alert(1)>' },
+        name: 'Eve "<b>"',
+        contact: '<a href=x>@evil',
+      }),
+    );
     expect(hostile.subject).toBe('Voting is open: Chair Bcc: everyone@example.org <script>');
     expect(hostile.subject).not.toMatch(/[\r\n]/);
     expect(hostile.html).not.toContain('<script>');
     expect(hostile.html).not.toContain('<img');
     expect(hostile.html).not.toContain('<b>');
+    expect(hostile.html).not.toContain('<a href=x>');
     expect(hostile.html).toContain('Chair Bcc: everyone@example.org &lt;script&gt;');
     expect(hostile.html).toContain('Hello Eve &quot;&lt;b&gt;&quot;,');
     expect(hostile.html).toContain('&lt;img src=x onerror=alert(1)&gt;');
   });
 
   it('shortens a very long title in the subject only', () => {
-    const long = votingOpenMessage({ election: { ...ELECTION, title: 'x'.repeat(200) }, origin: ORIGIN, name: null });
+    const long = votingOpenMessage(input({ election: { ...ELECTION, title: 'x'.repeat(200) } }));
     expect(long.subject).toBe(`Voting is open: ${'x'.repeat(149)}…`);
     expect(long.text).toContain('x'.repeat(200));
   });
 
   it('encodes the election ID in links', () => {
-    const odd = votingOpenMessage({ election: { ...ELECTION, electionId: 'a/b c' }, origin: ORIGIN, name: null });
+    const odd = votingOpenMessage(input({ election: { ...ELECTION, electionId: 'a/b c' } }));
     expect(odd.text).toContain(`${ORIGIN}/ballot/a%2Fb%20c`);
+  });
+});
+
+describe('closingSoonMessage', () => {
+  const message = closingSoonMessage(input());
+
+  it('tells someone who has not voted how long is left, and thanks anyone who voted since', () => {
+    expect(message.subject).toBe('Voting closes soon: Officers 2026');
+    expect(message.text).toContain('You have not voted yet in “Officers 2026”, an election of the US Transhumanist Party, and voting closes in about 24 hours.');
+    expect(message.text).toContain('If you have voted since this was sent, thank you: there is nothing more to do.');
+    expect(message.text).toContain('Vote by Friday, November 6, 2026, 11:59 PM EST (Eastern Time).');
+    expect(message.html).toContain('Open your ballot for “Officers 2026”');
+  });
+
+  it('gives the closing time in every zone and says what was used to send it', () => {
+    expect(message.text).toContain('When voting closes\n\n- Eastern Time: Friday, November 6, 2026, 11:59 PM EST\n- Central Time:');
+    expect(message.text).toContain('- UTC: Saturday, November 7, 2026, 04:59 UTC');
+    expect(message.html).toContain('<th scope="col" style="text-align:left;padding:4px 12px 4px 0;border-bottom:1px solid #757575">Voting closes</th>');
+    expect(message.text).toContain('Only whether you had voted was used to send it, never how anyone votes.');
+    expect(message.text).not.toContain('About this election');
+    expect(message.text).toContain('Replies to this email are not read; write to elections@example.org.');
+  });
+
+  it('is what noticeMessage gives for each kind', () => {
+    expect(noticeMessage('closing_soon', input())).toEqual(message);
+    expect(noticeMessage('voting_open', input())).toEqual(votingOpenMessage(input()));
+  });
+
+  it('rounds the time left to the hour', () => {
+    expect(timeLeft(ELECTION.closesAt, new Date('2026-11-06T06:31:00.000Z'))).toBe('about 22 hours');
+    expect(timeLeft(ELECTION.closesAt, new Date('2026-11-06T06:29:00.000Z'))).toBe('about 23 hours');
+    expect(timeLeft(ELECTION.closesAt, new Date('2026-11-07T03:40:00.000Z'))).toBe('about an hour');
+    expect(timeLeft(ELECTION.closesAt, new Date('2026-11-07T04:40:00.000Z'))).toBe('less than an hour');
   });
 });
 
@@ -154,6 +219,8 @@ describe('sending each recipient once', () => {
     expect(isClaimable(claimed, 1)).toBe(false);
     expect(isClaimable(claimed, 2)).toBe(false);
     expect(isClaimable({ ...claimed, status: 'sent' }, 2)).toBe(false);
+    expect(isClaimable({ ...claimed, status: 'bounced' }, 2)).toBe(false);
+    expect(isClaimable({ ...claimed, status: 'skipped' }, 2)).toBe(false);
   });
 
   it('treats a claim as interrupted only after the claim limit', () => {
@@ -167,7 +234,7 @@ describe('sending each recipient once', () => {
 
 describe('notice rules', () => {
   const now = new Date('2026-11-03T12:00:00.000Z');
-  const open = { state: 'open' as const, closesAt: ELECTION.closesAt };
+  const open = { state: 'open' as const, opensAt: ELECTION.opensAt, closesAt: ELECTION.closesAt };
 
   it('sends real members mail where it is set up, and a rehearsal to the outbox only in testing mode', () => {
     expect(noticeDelivery({ rehearsal: false, testingMode: false, transport: 'mail' })).toBe('mail');
@@ -184,6 +251,17 @@ describe('notice rules', () => {
     expect(isVotingOpen({ ...open, state: 'scheduled' }, now)).toBe(false);
   });
 
+  it('reminds a day before the close, only where voting is open longer than a day', () => {
+    expect(reminderTime(open).toISOString()).toBe('2026-11-06T04:59:00.000Z');
+    expect(hasReminder(open)).toBe(true);
+    expect(hasReminder({ opensAt: '2026-11-06T04:59:00.000Z', closesAt: ELECTION.closesAt })).toBe(false);
+    expect(hasReminder({ opensAt: '2026-11-07T04:44:00.000Z', closesAt: ELECTION.closesAt })).toBe(false);
+    expect(isReminderDue(open, new Date('2026-11-06T04:58:59.000Z'))).toBe(false);
+    expect(isReminderDue(open, new Date('2026-11-06T04:59:00.000Z'))).toBe(true);
+    expect(isReminderDue(open, new Date('2026-11-07T04:59:00.000Z'))).toBe(false); // closed
+    expect(isReminderDue({ ...open, state: 'scheduled' }, new Date('2026-11-06T05:00:00.000Z'))).toBe(false);
+  });
+
   it('allows a resend only while voting is open, after the round, when it failed for someone', () => {
     expect(checkNoticeResend(open, { status: 'done' }, 2, now)).toEqual({ ok: true });
     expect(checkNoticeResend(open, null, 0, now)).toMatchObject({ ok: false, refusal: 'not_found' });
@@ -197,8 +275,10 @@ describe('notice rules', () => {
 
   it('names notices by election and kind, and summarises them as counts', () => {
     expect(noticeId('e1', 'voting_open')).toBe('e1_voting_open');
+    expect(noticeId('e1', 'closing_soon')).toBe('e1_closing_soon');
     expect(isNoticeKind('voting_open')).toBe(true);
-    expect(isNoticeKind('closing_soon')).toBe(false);
+    expect(isNoticeKind('closing_soon')).toBe(true);
+    expect(isNoticeKind('you_voted')).toBe(false);
     const record: NoticeRecord = {
       noticeId: 'e1_voting_open',
       electionId: 'e1',
