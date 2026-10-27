@@ -51,6 +51,7 @@ import { SECRET_STORE, type SecretStore } from '../infra/secret-store.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { MemberDirectory } from '../membership/member-directory.js';
 import { MembershipService } from '../membership/membership.service.js';
+import { NoticesService } from '../notifications/notices.service.js';
 import { ElectionReader } from './election-reader.js';
 
 /**
@@ -68,6 +69,7 @@ export class ElectionsService {
     private readonly reader: ElectionReader,
     private readonly membership: MembershipService,
     private readonly members: MemberDirectory,
+    private readonly notices: NoticesService,
     @Inject(SECRET_STORE) private readonly secrets: SecretStore,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
@@ -404,6 +406,10 @@ export class ElectionsService {
         this.logger.warn(`election ${electionId} deleted, but not its tie-break seed ${seedRef}: ${e instanceof Error ? e.message : String(e)}`);
       });
     }
+    // Its notices hold one record per person on the roll, too many for the transaction; a failure leaves them unread.
+    await this.notices.forgetElection(electionId).catch((e: unknown) => {
+      this.logger.warn(`election ${electionId} deleted, but not its notices: ${e instanceof Error ? e.message : String(e)}`);
+    });
   }
 
   private async latestRoll(electionId: string): Promise<RollSnapshotRecord | null> {

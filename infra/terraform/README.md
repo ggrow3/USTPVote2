@@ -101,8 +101,10 @@ for running the server locally against a real project. Variable names are those 
 | Environment variable | Output | api | worker |
 |---|---|:-:|:-:|
 | `GOOGLE_CLOUD_PROJECT` | in `api_env` / `worker_env` | ● | ● |
-| `DEPLOYMENT_ENVIRONMENT` | the `environment` variable (`dev`, `staging`, `prod`) | ● | |
-| `TESTING_MODE` | `true` only when the `testing_mode` variable is (dev sets it; prod refuses it) | ● | |
+| `DEPLOYMENT_ENVIRONMENT` | the `environment` variable (`dev`, `staging`, `prod`) | ● | ● |
+| `TESTING_MODE` | `true` only when the `testing_mode` variable is (dev sets it; prod refuses it); the worker sends a rehearsal's election notice to the outbox only then (design §6.7) | ● | ● |
+| `WEB_ORIGIN` | in `worker_env`: the `web_origin` variable, else `https://<project>.web.app`; election notices link to it | | ● |
+| `MAIL_FROM`, `MAIL_REPLY_TO` | in `worker_env` when the `mail_from` / `mail_reply_to` variables are set: the election notices' headers | | ● |
 | `AUDIT_SIGNING_KEY_VERSION` | `audit_signing_key_version` (`…/cryptoKeys/audit-signing/cryptoKeyVersions/1`) | | ● |
 | `BALLOT_POOL_KEY` | `ballot_pool_key` (`…/cryptoKeys/ballot-pool`) | ● | ● |
 | `ANCHORS_BUCKET` | `anchors_bucket` (`<project>-anchors`) | ● | ● |
@@ -115,8 +117,8 @@ for running the server locally against a real project. Variable names are those 
 
 Never set: `APP_CHECK_ENFORCED`, `ADMIN_MFA_REQUIRED`, `PHOTO_CHECKER`, `SECRET_STORE`, `AUDIT_SIGNER`, `BALLOT_POOL`
 or an emulator host. Every safety switch then keeps its production default (§4). Testing mode (design §10.4) is
-refused twice in prod: the `testing_mode` variable's validation, and the api, which will not start with `TESTING_MODE`
-unless `DEPLOYMENT_ENVIRONMENT` is `dev` or `staging`.
+refused twice in prod: the `testing_mode` variable's validation, and the api and worker, which will not start with
+`TESTING_MODE` unless `DEPLOYMENT_ENVIRONMENT` is `dev` or `staging`.
 
 | Consumer | Output |
 |---|---|

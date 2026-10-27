@@ -29,4 +29,9 @@ module "ustpvote" {
   alert_emails           = var.alert_emails
 
   bylaws_check_enabled = var.bylaws_check_enabled
+
+  # Election notices (design §6.7).
+  web_origin    = var.web_origin
+  mail_from     = var.mail_from
+  mail_reply_to = var.mail_reply_to
 }

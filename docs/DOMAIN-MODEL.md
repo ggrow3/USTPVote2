@@ -53,6 +53,7 @@ What is not domain-centred:
 | **Offices** | §6.4 | `positions`, `position_terms` | supporting |
 | **Governance** (roles, two-person rule, testing mode) | §10 | `role_assignments`, `approval_requests`, `testing_personas` | core rule, generic mechanism |
 | **Audit ledger** | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` | shared kernel |
+| **Notifications** (election notices by email) | §6.7 | `notices` (with `recipients`), `notice_outbox` | supporting |
 | **Verification** (`ustp-verify`, `/verify`, receipt and results checks) | §7.5, §16 | — (reads the public record) | conformist |
 
 `ustp-tally` (counting) and `ustp-audit` (JCS, hashes, Merkle, signatures) are generic subdomains and stay as they are.

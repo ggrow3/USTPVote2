@@ -118,4 +118,6 @@ export interface TickResult {
   readonly blocksSealed: number;
   readonly rollsSigned: number;
   readonly anchored: number;
+  /** Election notices sent (or recorded in the outbox) this tick (design §6.7). */
+  readonly noticesSent: number;
 }

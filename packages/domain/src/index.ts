@@ -3,6 +3,7 @@ export { uuidv7, isUuidV7, uuidv7Timestamp } from './ids.js';
 export { ROLES, conflictingRoles, isRole, checkRoleChange } from './roles.js';
 export type { Role } from './roles.js';
 export * from './membership/index.js';
+export * from './notifications/index.js';
 export { diffLines, splitLines } from './text-diff.js';
 export {
   MAX_AMENDMENT_CHANGES,
@@ -47,7 +48,7 @@ export {
   checkCanChangeRole,
 } from './approvals.js';
 export type { TwoPersonAction, Actor, PendingApproval } from './approvals.js';
-export { Collections, ElectionCollections, electionDocPath, sequenceId } from './collections.js';
+export { Collections, ElectionCollections, NOTICE_RECIPIENTS, electionDocPath, sequenceId } from './collections.js';
 export type { ElectionCollection } from './collections.js';
 export { SIGN_IN_PROVIDERS, isSignInProvider } from './identity.js';
 export type { SignInProvider } from './identity.js';

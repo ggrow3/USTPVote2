@@ -30,9 +30,15 @@ export const Collections = {
   roleAssignments: 'role_assignments',
   approvalRequests: 'approval_requests',
   locks: 'locks',
+  // notifications (design §6.7)
+  notices: 'notices',
+  noticeOutbox: 'notice_outbox',
   // testing mode (design §10.4)
   testingPersonas: 'testing_personas',
 } as const;
+
+/** Subcollection of `notices/{noticeId}`: one record per person on the roll. */
+export const NOTICE_RECIPIENTS = 'recipients';
 
 /** Subcollections of `elections/{electionId}`. */
 export const ElectionCollections = {

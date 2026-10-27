@@ -216,6 +216,31 @@ variable "bylaws_check_enabled" {
   default     = false
 }
 
+# --- Election notices (design §6.7) -----------------------------------------------------------------------------------
+
+variable "web_origin" {
+  description = "Where the web app is served, which election notices link to (WEB_ORIGIN). Empty: the Firebase Hosting default, https://<project_id>.web.app."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.web_origin == "" || can(regex("^https://[^/?#]+$", var.web_origin))
+    error_message = "web_origin is an https origin with nothing after the host, such as https://vote.example.org."
+  }
+}
+
+variable "mail_from" {
+  description = "From header of election notices (MAIL_FROM), e.g. \"USTP Elections <elections@example.org>\". Its domain must be verified with the mail provider."
+  type        = string
+  default     = ""
+}
+
+variable "mail_reply_to" {
+  description = "Reply-To header of election notices (MAIL_REPLY_TO); empty for none."
+  type        = string
+  default     = ""
+}
+
 # --- Sizing ----------------------------------------------------------------------------------------------------------
 
 variable "api_max_instances" {

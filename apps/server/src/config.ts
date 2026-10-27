@@ -37,6 +37,17 @@ export interface ServerConfig {
   /** Anthropic API key for `claude`; the worker's only (Secret Manager in Cloud Run). Never logged. */
   readonly anthropicApiKey: string | null;
   readonly bylawsCheckModel: string;
+  /**
+   * How election notices are sent (design §6.7): `outbox` records each message in Firestore instead of mailing it
+   * (the emulator-only stand-in) and `off` sends none. Off unless set, outside the emulators.
+   */
+  readonly mailTransport: 'outbox' | 'off';
+  /** The notices' From header, e.g. `USTP Elections <elections@example.org>`. */
+  readonly mailFrom: string;
+  /** Their Reply-To header; null for none. */
+  readonly mailReplyTo: string | null;
+  /** Where the web app is served (an origin, e.g. `https://ustpvote2-dev.web.app`); notices link to it. */
+  readonly webOrigin: string | null;
 }
 
 /** Claude Opus 5.5; `BYLAWS_CHECK_MODEL` overrides it. */
@@ -81,6 +92,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   if (!['claude', 'stub', 'off'].includes(bylawsChecker)) throw new Error('BYLAWS_CHECKER must be "claude", "stub" or "off"');
   if (bylawsChecker === 'stub' && !usingEmulators) throw new Error('BYLAWS_CHECKER=stub is only allowed with the Firebase emulators');
 
+  const mailTransport = (env.MAIL_TRANSPORT ?? (usingEmulators ? 'outbox' : 'off')) as ServerConfig['mailTransport'];
+  if (mailTransport !== 'outbox' && mailTransport !== 'off') throw new Error('MAIL_TRANSPORT must be "outbox" or "off"');
+  if (mailTransport === 'outbox' && !usingEmulators) throw new Error('MAIL_TRANSPORT=outbox is only allowed with the Firebase emulators');
+  const webOrigin = env.WEB_ORIGIN ? originOf(env.WEB_ORIGIN, 'WEB_ORIGIN') : usingEmulators ? 'http://localhost:5173' : null;
+
   const projectId = env.GOOGLE_CLOUD_PROJECT || env.GCLOUD_PROJECT || undefined;
   return {
     projectId,
@@ -104,5 +120,26 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     bylawsChecker,
     anthropicApiKey: env.ANTHROPIC_API_KEY || null,
     bylawsCheckModel: env.BYLAWS_CHECK_MODEL || DEFAULT_BYLAWS_CHECK_MODEL,
+    mailTransport,
+    mailFrom: env.MAIL_FROM || DEFAULT_MAIL_FROM,
+    mailReplyTo: env.MAIL_REPLY_TO || null,
+    webOrigin,
   };
+}
+
+/** The emulators' From address; a real transport is given its own. */
+export const DEFAULT_MAIL_FROM = 'USTP Elections <elections@ustpvote.test>';
+
+/** An http(s) origin with nothing after it, as links are built from it. */
+function originOf(value: string, name: string): string {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error(`${name} must be a URL such as https://vote.example.org`);
+  }
+  if (!['https:', 'http:'].includes(url.protocol) || `${url.origin}/` !== url.href) {
+    throw new Error(`${name} must be an origin (scheme, host and port only), such as https://vote.example.org`);
+  }
+  return url.origin;
 }

@@ -93,6 +93,17 @@ test. Keep it current when pages change.
   table (office descriptions, "4 days ago", "Member", the headers) are `#616161` rather than `text-grey-7`, so they keep
   4.5:1 on a row under Quasar's hover tint (figures below). At 375 and 320 px the search and State take a row each,
   the filters wrap, nothing on the page scrolls sideways, and the table scrolls inside its card.
+- **Added 2026-10-26, the voting-open email and its card in the election editor** (against the emulators as
+  elections@example.test, an open seeded election; light at desktop width, dark at 375 px): the card is a `section`
+  named by its `h2` "Email to voters"; its caption says in words where the notice stands ("Sent to 12 of the 12 people
+  on the roll…"), and the counts are a `dl` (Sent, Still to send, Failed, Bounced, Skipped), each with what it means.
+  The resend button names how many it is for ("Resend to the 1 it failed for"); its dialog's focus starts on Cancel,
+  and the new status is announced when it is done. The preview is the message's plain text in a `pre` that wraps, so
+  at 375 px nothing scrolls sideways; captions are `#b0b0b0` on `#1d1d1d` in the dark theme. The email itself
+  (`votingOpenMessage`): `lang="en"`, a title, an `h1` and `h2`s, real text with no images, the window as a table with
+  `th scope="col"` and `scope="row"`, links named for what they open ("Open your ballot for “2026 Officer Election”",
+  "Add the voting window to your calendar", "open the Verify page"), black on white with links in `#bd4e00` (4.9:1), and
+  a plain-text part with the same content. Not yet seen in mail clients, which differ in what HTML they keep.
 
 ## What was fixed
 

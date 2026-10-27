@@ -25,14 +25,23 @@ locals {
   )
 
   # worker: Secret Manager (reading seeds at tally), signing ledger blocks and rolls, pool key versions and sealing,
-  # writing anchors, running bylaws checks (with ANTHROPIC_API_KEY from Secret Manager, below).
-  worker_env = {
-    GOOGLE_CLOUD_PROJECT      = var.project_id
-    AUDIT_SIGNING_KEY_VERSION = local.audit_signing_key_version
-    BALLOT_POOL_KEY           = google_kms_crypto_key.ballot_pool.id
-    ANCHORS_BUCKET            = google_storage_bucket.anchors.name
-    BYLAWS_CHECKER            = local.bylaws_checker
-  }
+  # writing anchors, running bylaws checks (with ANTHROPIC_API_KEY from Secret Manager, below), and sending election
+  # notices, which link to the web app (design §6.7).
+  worker_env = merge(
+    {
+      GOOGLE_CLOUD_PROJECT      = var.project_id
+      DEPLOYMENT_ENVIRONMENT    = var.environment
+      AUDIT_SIGNING_KEY_VERSION = local.audit_signing_key_version
+      BALLOT_POOL_KEY           = google_kms_crypto_key.ballot_pool.id
+      ANCHORS_BUCKET            = google_storage_bucket.anchors.name
+      BYLAWS_CHECKER            = local.bylaws_checker
+      WEB_ORIGIN                = var.web_origin != "" ? var.web_origin : "https://${var.project_id}.web.app"
+    },
+    var.mail_from != "" ? { MAIL_FROM = var.mail_from } : {},
+    var.mail_reply_to != "" ? { MAIL_REPLY_TO = var.mail_reply_to } : {},
+    # Rehearsals' notices go to the outbox in testing mode (design §10.4), so the worker must know it is on too.
+    var.testing_mode ? { TESTING_MODE = "true" } : {},
+  )
 
   # The api queues bylaws checks and the worker runs them, so both must agree.
   bylaws_checker = var.bylaws_check_enabled ? "claude" : "off"

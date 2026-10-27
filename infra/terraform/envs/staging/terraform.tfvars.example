@@ -15,3 +15,8 @@ alert_emails           = ["ustp-voting-alerts@example.org"]
 
 # Sends bylaws drafts to Anthropic for the advisory check; add the anthropic-api-key secret's version first (README).
 bylaws_check_enabled = false
+
+# Election notices (design §6.7): where the web app is served (empty: https://<project>.web.app) and the mail headers.
+# web_origin    = "https://vote.example.org"
+# mail_from     = "USTP Elections <elections@example.org>"
+# mail_reply_to = "secretary@example.org"
