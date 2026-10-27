@@ -77,6 +77,29 @@ test. Keep it current when pages change.
   (4.61 on a light card, 7.77 on a dark one). At 320 px the facts stack, label over value, and nothing scrolls sideways (the bylaws
   hash breaks).
 
+- **Added 2026-10-26, who sees which link and the home page** (design §10.5; against the emulators signed out, as a
+  new login with no membership, an applicant, lapsed, suspended, resigned and rejected members, v1, elections@,
+  auditor@ and admin1@, after admin1 saved settings that differ from the defaults; the matrix at 1600 px in the dark
+  theme and 320 px in the light, the home page at 1600 and 320 px dark): the matrix is a `table` with a hidden
+  caption, column groups ("Membership", "Staff roles · added to membership") as `th scope="colgroup"` over
+  `colgroup`s, each audience a `th scope="col"`, each row's link or section a `th scope="row"`, and row groups
+  ("Main menu", "Admin sections", "After sign-in") as `th scope="rowgroup"`. Every switchable cell is a native
+  checkbox named for what it does ("Show Ballot to Applicant", "Show Members to Membership Admin"), reached with Tab
+  and switched with Space, with the usual focus ring; each start page is a native `select` named "Applicant starts
+  on", its admin sections in an `optgroup`. Locked cells are text, not controls: a dash or tick hidden from screen
+  readers and the reason as hidden text ("Not available: only Membership Admins may use this", "Always shown, so System
+  Admins cannot be locked out"); a legend above the table says the same in words. Unsaved changes are listed in words
+  ("Hide Ballot from Applicant") above Save. The table scrolls sideways inside the card, a focusable region named by its
+  caption, with the row headers kept in view; at 1600 px it fits, at 320 px the row headers take 128 px and "Columns
+  to show" (All, Membership, Staff roles, a button group with `aria-pressed`) narrows it. The page itself does not
+  scroll sideways at 320 px. Colours: a shown cell is white on primary (4.94); a hidden cell's ring and dash
+  `#757575` on white (4.61) and `#b0b0b0` on the dark card (7.77); a shown cell's fill is primary, 4.94 on white and
+  3.41 on the dark card (non-text); a locked tick is the link colour (4.94 / 5.84), a locked dash the caption grey; the
+  sticky row headers repaint the card's own colour in both themes. The home page is one `h1` ("Welcome, Ada
+  Brooks"), a caption naming the membership state and roles, and a list named "What you can do" of cards, each an
+  `h2` with a button whose text names its destination ("Open your ballots", "Open Applications"); one column at
+  320 px with nothing scrolling sideways.
+
 ## What was fixed
 
 | WCAG 2.2 | Before | Now |
@@ -272,8 +295,8 @@ of them at full size.
   when a list reloads.
 - Success messages in the admin console are toasts that disappear after 4 seconds (as alerts they are read when shown,
   and the list that changed reloads). The "Two-step verification required" toast stays until dismissed.
-- Wide data tables (audit ledger, members) scroll sideways inside their card on phones, which WCAG allows for
-  two-dimensional data.
+- Wide data tables (audit ledger, members, the navigation matrix) scroll sideways inside their card on phones, which
+  WCAG allows for two-dimensional data.
 - Sign-in with an authenticator code (3.3.8 Accessible authentication) relies on the alternatives: federated
   sign-in and email links are available, and the code field has `autocomplete="one-time-code"` so password managers can
   fill it.

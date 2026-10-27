@@ -51,7 +51,7 @@ What is not domain-centred:
 | **Bylaws** | §5.2, §5.4, §6.6 | `bylaws_versions`, `bylaws_checks`, `bylaws_check_references` | core |
 | **Elections** (setup, roll, voting, sealing, results) | §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results` | core |
 | **Offices** | §6.4 | `positions`, `position_terms` | supporting |
-| **Governance** (roles, two-person rule, testing mode) | §10 | `role_assignments`, `approval_requests`, `testing_personas` | core rule, generic mechanism |
+| **Governance** (roles, two-person rule, testing mode, who sees which link) | §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation` | core rule, generic mechanism |
 | **Audit ledger** | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` | shared kernel |
 | **Verification** (`ustp-verify`, `/verify`, receipt and results checks) | §7.5, §16 | — (reads the public record) | conformist |
 
@@ -103,6 +103,7 @@ commit. What changes is that only the owner touches its documents.
 | Offices | **Term** | created only by certification; active → ended by two persons; holder neither requests nor approves |
 | Governance | **ApprovalRequest** | one pending per action and subject; approver ≠ requester ≠ subject; approver's role, MFA, sign-in ≤ 15 min; 7-day expiry; executes exactly the approved payload hash |
 | Governance | **RoleAssignment** | one System Admin, not on their own account; Auditor holds no other role |
+| Governance | **NavigationSettings** (`navigation/current`) | shows, never permits; no section for a role the API refuses it to, and none for membership alone; People and Navigation always shown to System Admins; a role's Admin link follows its sections; every start page one its audience is shown; saved whole from the version it was edited from, each changed cell ledgered as `navigation.changed` |
 | Ledger | **Ledger** (head → entries) | append-only, gap-free, hash-chained; blocks signed only by the worker |
 
 **Value objects** (plain types, most exist already): `AccountId` (UUIDv7), `Role`, `MemberStatus`, `ElectionState`,
@@ -151,6 +152,7 @@ change only where a context is being reworked anyway.
 | Results, certification | signed tally bundle; the Auditor's approval of it | `results` |
 | Office, term | a position people are elected to; one holder's period in it | `positions`, `position_terms` (code says *position*) |
 | Role | Membership Admin, Election Admin, Auditor, System Admin | `role_assignments` |
+| Audience; navigation settings; start page | a column of the settings (a membership state or a role); who is shown which link and section; where each lands | `AUDIENCES`, `navigation/current`, `StartPage` |
 | Request, approval (two-person rule) | an action one admin asks and another decides | `approval_requests`, `TWO_PERSON_ACTIONS` |
 | Ledger entry, block, anchor | the hash-chained record, its signed Merkle batches, their WORM copies | `audit_events`, `blocks`, `anchors` |
 | Testing mode, persona | rehearsing alone on a test deployment | `testing_personas`, `X-Act-As` |
@@ -173,7 +175,8 @@ import moved code). Ordered by gain against risk, and around work in flight.
    stops reading `elections`. After the adopted-bylaws work in progress has merged, since it changes these methods.
 3. **Governance** — `ApprovalRequest` aggregate functions and repository; a handler registry, so each context
    registers its own handlers and `ApprovalsService` no longer imports them; one `RoleAssignments` writer used by role
-   changes, bootstrap and personas.
+   changes, bootstrap and personas. The navigation settings (DESIGN §10.5) already live in `governance/` in
+   `ustp-domain`; their service is `administration/navigation.ts` in the server until this step moves the context.
 4. **Offices** — `Office` and `Term` aggregates; an `Offices` port (`assertExist`, `createTermsFromResults`) so
    certification stops writing `position_terms`; the term rules shared by request and approval.
 5. **Elections**, in two PRs. (a) Setup and lifecycle: one `transitionElection` used by all six state changes,
@@ -256,7 +259,9 @@ Each step behaviour-preserving: same routes and URLs, page titles, headings, lab
   `ApplicationsPanel` and `MembersPanel` moved into `membership/`; `NEXT` gave way to `adminStatusChanges(status)` in
   `ustp-domain` (same options in the same order); the account page resigns through the client; the boundary test
   starts with it.
-- **W2. Bylaws**, **W3. Governance** (with the admin tab roles in one table the server's `@Roles` use too),
+- **W2. Bylaws**, **W3. Governance** (begun: `governance/` holds the navigation settings' client, panel, wording
+  and store, and the admin tabs come from `ADMIN_SECTIONS` and `SECTION_ROLES` in `ustp-domain`, which a server test
+  checks against the `@Roles` of each section's routes; still to move: approvals, people, role changes, testing),
   **W4. Offices**, **W5. Elections** (`votingAhead(election)` in `ustp-domain` for "upcoming"), **W6. Ledger and
   verification** (one public-ledger client for the audit panel, results and verify), **W7. Accounts and photos**
   (photo limits into `ustp-domain`), each following the matching server step where there is one.

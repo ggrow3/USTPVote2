@@ -8,6 +8,7 @@ import { describe, expect, it } from 'vitest';
  */
 const CONTEXTS: Readonly<Record<string, readonly string[]>> = {
   membership: ['/v1/registration/', '/v1/admin/applications', '/v1/admin/members', '/v1/me/resign', '/v1/me/details'],
+  governance: ['/v1/navigation', '/v1/admin/navigation'],
 };
 
 const SRC = import.meta.dirname;

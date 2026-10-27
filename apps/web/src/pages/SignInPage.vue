@@ -7,7 +7,7 @@ import { usePageTitle } from '../a11y.js';
 import { api, errorMessage } from '../api.js';
 import TwoStepCodeCard from '../components/TwoStepCodeCard.vue';
 import { auth } from '../firebase.js';
-import { session } from '../session.js';
+import { startPath } from '../governance/navigation.js';
 import {
   completeEmailLink,
   pendingEmailLink,
@@ -35,7 +35,8 @@ const emailLink = pendingEmailLink(auth);
 
 const { busy, error, challenge, code, run, submitCode } = useSignInFlow(() => {
   const redirect = typeof route.query.redirect === 'string' ? route.query.redirect : null;
-  return router.replace(redirect ?? (session.me?.member ? '/account' : '/register'));
+  // Otherwise the page the navigation settings start them on (design §10.5).
+  return router.replace(redirect ?? startPath());
 });
 
 /** Why the visitor is here, when a page that needs a sign-in sent them (the router passes it as `redirect`). */

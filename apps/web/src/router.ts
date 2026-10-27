@@ -1,5 +1,6 @@
-import { createRouter, createWebHistory } from 'vue-router';
+import { createRouter, createWebHistory, START_LOCATION } from 'vue-router';
 import type { Role } from 'ustp-domain';
+import { navigationReady, startPath } from './governance/navigation.js';
 import MainLayout from './layouts/MainLayout.vue';
 import { hasRole, session, sessionReady } from './session.js';
 
@@ -20,6 +21,7 @@ export const router = createRouter({
       path: '/',
       component: MainLayout,
       children: [
+        // The public home page signed out; signed in, what the person can do (design §10.5).
         { path: '', component: () => import('./pages/HomePage.vue') },
         { path: 'signin', component: () => import('./pages/SignInPage.vue') },
         { path: 'register', component: () => import('./membership/RegisterPage.vue') },
@@ -47,8 +49,26 @@ export const router = createRouter({
   ],
 });
 
-router.beforeEach(async (to) => {
-  await sessionReady;
+const OPENED = 'ustp-opened';
+
+/** True the first time it is asked in a browser tab; a reload keeps the answer, so reloading home stays on home. */
+function firstOpenInTab(): boolean {
+  try {
+    if (sessionStorage.getItem(OPENED)) return false;
+    sessionStorage.setItem(OPENED, '1');
+    return true;
+  } catch {
+    return false; // storage blocked: home stays home
+  }
+}
+
+router.beforeEach(async (to, from) => {
+  await Promise.all([sessionReady, navigationReady]);
+  // A tab that opens the app at home, signed in, starts where the navigation settings say (design §10.5).
+  if (from === START_LOCATION && firstOpenInTab() && to.path === '/' && session.user) {
+    const start = startPath();
+    if (start !== '/') return start;
+  }
   if ((to.meta.requiresAuth || to.meta.roles) && !session.user) return { path: '/signin', query: { redirect: to.fullPath } };
   // The admin console shows each person their own tools, or says who it is for (it has no roles of its own, so no loop).
   if (to.meta.roles && !hasRole(...to.meta.roles)) return { path: '/admin' };
