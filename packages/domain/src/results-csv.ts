@@ -134,7 +134,8 @@ function tieText(t: TieBreakRecord, names: (ids: readonly string[]) => string): 
 /** Cells a spreadsheet would read as a formula (or DDE) start with one of these; a leading `'` keeps them text. */
 const FORMULA_START = /^[=+\-@\t\r]/;
 
-function csvCell(value: Cell): string {
+/** One cell (RFC 4180), quoted when it must be, a would-be formula with a leading `'`; the members export uses it too. */
+export function csvCell(value: Cell): string {
   let text = String(value);
   if (FORMULA_START.test(text)) text = `'${text}`;
   return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
