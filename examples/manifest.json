@@ -1,0 +1,30 @@
+{
+  "format": "ustp.examples",
+  "v": 1,
+  "offices": [
+    { "positionId": "chair", "title": "Chair", "seats": 1, "termMonths": 24, "description": "Chairs the party and its conventions." },
+    { "positionId": "outreach-coordinator", "title": "Outreach Coordinator", "seats": 1, "termMonths": 12, "description": "" }
+  ],
+  "bylaws": { "version": "2026.1", "title": "USTP Bylaws", "file": "bylaws/ustp-bylaws-2026.1.txt" },
+  "elections": [
+    {
+      "file": "elections/2026-officer-election.election.json",
+      "seed": "scheduled",
+      "votes": [{ "file": "votes/2026-officer-election.votes.json" }]
+    },
+    { "file": "elections/bylaw-amendment-3.election.json", "seed": "scheduled" },
+    {
+      "file": "elections/platform-vote-9.election.json",
+      "seed": "scheduled",
+      "votes": [{ "file": "votes/platform-vote-9.votes.json" }]
+    },
+    { "file": "elections/committee-elections.election.json", "seed": "scheduled" },
+    { "file": "elections/2027-platform-convention.election.json", "seed": "scheduled" },
+    { "file": "elections/2027-bylaws-review.election.json", "seed": "draft" },
+    {
+      "file": "elections/bylaws-amendments.election.json",
+      "seed": "scheduled",
+      "votes": [{ "file": "votes/bylaws-amendments.votes.json", "amendedBylaws": "bylaws/ustp-bylaws-2026.1-amended.txt" }]
+    }
+  ]
+}

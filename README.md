@@ -116,9 +116,12 @@ npm run seed:emulators -w apps/server
 It creates, through the api as people would: System Admins `admin1@` and `admin2@example.test`, an Election and
 Membership Admin `elections@example.test`, an Auditor `auditor@example.test`, and twelve Active members
 `v1@` … `v12@example.test`, all with the password in
-[`seed-emulators.mjs`](apps/server/scripts/seed-emulators.mjs). It defines two offices (Chair, Outreach Coordinator)
-and sets up six elections: three open secret ballots (one of which closes after 15 minutes), an open roll-call vote, one
-scheduled for later and a draft. The Chair and Outreach Coordinator contests fill those offices. One open ballot,
+[`seed-emulators.mjs`](apps/server/scripts/seed-emulators.mjs). The offices, the bylaws and the elections come from
+[`examples/`](examples/README.md): it defines two offices (Chair, Outreach Coordinator), publishes the example bylaws,
+and imports seven elections: four open secret ballots (one of which closes after 15 minutes, one of which votes on
+three amendments to lines of the bylaws), an open roll-call vote, one scheduled for later and a draft. The Chair and
+Outreach Coordinator contests fill those offices. While the amendments vote is open, publishing new bylaws waits for
+it to be certified or cancelled (design §6.6). One open ballot,
 "Platform Vote #9 (demo)", follows the USTP's 2025 platform vote: all 20 questions, open for 21 days, summarized in our
 own words with a link to the official ballot. It casts random ballots for every voter except `v1@example.test`, so you
 can vote as v1. Once the 15-minute election closes and is counted, request certification as `elections@` and approve

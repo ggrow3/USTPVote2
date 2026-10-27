@@ -1,0 +1,24 @@
+{
+  "format": "ustp.election",
+  "v": 1,
+  "title": "2027 Bylaws Review (draft)",
+  "description": "Still a draft: no roll, not scheduled.",
+  "secrecy": "secret",
+  "kAnonymity": 3,
+  "window": {
+    "opensInSeconds": 2592000,
+    "votingSeconds": 604800
+  },
+  "contests": [
+    {
+      "kind": "choose_n",
+      "title": "Review Committee",
+      "seats": 2,
+      "maxSelections": 2,
+      "candidates": [
+        "Bo Grant",
+        "Cy Lam"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "format": "ustp.test-votes",
+  "v": 1,
+  "description": "Five test voters. The plank passes; Casey Okafor is eliminated first and Blair Chen wins the Chair on transfers; Dana Ito and Eli Moreno take the two Board seats.",
+  "ballots": [
+    { "voter": 1, "choices": { "Plank 12: Right to repair": "yes", "Chair": ["Blair Chen", "Alex Rivera"], "Board (2 seats)": ["Dana Ito", "Eli Moreno"] } },
+    { "voter": 2, "choices": { "Plank 12: Right to repair": "yes", "Chair": ["Blair Chen", "Casey Okafor"], "Board (2 seats)": ["Dana Ito", "Fran Novak"] } },
+    { "voter": 3, "choices": { "Plank 12: Right to repair": "no", "Chair": ["Alex Rivera", "Blair Chen"], "Board (2 seats)": ["Eli Moreno", "Dana Ito"] } },
+    { "voter": 4, "choices": { "Plank 12: Right to repair": "yes", "Chair": ["Casey Okafor", "Blair Chen"], "Board (2 seats)": ["Dana Ito"] } },
+    { "voter": 5, "choices": { "Plank 12: Right to repair": "abstain", "Chair": ["Alex Rivera", "Casey Okafor"], "Board (2 seats)": ["Eli Moreno", "Fran Novak"] } }
+  ],
+  "expect": {
+    "Plank 12: Right to repair": "passed",
+    "Chair": ["Blair Chen"],
+    "Board (2 seats)": ["Dana Ito", "Eli Moreno"]
+  }
+}

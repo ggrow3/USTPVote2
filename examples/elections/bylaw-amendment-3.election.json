@@ -1,0 +1,31 @@
+{
+  "format": "ustp.election",
+  "v": 1,
+  "title": "Bylaw Amendment 3 (roll-call)",
+  "description": "Roll-call vote: how each member votes is published with their name.",
+  "secrecy": "open",
+  "kAnonymity": 3,
+  "window": {
+    "opensInSeconds": 40,
+    "votingSeconds": 7160
+  },
+  "contests": [
+    {
+      "kind": "proposal",
+      "title": "Amendment 3: Remote participation at conventions",
+      "passRule": {
+        "threshold": {
+          "ratio": {
+            "num": 2,
+            "den": 3
+          },
+          "comparison": "gte"
+        },
+        "base": "yes_no"
+      },
+      "proposal": {
+        "body": "Members may attend and vote at conventions remotely.\n\nThe Secretary shall provide the means."
+      }
+    }
+  ]
+}

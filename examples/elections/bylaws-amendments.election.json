@@ -1,0 +1,76 @@
+{
+  "format": "ustp.election",
+  "v": 1,
+  "title": "Bylaws Amendments (demo)",
+  "description": "Three amendments to the example bylaws, each changing exact lines of version 2026.1. Two change adjacent lines and can both pass.",
+  "secrecy": "secret",
+  "kAnonymity": 3,
+  "window": { "opensInSeconds": 40, "votingSeconds": 7160 },
+  "contests": [
+    {
+      "id": "vice-chair",
+      "kind": "proposal",
+      "title": "Amendment A: A Vice-Chair",
+      "passRule": { "threshold": { "ratio": { "num": 1, "den": 2 }, "comparison": "gt" }, "base": "yes_no" },
+      "proposal": {
+        "body": "Adds a Vice-Chair to the officers, to stand in when the Chair cannot.",
+        "amendment": {
+          "v": 1,
+          "base": { "version": "2026.1", "contentHash": "fcd041600cebe85d29502d86a3813471af4274d4332bd52dd2c0be647851a6cb" },
+          "changes": [
+            {
+              "op": "replace",
+              "from": 14,
+              "to": 14,
+              "expect": ["The officers of the Party are the Chair, the Secretary and the Treasurer."],
+              "lines": ["The officers of the Party are the Chair, the Vice-Chair, the Secretary and the Treasurer."]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "terms",
+      "kind": "proposal",
+      "title": "Amendment B: Three-year terms",
+      "passRule": { "threshold": { "ratio": { "num": 1, "den": 2 }, "comparison": "gt" }, "base": "yes_no" },
+      "proposal": {
+        "body": "Lengthens officers' terms from two years to three.",
+        "amendment": {
+          "v": 1,
+          "base": { "version": "2026.1", "contentHash": "fcd041600cebe85d29502d86a3813471af4274d4332bd52dd2c0be647851a6cb" },
+          "changes": [
+            {
+              "op": "replace",
+              "from": 15,
+              "to": 15,
+              "expect": ["Officers serve terms of two years."],
+              "lines": ["Officers serve terms of three years."]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "remote",
+      "kind": "proposal",
+      "title": "Amendment C: Remote participation",
+      "passRule": { "threshold": { "ratio": { "num": 1, "den": 2 }, "comparison": "gt" }, "base": "yes_no" },
+      "proposal": {
+        "body": "Lets members attend and vote at conventions remotely.",
+        "amendment": {
+          "v": 1,
+          "base": { "version": "2026.1", "contentHash": "fcd041600cebe85d29502d86a3813471af4274d4332bd52dd2c0be647851a6cb" },
+          "changes": [
+            {
+              "op": "insert",
+              "after": 19,
+              "anchor": "Notice of a convention is given thirty days in advance.",
+              "lines": ["Members may attend and vote at conventions remotely."]
+            }
+          ]
+        }
+      }
+    }
+  ]
+}
