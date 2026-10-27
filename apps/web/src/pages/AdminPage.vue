@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, type Component } from 'vue';
-import type { Role } from 'ustp-domain';
+import type { AdminSection } from 'ustp-domain';
 import ApprovalsPanel from '../components/admin/ApprovalsPanel.vue';
 import AuditPanel from '../components/admin/AuditPanel.vue';
 import BylawsPanel from '../components/admin/BylawsPanel.vue';
@@ -10,21 +10,18 @@ import PeoplePanel from '../components/admin/PeoplePanel.vue';
 import PhotosPanel from '../components/admin/PhotosPanel.vue';
 import SignInMethodsPanel from '../components/admin/SignInMethodsPanel.vue';
 import TestingPanel from '../components/admin/TestingPanel.vue';
+import NavigationPanel from '../governance/NavigationPanel.vue';
+import { shown } from '../governance/navigation.js';
+import { SECTION_LABELS } from '../governance/navigation-text.js';
 import ApplicationsPanel from '../membership/ApplicationsPanel.vue';
 import MembersPanel from '../membership/MembersPanel.vue';
 import { useRoute } from 'vue-router';
 import { usePageTitle } from '../a11y.js';
 import { acting } from '../acting.js';
-import { hasRole, session } from '../session.js';
+import { session } from '../session.js';
 
-interface Tab {
-  readonly name: string;
-  readonly label: string;
-  readonly roles: readonly Role[];
-}
-
-/** Tabs follow the role matrix (design §10.1); the API enforces the same rules. */
-const PANELS: Record<string, Component> = {
+/** Each section's panel. Which ones a person sees is the navigation settings' (design §10.5); the API decides what they may do. */
+const PANELS: Record<AdminSection, Component> = {
   applications: ApplicationsPanel,
   members: MembersPanel,
   photos: PhotosPanel,
@@ -36,31 +33,22 @@ const PANELS: Record<string, Component> = {
   signin: SignInMethodsPanel,
   audit: AuditPanel,
   testing: TestingPanel,
+  navigation: NavigationPanel,
 };
-
-const ALL_TABS: readonly Tab[] = [
-  { name: 'applications', label: 'Applications', roles: ['membership_admin'] },
-  { name: 'members', label: 'Members', roles: ['membership_admin'] },
-  { name: 'photos', label: 'Photos', roles: ['membership_admin'] },
-  { name: 'bylaws', label: 'Bylaws', roles: ['membership_admin'] },
-  { name: 'elections', label: 'Elections', roles: ['election_admin', 'auditor'] },
-  { name: 'offices', label: 'Offices', roles: ['membership_admin', 'election_admin', 'auditor'] },
-  { name: 'approvals', label: 'Approvals', roles: ['membership_admin', 'election_admin', 'auditor', 'system_admin'] },
-  { name: 'people', label: 'People', roles: ['system_admin'] },
-  { name: 'signin', label: 'Sign-in methods', roles: ['system_admin'] },
-  { name: 'audit', label: 'Audit ledger', roles: ['auditor'] },
-  { name: 'testing', label: 'Testing', roles: ['system_admin'] },
-];
 
 usePageTitle('Administration');
 // Testing shows only where the deployment allows test personas (design §10.4).
-const tabs = computed(() => ALL_TABS.filter((t) => hasRole(...t.roles) && (t.name !== 'testing' || !!session.me?.testing.enabled)));
-/** Every role is an admin role, so someone with none is not an officer. The menu shows Admin to everyone. */
+const tabs = computed(() =>
+  shown.value.sections
+    .filter((name) => name !== 'testing' || !!session.me?.testing.enabled)
+    .map((name) => ({ name, label: SECTION_LABELS[name] })),
+);
+/** Every role is an admin role, so someone with none is not an officer. The menu can show them Admin (design §10.5). */
 const officer = computed(() => !session.me || session.me.roles.length > 0);
 const email = computed(() => session.me?.account?.primaryEmail);
 const needsMfa = computed(() => !!session.me?.mfa.required && !session.me.mfa.signedInWithMfa);
 const requested = String(useRoute().query.tab ?? '');
-const tab = ref(tabs.value.some((t) => t.name === requested) ? requested : (tabs.value[0]?.name ?? 'approvals'));
+const tab = ref<string>(tabs.value.some((t) => t.name === requested) ? requested : (tabs.value[0]?.name ?? 'approvals'));
 </script>
 
 <template>
@@ -88,6 +76,9 @@ const tab = ref(tabs.value.some((t) => t.name === requested) ? requested : (tabs
         Admin tools need two-step verification. Set up an authenticator app on your
         <router-link to="/account">Account page</router-link>, then sign out and sign back in with its code.
       </q-banner>
+      <p v-if="!tabs.length">
+        A System Admin has hidden every section of the console from your roles. Ask them if you need one back.
+      </p>
       <q-tabs v-model="tab" dense align="left" class="text-primary" no-caps>
         <q-tab
           v-for="t in tabs"

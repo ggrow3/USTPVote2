@@ -9,6 +9,7 @@ import {
   SignInMethodsController,
 } from '../administration/administration.controller.js';
 import { ApprovalsService } from '../administration/approvals.service.js';
+import { NavigationAdminController, NavigationService, PublicNavigationController } from '../administration/navigation.js';
 import { RoleChanges } from '../administration/role-changes.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { BylawsChecksController } from '../bylaws-check/bylaws-checks.controller.js';
@@ -42,7 +43,8 @@ import { PositionsService } from '../positions/positions.service.js';
  * Client-facing API (design §12). Every route requires a verified sign-in unless marked @Public().
  * M1: accounts, registration, membership administration, profile photos, roles and approvals, auth switches, ledger.
  * M2: election setup, rolls, scheduling and cancellation; the published ledger (blocks, keys, proofs, anchors).
- * M3: voting. M4: results, certification, offices and terms. Testing mode: test personas (design §10.4).
+ * M3: voting. M4: results, certification, offices and terms. Testing mode: test personas (design §10.4). M5: who sees
+ * which link (design §10.5).
  */
 @Module({
   imports: [CoreModule],
@@ -64,6 +66,8 @@ import { PositionsService } from '../positions/positions.service.js';
     AccountsAdminController,
     PublicSignInMethodsController,
     SignInMethodsController,
+    PublicNavigationController,
+    NavigationAdminController,
     AuditController,
     PublicLedgerController,
     PersonasController,
@@ -83,6 +87,7 @@ import { PositionsService } from '../positions/positions.service.js';
     PositionApprovals,
     PositionsService,
     ApprovalsService,
+    NavigationService,
     PersonasService,
     secretStoreProvider,
     {

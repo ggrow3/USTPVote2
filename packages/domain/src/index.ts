@@ -3,6 +3,7 @@ export { uuidv7, isUuidV7, uuidv7Timestamp } from './ids.js';
 export { ROLES, conflictingRoles, isRole, checkRoleChange } from './roles.js';
 export type { Role } from './roles.js';
 export * from './membership/index.js';
+export * from './governance/index.js';
 export { diffLines, splitLines } from './text-diff.js';
 export {
   MAX_AMENDMENT_CHANGES,
