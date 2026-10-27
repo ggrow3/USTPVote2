@@ -76,6 +76,23 @@ test. Keep it current when pages change.
   Labels are medium weight and values normal weight, both in the page's text colour; "Not given" is `text-grey-7`
   (4.61 on a light card, 7.77 on a dark one). At 320 px the facts stack, label over value, and nothing scrolls sideways (the bylaws
   hash breaks).
+- **Added 2026-10-26, the Members tab as one table** (against the emulators as elections@example.test, with
+  active, lapsed, suspended, resigned, applicant and rejected members and office holders; light and dark at 1400 px,
+  375 px light and dark, 320 px dark): the card's `h2` is "Members". The search field is named "Search by name" (its
+  placeholder is not its name) and the state select is labelled by the visible "State" (`label for`). The status filters
+  are native buttons in a group named "Status", each with `aria-pressed`; the pressed one is filled (black on the
+  light theme, white on the dark), not only coloured. Every column header but Actions is a button inside its `th`, and
+  the sorted column's `th` has `aria-sort`; the arrow is decoration. The checkboxes are named "Select Ada Brooks" and
+  "Select every member on this page" (mixed when some are ticked), and they only choose rows for Export CSV, whose
+  name then reads "Export 2 selected" (otherwise "Export CSV: 12 members"). Statuses are words in a tinted pill, with
+  a dot as decoration, rather than `QBadge`, so the list is no longer a run of live regions. Initials circles are
+  hidden from screen readers (the name follows). "Showing 12 of 12 members" is a status message, so a search or filter
+  is announced with its count; the pager is a `nav` named "Pages of members" with "Previous page" and "Next page"
+  buttons, disabled at the ends. Keyboard only: search, State, then each status filter (Space presses it, the focus
+  ring shows round the filled one), the header buttons and each row's controls in reading order. Captions inside the
+  table (office descriptions, "4 days ago", "Member", the headers) are `#616161` rather than `text-grey-7`, so they keep
+  4.5:1 on a row under Quasar's hover tint (figures below). At 375 and 320 px the search and State take a row each,
+  the filters wrap, nothing on the page scrolls sideways, and the table scrolls inside its card.
 
 ## What was fixed
 
@@ -128,6 +145,11 @@ menus and dialogs `#1d1d1d`.
 | A field's error message in the dark theme, on a card (Quasar uses negative itself: `#c10015`, 2.63) | `#ef9a9a` on `#1d1d1d` | 7.83 |
 | `text-grey-7` captions on white | `#757575` on `#fff` | 4.61 |
 | `text-grey-7` captions on the dark page / dark card | `#b0b0b0` on `#121212` / `#1d1d1d` | 8.64 / 7.77 |
+| Members table captions and headers, light: on a card / under the row hover tint / on the header row; dark: on a card / under the tint | `#616161` on `#fff` / `#f7f7f7` / `#f8f8f8`; `#b0b0b0` on `#1d1d1d` / `#2f2f2f` | 6.19 / 5.78 / 5.78; 7.77 / 6.17 |
+| Members table: a member's name (link) under the row hover tint; light / dark | `#bd4e00` on `#f7f7f7` / `#ff6900` on `#2f2f2f` | 4.61 / 4.64 |
+| Members status pills, light: Active, Suspended, Lapsed, Resigned, Applicant, Rejected | `#2e7d32` on `#e8f5e9`; `#c62828` on `#ffebee`; `#616161` on `#eeeeee`; `#1565c0` on `#e3f2fd`; `#9a4d00` on `#fff3e0`; `#6a1b9a` on `#f3e5f5` | 4.56; 4.92; 5.34; 5.03; 5.57; 7.75 |
+| Members status pills, dark: the same order | `#81c784` on `#1e3320`; `#ef9a9a` on `#3d1e1e`; `#bdbdbd` on `#2e2e2e`; `#90caf9` on `#1a2c3d`; `#ffb74d` on `#3a2a12`; `#ce93d8` on `#33203a` | 6.73; 6.96; 7.23; 8.16; 7.98; 6.24 |
+| Members: the pressed status filter, light / dark; initials (hidden from screen readers), light / dark | `#fff` on `#121212` / `#121212` on `#fff`; `#aa4600` on `#f6e6db` / `#ffb68a` on `#4a2a14` | 18.73 / 18.73; 4.81 / 7.54 |
 | Warning text on white (`deep-orange-10`) | `#bf360c` on `#fff` | 5.60 |
 | Warning text on the dark page / dark card | `#ffb74d` on `#121212` / `#1d1d1d` | 10.82 / 9.74 |
 | Warning badge (photo "waiting for review") | `#000` on `#f2c037` | 12.37 |
@@ -268,8 +290,8 @@ of them at full size.
   newcomer was checked by signing in with an emulator Google credential instead). These were reviewed in code only.
 - Quasar's radios, checkboxes and toggles are ARIA widgets on `div`s rather than native inputs. They behave correctly
   (roles, states, Space to toggle, roving focus in radio groups) but depend on Quasar staying that way.
-- `QBadge` renders `role="status"`, so badges in long lists (ballots, members) are live regions and may be read out
-  when a list reloads.
+- `QBadge` renders `role="status"`, so badges in long lists (ballots) are live regions and may be read out when a
+  list reloads.
 - Success messages in the admin console are toasts that disappear after 4 seconds (as alerts they are read when shown,
   and the list that changed reloads). The "Two-step verification required" toast stays until dismissed.
 - Wide data tables (audit ledger, members) scroll sideways inside their card on phones, which WCAG allows for
