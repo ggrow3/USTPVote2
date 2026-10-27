@@ -25,6 +25,7 @@ export const ADMIN_SECTIONS = [
   'people',
   'signin',
   'claude',
+  'email',
   'audit',
   'testing',
   'navigation',
@@ -59,6 +60,8 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   people: ['system_admin'],
   signin: ['system_admin'],
   claude: ['system_admin'],
+  // The election emails' settings (design §6.8).
+  email: ['system_admin'],
   audit: ['auditor'],
   testing: ['system_admin'],
   navigation: ['system_admin'],

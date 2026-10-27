@@ -1,4 +1,4 @@
-import type { NoticeRecipientRecord, NoticeRecord, NoticesView, OutboxMessageRecord } from 'ustp-domain';
+import { DEFAULT_NOTICE_SETTINGS, type NoticeRecipientRecord, type NoticeRecord, type NoticesView, type OutboxMessageRecord } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { NoticeSender } from './notifications/notice-sender.js';
 import { NoticesService } from './notifications/notices.service.js';
@@ -273,7 +273,7 @@ describe('a rehearsal roll', () => {
     expect((await worker.tick()).body).toMatchObject({ electionsOpened: 1, noticesSent: 0 });
     expect(await notice(election)).toBeUndefined();
     expect(await outbox(election)).toHaveLength(0);
-    expect((await view(election)).body).toEqual({ delivery: 'outbox', contact: null, notices: [] });
+    expect((await view(election)).body).toEqual({ delivery: 'outbox', contact: null, settings: DEFAULT_NOTICE_SETTINGS, notices: [] });
   });
 
   it('gets its notice in the outbox, addressed to nobody, where testing mode is on', async () => {

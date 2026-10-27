@@ -336,14 +336,18 @@ type LaneElection = Pick<
 /**
  * Who does what in the lifecycle, and where the election is: each action has the status of its step, refined by what
  * the election waits on (an Election Admin's request is done while the Auditor's decision on it is awaited). The
- * emails take the status `noticeSteps` gives them from their counts; an election open a day or less has no reminder.
+ * emails take the status `noticeSteps` gives them from their counts; an election open no longer than the reminder's
+ * lead time (a day, unless a System Admin set another) has no reminder.
  */
 export function swimLanes(progress: ElectionProgress, election: LaneElection, emails: readonly NoticeStep[] = []): SwimLanes {
   const stepStatus = new Map(progress.steps.map((s) => [s.step, s.status]));
   const waited = new Set(progress.waiting.map((w) => w.for));
   const isWaited = (a: ActionSpec) => a.waits.some((w) => waited.has(w));
   const secret = election.secrecy === 'secret';
-  const present = (a: ActionSpec) => (secret || !a.secret) && (a.email !== 'closing_soon' || hasReminder(election));
+  // The reminder is left out where voting is open no longer than its lead time (the emails' own reckoning, else a day).
+  const reminder = emails.find((e) => e.kind === 'closing_soon');
+  const hasIt = reminder ? reminder.absent !== 'short_window' : hasReminder(election);
+  const present = (a: ActionSpec) => (secret || !a.secret) && (a.email !== 'closing_soon' || hasIt);
   const emailStatus = (a: ActionSpec) => (a.email ? emails.find((e) => e.kind === a.email)?.status : undefined);
   const cancelled = election.state === 'cancelled';
   const from = cancelledFrom(election);

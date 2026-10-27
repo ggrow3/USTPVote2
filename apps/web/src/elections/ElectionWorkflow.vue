@@ -49,7 +49,7 @@ const emailStatus = computed(() => emailStepStatus(emails.value));
 const emailLines = computed(() =>
   emails.value.map(
     (e) =>
-      `${NOTICE_SHORT_TITLES[e.kind]}: ${e.notice ? noticeStatus(e.notice) : noNoticeText(e.kind, props.detail, notices.value, testingMode.value, now.value)}`,
+      `${NOTICE_SHORT_TITLES[e.kind]}: ${e.notice ? noticeStatus(e.notice) : noNoticeText(e, props.detail, notices.value)}`,
   ),
 );
 

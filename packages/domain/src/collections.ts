@@ -39,6 +39,7 @@ export const Collections = {
   // notifications (design §6.8)
   notices: 'notices',
   noticeOutbox: 'notice_outbox',
+  noticeSettings: 'notice_settings',
   // testing mode (design §10.4)
   testingPersonas: 'testing_personas',
 } as const;

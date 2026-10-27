@@ -44,4 +44,28 @@ export {
 } from './message.js';
 export type { NoticeElection, NoticeMessage, NoticeMessageInput } from './message.js';
 export { noticeSteps, emailStepStatus } from './notice-steps.js';
-export type { NoticeStep } from './notice-steps.js';
+export type { NoticeStep, NoticeAbsence } from './notice-steps.js';
+export {
+  NOTICE_PLACEHOLDERS,
+  DEFAULT_NOTICE_TEXT,
+  DEFAULT_NOTICE_SETTINGS,
+  MAX_NOTICE_SUBJECT,
+  MAX_NOTICE_INTRO,
+  MAX_NOTICE_CONTACT,
+  MIN_REMINDER_HOURS,
+  MAX_REMINDER_HOURS,
+  resolveNoticeSettings,
+  noticeTemplateProblems,
+  fillNoticeText,
+  noticeSettingsSchema,
+  noticeSettingsChanges,
+} from './notice-settings.js';
+export type {
+  NoticePlaceholder,
+  NoticeKindSettings,
+  NoticeSettings,
+  NoticeSettingsRecord,
+  NoticeSettingsInput,
+  NoticeSettingsChange,
+  NoticeSettingsChangedPayload,
+} from './notice-settings.js';

@@ -147,17 +147,16 @@ describe('sending through Amazon SES', () => {
     expect(Date.now() - started).toBeGreaterThanOrEqual(95); // the third waits two slots of 50 ms
   });
 
-  it('will not start without its key, the contact or the web origin', () => {
+  it('will not start without its key or the web origin; the contact may come from the app', () => {
     const config = loadConfig({ MAIL_TRANSPORT: 'ses', SES_REGION: 'us-east-1' });
     expect(() => SesTransport.fromConfig(config)).toThrow(
-      'MAIL_TRANSPORT=ses needs AWS_SES_ACCESS_KEY_ID, AWS_SES_SECRET_ACCESS_KEY, NOTICE_CONTACT, WEB_ORIGIN',
+      'MAIL_TRANSPORT=ses needs AWS_SES_ACCESS_KEY_ID, AWS_SES_SECRET_ACCESS_KEY, WEB_ORIGIN',
     );
     const ready = loadConfig({
       MAIL_TRANSPORT: 'ses',
       SES_REGION: 'us-east-1',
       AWS_SES_ACCESS_KEY_ID: 'AKIA',
       AWS_SES_SECRET_ACCESS_KEY: 'secret',
-      NOTICE_CONTACT: 'elections@example.org',
       WEB_ORIGIN: 'https://ustpvote2-dev.web.app',
     });
     expect(SesTransport.fromConfig(ready)).toBeInstanceOf(SesTransport);
