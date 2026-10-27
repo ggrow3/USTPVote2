@@ -25,6 +25,7 @@ import { downloadElectionDocx, saveElectionPackage } from '../election-files.js'
 import ElectionWorkflow from '../elections/ElectionWorkflow.vue';
 import { fromLocalInput, KIND_LABELS, rulesText, toLocalInput } from '../election-text.js';
 import { validate } from '../forms.js';
+import VotingNoticeCard from '../notifications/VotingNoticeCard.vue';
 import { hasRole, session } from '../session.js';
 
 const $q = useQuasar();
@@ -400,6 +401,8 @@ onMounted(load);
             </q-list>
           </q-expansion-item>
         </q-card>
+
+        <VotingNoticeCard :detail="detail" />
 
         <q-card v-if="detail.results" flat bordered>
           <q-card-section class="ustp-header">

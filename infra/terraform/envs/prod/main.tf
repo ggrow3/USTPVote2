@@ -25,4 +25,11 @@ module "ustpvote" {
   alert_emails     = var.alert_emails
 
   bylaws_check_enabled = var.bylaws_check_enabled
+
+  # Election notices (design §6.8; README "Election notices").
+  web_origin           = var.web_origin
+  mail_transport       = var.mail_transport
+  notice_contact       = var.notice_contact
+  ses_region           = var.ses_region
+  ses_events_queue_url = var.ses_events_queue_url
 }

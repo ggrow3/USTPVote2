@@ -79,6 +79,14 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "requestedAt", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "recipients",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "round", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -87,6 +95,8 @@
     { "collectionGroup": "audit_events", "fieldPath": "payload", "indexes": [] },
     { "collectionGroup": "participation", "fieldPath": "parts", "indexes": [] },
     { "collectionGroup": "bylaws_checks", "fieldPath": "text", "indexes": [] },
-    { "collectionGroup": "bylaws_check_references", "fieldPath": "text", "indexes": [] }
+    { "collectionGroup": "bylaws_check_references", "fieldPath": "text", "indexes": [] },
+    { "collectionGroup": "notice_outbox", "fieldPath": "text", "indexes": [] },
+    { "collectionGroup": "notice_outbox", "fieldPath": "html", "indexes": [] }
   ]
 }

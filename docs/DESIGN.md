@@ -92,7 +92,8 @@ flowchart LR
   WK -- "decrypt pool, sign blocks" --> KMS
   WK --> GCSA[("GCS: anchors<br/>Bucket Lock (WORM)")]
   WK --> SM[Secret Manager]
-  WK --> SES[Amazon SES]
+  WK -- "election notices" --> SES[Amazon SES]
+  WK -- "bounce reports" --> SQS[Amazon SQS]
 ```
 
 ### 3.1 Components
@@ -150,6 +151,7 @@ this structure one at a time, without changing routes, documents or the ledger.
 | Offices | §6.4 | `positions`, `position_terms` |
 | Governance | §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation` |
 | Audit ledger | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` |
+| Notifications | §6.8 | `notices` (with `recipients`), `notice_outbox` |
 
 **Layers.** Records stay plain data (Firestore stores them, JCS hashes them, the browser reads them), so an aggregate
 is its record types plus pure functions in `ustp-domain`:
@@ -504,7 +506,9 @@ the worker first creates its ballot-pool key version ([§7.3](#73-ballot-pool-en
 candidates and proposal texts still hash to the frozen `definitionHash` (otherwise the tick fails loudly and the election
 stays scheduled). At `closesAt` it closes it. Each transition re-reads the election in a transaction (an election
 cancelled meanwhile is left alone, and overlapping ticks move it once) and ledgers `election.opened` (definition hash,
-window, pool key version) or `election.closed`, with actor `system`.
+window, pool key version) or `election.closed`, with actor `system`. Once an election is open, the same tick starts
+emailing everyone on its roll that it is time to vote, once each, and a day before it closes reminds those who have
+not voted ([§6.8](#68-election-notices-added)).
 
 **Closed → results** (implemented in M4a): once every ballot is sealed (`sealedAt`, §7.2), the worker tallies the
 election on the same tick and publishes provisional, signed results ([§9](#9-tallying-ustp-tally)). The election stays
@@ -831,6 +835,96 @@ Importing an export gives the same definition, apart from the election's own ID 
 **Web:** "Import JSON" on the Elections tab, which lists any problems by path. "Download as JSON" in the election
 editor, next to the Word ballot.
 
+### 6.8 Election notices *(added)*
+
+Two emails go to an election's roll: when voting opens, everyone on it is told it is time to vote; a day before it
+closes, those who have not voted yet are reminded. Both belong to the notifications context (§3.3): the worker sends
+them through Amazon SES and keeps a record per person, and the editor shows how they went.
+
+**Who gets them.** The *voting-open notice* goes to every account on the election's approved roll, once. The
+*closing-soon reminder* goes, once, to those on the roll who had no participation record (§7.1) 24 hours before voting
+closes, and is not sent to anyone who has voted by the time their turn comes; an election open for a day or less gets
+no reminder, so it never comes with the notice that voting is open, and a reminder waits until that notice has gone.
+Each goes to the primary email address of the account, if it is verified; someone with no address, or an unverified
+one, is skipped. Both are official election notices, not marketing: they go out whatever the member's newsletter and
+announcement opt-ins (§5.2), which cover only those two kinds of mail, and there is no opt-out, since there are at
+most two per election the member may vote in. A rehearsal roll (§6.3) gets no email: where testing mode is on, each
+test voter's notices are recorded in the outbox instead, addressed to nobody, since test voters have no address; where
+it is off, nothing is recorded.
+
+**What the reminder gives away.** To choose its recipients the worker reads who has voted (participation records,
+never ballots), so sending it tells Amazon SES which roll members had not voted a day before the close: whoever runs
+the mail service, and anyone who gets into that account, can learn it. It never learns how anyone voted. The
+reminder's counts show Election Admins the turnout at that moment (roll size less recipients), which Q10 already
+allows them; nobody sees who was reminded.
+
+**The messages** (`votingOpenMessage` and `closingSoonMessage` in `ustp-domain`, the same code for the worker, the
+editor's preview and the tests), as plain text and simple HTML built from the same blocks, so both say the same:
+
+- *Voting is open:* subject "Voting is open: {title}"; a greeting by the member's preferred (or legal) name; "Vote by"
+  the closing time in Eastern Time; a link "Open your ballot for '{title}'" to `/ballot/{id}`; the window in a table
+  of seven zones (Eastern, Central, Mountain, Pacific, Alaska, Hawaii, each with its abbreviation, so daylight time is
+  explicit, and UTC on the 24-hour clock); a link to the calendar event (`/v1/public/elections/{id}/calendar.ics`,
+  §6.1); the election's description; and how to check the vote afterwards (keep the receipt to yourself, since it
+  shows the choices; after the close, load it on `/verify`).
+- *Voting closes soon:* subject "Voting closes soon: {title}"; that the member has not voted yet and voting closes in
+  about so many hours (worked out when it is sent), with thanks to anyone who has voted since; "Vote by", the ballot
+  link, the closing time in the same seven zones, and how to check the vote.
+- Both end with why the member gets it (the reminder adds that only whether they had voted was used, never how), that
+  replies are not read and where to ask instead (`NOTICE_CONTACT`, an address or a page; until USTP names one, a
+  bracketed placeholder, and the worker will not send through SES without it, so no real email carries it: Q19), and
+  that the party never asks for a password or code by email. Real text and headings, no images, `lang="en"`, links
+  named for what they open, the party's colour (#bd4e00, 4.9:1 on white) for links and the heading rule. The title,
+  name and description are escaped, and the subject is kept to one line. Links use `WEB_ORIGIN`.
+
+From is `USTP Elections <noreply@transhumanist-party.org>` (Q15), with no Reply-To.
+
+**Sending, once per person** (a tick step, §13). When a notice is due (the election is open and its window has not
+ended; for the reminder, from 24 hours before the close), the worker creates `notices/{electionId}_{kind}`
+(`preparing`), writes one `pending` record per recipient under it (`recipients/{accountId}`, created only if absent,
+so an interrupted run simply repeats), and moves it to `sending`. It then sends a batch of ten at a time, for at most
+20 seconds per tick and at most `SES_MAX_SEND_RATE` a second (10 by default, under a new SES account's 14), so a roll
+of 5,000 takes about 25 ticks. For each person it first claims the record in a transaction (`pending` → `sending`,
+with `claimedAt`), so overlapping ticks never both send it; reads the address from the account, the name from the
+member record and, for a reminder, whether they have voted since; sends; and records `sent` with SES's message ID, or
+the outcome. The address is used for that send only and stored nowhere else: not in the record, the ledger or the
+logs. SES has no idempotency key, so the client makes one attempt per send. An answer from SES, or no connection at
+all, means the message was not sent: SES saying "not now" (throttling, quota, paused sending, a key or domain problem)
+leaves the record `pending` for the next tick, up to three attempts, after which it is `failed` (`unavailable`), and
+the step stops for that tick; SES refusing the message itself fails it (`refused`). A timeout or a dropped connection
+leaves it unknown whether the message went: it is failed (`error`), as is a claim older than five minutes
+(`interrupted`), and neither is sent again by itself, so nobody gets two. If voting closes before someone's notice
+went, it is failed (`voting_closed`) rather than sent late. When every record of the round has an outcome, the worker
+ledgers `notice.sent` (actor `system`; election, kind, round, delivery, recipients and the counts sent, failed,
+bounced and skipped) and marks the notice `done`.
+
+**Bounces.** Each message carries the SES tag `notice` (the notice's ID) and goes through the configuration set
+`SES_CONFIGURATION_SET`, which publishes bounces to an SNS topic feeding an SQS queue (`SES_EVENTS_QUEUE_URL`). Every
+tick the worker reads that queue for up to five seconds, turns the `sent` record of each permanently bounced message
+`bounced` (found by its message ID), and deletes what it read; transient bounces (SES retries those), complaints and
+anything else are dropped. Nothing from outside calls the api: the worker fetches the reports. Without a queue,
+bounces are not counted.
+
+**In the election editor** ("Email to voters"), for Election Admins and Auditors (`GET
+/v1/admin/elections/{id}/notices`): for each notice, whether it went out and how, as counts (sent, still to send,
+failed, bounced, skipped), never addresses or who a status belongs to; before a notice starts, when it will; and a
+preview of each message with a sample name and the real contact. While voting is open and a notice's last round has
+finished, an Election Admin who is not a candidate can **resend** it to the people it failed for
+(`POST …/notices/{kind}/resend`): the notice starts round n + 1, ledgered as `notice.resend_requested` (the admin,
+kind, round, how many had failed), and the worker sends to records failed in earlier rounds; nobody it reached gets a
+second copy, and bounced addresses are not retried. Both ledger types are visible to Auditors only: they are about
+delivering mail, not part of the election's public record (§8.2).
+
+**Delivery.** `MAIL_TRANSPORT` says how the worker sends: `ses` through Amazon SES (its region, configuration set,
+queue and an access key in `SES_*` and `AWS_SES_*`; the worker will not start without the key, `NOTICE_CONTACT` and
+`WEB_ORIGIN`), `outbox` records each message in `notice_outbox` instead of mailing it (the emulators' stand-in, refused
+elsewhere; tests act out SES through addresses at `refused.test`, `unavailable.test` and `bounce.test`), and `off`
+sends nothing (the default in a real project; a notice then waits, and starts if email is switched on while voting is
+still open). Only the worker holds the AWS key, from Secret Manager; the api only reads counts and starts resends.
+Setting SES up (a domain identity with DKIM, leaving the sandbox, the topic and queue, an IAM user that may only send
+from the agreed address and read that queue) is in the infra README, "Election notices". Deleting an election (§6.1)
+deletes its notices, their records and its outbox messages after the deletion commits.
+
 ## 7. Ballot casting and secrecy
 
 ### 7.1 Cast flow (secret ballot)
@@ -1005,10 +1099,12 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   `approval.requested`, `approval.decided`, `signin_method.changed`. Added since: `photo.decided`, `roll.approved`,
   `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled` (M2–M3a), `ballots.sealed`,
   `election.sealed` (M3b), `results.computed` (M4a), `results.certified`, `election.pool_key_destroyed`,
-  `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed`, `navigation.changed` (M5). The authoritative list is
-  `LEDGER_EVENT_TYPES` in `ustp-domain`.
+  `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed`,
+  `navigation.changed`, `notice.sent`, `notice.resend_requested` (M5). The authoritative list is `LEDGER_EVENT_TYPES` in
+  `ustp-domain`.
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
-  entries are public. A public verifier checks a public entry by Merkle inclusion in its ledger block (§8.3) without
+  entries are public; the election notice entries (`notice.*`, §6.8), about delivering mail rather than the election's
+  record, are Auditors' only. A public verifier checks a public entry by Merkle inclusion in its ledger block (§8.3) without
   seeing the private entries in that block. Public types (`PUBLIC_LEDGER_EVENT_TYPES`): `bylaws.published`,
   `roll.approved`, `election.scheduled`, `election.opened`, `election.closed`, `ballots.sealed`, `election.sealed`,
   `election.cancelled`, `election.deleted`, `results.computed`, `results.certified`, `election.pool_key_destroyed`,
@@ -1409,6 +1505,10 @@ Physically, registration collections are top-level and election data lives under
 | `proposal_snapshots/{snapshotId}` | auto | immutable | text, content hash, source; `amendment` for a bylaws amendment (§6.6) |
 | `proposal_reviews/{reviewId}` | auto | immutable | decision, reviewer |
 | `results/{electionId}` | electionId | provisional → certified | bundle, hash, signature, ledger seq |
+| **notifications** | | | |
+| `notices/{electionId}_{kind}` | election and kind (`voting_open`, `closing_soon`) | preparing → sending → done, a round at a time; deleted with its election | delivery (`mail`/`outbox`), rehearsal, number of recipients, round, who started the round (§6.8) *(added)* |
+| `notices/{id}/recipients/{accountId}` | accountId | status per send | pending → sending → sent / failed / bounced, or skipped; round, attempts, claim time, provider message ID, outcome code; never the address *(added)* |
+| `notice_outbox/{id}` | auto | create; deleted with its election | a message recorded instead of mailed: emulators, and rehearsals in testing mode (§6.8) *(added)* |
 | **audit & admin** | | | |
 | `audit_events/{seq}` | zero-padded integer | append-only | ledger entries |
 | `ledger_head/main` | — | updated per append | seq, hash *(added)* |
@@ -1471,6 +1571,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/positions` · `POST /admin/positions` · `POST /admin/positions/{id}/terms/{termId}/end` | any admin (read); Membership or Election Admin | offices and terms; define or change an office (at once), end a term (→ approval) |
 | `GET /public/positions` | P | offices and who holds them now |
 | `GET /admin/elections/{id}/roll` | Election Admin, Auditor | latest roll with member names, for review |
+| `GET /admin/elections/{id}/notices` | Election Admin, Auditor | the election's notices as counts (sent, still to send, failed, bounced, skipped), never addresses (§6.8) |
+| `POST /admin/elections/{id}/notices/{kind}/resend` | Election Admin | send the notice again to those it failed for, while voting is open and once its last round has finished (409 otherwise; §6.8) |
 | `GET /admin/approvals` · `POST /admin/approvals/{id}/decision` | per action | two-person decisions (§10.2) |
 | `GET /admin/audit/events` · `GET /admin/audit/verify` | Auditor | ledger (paged by seq); verification of chain, blocks, signatures and anchors |
 | `GET\|PUT /admin/sign-in-methods` · `POST /admin/roles` | System Admin | auth switches; grant or revoke a role, at once (returns the account's roles afterwards; §10.2) |
@@ -1484,7 +1586,7 @@ Errors use RFC 9457 problem details. Request bodies are validated against schema
 
 | Endpoint | Trigger | Work |
 |---|---|---|
-| `POST /tasks/tick` | Cloud Scheduler, every minute | Prepare pool keys, open/close elections on time, seal ballots (M3), tally sealed elections into signed provisional results (M4a), then seal ledger blocks, sign approved rolls and anchor (M2c). Returns what it did |
+| `POST /tasks/tick` | Cloud Scheduler, every minute | Prepare pool keys, open/close elections on time, seal ballots (M3), tally sealed elections into signed provisional results (M4a), destroy pool keys (M4b), send election notices for at most 20 seconds and record their bounces from SQS (§6.8), then seal ledger blocks, sign approved rolls and anchor (M2c). Returns what it did |
 | `POST /tasks/bylaws-checks` | Cloud Scheduler, every minute (its own job, 300 s deadline) | Run up to three queued bylaws checks with Claude and fail any stuck for 10 minutes (§5.4). Returns `{checked, failed}`; a failed check is recorded on the check, not as a failed task |
 | `POST /tasks/email` | Cloud Task | send via Amazon SES |
 | *(tick step, M4b)* | every tick | destroy the ballot-pool key version of certified and cancelled elections (§7.3); planned as a `destroy-pool-key` Cloud Task, which the tick made unnecessary |
@@ -1536,6 +1638,15 @@ worker against the emulators and calls the tick and the bylaws checks every 15 s
   and references are marked as material, not instructions, in the prompt; the answer is held to a JSON schema,
   findings naming lines that do not exist are dropped, and the browser shows them as plain text. A wrong or manipulated
   answer can only mislead a reader: it publishes, blocks and ledgers nothing.
+- **Election notices (§6.8):** the worker reads a roll member's address from the account only to send their notice;
+  no record, ledger entry or log line holds it (a failure is logged with the accountId and an outcome code, never the
+  provider's text, which can quote the address). Admins see counts only, on an election they can already see. Only
+  the worker holds the AWS access key, from Secret Manager (`aws-ses-*`, versions added by a person, never in
+  Terraform state); the key's IAM user may only send from the agreed address through the notices' configuration set
+  and read the bounce queue. Amazon SES learns each member's address, name and the elections they may vote in, and
+  from the reminder which members had not voted a day before the close (never how anyone voted). The outbox, which
+  does store messages with their addresses, is refused outside the emulators, apart from a rehearsal's notices in
+  testing mode, which have no address.
 - **Logging:** structured logs with redaction; no request bodies on cast; Firestore Data Access audit logs off in
   production (they would record write paths and times; pool encryption makes them harmless, but there is no need for
   them); KMS Data Access audit logs on.
@@ -1579,6 +1690,9 @@ worker against the emulators and calls the tick and the bylaws checks every 15 s
 - Bucket Lock retention locked in prod only. Testing mode (§10.4) is on in dev and can never be on in prod.
 - Cost deltas against spec §8: + ≈ $0.06/month per election with a live ballot-pool key version; one Scheduler job
   per environment (free); Cloud Tasks well within its free tier. Total remains under $1/month at the stated scale.
+- **Election notices (§6.8), once SES is on:** $0.10 per 1,000 messages, outside Google Cloud, so at most two per
+  member per election: about $0.50 to $1 for an election with 5,000 members on the roll. SNS and SQS for bounces stay
+  within their free tiers.
 - **Bylaws check (§5.4), when switched on:** Anthropic bills per token, outside Google Cloud. At Claude Opus 5.5's
   list prices ($4 per million input tokens, $20 per million output tokens, cache writes $5 and cache reads $0.20 per
   million) a check of a typical draft (10,000 tokens) costs about $0.45 the first time (about 55,000 tokens of references
@@ -1657,7 +1771,9 @@ Decisions for USTP; the design's proposed default is in brackets.
 12. **Recusal:** must an Election Admin who is a candidate step aside for that election? [yes]
 13. **Infrastructure as code:** Terraform acceptable? [yes]
 14. **Repository visibility and license.** `ustp-tally` and `ustp-audit` are meant to be public; the repository was created private. [decide before the first release]
-15. **Email sender domain** for Amazon SES and DMARC alignment.
+15. **Email sender domain** for Amazon SES and DMARC alignment. [Decided 2026-10-26: Amazon SES, From `USTP Elections
+    <noreply@transhumanist-party.org>`, no Reply-To. Still to do: verify the domain in SES with DKIM, a custom MAIL
+    FROM domain and DMARC (infra README "Election notices")]
 16. **GCP region** for Cloud Run, Firestore and the buckets. [`us-central1`, the cheapest free-tier region]
 17. **Membership requirements:** minimum age, and the wording of the platform attestation applicants confirm. [18; "I
     support the platform and goals of the US Transhumanist Party."]
@@ -1665,6 +1781,9 @@ Decisions for USTP; the design's proposed default is in brackets.
     environments? Is "Transhumanist principles" rightly Article I of the USTP Constitution plus the Transhumanist Bill of
     Rights 3.0? Should the repository instead carry dated copies of the party's texts (they are USTP's own, marked "All
     Rights Reserved")? [off until agreed; those two texts; read from the party's site]
+19. **Contact for election questions** in the election notices (§6.8), whose From address takes no replies: an address
+    or a page members can write to about an election. [none yet: a placeholder in the emulators; SES needs one before it
+    sends]
 
 ## 19. Roadmap
 
@@ -1675,4 +1794,4 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Word export done:* the ballot and results as a `.docx` built in the browser, for Word and Google Docs, from the results page, the ballot page and the election editor (§9). *Synopsis done:* the results in brief, as the party publishes them, first on the results page (printable) and first in the Word file (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15). *Still to do:* the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES with bounces read from SQS, and an outbox in place of mail with the emulators (§6.8; SES itself not yet set up in any project). *Still to do:* the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
