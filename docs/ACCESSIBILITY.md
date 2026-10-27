@@ -107,6 +107,16 @@ test. Keep it current when pages change.
   “2026 Officer Election”", "Add the voting window to your calendar", "open the Verify page", the contact address),
   black on white with links in `#bd4e00` (4.9:1), and a plain-text part with the same content. Not yet seen in mail
   clients, which differ in what HTML they keep.
+- **Added 2026-10-27, the emails in the election workflow** (against the emulators as elections@example.test: an open
+  election with its reminder to come, then due, then sent; a scheduled one-day election with email switched off; light
+  at desktop width, dark at 375 px): the list has an "Email to voters" item after Open for voting, with its status in
+  words before its name ("Sent:", "Sending:", "To come:", "Not sent:") and a marker (✓, ▶, none, –) that is
+  decoration; it never takes `aria-current`, which stays on the election's one current step. Its lines name each email
+  and say how far it got in words. In the lanes, "Emails the roll" and "Sends a reminder" use the actions' existing
+  colours and marks, so the contrast figures below hold; a step that will not come is dashed and marked –. The longest
+  new label, "reminder", is narrower than "ballot key" already in the worker's lane, and at 375 px every label stays
+  inside its box with nothing scrolling sideways. The counts in the list update while an email goes out (the card's
+  reread, every 20 seconds).
 
 - **Added 2026-10-26, who sees which link and the home page** (design §10.5; against the emulators signed out, as a
   new login with no membership, an applicant, lapsed, suspended, resigned and rejected members, v1, elections@,

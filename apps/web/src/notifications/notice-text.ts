@@ -9,6 +9,7 @@ import {
   type NoticesView,
   type NoticeSummary,
   type RecipientCounts,
+  type StepStatus,
 } from 'ustp-domain';
 
 /** Wording for the election editor's notice card (design §6.8). */
@@ -17,6 +18,28 @@ export const NOTICE_TITLES: Readonly<Record<NoticeKind, string>> = {
   voting_open: 'Voting is open',
   closing_soon: 'Closing soon: reminder to those who have not voted',
 };
+
+/** Each email by a short name, for the workflow's list. */
+export const NOTICE_SHORT_TITLES: Readonly<Record<NoticeKind, string>> = {
+  voting_open: 'Voting is open',
+  closing_soon: 'Closing-soon reminder',
+};
+
+/** The emails' status in the workflow's list, read before its name; they never hold the election up. */
+export const EMAIL_STATUS_TEXT: Readonly<Record<StepStatus, string>> = {
+  done: 'Sent',
+  current: 'Sending',
+  upcoming: 'To come',
+  possible: 'Possible',
+  not_reached: 'Not sent',
+};
+
+/** What the emails are, in the user's words: the card's caption and the workflow's "Email to voters" step. */
+export const EMAIL_DESCRIPTION =
+  "Official election notices: they go out whatever members' newsletter and announcement choices. Counts only; who each went to is not shown.";
+
+/** Where this deployment sends no email (`MAIL_TRANSPORT=off`). */
+export const NOT_SET_UP = 'Nothing is sent until email (Amazon SES) is set up for this deployment.';
 
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -55,7 +78,7 @@ export function noNoticeText(kind: NoticeKind, detail: ElectionDetail, view: Not
   const { election } = detail;
   const rehearsal = isRehearsalRoll(detail.roll?.criteria);
   if (rehearsal && !testingMode) return 'A rehearsal roll gets no email.';
-  if (!rehearsal && view?.delivery === 'none') return 'Email is not set up in this deployment, so none is sent.';
+  if (!rehearsal && view?.delivery === 'none') return NOT_SET_UP;
   const outbox = rehearsal ? ' It goes to the outbox, addressed to nobody: test voters have no email address.' : '';
   if (kind === 'voting_open') {
     const who = 'the worker emails everyone on the roll that it is time to vote, once each';
