@@ -33,7 +33,7 @@ export function ratioText(r: Ratio): string {
   return NAMED[`${r.num}/${r.den}`] ?? (r.den === 100 ? `${r.num}%` : `${r.num}/${r.den}`);
 }
 
-function thresholdText(t: Threshold): string {
+export function thresholdText(t: Threshold): string {
   return `${t.comparison === 'gt' ? 'more than' : 'at least'} ${ratioText(t.ratio)}`;
 }
 

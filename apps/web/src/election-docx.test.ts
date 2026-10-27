@@ -334,11 +334,52 @@ describe('the results', () => {
     expect(xml).toContain('<w:tblHeader/>');
   });
 
+  it('open with the synopsis: the facts, each contest in brief and the closing tally, then the ballot', async () => {
+    const { lines } = await read(input({ state: 'closed', results: results() }));
+    expectInOrder(lines, [
+      'Officers 2026',
+      'Synopsis',
+      /^Voting: October 20, 2026.* 2:00\sPM UTC to October 21, 2026.* 2:00\sPM UTC$/,
+      'On the roll: 7',
+      'Ballots cast: 5',
+      'Turnout: 71.4%',
+      /^Counted: October 21, 2026.* 2:01\sPM UTC$/,
+      'Status: Provisional: signed and in the audit ledger, not yet certified',
+      '1. Plank 12',
+      'Outcome: Passed',
+      ...['Choice', 'Votes', 'Share', 'Yes', '3', '60.0%', 'No', '1', '20.0%', 'Abstain', '1', '20.0%'],
+      'Yes: 75.0% of yes and no votes; needed more than half (50.0%).',
+      '5 ballots. Quorum: 5 ballots of the 3 needed; met.',
+      '2. Board',
+      'Outcome: 2 elected',
+      ...['Candidate', 'Votes', 'Share', 'Result', 'Cara Diaz', '3', '60.0%', 'Elected'],
+      ...['Fay Wu', '0', '0.0%', 'Not elected', 'Blank (no choice)', '1', '20.0%'],
+      '5 ballots (1 blank); 2 seats. A winner needed at least 1/4 (25.0%) of the ballots.',
+      '3. Chair',
+      'Outcome: 1 elected',
+      'Elected: Alex Rivera, in round 2 with 3 of 5 continuing ballots (60.0%). First round: 2 of 5 (40.0%).',
+      '5 ballots. Every round is in the results below.',
+      '4. Bylaws: Article I',
+      'Outcome: Failed',
+      'Yes: 50.0% of yes and no votes; needed at least two-thirds (66.7%).',
+      'Altogether',
+      '1 of 2 proposals passed; 1 failed.',
+      '2 candidate contests: 3 of 3 seats filled.',
+      'Ballot',
+      /^Voting opens: October 20, 2026/,
+      'Ballot: Secret ballot',
+      '1. Plank 12',
+      'Proposal (yes / no / abstain)',
+      'Results',
+    ]);
+  });
+
   it('marks certified results as certified, with the date', async () => {
     const r = results({ status: 'certified', certifiedAt: '2026-10-22T09:30:00.000Z', certifiedLedgerSeq: 12 });
     const { lines, stamp } = await read(input({ state: 'certified', results: r }));
     expect(stamp[2]).toMatch(/^Certified results · certified October 22, 2026.* 9:30\sAM UTC$/);
     expect(lines).toContainEqual(expect.stringMatching(/^Certified October 22, 2026.* 9:30\sAM UTC by an Election Admin and an Auditor\.$/));
+    expect(lines).toContainEqual(expect.stringMatching(/^Status: Certified October 22, 2026.* 9:30\sAM UTC by an Election Admin and an Auditor$/));
     expect(lines.join('\n')).not.toContain('Provisional');
   });
 
