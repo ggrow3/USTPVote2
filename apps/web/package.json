@@ -18,7 +18,7 @@
     "@fontsource/lato": "^5.3.0",
     "@quasar/extras": "^2.1.0",
     "docx": "^9.9.0",
-    "firebase": "^13.0.0",
+    "firebase": "^13.1.0",
     "jszip": "^3.10.2",
     "qrcode": "^1.5.4",
     "quasar": "^2.35.2",
