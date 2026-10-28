@@ -331,6 +331,25 @@ election) open with focus on Cancel.
   before "Save settings". Analytics: the totals as text, and a table with a hidden caption, column headers and each
   link's name as its row header; the bars are `aria-hidden` (the numbers beside them say the same). At 320 px each
   link row puts its clicks and controls under its title, and the table scrolls inside its card.
+- **Added 2026-10-28, both homes on every page** (design §10.5, §10.6; against the emulators on private ports, signed
+  out, as v1@example.test (Active member), admin1@example.test (System Admin) and elections@example.test (Election
+  Admin), on the hub, the voting home, Ballot, a ballot, a results page, Admin with its Navigation tab and the election
+  editor; 1024 and 320 px, light and dark): the "Main" navigation starts with two links named by their visible text,
+  "Voting home" (`/vote`) and "Party home" (`/`, the hub), before the links the settings give, for every audience.
+  The names are distinct from each other and from every menu link (a unit test), so each says which home it leads to,
+  and both read the same wherever they appear (3.2.3, 3.2.4). The current one is underlined and has
+  `aria-current="page"` (Voting home on `/vote`). The bar's fit is unchanged and the homes come first, so at 320 px
+  the row is Voting home and Party home, then More ending 8 px inside the bar (they and More take 295 of its 304 px)
+  with Register, Ballot, Verify, Offices and Admin in More's list; More is underlined on their pages; at 1024 px all
+  seven fit (Admin ends at 771 px), as they do from about 780 px. Nothing scrolls sideways on any page checked. The
+  hub, which has no menu bar, starts with its own `nav` named "Main" holding the same two links, before Share and the
+  theme button in the tab order, Party home with `aria-current="page"`: 13 px bold text 44 px tall (2.5.8), in the hub's
+  text colour (`#1a1a1a` on white light, `#f5f5f5` on black dark), the current one underlined 3 px in the accent
+  (`#bd4e00` on white, 4.94; `#ff6900` on black, 7.27; 1.4.11) and the hub's focus ring; at 320 px they end at 193 px
+  and Share starts at 208 px, all on one line, and enlarged text wraps the buttons under them rather than widening
+  the page. The Navigation tab says the two homes always come first and are not rows of its matrix. The bar refitted
+  live from 1024 to 320 px in the browser pane's front tab; the signed-in checks ran in a background tab, which gets
+  no resize notices (as before), so its narrow pages were loaded at their width.
 
 ### Contrast figures
 
@@ -579,8 +598,9 @@ Android if time allows), on staging or the emulators:
 6. Dialogs from the Dialog plugin (reasons, codes, confirmations): name and prompt label read; focus returns afterwards.
 7. Admin console: tab and panel relationship, row action names, the status-history dialog, the contest dialog.
 8. Zoom to 200 % and 400 % (desktop) and large text on iOS: no clipped controls.
-9. The menu bar at 320 px: More is read as a collapsed or expanded button in the "Main" navigation, and its list's
-   links follow it, the current page announced.
+9. The menu bar at 320 px: Voting home and Party home are read first, the current one announced; More is read as a
+   collapsed or expanded button in the "Main" navigation, and its list's links follow it, the current page announced.
+   On the hub, its "Main" navigation's two links, Party home announced as the current page.
 10. The link hub: the icon row's links read by their names in their navigation, each section's links in their list,
     the theme button's pressed state; in Admin → Link hub, a row's switch and buttons read with its link's name, and
     the "Saved: …" toast after each change.

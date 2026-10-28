@@ -1,6 +1,7 @@
 import {
   ROLES,
   SECTION_ROLES,
+  startPagePath,
   type AdminSection,
   type Audience,
   type CellLock,
@@ -105,6 +106,15 @@ export function startPageLabel(page: StartPage): string {
   if (page.startsWith('admin/')) return `Admin › ${SECTION_LABELS[page.slice(6) as AdminSection]}`;
   return MENU_LABELS[page as MenuLink];
 }
+
+/**
+ * The two homes, ahead of the settings' links in the menu bar and at the top of the hub, for everyone on every page
+ * (design §10.5): the voting home and the party's link hub. Not settings, so no audience can lose its way back.
+ */
+export const HOME_LINKS: readonly { readonly to: string; readonly label: string }[] = [
+  { to: startPagePath('home'), label: startPageLabel('home') },
+  { to: '/', label: 'Party home' },
+];
 
 /**
  * A cell's accessible name, worded as its change is: "Show Ballot to Applicant", "Show Admin › Offices to Auditor" (the

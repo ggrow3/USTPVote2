@@ -5,7 +5,7 @@ import { focusElement, liveRegions } from '../a11y.js';
 import { acting } from '../acting.js';
 import { usingEmulators } from '../firebase.js';
 import { navigationState, shown } from '../governance/navigation.js';
-import { MENU_LABELS } from '../governance/navigation-text.js';
+import { HOME_LINKS, MENU_LABELS } from '../governance/navigation-text.js';
 import { session, signOut } from '../session.js';
 import { toggleTheme } from '../theme.js';
 import { linksInRow } from './menu-fit.js';
@@ -16,14 +16,16 @@ const route = useRoute();
 const router = useRouter();
 const who = computed(() => acting.persona?.label || session.me?.account?.displayName || session.user?.email || 'Signed in');
 /**
- * The links the navigation settings give this person (design §10.5), once their account and the settings are known.
- * Each page still explains itself to someone who reaches it without being one it is for. Sign in is the header's button.
+ * The two homes, for everyone, then the links the navigation settings give this person (design §10.5), once their
+ * account and the settings are known. Each page still explains itself to someone who reaches it without being one it
+ * is for. Sign in is the header's button.
  */
-const links = computed(() =>
-  session.ready && navigationState.loaded
+const links = computed(() => [
+  ...HOME_LINKS,
+  ...(session.ready && navigationState.loaded
     ? shown.value.menu.filter((link) => link !== 'signin').map((link) => ({ to: `/${link}`, label: MENU_LABELS[link] }))
-    : [],
-);
+    : []),
+]);
 
 const isActive = (to: string) => route.path === to || route.path.startsWith(`${to}/`);
 

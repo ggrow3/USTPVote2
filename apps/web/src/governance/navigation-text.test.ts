@@ -4,6 +4,7 @@ import {
   AUDIENCE_LABELS,
   cellName,
   describeChange,
+  HOME_LINKS,
   lockText,
   MENU_CAPTIONS,
   MENU_LABELS,
@@ -32,6 +33,15 @@ describe('navigation settings wording', () => {
     expect(startPageLabel('ballot')).toBe('Ballot');
     expect(MENU_LINKS.every((l) => MENU_LABELS[l] && MENU_CAPTIONS[l])).toBe(true);
     expect(startPageLabel('offices')).toBe('Offices');
+  });
+
+  it('names the two homes apart from each other and from every menu link', () => {
+    expect(HOME_LINKS).toEqual([
+      { to: '/vote', label: 'Voting home' },
+      { to: '/', label: 'Party home' },
+    ]);
+    const labels = [...HOME_LINKS.map((h) => h.label), ...MENU_LINKS.map((l) => MENU_LABELS[l])];
+    expect(new Set(labels).size).toBe(labels.length);
   });
 
   it('says why a cell is locked', () => {

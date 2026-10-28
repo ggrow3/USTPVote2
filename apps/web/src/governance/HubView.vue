@@ -7,6 +7,7 @@ import { toggleTheme } from '../theme.js';
 import { countHubClick, discordLive, hubLogoUrl } from './api.js';
 import { hubIcon } from './hub-icons.js';
 import { liveText } from './hub-text.js';
+import { HOME_LINKS } from './navigation-text.js';
 import './hub-fonts.css';
 
 /**
@@ -70,6 +71,10 @@ async function share() {
   <div class="hub ustp-signal" :class="{ 'hub--dark': $q.dark.isActive }" :style="colours">
     <div class="hub__column">
       <div class="hub__tools">
+        <!-- The app menu's first two links, so the voting home is a click away whatever the hub shows (design §10.6). -->
+        <nav aria-label="Main" class="hub__homes">
+          <router-link v-for="h in HOME_LINKS" :key="h.to" :to="h.to" class="hub__home">{{ h.label }}</router-link>
+        </nav>
         <button type="button" class="hub__tool hub__tool--boxed" aria-label="Share this page" @click="share">
           <q-icon name="share" size="20px" />
         </button>
@@ -190,12 +195,38 @@ async function share() {
   margin: 0 auto;
 }
 
-/* Share and theme, top right, out of the profile's way. */
+/* The two homes top left; share and theme top right, out of the profile's way. Enlarged text wraps the buttons under. */
 .hub__tools {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   margin-bottom: -16px;
+}
+.hub__homes {
+  display: flex;
+  margin-right: auto;
+}
+/* The current one is underlined, as in the app's menu bar. */
+.hub a.hub__home {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  color: var(--hub-text);
+  font-size: 0.8125rem;
+  font-weight: 700;
+  text-decoration: none;
+  transition: border-color 200ms var(--signal-ease);
+}
+.hub a.hub__home:hover {
+  border-color: var(--hub-bright);
+}
+.hub a.hub__home[aria-current='page'] {
+  text-decoration: underline 3px var(--hub-letters);
+  text-underline-offset: 6px;
 }
 .hub__tool {
   display: inline-grid;

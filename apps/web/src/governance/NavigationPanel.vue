@@ -117,7 +117,8 @@ onMounted(load);
       Choose which menu links and admin sections each membership state and staff role sees, and the page each starts on
       after signing in. A person sees everything their membership state and each of their roles is given: roles add to
       membership, never take away. This changes what is shown, not what is allowed: the API still checks every
-      request, and pages reached by their address still explain themselves.
+      request, and pages reached by their address still explain themselves. Voting home and Party home always come
+      first in the menu, for everyone, so they are not rows here.
     </p>
 
     <q-card v-if="draft && resolved" flat bordered>
