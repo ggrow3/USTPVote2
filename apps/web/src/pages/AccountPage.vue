@@ -8,6 +8,7 @@ import { api, errorMessage } from '../api.js';
 import AuthenticatorSetupDialog from '../components/AuthenticatorSetupDialog.vue';
 import PageShell from '../components/PageShell.vue';
 import ProfilePhotoCard from '../components/ProfilePhotoCard.vue';
+import DailyQuoteSettings from '../daily/DailyQuoteSettings.vue';
 import { confirmIdentity, dialog } from '../dialogs.js';
 import { auth, secondaryAuth } from '../firebase.js';
 import { enrolledFactors, removeFactor } from '../mfa.js';
@@ -171,6 +172,8 @@ function copyId() {
         <MyDetailsCard />
 
         <ProfilePhotoCard v-if="me.member" />
+
+        <DailyQuoteSettings />
 
         <q-card flat bordered>
           <q-card-section>

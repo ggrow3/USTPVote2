@@ -258,6 +258,22 @@ profile's Offices card and the public Offices page (§6.4).
   revocation sticks. One is enough, since a System Admin grants roles alone (§10.2); remove the setting once real
   admins exist.
 
+### 4.1 Account preferences: the daily quote and joke *(added)*
+
+An account keeps its own display choices in `accounts/{accountId}.preferences`. They're personal, decide nothing and
+are not ledgered. There is one so far, `dailyQuote`:
+
+- **What it shows:** a transhumanist or humanist quote, with its author and where it was written or said, and a
+  light joke about science and the future (never about people or politics). Both lists are fixed in
+  `ustp-domain` (`DAILY_QUOTES`, `DAILY_JOKES`), and the pair is picked by the reader's calendar day, so everyone
+  sees the same pair on the same date and it changes at their midnight. The lists have coprime lengths (21 and 22),
+  so a pair comes round again only every 462 days.
+- **Off by default.** Nobody sees it until they turn it on in their account (`PUT /v1/me/preferences`
+  `{dailyQuote}`); `GET /v1/me` returns the choice on the account, and an account with no `preferences` reads as off.
+  When it is on, the card shows on the account page and on the voting home (§10.5).
+- **Membership Admins** see whether it is on for a member on that member's profile (`GET
+  /v1/admin/members/{accountId}` returns `preferences`).
+
 ## 5. Registration
 
 ### 5.1 Member status
@@ -2013,7 +2029,7 @@ Physically, registration collections are top-level and election data lives under
 | Path | Key | Mutability | Notes |
 |---|---|---|---|
 | **registration** | | | |
-| `accounts/{accountId}` | UUIDv7 | mutable | display name, primary email, state |
+| `accounts/{accountId}` | UUIDv7 | mutable | display name, primary email, state; `preferences` (the daily quote and joke, §4.1) |
 | `account_identities/{uid}` | Identity Platform uid | create/delete | → `accountId`, provider, linkedAt |
 | `account_factors/{accountId}/factors/{factorId}` | | mutable | mirror of MFA enrollment, no secrets |
 | `sign_in_methods/{method}` | provider ID | mutable | enabled flag (auth switches) |
@@ -2079,6 +2095,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /healthz` · `GET /v1/health` | P | liveness: `/healthz` for startup probes; `/v1/health` from outside, since Cloud Run's front end reserves some paths ending in "z" |
 | `GET /me` · `POST /accounts` | M | current account; first-sign-in account creation |
 | `POST /me/identities` · `DELETE /me/identities/{uid}` | M | link / unlink a login method |
+| `PUT /me/preferences` | M | own display choices: the daily quote and joke on or off (§4.1); not ledgered |
 | `GET /bylaws/current` | P | current bylaws version and hash |
 | `GET /bylaws` · `GET /bylaws/{version}` | P | every version without its text, newest first; one version in full |
 | `GET /sign-in-methods` | P | which sign-in providers are switched on (sign-in buttons) |
@@ -2107,7 +2124,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /admin/bylaws/checks` · `GET /admin/bylaws/checks/{checkId}` | Membership Admin | queue the advisory bylaws check of a draft (202; 409 while the admin's last one runs, 429 past 20 a day, 503 when off); read it until done (§5.4) |
 | `GET /admin/applications` · `POST /admin/applications/{id}/decision` | Membership Admin | registration triage |
 | `GET /admin/members` · `GET /admin/members/{accountId}/history` | Membership Admin | member list (paged), status history |
-| `GET /admin/members/{accountId}` · `POST /admin/members/{accountId}/details` | Membership Admin | member profile (record, applications with answers, history); correct names, state, contact with a reason (§5.2) |
+| `GET /admin/members/{accountId}` · `POST /admin/members/{accountId}/details` | Membership Admin | member profile (record, applications with answers, history, whether the daily quote and joke is on); correct names, state, contact with a reason (§5.2, §4.1) |
 | `POST /admin/members/{accountId}/status` | Membership Admin | status changes |
 | `GET /admin/photos` · `GET /admin/photos/{id}/image` · `POST /admin/photos/{id}/decision` | Membership Admin | photo review |
 | `GET /admin/elections` · `GET /admin/elections/{id}` (detail, definition hash, problems) · `GET /admin/proposals` | Election Admin, Auditor | read election setup |

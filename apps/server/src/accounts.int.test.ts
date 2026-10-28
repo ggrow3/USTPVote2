@@ -66,6 +66,26 @@ describe('accounts', () => {
     expect(last).toMatchObject({ status: 409, body: { detail: 'you cannot remove your only login method' } });
   });
 
+  it('keeps the daily quote and joke off until the person turns it on, and records nothing in the ledger', async () => {
+    const alex = await api.member('alex@example.test');
+    const me = async () => (await api.call('GET', '/v1/me', alex)).body.account;
+    expect((await me()).preferences).toBeUndefined();
+    const ledgerSize = async () => (await api.firebase.db.collection('audit_events').count().get()).data().count;
+    const before = await ledgerSize();
+
+    const on = await api.call('PUT', '/v1/me/preferences', alex, { dailyQuote: true });
+    expect(on).toMatchObject({ status: 200, body: { dailyQuote: true } });
+    expect((await me()).preferences).toEqual({ dailyQuote: true });
+    expect((await api.call('PUT', '/v1/me/preferences', alex, { dailyQuote: false })).body).toEqual({ dailyQuote: false });
+    expect((await me()).preferences).toEqual({ dailyQuote: false });
+    expect(await ledgerSize()).toBe(before);
+
+    expect((await api.call('PUT', '/v1/me/preferences', alex, { dailyQuote: 'yes' })).status).toBe(400);
+    expect((await api.call('PUT', '/v1/me/preferences', alex, { dailyQuote: true, other: 1 })).status).toBe(400);
+    const noAccount = await api.user('nobody@example.test');
+    expect((await api.call('PUT', '/v1/me/preferences', noAccount, { dailyQuote: true })).status).toBe(403);
+  });
+
   it('refuses to link a login that already belongs to another account', async () => {
     const alex = await api.member('alex@example.test');
     const sam = await api.member('sam@example.test');

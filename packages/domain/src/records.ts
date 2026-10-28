@@ -1,4 +1,5 @@
 import type { TwoPersonAction } from './approvals.js';
+import type { AccountPreferences } from './daily.js';
 import type { SignInProvider } from './identity.js';
 import type { MemberRecord } from './membership/records.js';
 import type { MemberStatus } from './membership/member-status.js';
@@ -16,6 +17,8 @@ export interface AccountRecord {
   readonly primaryEmail: string | null;
   readonly emailVerified: boolean;
   readonly createdAt: string;
+  /** The person's own display choices (design §4.1); absent until they make one, so read it with `preferencesOf`. */
+  readonly preferences?: AccountPreferences;
 }
 
 /** `account_identities/{uid}` */
