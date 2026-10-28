@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Smoke test of the server image (apps/server/Dockerfile), run by CI: the image runs as an unprivileged user, carries
-# no build or development tooling, and both entrypoints start in production mode and answer /healthz. It is given no
-# Google credentials, so nothing that reaches Google Cloud is exercised.
+# no build or development tooling, and all three entrypoints (api, worker, mcp) start in production mode and answer
+# their health check. It is given no Google credentials and no reachable site, so nothing beyond the image is exercised.
 #
 #   bash apps/server/scripts/smoke-image.sh <image>
 set -euo pipefail
@@ -20,25 +20,27 @@ for pkg in typescript vitest firebase-tools vue; do
   fi
 done
 
-cleanup() { docker rm -f ustp-api ustp-worker >/dev/null 2>&1 || true; }
+cleanup() { docker rm -f ustp-api ustp-worker ustp-mcp >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 
-# As Cloud Run runs them (infra/terraform/modules/ustpvote/run.tf): the default command for the api.
+# As Cloud Run runs them (infra/terraform/modules/ustpvote/run.tf, mcp.tf): the default command for the api.
 docker run -d --name ustp-api -p 18080:8080 -e PORT=8080 -e GOOGLE_CLOUD_PROJECT=demo-ustpvote "$image" >/dev/null
 docker run -d --name ustp-worker -p 18081:8080 -e PORT=8080 -e GOOGLE_CLOUD_PROJECT=demo-ustpvote "$image" \
   node dist/main-worker.js >/dev/null
+docker run -d --name ustp-mcp -p 18082:8080 -e PORT=8080 -e USTP_SITE=https://vote.example.org "$image" \
+  node /app/apps/mcp/dist/main.js --http --host 0.0.0.0 >/dev/null
 
-for target in ustp-api:18080 ustp-worker:18081; do
-  name=${target%:*}
-  port=${target#*:}
+# The mcp serves /health, not /healthz.
+for target in ustp-api:18080:healthz ustp-worker:18081:healthz ustp-mcp:18082:health; do
+  IFS=: read -r name port path <<<"$target"
   for _ in $(seq 1 30); do
-    if body=$(curl -fsS "http://127.0.0.1:$port/healthz" 2>/dev/null); then
+    if body=$(curl -fsS "http://127.0.0.1:$port/$path" 2>/dev/null); then
       echo "$name: $body"
       continue 2
     fi
     sleep 1
   done
-  echo "$name did not answer /healthz within 30 seconds" >&2
+  echo "$name did not answer /$path within 30 seconds" >&2
   docker logs "$name" >&2
   exit 1
 done

@@ -1,7 +1,8 @@
 name: Release
 
 # Builds the server image from main, pushes it to the chosen environment's Artifact Registry, attests it for Binary
-# Authorization and rolls the api and worker onto it (design §14, §15). Run it from the Actions tab or with
+# Authorization and rolls the api, worker and reporting MCP server onto it (design §3.4, §14, §15). Run it from the
+# Actions tab or with
 #   gh workflow run release.yml --ref main -f environment=dev
 # The job runs in the GitHub environment of the same name, whose variables come from that environment's Terraform
 # output github_environment_variables, and whose protection rules decide who may release (infra/terraform/README.md,
@@ -15,7 +16,7 @@ on:
         type: environment
         required: true
       roll_out:
-        description: Roll the api and worker onto the image. Off for an environment's first image, which Terraform's second apply creates the services with.
+        description: Roll the services onto the image. Off for an environment's first image, which Terraform's second apply creates the services with.
         type: boolean
         default: true
 
@@ -89,18 +90,40 @@ jobs:
             gcloud run services update "$service" --project="$PROJECT" --region="$REGION" --image="$IMAGE@$DIGEST" --quiet
           done
 
-      - name: Check the api answers
+      # The reporting MCP server (design §3.4) reads only the public api, so it follows the api. Terraform creates it
+      # with the first image that holds it; until then there is nothing to roll.
+      - name: Roll the reporting MCP server onto the image
+        id: mcp
         if: inputs.roll_out
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          if gcloud run services describe mcp --project="$PROJECT" --region="$REGION" --format='value(name)' >/dev/null 2>&1; then
+            gcloud run services update mcp --project="$PROJECT" --region="$REGION" --image="$IMAGE@$DIGEST" --quiet
+            echo "rolled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "rolled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check the api and the MCP server answer
+        if: inputs.roll_out
+        env:
+          MCP_ROLLED: ${{ steps.mcp.outputs.rolled }}
         run: |
           url=$(gcloud run services describe api --project="$PROJECT" --region="$REGION" --format='value(status.url)')
           # Not /healthz: Cloud Run's front end reserves some paths ending in "z".
           curl -fsS --retry 5 --retry-all-errors "$url/v1/health"
+          if [ "$MCP_ROLLED" = true ]; then
+            url=$(gcloud run services describe mcp --project="$PROJECT" --region="$REGION" --format='value(status.url)')
+            curl -fsS --retry 5 --retry-all-errors "$url/health"
+          fi
 
       - name: Summary
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
           RELEASE_ENVIRONMENT: ${{ inputs.environment }}
           ROLLED_OUT: ${{ inputs.roll_out }}
+          MCP_ROLLED: ${{ steps.mcp.outputs.rolled }}
         run: |
           {
             echo "### $RELEASE_ENVIRONMENT"
@@ -109,6 +132,11 @@ jobs:
             echo "- Image (attested): \`$IMAGE@$DIGEST\`"
             if [ "$ROLLED_OUT" = true ]; then
               echo "- The api and worker run it."
+              if [ "$MCP_ROLLED" = true ]; then
+                echo "- The reporting MCP server runs it."
+              else
+                echo "- No reporting MCP server yet: \`terraform apply -var=\"server_image=$IMAGE@$DIGEST\"\` creates it on this image."
+              fi
             else
               echo "- Not rolled out. For a first image: \`terraform apply -var=\"server_image=$IMAGE@$DIGEST\"\`"
             fi

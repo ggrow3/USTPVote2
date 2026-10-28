@@ -64,11 +64,17 @@ output "worker_url" {
   value       = one(google_cloud_run_v2_service.worker[*].uri)
 }
 
+output "mcp_url" {
+  description = "The reporting MCP server's run.app URL (null until server_image is set). Clients use <site>/mcp, through Hosting."
+  value       = one(google_cloud_run_v2_service.mcp[*].uri)
+}
+
 output "service_accounts" {
-  description = "Runtime identities: api, worker, and the invoker used by Cloud Scheduler and Cloud Tasks."
+  description = "Runtime identities: api, worker, the reporting MCP server, and the invoker used by Cloud Scheduler and Cloud Tasks."
   value = {
     api     = google_service_account.api.email
     worker  = google_service_account.worker.email
+    mcp     = google_service_account.mcp.email
     invoker = google_service_account.invoker.email
   }
 }

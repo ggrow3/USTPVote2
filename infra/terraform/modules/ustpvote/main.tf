@@ -18,6 +18,9 @@ locals {
   # election-approvals.ts names each tie-break seed secret `tiebreak-seed-<electionId>-<uuid>` (design §6.1).
   tiebreak_seed_prefix = "tiebreak-seed-"
 
+  # Where the web app is served: election notices and the reporting MCP server link there.
+  web_origin = var.web_origin != "" ? var.web_origin : "https://${var.project_id}.web.app"
+
   audit_signing_key_version = "${google_kms_crypto_key.audit_signing.id}/cryptoKeyVersions/${var.audit_signing_key_version}"
 
   service_members = {

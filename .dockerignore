@@ -15,5 +15,3 @@ infra
 # npm ci needs these workspaces' package.json, nothing else of them.
 apps/web/*
 !apps/web/package.json
-packages/verify/*
-!packages/verify/package.json

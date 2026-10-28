@@ -14,7 +14,7 @@ Nothing has been applied to a real project yet.
 
 | Path | What |
 |---|---|
-| [`modules/ustpvote`](modules/ustpvote) | One environment. `main.tf` (APIs), `iam.tf`, `kms.tf`, `storage.tf`, `firestore.tf`, `run.tf`, `scheduling.tf`, `binauthz.tf`, `release.tf`, `logging.tf`, `outputs.tf` |
+| [`modules/ustpvote`](modules/ustpvote) | One environment. `main.tf` (APIs), `iam.tf`, `kms.tf`, `storage.tf`, `firestore.tf`, `run.tf`, `mcp.tf`, `scheduling.tf`, `binauthz.tf`, `release.tf`, `logging.tf`, `outputs.tf` |
 | [`envs/dev`](envs/dev) | `ustpvote2-dev`: anchors retention unlocked, Binary Authorization in dry run |
 | [`envs/staging`](envs/staging) | `ustpvote2-staging`: production settings except the retention lock |
 | [`envs/prod`](envs/prod) | `ustpvote2-prod`: Binary Authorization enforced, no human data access, retention lock stated explicitly |
@@ -51,11 +51,12 @@ API-side limits are only checked by Google on the first apply.
 | | Create and read objects in the anchors bucket; never delete | Write-once anchors; overwriting needs delete, which it lacks (§8.4) |
 | | Access secrets | Tie-break seeds at tally (§9), the Anthropic API key for the bylaws, consistency and election setup checks, read each time it runs them (§5.4–§5.6, §6.9), the AWS key for election notices by SES (§6.8) |
 | `ustp-worker-invoker` | Invoke the worker | Identity of the Scheduler tick and of Cloud Tasks; nothing else |
+| `ustp-mcp` | Nothing | The reporting MCP server (`mcp.tf`, design §3.4) reads only the public api, through the site, as any visitor does |
 | `ustp-release` | Push to the `ustpvote` Artifact Registry repository | The release workflow builds the server image |
 | | Sign attestations for `ustpvote-reviewed` (attestor key, note, occurrences) | Binary Authorization lets only attested images run |
-| | `run.developer` on `api` and `worker`; act as `ustp-api` and `ustp-worker` | Rolls the services onto a new image. It cannot change IAM, invokers or keys, nor read Firestore |
+| | `run.developer` on `api`, `worker` and `mcp`; act as `ustp-api`, `ustp-worker` and `ustp-mcp` | Rolls the services onto a new image. It cannot change IAM, invokers or keys, nor read Firestore |
 | | Only reachable from GitHub Actions: `release.yml` on `main`, in the GitHub environment named after this environment, in this repository (by ID) | Workload Identity Federation; there is no key |
-| everyone | Invoke the api; read anchors if `anchors_public_read` | Hosting proxies unauthenticated; the api checks ID and App Check tokens itself |
+| everyone | Invoke the api and the reporting MCP server; read anchors if `anchors_public_read` | Hosting proxies unauthenticated; the api checks ID and App Check tokens itself, and the MCP server serves only public data |
 | `operator_members` | View services, logs (including KMS Data Access logs), metrics, schedules, key metadata, IAM | Operations without Firestore data or key use (§14) |
 | `developer_data_members` | Firestore data access | Debugging; refused in prod by a validation |
 | `image_publishers` | Push to the `ustpvote` Artifact Registry repository | Anyone besides `ustp-release`, usually nobody |
@@ -217,7 +218,9 @@ gh workflow run release.yml --ref main -f environment=staging
 ```
 
 It builds the server image from that commit (`apps/server/Dockerfile`), pushes it, attests the digest, rolls the
-`worker` and then the `api` onto it with `gcloud run services update`, and checks that the api answers. Terraform
+`worker`, the `api` and then the reporting MCP server `mcp` onto it with `gcloud run services update`, and checks that
+the api and `mcp` answer. Where `mcp` does not exist yet, the release skips it and its summary gives the
+`terraform apply -var="server_image=…"` that creates it on that image: an older image has no MCP server to start. Terraform
 ignores the services' image, so a later apply neither reverts a release nor needs to know about it; infrastructure
 changes still go through `terraform apply` by someone with Owner rights. To roll back, revert the change on `main` and
 release again, or move both services to an earlier attested digest with
@@ -251,8 +254,8 @@ Per environment, once Terraform has been applied (step 2 above):
    `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_IMAGE`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_RELEASE_SERVICE_ACCOUNT` and
    `GCP_ATTESTOR_KEY_VERSION`. None is secret.
 
-CI builds the same image on every pull request and starts both entrypoints (`apps/server/scripts/smoke-image.sh`), so
-a broken Dockerfile shows up before a release.
+CI builds the same image on every pull request and starts all three entrypoints (`apps/server/scripts/smoke-image.sh`),
+so a broken Dockerfile shows up before a release.
 
 ## Manual steps
 
@@ -315,8 +318,9 @@ factors with `adjacentIntervals: 5` and no SMS (design §4), and the authorized 
 
 ### Firebase Hosting
 
-`firebase.json` at the repository root serves `apps/web/dist` and rewrites `/v1/**` to the Cloud Run service `api` in
-`us-central1`; it sits at the root because the Firebase CLI only publishes folders inside the one holding
+`firebase.json` at the repository root serves `apps/web/dist` and rewrites `/v1/**` to the Cloud Run service `api` and
+`/mcp` to the reporting MCP server `mcp`, both in `us-central1`. Hosting refuses a rewrite to a service that does not
+exist, so deploy it after the apply that creates `mcp`. The file sits at the root because the Firebase CLI only publishes folders inside the one holding
 `firebase.json`. Build the web app for the environment first: write `apps/web/.env.<env>.local` (git-ignored) with the
 web app's config and the `recaptcha_site_key` output (above), then `npm run build -w apps/web -- --mode <env>`. If
 `region` ever changes, change the rewrite with it. Deploy `firestore` and `hosting` only: the deny-all Storage rules apply

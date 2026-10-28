@@ -9,13 +9,14 @@
     "packages/domain",
     "packages/verify",
     "apps/server",
-    "apps/web"
+    "apps/web",
+    "apps/mcp"
   ],
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "build": "npm run build -w packages/tally -w packages/audit -w packages/domain -w packages/verify -w apps/server -w apps/web",
+    "build": "npm run build -w packages/tally -w packages/audit -w packages/domain -w packages/verify -w apps/server -w apps/mcp -w apps/web",
     "typecheck": "npm run typecheck --workspaces",
     "test": "npm run test --workspaces --if-present",
     "dev:api": "npm run dev:api -w apps/server",

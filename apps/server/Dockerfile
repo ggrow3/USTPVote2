@@ -1,8 +1,10 @@
 # syntax=docker/dockerfile:1
 #
-# The server image: one image, two Cloud Run services (design §3.1, §15). Terraform and the release workflow run it as
-#   node dist/main-api.js      api (the default command)
-#   node dist/main-worker.js   worker
+# The server image: one image, three Cloud Run services (design §3.1, §3.4, §15). Terraform and the release workflow
+# run it as
+#   node dist/main-api.js                         api (the default command)
+#   node dist/main-worker.js                      worker
+#   node /app/apps/mcp/dist/main.js --http ...    mcp, the reporting MCP server
 # from /app/apps/server, listening on $PORT. Build it from the repository root:
 #   docker build -f apps/server/Dockerfile -t ustp-server .
 
@@ -11,7 +13,7 @@ FROM node:26.12.1-trixie-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8
 WORKDIR /src
 
 # Locked dependencies, no install scripts (spec §7; .npmrc sets ignore-scripts too). npm ci checks the lockfile against
-# every workspace's package.json, so all of them are copied, but only the server's workspaces are installed.
+# every workspace's package.json, so all of them are copied, but only the server's and the MCP server's are installed.
 COPY package.json package-lock.json .npmrc tsconfig.base.json ./
 COPY packages/tally/package.json packages/tally/
 COPY packages/audit/package.json packages/audit/
@@ -19,24 +21,27 @@ COPY packages/domain/package.json packages/domain/
 COPY packages/verify/package.json packages/verify/
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
+COPY apps/mcp/package.json apps/mcp/
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --ignore-scripts --include-workspace-root \
-      -w packages/tally -w packages/audit -w packages/domain -w apps/server
+      -w packages/tally -w packages/audit -w packages/domain -w packages/verify -w apps/server -w apps/mcp
 
 COPY packages/tally packages/tally
 COPY packages/audit packages/audit
 COPY packages/domain packages/domain
+COPY packages/verify packages/verify
 COPY apps/server apps/server
-RUN npm run build -w packages/tally -w packages/audit -w packages/domain -w apps/server
+COPY apps/mcp apps/mcp
+RUN npm run build -w packages/tally -w packages/audit -w packages/domain -w packages/verify -w apps/server -w apps/mcp
 
-# Reinstall with the server's production dependencies only, then gather what runs into /out: the lockfile's
-# node_modules (workspace packages are relative symlinks into packages/), each package's compiled dist, and any
-# workspace-local node_modules.
+# Reinstall with the server's and the MCP server's production dependencies only, then gather what runs into /out: the
+# lockfile's node_modules (workspace packages are relative symlinks into packages/), each package's compiled dist, and
+# any workspace-local node_modules.
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --ignore-scripts --omit=dev -w apps/server \
+    npm ci --ignore-scripts --omit=dev -w apps/server -w apps/mcp \
  && mkdir /out \
  && cp -a --parents package.json node_modules /out/ \
- && for ws in packages/tally packages/audit packages/domain apps/server; do \
+ && for ws in packages/tally packages/audit packages/domain packages/verify apps/server apps/mcp; do \
       cp -a --parents "$ws/package.json" "$ws/dist" /out/; \
       if [ -d "$ws/node_modules" ]; then cp -a --parents "$ws/node_modules" /out/; fi; \
     done
