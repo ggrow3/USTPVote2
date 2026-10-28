@@ -5,6 +5,7 @@ import { usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
 import PageShell from '../components/PageShell.vue';
 import { attempt } from '../dialogs.js';
+import { ballotCard, secrecyText, votingWindow } from '../elections/ballot-list.js';
 import { session } from '../session.js';
 
 usePageTitle('Your ballots');
@@ -19,24 +20,13 @@ onMounted(async () => {
   }));
 });
 
-const when = (iso: string) => new Date(iso).toLocaleString();
-
-function status(e: VoterElection): { label: string; color: string } {
-  if (e.castAt) return { label: 'voted', color: 'positive' };
-  switch (e.state) {
-    case 'open':
-      return { label: 'open — vote now', color: 'primary' };
-    case 'scheduled':
-      return { label: 'opens soon', color: 'grey-7' };
-    default:
-      return { label: 'closed', color: 'grey-7' };
-  }
-}
+/** A card per election, in the voting home's style (design §10.5): when, how secret, where the voter stands, what next. */
+const cards = computed(() => (elections.value ?? []).map((e) => ({ e, card: ballotCard(e) })));
 </script>
 
 <template>
   <PageShell>
-    <div class="ustp-content">
+    <div class="ustp-content ustp-touch">
       <h1 class="text-h5">Your ballots</h1>
       <q-banner v-if="elections && elections.length === 0" class="bg-grey-3 text-black" rounded>
         <template v-if="memberStatus === 'active'">
@@ -56,34 +46,56 @@ function status(e: VoterElection): { label: string; color: string } {
           elections set up after you are admitted.
         </template>
       </q-banner>
-      <q-list v-else-if="elections" bordered separator aria-label="Elections you can vote in">
-        <template v-for="e in elections" :key="e.electionId">
-          <q-item clickable :to="`/ballot/${e.electionId}`">
-            <q-item-section>
-              <q-item-label>{{ e.title }}</q-item-label>
-              <q-item-label caption>
-                Voting {{ when(e.opensAt) }} – {{ when(e.closesAt) }} ·
-                {{ e.secrecy === 'secret' ? 'secret ballot' : 'roll-call (votes are public)' }}
-              </q-item-label>
-            </q-item-section>
-            <q-item-section side>
-              <q-badge :color="status(e).color" :label="status(e).label" />
-            </q-item-section>
-          </q-item>
-          <q-item
-            v-if="e.state === 'closed' || e.state === 'certified'"
-            clickable
-            dense
-            :inset-level="0.25"
-            :to="`/results/${e.electionId}`"
-          >
-            <q-item-section avatar><q-icon name="leaderboard" /></q-item-section>
-            <q-item-section>Results of {{ e.title }}</q-item-section>
-          </q-item>
-        </template>
-      </q-list>
+      <ul v-else-if="elections" class="ustp-ballots" aria-label="Your elections">
+        <li v-for="{ e, card } in cards" :key="e.electionId">
+          <q-card flat bordered>
+            <q-card-section>
+              <h2 class="text-subtitle1">{{ e.title }}</h2>
+              <p class="q-mb-none">{{ votingWindow(e.opensAt, e.closesAt) }}</p>
+              <p class="q-mb-none">{{ secrecyText(e.secrecy) }}</p>
+              <p class="ustp-ballots__status q-mb-none q-mt-sm text-weight-medium" :class="`text-${card.tone}`">
+                <q-icon :name="card.icon" size="24px" />
+                <span>{{ card.status }}</span>
+              </p>
+            </q-card-section>
+            <q-card-section class="ustp-actions">
+              <q-btn
+                v-for="(a, i) in card.actions"
+                :key="a.to"
+                color="primary"
+                no-caps
+                :unelevated="a.main"
+                :outline="!a.main && i === 0"
+                :flat="!a.main && i > 0"
+                :to="a.to"
+                :label="a.label"
+              >
+                <span class="sr-only">: {{ e.title }}</span>
+              </q-btn>
+            </q-card-section>
+          </q-card>
+        </li>
+      </ul>
       <div v-else-if="failed" class="text-grey-7">Could not load your ballots.</div>
       <div v-else class="text-grey-7">Loading…</div>
     </div>
   </PageShell>
 </template>
+
+<style scoped>
+/* One election per row: the card spans the page's column, so the dates fit on a line on a laptop. */
+.ustp-ballots {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* The icon beside the status's first line, the text wrapping beside it. */
+.ustp-ballots__status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+</style>
