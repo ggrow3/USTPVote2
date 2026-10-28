@@ -362,7 +362,7 @@ const summary = computed(() => {
                 </q-item-section>
                 <q-item-section>
                   <q-item-label>{{ s.label }}</q-item-label>
-                  <q-item-label v-if="s.detail" caption>{{ s.detail }}</q-item-label>
+                  <q-item-label v-if="s.detail" caption class="ustp-break">{{ s.detail }}</q-item-label>
                 </q-item-section>
               </q-item>
             </q-list>

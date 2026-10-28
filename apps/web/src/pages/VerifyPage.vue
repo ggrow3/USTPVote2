@@ -186,7 +186,7 @@ const summary = computed(() => {
               </q-item-section>
               <q-item-section>
                 <q-item-label><span class="sr-only">{{ stepStatus(s.ok) }}</span> {{ s.label }}</q-item-label>
-                <q-item-label v-if="s.detail" caption>{{ s.detail }}</q-item-label>
+                <q-item-label v-if="s.detail" caption class="ustp-break">{{ s.detail }}</q-item-label>
               </q-item-section>
             </q-item>
           </q-list>

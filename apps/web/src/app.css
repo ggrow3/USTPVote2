@@ -133,8 +133,10 @@ h3 {
 .q-page .column {
   flex-wrap: nowrap;
 }
-/* A full hash or seed in running text has no break opportunities of its own (tables keep theirs on one line). */
-.q-page code {
+/* A full hash or seed in running text has no break opportunities of its own (tables keep theirs on one line); nor
+   has an address such as a check's gs:// anchor (`ustp-break`). */
+.q-page code,
+.ustp-break {
   overflow-wrap: anywhere;
 }
 
