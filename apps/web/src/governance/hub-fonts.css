@@ -1,0 +1,49 @@
+/*
+ * The hub's typefaces (design §10.6), self-hosted from the @fontsource packages (SIL Open Font License 1.1): Latin
+ * only, WOFF2 only, so five files of about 130 KB in all, bundled by Vite and cached by the service worker with the
+ * rest of the app. No request leaves the site, and they work offline. `swap` shows the fallback until each loads.
+ */
+@font-face {
+  font-family: 'Lato';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/lato/files/lato-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Lato';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 700;
+  src: url('@fontsource/lato/files/lato-latin-700-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Bricolage Grotesque';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 800;
+  src: url('@fontsource-variable/bricolage-grotesque/files/bricolage-grotesque-latin-wght-normal.woff2') format('woff2-variations');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 400;
+  src: url('@fontsource/jetbrains-mono/files/jetbrains-mono-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 500;
+  src: url('@fontsource/jetbrains-mono/files/jetbrains-mono-latin-500-normal.woff2') format('woff2');
+}
+
+/* The "USTP signal" look's tokens, for the hub and its settings. */
+.ustp-signal {
+  --signal-body: 'Lato', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --signal-display: 'Bricolage Grotesque', 'Lato', system-ui, sans-serif;
+  --signal-mono: 'JetBrains Mono', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  --signal-radius: 14px;
+  --signal-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+}

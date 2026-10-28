@@ -27,6 +27,15 @@
   margin: 0;
 }
 
+/* A page that is the party's hub (design §10.6): the hub paints all of it. */
+.ustp-hub-page {
+  display: flex;
+  flex-direction: column;
+}
+.ustp-hub-page > * {
+  flex: 1;
+}
+
 /* The link back to a list, above a page's title: dense, so its icon lines up with the title's first letter. */
 .ustp-back {
   margin-left: -4px;

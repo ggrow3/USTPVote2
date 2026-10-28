@@ -22,11 +22,12 @@ import { applications } from '../membership/api.js';
 import { session } from '../session.js';
 
 /**
- * The home page (design §10.5): the party's quote over a sunrise on one side; on the other, signed out, a card to sign
- * in or join, and signed in, a card for each thing the person can do. Phones stack the card under the quote.
+ * The voting home, `/vote` (design §10.5; the home page until the hub took `/`, §10.6): the party's quote over a
+ * sunrise on one side; on the other, signed out, a card to sign in or join, and signed in, a card for each thing the
+ * person can do. Phones stack the card under the quote.
  */
 const signedIn = computed(() => !!session.user);
-usePageTitle(() => (signedIn.value ? 'Home' : 'Member voting'));
+usePageTitle(() => (signedIn.value ? 'Voting home' : 'Member voting'));
 
 const quote = computed(() => (homeQuoteState.quote?.shown ? homeQuoteState.quote : null));
 const INTRO = 'Register as a member, cast your ballot, and independently verify that it was counted.';

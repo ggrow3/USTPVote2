@@ -51,7 +51,7 @@ What is not domain-centred:
 | **Bylaws** | §5.2, §5.4, §6.6 | `bylaws_versions`, `bylaws_checks`, `bylaws_check_references` | core |
 | **Elections** (setup, roll, voting, sealing, results) | §5.5, §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results`, `consistency_checks`, `consistency_documents` | core |
 | **Offices** | §6.4 | `positions`, `position_terms` | supporting |
-| **Governance** (roles, two-person rule, testing mode, who sees which link, the home page quote, the Anthropic API key) | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `home_quote`, `anthropic_key` | core rule, generic mechanism |
+| **Governance** (roles, two-person rule, testing mode, who sees which link, the voting home's quote, the home page hub, the Anthropic API key) | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `home_quote`, `hub`, `hub_logos`, `hub_clicks`, `anthropic_key` | core rule, generic mechanism |
 | **Audit ledger** | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` | shared kernel |
 | **Notifications** (election notices by email) | §6.8 | `notices` (with `recipients`), `notice_outbox` | supporting |
 | **Verification** (`ustp-verify`, `/verify`, receipt and results checks) | §7.5, §16 | — (reads the public record) | conformist |
@@ -107,6 +107,7 @@ commit. What changes is that only the owner touches its documents.
 | Governance | **RoleAssignment** | one System Admin, not on their own account; Auditor holds no other role |
 | Governance | **NavigationSettings** (`navigation/current`) | shows, never permits; no section for a role the API refuses it to, and none for membership alone; People and Navigation always shown to System Admins; a role's Admin link follows its sections; every start page one its audience is shown; saved whole from the version it was edited from, each changed cell ledgered as `navigation.changed` |
 | Governance | **HomeQuote** (`home_quote/current`) | shown needs its words and who said them; each part within its limit once tidied; saved whole from the version it was edited from, each changed part ledgered as `home_quote.changed` |
+| Governance | **Hub** (`hub/current`) | shown sections need a title and shown links a title and address (a page of the app, https or mailto); the accent takes white text at 4.5:1; the logo is one uploaded here; the live widget needs the server ID; IDs unique; saved whole from the version it was edited from, each change ledgered as `hub.changed`. Its click counters (`hub_clicks`) count only what it shows, and hold no personal data (DESIGN §10.6) |
 | Governance | **AnthropicKey** (`anthropic_key/current`, the `anthropic-api-key` secret) | System Admins only; the key's shape checked before it is sent anywhere, and tried with Anthropic before it is kept; one live version, older ones destroyed; never returned, recorded or ledgered (only its last four characters and who added it); each add or removal ledgered as `anthropic_key.changed` |
 | Ledger | **Ledger** (head → entries) | append-only, gap-free, hash-chained; blocks signed only by the worker |
 
@@ -181,9 +182,9 @@ import moved code). Ordered by gain against risk, and around work in flight.
    stops reading `elections`. After the adopted-bylaws work in progress has merged, since it changes these methods.
 3. **Governance** — `ApprovalRequest` aggregate functions and repository; a handler registry, so each context
    registers its own handlers and `ApprovalsService` no longer imports them; one `RoleAssignments` writer used by role
-   changes, bootstrap and personas. The navigation settings and the home page quote (DESIGN §10.5) already live in
-   `governance/` in `ustp-domain`; their services are `administration/navigation.ts` and `administration/home-quote.ts`
-   in the server until this step moves the context.
+   changes, bootstrap and personas. The navigation settings, the voting home's quote (DESIGN §10.5) and the hub
+   (§10.6) already live in `governance/` in `ustp-domain`; their services are `administration/navigation.ts`,
+   `administration/home-quote.ts` and `administration/hub.ts` in the server until this step moves the context.
 4. **Offices** — `Office` and `Term` aggregates; an `Offices` port (`assertExist`, `createTermsFromResults`) so
    certification stops writing `position_terms`; the term rules shared by request and approval. *Begun:* appointments
    (DESIGN §6.4) put their rules in `ustp-domain` (`appointments.ts`: `planAppointment` at the request, `appointTerm` at
@@ -269,7 +270,7 @@ Each step behaviour-preserving: same routes and URLs, page titles, headings, lab
   `ustp-domain` (same options in the same order); the account page resigns through the client; the boundary test
   starts with it.
 - **W2. Bylaws**, **W3. Governance** (begun: `governance/` holds the navigation settings' client, panel, wording
-  and store, and the home page quote's, and the admin tabs come from `ADMIN_SECTIONS` and `SECTION_ROLES` in `ustp-domain`, which a server test
+  and store, the quote's, and the hub's (its page, admin tabs and click client), and the admin tabs come from `ADMIN_SECTIONS` and `SECTION_ROLES` in `ustp-domain`, which a server test
   checks against the `@Roles` of each section's routes; still to move: approvals, people, role changes, testing),
   **W4. Offices** (*done*: `offices/api.ts` is the only place the offices routes are written, and the contest dialog
   and the Members tab call it; `offices/` holds the Offices panel, the appointment dialog and its member picker, the

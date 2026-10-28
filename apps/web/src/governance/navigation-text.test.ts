@@ -28,7 +28,7 @@ describe('navigation settings wording', () => {
     expect(AUDIENCES.every((a) => AUDIENCE_LABELS[a])).toBe(true);
     expect(ADMIN_SECTIONS.every((s) => SECTION_LABELS[s])).toBe(true);
     expect(START_PAGES.map(startPageLabel)).toContain('Admin › Sign-in methods');
-    expect(startPageLabel('home')).toBe('Home');
+    expect(startPageLabel('home')).toBe('Voting home');
     expect(startPageLabel('ballot')).toBe('Ballot');
     expect(MENU_LINKS.every((l) => MENU_LABELS[l] && MENU_CAPTIONS[l])).toBe(true);
     expect(startPageLabel('offices')).toBe('Offices');

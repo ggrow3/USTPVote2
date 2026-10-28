@@ -13,6 +13,9 @@
     "dev:emulators": "vite --mode emulators"
   },
   "dependencies": {
+    "@fontsource-variable/bricolage-grotesque": "^5.3.0",
+    "@fontsource/jetbrains-mono": "^5.3.0",
+    "@fontsource/lato": "^5.3.0",
     "@quasar/extras": "^2.1.0",
     "docx": "^9.9.0",
     "firebase": "^13.0.0",
