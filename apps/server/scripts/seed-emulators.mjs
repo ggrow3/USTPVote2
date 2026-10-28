@@ -107,6 +107,7 @@ async function member(email, legalName, current) {
   const me = await call('GET', '/v1/me', email);
   if (me.member?.status === 'active') return;
   const pending = (await call('GET', '/v1/registration/applications/me', email)).find((a) => a.status === 'pending');
+  const form = pending ? null : await call('GET', '/v1/registration/form', email);
   const application =
     pending ??
     (await call('POST', '/v1/registration/applications', email, {
@@ -115,7 +116,10 @@ async function member(email, legalName, current) {
       legalName,
       dateOfBirth: `${1950 + randomInt(55)}-0${1 + randomInt(9)}-1${randomInt(10)}`,
       attestsAge: true,
-      supportsPlatform: true,
+      formVersion: form.version,
+      // Mostly United States Members who agree with the Core Ideals, and a few of each other answer.
+      usVoteEligible: randomInt(5) > 0,
+      agreesWithCoreIdeals: randomInt(5) > 0,
       state: STATES[randomInt(STATES.length)],
       city: 'Springfield',
       postalCode: String(10000 + randomInt(89999)),

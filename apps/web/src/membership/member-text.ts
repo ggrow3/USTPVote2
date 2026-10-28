@@ -3,6 +3,9 @@ import { STATES } from '../forms.js';
 
 /** Wording for members' details (design §5.2), shared by the profile page, the application answers and the account page. */
 
+// The membership questions' answers and the member class, kept apart so the Members list's tests can load them.
+export { answerText, CLASS_NOT_ASKED, classOf, MEMBER_CLASS_LABELS, memberClassText } from './class-text.js';
+
 /** The state picker's options, as on the application. */
 export const STATE_OPTIONS = STATES.map((s) => ({ label: `${s.name} (${s.code})`, value: s.code }));
 

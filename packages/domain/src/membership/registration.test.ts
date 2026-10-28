@@ -61,27 +61,39 @@ describe('createApplicationSchema', () => {
     legalName: 'Robin Applicant',
     dateOfBirth: '1990-04-01',
     attestsAge: true,
-    supportsPlatform: true,
+    formVersion: 0,
+    usVoteEligible: true,
+    agreesWithCoreIdeals: true,
     state: 'CA',
     city: 'San Francisco',
     postalCode: '94110',
   };
+  const issues = (input: object) => createApplicationSchema.safeParse(input).error?.issues ?? [];
+  const paths = (input: object) => issues(input).map((i) => i.path.join('.'));
 
   it('accepts a complete application with only the required fields', () => {
     expect(createApplicationSchema.safeParse(valid).success).toBe(true);
   });
 
-  it('requires both attestations, a ZIP code and an adult date of birth', () => {
-    const issues = (input: object) =>
-      createApplicationSchema.safeParse(input).error?.issues.map((i) => i.path.join('.')) ?? [];
-    expect(issues({ ...valid, attestsAge: false })).toContain('attestsAge');
-    expect(issues({ ...valid, supportsPlatform: undefined })).toContain('supportsPlatform');
-    expect(issues({ ...valid, postalCode: '9411' })).toContain('postalCode');
-    expect(issues({ ...valid, dateOfBirth: `${new Date().getUTCFullYear() - 10}-01-01` })).toContain('dateOfBirth');
-    expect(issues({ ...valid, phone: '123' })).toContain('phone');
+  it('requires the age attestation, the form version, a ZIP code and an adult date of birth', () => {
+    expect(paths({ ...valid, attestsAge: false })).toContain('attestsAge');
+    expect(paths({ ...valid, formVersion: undefined })).toContain('formVersion');
+    expect(paths({ ...valid, postalCode: '9411' })).toContain('postalCode');
+    expect(paths({ ...valid, dateOfBirth: `${new Date().getUTCFullYear() - 10}-01-01` })).toContain('dateOfBirth');
+    expect(paths({ ...valid, phone: '123' })).toContain('phone');
   });
 
-  it('refuses fields it does not know', () => {
+  it('needs Yes or No to both membership questions, and accepts No to either', () => {
+    for (const question of ['usVoteEligible', 'agreesWithCoreIdeals'] as const) {
+      expect(issues({ ...valid, [question]: undefined })).toEqual([
+        expect.objectContaining({ path: [question], message: 'answer Yes or No' }),
+      ]);
+    }
+    expect(createApplicationSchema.safeParse({ ...valid, usVoteEligible: false, agreesWithCoreIdeals: false }).success).toBe(true);
+  });
+
+  it('refuses fields it does not know, including the platform attestation it no longer asks for', () => {
     expect(createApplicationSchema.safeParse({ ...valid, street: '1 Main St' }).success).toBe(false);
+    expect(createApplicationSchema.safeParse({ ...valid, supportsPlatform: true }).success).toBe(false);
   });
 });

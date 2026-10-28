@@ -20,6 +20,8 @@ import { AnthropicKey } from '../claude-checks/anthropic-key.js';
 import { AnthropicKeyAdminService, AnthropicKeyController } from '../claude-checks/anthropic-key-admin.js';
 import { ANTHROPIC_KEY_TESTER, ClaudeKeyTester, UntriedKeyTester } from '../claude-checks/key-tester.js';
 import { HealthController } from '../common/health.controller.js';
+import { CourseController } from '../course/course.controller.js';
+import { CourseService } from '../course/course.service.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { AdminConsistencyChecksController, ConsistencyChecksController } from '../consistency-check/consistency-checks.controller.js';
 import { ConsistencyChecksService } from '../consistency-check/consistency-checks.service.js';
@@ -40,12 +42,14 @@ import { secretStoreProvider } from '../infra/secret-store.js';
 import { PublicLedgerController } from '../ledger/ledger.controller.js';
 import { MembershipAdminController, RegistrationController } from '../membership/membership.controller.js';
 import { MEMBERSHIP_PROVIDERS } from '../membership/providers.js';
+import { PublicRegistrationFormController, RegistrationFormAdminController } from '../membership/registration-form.js';
 import { NoticeSettingsController } from '../notifications/notice-settings.js';
 import { NoticesController } from '../notifications/notices.controller.js';
 import { NOTIFICATION_API_PROVIDERS } from '../notifications/providers.js';
 import { LocalPhotoChecker, PHOTO_CHECKER, VisionPhotoChecker } from '../photos/checker.js';
 import { MyPhotoController, PhotoReviewController } from '../photos/photos.controller.js';
 import { PhotosService } from '../photos/photos.service.js';
+import { DemoElectionsController, DemoElectionsService } from '../personas/demo-elections.js';
 import { PersonasController } from '../personas/personas.controller.js';
 import { PersonasService } from '../personas/personas.service.js';
 import { PositionApprovals } from '../positions/position-approvals.js';
@@ -56,9 +60,9 @@ import { PositionsService } from '../positions/positions.service.js';
  * Client-facing API (design §12). Every route requires a verified sign-in unless marked @Public().
  * M1: accounts, registration, membership administration, profile photos, roles and approvals, auth switches, ledger.
  * M2: election setup, rolls, scheduling and cancellation; the published ledger (blocks, keys, proofs, anchors).
- * M3: voting. M4: results, certification, offices and terms. Testing mode: test personas (design §10.4). M5: who sees
- * which link (design §10.5), the home page hub (§10.6); the platform consistency check (design §5.5), the election setup
- * check (§6.9) and the Anthropic API key (design §5.6).
+ * M3: voting. M4: results, certification, offices and terms. Testing mode: test personas and demo elections (design
+ * §10.4). M5: who sees which link (design §10.5), the home page hub (§10.6); the platform consistency check (design
+ * §5.5), the election setup check (§6.9) and the Anthropic API key (design §5.6).
  */
 @Module({
   imports: [CoreModule],
@@ -67,6 +71,8 @@ import { PositionsService } from '../positions/positions.service.js';
     AccountsController,
     RegistrationController,
     MembershipAdminController,
+    PublicRegistrationFormController,
+    RegistrationFormAdminController,
     BylawsChecksController,
     MyPhotoController,
     PhotoReviewController,
@@ -97,6 +103,8 @@ import { PositionsService } from '../positions/positions.service.js';
     AuditController,
     PublicLedgerController,
     PersonasController,
+    DemoElectionsController,
+    CourseController,
   ],
   providers: [
     AccountsService,
@@ -124,6 +132,8 @@ import { PositionsService } from '../positions/positions.service.js';
     HubService,
     DiscordLiveService,
     PersonasService,
+    DemoElectionsService,
+    CourseService,
     secretStoreProvider,
     {
       provide: PHOTO_CHECKER,

@@ -16,7 +16,9 @@ const application = () => ({
   legalName: 'Robin Applicant',
   dateOfBirth: '1990-04-01',
   attestsAge: true,
-  supportsPlatform: true,
+  formVersion: 0,
+  usVoteEligible: true,
+  agreesWithCoreIdeals: true,
   state: 'CA',
   city: 'San Francisco',
   postalCode: '941101234',
@@ -91,24 +93,55 @@ describe('applications', () => {
     const { body: app } = await api.call('POST', '/v1/registration/applications', robin, application());
     expect(app).toMatchObject({
       dateOfBirth: '1990-04-01',
-      attestations: { minimumAge: 18, supportsPlatform: true },
+      attestations: { minimumAge: 18 },
+      formVersion: 0,
+      usVoteEligible: true,
+      agreesWithCoreIdeals: true,
       contact: { city: 'San Francisco', postalCode: '94110-1234', phone: '+15551234567' },
       communications: { newsletter: app.submittedAt, announcements: null },
       volunteer: true,
       runForOffice: false,
     });
     const member = (await api.call('GET', '/v1/me', robin)).body.member;
-    expect(member).toMatchObject({ contact: app.contact, communications: app.communications });
+    expect(member).toMatchObject({
+      contact: app.contact,
+      communications: app.communications,
+      usVoteEligible: true,
+      agreesWithCoreIdeals: true,
+    });
     expect(member).not.toHaveProperty('dateOfBirth');
   });
 
-  it('refuses applicants under the minimum age and missing attestations', async () => {
+  it('refuses applicants under the minimum age, a missing attestation and an unanswered question', async () => {
     const robin = await api.member('robin@example.test');
     const young = `${new Date().getUTCFullYear() - 16}-01-01`;
     const tooYoung = await api.call('POST', '/v1/registration/applications', robin, { ...application(), dateOfBirth: young });
     expect(tooYoung.status).toBe(400);
-    const unattested = await api.call('POST', '/v1/registration/applications', robin, { ...application(), supportsPlatform: false });
+    const unattested = await api.call('POST', '/v1/registration/applications', robin, { ...application(), attestsAge: false });
     expect(unattested.status).toBe(400);
+    const { usVoteEligible: _, ...unanswered } = application();
+    const res = await api.call('POST', '/v1/registration/applications', robin, unanswered);
+    expect(res).toMatchObject({ status: 400, body: { errors: [{ path: 'usVoteEligible', message: 'answer Yes or No' }] } });
+  });
+
+  it('takes No to both membership questions, making an Allied Member who can be admitted', async () => {
+    const robin = await api.member('robin@example.test');
+    const res = await api.call('POST', '/v1/registration/applications', robin, {
+      ...application(),
+      usVoteEligible: false,
+      agreesWithCoreIdeals: false,
+    });
+    expect(res).toMatchObject({ status: 201, body: { usVoteEligible: false, agreesWithCoreIdeals: false } });
+    const approved = await api.call('POST', `/v1/admin/applications/${res.body.applicationId}/decision`, admin, {
+      decision: 'approve',
+      reason: 'Welcome',
+    });
+    expect(approved.status).toBe(201);
+    expect((await api.call('GET', '/v1/me', robin)).body.member).toMatchObject({
+      status: 'active',
+      usVoteEligible: false,
+      agreesWithCoreIdeals: false,
+    });
   });
 
   it('caps applications per account', async () => {

@@ -4,6 +4,7 @@ import type { AdminSection } from 'ustp-domain';
 import ClaudeKeyPanel from '../claude-key/ClaudeKeyPanel.vue';
 import ApprovalsPanel from '../components/admin/ApprovalsPanel.vue';
 import AuditPanel from '../components/admin/AuditPanel.vue';
+import CoursePanel from '../components/admin/CoursePanel.vue';
 import BylawsPanel from '../components/admin/BylawsPanel.vue';
 import ElectionsPanel from '../components/admin/ElectionsPanel.vue';
 import OfficesPanel from '../offices/OfficesPanel.vue';
@@ -20,6 +21,7 @@ import { shown } from '../governance/navigation.js';
 import { SECTION_LABELS } from '../governance/navigation-text.js';
 import ApplicationsPanel from '../membership/ApplicationsPanel.vue';
 import MembersPanel from '../membership/MembersPanel.vue';
+import RegistrationFormPanel from '../membership/RegistrationFormPanel.vue';
 import { useRoute } from 'vue-router';
 import { usePageTitle } from '../a11y.js';
 import { acting } from '../acting.js';
@@ -31,6 +33,7 @@ const PANELS: Record<AdminSection, Component> = {
   members: MembersPanel,
   photos: PhotosPanel,
   bylaws: BylawsPanel,
+  registration: RegistrationFormPanel,
   elections: ElectionsPanel,
   offices: OfficesPanel,
   approvals: ApprovalsPanel,
@@ -43,6 +46,7 @@ const PANELS: Record<AdminSection, Component> = {
   navigation: NavigationPanel,
   hub: HubPanel,
   quote: HomeQuotePanel,
+  course: CoursePanel,
 };
 
 usePageTitle('Administration');
@@ -70,7 +74,7 @@ const tab = ref<string>(tabs.value.some((t) => t.name === requested) ? requested
       </p>
       <template v-else>
         <p>
-          The admin console is for party officers: Membership Admins, Election Admins, Auditors and System Admins. Your
+          The admin console is for party officers: Membership Admins, Election Admins, Auditors, System Admins and Course Administrators. Your
           account holds none of these roles.
         </p>
         <p>

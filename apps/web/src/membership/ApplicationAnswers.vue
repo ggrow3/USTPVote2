@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { ageOn, type ApplicationRecord } from 'ustp-domain';
-import { consentText, stateName } from './member-text.js';
+import { answerText, consentText, memberClassText, stateName } from './member-text.js';
 
 /**
  * Every answer on one application, as the applicant gave it, grouped and worded as on the Register page (design §5.2),
@@ -35,6 +35,17 @@ const groups = computed(() => {
       ],
     },
     {
+      title: 'Membership questions',
+      facts: [
+        [
+          'Eligible to vote in any United States elections',
+          typeof a.usVoteEligible === 'boolean' ? `${answerText(a.usVoteEligible)}: ${memberClassText(a.usVoteEligible)}` : NOT_ANSWERED,
+        ],
+        ['Agrees with the Core Ideals', typeof a.agreesWithCoreIdeals === 'boolean' ? answerText(a.agreesWithCoreIdeals) : NOT_ANSWERED],
+        ...(a.formVersion !== undefined ? [['Wording answered', `Registration form version ${a.formVersion}`]] : []),
+      ],
+    },
+    {
       title: 'Their interest in USTP',
       facts: [
         ['Why they want to join', a.statement ?? NOT_ANSWERED],
@@ -55,12 +66,9 @@ const groups = computed(() => {
     {
       title: 'Confirmations',
       facts: [
-        ...(a.attestations
-          ? [
-              [`At least ${a.attestations.minimumAge} years old`, 'Yes'],
-              ['Supports the platform and goals of the US Transhumanist Party', yesNo(a.attestations.supportsPlatform)],
-            ]
-          : []),
+        ...(a.attestations ? [[`At least ${a.attestations.minimumAge} years old`, 'Yes']] : []),
+        // Asked until the Core Ideals question replaced it.
+        ...(a.attestations?.supportsPlatform ? [['Supports the platform and goals of the US Transhumanist Party', 'Yes']] : []),
         ['Agreed to the bylaws', `Version ${a.bylawsVersion}, SHA-256 ${a.bylawsHash}`],
       ],
     },

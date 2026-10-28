@@ -34,8 +34,8 @@ function edit(base: NavigationSettings, change: (s: { -readonly [K in keyof Navi
 const viewer = (membership: Viewer['membership'], ...roles: Role[]): Viewer => ({ membership, roles });
 
 describe('defaults', () => {
-  it('show Register, Ballot, Verify, Offices and Admin to everyone, and Sign in while signed out', () => {
-    const all = ['register', 'ballot', 'verify', 'offices', 'admin'];
+  it('show Register, Ballot, Verify, Offices, Course and Admin to everyone, and Sign in while signed out', () => {
+    const all = ['register', 'ballot', 'verify', 'offices', 'course', 'admin'];
     expect(shownTo(DEFAULT_NAVIGATION, viewer('signed_out')).menu).toEqual(MENU_LINKS);
     for (const membership of ['no_membership', ...MEMBER_STATUSES] as const) {
       expect(shownTo(DEFAULT_NAVIGATION, viewer(membership)).menu).toEqual(all);
@@ -43,16 +43,17 @@ describe('defaults', () => {
     expect(shownTo(DEFAULT_NAVIGATION, viewer('active', 'election_admin')).menu).toEqual(all);
   });
 
-  it('let every role keep Ballot, Verify and Offices without a membership', () => {
-    for (const role of ROLES) expect(DEFAULT_NAVIGATION.menu[role]).toMatchObject({ ballot: true, verify: true, offices: true, register: false });
+  it('let every role keep Ballot, Verify, Offices and Course without a membership', () => {
+    for (const role of ROLES) expect(DEFAULT_NAVIGATION.menu[role]).toMatchObject({ ballot: true, verify: true, offices: true, course: true, register: false });
   });
 
   it('give each role the console tabs it had, and System Admins the link hub and the home page quote', () => {
     const tabs = (role: Role) => shownTo(DEFAULT_NAVIGATION, viewer('active', role)).sections;
-    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'offices', 'approvals']);
+    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'registration', 'offices', 'approvals']);
     expect(tabs('election_admin')).toEqual(['elections', 'offices', 'approvals']);
     expect(tabs('auditor')).toEqual(['elections', 'offices', 'approvals', 'audit']);
     expect(tabs('system_admin')).toEqual(['approvals', 'people', 'signin', 'claude', 'email', 'testing', 'navigation', 'hub', 'quote']);
+    expect(tabs('course_admin')).toEqual(['course']);
   });
 
   it('give settings saved before the Home page quote section existed its default', () => {
@@ -60,6 +61,15 @@ describe('defaults', () => {
     const stored = { ...DEFAULT_NAVIGATION, sections: { ...DEFAULT_NAVIGATION.sections, system_admin: saved } };
     expect(resolveNavigation(stored).sections.system_admin.quote).toBe(true);
     expect(sectionLock('membership_admin', 'quote')).toBe('not_permitted');
+  });
+
+  it('give settings saved before the Registration form section existed its default', () => {
+    const { registration: _, ...saved } = DEFAULT_NAVIGATION.sections.membership_admin;
+    const stored = { ...DEFAULT_NAVIGATION, sections: { ...DEFAULT_NAVIGATION.sections, membership_admin: saved } };
+    expect(resolveNavigation(stored).sections.membership_admin.registration).toBe(true);
+    for (const role of ['election_admin', 'auditor', 'system_admin'] as const) {
+      expect(sectionLock(role, 'registration')).toBe('not_permitted');
+    }
   });
 
   it('give settings saved before the Link hub section existed its default', () => {
@@ -183,6 +193,7 @@ describe('what a person sees', () => {
       'members',
       'photos',
       'bylaws',
+      'registration',
       'elections',
       'offices',
       'approvals',
@@ -209,13 +220,14 @@ describe('start pages', () => {
   });
 
   it('offer home, account and what the audience sees', () => {
-    expect(startPageOptions(DEFAULT_NAVIGATION, 'applicant')).toEqual(['home', 'account', 'register', 'ballot', 'verify', 'offices']);
+    expect(startPageOptions(DEFAULT_NAVIGATION, 'applicant')).toEqual(['home', 'account', 'register', 'ballot', 'verify', 'offices', 'course']);
     expect(startPageOptions(DEFAULT_NAVIGATION, 'election_admin')).toEqual([
       'home',
       'account',
       'ballot',
       'verify',
       'offices',
+      'course',
       'admin/elections',
       'admin/offices',
       'admin/approvals',
@@ -240,6 +252,7 @@ describe('start pages', () => {
     expect(startPagePath('home')).toBe('/vote');
     expect(startPagePath('ballot')).toBe('/ballot');
     expect(startPagePath('offices')).toBe('/offices');
+    expect(startPagePath('course')).toBe('/course/transhumanism');
     expect(startPagePath('admin/elections')).toBe('/admin?tab=elections');
   });
 });

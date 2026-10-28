@@ -4,6 +4,7 @@ import { ageOn, type ApplicationRecord, type ApplicationStatus } from 'ustp-doma
 import { askReason, attempt } from '../dialogs.js';
 import { session } from '../session.js';
 import { applications, decideApplication } from './api.js';
+import { answerText, memberClassText } from './member-text.js';
 
 const status = ref<ApplicationStatus>('pending');
 const rows = ref<ApplicationRecord[]>([]);
@@ -74,9 +75,12 @@ onMounted(load);
             {{ a.contact.city }} {{ a.contact.postalCode }}<span v-if="a.contact.phone"> · {{ a.contact.phone }}</span>
             <span v-if="a.dateOfBirth"> · born {{ a.dateOfBirth }} (age {{ ageOn(a.dateOfBirth, new Date()) }})</span>
           </q-item-label>
+          <q-item-label v-if="typeof a.usVoteEligible === 'boolean'" caption>
+            {{ memberClassText(a.usVoteEligible) }} · agrees with the Core Ideals: {{ answerText(a.agreesWithCoreIdeals) }}
+          </q-item-label>
           <q-item-label v-if="a.attestations" caption>
-            Confirmed: at least {{ a.attestations.minimumAge }}, supports the platform<span v-if="a.volunteer"> · wants to volunteer</span
-            ><span v-if="a.runForOffice"> · interested in running for office</span>
+            Confirmed: at least {{ a.attestations.minimumAge }}<template v-if="a.attestations.supportsPlatform">, supports the platform</template
+            ><span v-if="a.volunteer"> · wants to volunteer</span><span v-if="a.runForOffice"> · interested in running for office</span>
           </q-item-label>
           <q-item-label caption>
             Party email: {{ partyEmail(a) }}

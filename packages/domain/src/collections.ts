@@ -9,6 +9,10 @@ export const Collections = {
   memberStatusHistory: 'member_status_history',
   applications: 'applications',
   bylawsVersions: 'bylaws_versions',
+  /** `registration_form/current`: the registration form's wording, its intro and questions (design §5.2). */
+  registrationForm: 'registration_form',
+  /** `registration_form_versions/{version}`: each saved version of that wording, never changed afterwards. */
+  registrationFormVersions: 'registration_form_versions',
   bylawsChecks: 'bylaws_checks',
   bylawsCheckReferences: 'bylaws_check_references',
   profilePhotos: 'profile_photos',
@@ -36,6 +40,16 @@ export const Collections = {
   roleAssignments: 'role_assignments',
   approvalRequests: 'approval_requests',
   locks: 'locks',
+  // first-party learning, deliberately isolated from member, election, ballot and audit records
+  courses: 'courses',
+  courseLessons: 'course_lessons',
+  courseProfiles: 'course_profiles',
+  courseVersions: 'course_versions',
+  courseProgress: 'course_progress',
+  courseAttempts: 'course_attempts',
+  courseCertificates: 'course_certificates',
+  courseLtiDeployments: 'course_lti_deployments',
+  courseLtiOutcomes: 'course_lti_outcomes',
   /** `anthropic_key/current`: who added the Anthropic API key in the app, never the key (design §5.6). */
   anthropicKey: 'anthropic_key',
   /** `navigation/current`: what the web app shows each membership state and role (design §10.5). */

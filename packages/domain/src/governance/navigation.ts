@@ -10,7 +10,7 @@ import { ROLES, type Role } from '../roles.js';
  */
 
 /** The menu bar's links in menu order, then the header's Sign in button (which only signed-out visitors can use). */
-export const MENU_LINKS = ['register', 'ballot', 'verify', 'offices', 'admin', 'signin'] as const;
+export const MENU_LINKS = ['register', 'ballot', 'verify', 'offices', 'course', 'admin', 'signin'] as const;
 export type MenuLink = (typeof MENU_LINKS)[number];
 
 /** The admin console's sections (tabs), in tab order. */
@@ -19,6 +19,7 @@ export const ADMIN_SECTIONS = [
   'members',
   'photos',
   'bylaws',
+  'registration',
   'elections',
   'offices',
   'approvals',
@@ -31,6 +32,7 @@ export const ADMIN_SECTIONS = [
   'navigation',
   'hub',
   'quote',
+  'course',
 ] as const;
 export type AdminSection = (typeof ADMIN_SECTIONS)[number];
 
@@ -55,6 +57,8 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   members: ['membership_admin'],
   photos: ['membership_admin'],
   bylaws: ['membership_admin'],
+  // The registration form's wording: its intro and questions (design §5.2).
+  registration: ['membership_admin'],
   elections: ['election_admin', 'auditor'],
   // Every admin may read the offices; Membership and Election Admins change them.
   offices: ROLES,
@@ -69,6 +73,7 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   navigation: ['system_admin'],
   hub: ['system_admin'],
   quote: ['system_admin'],
+  course: ['course_admin'],
 };
 
 /** Links that lead a signed-out visitor to sign in: Sign in itself, Register (its first step), and Ballot and Admin. */
@@ -159,10 +164,10 @@ export const DEFAULT_NAVIGATION: NavigationSettings = {
     AUDIENCES.map((a) => [
       a,
       isRole(a)
-        ? links('ballot', 'verify', 'offices', 'admin')
+        ? links('ballot', 'verify', 'offices', 'course', 'admin')
         : a === 'signed_out'
-          ? links('register', 'ballot', 'verify', 'offices', 'admin', 'signin')
-          : links('register', 'ballot', 'verify', 'offices', 'admin'),
+          ? links('register', 'ballot', 'verify', 'offices', 'course', 'admin', 'signin')
+          : links('register', 'ballot', 'verify', 'offices', 'course', 'admin'),
     ]),
   ) as Record<Audience, Record<MenuLink, boolean>>,
   sections: Object.fromEntries(ROLES.map((r) => [r, sectionsOf(r)])) as Record<Role, Record<AdminSection, boolean>>,
@@ -344,6 +349,7 @@ export function startPageFor(settings: NavigationSettings, viewer: Viewer): Star
  */
 export function startPagePath(page: StartPage): string {
   if (page === 'home') return '/vote';
+  if (page === 'course') return '/course/transhumanism';
   return page.startsWith('admin/') ? `/admin?tab=${page.slice(6)}` : `/${page}`;
 }
 

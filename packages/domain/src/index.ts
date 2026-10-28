@@ -2,6 +2,38 @@ export type { Check, Outcome, Refusal, Refused } from './check.js';
 export { uuidv7, isUuidV7, uuidv7Timestamp } from './ids.js';
 export { ROLES, MAX_ROLES_PER_ACCOUNT, conflictingRoles, isRole, checkRoleChange } from './roles.js';
 export type { Role } from './roles.js';
+export {
+  COURSE_STATUSES,
+  FUTURIST_CATEGORIES,
+  courseQuestionSchema,
+  saveCourseLessonSchema,
+  saveFuturistProfileSchema,
+  courseMetadataSchema,
+  submitCourseQuizSchema,
+} from './course.js';
+export type {
+  CourseStatus,
+  FuturistCategory,
+  CourseRecord,
+  CourseQuestion,
+  PublicCourseQuestion,
+  CourseLesson,
+  PublicCourseLesson,
+  FuturistProfile,
+  CourseVersionRecord,
+  CourseProgressRecord,
+  CourseAttemptRecord,
+  CourseCertificateRecord,
+  CourseCatalog,
+  LearnerCourseView,
+  CertificateVerification,
+  LtiLaunchContext,
+  LtiGradeOutcome,
+  SaveCourseLessonInput,
+  SaveFuturistProfileInput,
+  CourseMetadataInput,
+  SubmitCourseQuizInput,
+} from './course.js';
 export * from './membership/index.js';
 export * from './notifications/index.js';
 export * from './governance/index.js';
@@ -139,6 +171,18 @@ export {
   testVotesSchema,
 } from './test-votes.js';
 export type { PlannedBallot, Random, TestVotes, TestVotesInput } from './test-votes.js';
+export {
+  DEMO_MIN_TEST_VOTERS,
+  DEMO_OPENINGS,
+  DEMO_TITLE_PREFIX,
+  DEMO_VOTING_MINUTES,
+  DEMO_FIRST_NAMES,
+  DEMO_MEASURE_NOTE,
+  DEMO_SURNAMES,
+  demoElection,
+  demoElectionInputSchema,
+} from './demo-election.js';
+export type { DemoElectionInput, DemoElectionOptions, DemoElectionResult, DemoOpening } from './demo-election.js';
 export { castBallotSchema, ballotProblems, ballotViewProblems, commitmentsOf } from './ballots.js';
 export {
   buildSealedBlock,

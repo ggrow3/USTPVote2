@@ -105,7 +105,9 @@ describe('roles', () => {
   it('keeps the Auditor separate from every other role', () => {
     expect(conflictingRoles(['election_admin', 'system_admin'], 'auditor')).toEqual(['election_admin', 'system_admin']);
     expect(conflictingRoles(['auditor'], 'membership_admin')).toEqual(['auditor']);
+    expect(conflictingRoles(['auditor'], 'course_admin')).toEqual(['auditor']);
     expect(conflictingRoles(['membership_admin'], 'election_admin')).toEqual([]);
+    expect(checkRoleChange([], 'grant', 'course_admin').ok).toBe(true);
   });
 
   it('validates grants and revocations against the roles already held', () => {

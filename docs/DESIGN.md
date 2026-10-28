@@ -147,7 +147,7 @@ this structure one at a time, without changing routes, documents or the ledger.
 | Context | Sections | Owns |
 |---|---|---|
 | Accounts & identity | §4 | `accounts`, `account_identities`, `sign_in_methods` |
-| Membership | §5.1–5.3 | `members`, `member_status_history`, `applications`, `profile_photos`, `photo_checks` |
+| Membership | §5.1–5.3 | `members`, `member_status_history`, `applications`, `registration_form`, `registration_form_versions`, `profile_photos`, `photo_checks` |
 | Bylaws | §5.2, §5.4, §6.6 | `bylaws_versions`, `bylaws_checks`, `bylaws_check_references` |
 | Elections | §5.5, §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results`, `consistency_checks`, `consistency_documents`, `election_checks` |
 | Offices | §6.4 | `positions`, `position_terms` |
@@ -338,7 +338,8 @@ Every transition writes, in one transaction, the new status on `members/{account
 ### 5.2 Applications, bylaws, address
 
 - **One flow in the web app.** Registering starts on the Register page and runs in three steps, shown at the top of
-  the page: create your login, apply, membership review.
+  the page under the party's intro (the registration form's wording, below): create your login, apply, membership
+  review.
   1. *Create your login* (signed-out visitors): Google, Microsoft or Apple, or an email address and password (§4
      password rules and bot resistance). A password sign-up sends the verification email, whose link leads back to
      Register. Someone who already has a login follows "Sign in" and returns to Register afterwards. The sign-in page
@@ -350,7 +351,9 @@ Every transition writes, in one transaction, the new status on `members/{account
      the ID token says the address is verified (forcing a fresh token once if not) before sending, so an unverified
      submit is stopped in the browser with the answers kept. The api still refuses any application from an unverified
      address.
-  3. *Membership review*: the submitted application's status, until a Membership Admin decides it.
+  3. *Membership review*: the submitted application's status, until a Membership Admin decides it, and the bonus
+     link the intro promises (Tips for Advancing a Brighter Future) once a Membership Admin has set its address.
+     Active members see that link on Register too.
 - **Who sees what.** The web app's menu links (Register, Ballot, Verify, Offices, Admin) and the header's Sign in button
   are the ones the navigation settings give the person's membership state and roles (§10.5). By default everyone sees
   all five links, signed in or not, visitors see Sign in, and each page tells people it is not for what they can do
@@ -363,9 +366,11 @@ Every transition writes, in one transaction, the new status on `members/{account
   and the member can resign on the Account page. Ballot needs a sign-in, and someone on no current roll is told why
   from their membership status (not a member yet, an applicant, lapsed or suspended, or Active but on no roll).
 - `applications/{applicationId}` stores the answers, the bylaws version accepted and that version's content hash
-  (`bylaws_versions/{version}`), so it is provable which text the applicant agreed to. An application is accepted
-  only against the *current* bylaws (version and hash must both match) and only from a verified email address.
-  Bylaws versions are published by a Membership Admin, are immutable, and are ledgered.
+  (`bylaws_versions/{version}`), so it is provable which text the applicant agreed to, and the version of the
+  registration form's wording it answered (`formVersion`, below). An application is accepted only against the
+  *current* bylaws (version and hash must both match) and the *current* wording (409 otherwise, and the Register page
+  reloads the wording, keeping the answers), and only from a verified email address. Bylaws versions are published by
+  a Membership Admin, are immutable, and are ledgered.
 - Amending the bylaws means publishing the next version. A Membership Admin drafts it in Admin → Bylaws from the
   current text, from a Word document (the browser reads the `.docx` and writes out Word's automatic numbering, such
   as "Article IV." or "2.3", so the text keeps it), or blank; edits it line by line or as a whole; reviews a line
@@ -385,31 +390,70 @@ Every transition writes, in one transaction, the new status on `members/{account
   Constitution, Transhumanist principles or the USTP Constitution, for the whole draft or only the lines changed since
   the version it amends. It never blocks publishing, decides nothing and is not ledgered. See [§5.4](#54-bylaws-check).
 - The application asks for: legal and preferred name; date of birth (at least `MINIMUM_MEMBER_AGE`, 18 until USTP
-  decides Q17); two attestations (that minimum age, and support for the USTP platform); state, city and US ZIP code
-  (never a street address); an optional phone number (stored as E.164); optional statement, interests, skills, how they
+  decides Q17); an attestation of that minimum age; state, city and US ZIP code (never a street address); an optional
+  phone number (stored as E.164); the two membership questions (below); optional statement, interests, skills, how they
   heard about USTP, and wishes to volunteer or run for office; and opt-ins to the newsletter and to announcements, each
   stored with the time consent was given. The browser and the api apply the same schema, the api with its own clock.
+  Applications made before the membership questions also attested support for the USTP platform
+  (`attestations.supportsPlatform`); the Core Ideals question replaced that attestation, which, being required, would
+  have refused anyone who could not give it.
+- **Membership questions and member classes.** Two required questions, each answered Yes or No, and neither answer
+  ever refuses or holds up an application:
+  1. "Are you eligible to vote in any United States elections?" (`usVoteEligible`). Yes makes the person a **United
+     States Member**, No an **Allied Member** (`memberClass` in `ustp-domain`). The class is shown to Membership Admins
+     on the profile, in the Applications tab and as the Members table's Class column, filter and CSV column, and to the
+     member on their Account page.
+  2. After the **Core Ideals of the Transhumanist Party** (three by default: significant life extension through science
+     and technology; a culture and politics informed by reason, science and secular values; reducing and eliminating
+     existential risks), "Do you agree with the Core Ideals of the Transhumanist Party listed above (however you may
+     interpret those ideals)?" (`agreesWithCoreIdeals`). Its help text says that voting on platform planks and the
+     party's structure may, at the Chairman's discretion, be limited to those who answered Yes. Nothing restricts votes
+     by it yet: the answer is stored on the member record so that a later roll criterion can (§6.3, *future work*).
+
+  What each answer means is fixed in code, since rules hang off it; only the wording changes. Both answers are copied
+  to `members/{accountId}`, and a later application (after a rejection or resignation) replaces them. Members who joined
+  before the questions, and test personas (§10.4), have both null: "Not asked" in every view. Members cannot change
+  the answers on their Account page, and Membership Admin corrections do not cover them.
+- **The registration form's wording** *(added)*. Membership Admins (Admin → Registration form, the admin section
+  `registration`) change the intro above Register's steps, each question and its help text, the Core Ideals' heading and
+  list (1–10, numbered "Ideal 1." on the page), and the bonus link's title and address (`https://` only; empty shows
+  no link, and no address is filled in by default, never guessed). The panel shows a preview as applicants will see it
+  and lists the unsaved changes. The default (version 0) is the party's own wording; its sentence pointing to "a
+  separate page containing the form" is left out, since here the form is the page itself. Rules
+  (`membership/registration-form.ts` in `ustp-domain`): the intro is plain-text paragraphs separated by a blank line,
+  each put on one line (4,000 characters); every other part is put on one line; a question is needed (300), help is
+  optional (1,000), the heading is needed (120), each ideal at most 500. `registration_form/current` holds the wording
+  with a `version` counter, and each saved version is also kept, never changed, in
+  `registration_form_versions/{version}`, so the wording any application answered can be read back.
+  `GET /v1/registration/form` (public, not cached, since an application must answer the version stored now) and
+  `GET /v1/registration/form/{version}` (public, any saved version, 0 the default) serve it without who changed it;
+  `GET|PUT /v1/admin/registration-form` (Membership Admin) reads it and saves it whole from the version it was edited
+  from (409 if someone saved since; 400 if a question, the heading or every ideal is missing, a part is over its limit
+  or the address is not `https://`). Each save that changes something is ledgered as `registration_form.changed` with
+  each changed part and its new value; like the home page quote it is an internal setting, visible to Auditors only.
 - Data minimization: the date of birth stays on the application, for the Membership Admin's review, and is never
   copied to `members/{accountId}`; the member record gets only what membership uses afterwards (name, state, city, ZIP,
-  phone, and the consents). Members who applied before these fields have `contact` and `communications` null.
+  phone, the consents, and the answers to the two membership questions). Members who applied before these fields have
+  `contact` and `communications` null.
 - Separation of duties within membership: an admin cannot decide their own application or change their own status.
   Status changes other than application decisions (suspend, reinstate, lapse) use a separate endpoint so an
   application can never be bypassed.
 - **Member profiles.** A Membership Admin opens any member from the Members or Applications tab:
   `GET /v1/admin/members/{accountId}` gives the member record, every application the account made with all its
   answers (date of birth included, as it is for the review), and the status history. The profile page shows them, with
-  Change status and Correct details. Opening a profile is not ledgered or logged, like every other admin read. System
+  the member's class and Core Ideals answer beside their status, and Change status and Correct details. Opening a profile is not ledgered or logged, like every other admin read. System
   Admins do not see profiles: their People list stays as in §10.3.
 - **Members tab.** The Membership Admin's list loads every member from `GET /v1/admin/members`, 500 a request, and
   each member's offices from `GET /v1/admin/positions`: the active terms held under the member's account (a candidate
   entered with it, or an appointment, §6.4), each shown as the office's title over its description; anyone else is "Member" while they have a
   membership (active, lapsed, suspended). The browser does the rest, over the whole list: a search of legal and
-  preferred names, a state filter, status filters with counts (Active, Lapsed, Suspended and Resigned always;
-  Applicant and Rejected while someone has that status, since applications are decided on their own tab), sorting by
-  any column, and 50 rows a page. Each row keeps the profile link, the copy-account-ID button, History and Change
+  preferred names, a state filter, a class filter (United States Members, Allied Members, or Not asked), status
+  filters with counts (Active, Lapsed, Suspended and Resigned always; Applicant and Rejected while someone has that
+  status, since applications are decided on their own tab), sorting by any column (Class included, Not asked last),
+  and 50 rows a page. Each row keeps the profile link, the copy-account-ID button, History and Change
   status (§5.1). **Export CSV** builds the file in the browser from the list as filtered and sorted, or from the
-  ticked rows if any: name, account ID, offices, state, status and member-since date (the reader's own date), never
-  contact details or opt-ins; UTF-8 with a byte-order mark for Excel, and a cell a spreadsheet would read as a formula
+  ticked rows if any: name, account ID, offices, state, class, the Core Ideals answer, status and member-since date
+  (the reader's own date), never contact details or opt-ins; UTF-8 with a byte-order mark for Excel, and a cell a spreadsheet would read as a formula
   starts with `'`. The checkboxes only choose what to export: there are no bulk status changes. The api never sees an
   export, so like opening a profile it is not ledgered or logged.
 - **Changing details after joining.** The record keeps what membership uses, and it changes in two ways, each ledgered
@@ -854,6 +898,14 @@ An Auditor (≠ requester, and not a candidate in the election) reviews the name
 A rejected snapshot is marked `rejected`. The roll is frozen from then on: later status changes do not alter it (Q4).
 Every roll entry carries equal weight.
 
+*Future work: a Core Ideals criterion.* The application's second membership question (§5.2) tells applicants that
+voting on platform planks and the party's structure may, at the Chairman's discretion, be limited to members who
+answered Yes. Rolls do not use the answer yet. `members/{accountId}.agreesWithCoreIdeals` keeps it for a criterion such
+as `{status: 'active', agreesWithCoreIdeals: true}`, which would be recorded in the snapshot, the request payload the
+Auditor approves and the signed roll statement like `testVotersOnly`. Still to decide: who switches it on for an
+election (the Chairman, through the Election Admin who requests the roll?), and what happens to members who joined
+before the question (null: never asked).
+
 **Rehearsal rolls** (testing mode only, §10.4): `POST …/roll` with `voters: 'test_voters'` snapshots only the Active
 test voter personas, so a rehearsal's turnout and quorum are its own and not diluted by real members. Its criteria
 are `{status: 'active', testVotersOnly: true}`, and that is recorded wherever the roll is: in the snapshot, in the
@@ -1194,7 +1246,7 @@ one, is skipped. Both are official election notices, not marketing: they go out 
 announcement opt-ins (§5.2), which cover only those two kinds of mail, and there is no opt-out, since there are at
 most two per election the member may vote in. A rehearsal roll (§6.3) gets no email: where testing mode is on, each
 test voter's notices are recorded in the outbox instead, addressed to nobody, since test voters have no address; where
-it is off, nothing is recorded.
+it is off, nothing is recorded. A demo election (§10.4) always has a rehearsal roll, so it mails nobody.
 
 **What the reminder gives away.** To choose its recipients the worker reads who has voted (participation records,
 never ballots), so sending it tells Amazon SES which roll members had not voted a day before the close: whoever runs
@@ -1597,7 +1649,7 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled` (M2–M3a), `ballots.sealed`,
   `election.sealed` (M3b), `results.computed` (M4a), `results.certified`, `election.pool_key_destroyed`,
   `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed`,
-  `navigation.changed`, `home_quote.changed`, `hub.changed`, `notice.sent`, `notice.resend_requested`, `notice.settings_changed`, `anthropic_key.changed`, `position_term.appointed` (M5). The authoritative list is `LEDGER_EVENT_TYPES` in
+  `navigation.changed`, `home_quote.changed`, `hub.changed`, `notice.sent`, `notice.resend_requested`, `notice.settings_changed`, `anthropic_key.changed`, `position_term.appointed`, `registration_form.changed` (M5). The authoritative list is `LEDGER_EVENT_TYPES` in
   `ustp-domain`.
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
   entries are public; the election notice entries (`notice.*`, §6.8), about delivering mail rather than the election's
@@ -1795,7 +1847,7 @@ results page, the CLI and the tests pass it that entry.
 
 | Capability | Membership Admin | Election Admin | Auditor | System Admin |
 |---|:-:|:-:|:-:|:-:|
-| Triage applications and photos; view member profiles; change member status; correct member details (§5.2) | ● | | | |
+| Triage applications and photos; view member profiles; change member status; correct member details; change the registration form's wording (§5.2) | ● | | | |
 | Create/edit draft elections, contests, proposals; delete a cancelled election nobody voted in, or a finished rehearsal in testing mode (at once; §6.1) | | ● | | |
 | Request roll snapshot, scheduling, certification, cancellation | | ● | | |
 | Define or change offices (at once; §6.4); request an appointment to an office or the end of a term (§6.4) | ● | ● | | |
@@ -1907,10 +1959,10 @@ different account on each side. Testing mode lets one System Admin do that alone
   rules, and ledger entries name the persona. The api logs each acting request with operator, persona, method and
   path; that log is what ties a persona's actions to a real person. Linking and unlinking logins refuse while acting,
   and `GET /v1/me` reports `testing.enabled` and `testing.operator`.
-- **Web app:** Admin → Testing (System Admins, testing mode only) creates personas and starts acting as one. A bar
-  under the menu names the persona, switches to another or stops. The choice is per browser tab (sessionStorage), so
-  two tabs can be two personas; switching reloads the page as the new persona, and ballot receipts are kept per
-  persona.
+- **Web app:** Admin → Testing (System Admins, testing mode only) creates personas, starts acting as one and makes
+  demo elections. A bar under the menu names the persona, switches to another or stops. The choice is per browser tab
+  (sessionStorage), so two tabs can be two personas; switching reloads the page as the new persona, and ballot receipts
+  are kept per persona.
 - **Rehearsal roll:** the Election Admin can request a roll of the test voters only (§6.3), which the editor offers as
   "Request rehearsal roll" in testing mode and marks "Rehearsal roll: test voters only". The verify CLI reads who the
   roll holds from the ledger and reports a rehearsal as one.
@@ -1932,6 +1984,46 @@ different account on each side. Testing mode lets one System Admin do that alone
   them. The local seed (`npm run seed:emulators -w apps/server`) imports them. A server unit test checks that every
   file parses, makes a draft ready to schedule and plans its votes, and that the amended bylaws file is what the
   amendments its votes pass give.
+- **Demo elections** *(added 2026-10-28)*: `POST /v1/testing/demo-elections` (System Admin, testing mode only, 404
+  otherwise; "Create demo election" in Admin → Testing) makes up an election at random and schedules it as a
+  rehearsal in one request, so a demonstration can go from voting to results without building a ballot first.
+  - **What it is:** `demoElection` in `ustp-domain`, a pure function of a random number generator (`seededRandom`),
+    builds an `ustp.election` package (§6.7) on Transhumanist themes from fixed word lists: a title "[Demo] {year}
+    {group} {event}", such as "[Demo] 2027 Longevity Caucus Officer Election"; a description saying it is a
+    demonstration, made up at random, with invented candidates, test voters and no email; one leadership office (Chair,
+    Vice-Chair, Secretary or Treasurer) and one or two others (such as Director of Life-Extension Outreach), each with
+    two to four candidates counted by instant runoff, plurality or approval; sometimes a committee electing two or three
+    (block voting); and up to two ballot measures (amending a platform plank on morphological freedom, the rights of
+    artificial minds, and so on) passing by a majority or two thirds of the yes and no votes, each text ending "This
+    text was made up for a demo election. It is not party policy." Secret or roll-call is drawn too, unless the request
+    says which, with the smallest anonymity threshold, 2. Every candidate is invented: a first name and a surname from
+    two lists that the unit tests check against well-known transhumanists and party figures, with a short platform of a
+    background and two pledges. No contest fills an office and no candidate is linked to an account. The same seed
+    gives the same ballot; the request may give one (`seed`), and otherwise a random one is used and returned.
+  - **How it is made:** through the ordinary services, as a rehearsal is built by hand. The admin personas are created
+    if missing and test voters added until five are Active (409 while no bylaws are published, or while a persona's
+    role has been revoked). The Test Election Admin imports the package, opening a minute later (`opens: 'now'`, the
+    worker's next tick) or five (`'soon'`) and open for `votingMinutes` (5 to 1,440; 15 by default), and requests a
+    rehearsal roll and the schedule; the Test Auditor approves both. Each request and decision gives the reason "Demo
+    election, made up at random for testing (Admin → Testing)", and every check of those steps applies: the two-person
+    rule between the personas, the definition and roll hashes, the tie-break seed. The approvals need a sign-in within
+    the last 15 minutes, so that is checked before anything is written, and a demo that fails on the way is cancelled
+    and deleted again as a draft. The api logs that the System
+    Admin acted as the two personas, as for any acting request. The answer is the scheduled election's detail and the
+    seed.
+  - **Its roll** is the test voters, never the System Admin or real members: a real account on the roll would make it
+    no rehearsal, so it would be mailed and could not be deleted once anyone voted. The System Admin votes by acting as
+    a test voter (the card offers "Vote as Test Voter 1", and "Open as the Test Election Admin" for the editor).
+  - **No email:** a rehearsal roll's notices go to the outbox, addressed to nobody, whatever `MAIL_TRANSPORT` says
+    (§6.8), so neither the voting-open notice nor the reminder reaches anyone, and the deployment's mail transport is
+    never called.
+  - **In the ledger** nothing about it is left out: the ledger is one append-only chain (§8.2). Its entries are a
+    rehearsal's: the requests by the Test Election Admin and the decisions by the Test Auditor (Auditors only, with
+    the demo reason), and in public `roll.approved` with `testVotersOnly`, which the verify CLI reports as a rehearsal,
+    then `election.scheduled` and the rest. Its title, starting "[Demo]", and its description belong to the frozen
+    definition, so they mark it as a demo on every page that shows the election and in its `election.deleted` entry.
+  - **Afterwards** it is voted in, closed, sealed, counted and certified (by the personas) like any election, and
+    deleted like any rehearsal once certified or cancelled (§6.1), since it seats nobody.
 - **Clearing a rehearsal away:** once certified or cancelled, a rehearsal can be deleted permanently, ballots and
   results included, unless it seated someone in an office (§6.1, "Deleting a rehearsal"). Its ledger entries stay.
 - **Effect on the record:** what a persona does is real data in that deployment's ledger, rolls and results. That is
@@ -1948,8 +2040,8 @@ page itself, `/`, is the party's link hub (§10.6).
 - **Columns (audiences):** signed out; signed in with no membership; each member status (applicant, Active, lapsed,
   suspended, resigned, rejected; §5.1); then each staff role. **Rows:** Register, Ballot, Verify, Offices (the public
   list of office holders, §6.4) and Admin; Sign in (the header's button for visitors); the admin sections (Applications,
-  Members, Photos, Bylaws, Elections, Offices, Approvals, People, Sign-in methods, Claude, Election emails, Audit ledger,
-  Testing, Navigation, Home page quote); and "Starts on". The vocabulary, defaults
+  Members, Photos, Bylaws, Registration form, Elections, Offices, Approvals, People, Sign-in methods, Claude, Election
+  emails, Audit ledger, Testing, Navigation, Link hub, Home page quote); and "Starts on". The vocabulary, defaults
   and rules are `MENU_LINKS`, `ADMIN_SECTIONS`, `AUDIENCES` and the functions beside them in `ustp-domain`
   (`governance/navigation.ts`), shared by the API and the web app.
 - **Union.** A person is shown everything their membership state is shown plus everything each role they hold is
@@ -2162,9 +2254,11 @@ Physically, registration collections are top-level and election data lives under
 | `account_identities/{uid}` | Identity Platform uid | create/delete | → `accountId`, provider, linkedAt |
 | `account_factors/{accountId}/factors/{factorId}` | | mutable | mirror of MFA enrollment, no secrets |
 | `sign_in_methods/{method}` | provider ID | mutable | enabled flag (auth switches) |
-| `members/{accountId}` | accountId | mutable | current status, legal and preferred name, state/district, city + ZIP + phone, email consents, bylaws version, memberSince; details change only as §5.2 says |
+| `members/{accountId}` | accountId | mutable | current status, legal and preferred name, state/district, city + ZIP + phone, email consents, the two membership answers (`usVoteEligible`, giving the class, and `agreesWithCoreIdeals`), bylaws version, memberSince; details change only as §5.2 says |
 | `member_status_history/{id}` | auto | append-only | from, to, reason, actor, ledger seq |
-| `applications/{applicationId}` | auto | status only | answers (incl. date of birth and attestations, §5.2), bylaws version + hash |
+| `applications/{applicationId}` | auto | status only | answers (incl. date of birth, attestations and the two membership questions, §5.2), bylaws version + hash, registration form version |
+| `registration_form/current` | `current` | replaced whole, by one Membership Admin | the registration form's wording: intro, both questions and their help, Core Ideals heading and list, bonus link, version, updatedAt, updatedBy (§5.2) *(added)* |
+| `registration_form_versions/{version}` | version | immutable | each saved version of that wording (§5.2) *(added)* |
 | `bylaws_versions/{version}` | version | immutable | text, content hash *(added)*; `adoptedIn` when an election's amendments gave it (§6.6) |
 | `bylaws_checks/{checkId}` | UUIDv7 | queued → running → done / failed | draft text and hash, scope and changed lines, requester, findings, references used, model, token usage (§5.4) *(added)* |
 | `bylaws_check_references/{id}` | reference ID | replaced daily | cached text of a party page, URL, read and modified times, SHA-256 (§5.4) *(added)* |
@@ -2234,7 +2328,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /home-quote` | P | the voting home's quote: whether it is shown, its words, who said them and the source (§10.5) |
 | `GET /hub` · `GET /hub/discord` · `GET /hub/logo/{sha256}` | P | the link hub as the page shows it; how many are online in the party's Discord, from Discord's widget, cached five minutes; an uploaded logo, cached for good (§10.6) |
 | `POST /hub/clicks/{target}` | P | count a click on a link or the Discord button the hub shows (204; 404 for anything else); counts only (§10.6) |
-| `POST /registration/applications` · `GET /registration/applications/me` | M | apply; status |
+| `GET /registration/form` · `GET /registration/form/{version}` | P | the registration form's wording, current or any saved version (0 is the default), without who changed it (§5.2) |
+| `POST /registration/applications` · `GET /registration/applications/me` | M | apply (against the current bylaws and form version; 409 otherwise); status |
 | `POST /me/resign` | M | resign membership |
 | `POST /me/details` | M | own preferred name, state, city, ZIP, phone and email opt-ins (§5.2) |
 | `PUT /me/photo` · `GET /me/photo` · `GET /me/photo/image` · `DELETE /me/photo` | M (member record) | profile photo |
@@ -2254,6 +2349,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /admin/bylaws` | Membership Admin | publish a bylaws version; `amends` must name the current version, and no election amending it may be scheduled, open or closed (409 otherwise, §6.6); with `adoptedIn`, exactly the text a certified election adopted |
 | `POST /admin/bylaws/checks` · `GET /admin/bylaws/checks/{checkId}` | Membership Admin | queue the advisory bylaws check of a draft (202; 409 while the admin's last one runs, 429 past 20 a day, 503 when off); read it until done (§5.4) |
 | `GET /admin/applications` · `POST /admin/applications/{id}/decision` | Membership Admin | registration triage |
+| `GET\|PUT /admin/registration-form` | Membership Admin | the registration form's wording with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 without a question, the heading or an ideal, a part over its limit, or a bonus link that is not `https://`), each save kept as a version and ledgered (§5.2) |
 | `GET /admin/members` · `GET /admin/members/{accountId}/history` | Membership Admin | member list (paged), status history |
 | `GET /admin/members/{accountId}` · `POST /admin/members/{accountId}/details` | Membership Admin | member profile (record, applications with answers, history, whether the daily quote and joke is on); correct names, state, contact with a reason (§5.2, §4.1) |
 | `POST /admin/members/{accountId}/status` | Membership Admin | status changes |
@@ -2286,6 +2382,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET\|PUT /admin/home-quote` | System Admin | the voting home's quote with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if shown without its words or who said them, or a part over its limit), ledgered (§10.5) |
 | `GET\|PUT /admin/hub` · `PUT /admin/hub/logo` · `GET /admin/hub/clicks` | System Admin | the link hub with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if something shown is unfinished, an address, the accent or the logo cannot be used), ledgered; upload a logo (the image as the body; shown once saved); each link's clicks in the last 30 days and in all (§10.6) |
 | `GET\|POST /testing/personas` · header `X-Act-As` on any signed-in route | System Admin, testing mode only (404 otherwise) | test personas and acting as them (§10.4) |
+| `POST /testing/demo-elections` | System Admin, testing mode only (404 otherwise, whatever the body) | make up a demo election at random and schedule it as a rehearsal, built by the Test Election Admin and approved by the Test Auditor; the scheduled election and its seed (201; 403 to re-authenticate first, 409 while no bylaws are published; §10.4) |
 
 Errors use RFC 9457 problem details. Request bodies are validated against schemas shared with the web app.
 
@@ -2457,6 +2554,10 @@ every 15 seconds in place of Cloud Scheduler.
   - the clock moves past the closing; the worker seals and counts; the results must be what the file expects;
   - certification, and for amendments the adopted bylaws (their hash as expected, adopted once);
   - `ustp-verify` runs in the same process against the api and must report nothing failed or pending.
+
+  `demo-elections.int.test.ts` runs a demo election (§10.4) the same way to certified results and deletion, and checks
+  that both of its notices reach only the outbox, addressed to nobody, with the deployment's mail transport never
+  called.
 - **Web:** component tests; Playwright end-to-end for register → vote → verify.
 - **Independent verification:** the `ustp-verify` CLI (`packages/verify`, M4) consumes only public artifacts: the
   `/v1/public/...` endpoints and, optionally, anchor objects downloaded from the bucket. It checks the ledger chain,
@@ -2532,7 +2633,8 @@ Decisions for USTP; the design's proposed default is in brackets.
     FROM domain and DMARC (infra README "Election notices")]
 16. **GCP region** for Cloud Run, Firestore and the buckets. [`us-central1`, the cheapest free-tier region]
 17. **Membership requirements:** minimum age, and the wording of the platform attestation applicants confirm. [18; "I
-    support the platform and goals of the US Transhumanist Party."]
+    support the platform and goals of the US Transhumanist Party." Decided 2026-10-28: the attestation is dropped, and
+    the application asks instead whether the applicant agrees with the Core Ideals, where No never refuses (§5.2)]
 18. **Bylaws check (§5.4), consistency check (§5.5) and election setup check (§6.9):** may bylaws drafts, an
     election's proposals, and its rules and proposal texts with the bylaws, be sent to Anthropic, under whose account
     and spend limit, and in which environments? May the election setup check's notes be shown to every member beside
@@ -2557,6 +2659,4 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Word export done:* the ballot and results as a `.docx` built in the browser, for Word and Google Docs, from the results page, the ballot page and the election editor (§9). *Synopsis done:* the results in brief, as the party publishes them, first on the results page (printable) and first in the Word file (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
-
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2), and at most two roles per person, the Auditor holding no other (§10.1); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list, and the emails to voters beside them from their counts (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); the home page laid out as a sign-in landing page, a quote about voting over a sunrise drawn for the project beside the sign-in card or the signed-in cards, the quote FDR's from his 1938 Marietta, Ohio address with its source recorded, changed or switched off by one System Admin and ledgered as `home_quote.changed` (§10.5), since moved to `/vote` as the voting home; the home page `/` as the party's link hub, managed by System Admins (profile, accent and default theme, sections and links with an icon row and a star, the Discord card with an online count the API reads from Discord), ledgered as `hub.changed`, with click counts per link and no personal data, self-hosted fonts and a light and a dark theme (§10.6); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES with bounces read from SQS, and System Admins' settings for them (each on or off, the reminder's lead time, the contact, each subject and opening; ledgered), and an outbox in place of mail with the emulators (§6.8; SES itself not yet set up in any project); the platform consistency check with Claude, once per person per election, from the ballot for voters on the roll and from the election editor for Election Admins and Auditors, comparing the proposals with each other and with the documents an Election Admin chooses for the election, any of the USTP Constitution (its Article VI is the Platform), the Transhumanist Bill of Rights, the bylaws in force and the US Constitution, each result keeping what it was compared with (§5.5; off in real projects until Q18 is settled, and not yet run against Anthropic's API); the Anthropic API key added, replaced or removed by a System Admin under Admin › Claude, tried with Anthropic first and kept in Secret Manager, where the api can store it but not read it, ledgered as `anthropic_key.changed` (§5.6); the election setup check with Claude, run once per version of an election by an Election Admin or Auditor, comparing its rules, offices and proposal texts with the bylaws, with its notes beside the contests on the ballot, the results and in the editor once the election is scheduled, and non-blocking seat advisories (§6.9; off in real projects until Q18 is settled, and not yet run against Anthropic's API); appointments to offices without an election, for first holders and between elections, requested by a Membership or Election Admin and approved by an Auditor, only an Active member and only to a free seat, ledgered as the public `position_term.appointed`, with Appoint in the Offices tab and on the member profile and a public Offices page (§6.4), in everyone's menu by default, the menu bar keeping one row by putting the links that do not fit behind a More button (§10.5); every page but the hub and the voting home styled like the voting home, its picture behind and the page on one card lifted off it, with 16 px text and larger headings (§10.5); the ballot list as a card per election in the voting home's style, and the list, the ballot and its Cast dialog by touch: 48 px buttons and choices, as wide as their card on a phone (§10.5). *Still to do:* the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
-
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2), and at most two roles per person, the Auditor holding no other (§10.1); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4), and demo elections on Transhumanist themes, made up at random and scheduled as rehearsals in one click, mailing nobody (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list, and the emails to voters beside them from their counts (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); the home page laid out as a sign-in landing page, a quote about voting over a sunrise drawn for the project beside the sign-in card or the signed-in cards, the quote FDR's from his 1938 Marietta, Ohio address with its source recorded, changed or switched off by one System Admin and ledgered as `home_quote.changed` (§10.5), since moved to `/vote` as the voting home; the home page `/` as the party's link hub, managed by System Admins (profile, accent and default theme, sections and links with an icon row and a star, the Discord card with an online count the API reads from Discord), ledgered as `hub.changed`, with click counts per link and no personal data, self-hosted fonts and a light and a dark theme (§10.6); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES with bounces read from SQS, and System Admins' settings for them (each on or off, the reminder's lead time, the contact, each subject and opening; ledgered), and an outbox in place of mail with the emulators (§6.8; SES itself not yet set up in any project); the platform consistency check with Claude, once per person per election, from the ballot for voters on the roll and from the election editor for Election Admins and Auditors, comparing the proposals with each other and with the documents an Election Admin chooses for the election, any of the USTP Constitution (its Article VI is the Platform), the Transhumanist Bill of Rights, the bylaws in force and the US Constitution, each result keeping what it was compared with (§5.5; off in real projects until Q18 is settled, and not yet run against Anthropic's API); the Anthropic API key added, replaced or removed by a System Admin under Admin › Claude, tried with Anthropic first and kept in Secret Manager, where the api can store it but not read it, ledgered as `anthropic_key.changed` (§5.6); the election setup check with Claude, run once per version of an election by an Election Admin or Auditor, comparing its rules, offices and proposal texts with the bylaws, with its notes beside the contests on the ballot, the results and in the editor once the election is scheduled, and non-blocking seat advisories (§6.9; off in real projects until Q18 is settled, and not yet run against Anthropic's API); appointments to offices without an election, for first holders and between elections, requested by a Membership or Election Admin and approved by an Auditor, only an Active member and only to a free seat, ledgered as the public `position_term.appointed`, with Appoint in the Offices tab and on the member profile and a public Offices page (§6.4), in everyone's menu by default, the menu bar keeping one row by putting the links that do not fit behind a More button (§10.5); every page but the hub and the voting home styled like the voting home, its picture behind and the page on one card lifted off it, with 16 px text and larger headings (§10.5); the ballot list as a card per election in the voting home's style, and the list, the ballot and its Cast dialog by touch: 48 px buttons and choices, as wide as their card on a phone (§10.5); the Register page's intro and the application's two membership questions, eligibility to vote in US elections (a United States or an Allied Member) and agreement with the Core Ideals, neither ever refusing an application, all worded by Membership Admins under Admin › Registration form, each version kept and ledgered as `registration_form.changed`, with the class in the Members table, its filter and CSV (§5.2). *Still to do:* a roll criterion on the Core Ideals answer (§6.3); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |

@@ -39,6 +39,7 @@ export const AUDIENCE_CAPTIONS: Readonly<Record<Audience, string>> = {
   election_admin: 'Elections, offices',
   auditor: 'Approvals, the ledger',
   system_admin: 'Roles, settings',
+  course_admin: 'Course content',
 };
 
 export const MENU_LABELS: Readonly<Record<MenuLink, string>> = {
@@ -46,6 +47,7 @@ export const MENU_LABELS: Readonly<Record<MenuLink, string>> = {
   ballot: 'Ballot',
   verify: 'Verify',
   offices: 'Offices',
+  course: 'Course',
   admin: 'Admin',
   signin: 'Sign in',
 };
@@ -55,6 +57,7 @@ export const MENU_CAPTIONS: Readonly<Record<MenuLink, string>> = {
   ballot: 'Cast votes, see results',
   verify: 'Check a vote receipt',
   offices: 'The public page of who holds each office',
+  course: 'Public Transhumanism lessons, profiles and certification',
   admin: 'The admin console',
   signin: "The header's button, for visitors",
 };
@@ -65,6 +68,7 @@ export const SECTION_LABELS: Readonly<Record<AdminSection, string>> = {
   members: 'Members',
   photos: 'Photos',
   bylaws: 'Bylaws',
+  registration: 'Registration form',
   elections: 'Elections',
   offices: 'Offices',
   approvals: 'Approvals',
@@ -77,6 +81,7 @@ export const SECTION_LABELS: Readonly<Record<AdminSection, string>> = {
   navigation: 'Navigation',
   hub: 'Link hub',
   quote: 'Home page quote',
+  course: 'Course administration',
 };
 
 export const SECTION_CAPTIONS: Readonly<Record<AdminSection, string>> = {
@@ -84,6 +89,7 @@ export const SECTION_CAPTIONS: Readonly<Record<AdminSection, string>> = {
   members: 'Find members, change status, correct details',
   photos: 'Review flagged profile photos',
   bylaws: 'Draft, check and publish the bylaws',
+  registration: "The Register page's intro, questions and Core Ideals",
   elections: 'Set up elections, rolls and results',
   offices: 'Offices and who holds them',
   approvals: 'Two-person requests waiting for a decision',
@@ -96,6 +102,7 @@ export const SECTION_CAPTIONS: Readonly<Record<AdminSection, string>> = {
   navigation: 'Who sees which link (this page)',
   hub: "The home page's links, profile and Discord card, and their clicks",
   quote: 'Change the quote on the home page, or switch it off',
+  course: 'Draft, attribute and publish lessons, quizzes and profiles',
 };
 
 /** "Ballot", "Admin › Elections". */

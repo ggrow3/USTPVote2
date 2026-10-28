@@ -20,7 +20,10 @@ export type MemberStatusChangedPayload = {
 };
 
 /** What a first status change sets on the member record: from an application, or for a test voter persona. */
-export type MemberProfile = Pick<MemberRecord, 'legalName' | 'preferredName' | 'state' | 'contact' | 'communications' | 'bylawsVersion'>;
+export type MemberProfile = Pick<
+  MemberRecord,
+  'legalName' | 'preferredName' | 'state' | 'contact' | 'communications' | 'usVoteEligible' | 'agreesWithCoreIdeals' | 'bylawsVersion'
+>;
 
 export interface MemberStatusChange {
   readonly accountId: string;
@@ -59,6 +62,9 @@ export function memberStatusTransition(change: MemberStatusChange): StatusTransi
     state: profile.state,
     contact: profile.contact ?? null,
     communications: profile.communications ?? null,
+    // Records from before the membership questions have no answers.
+    usVoteEligible: profile.usVoteEligible ?? null,
+    agreesWithCoreIdeals: profile.agreesWithCoreIdeals ?? null,
     bylawsVersion: profile.bylawsVersion,
     memberSince: change.current?.memberSince ?? (change.to === 'active' ? change.at : null),
     statusChangedAt: change.at,
@@ -271,6 +277,8 @@ export function testVoterAdmission(persona: {
       state: 'DC',
       contact: null,
       communications: null,
+      usVoteEligible: null,
+      agreesWithCoreIdeals: null,
       bylawsVersion: persona.bylawsVersion,
     },
     at: persona.at,
