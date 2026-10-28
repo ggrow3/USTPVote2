@@ -11,6 +11,7 @@ usePageTitle(() => hub.value.profile.name);
 
 <template>
   <q-page class="ustp-hub-page">
+    <div class="q-pa-md text-center"><q-btn color="deep-orange" icon="school" label="Transhumanism Academy — Start the course" to="/academy" /></div>
     <HubView :hub="hub" />
   </q-page>
 </template>
