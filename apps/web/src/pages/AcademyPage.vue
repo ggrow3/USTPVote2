@@ -2,26 +2,37 @@
 import { computed, ref, watch } from 'vue';
 import { usePageTitle } from '../a11y.js';
 import { session } from '../session.js';
+import { api, errorMessage } from '../api.js';
 import { COURSE_VERSION, courseSections } from '../academy/course.js';
 
 usePageTitle('Introduction to Transhumanism');
 const active = ref(courseSections[0]!.id);
 const completed = ref<string[]>([]);
-const storageKey = computed(() => session.user ? `ustp-academy:v${COURSE_VERSION}:${session.user.uid}` : null);
-watch(storageKey, (key) => {
+const busy = ref(false);
+const error = ref('');
+watch(() => session.user?.uid, async (uid) => {
   completed.value = [];
-  if (!key) return;
+  error.value = '';
+  if (!uid) return;
+  busy.value = true;
   try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(key) || '[]');
-    if (Array.isArray(parsed)) completed.value = parsed.filter((id): id is string => typeof id === 'string' && courseSections.some((s) => s.id === id));
-  } catch { completed.value = []; }
+    const result = await api<{ courseVersion: number; sections: string[] }>('GET', '/v1/academy/progress', undefined, { actAs: null });
+    if (session.user?.uid === uid && result.courseVersion === COURSE_VERSION) completed.value = result.sections.filter((id) => courseSections.some((s) => s.id === id));
+  } catch (e) { error.value = errorMessage(e); }
+  finally { busy.value = false; }
 }, { immediate: true });
 const current = computed(() => courseSections.find((s) => s.id === active.value) ?? courseSections[0]!);
 const percent = computed(() => Math.round(100 * completed.value.length / courseSections.length));
-function toggle(id: string) {
-  if (!storageKey.value) return;
-  completed.value = completed.value.includes(id) ? completed.value.filter((v) => v !== id) : [...completed.value, id];
-  localStorage.setItem(storageKey.value, JSON.stringify(completed.value));
+async function toggle(id: string) {
+  if (!session.user || busy.value) return;
+  const completedNext = !completed.value.includes(id);
+  busy.value = true;
+  error.value = '';
+  try {
+    await api('PUT', `/v1/academy/progress/${id}`, { completed: completedNext, lessonVersion: COURSE_VERSION }, { actAs: null });
+    completed.value = completedNext ? [...completed.value, id] : completed.value.filter((v) => v !== id);
+  } catch (e) { error.value = errorMessage(e); }
+  finally { busy.value = false; }
 }
 </script>
 
@@ -35,8 +46,10 @@ function toggle(id: string) {
         <router-link to="/signin">Sign in</router-link> to mark lessons complete. You can read every lesson without an account.
       </q-banner>
       <q-banner v-else class="bg-blue-grey-1 text-dark q-mb-md">
-        Progress is currently saved in this browser on this device, not yet synchronized to your account across devices.
+        Your progress is saved to your account and can be resumed on another device.
       </q-banner>
+      <q-banner v-if="error" class="bg-red-1 text-negative q-mb-md" role="alert">{{ error }}</q-banner>
+      <q-linear-progress v-if="busy" indeterminate class="q-mb-sm" />
       <div class="text-subtitle1">{{ completed.length }} of {{ courseSections.length }} sections complete ({{ percent }}%)</div>
       <q-linear-progress :value="percent / 100" size="12px" rounded color="deep-orange" class="q-my-md" />
       <div class="row q-col-gutter-md">
@@ -57,7 +70,7 @@ function toggle(id: string) {
               <p v-for="(paragraph, index) in current.lesson" :key="index">{{ paragraph }}</p>
               <h3 class="text-subtitle1">Reflection</h3>
               <p>{{ current.reflection }}</p>
-              <q-checkbox :model-value="completed.includes(current.id)" :disable="!session.user" label="Mark this section as complete" @update:model-value="toggle(current.id)" />
+              <q-checkbox :model-value="completed.includes(current.id)" :disable="!session.user || busy" label="Mark this section as complete" @update:model-value="toggle(current.id)" />
               <p v-if="percent === 100" class="text-positive text-weight-bold">All sections completed! This is a self-reported reading milestone, not a graded certification.</p>
             </q-card-section>
           </q-card>
