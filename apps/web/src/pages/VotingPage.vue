@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, reactive, watch } from 'vue';
-import type { ApprovalRequestRecord, ElectionRecord, ProfilePhotoRecord, VoterElection } from 'ustp-domain';
+import { preferencesOf, type ApprovalRequestRecord, type ElectionRecord, type ProfilePhotoRecord, type VoterElection } from 'ustp-domain';
 import { focusSoon, usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
 import HomeBackdrop from '../components/HomeBackdrop.vue';
 import SignInForm from '../components/SignInForm.vue';
+import DailyQuoteCard from '../daily/DailyQuoteCard.vue';
 import HomeQuoteFigure from '../governance/HomeQuoteFigure.vue';
 import { homeQuoteState } from '../governance/home-quote.js';
 import { shown, viewer } from '../governance/navigation.js';
@@ -27,6 +28,8 @@ import { session } from '../session.js';
  * person can do. Phones stack the card under the quote.
  */
 const signedIn = computed(() => !!session.user);
+/** The daily quote and joke, for those who turned it on in their account (design §4.1). */
+const dailyOn = computed(() => preferencesOf(session.me?.account).dailyQuote);
 usePageTitle(() => (signedIn.value ? 'Voting home' : 'Member voting'));
 
 const quote = computed(() => (homeQuoteState.quote?.shown ? homeQuoteState.quote : null));
@@ -154,6 +157,7 @@ watch(signedIn, (now) => now && focusSoon('main h1'));
             </ul>
           </q-card-section>
         </q-card>
+        <DailyQuoteCard v-if="dailyOn" class="ustp-landing__card q-mt-md" />
       </div>
     </div>
   </q-page>

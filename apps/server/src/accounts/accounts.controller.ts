@@ -1,6 +1,6 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, Res } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
-import { linkIdentitySchema, ROLES, type LinkIdentityInput } from 'ustp-domain';
+import { accountPreferencesSchema, linkIdentitySchema, ROLES, type AccountPreferencesInput, type LinkIdentityInput } from 'ustp-domain';
 import { z } from 'zod';
 import { Ctx, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
@@ -30,6 +30,12 @@ export class AccountsController {
     const result = await this.accounts.create(ctx);
     void reply.status(result.created ? 201 : 200);
     return result;
+  }
+
+  /** The caller's own display choices (design §4.1); `GET /v1/me` returns them on the account. */
+  @Put('me/preferences')
+  preferences(@Ctx() ctx: RequestContext, @Body(new ZodPipe(accountPreferencesSchema)) body: AccountPreferencesInput) {
+    return this.accounts.updatePreferences(ctx, body);
   }
 
   @Post('me/identities')

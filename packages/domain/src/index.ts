@@ -267,3 +267,13 @@ export type {
   ConsistencyRunResult,
   ProposalText,
 } from './consistency-check.js';
+export {
+  accountPreferencesSchema,
+  DAILY_JOKES,
+  DAILY_QUOTES,
+  dailyPick,
+  dayNumber,
+  DEFAULT_ACCOUNT_PREFERENCES,
+  preferencesOf,
+} from './daily.js';
+export type { AccountPreferences, AccountPreferencesInput, DailyJoke, DailyQuote } from './daily.js';

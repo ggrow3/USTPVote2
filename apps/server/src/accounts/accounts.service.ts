@@ -2,8 +2,11 @@ import { BadRequestException, ConflictException, ForbiddenException, Inject, Inj
 import type { Query } from 'firebase-admin/firestore';
 import {
   Collections,
+  DEFAULT_ACCOUNT_PREFERENCES,
   isSignInProvider,
   uuidv7,
+  type AccountPreferences,
+  type AccountPreferencesInput,
   type AccountRecord,
   type AccountSummary,
   type IdentityRecord,
@@ -67,6 +70,18 @@ export class AccountsService {
       mfa: { required: this.config.adminMfaRequired && roles.length > 0, signedInWithMfa },
       testing,
     };
+  }
+
+  /**
+   * The caller's own display choices (design §4.1), such as the daily quote and joke. Not ledgered: they decide nothing.
+   * A Membership Admin reads them on the member's profile.
+   */
+  async updatePreferences(ctx: RequestContext, input: AccountPreferencesInput): Promise<AccountPreferences> {
+    const ref = this.firebase.db.collection(Collections.accounts).doc(requireAccount(ctx));
+    if (!(await ref.get()).exists) throw new NotFoundException('create your account first (POST /v1/accounts)');
+    const preferences: AccountPreferences = { ...DEFAULT_ACCOUNT_PREFERENCES, ...input };
+    await ref.update({ preferences });
+    return preferences;
   }
 
   /**
