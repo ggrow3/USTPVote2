@@ -1929,8 +1929,7 @@ when the account was created, the member status if there is a member record, and
 - Roles come from one query for every unrevoked assignment: role holders are few, and the list and the role filter
   both need all of them. The query needs only single-field indexes.
 - The web app's People tab (System Admin) shows the list with role chips and an Offices column *(added)*: the offices
-  each account holds now, from the offices list (`GET /v1/admin/positions`, readable by every role but Course Admins;
-  §6.4), as the
+  each account holds now, from the offices list (`GET /v1/admin/positions`, readable by every role; §6.4), as the
   Members tab shows them (§5.2), so an admin sees roles and offices side by side. The role-change form picks the person from
   the same list, typing an account ID stays as a fallback, and the form explains a refusal before sending it with the
   API's own checks (`checkCanChangeRole` in `ustp-domain`: not for your own account, compatible with the roles held, at most two roles).
@@ -2050,9 +2049,9 @@ page itself, `/`, is the party's link hub (§10.6).
   what the persona would be.
 - **Locked cells.** Admin sections exist only for roles: a membership state alone has none. A section is locked off
   for every role the API does not let use it (`SECTION_ROLES`, the `@Roles` of the routes it calls; a server unit
-  test compares the two route by route). Offices and Approvals are open to every role but Course Admins (who only
-  publish learning material), since every other admin may read the offices and look at pending requests. A role's
-  Admin link is not switched on its own: it shows while the role has any section. Sign in is for signed-out visitors only, so it is locked off for everyone signed in. **Lock-out
+  test compares the two route by route). Offices and Approvals are open to every role, since every admin may read
+  the offices and look at pending requests. A role's Admin link is not switched on its own: it shows while the role
+  has any section. Sign in is for signed-out visitors only, so it is locked off for everyone signed in. **Lock-out
   guard:** People (where roles change) and Navigation stay on for System Admins, so nobody can hide from them the tools
   that put everything else back; and signed-out visitors keep at least one way to sign in (Sign in, Register's first
   step, or Ballot or Admin, which send them to sign in), since every admin arrives as a visitor. The API refuses
@@ -2365,7 +2364,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `PUT /admin/elections/{id}/consistency-check/documents` | Election Admin | choose the documents the election's checks compare with (any of the USTP Constitution, the Transhumanist Bill of Rights, the bylaws in force, the US Constitution), while it is a draft (409 after; 403 for a candidate in it); not ledgered (§5.5) |
 | `POST /admin/elections/{id}/roll` · `.../schedule` · `.../cancel` · `.../certify` | Election Admin | roll snapshot (`voters: 'test_voters'` for a rehearsal roll, testing mode only, §6.3), scheduling, cancellation and certification requests (draft cancel is immediate) |
 | `POST /admin/elections/{id}/delete` | Election Admin | permanently delete a cancelled election nobody voted in, or in testing mode a certified or cancelled rehearsal with its ballots, at once (204; 409 otherwise; §6.1) |
-| `GET /admin/positions` · `POST /admin/positions` · `POST /admin/positions/{id}/terms/{termId}/end` | any admin but a Course Admin (read); Membership or Election Admin | offices and terms; define or change an office (at once), end a term (→ approval) |
+| `GET /admin/positions` · `POST /admin/positions` · `POST /admin/positions/{id}/terms/{termId}/end` | any admin (read); Membership or Election Admin | offices and terms; define or change an office (at once), end a term (→ approval) |
 | `POST /admin/positions/{id}/appointments` | Membership or Election Admin | appoint an Active member to a free seat: `accountId`, optional earlier `startsAt`, `endsAt` or `termMonths` (neither: a full term), reason (→ approval; 404 no such office, 409 not Active, no free seat, already a holder or dates outside the office's term; §6.4) |
 | `GET /public/positions` | P | offices and who holds them now, each term marked elected or appointed |
 | `POST /mcp` (not under `/v1`; the `mcp` service, not the api) | P | the reporting MCP server's Streamable HTTP endpoint: read-only tools over the public endpoints above (§3.4) |

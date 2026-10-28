@@ -1,14 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { resetEmulators, TestApi } from './testing/emulator.js';
 
-// The api seeds the course once per process (CourseService.ensureSeeded), so each test gets a new api on the emptied
-// emulators, as a server starting on a fresh database would.
 let api: TestApi;
-beforeEach(async () => {
-  await resetEmulators();
+beforeAll(async () => {
   api = await TestApi.start();
 });
-afterEach(() => api.close());
+afterAll(() => api.close());
+beforeEach(async () => resetEmulators());
 
 describe('Transhumanism course', () => {
   it('keeps lessons public, awards a private certificate after all passing quizzes, and supports public verification', async () => {
@@ -30,9 +28,6 @@ describe('Transhumanism course', () => {
     const admin = await api.call('GET', '/v1/admin/courses/transhumanism', editor);
     expect(admin.status).toBe(200);
     expect(admin.body.lessons[0].questions[0]).toHaveProperty('correctIndex');
-    // Course Admins publish learning material only: no Approvals, and no admin view of the offices.
-    expect((await api.call('GET', '/v1/admin/approvals', editor)).status).toBe(403);
-    expect((await api.call('GET', '/v1/admin/positions', editor)).status).toBe(403);
 
     for (const lesson of admin.body.lessons) {
       const answers = lesson.questions.map((question: { correctIndex: number }) => question.correctIndex);

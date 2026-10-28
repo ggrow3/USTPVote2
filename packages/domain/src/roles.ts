@@ -4,9 +4,6 @@ import { deny, OK, type Check } from './check.js';
 export const ROLES = ['membership_admin', 'election_admin', 'auditor', 'system_admin', 'course_admin'] as const;
 export type Role = (typeof ROLES)[number];
 
-/** The roles that run the party: all but the Course Administrator. Each may read the offices and use Approvals. */
-export const PARTY_ADMIN_ROLES: readonly Role[] = ROLES.filter((r) => r !== 'course_admin');
-
 /** The most roles one person may hold at once (design §10.1). */
 export const MAX_ROLES_PER_ACCOUNT = 2;
 
