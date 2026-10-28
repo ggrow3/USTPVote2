@@ -38,8 +38,6 @@ export interface QuizResult {
 /** First-party course storage. Drafts are editable; public learning always reads a frozen published snapshot. */
 @Injectable()
 export class CourseService {
-  private seeded: Promise<void> | null = null;
-
   constructor(
     private readonly firebase: Firebase,
   ) {}
@@ -302,9 +300,12 @@ export class CourseService {
     return certificate;
   }
 
+  /**
+   * Seeds the course if it is missing. Checked each time, not remembered: the database can be emptied under a running
+   * server (the emulators between tests), and a seed that failed is simply tried again.
+   */
   private async ensureSeeded(): Promise<void> {
-    this.seeded ??= this.seedTranshumanism();
-    return this.seeded;
+    if (!(await this.firebase.db.collection(Collections.courses).doc(COURSE_ID).get()).exists) await this.seedTranshumanism();
   }
 
   private async seedTranshumanism(): Promise<void> {

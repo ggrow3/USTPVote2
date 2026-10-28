@@ -1,9 +1,9 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import {
   appointmentInputSchema,
+  PARTY_ADMIN_ROLES,
   positionInputSchema,
   reasonInputSchema,
-  ROLES,
   type AppointmentInput,
   type PositionInput,
   type ReasonInput,
@@ -20,7 +20,7 @@ export class PositionsController {
   constructor(private readonly positions: PositionsService) {}
 
   @Get()
-  @Roles(...ROLES)
+  @Roles(...PARTY_ADMIN_ROLES)
   all() {
     return this.positions.all();
   }

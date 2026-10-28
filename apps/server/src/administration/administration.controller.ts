@@ -2,8 +2,8 @@ import { Body, ConflictException, Controller, Get, Param, Post, Put, Query } fro
 import {
   Collections,
   decisionSchema,
+  PARTY_ADMIN_ROLES,
   roleChangeSchema,
-  ROLES,
   SIGN_IN_PROVIDERS,
   signInMethodsSchema,
   type DecisionInput,
@@ -35,15 +35,15 @@ export class ApprovalsController {
     return this.roles.change(ctx, body);
   }
 
-  /** Any admin may look; whether they may decide is checked per request. */
+  /** Any admin but a Course Admin may look; whether they may decide is checked per request. */
   @Get('approvals')
-  @Roles(...ROLES)
+  @Roles(...PARTY_ADMIN_ROLES)
   list(@Query('status') status?: string) {
     return this.approvals.list(parseQuery(z.enum(['pending', 'rejected', 'executed']).default('pending'), status, 'status'));
   }
 
   @Post('approvals/:id/decision')
-  @Roles(...ROLES)
+  @Roles(...PARTY_ADMIN_ROLES)
   decide(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(decisionSchema)) body: DecisionInput) {
     return this.approvals.decide(ctx, id, body);
   }

@@ -28,6 +28,9 @@ describe('Transhumanism course', () => {
     const admin = await api.call('GET', '/v1/admin/courses/transhumanism', editor);
     expect(admin.status).toBe(200);
     expect(admin.body.lessons[0].questions[0]).toHaveProperty('correctIndex');
+    // Course Admins publish learning material only: no Approvals, and no admin view of the offices.
+    expect((await api.call('GET', '/v1/admin/approvals', editor)).status).toBe(403);
+    expect((await api.call('GET', '/v1/admin/positions', editor)).status).toBe(403);
 
     for (const lesson of admin.body.lessons) {
       const answers = lesson.questions.map((question: { correctIndex: number }) => question.correctIndex);

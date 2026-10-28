@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { deny, OK, refuse, type Check } from '../check.js';
 import { MEMBER_STATUSES, type MemberStatus } from '../membership/member-status.js';
-import { ROLES, type Role } from '../roles.js';
+import { PARTY_ADMIN_ROLES, ROLES, type Role } from '../roles.js';
 
 /**
  * What the web app shows each person (design §10.5): the main-menu links and admin console sections each membership
@@ -60,9 +60,9 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   // The registration form's wording: its intro and questions (design §5.2).
   registration: ['membership_admin'],
   elections: ['election_admin', 'auditor'],
-  // Every admin may read the offices; Membership and Election Admins change them.
-  offices: ROLES,
-  approvals: ROLES,
+  // Every admin but Course Admins may read the offices; Membership and Election Admins change them.
+  offices: PARTY_ADMIN_ROLES,
+  approvals: PARTY_ADMIN_ROLES,
   people: ['system_admin'],
   signin: ['system_admin'],
   claude: ['system_admin'],
@@ -94,6 +94,7 @@ export const START_PAGES: readonly StartPage[] = [
   'ballot',
   'verify',
   'offices',
+  'course',
   ...ADMIN_SECTIONS.map((s) => `admin/${s}` as const),
 ];
 

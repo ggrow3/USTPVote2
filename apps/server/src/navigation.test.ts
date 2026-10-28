@@ -53,8 +53,9 @@ describe('who sees which section (design §10.5)', () => {
     expect([...rolesOf(SECTION_ROUTES[section])].sort()).toEqual([...SECTION_ROLES[section]].sort());
   });
 
-  it('lets every role use Approvals and read Offices', () => {
-    expect(SECTION_ROLES.approvals).toEqual(ROLES);
-    expect(SECTION_ROLES.offices).toEqual(ROLES);
+  it('lets every role but Course Admins use Approvals and read Offices', () => {
+    const party = ROLES.filter((r) => r !== 'course_admin');
+    expect(SECTION_ROLES.approvals).toEqual(party);
+    expect(SECTION_ROLES.offices).toEqual(party);
   });
 });
