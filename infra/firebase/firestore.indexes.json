@@ -132,6 +132,7 @@
     { "collectionGroup": "consistency_checks", "fieldPath": "findings", "indexes": [] },
     { "collectionGroup": "notice_outbox", "fieldPath": "text", "indexes": [] },
     { "collectionGroup": "notice_outbox", "fieldPath": "html", "indexes": [] },
+    { "collectionGroup": "notice_receipts", "fieldPath": "messageIds", "indexes": [] },
     { "collectionGroup": "election_checks", "fieldPath": "findings", "indexes": [] },
     { "collectionGroup": "election_checks", "fieldPath": "quotedLines", "indexes": [] }
   ]

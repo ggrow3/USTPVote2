@@ -33,8 +33,31 @@ export type {
   NoticeResendPayload,
 } from './notices.js';
 export {
+  NOTICE_TEST_STATUSES,
+  MAX_NOTICE_TESTS_PER_DAY,
+  TEST_SUBJECT_PREFIX,
+  noticeReceipt,
+  noticeReceiptTotals,
+  isTestInFlight,
+  noticeTestSummary,
+  checkNoticeTest,
+  noticeTestRecord,
+  testNoticeTag,
+} from './receipts.js';
+export type {
+  NoticeReceiptRecord,
+  SendResult,
+  NoticeTestStatus,
+  NoticeTestRecord,
+  NoticeSendTotals,
+  NoticeReceiptTotals,
+  NoticeTestSummary,
+  ReceiptCounts,
+} from './receipts.js';
+export {
   NOTICE_TIME_ZONES,
   NOTICE_CONTACT_PLACEHOLDER,
+  TEST_NOTE,
   noticeMessage,
   votingOpenMessage,
   closingSoonMessage,

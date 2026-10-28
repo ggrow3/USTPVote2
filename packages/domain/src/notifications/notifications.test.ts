@@ -14,6 +14,7 @@ import {
   noticeDelivery,
   noticeId,
   noticeMessage,
+  noticeReceiptTotals,
   noticeSteps,
   noticeSummary,
   RECIPIENT_STATUSES,
@@ -333,6 +334,8 @@ describe('the emails in the workflow', () => {
     contact: 'elections@example.org',
     settings,
     notices,
+    receipts: noticeReceiptTotals([]),
+    tests: [],
   });
   const steps = (over: Partial<Parameters<typeof noticeSteps>[0]> = {}) =>
     noticeSteps({ election, rehearsal: false, testingMode: false, view: view('mail'), now: new Date('2026-11-03T12:00:00Z'), ...over }).map(

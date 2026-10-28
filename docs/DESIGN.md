@@ -151,7 +151,7 @@ this structure one at a time, without changing routes, documents or the ledger.
 | Offices | §6.4 | `positions`, `position_terms` |
 | Governance | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `anthropic_key` |
 | Audit ledger | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` |
-| Notifications | §6.8 | `notices` (with `recipients`), `notice_outbox` |
+| Notifications | §6.8 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests` |
 
 **Layers.** Records stay plain data (Firestore stores them, JCS hashes them, the browser reads them), so an aggregate
 is its record types plus pure functions in `ustp-domain`:
@@ -1222,6 +1222,37 @@ kind, round, how many had failed), and the worker sends to records failed in ear
 second copy, and bounced addresses are not retried. Both ledger types are visible to Auditors only: they are about
 delivering mail, not part of the election's public record (§8.2).
 
+**Send receipts** *(added 2026-10-27)*. Every time the worker sends election email it keeps a receipt,
+`notice_receipts/{receiptId}`, written once after the send and never changed: one per pass over a notice's recipients
+(a tick's batches for one notice and round), and one per test email. It says which election and email (kind), whether
+it was a test, the notice and round, the delivery (`mail` or `outbox`), who started it (`system` for a notice's first
+round, else the Election Admin who resent it or asked for the test), when the send started and finished, how many
+people it handled, how many messages the mail service took (`accepted`), did not take (`failed`: refused, an error, or
+"not now", even when a later pass sends it) and skipped (no verified address, or voted before their reminder went),
+and the service's message IDs. Never an address or a message body, so no receipt says who anything went to; the
+recipient records already pair accounts with message IDs. A pass that handled nobody leaves none. The editor shows,
+for each email, how many went to the roll in how many sends and when the last finished (`noticeReceiptTotals` in
+`ustp-domain`), with test emails counted apart and never in that number. Receipts are not ledgered: the round's
+`notice.sent` entry already records its counts. They go with their election when it is deleted.
+
+**Test emails** *(added 2026-10-27)*. An Election Admin who is not a candidate in the election (the same people who
+may resend) can have either email sent to themselves alone, to see it in their own inbox: "Send test email" on the
+card, `POST …/notices/{kind}/test`. The request names no address. The api records `notice_tests/{testId}` (the account
+that asked, the account it goes to, when) and answers 202; the worker sends it on its next tick, so the api still never
+sends mail. It goes to the primary address of the caller's own account, read by the worker when it sends, and only if
+verified; when a System Admin acts as a test persona (§10.4), it goes to the System Admin's own account, since a
+persona has no address, and the persona is recorded as having asked. The message is the real one, with the System
+Admins' wording, the contact, the admin's own name and links to the election, marked as a test: the subject starts
+"[TEST] " and a boxed note opens it, saying it went only to them and that voters get it without the note. A reminder
+says how long is left as it will when it goes (or now, once it is due). It goes through this deployment's mail
+(`MAIL_TRANSPORT`), never the rehearsal outbox, carries its own SES tag (`{electionId}_{kind}_test`), so a bounce
+report about it matches no roll member, and leaves a receipt. The api refuses it (409) where the real email would not
+be mailed (email off, or no contact for questions), while the caller's last test of the election has not gone (one at
+a time), and (429) after ten of the election in a day; any state of the election will do, so an admin can check the
+wording before voting opens. A claim the worker never finished is failed (`interrupted`), not sent again. The card
+lists the caller's last few tests (queued, sent, or why not) and polls while one is on its way. It is not ledgered: it
+reaches only the person who asked and changes nothing about the election; the receipt records it.
+
 **Settings** *(added 2026-10-27)*. System Admins decide, in Admin › Election emails (`GET|PUT
 /v1/admin/notice-settings`, System Admin only, enforced by the API), what the emails do; the defaults are the emails as
 described above:
@@ -1253,7 +1284,7 @@ sends nothing (the default in a real project; a notice then waits, and starts if
 still open). Only the worker holds the AWS key, from Secret Manager; the api only reads counts and starts resends.
 Setting SES up (a domain identity with DKIM, leaving the sandbox, the topic and queue, an IAM user that may only send
 from the agreed address and read that queue) is in the infra README, "Election notices". Deleting an election (§6.1)
-deletes its notices, their records and its outbox messages after the deletion commits.
+deletes its notices, their records, its receipts, its test emails and its outbox messages after the deletion commits.
 
 ### 6.9 Election setup check *(added)*
 
@@ -2124,6 +2155,8 @@ Physically, registration collections are top-level and election data lives under
 | `notices/{id}/recipients/{accountId}` | accountId | status per send | pending → sending → sent / failed / bounced, or skipped; round, attempts, claim time, provider message ID, outcome code; never the address *(added)* |
 | `notice_settings/current` | — | saved whole, versioned | the System Admins' settings for the election emails: each on or off, reminder lead time, contact, subject and opening (§6.8) *(added)* |
 | `notice_outbox/{id}` | auto | create; deleted with its election | a message recorded instead of mailed: emulators, and rehearsals in testing mode (§6.8) *(added)* |
+| `notice_receipts/{receiptId}` | auto | create; deleted with its election | one per send of election email, to the roll or a test: election, kind, test or not, notice and round, delivery, who started it, when, people handled, accepted / failed / skipped, the mail service's message IDs; never an address or a body (§6.8) *(added)* |
+| `notice_tests/{testId}` | auto | pending → sending → done; deleted with its election | an Election Admin's test email to themselves: kind, who asked, the account it goes to (theirs), when, outcome code, receipt; never the address (§6.8) *(added)* |
 | **audit & admin** | | | |
 | `audit_events/{seq}` | zero-padded integer | append-only | ledger entries |
 | `ledger_head/main` | — | updated per append | seq, hash *(added)* |
@@ -2202,9 +2235,10 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /admin/positions/{id}/appointments` | Membership or Election Admin | appoint an Active member to a free seat: `accountId`, optional earlier `startsAt`, `endsAt` or `termMonths` (neither: a full term), reason (→ approval; 404 no such office, 409 not Active, no free seat, already a holder or dates outside the office's term; §6.4) |
 | `GET /public/positions` | P | offices and who holds them now, each term marked elected or appointed |
 | `GET /admin/elections/{id}/roll` | Election Admin, Auditor | latest roll with member names, for review |
-| `GET /admin/elections/{id}/notices` | Election Admin, Auditor | the election's notices as counts (sent, still to send, failed, bounced, skipped), never addresses (§6.8) |
+| `GET /admin/elections/{id}/notices` | Election Admin, Auditor | the election's notices as counts (sent, still to send, failed, bounced, skipped), what the send receipts add up to per email (to the roll, and tests apart), and the caller's own last test emails; never addresses (§6.8) |
 | `GET\|PUT /admin/notice-settings` | System Admin | the election emails' settings: each on or off, the reminder's lead time, the contact, each subject and opening; saved whole against the version read (409 if stale, 400 for unknown placeholders); ledgered (§6.8) |
 | `POST /admin/elections/{id}/notices/{kind}/resend` | Election Admin | send the notice again to those it failed for, while voting is open and once its last round has finished (409 otherwise; §6.8) |
+| `POST /admin/elections/{id}/notices/{kind}/test` | Election Admin | queue the email, marked "[TEST]", for the caller's own address only (the System Admin's when acting as a persona); takes no address; 202; 403 for a candidate, 409 where email is off or has no contact or while their last test has not gone, 429 after ten a day (§6.8) |
 | `GET /admin/approvals` · `POST /admin/approvals/{id}/decision` | per action | two-person decisions (§10.2) |
 | `GET /admin/audit/events` · `GET /admin/audit/verify` | Auditor | ledger (paged by seq); verification of chain, blocks, signatures and anchors |
 | `GET\|PUT /admin/sign-in-methods` · `POST /admin/roles` | System Admin | auth switches; grant or revoke a role, at once (returns the account's roles afterwards; §10.2) |
@@ -2221,7 +2255,7 @@ Errors use RFC 9457 problem details. Request bodies are validated against schema
 
 | Endpoint | Trigger | Work |
 |---|---|---|
-| `POST /tasks/tick` | Cloud Scheduler, every minute | Prepare pool keys, open/close elections on time, seal ballots (M3), tally sealed elections into signed provisional results (M4a), destroy pool keys (M4b), send election notices for at most 20 seconds and record their bounces from SQS (§6.8), then seal ledger blocks, sign approved rolls and anchor (M2c). Returns what it did |
+| `POST /tasks/tick` | Cloud Scheduler, every minute | Prepare pool keys, open/close elections on time, seal ballots (M3), tally sealed elections into signed provisional results (M4a), destroy pool keys (M4b), send election notices for at most 20 seconds and the test emails Election Admins asked for, keeping a receipt of each send, and record their bounces from SQS (§6.8), then seal ledger blocks, sign approved rolls and anchor (M2c). Returns what it did |
 | `POST /tasks/bylaws-checks` | Cloud Scheduler, every minute (its own job, 300 s deadline) | Run up to three queued bylaws checks with Claude and fail any stuck for 10 minutes (§5.4). Returns `{checked, failed}`; a failed check is recorded on the check, not as a failed task |
 | `POST /tasks/consistency-checks` | Cloud Scheduler, every minute (its own job, 300 s deadline) | Run up to three queued platform consistency checks with Claude and fail any stuck for 10 minutes (§5.5). Returns `{checked, failed}`, as the bylaws checks do |
 | `POST /tasks/election-checks` | Cloud Scheduler, every minute (its own job, 300 s deadline) | Run up to three queued election setup checks with Claude and fail any stuck for 10 minutes (§6.9). Returns `{checked, failed}`, as the others do |
@@ -2295,7 +2329,9 @@ every 15 seconds in place of Cloud Scheduler.
   is counted.
 - **Election notices (§6.8):** the worker reads a roll member's address from the account only to send their notice;
   no record, ledger entry or log line holds it (a failure is logged with the accountId and an outcome code, never the
-  provider's text, which can quote the address). Admins see counts only, on an election they can already see. Only
+  provider's text, which can quote the address), nor does a send receipt, which holds accounts, counts and message
+  IDs. Admins see counts only, on an election they can already see. A test email goes only to the caller's own
+  account, which the server chooses; the request cannot name an address. Only
   the worker holds the AWS access key, from Secret Manager (`aws-ses-*`, versions added by a person, never in
   Terraform state); the key's IAM user may only send from the agreed address through the notices' configuration set
   and read the bounce queue. Amazon SES learns each member's address, name and the elections they may vote in, and
