@@ -359,58 +359,6 @@ election) open with focus on Cancel.
   wide as the card, a ranked row puts its three buttons under the name, and nothing scrolls sideways; the dialog's
   Back and Cast ballot share its width (144 px each at 375 px). Text is 16 px with 14 px captions, in the dialog too.
   Focus order and the announcements are unchanged.
-- **Added 2026-10-28, the ballot builder and Preview as voter** (design §6.5; against private emulators as
-  elections@example.test: a new draft built from nothing with a question of each type, then "2027 Bylaws Review
-  (draft)"; by mouse and by keyboard alone, at 1280 px in the dark theme and 320 px in both; the draft then scheduled):
-  - **Structure.** "Ballot" is an `h2`; the ballot's details are a card of labelled fields ("Ballot title", "Voting
-    opens"); each question is a `section` named by its `h3` "Question 3" with the title after it as hidden text ("Question
-    3: Chair"). Its fields have visible labels ("Type", "Question", "Description (optional)", "How many win", "Each voter
-    may tick"); the options are an ordered list named "Options for question 3", each field labelled "Option 1",
-    "Option 2"; a statement field is "Statement for Ada Brooks (optional)". The rules line under the question, in the
-    ballot's words, starts with hidden "Voters read:". The type picker is Quasar's select (`combobox`, arrow keys and
-    Enter), each type with a line saying what it is for.
-  - **Names.** Repeated buttons name what they act on, by place and title: "Move question 3: Chair up", "Duplicate
-    question 3: Chair", "Delete question 3: Chair", "Remove option 2: Blair Chen", "More for option 2: Blair Chen";
-    "Add option" adds hidden "to question 3"; Undo is "Undo delete question “Chair”" (visible "Undo", and on wider
-    screens the rest too, 2.5.3); a member suggestion reads "Link Ada Brooks (NY) to option 1: Ada", its visible text
-    first. Icon-only buttons have a tooltip for sighted mouse users.
-  - **Keyboard.** Each add button adds its type and puts the cursor in the new question's title, selected, so typing
-    replaces "Untitled question"; Enter in an option adds the next and moves there; Backspace in an empty option removes
-    it and goes back to the one before; Alt+↑ / Alt+↓ move the option (in its field) or the question (in its title or
-    description), focus staying put; the down arrow goes from an option to the members it matches and the up arrow comes
-    back. Move up and Move down keep focus on the button pressed, or move it to the other one when the question reaches
-    the top or bottom and the button pressed is disabled. Duplicate moves focus to the copy's title; deleting a question
-    moves it to the next question's heading (or the one before, or the first add button); removing an option to the
-    option before; Undo to what it put back. Leaving the page with something that cannot be saved opens "Leave without
-    saving?", focus on Stay.
-  - **Dragging (2.5.7).** The drag handles (the strip at the top of a question, the dots before an option) are a pointer
-    convenience, hidden from screen readers and out of the tab order: every move they make is also a button (a
-    question's Move up and Move down, an option's menu, single clicks) and a key (Alt+arrows). Dragging was checked
-    with a mouse in the browser pane; the handles take `touch-action: none` so a finger drags rather than scrolls.
-  - **Status and errors.** What changed is announced politely: "Question 4 added: Rank in order. Type the question.",
-    "“Chair” is now question 1 of 4.", "“Fran” is now option 2 of 3.", "Question “Plank XII” deleted. Undo is in the bar
-    at the bottom of the ballot.", "Undone: delete question “Plank XII”.", "Ada Brooks linked to their member account.",
-    "Now a Yes / No / Abstain question.", and when members match a name "An Active member matches. Press the down arrow
-    to link the option to their member account.". The save bar's state is shown, not announced while typing, except a
-    failure, which is announced assertively ("Not saved: …"), and the recovery after it ("All changes saved."). A field
-    the rules refuse is marked `aria-invalid` with its message linked by `aria-describedby` ("Type the question.",
-    "Enter a percentage from 1 to 100, or leave it empty."); what is left to finish a question is a line in the page's
-    text colour beside an info icon hidden from screen readers.
-  - **The save bar** sticks to the bottom of the window while the ballot is in view and rests after the last question
-    otherwise; it is a region named "Saving". So that it never hides the field being edited (2.4.11), the page keeps
-    96 px of `scroll-padding-bottom` while the builder is shown; the bar is 45 px tall at 1280 px and about 70 px at
-    320 px, where its status and buttons take two lines.
-  - **Sizes.** Move, duplicate, delete, remove and menu buttons 34 × 34 px, option drag handles 24 × 40 px, the
-    question's drag strip 24 px tall, add buttons 36 px and the bar's 32 px: 2.5.8's 24 px. At 320 px nothing scrolls
-    sideways; an option's marker (circle, box or number), only a picture of the ballot's control, is left out there so
-    its name field keeps the room (about 140 px).
-  - **Colours.** New: the drag handles and option markers, grey at 90% and 95%, measured 3.33 and 3.62 on the white card
-    and 3.72 and 3.99 on the dark card (`#1d1d1d`), above 1.4.11's 3:1; the save bar is the card's own colours (21 and
-    16.9 for its text). Everything else uses the existing pairs: captions 4.61 / 7.77, field borders, primary buttons.
-  - **Preview as voter** is the ballot page itself at `/admin/elections/{id}/preview`, titled "Preview: …", with a back
-    button "Back to the editor" and a light banner (`orange-2`, black text) saying it is a preview and nothing is sent;
-    the review dialog keeps its focus behaviour and says there is nothing to cast, with only Back. The in-browser check
-    line, the receipt, the download and the consistency check are left out of the preview.
 
 ### Contrast figures
 
