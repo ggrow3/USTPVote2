@@ -353,7 +353,8 @@ on 2026-10-22: primary `#bd4e00` (its header and links), accent `#ff6900` (its h
 menu bar. They are set once, in `apps/web/src/main.ts`; `app.css` refers to them as `var(--q-primary)` and
 `var(--q-accent)`. The figures below were recomputed for them; the first audit's figures for Quasar's blue are in git
 history. The page background is white in the light theme; in the dark theme Quasar's page is `#121212` and cards,
-menus and dialogs `#1d1d1d`.
+menus and dialogs `#1d1d1d`. Every page but the hub and the voting home puts its content on one card over the voting
+home's picture (`PageShell`, white or `#1d1d1d`), so text on those pages has the card's figures.
 
 | Foreground on background | Colours | Ratio |
 | --- | --- | --- |
@@ -362,13 +363,13 @@ menus and dialogs `#1d1d1d`.
 | Primary-coloured text in the dark theme: accent instead (`text-primary`, the focused field's label, the current menu item), on the page / a card | `#ff6900` on `#121212` / `#1d1d1d` | 6.49 / 5.84 (primary itself: 3.79 / 3.41) |
 | Primary as non-text in the dark theme, on a card (ticked checkboxes, radios, toggles) | `#bd4e00` on `#1d1d1d` | 3.41 |
 | Links in page content, light page | `#bd4e00` on `#fff` | 4.94 |
-| Links in page content, dark page | `#ff6900` on `#121212` | 6.49 |
+| Links in page content, dark page / a page's card | `#ff6900` on `#121212` / `#1d1d1d` | 6.49 / 5.84 |
 | Links in light banners, both themes (`orange-2` / `orange-1` / `grey-3`) | `#aa4600` on `#ffe0b2` / `#fff3e0` / `#eeeeee` | 4.62 / 5.34 / 5.05 |
 | Menu bar: white links on black; the current page's underline (accent) on black | `#fff` / `#ff6900` on `#000` | 21.0 / 7.27 |
 | White on positive (badges, Approve, success banners and toasts); positive text on white | `#2e7d32` | 5.13 |
-| Positive text on the dark page | `#81c784` on `#121212` | 9.31 |
+| Positive text on the dark page / a dark card | `#81c784` on `#121212` / `#1d1d1d` | 9.31 / 8.38 |
 | White on negative | `#fff` on `#c10015` | 6.41 |
-| Negative text on the dark page | `#ef9a9a` on `#121212` | 8.71 |
+| Negative text on the dark page / a dark card | `#ef9a9a` on `#121212` / `#1d1d1d` | 8.71 / 7.83 |
 | A field's error message in the dark theme, on a card (Quasar uses negative itself: `#c10015`, 2.63) | `#ef9a9a` on `#1d1d1d` | 7.83 |
 | `text-grey-7` captions on white | `#757575` on `#fff` | 4.61 |
 | `text-grey-7` captions on the dark page / dark card | `#b0b0b0` on `#121212` / `#1d1d1d` | 8.64 / 7.77 |
@@ -453,8 +454,12 @@ the app and everything stacks at 320 px. Use them instead of Quasar's `q-gutter-
 inline widths: gutters move each child by a margin, and a gutter inside another one is what pushed rows of fields 16 px
 right of the fields around them.
 
-- **Page or panel**: one `<div class="ustp-content">` inside `<q-page padding>` (or as the panel's root): a column
-  860 px wide at most, 16 px between its parts. Sign-in style forms add `ustp-narrow` (480 px). A back link goes first,
+- **Page or panel**: one `<div class="ustp-content">` inside `<PageShell>` (`components/PageShell.vue`), or as the
+  panel's root: a column 860 px wide at most, 16 px between its parts. `PageShell` draws the voting home's picture
+  behind the page and puts the page on one card lifted off it, as wide as the column plus its padding, with 16 px text
+  and a larger `h1` and card headings; `width="narrow"` for a sign-in style form (with `ustp-narrow`, 480 px),
+  `width="wide"` for the admin console (the voting home's 1176 px). The hub and the voting home lay out their own
+  pages. A back link goes first,
   `<q-btn flat dense no-caps icon="arrow_back" label="…" class="ustp-back" />`, then the `h1` (with its caption in one
   `div` when it has one).
 - **Card**: `q-card flat bordered`, made of `q-card-section`s. The first holds the `h2` and its caption

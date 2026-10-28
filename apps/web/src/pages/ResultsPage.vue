@@ -20,6 +20,7 @@ import {
 import type { TieBreakRecord } from 'ustp-tally';
 import { usePageTitle } from '../a11y.js';
 import { api, ApiError, errorMessage } from '../api.js';
+import PageShell from '../components/PageShell.vue';
 import { publishedElectionCheck } from '../election-check/api.js';
 import BylawsCheckNotes from '../election-check/BylawsCheckNotes.vue';
 import { downloadElectionDocx } from '../election-files.js';
@@ -180,7 +181,7 @@ const summary = computed(() => {
 </script>
 
 <template>
-  <q-page padding>
+  <PageShell>
     <div class="ustp-content">
       <q-btn flat dense no-caps icon="arrow_back" label="Your ballots" to="/ballot" class="ustp-back ustp-no-print" />
       <q-banner v-if="error" class="bg-negative text-white" rounded>{{ error }}</q-banner>
@@ -361,7 +362,7 @@ const summary = computed(() => {
                 </q-item-section>
                 <q-item-section>
                   <q-item-label>{{ s.label }}</q-item-label>
-                  <q-item-label v-if="s.detail" caption>{{ s.detail }}</q-item-label>
+                  <q-item-label v-if="s.detail" caption class="ustp-break">{{ s.detail }}</q-item-label>
                 </q-item-section>
               </q-item>
             </q-list>
@@ -419,5 +420,5 @@ const summary = computed(() => {
         </template>
       </template>
     </div>
-  </q-page>
+  </PageShell>
 </template>

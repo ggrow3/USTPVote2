@@ -21,6 +21,7 @@ import { focusElement, usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
 import { aRole, describeRequest } from '../approval-text.js';
 import ContestDialog from '../components/admin/ContestDialog.vue';
+import PageShell from '../components/PageShell.vue';
 import ConsistencyCheckCard from '../consistency-check/ConsistencyCheckCard.vue';
 import { askReason, attempt, dialog } from '../dialogs.js';
 import BylawsCheckNotes from '../election-check/BylawsCheckNotes.vue';
@@ -312,7 +313,7 @@ onMounted(load);
 </script>
 
 <template>
-  <q-page padding>
+  <PageShell>
     <div class="ustp-content">
       <q-btn flat dense no-caps icon="arrow_back" label="Administration" to="/admin" class="ustp-back" />
       <div class="ustp-toolbar">
@@ -632,5 +633,5 @@ onMounted(load);
       @saved="load"
       @proposal-created="(p) => proposals.unshift(p)"
     />
-  </q-page>
+  </PageShell>
 </template>

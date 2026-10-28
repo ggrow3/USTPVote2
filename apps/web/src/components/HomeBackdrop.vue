@@ -2,9 +2,10 @@
 import { useId } from 'vue';
 
 /**
- * The home page's background (design §10.5): a sunrise over a horizon in the party's oranges, morning in the light
- * theme and dusk in the dark one. Drawn for this project, so the party may use it freely, and a little script in the
- * app shell rather than a photo. Decorative: text over it sits on a `.ustp-scrim`.
+ * The voting home's background (design §10.5), and every other page's but the hub's (PageShell): a sunrise over a
+ * horizon in the party's oranges, morning in the light theme and dusk in the dark one. Drawn for this project, so the
+ * party may use it freely, and a little script in the app shell rather than a photo. Decorative: text over it sits on
+ * a `.ustp-scrim` or a page's card.
  */
 const id = useId();
 const STARS = [

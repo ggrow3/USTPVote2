@@ -11,6 +11,7 @@ import PeoplePanel from '../components/admin/PeoplePanel.vue';
 import PhotosPanel from '../components/admin/PhotosPanel.vue';
 import SignInMethodsPanel from '../components/admin/SignInMethodsPanel.vue';
 import TestingPanel from '../components/admin/TestingPanel.vue';
+import PageShell from '../components/PageShell.vue';
 import HomeQuotePanel from '../governance/HomeQuotePanel.vue';
 import HubPanel from '../governance/HubPanel.vue';
 import NavigationPanel from '../governance/NavigationPanel.vue';
@@ -60,7 +61,7 @@ const tab = ref<string>(tabs.value.some((t) => t.name === requested) ? requested
 </script>
 
 <template>
-  <q-page padding>
+  <PageShell width="wide">
     <h1 class="text-h5 q-mb-md">Administration</h1>
     <div v-if="!officer" class="ustp-content">
       <p v-if="acting.persona">
@@ -87,7 +88,8 @@ const tab = ref<string>(tabs.value.some((t) => t.name === requested) ? requested
       <p v-if="!tabs.length">
         A System Admin has hidden every section of the console from your roles. Ask them if you need one back.
       </p>
-      <q-tabs v-model="tab" dense align="left" class="text-primary" no-caps>
+      <!-- Arrows beside the tabs rather than over the first and last when they do not all fit in the card. -->
+      <q-tabs v-model="tab" dense align="left" class="text-primary" no-caps outside-arrows>
         <q-tab
           v-for="t in tabs"
           :id="`admin-tab-${t.name}`"
@@ -112,5 +114,5 @@ const tab = ref<string>(tabs.value.some((t) => t.name === requested) ? requested
         </q-tab-panel>
       </q-tab-panels>
     </template>
-  </q-page>
+  </PageShell>
 </template>

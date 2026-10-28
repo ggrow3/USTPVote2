@@ -12,6 +12,7 @@ import {
 } from 'ustp-domain';
 import { focusElement, focusFirstInvalid, focusSoon, usePageTitle } from '../a11y.js';
 import { api, errorMessage } from '../api.js';
+import PageShell from '../components/PageShell.vue';
 import TwoStepCodeCard from '../components/TwoStepCodeCard.vue';
 import { auth } from '../firebase.js';
 import { apiFieldErrors, STATES, validate, type FieldErrors } from '../forms.js';
@@ -258,7 +259,7 @@ async function submit() {
 </script>
 
 <template>
-  <q-page padding>
+  <PageShell>
     <div class="ustp-content">
       <h1 class="text-h5">Register as a member</h1>
       <ol v-if="session.ready && step !== null" class="register-steps" aria-label="Steps to register">
@@ -589,7 +590,7 @@ async function submit() {
         </q-form>
       </template>
     </div>
-  </q-page>
+  </PageShell>
 </template>
 
 <style scoped>

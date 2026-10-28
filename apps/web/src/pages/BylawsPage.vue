@@ -6,6 +6,7 @@ import { diffLines, type BylawsRecord, type BylawsVersionSummary } from 'ustp-do
 import { usePageTitle } from '../a11y.js';
 import { api, errorMessage } from '../api.js';
 import { downloadBylawsDocx, matchCopy } from '../bylaws-files.js';
+import PageShell from '../components/PageShell.vue';
 
 /** Public bylaws: any published version, its hash and history, a stamped Word copy, and a check for copies (design §5.2). */
 const $q = useQuasar();
@@ -69,7 +70,7 @@ async function check(file: File | null) {
 </script>
 
 <template>
-  <q-page padding>
+  <PageShell>
     <div class="ustp-content">
       <q-banner v-if="error" class="bg-orange-1 text-black" rounded>{{ error }}</q-banner>
 
@@ -180,7 +181,7 @@ async function check(file: File | null) {
         </q-list>
       </q-card>
     </div>
-  </q-page>
+  </PageShell>
 </template>
 
 <style scoped>

@@ -133,8 +133,10 @@ h3 {
 .q-page .column {
   flex-wrap: nowrap;
 }
-/* A full hash or seed in running text has no break opportunities of its own (tables keep theirs on one line). */
-.q-page code {
+/* A full hash or seed in running text has no break opportunities of its own (tables keep theirs on one line); nor
+   has an address such as a check's gs:// anchor (`ustp-break`). */
+.q-page code,
+.ustp-break {
   overflow-wrap: anywhere;
 }
 
@@ -213,8 +215,16 @@ h3 {
 @media print {
   .q-header,
   .ustp-skip-link,
+  .ustp-page__backdrop,
   .ustp-no-print {
     display: none !important;
+  }
+  /* The page's card is just the page on paper. */
+  .ustp-page__sheet {
+    max-width: none;
+    padding: 0;
+    border-radius: 0;
+    box-shadow: none;
   }
   /* Quasar sets these inline, from the header's height and the window's. */
   .q-layout,
@@ -227,6 +237,7 @@ h3 {
   }
   body,
   .q-page,
+  .ustp-page__sheet,
   .q-card,
   .q-markup-table {
     background: #fff !important;

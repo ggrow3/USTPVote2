@@ -5,6 +5,7 @@ import { useRoute } from 'vue-router';
 import { adminStatusChanges, memberCorrectionSchema, type MemberDetail, type MemberStatus } from 'ustp-domain';
 import { focusFirstInvalid, usePageTitle } from '../a11y.js';
 import { ApiError, errorMessage } from '../api.js';
+import PageShell from '../components/PageShell.vue';
 import { askReason, attempt } from '../dialogs.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../forms.js';
 import MemberOffices from '../offices/MemberOffices.vue';
@@ -110,7 +111,7 @@ watch(
 </script>
 
 <template>
-  <q-page padding>
+  <PageShell>
     <div class="ustp-content">
       <q-btn flat dense no-caps icon="arrow_back" label="Members" :to="{ path: '/admin', query: { tab: 'members' } }" class="ustp-back" />
       <div>
@@ -267,5 +268,5 @@ watch(
         </q-card-actions>
       </q-card>
     </q-dialog>
-  </q-page>
+  </PageShell>
 </template>

@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import { useRoute } from 'vue-router';
 import { usePageTitle } from '../a11y.js';
+import PageShell from '../components/PageShell.vue';
 import SignInForm from '../components/SignInForm.vue';
 
 const route = useRoute();
@@ -23,7 +24,7 @@ const purpose = computed(() => {
 </script>
 
 <template>
-  <q-page padding>
+  <PageShell width="narrow">
     <div class="ustp-content ustp-narrow">
       <h1 class="text-h5">Sign in</h1>
       <p v-if="purpose">Sign in to {{ purpose }}.</p>
@@ -36,5 +37,5 @@ const purpose = computed(() => {
         </template>
       </SignInForm>
     </div>
-  </q-page>
+  </PageShell>
 </template>

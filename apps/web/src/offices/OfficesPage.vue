@@ -3,6 +3,7 @@ import { onMounted, ref } from 'vue';
 import { isAppointed, type PositionRecord, type PositionsView } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { errorMessage } from '../api.js';
+import PageShell from '../components/PageShell.vue';
 import { publicOffices } from './api.js';
 import { day, officeShape } from './office-text.js';
 
@@ -26,7 +27,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <q-page padding>
+  <PageShell>
     <div class="ustp-content">
       <div>
         <h1 class="text-h5 q-mb-xs">Offices</h1>
@@ -59,7 +60,7 @@ onMounted(async () => {
         <q-card-section v-else class="text-grey-7">Nobody holds this office now.</q-card-section>
       </q-card>
     </div>
-  </q-page>
+  </PageShell>
 </template>
 
 <style scoped>

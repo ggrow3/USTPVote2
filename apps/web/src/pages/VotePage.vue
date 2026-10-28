@@ -15,6 +15,7 @@ import {
 } from 'ustp-domain';
 import { announce, focusSoon, usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
+import PageShell from '../components/PageShell.vue';
 import ConsistencyCheckCard from '../consistency-check/ConsistencyCheckCard.vue';
 import { attempt } from '../dialogs.js';
 import { publishedElectionCheck } from '../election-check/api.js';
@@ -175,7 +176,7 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
 </script>
 
 <template>
-  <q-page padding>
+  <PageShell>
     <div class="ustp-content">
       <q-btn flat dense no-caps icon="arrow_back" label="Your ballots" to="/ballot" class="ustp-back" />
       <div>
@@ -435,5 +436,5 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
         </q-dialog>
       </template>
     </div>
-  </q-page>
+  </PageShell>
 </template>
