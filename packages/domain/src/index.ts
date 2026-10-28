@@ -112,6 +112,25 @@ export {
 } from './election-package.js';
 export type { ElectionPackage, ElectionPackageInput, PackageContest, PackageProposal } from './election-package.js';
 export {
+  MAX_QUESTION_OPTIONS,
+  ballotIdSchema,
+  planQuestion,
+  planQuestionOrder,
+  questionContestSchema,
+  questionInputSchema,
+  questionOptionSchema,
+  questionOrderSchema,
+} from './ballot-questions.js';
+export type {
+  OrderChange,
+  QuestionContest,
+  QuestionInput,
+  QuestionOption,
+  QuestionOrderInput,
+  QuestionPlan,
+  SavedQuestion,
+} from './ballot-questions.js';
+export {
   TEST_VOTES_FORMAT,
   expectedResultProblems,
   planTestBallots,
