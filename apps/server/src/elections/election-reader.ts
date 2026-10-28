@@ -9,6 +9,7 @@ import {
   type ElectionDefinition,
   type ElectionRecord,
   type ElectionState,
+  type PositionRecord,
   type ProposalSnapshotRecord,
   type RollSnapshotRecord,
 } from 'ustp-domain';
@@ -77,6 +78,15 @@ export class ElectionReader {
       return new Set(snaps.filter((s) => s.exists).map((s) => s.id));
     }
     return new Set((await participation.select().get()).docs.map((d) => d.id));
+  }
+
+  /** The offices the contests fill (design §6.4), for the advisories and the election setup check (§6.9). */
+  async positions(contests: readonly { readonly positionId?: string | null }[]): Promise<PositionRecord[]> {
+    const db = this.firebase.db;
+    const ids = [...new Set(contests.map((c) => c.positionId).filter((id): id is string => !!id))];
+    if (!ids.length) return [];
+    const snaps = await db.getAll(...ids.map((id) => db.collection(Collections.positions).doc(id)));
+    return snaps.filter((s) => s.exists).map((s) => s.data() as PositionRecord);
   }
 
   /** Whether the account stands as a candidate in the election (recusal, design §10.1). */

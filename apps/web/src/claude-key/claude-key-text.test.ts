@@ -7,7 +7,7 @@ const status = (fields: Partial<AnthropicKeyStatus>): AnthropicKeyStatus => ({
   addedAt: '2026-10-27T12:00:00.000Z',
   addedBy: { accountId: 'a1', name: 'Ada Admin' },
   hint: 'AAAA',
-  checks: { bylaws: 'claude', consistency: 'off' },
+  checks: { bylaws: 'claude', consistency: 'off', election: 'off' },
   tried: true,
   ...fields,
 });
@@ -18,7 +18,7 @@ describe('Admin › Claude wording', () => {
     expect(keyStatusText(status({ addedBy: null, hint: null }), 'en-US')).toBe(
       'A key is set. It was added on Oct 27, 2026 outside this app, so who added it is not known here.',
     );
-    expect(keyStatusText(status({ set: false, addedAt: null, addedBy: null, hint: null }))).toBe('No key is set, so neither Claude check can run.');
+    expect(keyStatusText(status({ set: false, addedAt: null, addedBy: null, hint: null }))).toBe('No key is set, so no Claude check can run.');
     expect(savedAnnouncement(status({}))).toBe('Key saved. It ends in AAAA.');
   });
 
@@ -27,6 +27,7 @@ describe('Admin › Claude wording', () => {
     expect(switchText('bylaws', 'claude', false)).toBe('On, but it cannot run until a key is added.');
     expect(switchText('consistency', 'off', true)).toMatch(/^Off in this deployment's settings \(consistency_check_enabled in Terraform\)/);
     expect(switchText('consistency', 'stub', false)).toMatch(/stand-in/);
+    expect(switchText('election', 'off', true)).toMatch(/\(election_check_enabled in Terraform\)/);
     expect(triedText(false)).toMatch(/without being tried/);
   });
 

@@ -13,6 +13,8 @@ const CONTEXTS: Readonly<Record<string, readonly string[]>> = {
   // Its routes end the path after an election ID; the folder's own name appears in imports.
   'consistency-check': ['}/consistency-check'],
   'claude-key': ['/v1/admin/anthropic-key'],
+  // `…/bylaws-checks` (the editor) and `…/bylaws-check` (the public notes), after an election ID.
+  'election-check': ['}/bylaws-check'],
   offices: ['/v1/admin/positions', '/v1/public/positions'],
 };
 

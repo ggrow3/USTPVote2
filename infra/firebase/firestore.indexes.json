@@ -95,6 +95,30 @@
         { "fieldPath": "status", "order": "ASCENDING" },
         { "fieldPath": "round", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "election_checks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "requestedBy", "order": "ASCENDING" },
+        { "fieldPath": "requestedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "election_checks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "requestedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "election_checks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "electionId", "order": "ASCENDING" },
+        { "fieldPath": "requestedAt", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -107,6 +131,8 @@
     { "collectionGroup": "consistency_checks", "fieldPath": "material", "indexes": [] },
     { "collectionGroup": "consistency_checks", "fieldPath": "findings", "indexes": [] },
     { "collectionGroup": "notice_outbox", "fieldPath": "text", "indexes": [] },
-    { "collectionGroup": "notice_outbox", "fieldPath": "html", "indexes": [] }
+    { "collectionGroup": "notice_outbox", "fieldPath": "html", "indexes": [] },
+    { "collectionGroup": "election_checks", "fieldPath": "findings", "indexes": [] },
+    { "collectionGroup": "election_checks", "fieldPath": "quotedLines", "indexes": [] }
   ]
 }
