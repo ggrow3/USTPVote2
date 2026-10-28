@@ -24,6 +24,9 @@ import { CONFIG, type ServerConfig } from '../config.js';
 import { AdminConsistencyChecksController, ConsistencyChecksController } from '../consistency-check/consistency-checks.controller.js';
 import { ConsistencyChecksService } from '../consistency-check/consistency-checks.service.js';
 import { CoreModule } from '../core.module.js';
+import { ElectionCheckMaterials } from '../election-check/election-check-material.js';
+import { ElectionChecksController, PublicElectionChecksController } from '../election-check/election-checks.controller.js';
+import { ElectionChecksService } from '../election-check/election-checks.service.js';
 import { ElectionApprovals } from '../elections/election-approvals.js';
 import { ElectionReader } from '../elections/election-reader.js';
 import { ElectionsController, MemberSearchController, ProposalsController } from '../elections/elections.controller.js';
@@ -54,8 +57,8 @@ import { PositionsService } from '../positions/positions.service.js';
  * M1: accounts, registration, membership administration, profile photos, roles and approvals, auth switches, ledger.
  * M2: election setup, rolls, scheduling and cancellation; the published ledger (blocks, keys, proofs, anchors).
  * M3: voting. M4: results, certification, offices and terms. Testing mode: test personas (design §10.4). M5: who sees
- * which link (design §10.5), the home page hub (§10.6); the platform consistency check (design §5.5) and the Anthropic
- * API key (design §5.6).
+ * which link (design §10.5), the home page hub (§10.6); the platform consistency check (design §5.5), the election setup
+ * check (§6.9) and the Anthropic API key (design §5.6).
  */
 @Module({
   imports: [CoreModule],
@@ -75,6 +78,8 @@ import { PositionsService } from '../positions/positions.service.js';
     VotingController,
     ConsistencyChecksController,
     AdminConsistencyChecksController,
+    ElectionChecksController,
+    PublicElectionChecksController,
     PublicElectionsController,
     PositionsController,
     PublicPositionsController,
@@ -104,6 +109,8 @@ import { PositionsService } from '../positions/positions.service.js';
     ElectionApprovals,
     VotingService,
     ConsistencyChecksService,
+    ElectionChecksService,
+    ElectionCheckMaterials,
     AnthropicKey,
     AnthropicKeyAdminService,
     PublicElectionsService,

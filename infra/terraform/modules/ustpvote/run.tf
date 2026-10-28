@@ -5,8 +5,9 @@
 #
 # Environment variables are named exactly as apps/server/src/config.ts reads them; each service gets the ones it
 # uses. Nothing here sets APP_CHECK_ENFORCED, ADMIN_MFA_REQUIRED, PHOTO_CHECKER, SECRET_STORE, AUDIT_SIGNER,
-# BALLOT_POOL or an emulator host, so every safety switch keeps its production default (design §4). BYLAWS_CHECKER and
-# CONSISTENCY_CHECKER are "claude" or "off" (bylaws_check.tf, consistency_check.tf), never the emulator-only stand-ins.
+# BALLOT_POOL or an emulator host, so every safety switch keeps its production default (design §4). BYLAWS_CHECKER,
+# CONSISTENCY_CHECKER and ELECTION_CHECKER are "claude" or "off" (bylaws_check.tf, consistency_check.tf,
+# election_check.tf), never the emulator-only stand-ins.
 
 locals {
   # api: Secret Manager (creating tie-break seeds, and keeping the Anthropic API key a System Admin adds, which it tries
@@ -23,15 +24,16 @@ locals {
       BOOTSTRAP_SYSTEM_ADMIN_EMAILS = join(",", var.bootstrap_system_admin_emails)
       BYLAWS_CHECKER                = local.bylaws_checker
       CONSISTENCY_CHECKER           = local.consistency_checker
+      ELECTION_CHECKER              = local.election_checker
     },
     local.notices_env,
     var.testing_mode ? { TESTING_MODE = "true" } : {},
   )
 
   # worker: Secret Manager (reading seeds at tally), signing ledger blocks and rolls, pool key versions and sealing,
-  # writing anchors, running bylaws and consistency checks (reading the Anthropic API key from Secret Manager), and
-  # sending election notices, which link to the web app (design §6.8; notices.tf, and the AWS key from Secret Manager,
-  # below).
+  # writing anchors, running the bylaws, consistency and election setup checks (reading the Anthropic API key from
+  # Secret Manager), and sending election notices, which link to the web app (design §6.8; notices.tf, and the AWS key
+  # from Secret Manager, below).
   worker_env = merge(
     {
       GOOGLE_CLOUD_PROJECT      = var.project_id
@@ -41,6 +43,7 @@ locals {
       ANCHORS_BUCKET            = google_storage_bucket.anchors.name
       BYLAWS_CHECKER            = local.bylaws_checker
       CONSISTENCY_CHECKER       = local.consistency_checker
+      ELECTION_CHECKER          = local.election_checker
       WEB_ORIGIN                = var.web_origin != "" ? var.web_origin : "https://${var.project_id}.web.app"
     },
     local.notices_env,
@@ -49,9 +52,10 @@ locals {
     var.testing_mode ? { TESTING_MODE = "true" } : {},
   )
 
-  # The api queues the checks and the worker runs them, so both must agree. Either waits for a key (design §5.6).
+  # The api queues the checks and the worker runs them, so both must agree. Each waits for a key (design §5.6).
   bylaws_checker      = var.bylaws_check_enabled ? "claude" : "off"
   consistency_checker = var.consistency_check_enabled ? "claude" : "off"
+  election_checker    = var.election_check_enabled ? "claude" : "off"
 }
 
 # --- api ---------------------------------------------------------------------------------------------------------------

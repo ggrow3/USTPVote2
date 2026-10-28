@@ -190,6 +190,20 @@ test. Keep it current when pages change.
   after it, focus returns to the status line and "Key removed." is announced. The section is a row in the Navigation
   settings ("Show Claude to System Admin"). Captions `#757575` on white (4.61), read back from the computed styles; at
   320 px nothing scrolls sideways and the check states stack.
+- **Added 2026-10-27, the election setup check's side notes** (design §6.9; against private emulators with the
+  stand-in checker and a finished check of "Committee Elections (15-minute window)" given test notes, on its public
+  results page signed out: desktop width dark, 320 px light and dark): each set of notes is a `complementary` landmark
+  named after what it is about ("Bylaws check notes on this election", "Bylaws check notes on Policy Committee (approve
+  any)"), the election's above the contest cards and each contest's after its rules, so it is met in reading order.
+  The gavel and severity icons are `aria-hidden`; the severity is in words ("Clear mismatch with the bylaws", "Likely
+  mismatch…", "Worth a look") with the topic after it; each set says it comes from an automated check (or the local
+  stand-in); quoted bylaws lines are `blockquote`s, "Bylaws, line 11: “…”". Fixed on the way: the light theme's caption
+  grey `#757575` on the notes' grey tint was 4.22:1, so captions inside them are `#616161` (5.67); the severity
+  `deep-orange-10` is 5.13 there, and in the dark theme `#b0b0b0` is 7.08 and `#ffb74d` 8.86. At 320 px the notes wrap
+  inside the card and nothing scrolls sideways. Not yet seen in a browser: the notes on the ballot page and the
+  election editor's "Check against the bylaws" card (both need a signed-in Election Admin, Auditor or voter); they use
+  the same component and the card follows the consistency check's (named button, focus to the progress, the end
+  announced, a failure as a banner, "Go to contest" named with the contest by a screen-reader-only suffix).
 - **Added 2026-10-27, appointing members to offices** (design §6.4; against the emulators as elections@example.test,
   the seeded Membership and Election Admin, then as auditor@example.test, and signed out; desktop width dark, 320 px
   light and dark): each office's card in the Offices tab has Appoint (named "Appoint to Chair" by a screen-reader-only
@@ -437,6 +451,9 @@ the browser paints them, and were read back from the computed styles in a browse
 - Repeated buttons get the object in their name: `<q-btn label="Remove"><span class="sr-only">&nbsp;{{ name }}</span></q-btn>`
   or an `aria-label` that starts with the visible text. The `&nbsp;` matters: Vue drops a plain leading space before
   an interpolation.
+- Side notes (the election setup check's notes beside a contest, `election-check/BylawsCheckNotes.vue`) are an `aside`
+  named after what they are about ("Bylaws check notes on Plank 12"), placed after the contest's rules so they come in
+  reading order; severity is in words next to an `aria-hidden` icon, and quoted text is a `blockquote`.
 - Colour classes: use `text-deep-orange-10` for warning text (`orange-9` and `orange-10` fail on white); light badge or
   banner backgrounds need `text-color="black"` / `text-black` (a `q-banner` with `text-black` also gets the darker link
   and focus colour). `app.css` fixes the dark theme for `text-primary`, `-positive`, `-negative`, `-grey-7` and
