@@ -35,15 +35,19 @@ export function applicationWindowStart(now: Date): string {
 
 /**
  * A new application, which makes its author an applicant. It must agree to the *current* bylaws, identified by
- * version and content hash; the account may have made at most MAX_APPLICATIONS_PER_WINDOW (`recent`, counted from
- * `applicationWindowStart`); and its member status must allow applying (never applied, rejected or resigned). The
- * schema has already checked the age, attestations and contact formats.
+ * version and content hash, and answer the registration form's *current* wording (`formVersion`); the account may
+ * have made at most MAX_APPLICATIONS_PER_WINDOW (`recent`, counted from `applicationWindowStart`); and its member
+ * status must allow applying (never applied, rejected or resigned). The schema has already checked the age,
+ * attestations and contact formats. The two membership questions are recorded as answered: No to either never
+ * refuses an application (design §5.2).
  */
 export function submitApplication(args: {
   readonly applicationId: string;
   readonly accountId: string;
   readonly input: CreateApplicationInput;
   readonly bylaws: BylawsRecord | null;
+  /** The registration form's current version. */
+  readonly formVersion: number;
   readonly recent: number;
   readonly current: MemberRecord | null;
   readonly at: string;
@@ -52,6 +56,9 @@ export function submitApplication(args: {
   if (!bylaws) return refuse('conflict', 'no bylaws have been published yet');
   if (bylaws.version !== input.bylawsVersion || bylaws.contentHash !== input.bylawsHash) {
     return refuse('conflict', 'the bylaws have changed; review the current version and agree again');
+  }
+  if (input.formVersion !== args.formVersion) {
+    return refuse('conflict', 'the application form has changed; read the questions again, then submit');
   }
   if (args.recent >= MAX_APPLICATIONS_PER_WINDOW) {
     return refuse(
@@ -72,7 +79,10 @@ export function submitApplication(args: {
     legalName: input.legalName,
     preferredName: input.preferredName || null,
     dateOfBirth: input.dateOfBirth,
-    attestations: { minimumAge: MINIMUM_MEMBER_AGE, supportsPlatform: true },
+    attestations: { minimumAge: MINIMUM_MEMBER_AGE },
+    formVersion: input.formVersion,
+    usVoteEligible: input.usVoteEligible,
+    agreesWithCoreIdeals: input.agreesWithCoreIdeals,
     state: input.state,
     contact: {
       city: input.city,
@@ -104,6 +114,8 @@ export function submitApplication(args: {
       state: application.state,
       contact: application.contact,
       communications: application.communications,
+      usVoteEligible: input.usVoteEligible,
+      agreesWithCoreIdeals: input.agreesWithCoreIdeals,
       bylawsVersion: application.bylawsVersion,
     },
     at,

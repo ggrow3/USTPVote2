@@ -17,9 +17,11 @@ import { ApplicationRepository } from './application.repository.js';
 import { MemberRepository } from './member.repository.js';
 import { Members } from './members.service.js';
 import { MembershipService } from './membership.service.js';
+import { RegistrationFormService } from './registration-form.js';
 
 /**
- * Applications to join (design §5.2): submitted against the current bylaws, decided by a Membership Admin. The rules
+ * Applications to join (design §5.2): submitted against the current bylaws and the registration form's current
+ * wording, decided by a Membership Admin. The rules
  * are the MembershipApplication aggregate's in `ustp-domain`; each application also changes its author's status.
  */
 @Injectable()
@@ -30,6 +32,7 @@ export class MembershipApplications {
     private readonly members: MemberRepository,
     private readonly statusChanges: Members,
     private readonly bylaws: MembershipService,
+    private readonly form: RegistrationFormService,
   ) {}
 
   async submit(ctx: RequestContext, input: CreateApplicationInput): Promise<ApplicationRecord> {
@@ -38,10 +41,20 @@ export class MembershipApplications {
     return this.firebase.db.runTransaction(async (tx) => {
       const now = new Date();
       const bylaws = await this.bylaws.currentBylaws(tx);
+      const formVersion = await this.form.version(tx);
       const recent = await this.applications.countSince(tx, accountId, applicationWindowStart(now));
       const current = await this.members.get(tx, accountId);
       const { application, transition } = accepted(
-        submitApplication({ applicationId: this.applications.newId(), accountId, input, bylaws, recent, current, at: now.toISOString() }),
+        submitApplication({
+          applicationId: this.applications.newId(),
+          accountId,
+          input,
+          bylaws,
+          formVersion,
+          recent,
+          current,
+          at: now.toISOString(),
+        }),
       );
       await this.statusChanges.record(tx, transition);
       this.applications.create(tx, application);
