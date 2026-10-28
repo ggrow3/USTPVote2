@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AcademyController } from '../academy/academy.controller.js';
 import { APP_GUARD } from '@nestjs/core';
 import { AccountsAdminController, AccountsController } from '../accounts/accounts.controller.js';
 import { AccountsService } from '../accounts/accounts.service.js';
@@ -60,6 +61,7 @@ import { PositionsService } from '../positions/positions.service.js';
 @Module({
   imports: [CoreModule],
   controllers: [
+    AcademyController,
     HealthController,
     AccountsController,
     RegistrationController,
