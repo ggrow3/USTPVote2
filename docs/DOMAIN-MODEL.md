@@ -105,7 +105,7 @@ commit. What changes is that only the owner touches its documents.
 | Offices | **Office** (position) | defined or changed at once with a reason; running terms untouched |
 | Offices | **Term** | created by certification, or by an appointment two persons approve (an Active member, a free seat, starting no later than approved, no longer than the office's term; the appointee neither requests nor approves); marked elected or appointed (`basis`); active → ended by two persons; holder neither requests nor approves |
 | Governance | **ApprovalRequest** | one pending per action and subject; approver ≠ requester ≠ subject; approver's role, MFA, sign-in ≤ 15 min; 7-day expiry; executes exactly the approved payload hash |
-| Governance | **RoleAssignment** | one System Admin, not on their own account; Auditor holds no other role |
+| Governance | **RoleAssignment** | one System Admin, not on their own account; Auditor holds no other role; at most two roles per person |
 | Governance | **NavigationSettings** (`navigation/current`) | shows, never permits; no section for a role the API refuses it to, and none for membership alone; People and Navigation always shown to System Admins; a role's Admin link follows its sections; every start page one its audience is shown; saved whole from the version it was edited from, each changed cell ledgered as `navigation.changed` |
 | Governance | **HomeQuote** (`home_quote/current`) | shown needs its words and who said them; each part within its limit once tidied; saved whole from the version it was edited from, each changed part ledgered as `home_quote.changed` |
 | Governance | **Hub** (`hub/current`) | shown sections need a title and shown links a title and address (a page of the app, https or mailto); the accent takes white text at 4.5:1; the logo is one uploaded here; the live widget needs the server ID; IDs unique; saved whole from the version it was edited from, each change ledgered as `hub.changed`. Its click counters (`hub_clicks`) count only what it shows, and hold no personal data (DESIGN §10.6) |
@@ -273,9 +273,9 @@ Each step behaviour-preserving: same routes and URLs, page titles, headings, lab
 - **W2. Bylaws**, **W3. Governance** (begun: `governance/` holds the navigation settings' client, panel, wording
   and store, the quote's, and the hub's (its page, admin tabs and click client), and the admin tabs come from `ADMIN_SECTIONS` and `SECTION_ROLES` in `ustp-domain`, which a server test
   checks against the `@Roles` of each section's routes; still to move: approvals, people, role changes, testing),
-  **W4. Offices** (*done*: `offices/api.ts` is the only place the offices routes are written, and the contest dialog
+  **W4. Offices** (*done*: `offices/api.ts` is the only place the offices routes are written, and the ballot builder
   and the Members tab call it; `offices/` holds the Offices panel, the appointment dialog and its member picker, the
   profile's Offices card and the public Offices page, with their wording in `office-text.ts`; the boundary test
-  includes it), **W5. Elections** (`votingAhead(election)` in `ustp-domain` for "upcoming"), **W6. Ledger and
+  includes it), **W5. Elections** (`votingAhead(election)` in `ustp-domain` for "upcoming"; begun: `elections/api.ts` holds the ballot builder's calls, §6.5, while the rest of the editor still calls its routes itself), **W6. Ledger and
   verification** (one public-ledger client for the audit panel, results and verify), **W7. Accounts and photos**
   (photo limits into `ustp-domain`), each following the matching server step where there is one.

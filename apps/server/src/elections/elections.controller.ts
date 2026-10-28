@@ -1,5 +1,6 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query } from '@nestjs/common';
 import {
+  ballotIdSchema,
   candidateInputSchema,
   contestInputSchema,
   createElectionSchema,
@@ -7,6 +8,8 @@ import {
   MEMBER_SEARCH_DEFAULT_LIMIT,
   MEMBER_SEARCH_MAX_LIMIT,
   proposalInputSchema,
+  questionInputSchema,
+  questionOrderSchema,
   reasonInputSchema,
   rollRequestSchema,
   updateElectionSchema,
@@ -15,6 +18,8 @@ import {
   type CreateElectionInput,
   type ElectionPackage,
   type ProposalInput,
+  type QuestionInput,
+  type QuestionOrderInput,
   type ReasonInput,
   type RollRequestInput,
   type UpdateElectionInput,
@@ -122,6 +127,28 @@ export class ElectionsController {
   @HttpCode(204)
   async removeContest(@Ctx() ctx: RequestContext, @Param('id') id: string, @Param('contestId') contestId: string) {
     await this.elections.removeContest(ctx, id, contestId);
+  }
+
+  /**
+   * The ballot builder (design §6.5): one question, its rules and its options, saved whole, or created (at `position`)
+   * under the ID the builder gave it.
+   */
+  @Put(':id/questions/:contestId')
+  saveQuestion(
+    @Ctx() ctx: RequestContext,
+    @Param('id') id: string,
+    @Param('contestId') contestId: string,
+    @Body(new ZodPipe(questionInputSchema)) body: QuestionInput,
+  ) {
+    if (!ballotIdSchema.safeParse(contestId).success) throw new BadRequestException('invalid contest ID');
+    return this.elections.saveQuestion(ctx, id, contestId, body);
+  }
+
+  /** The order of the ballot's questions: every question once. */
+  @Put(':id/question-order')
+  @HttpCode(204)
+  async reorderQuestions(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(questionOrderSchema)) body: QuestionOrderInput) {
+    await this.elections.reorderQuestions(ctx, id, body.contestIds);
   }
 
   @Post(':id/contests/:contestId/candidates')

@@ -187,6 +187,8 @@ watch(
               <dd>{{ consentText(m.communications?.newsletter) }}</dd>
               <dt>Party announcements and calls to vote</dt>
               <dd>{{ consentText(m.communications?.announcements) }}</dd>
+              <dt>Daily quote and joke</dt>
+              <dd>{{ detail?.preferences?.dailyQuote ? 'On' : 'Off' }}</dd>
             </dl>
           </q-card-section>
         </q-card>

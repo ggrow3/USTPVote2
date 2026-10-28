@@ -1,3 +1,4 @@
+import type { AccountPreferences } from '../daily.js';
 import type { MemberStatus } from './member-status.js';
 
 /** Document shapes of the membership context (design §5.1, §5.2, §11). */
@@ -103,4 +104,6 @@ export interface MemberDetail {
   readonly applications: readonly ApplicationRecord[];
   /** Status history, newest first. */
   readonly history: readonly StatusHistoryRecord[];
+  /** The account's display choices, so a Membership Admin sees whether the daily quote and joke is on (design §4.1). */
+  readonly preferences: AccountPreferences;
 }

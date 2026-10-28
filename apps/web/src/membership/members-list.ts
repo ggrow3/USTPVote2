@@ -27,8 +27,11 @@ export interface MemberRow {
   readonly offices: readonly HeldOffice[];
 }
 
-/** Each member with the offices their account holds now; a term entered without an account names nobody here. */
-export function memberRows(members: readonly MemberRecord[], view: PositionsView): MemberRow[] {
+/**
+ * The offices each account holds now, by title, keyed by account ID; a term entered without an account names nobody
+ * here. The Members tab and the People tab (design §10.3) both show them.
+ */
+export function heldOffices(view: PositionsView): Map<string, HeldOffice[]> {
   const titles = new Map(view.positions.map((p) => [p.positionId, p]));
   const held = new Map<string, HeldOffice[]>();
   for (const t of view.terms) {
@@ -36,10 +39,14 @@ export function memberRows(members: readonly MemberRecord[], view: PositionsView
     if (t.status !== 'active' || !t.accountId || !position) continue;
     held.set(t.accountId, [...(held.get(t.accountId) ?? []), { title: position.title, description: position.description }]);
   }
-  return members.map((member) => ({
-    member,
-    offices: (held.get(member.accountId) ?? []).sort((a, b) => compare(a.title, b.title)),
-  }));
+  for (const offices of held.values()) offices.sort((a, b) => compare(a.title, b.title));
+  return held;
+}
+
+/** Each member with the offices their account holds now. */
+export function memberRows(members: readonly MemberRecord[], view: PositionsView): MemberRow[] {
+  const held = heldOffices(view);
+  return members.map((member) => ({ member, offices: held.get(member.accountId) ?? [] }));
 }
 
 /** What the Position column says for someone with no office: "Member" while they have a membership, else nothing. */

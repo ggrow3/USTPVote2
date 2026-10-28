@@ -1,9 +1,13 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Query } from 'firebase-admin/firestore';
 import {
+  checkRoleChange,
   Collections,
+  DEFAULT_ACCOUNT_PREFERENCES,
   isSignInProvider,
   uuidv7,
+  type AccountPreferences,
+  type AccountPreferencesInput,
   type AccountRecord,
   type AccountSummary,
   type IdentityRecord,
@@ -36,6 +40,8 @@ export interface AccountQuery {
 /** USTP accounts and the logins linked to them (design §4). */
 @Injectable()
 export class AccountsService {
+  private readonly logger = new Logger(AccountsService.name);
+
   constructor(
     private readonly firebase: Firebase,
     private readonly ledger: LedgerService,
@@ -67,6 +73,18 @@ export class AccountsService {
       mfa: { required: this.config.adminMfaRequired && roles.length > 0, signedInWithMfa },
       testing,
     };
+  }
+
+  /**
+   * The caller's own display choices (design §4.1), such as the daily quote and joke. Not ledgered: they decide nothing.
+   * A Membership Admin reads them on the member's profile.
+   */
+  async updatePreferences(ctx: RequestContext, input: AccountPreferencesInput): Promise<AccountPreferences> {
+    const ref = this.firebase.db.collection(Collections.accounts).doc(requireAccount(ctx));
+    if (!(await ref.get()).exists) throw new NotFoundException('create your account first (POST /v1/accounts)');
+    const preferences: AccountPreferences = { ...DEFAULT_ACCOUNT_PREFERENCES, ...input };
+    await ref.update({ preferences });
+    return preferences;
   }
 
   /**
@@ -108,7 +126,9 @@ export class AccountsService {
   /**
    * Mints the caller's account on first sign-in. Idempotent: a uid that already has an account gets it back.
    * Each call also applies the bootstrap System Admin grant once the email is verified (password sign-ups start
-   * unverified), but only to an account that has never held the role, so a revocation is never undone.
+   * unverified), but only to an account that has never held the role, so a revocation is never undone, and only when
+   * the grant keeps to the role rules (design §10.1): an account that is an Auditor or already holds two roles is
+   * left as it is until a System Admin brings it within them.
    */
   async create(ctx: RequestContext): Promise<{ readonly created: boolean; readonly accountId: string }> {
     const { principal } = ctx;
@@ -121,7 +141,14 @@ export class AccountsService {
       const existing = await tx.get(identityRef);
       const accountId = existing.exists ? (existing.data() as IdentityRecord).accountId : uuidv7();
       const roleRef = db.collection(Collections.roleAssignments).doc(roleAssignmentId(accountId, 'system_admin'));
-      const bootstrap = bootstrapEligible && !(existing.exists && (await tx.get(roleRef)).exists);
+      let bootstrap = bootstrapEligible && !(existing.exists && (await tx.get(roleRef)).exists);
+      if (bootstrap && existing.exists) {
+        const fits = checkRoleChange(await this.directory.activeRoles(accountId, tx), 'grant', 'system_admin');
+        if (!fits.ok) {
+          this.logger.warn(`bootstrap System Admin grant for account ${accountId} skipped: ${fits.reason}`);
+          bootstrap = false;
+        }
+      }
       if (existing.exists && !bootstrap) return { created: false, accountId };
 
       const now = new Date().toISOString();

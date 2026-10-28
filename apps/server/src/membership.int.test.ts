@@ -276,6 +276,14 @@ describe('member profiles and details', () => {
     expect((await api.call('GET', `/v1/admin/members/${admin.accountId}`, admin)).status).toBe(404);
   });
 
+  it('shows a Membership Admin whether the member turned the daily quote and joke on', async () => {
+    const robin = await activeMember();
+    const profile = () => api.call('GET', `/v1/admin/members/${robin.accountId}`, admin);
+    expect((await profile()).body.preferences).toEqual({ dailyQuote: false });
+    expect((await api.call('PUT', '/v1/me/preferences', robin, { dailyQuote: true })).status).toBe(200);
+    expect((await profile()).body.preferences).toEqual({ dailyQuote: true });
+  });
+
   it('lets members change their own details and email opt-ins, ledgered by field name only', async () => {
     const robin = await activeMember();
     const res = await api.call('POST', '/v1/me/details', robin, { preferredName: 'Rob', ...where, newsletter: false, announcements: true });

@@ -72,6 +72,22 @@ describe('role changes (one System Admin)', () => {
     expect(await rolesOf(sa1)).toEqual(['system_admin']);
   });
 
+  it('refuse a third role, and allow it again once one is revoked', async () => {
+    await api.grant(pat.accountId, 'membership_admin', sa1);
+    await api.grant(pat.accountId, 'election_admin', sa1);
+    expect(await changeRole(sa1, pat.accountId, 'system_admin')).toMatchObject({
+      status: 409,
+      body: { detail: 'an account may hold at most 2 roles, and this one already holds election_admin and membership_admin' },
+    });
+    expect(await rolesOf(pat)).toEqual(['election_admin', 'membership_admin']);
+
+    expect((await changeRole(sa2, pat.accountId, 'membership_admin', 'revoke')).status).toBe(201);
+    expect(await changeRole(sa1, pat.accountId, 'system_admin')).toMatchObject({
+      status: 201,
+      body: { roles: ['election_admin', 'system_admin'] },
+    });
+  });
+
   it('still decide role requests made while role changes were two-person', async () => {
     const approvals = api.app.get(ApprovalsService);
     const pending = (role: string) =>
