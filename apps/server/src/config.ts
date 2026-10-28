@@ -40,8 +40,15 @@ export interface ServerConfig {
    * (the emulator-only stand-in) or `off` (requests answer 503). Off unless set, outside the emulators.
    */
   readonly consistencyChecker: 'claude' | 'stub' | 'off';
+  /**
+   * The election setup check (design §6.9), switched on its own because it sends an election's rules and proposal texts
+   * with the bylaws, and its notes are shown to every member: `claude`, `stub` (the emulator-only stand-in) or `off`
+   * (requests answer 503). Off unless set, outside the emulators.
+   */
+  readonly electionChecker: 'claude' | 'stub' | 'off';
   readonly bylawsCheckModel: string;
   readonly consistencyCheckModel: string;
+  readonly electionCheckModel: string;
   /**
    * How election notices are sent (design §6.8): `ses` through Amazon SES, `outbox` recorded in Firestore instead of
    * mailed (the emulator-only stand-in), `off` not at all. Off unless set, outside the emulators.
@@ -74,6 +81,8 @@ export interface ServerConfig {
 export const DEFAULT_BYLAWS_CHECK_MODEL = 'claude-opus-5-5';
 /** Claude Opus 5.5; `CONSISTENCY_CHECK_MODEL` overrides it. */
 export const DEFAULT_CONSISTENCY_CHECK_MODEL = 'claude-opus-5-5';
+/** Claude Opus 5.5; `ELECTION_CHECK_MODEL` overrides it. */
+export const DEFAULT_ELECTION_CHECK_MODEL = 'claude-opus-5-5';
 
 export const CONFIG = Symbol('ServerConfig');
 
@@ -118,6 +127,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   if (consistencyChecker === 'stub' && !usingEmulators) {
     throw new Error('CONSISTENCY_CHECKER=stub is only allowed with the Firebase emulators');
   }
+  const electionChecker = (env.ELECTION_CHECKER ?? (usingEmulators ? 'stub' : 'off')) as ServerConfig['electionChecker'];
+  if (!['claude', 'stub', 'off'].includes(electionChecker)) throw new Error('ELECTION_CHECKER must be "claude", "stub" or "off"');
+  if (electionChecker === 'stub' && !usingEmulators) throw new Error('ELECTION_CHECKER=stub is only allowed with the Firebase emulators');
 
   const mailTransport = (env.MAIL_TRANSPORT ?? (usingEmulators ? 'outbox' : 'off')) as ServerConfig['mailTransport'];
   if (!['ses', 'outbox', 'off'].includes(mailTransport)) throw new Error('MAIL_TRANSPORT must be "ses", "outbox" or "off"');
@@ -146,8 +158,10 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     testingMode,
     bylawsChecker,
     consistencyChecker,
+    electionChecker,
     bylawsCheckModel: env.BYLAWS_CHECK_MODEL || DEFAULT_BYLAWS_CHECK_MODEL,
     consistencyCheckModel: env.CONSISTENCY_CHECK_MODEL || DEFAULT_CONSISTENCY_CHECK_MODEL,
+    electionCheckModel: env.ELECTION_CHECK_MODEL || DEFAULT_ELECTION_CHECK_MODEL,
     mailTransport,
     mailFrom: env.MAIL_FROM || DEFAULT_MAIL_FROM,
     mailReplyTo: env.MAIL_REPLY_TO || null,

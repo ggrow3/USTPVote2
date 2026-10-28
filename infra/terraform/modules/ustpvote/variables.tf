@@ -222,6 +222,12 @@ variable "consistency_check_enabled" {
   default     = false
 }
 
+variable "election_check_enabled" {
+  description = "Run the election setup check, which Election Admins and Auditors ask for once per version of an election, which sends its rules, offices and proposal texts with the current bylaws to Anthropic's API, and whose notes every user sees beside the contests once it is scheduled (design §6.9). Uses the same Anthropic API key as the bylaws check, which a System Admin adds in the app."
+  type        = bool
+  default     = false
+}
+
 # --- Election notices (design §6.8) -----------------------------------------------------------------------------------
 
 variable "web_origin" {

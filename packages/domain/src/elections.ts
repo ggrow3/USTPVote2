@@ -6,6 +6,7 @@ import type { MemberStatus } from './membership/member-status.js';
 import type { RollCriteria } from './roll.js';
 import type { ElectionState } from './election-state.js';
 import type { SignatureRecord } from './ledger.js';
+import type { PositionRecord } from './positions.js';
 import type { ApprovalRequestRecord } from './records.js';
 import type { ResultsSummary } from './results.js';
 
@@ -254,6 +255,8 @@ export interface ElectionDetail {
   readonly definitionHash: string;
   /** What must be fixed before scheduling; empty when ready. */
   readonly problems: readonly string[];
+  /** Drafts: things worth a second look that do not stop scheduling ({@link definitionAdvisories}). */
+  readonly advisories: readonly string[];
   /** The latest voter roll (pending or approved), without the member list. */
   readonly roll: Omit<RollSnapshotRecord, 'accountIds'> | null;
   /** Two-person requests about this election awaiting a decision. */
@@ -316,4 +319,30 @@ export function validateDefinition(def: ElectionDefinition, now: Date = new Date
     for (const p of validateContestSpec(c.spec)) problems.push(`${label}: ${p}`);
   }
   return problems;
+}
+
+/**
+ * Notes about a draft that do not stop it being scheduled (design §6.9): a candidate contest electing a different
+ * number of people than the office it fills has seats. That is right when only some seats are being filled, and a
+ * mistake otherwise, so it is pointed out rather than refused.
+ */
+export function definitionAdvisories(def: ElectionDefinition, positions: readonly PositionRecord[]): string[] {
+  const notes: string[] = [];
+  for (const c of def.contests) {
+    if (c.spec.kind === 'proposal' || !c.positionId) continue;
+    const office = positions.find((p) => p.positionId === c.positionId);
+    if (!office) continue;
+    const label = `“${c.title || c.contestId}”`;
+    const seats = office.seats === 1 ? '1 seat' : `${office.seats} seats`;
+    if (c.spec.kind === 'irv' && office.seats > 1) {
+      notes.push(
+        `${label} is ranked choice, which elects one person, but the office ${office.title} has ${seats}. That is right when filling one seat; otherwise use a choose-candidates contest.`,
+      );
+    } else if (c.spec.kind === 'choose_n' && c.spec.seats !== office.seats) {
+      notes.push(
+        `${label} elects ${c.spec.seats}, but the office ${office.title} has ${seats}. That is right when filling only some seats; otherwise change the contest.`,
+      );
+    }
+  }
+  return notes;
 }

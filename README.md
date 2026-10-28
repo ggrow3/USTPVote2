@@ -22,7 +22,10 @@ Membership Admin can run an advisory check by Claude (Anthropic) that highlights
 Constitution, Transhumanist principles or the USTP Constitution; it is off in real projects until USTP agrees to it, and
 the emulators use a deterministic stand-in (design §5.4). In the same way, a voter on an election's roll (from the
 ballot) or an Election Admin or Auditor (from the election editor) can ask Claude, once per election, whether its
-proposals agree with the party's platform and constitution and with each other (design §5.5). The web app is an
+proposals agree with the party's platform and constitution and with each other (design §5.5), and an Election Admin or
+Auditor can ask Claude, once per version of an election, whether its rules match the bylaws (pass thresholds, quorums,
+seats, terms); once the election is scheduled, every member sees those notes beside the contests on the ballot and
+results (design §6.9). The web app is an
 installable PWA and has had an accessibility pass. For deployment there are Terraform for dev, staging and prod (validated; applied for
 dev only), the server image (`apps/server/Dockerfile`) and a release workflow that builds, attests and rolls it out
 with a keyless CI identity; CI builds and starts the image on every pull request. The rest of M5 (the
@@ -103,11 +106,12 @@ npm run dev:emulators -w apps/web
 ```
 
 The worker ticks every 15 seconds in place of Cloud Scheduler: it opens and closes elections on time and seals,
-signs and anchors the ledger. On the same timer it runs queued bylaws checks and platform consistency checks, with the
-emulator-only stand-ins unless the api and worker both get `BYLAWS_CHECKER=claude` or `CONSISTENCY_CHECKER=claude`,
-and a System Admin adds an Anthropic API key under Admin › Claude, which the emulators keep in their stand-in secret
-store and do not try with Anthropic first (each check then costs money and sends the draft, or the election's
-proposals, to Anthropic; design §5.4–§5.6).
+signs and anchors the ledger. On the same timer it runs queued bylaws checks, platform consistency checks and election
+setup checks, with the emulator-only stand-ins unless the api and worker both get `BYLAWS_CHECKER=claude`,
+`CONSISTENCY_CHECKER=claude` or `ELECTION_CHECKER=claude`, and a System Admin adds an Anthropic API key under Admin ›
+Claude, which the emulators keep in their stand-in secret store and do not try with Anthropic first (each check then
+costs money and sends the draft, the election's proposals, or its rules with the bylaws, to Anthropic; design
+§5.4–§5.6, §6.9).
 
 The emulators start empty. To fill them with test data, run this once the api and worker are up (about a minute):
 

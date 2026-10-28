@@ -26,6 +26,7 @@ module "ustpvote" {
 
   bylaws_check_enabled      = var.bylaws_check_enabled
   consistency_check_enabled = var.consistency_check_enabled
+  election_check_enabled    = var.election_check_enabled
 
   # Election notices (design §6.8; README "Election notices").
   web_origin           = var.web_origin

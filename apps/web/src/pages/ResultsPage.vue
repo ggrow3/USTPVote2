@@ -10,6 +10,7 @@ import {
   type ContestOutcome,
   type ElectionDefinition,
   type PublicElection,
+  type PublicElectionCheck,
   type PublicLedgerEntry,
   type ResultsCheck,
   type ResultsRecord,
@@ -19,6 +20,8 @@ import {
 import type { TieBreakRecord } from 'ustp-tally';
 import { usePageTitle } from '../a11y.js';
 import { api, ApiError, errorMessage } from '../api.js';
+import { publishedElectionCheck } from '../election-check/api.js';
+import BylawsCheckNotes from '../election-check/BylawsCheckNotes.vue';
 import { downloadElectionDocx } from '../election-files.js';
 import { rulesText, tieBreakText } from '../election-text.js';
 import ResultsSynopsis from '../elections/ResultsSynopsis.vue';
@@ -34,6 +37,8 @@ const error = ref<string | null>(null);
 const record = ref<PublicElection | null>(null);
 const results = ref<ResultsRecord | null>(null);
 const check = ref<ResultsCheck | null>(null);
+/** Side notes from the election setup check (design §6.9), if an admin ran it on the scheduled election. */
+const bylawsCheck = ref<PublicElectionCheck | null>(null);
 usePageTitle(() => (record.value ? `Results: ${record.value.definition.title}` : 'Results'));
 
 const orNull = <T,>(request: Promise<T>): Promise<T | null> =>
@@ -50,12 +55,14 @@ const orNull = <T,>(request: Promise<T>): Promise<T | null> =>
 onMounted(async () => {
   try {
     const base = `/v1/public/elections/${electionId}`;
-    const [publicRecord, published] = await Promise.all([
+    const [publicRecord, published, notes] = await Promise.all([
       api<PublicElection>('GET', base),
       orNull(api<ResultsRecord>('GET', `${base}/results`)),
+      publishedElectionCheck(electionId),
     ]);
     record.value = publicRecord;
     results.value = published;
+    bylawsCheck.value = notes;
     if (!published) return;
     const certifiedSeq = published.certifiedLedgerSeq;
     const [blocks, keys, ledger, anchor, certification] = await Promise.all([
@@ -231,6 +238,7 @@ const summary = computed(() => {
               />
             </q-tab-panel>
             <q-tab-panel id="results-panel-full" name="full" aria-labelledby="results-tab-full" class="q-pa-none ustp-stack">
+              <BylawsCheckNotes :check="bylawsCheck" :contest-id="null" subject="this election" />
               <q-card v-for="{ contest, outcome } in outcomes" :key="contest.contestId" flat bordered>
                 <q-card-section>
                   <div class="ustp-header">
@@ -242,6 +250,7 @@ const summary = computed(() => {
                     />
                   </div>
                   <div v-for="line in rulesText(contest.spec)" :key="line" class="text-caption text-grey-7">{{ line }}</div>
+                  <BylawsCheckNotes :check="bylawsCheck" :contest-id="contest.contestId" :subject="contest.title" />
                 </q-card-section>
 
                 <q-card-section v-if="outcome.result.kind === 'proposal'" class="q-pt-none">

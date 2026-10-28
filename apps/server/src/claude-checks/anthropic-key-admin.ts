@@ -59,7 +59,7 @@ export class AnthropicKeyAdminService {
       addedAt: version?.createdAt ?? null,
       addedBy: ours ? { accountId: ours.addedBy, name: ours.addedByName } : null,
       hint: ours?.hint ?? null,
-      checks: { bylaws: this.config.bylawsChecker, consistency: this.config.consistencyChecker },
+      checks: { bylaws: this.config.bylawsChecker, consistency: this.config.consistencyChecker, election: this.config.electionChecker },
       tried: !this.config.usingEmulators,
     };
   }
@@ -68,7 +68,7 @@ export class AnthropicKeyAdminService {
   async add(ctx: RequestContext, input: AnthropicKeyInput): Promise<AnthropicKeyStatus> {
     const actor = requireAccount(ctx);
     assertCheck(checkAnthropicKey(input.key), BadRequestException);
-    const trial = await this.tester.try(input.key, [this.config.bylawsCheckModel, this.config.consistencyCheckModel]);
+    const trial = await this.tester.try(input.key, [this.config.bylawsCheckModel, this.config.consistencyCheckModel, this.config.electionCheckModel]);
     if (!trial.ok) {
       throw trial.refusal === 'unreachable' ? new BadGatewayException(trial.reason) : new UnprocessableEntityException(trial.reason);
     }

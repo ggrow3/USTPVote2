@@ -88,6 +88,12 @@ variable "consistency_check_enabled" {
   default     = false
 }
 
+variable "election_check_enabled" {
+  description = "Run the election setup check with Claude, once per version of an election, whose notes every user sees (design §6.9; README \"Election setup check\")."
+  type        = bool
+  default     = false
+}
+
 variable "web_origin" {
   description = "Where the web app is served, which election notices link to; empty for https://<project>.web.app (design §6.8)."
   type        = string

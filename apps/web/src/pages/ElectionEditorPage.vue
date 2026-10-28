@@ -17,12 +17,16 @@ import {
   type ProposalSnapshotRecord,
   type RollView,
 } from 'ustp-domain';
-import { usePageTitle } from '../a11y.js';
+import { focusElement, usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
 import { aRole, describeRequest } from '../approval-text.js';
 import ContestDialog from '../components/admin/ContestDialog.vue';
 import ConsistencyCheckCard from '../consistency-check/ConsistencyCheckCard.vue';
 import { askReason, attempt, dialog } from '../dialogs.js';
+import BylawsCheckNotes from '../election-check/BylawsCheckNotes.vue';
+import ElectionCheckSection from '../election-check/ElectionCheckSection.vue';
+import { pointerText } from '../election-check/election-check-text.js';
+import { useElectionCheck } from '../election-check/use-election-check.js';
 import { downloadElectionDocx, saveElectionPackage } from '../election-files.js';
 import CandidatePicker from '../elections/CandidatePicker.vue';
 import ElectionWorkflow from '../elections/ElectionWorkflow.vue';
@@ -74,6 +78,29 @@ async function load() {
       kAnonymity: e.kAnonymity,
     });
   });
+  // An edit can leave the election setup check out of date; the api says so.
+  await electionCheck.load();
+}
+
+// --- the election setup check (design §6.9) ------------------------------------------------------------------
+
+const electionCheck = useElectionCheck(electionId);
+const canRunCheck = computed(
+  () => hasRole('election_admin', 'auditor') && ['draft', 'scheduled', 'open'].includes(detail.value?.election.state ?? ''),
+);
+/** The finished check whose notes sit beside the contests. */
+const checkNotes = computed(() => (electionCheck.state.check?.status === 'done' ? electionCheck.state.check : null));
+/** A line at the top, so whoever decides on scheduling sees the check. */
+const checkPointer = computed(() =>
+  electionCheck.state.loading ? '' : pointerText(electionCheck.state.check, canRunCheck.value && electionCheck.state.enabled === true),
+);
+
+function goToCheck() {
+  focusElement(document.getElementById('bylaws-check'));
+}
+
+function goToContest(contestId: string) {
+  focusElement(document.getElementById(`contest-${contestId}`));
 }
 
 async function saveDetails() {
@@ -305,6 +332,12 @@ onMounted(load);
             The definition is complete. Next: get a voter roll approved, then request scheduling.
           </q-banner>
           <q-banner v-else class="bg-positive text-white" rounded>Ready to schedule.</q-banner>
+          <q-banner v-if="detail.advisories.length" class="bg-grey-3 text-black" rounded>
+            <div class="text-weight-medium q-mb-xs">Worth a second look (these do not stop scheduling):</div>
+            <ul class="q-my-none">
+              <li v-for="a in detail.advisories" :key="a">{{ a }}</li>
+            </ul>
+          </q-banner>
         </template>
         <q-banner v-else-if="state === 'scheduled'" class="bg-primary text-white" rounded>
           Scheduled {{ new Date(detail.election.scheduledAt!).toLocaleString() }}. Voting opens
@@ -332,6 +365,9 @@ onMounted(load);
         <q-banner v-else-if="state === 'cancelled'" class="bg-grey-7 text-white" rounded>
           Cancelled {{ new Date(detail.election.cancelledAt!).toLocaleString() }}.
         </q-banner>
+        <div v-if="checkPointer" class="text-body2">
+          <a href="#bylaws-check" @click.prevent="goToCheck">{{ checkPointer }}</a>
+        </div>
         <div class="text-caption text-grey-7">
           Definition hash <code>{{ detail.definitionHash.slice(0, 16) }}…</code>
           <q-btn flat dense round size="sm" icon="content_copy" aria-label="Copy definition hash" @click="copyHash" />
@@ -454,6 +490,9 @@ onMounted(load);
 
         <q-card flat bordered>
           <q-card-section><h2 class="text-subtitle1">Details</h2></q-card-section>
+          <q-card-section v-if="checkNotes">
+            <BylawsCheckNotes :check="checkNotes" :contest-id="null" subject="this election" />
+          </q-card-section>
           <q-card-section class="ustp-form">
             <q-input v-model="details.title" outlined dense label="Title" :readonly="!canEdit" />
             <q-input v-model="details.description" outlined dense autogrow label="Description" :readonly="!canEdit" />
@@ -488,6 +527,20 @@ onMounted(load);
             <q-btn color="primary" label="Save details" @click="saveDetails" />
           </q-card-section>
         </q-card>
+
+        <ElectionCheckSection
+          :check="electionCheck.state.check"
+          :enabled="electionCheck.state.enabled"
+          :loading="electionCheck.state.loading"
+          :requesting="electionCheck.state.requesting"
+          :error="electionCheck.state.error"
+          :gave-up="electionCheck.state.gaveUp"
+          :state="detail.election.state"
+          :contests="detail.contests"
+          :can-run="canRunCheck"
+          @run="electionCheck.start"
+          @go-to-contest="goToContest"
+        />
 
         <ConsistencyCheckCard
           :election-id="electionId"
@@ -529,6 +582,7 @@ onMounted(load);
           <q-card-section>
             <div v-if="c.description" class="q-mb-xs" style="white-space: pre-wrap">{{ c.description }}</div>
             <div v-for="line in rulesText(c.spec)" :key="line">{{ line }}</div>
+            <BylawsCheckNotes :check="checkNotes" :contest-id="c.contestId" :subject="c.title" />
           </q-card-section>
 
           <q-expansion-item v-if="c.spec.kind === 'proposal'" dense :label="proposalOf(c) ? `Text: ${proposalOf(c)!.title}` : 'No text attached'">

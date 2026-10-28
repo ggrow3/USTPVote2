@@ -49,7 +49,7 @@ API-side limits are only checked by Google on the first apply.
 | | `signer` and `publicKeyViewer` on `audit-signing` | Only the worker signs ledger blocks and rolls (§8.3) |
 | | Create, get, decrypt with and destroy `ballot-pool` versions (custom role, on that key only) | One version per election, unwrapping at sealing, destruction after certification (§7.3, §13) |
 | | Create and read objects in the anchors bucket; never delete | Write-once anchors; overwriting needs delete, which it lacks (§8.4) |
-| | Access secrets | Tie-break seeds at tally (§9), the Anthropic API key for the bylaws and consistency checks, read each time it runs them (§5.4–§5.6), the AWS key for election notices by SES (§6.8) |
+| | Access secrets | Tie-break seeds at tally (§9), the Anthropic API key for the bylaws, consistency and election setup checks, read each time it runs them (§5.4–§5.6, §6.9), the AWS key for election notices by SES (§6.8) |
 | `ustp-worker-invoker` | Invoke the worker | Identity of the Scheduler tick and of Cloud Tasks; nothing else |
 | `ustp-release` | Push to the `ustpvote` Artifact Registry repository | The release workflow builds the server image |
 | | Sign attestations for `ustpvote-reviewed` (attestor key, note, occurrences) | Binary Authorization lets only attested images run |
@@ -87,6 +87,7 @@ Set in each root's `terraform.tfvars` (or with `-var`):
 | `task_enqueuers` | | | | `"api"` and/or `"worker"`, once code enqueues Cloud Tasks |
 | `bylaws_check_enabled` | false | false | false | The advisory bylaws check with Claude, which sends drafts to Anthropic; see [Bylaws check](#bylaws-check) |
 | `consistency_check_enabled` | false | false | false | The platform consistency check with Claude, once per person per election, which sends an election's proposals to Anthropic; see [Consistency check](#consistency-check) |
+| `election_check_enabled` | false | false | false | The election setup check with Claude, once per version of an election, which sends its rules, offices and proposal texts with the bylaws to Anthropic, and whose notes every user sees; see [Election setup check](#election-setup-check) |
 | `project_id`, `region` | | | | Default to the environment's project and `us-central1` |
 
 Fixed per root: Binary Authorization is a dry run in dev and enforced elsewhere. The module has further knobs with
@@ -117,7 +118,8 @@ for running the server locally against a real project. Variable names are those 
 | `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` | from the variable, not output | ● | |
 | `BYLAWS_CHECKER` | in `api_env` / `worker_env`: `claude` when `bylaws_check_enabled`, else `off` | ● | ● |
 | `CONSISTENCY_CHECKER` | in `api_env` / `worker_env`: `claude` when `consistency_check_enabled`, else `off` | ● | ● |
-| `BYLAWS_CHECK_MODEL`, `CONSISTENCY_CHECK_MODEL` | not set; the server defaults to `claude-opus-5-5` | | (●) |
+| `ELECTION_CHECKER` | in `api_env` / `worker_env`: `claude` when `election_check_enabled`, else `off` | ● | ● |
+| `BYLAWS_CHECK_MODEL`, `CONSISTENCY_CHECK_MODEL`, `ELECTION_CHECK_MODEL` | not set; the server defaults to `claude-opus-5-5` | | (●) |
 | `PORT` | set by Cloud Run (8080) | ● | ● |
 
 Never set: `APP_CHECK_ENFORCED`, `ADMIN_MFA_REQUIRED`, `PHOTO_CHECKER`, `SECRET_STORE`, `AUDIT_SIGNER`, `BALLOT_POOL`
@@ -356,8 +358,8 @@ Terraform or its state.
    added.
 
 The worker reads the key each time it runs checks, so replacing it under Admin › Claude takes effect from the next run,
-with no release or restart; the older versions are destroyed. Removing it there stops both checks. To switch the check
-off, set the variable back to `false` and apply; the secret and past checks stay.
+with no release or restart; the older versions are destroyed. Removing it there stops every Claude check. To switch the
+check off, set the variable back to `false` and apply; the secret and past checks stay.
 
 ### Consistency check
 
@@ -376,6 +378,27 @@ USTP should agree to it first (design Q18). It uses the same Anthropic API key a
    queued checks needs the `consistency_checks` index.
 
 Switching it off (`false`, apply) stops new checks and hides the button; people can still read the checks they ran.
+
+### Election setup check
+
+The election setup check (design §6.9) is switched on separately too, because what it sends differs and its notes are
+shown to every user: an Election Admin or Auditor asks for it in the election editor, once per version of an election,
+and once the election is scheduled everyone sees its notes beside the contests on the ballot and results pages. When
+on, the worker sends the election's rules, the offices its contests fill and its proposal texts, with the current
+bylaws, to Anthropic's API; never candidates' names or statements, the roll, ballots or who asked. Each check costs
+money (design §15), at most 20 a day per person. USTP should agree to it first (design Q18). It uses the same Anthropic
+API key as the bylaws check.
+
+1. If no key has been added yet, a System Admin adds one as in [Bylaws check](#bylaws-check), steps 1 and 2. Until
+   then the editor's card stays hidden.
+2. Set `election_check_enabled = true` in the environment's `terraform.tfvars` and apply: both services get
+   `ELECTION_CHECKER=claude`, and the `worker-election-checks` Scheduler job starts calling
+   `POST /tasks/election-checks` every minute.
+3. Deploy the Firestore indexes (`npx firebase deploy --project <project> --only firestore`): the queries for an
+   election's checks, a person's daily limit and the worker's queued checks need the `election_checks` indexes.
+
+Switching it off (`false`, apply) stops new checks and hides the editor's button; the notes of checks already run are
+still shown beside the contests.
 
 ### Election notices
 
