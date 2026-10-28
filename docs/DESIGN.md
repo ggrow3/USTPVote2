@@ -853,7 +853,68 @@ snapshot ID and content hash, and its candidates in the order the spec lists the
 is shown live in the editor and to Auditors, and `validateDefinition` lists what blocks scheduling (no contests,
 voting not in the future, missing proposal text or candidates, any `ustp-tally` spec problem such as more seats than
 candidates). Scheduling (M2b) freezes exactly this hash. Contest and candidate IDs are random Firestore IDs, or those
-an election package gives (§6.7); both fit the `ustp-tally` ID pattern. Only drafts can be edited.
+an election package (§6.7) or the ballot builder (below) gives; all fit the `ustp-tally` ID pattern. Only drafts can be
+edited.
+
+**The ballot builder** *(added 2026-10-28)*: the election editor builds a draft's ballot in place, the way a form builder
+does, rather than in a dialog per contest.
+
+- **As voters will read it.** The ballot's title, description, voting window and secrecy come first (the anonymity
+  threshold under More settings), then each question as a card in ballot order: its number, the question, an optional
+  description, its rules in the words the ballot page uses (`rulesText`), and its options with the control voters will
+  see beside each (a circle, a box, a rank), or for a proposal the text voted on.
+- **Types in plain words.** A question is added with one click by its type: Yes / No / Abstain (a `proposal`, passing
+  by more than half of yes + no), Choose one (`choose_n`, one seat, one choice), Choose several (`choose_n`: how many
+  win, 1 to start with, and how many each voter may tick: as many as there are options, which is approval voting, or up
+  to a number) and Rank in order (`irv`). Changing a question's type keeps its options in the page, so switching back
+  brings them back. The rarer rules are folded under More rules, with a line saying what they are: the pass rule (the
+  presets, or a rule no preset matches, kept as it is), quorum as a share of the roll and as a number of ballots, the
+  support floor, the most a voter may rank, and the office the winners take up (§6.4). A question read and saved
+  unchanged gives exactly the stored contest, so the hash changes only when the ballot does (a share stored as 1/3 stays
+  1/3 while its percentage is not edited).
+- **Options in place.** Enter adds the next option and Backspace in an empty one removes it; an empty option is a
+  placeholder and is not saved. Each option's menu moves it up or down, duplicates it (without its member link, since a
+  member stands once in a question), adds a statement, and unlinks it. Typing two or more letters of a name offers, under
+  the option, up to three Active members it matches (the member search, below), reached with the down arrow or Tab;
+  linking one gives the option the member's legal name, and renaming a linked option to another name unlinks it.
+- **Proposal texts** are written in place, or one already captured is chosen, bylaws amendments among them (§6.6; shown
+  with their changes, never edited here). Leaving the text's field with changes captures it as a new proposal text,
+  titled as the question then is, and attaches it; the text it replaces stays in the record, since proposal texts never
+  change (§6.4). Until then the save bar says the text is saved on leaving its field.
+- **Moving, copying, deleting.** Questions and options move by dragging their handle, by Alt+↑ and Alt+↓ in their
+  fields, and by buttons (a question's Move up and Move down, an option's menu), so every move has a keyboard way and a
+  single-pointer way (WCAG 2.5.7). Duplicate puts a copy with new IDs after the original. Delete takes effect at once,
+  and Undo in the save bar puts back what was deleted (the last 20 questions and options), under the same IDs.
+- **Autosave.** There is no Save button: a change saves itself once typing pauses (0.8 s), or at once when a question
+  is added, moved, copied or deleted. Saves run one at a time in the order the changes were made, so a question is
+  created before the order that lists it, and deleting a question drops any save of it still waiting. A field the rules
+  refuse (an empty question, a percentage over 100) says why under itself and is not sent until it is fixed; what only
+  blocks scheduling (no options yet, no text) is said on the question as what is left to finish it. A bar at the bottom
+  of the window, while the ballot is in view, says "All changes saved", "Saving…", "Not saved: fix what is marked in 2
+  places" or why the server refused, with Try again and Reload the ballot. Leaving the page saves what is waiting first,
+  and asks before leaving anything that cannot be saved; closing the tab with changes unsaved asks the browser's
+  question. Once saving pauses, the editor rereads the problems, the hash, the workflow and the setup check.
+- **Preview as voter** opens the ballot page itself (`/admin/elections/{id}/preview`, Election Admins and Auditors)
+  with the definition the draft would freeze if it were scheduled now, built in the browser by `buildDefinition` from the
+  editor's view of the draft. Every question can be answered as voters will answer it; a banner says it is a preview,
+  its review dialog has nothing to cast, and nothing is sent or published.
+- **The api.** `PUT /v1/admin/elections/{id}/questions/{contestId}` saves one question whole, in one transaction:
+  `{contest, candidates, position?}`. `contest` takes the fields of `POST …/contests`, except that a proposal's
+  `proposalSnapshotId` may be null until its text is chosen (the draft then lists that among its problems); `candidates`
+  are the options in ballot order, each with the ID the builder gave it (the `ustp-tally` pattern, as in a package). It
+  creates the contest when none has that ID, at `position` (renumbering the questions after it) or last, and otherwise
+  replaces its rules, keeping its place; options it lists are created or replaced, and those it leaves out deleted. The
+  piecewise endpoints' rules all hold (`planQuestion` in `ustp-domain`): a draft, an admin who is not a candidate, an
+  existing proposal text and office, amendments that fit (§6.6), an Active member for each account newly linked and
+  never the admin's own (a link already there is not checked again, as below), a member at most once in a question, and
+  no option that is another question's (409). `PUT /v1/admin/elections/{id}/question-order` takes every question's ID
+  once, in the new order (`planQuestionOrder`; 409 when the list is not the ballot's questions, which means the page is
+  out of date). Like every draft edit, neither is ledgered. Because the builder chooses the IDs, saving a question again
+  changes nothing, and undoing a delete puts back exactly what was deleted, definition hash included (tested). The
+  piecewise endpoints stay for the API's other clients.
+- **Read only.** Auditors, and everyone once the election is scheduled, see the ballot as stored: the details as facts,
+  and each question with its rules, candidates (statements shown, member links marked) and proposal text with its
+  content hash.
 - `positions` define offices (title, seats, term length). Certifying an election that fills an office creates
   `position_terms` that reference the certified results hash. Ending a term early is a two-person action, and so is
   appointing someone to an office without an election (added in M5). Implemented in M4b:
@@ -923,16 +984,16 @@ tab use to name the holder (§6.4, §5.2); it is not part of the definition, so 
   (`checkCandidateAccount` in `ustp-domain`; 400 for any other account, a lapsed or suspended member, or one with no
   member record), and the same holds on import (§6.7). Nobody can link their own account (403). A member whose status
   changes later stays linked.
-- **Picking the member:** the editor's candidate field is a combobox. As the Election Admin types, it asks
-  `GET /v1/admin/member-search?name=…` (Election Admin, and Membership Admin to appoint a member to an office, §6.4;
-  10 matches, `limit` up to 20) for the Active members whose
+- **Picking the member:** as the Election Admin types a name in a question's option (the ballot builder, above), the
+  editor asks `GET /v1/admin/member-search?name=…` (Election Admin, and Membership Admin to appoint a member to an
+  office, §6.4; 10 matches, `limit` up to 20) for the Active members whose
   legal or preferred name holds every word typed, in any case and with or without accents: names that start with the
   text first, then those where each word typed starts a word of the name, then the rest, alphabetically within each
   (`matchMembers`). A match carries only the account ID, legal and preferred name and state, enough to tell two people
   with one name apart: the roll already shows Election Admins legal names and states (§6.3), and the search adds no
-  status, contact details or dates. Choosing a member adds them under their legal name, linked; a name typed without
-  choosing anyone is added as typed, unlinked. The search lists but disables the admin's own account and members
-  already standing in that contest, and the candidate list marks each linked candidate.
+  status, contact details or dates. Linking a member gives the option their legal name; a name typed without linking
+  anyone is saved as typed, unlinked. The builder offers the first three matches, says why the admin's own account and
+  members already linked in that question cannot be linked instead of offering them, and marks each linked option.
 - **How it searches:** Firestore has no text search, so the api reads every Active member's names (a projection query,
   still billed as one read per member) and matches them in memory. At the spec's 1,000–5,000 members that is quick
   enough for a search that runs once typing pauses (300 ms); a name index can come if membership outgrows it. Like
@@ -2128,7 +2189,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /admin/members/{accountId}/status` | Membership Admin | status changes |
 | `GET /admin/photos` · `GET /admin/photos/{id}/image` · `POST /admin/photos/{id}/decision` | Membership Admin | photo review |
 | `GET /admin/elections` · `GET /admin/elections/{id}` (detail, definition hash, problems) · `GET /admin/proposals` | Election Admin, Auditor | read election setup |
-| `POST /admin/elections` · `PATCH /admin/elections/{id}` · `POST\|PUT\|DELETE …/contests[/{cid}]` · `POST\|DELETE …/contests/{cid}/candidates[/{kid}]` · `POST /admin/proposals` | Election Admin | edit drafts; a candidate's optional `accountId` must be an Active member's (§6.5) |
+| `POST /admin/elections` · `PATCH /admin/elections/{id}` · `POST\|PUT\|DELETE …/contests[/{cid}]` · `POST\|DELETE …/contests/{cid}/candidates[/{kid}]` · `PUT …/questions/{cid}` · `PUT …/question-order` · `POST /admin/proposals` | Election Admin | edit drafts; a candidate's optional `accountId` must be an Active member's (§6.5); the ballot builder saves a question whole, under its own IDs, and the order of the questions (§6.5) |
 | `GET /admin/member-search?name=…` (`limit` ≤ 20) | Election Admin, Membership Admin | Active members whose legal or preferred name matches, to link a candidate or appoint a member: account ID, names and state only (§6.5) |
 | `POST /admin/elections/import` | Election Admin | a whole draft from a `ustp.election` file, in one transaction (400/403/409 write nothing; §6.7) |
 | `GET /admin/elections/{id}/package` | Election Admin, Auditor | any election as a `ustp.election` file (§6.7) |
@@ -2422,4 +2483,6 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Word export done:* the ballot and results as a `.docx` built in the browser, for Word and Google Docs, from the results page, the ballot page and the election editor (§9). *Synopsis done:* the results in brief, as the party publishes them, first on the results page (printable) and first in the Word file (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
+
+
 | **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2), and at most two roles per person, the Auditor holding no other (§10.1); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list, and the emails to voters beside them from their counts (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); the home page laid out as a sign-in landing page, a quote about voting over a sunrise drawn for the project beside the sign-in card or the signed-in cards, the quote FDR's from his 1938 Marietta, Ohio address with its source recorded, changed or switched off by one System Admin and ledgered as `home_quote.changed` (§10.5), since moved to `/vote` as the voting home; the home page `/` as the party's link hub, managed by System Admins (profile, accent and default theme, sections and links with an icon row and a star, the Discord card with an online count the API reads from Discord), ledgered as `hub.changed`, with click counts per link and no personal data, self-hosted fonts and a light and a dark theme (§10.6); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES with bounces read from SQS, and System Admins' settings for them (each on or off, the reminder's lead time, the contact, each subject and opening; ledgered), and an outbox in place of mail with the emulators (§6.8; SES itself not yet set up in any project); the platform consistency check with Claude, once per person per election, from the ballot for voters on the roll and from the election editor for Election Admins and Auditors, comparing the proposals with each other and with the documents an Election Admin chooses for the election, any of the USTP Constitution (its Article VI is the Platform), the Transhumanist Bill of Rights, the bylaws in force and the US Constitution, each result keeping what it was compared with (§5.5; off in real projects until Q18 is settled, and not yet run against Anthropic's API); the Anthropic API key added, replaced or removed by a System Admin under Admin › Claude, tried with Anthropic first and kept in Secret Manager, where the api can store it but not read it, ledgered as `anthropic_key.changed` (§5.6); the election setup check with Claude, run once per version of an election by an Election Admin or Auditor, comparing its rules, offices and proposal texts with the bylaws, with its notes beside the contests on the ballot, the results and in the editor once the election is scheduled, and non-blocking seat advisories (§6.9; off in real projects until Q18 is settled, and not yet run against Anthropic's API); appointments to offices without an election, for first holders and between elections, requested by a Membership or Election Admin and approved by an Auditor, only an Active member and only to a free seat, ledgered as the public `position_term.appointed`, with Appoint in the Offices tab and on the member profile and a public Offices page (§6.4), in everyone's menu by default, the menu bar keeping one row by putting the links that do not fit behind a More button (§10.5); every page but the hub and the voting home styled like the voting home, its picture behind and the page on one card lifted off it, with 16 px text and larger headings (§10.5); the ballot list as a card per election in the voting home's style, and the list, the ballot and its Cast dialog by touch: 48 px buttons and choices, as wide as their card on a phone (§10.5). *Still to do:* the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
