@@ -43,7 +43,7 @@ export class TasksController {
   /**
    * Every minute: prepare ballot-pool keys, open and close elections on time, seal ballots, tally elections that are
    * now fully sealed, destroy the pool keys of certified and cancelled elections, send election notices (for at most
-   * 20 seconds) and record their bounces, then seal new ledger entries (including those) into a signed block, sign
+   * 20 seconds) and the test emails Election Admins asked for, and record their bounces, then seal new ledger entries (including those) into a signed block, sign
    * approved rolls and anchor new blocks. Each step runs even if an earlier one failed.
    */
   @Post('tick')
@@ -68,6 +68,7 @@ export class TasksController {
       resultsComputed: await step('tally results', () => this.tallier.tallyAll(), 0),
       poolKeysDestroyed: await step('destroy pool keys', () => this.clock.destroyPoolKeys(), 0),
       noticesSent: await step('send notices', () => this.notices.sendDue(), 0),
+      testEmailsSent: await step('send test emails', () => this.notices.sendTests(), 0),
       bouncesRecorded: await step('record bounces', () => this.notices.recordBounces(), 0),
       blocksSealed: (await step('seal blocks', () => this.sealer.sealBlocks(), [])).length,
       rollsSigned: await step('sign rolls', () => this.sealer.signRolls(), 0),

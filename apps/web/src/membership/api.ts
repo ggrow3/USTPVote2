@@ -9,6 +9,9 @@ import type {
   MemberRecord,
   MemberStatus,
   MemberStatusInput,
+  PublicRegistrationForm,
+  RegistrationFormInput,
+  RegistrationFormRecord,
   StatusHistoryRecord,
 } from 'ustp-domain';
 import { api } from '../api.js';
@@ -25,6 +28,11 @@ export function myApplications(): Promise<ApplicationRecord[]> {
 
 export function submitApplication(input: CreateApplicationInput): Promise<ApplicationRecord> {
   return api<ApplicationRecord>('POST', '/v1/registration/applications', input);
+}
+
+/** The registration form's wording as the Register page shows it: intro, questions, Core Ideals; no sign-in needed. */
+export function registrationForm(): Promise<PublicRegistrationForm> {
+  return api<PublicRegistrationForm>('GET', '/v1/registration/form');
 }
 
 /** The signed-in member resigns, with a reason if they give one. */
@@ -77,4 +85,14 @@ export function member(accountId: string): Promise<MemberDetail> {
 /** Corrects someone else's names, state or contact details, with a reason. */
 export function correctMemberDetails(accountId: string, input: MemberCorrectionInput): Promise<MemberRecord> {
   return api<MemberRecord>('POST', `/v1/admin/members/${accountId}/details`, input);
+}
+
+/** The registration form's wording with who changed it last. */
+export function registrationFormSettings(): Promise<RegistrationFormRecord> {
+  return api<RegistrationFormRecord>('GET', '/v1/admin/registration-form');
+}
+
+/** Saves the wording; refused (409) if someone saved since version `basedOn`. */
+export function saveRegistrationForm(input: RegistrationFormInput): Promise<RegistrationFormRecord> {
+  return api<RegistrationFormRecord>('PUT', '/v1/admin/registration-form', input);
 }

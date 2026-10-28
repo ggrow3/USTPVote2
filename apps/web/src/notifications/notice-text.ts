@@ -1,12 +1,16 @@
 import {
+  checkNoticeTest,
   DEFAULT_NOTICE_SETTINGS,
   isRehearsalRoll,
   reminderTime,
   type ElectionDetail,
   type NoticeKind,
+  type NoticeOutcome,
+  type NoticeSendTotals,
   type NoticesView,
   type NoticeStep,
   type NoticeSummary,
+  type NoticeTestSummary,
   type RecipientCounts,
   type StepStatus,
 } from 'ustp-domain';
@@ -114,4 +118,51 @@ export function noNoticeText(step: NoticeStep, detail: ElectionDetail, view: Not
     `On ${reminderTime(election, hours).toLocaleString()}, ${lead} before voting closes, the worker reminds those on the roll ` +
     `who have not voted yet, once each. The mail service then learns who had not voted, never how anyone votes.${outbox}`
   );
+}
+
+/**
+ * What the send receipts say went to the roll: how many emails the mail service took, in how many sends, and when the
+ * last one finished; then any it did not take.
+ */
+export function receiptText(totals: NoticeSendTotals | undefined): string {
+  if (!totals?.sends) return 'No emails sent yet.';
+  const last = totals.lastSentAt ? `; the last finished ${new Date(totals.lastSentAt).toLocaleString()}` : '';
+  const failed = totals.failed ? ` The mail service did not take ${count(totals.failed, 'message')}.` : '';
+  return `${count(totals.accepted, 'email')} sent in ${count(totals.sends, 'send')}${last}.${failed}`;
+}
+
+/** The test emails Election Admins had sent to themselves, counted apart from the roll. */
+export function testReceiptText(totals: NoticeSendTotals | undefined): string | null {
+  if (!totals?.sends) return null;
+  const last = totals.lastSentAt ? `, the last ${new Date(totals.lastSentAt).toLocaleString()}` : '';
+  return `Test emails to Election Admins: ${totals.accepted} sent${last}. Not counted above.`;
+}
+
+/** Why a test email did not go, in the admin's words. */
+const TEST_OUTCOMES: Readonly<Partial<Record<NoticeOutcome, string>>> = {
+  no_address: 'your account has no email address',
+  unverified_address: "your account's email address is not verified",
+  refused: 'the mail service refused it',
+  unavailable: 'the mail service could not take it; try again later',
+  interrupted: 'it was interrupted, so whether it went is unknown',
+  error: 'something went wrong, so whether it went is unknown',
+};
+
+/** Where the caller's last test email of this kind stands. */
+export function testStatusText(test: NoticeTestSummary): string {
+  if (test.status === 'pending') return 'Your test email is queued: the worker sends it to your own address within a minute.';
+  if (test.status === 'sending') return 'Your test email is being sent.';
+  const when = test.doneAt ? ` ${new Date(test.doneAt).toLocaleString()}` : '';
+  if (test.sent) return `Your test email went to your own address${when}. If it is not in your inbox, look in spam.`;
+  return `Your test email was not sent: ${TEST_OUTCOMES[test.outcome!] ?? 'something went wrong'}.`;
+}
+
+/** Why the caller cannot have a test email sent now, or null when they can (as far as the browser can tell). */
+export function testBlocked(view: NoticesView | null, now: Date): string | null {
+  if (!view) return null;
+  const check = checkNoticeTest({ delivery: view.delivery, contact: view.contact, theirs: view.tests, now });
+  if (check.ok) return null;
+  if (view.delivery === 'none') return NOT_SET_UP;
+  if (view.delivery === 'mail' && !view.contact) return NO_CONTACT;
+  return `${check.reason[0]!.toUpperCase()}${check.reason.slice(1)}.`;
 }

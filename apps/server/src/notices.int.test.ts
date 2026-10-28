@@ -1,4 +1,14 @@
-import { DEFAULT_NOTICE_SETTINGS, type NoticeRecipientRecord, type NoticeRecord, type NoticesView, type OutboxMessageRecord } from 'ustp-domain';
+import {
+  DEFAULT_NOTICE_SETTINGS,
+  noticeReceiptTotals,
+  type NoticeReceiptRecord,
+  type NoticeRecipientRecord,
+  type NoticeRecord,
+  type NoticesView,
+  type NoticeTestRecord,
+  type OutboxMessageRecord,
+  type PersonaSummary,
+} from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { NoticeSender } from './notifications/notice-sender.js';
 import { NoticesService } from './notifications/notices.service.js';
@@ -44,6 +54,14 @@ const ledger = async (type: string, e: SeededElection) =>
   (await db().collection('audit_events').where('type', '==', type).where('subject', '==', e.electionId).get()).docs.map((d) => d.data());
 const view = (e: SeededElection, as: User = electionAdmin) => api.call('GET', `/v1/admin/elections/${e.electionId}/notices`, as);
 const resend = (e: SeededElection, as: User = electionAdmin) => api.call('POST', `/v1/admin/elections/${e.electionId}/notices/voting_open/resend`, as);
+const receipts = async (e: SeededElection) =>
+  (await db().collection('notice_receipts').where('electionId', '==', e.electionId).get()).docs
+    .map((d) => d.data() as NoticeReceiptRecord)
+    .sort((a, b) => a.finishedAt.localeCompare(b.finishedAt));
+const tests = async (e: SeededElection) =>
+  (await db().collection('notice_tests').where('electionId', '==', e.electionId).get()).docs.map((d) => d.data() as NoticeTestRecord);
+const askTest = (e: SeededElection, kind: string, as: User = electionAdmin, headers: Record<string, string> = {}) =>
+  api.call('POST', `/v1/admin/elections/${e.electionId}/notices/${kind}/test`, as, undefined, headers);
 
 /** A member whose account address is at a domain the outbox acts out a provider's answer for. */
 const memberAt = (email: string) => api.member(email);
@@ -190,10 +208,15 @@ describe('the voting-open notice', () => {
     const election = await seedElection(api, { voters: voters.map((v) => v.accountId) });
     await worker.tick();
     expect(await outbox(election)).toHaveLength(4);
+    expect((await askTest(election, 'voting_open')).status).toBe(202);
+    await worker.tick();
+    expect(await receipts(election)).toHaveLength(2);
     await api.app.get(NoticesService).forgetElection(election.electionId);
     expect(await notice(election)).toBeUndefined();
     expect(await recipients(election)).toHaveLength(0);
     expect(await outbox(election)).toHaveLength(0);
+    expect(await receipts(election)).toHaveLength(0);
+    expect(await tests(election)).toHaveLength(0);
   });
 });
 
@@ -273,7 +296,14 @@ describe('a rehearsal roll', () => {
     expect((await worker.tick()).body).toMatchObject({ electionsOpened: 1, noticesSent: 0 });
     expect(await notice(election)).toBeUndefined();
     expect(await outbox(election)).toHaveLength(0);
-    expect((await view(election)).body).toEqual({ delivery: 'outbox', contact: null, settings: DEFAULT_NOTICE_SETTINGS, notices: [] });
+    expect((await view(election)).body).toEqual({
+      delivery: 'outbox',
+      contact: null,
+      settings: DEFAULT_NOTICE_SETTINGS,
+      notices: [],
+      receipts: noticeReceiptTotals([]),
+      tests: [],
+    });
   });
 
   it('gets its notice in the outbox, addressed to nobody, where testing mode is on', async () => {
@@ -290,5 +320,158 @@ describe('a rehearsal roll', () => {
     } finally {
       await testing.close();
     }
+  });
+});
+
+describe('send receipts', () => {
+  it('keeps one per pass over the roll: who started it, what the mail service took and refused, its message IDs', async () => {
+    const refused = await memberAt('typo@refused.test');
+    const election = await seedElection(api, { voters: [...voters.map((v) => v.accountId), refused.accountId] });
+    await worker.tick();
+
+    const [first, ...more] = await receipts(election);
+    expect(more).toHaveLength(0);
+    expect(first).toMatchObject({
+      electionId: election.electionId,
+      kind: 'voting_open',
+      test: false,
+      noticeId: noticeOf(election),
+      round: 1,
+      delivery: 'outbox',
+      triggeredBy: 'system',
+      recipientAccountId: null,
+      recipients: 5,
+      accepted: 4,
+      failed: 1,
+      skipped: 0,
+    });
+    const messageIds = (await recipients(election)).flatMap((r) => (r.messageId ? [r.messageId] : []));
+    expect([...first!.messageIds].sort()).toEqual(messageIds.sort());
+    // Accounts and counts only: no address, no message.
+    expect(JSON.stringify(first)).not.toContain('@');
+    expect(Object.keys(first!)).not.toContain('text');
+
+    // A resend leaves its own receipt, naming the Election Admin who asked.
+    await db().collection('accounts').doc(refused.accountId).update({ primaryEmail: 'fixed@example.test' });
+    expect((await resend(election)).status).toBe(200);
+    await worker.tick();
+    expect((await receipts(election))[1]).toMatchObject({ round: 2, triggeredBy: electionAdmin.accountId, recipients: 1, accepted: 1, failed: 0 });
+
+    const seen = (await view(election)).body as NoticesView;
+    expect(seen.receipts.roll).toEqual([
+      { kind: 'voting_open', sends: 2, accepted: 5, failed: 1, skipped: 0, lastSentAt: (await receipts(election))[1]!.finishedAt },
+      { kind: 'closing_soon', sends: 0, accepted: 0, failed: 0, skipped: 0, lastSentAt: null },
+    ]);
+    expect(seen.receipts.tests.every((t) => t.sends === 0)).toBe(true);
+    expect(JSON.stringify(seen)).not.toContain('@');
+  });
+
+  it('leaves none for a tick that had nothing to send', async () => {
+    const election = await seedElection(api, { voters: voters.map((v) => v.accountId) });
+    await worker.tick();
+    await worker.tick();
+    await worker.tick();
+    expect(await receipts(election)).toHaveLength(1);
+  });
+});
+
+describe('test emails', () => {
+  it('go to the Election Admin who asked, alone, marked as a test, and are counted apart from the roll', async () => {
+    const election = await seedElection(api, { voters: voters.map((v) => v.accountId), state: 'scheduled', opensAt: minutes(60), closesAt: minutes(60 * 24 * 3) });
+
+    const asked = await askTest(election, 'voting_open');
+    expect(asked.status).toBe(202);
+    expect(asked.body).toMatchObject({ kind: 'voting_open', status: 'pending', sent: false });
+    // One at a time.
+    expect((await askTest(election, 'closing_soon')).status).toBe(409);
+    expect((await askTest(election, 'nonsense')).status).toBe(404);
+
+    expect((await worker.tick()).body).toMatchObject({ electionsOpened: 0, noticesSent: 0, testEmailsSent: 1 });
+    const messages = await outbox(election);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]).toMatchObject({ to: 'ea@example.test', accountId: electionAdmin.accountId, noticeId: `${election.electionId}_voting_open_test` });
+    expect(messages[0]!.subject).toBe('[TEST] Voting is open: Officers');
+    expect(messages[0]!.text).toMatch(/^TEST EMAIL\. This was sent only to you/);
+    // Nobody on the roll got anything, and the notice itself has not started.
+    expect(await notice(election)).toBeUndefined();
+
+    const [receipt] = await receipts(election);
+    expect(receipt).toMatchObject({
+      test: true,
+      kind: 'voting_open',
+      noticeId: null,
+      round: null,
+      triggeredBy: electionAdmin.accountId,
+      recipientAccountId: electionAdmin.accountId,
+      recipients: 1,
+      accepted: 1,
+      messageIds: [messages[0]!.id],
+    });
+    expect(JSON.stringify(receipt)).not.toContain('@');
+
+    const seen = (await view(election)).body as NoticesView;
+    expect(seen.receipts.tests[0]).toMatchObject({ kind: 'voting_open', sends: 1, accepted: 1 });
+    expect(seen.receipts.roll[0]).toMatchObject({ sends: 0, accepted: 0, lastSentAt: null });
+    expect(seen.tests).toEqual([expect.objectContaining({ kind: 'voting_open', status: 'done', sent: true, outcome: null })]);
+    // Others see the count of tests, not this admin's own list.
+    expect(((await view(election, auditor)).body as NoticesView).tests).toEqual([]);
+
+    // The reminder can be tested too, once the first has gone.
+    expect((await askTest(election, 'closing_soon')).status).toBe(202);
+    expect((await worker.tick()).body).toMatchObject({ testEmailsSent: 1 });
+    expect((await outbox(election)).map((m) => m.subject)).toContain('[TEST] Voting closes soon: Officers');
+  });
+
+  it('are refused to Auditors, voters and candidates, as resending is', async () => {
+    const candidate = await api.member('blair@example.test');
+    await api.grant(candidate.accountId, 'election_admin', sa1);
+    const election = await seedElection(api, { voters: voters.map((v) => v.accountId), blairAccountId: candidate.accountId });
+    expect((await askTest(election, 'voting_open', auditor)).status).toBe(403);
+    expect((await askTest(election, 'voting_open', voters[0]!)).status).toBe(403);
+    expect((await askTest(election, 'voting_open', candidate)).status).toBe(403);
+    expect(await tests(election)).toHaveLength(0);
+  });
+
+  it('are skipped, not sent, when the admin’s own address is not verified', async () => {
+    const election = await seedElection(api, { voters: voters.map((v) => v.accountId), state: 'scheduled', opensAt: minutes(60), closesAt: minutes(60 * 24 * 3) });
+    await db().collection('accounts').doc(electionAdmin.accountId).update({ emailVerified: false });
+    expect((await askTest(election, 'voting_open')).status).toBe(202);
+    expect((await worker.tick()).body).toMatchObject({ testEmailsSent: 0 });
+    expect(await outbox(election)).toHaveLength(0);
+    expect(((await view(election)).body as NoticesView).tests[0]).toMatchObject({ status: 'done', sent: false, outcome: 'unverified_address' });
+    expect((await receipts(election))[0]).toMatchObject({ test: true, accepted: 0, skipped: 1 });
+  });
+
+  it('go to the signed-in System Admin, not the persona, when they act as the Test Election Admin', async () => {
+    process.env.TESTING_MODE = 'true';
+    const testingApi = await TestApi.start().finally(() => delete process.env.TESTING_MODE);
+    try {
+      const personas = (await testingApi.call('POST', '/v1/testing/personas', sa1, {})).body as PersonaSummary[];
+      const persona = personas.find((p) => p.label === 'Test Election Admin')!.accountId;
+      const election = await seedElection(api, { voters: voters.map((v) => v.accountId), state: 'scheduled', opensAt: minutes(60), closesAt: minutes(60 * 24 * 3) });
+      const asked = await testingApi.call('POST', `/v1/admin/elections/${election.electionId}/notices/voting_open/test`, sa1, undefined, {
+        'x-act-as': persona,
+      });
+      expect(asked.status).toBe(202);
+      expect(await tests(election)).toEqual([expect.objectContaining({ requestedBy: persona, accountId: sa1.accountId })]);
+
+      await worker.tick();
+      expect((await outbox(election)).map((m) => m.to)).toEqual([sa1.email]);
+      expect((await receipts(election))[0]).toMatchObject({ triggeredBy: persona, recipientAccountId: sa1.accountId, accepted: 1 });
+    } finally {
+      await testingApi.close();
+    }
+  });
+
+  it('fails a test a worker was interrupted in, rather than send it twice, and lets the admin ask again', async () => {
+    const election = await seedElection(api, { voters: voters.map((v) => v.accountId), state: 'scheduled', opensAt: minutes(60), closesAt: minutes(60 * 24 * 3) });
+    expect((await askTest(election, 'voting_open')).status).toBe(202);
+    const [queued] = await tests(election);
+    await db().collection('notice_tests').doc(queued!.testId).update({ status: 'sending', claimedAt: minutes(-10) });
+
+    expect((await worker.tick()).body).toMatchObject({ testEmailsSent: 0 });
+    expect((await tests(election))[0]).toMatchObject({ status: 'done', outcome: 'interrupted' });
+    expect(await outbox(election)).toHaveLength(0);
+    expect((await askTest(election, 'voting_open')).status).toBe(202);
   });
 });

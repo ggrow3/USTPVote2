@@ -29,6 +29,16 @@ export interface MemberRecord {
   /** Null for members who applied before contact details were collected. */
   readonly contact: MemberContact | null;
   readonly communications: CommunicationConsents | null;
+  /**
+   * The answer to "eligible to vote in any United States elections?": Yes is a United States Member, No an Allied
+   * Member (`memberClass`). Null for members never asked (they joined before the question, or are test personas).
+   */
+  readonly usVoteEligible: boolean | null;
+  /**
+   * The answer to "do you agree with the Core Ideals?", null if never asked. Kept for a later roll criterion: voting on
+   * the platform and the party's structure may be limited to those who answered Yes (design §5.2, §6.3).
+   */
+  readonly agreesWithCoreIdeals: boolean | null;
   readonly bylawsVersion: string;
   /** First time the member became Active. */
   readonly memberSince: string | null;
@@ -61,8 +71,17 @@ export interface ApplicationRecord {
   readonly preferredName: string | null;
   /** `YYYY-MM-DD`. Only on the application, for the Membership Admin's review; never copied to the member. */
   readonly dateOfBirth: string;
-  /** What the applicant confirmed: the minimum age in force when they applied, and support for the platform. */
-  readonly attestations: { readonly minimumAge: number; readonly supportsPlatform: true };
+  /**
+   * What the applicant confirmed: the minimum age in force when they applied. Applications made before the Core Ideals
+   * question also confirmed support for the platform, which is no longer asked.
+   */
+  readonly attestations: { readonly minimumAge: number; readonly supportsPlatform?: true };
+  /** The version of the registration form's wording they answered (design §5.2); absent on older applications. */
+  readonly formVersion?: number;
+  /** Eligible to vote in any United States elections (Yes: a United States Member; No: an Allied Member). */
+  readonly usVoteEligible?: boolean;
+  /** Agrees with the Core Ideals listed on the form. */
+  readonly agreesWithCoreIdeals?: boolean;
   readonly state: string;
   readonly contact: MemberContact;
   readonly communications: CommunicationConsents;

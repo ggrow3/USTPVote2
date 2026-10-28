@@ -1,12 +1,18 @@
 import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   checkNoticeResend,
+  checkNoticeTest,
   noticeId,
+  noticeReceiptTotals,
   noticeSummary,
+  noticeTestRecord,
+  noticeTestSummary,
+  type NoticeDelivery,
   type NoticeKind,
   type NoticeResendPayload,
   type NoticesView,
   type NoticeSummary,
+  type NoticeTestSummary,
 } from 'ustp-domain';
 import { requireAccount } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
@@ -18,9 +24,13 @@ import { LedgerService } from '../ledger/ledger.service.js';
 import { NoticeSettingsService } from './notice-settings.js';
 import { NoticeRepository } from './notice.repository.js';
 
+/** The caller's own test emails the editor lists. */
+const TESTS_SHOWN = 5;
+
 /**
- * What Election Admins and Auditors see of an election's notices, and resending to those a notice failed for (design
- * §6.8). Counts only: no address and nobody's status. The api never sends mail and holds no mail credentials.
+ * What Election Admins and Auditors see of an election's notices, resending to those a notice failed for, and test
+ * emails to the Election Admin who asks (design §6.8). Counts only: no address and nobody's status. The api never
+ * sends mail and holds no mail credentials: the worker sends what it queues.
  */
 @Injectable()
 export class NoticesService {
@@ -33,16 +43,55 @@ export class NoticesService {
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
-  async view(electionId: string): Promise<NoticesView> {
+  async view(ctx: RequestContext, electionId: string): Promise<NoticesView> {
     if (!(await this.elections.find(electionId))) throw new NotFoundException('no such election');
-    const [notices, settings] = await Promise.all([this.notices.ofElection(electionId), this.settings.current()]);
+    const [notices, settings, receipts, tests] = await Promise.all([
+      this.notices.ofElection(electionId),
+      this.settings.current(),
+      this.notices.receiptCounts(electionId),
+      this.notices.testsTo(electionId, testRecipient(ctx)),
+    ]);
     const { version: _v, updatedAt: _at, updatedBy: _by, ...current } = settings;
     return {
-      delivery: { ses: 'mail' as const, outbox: 'outbox' as const, off: 'none' as const }[this.config.mailTransport],
+      delivery: this.delivery(),
       contact: current.contact ?? this.config.noticeContact,
       settings: current,
       notices: await Promise.all(notices.map(async (n) => noticeSummary(n, await this.notices.counts(n.noticeId)))),
+      receipts: noticeReceiptTotals(receipts),
+      tests: tests.slice(0, TESTS_SHOWN).map(noticeTestSummary),
     };
+  }
+
+  /**
+   * Queues a test of the email for the caller alone, which the worker sends on its next tick to the address of the
+   * caller's own account (the signed-in System Admin's when they act as a persona), marked as a test. By an Election
+   * Admin who is not a candidate, as for a resend; only where the real email would be mailed; one at a time, and a
+   * few a day. Not ledgered: it reaches nobody else and changes nothing about the election; the worker keeps a receipt.
+   */
+  async requestTest(ctx: RequestContext, electionId: string, kind: NoticeKind): Promise<NoticeTestSummary> {
+    const actor = requireAccount(ctx);
+    const recipient = testRecipient(ctx);
+    const settings = await this.settings.current();
+    const ref = this.notices.testRef();
+    const test = await this.firebase.db.runTransaction(async (tx) => {
+      const election = await this.elections.find(electionId, tx);
+      if (!election) throw new NotFoundException('no such election');
+      if (await this.elections.isCandidate(tx, electionId, actor)) {
+        throw new ForbiddenException('you are a candidate in this election, so you cannot administer it');
+      }
+      const now = new Date();
+      const theirs = await this.notices.testsTo(electionId, recipient, tx);
+      assertCheck(checkNoticeTest({ delivery: this.delivery(), contact: settings.contact ?? this.config.noticeContact, theirs, now }));
+      const record = noticeTestRecord({ testId: ref.id, electionId, kind, caller: { accountId: actor, operator: ctx.operator }, now });
+      tx.create(ref, record);
+      return record;
+    });
+    return noticeTestSummary(test);
+  }
+
+  /** How this deployment sends election email. */
+  private delivery(): NoticeDelivery | 'none' {
+    return { ses: 'mail' as const, outbox: 'outbox' as const, off: 'none' as const }[this.config.mailTransport];
   }
 
   /**
@@ -71,8 +120,16 @@ export class NoticesService {
     return noticeSummary(notice, await this.notices.counts(id));
   }
 
-  /** Removes a deleted election's notices (design §6.1), after the deletion has committed. */
+  /** Removes a deleted election's notices, receipts and test emails (design §6.1), after the deletion has committed. */
   forgetElection(electionId: string): Promise<void> {
     return this.notices.deleteForElection(electionId);
   }
+}
+
+/**
+ * Whose inbox the caller's test emails go to: their own account, or, when a System Admin acts as a test persona (design
+ * §10.4), the System Admin's, since a persona has no address.
+ */
+export function testRecipient(ctx: RequestContext): string {
+  return ctx.operator ?? requireAccount(ctx);
 }

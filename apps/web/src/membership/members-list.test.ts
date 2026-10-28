@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { MemberRecord, PositionsView } from 'ustp-domain';
 import {
+  classCellText,
   filterRows,
   initials,
   heldOffices,
@@ -24,6 +25,8 @@ function member(accountId: string, legalName: string, over: Partial<MemberRecord
     state: 'NY',
     contact: { city: 'Springfield', postalCode: '10001', phone: '+15551234567' },
     communications: null,
+    usVoteEligible: true,
+    agreesWithCoreIdeals: true,
     bylawsVersion: '2026.1',
     memberSince: '2026-10-22T12:00:00.000Z',
     statusChangedAt: '2026-10-22T12:00:00.000Z',
@@ -65,8 +68,8 @@ function term(termId: string, positionId: string, accountId: string | null, stat
 const rows: MemberRow[] = memberRows(
   [
     member('a1', 'Ada Brooks', { state: 'CA' }),
-    member('a2', 'Ben Cruz', { state: 'DC', preferredName: 'Benji' }),
-    member('a3', 'Cléo Dunn', { status: 'suspended', memberSince: '2025-01-05T00:00:00.000Z' }),
+    member('a2', 'Ben Cruz', { state: 'DC', preferredName: 'Benji', usVoteEligible: false, agreesWithCoreIdeals: false }),
+    member('a3', 'Cléo Dunn', { status: 'suspended', memberSince: '2025-01-05T00:00:00.000Z', usVoteEligible: null, agreesWithCoreIdeals: null }),
     member('a4', 'Dana Ito', { status: 'applicant', memberSince: null }),
   ],
   view,
@@ -124,6 +127,20 @@ describe('filterRows', () => {
   it('keeps one state', () => {
     expect(names(filterRows(rows, { search: '', state: 'NY' }))).toEqual(['Cléo Dunn', 'Dana Ito']);
   });
+
+  it('keeps one class: United States or Allied Members, or those never asked', () => {
+    expect(names(filterRows(rows, { search: '', state: '', memberClass: 'united_states' }))).toEqual(['Ada Brooks', 'Dana Ito']);
+    expect(names(filterRows(rows, { search: '', state: '', memberClass: 'allied' }))).toEqual(['Ben Cruz']);
+    expect(names(filterRows(rows, { search: '', state: 'NY', memberClass: 'not_asked' }))).toEqual(['Cléo Dunn']);
+    expect(names(filterRows(rows, { search: '', state: '', memberClass: '' }))).toHaveLength(4);
+  });
+
+  it('treats a record from before the question, without the field, as never asked', () => {
+    const { usVoteEligible: _, ...old } = member('a5', 'Eve Fox');
+    const oldRows = memberRows([old as MemberRecord], view);
+    expect(names(filterRows(oldRows, { search: '', state: '', memberClass: 'not_asked' }))).toEqual(['Eve Fox']);
+    expect(classCellText(old as MemberRecord)).toBeNull();
+  });
 });
 
 describe('statusCounts and statusFilters', () => {
@@ -154,6 +171,11 @@ describe('sortRows', () => {
     expect(names(sortRows(rows, 'state', false))).toEqual(['Ada Brooks', 'Ben Cruz', 'Cléo Dunn', 'Dana Ito']);
     expect(names(sortRows(rows, 'status', false))).toEqual(['Ada Brooks', 'Ben Cruz', 'Dana Ito', 'Cléo Dunn']);
   });
+
+  it('sorts by class, keeping those never asked last', () => {
+    expect(names(sortRows(rows, 'class', false))).toEqual(['Ben Cruz', 'Ada Brooks', 'Dana Ito', 'Cléo Dunn']);
+    expect(names(sortRows(rows, 'class', true))).toEqual(['Ada Brooks', 'Dana Ito', 'Ben Cruz', 'Cléo Dunn']);
+  });
 });
 
 describe('sinceText', () => {
@@ -174,12 +196,14 @@ describe('sinceText', () => {
 });
 
 describe('membersCsv', () => {
-  it('has the table columns and the account ID, never contact details', () => {
+  it('has the table columns, the account ID and the Core Ideals answer, never contact details', () => {
     expect(membersCsv(rows.slice(0, 2))).toBe(
-      'Name,Account ID,Offices,State,Status,Member since\r\n' +
-        'Ada Brooks,a1,,CA,Active,2026-10-22\r\n' +
-        'Ben Cruz,a2,Chair; State Chair,DC,Active,2026-10-22\r\n',
+      'Name,Account ID,Offices,State,Class,Agrees with the Core Ideals,Status,Member since\r\n' +
+        'Ada Brooks,a1,,CA,United States Member,Yes,Active,2026-10-22\r\n' +
+        'Ben Cruz,a2,Chair; State Chair,DC,Allied Member,No,Active,2026-10-22\r\n',
     );
+    // Cléo joined before the questions were asked.
+    expect(membersCsv(rows.slice(2, 3)).split('\r\n')[1]).toMatch(/^Cléo Dunn,a3,,NY,Not asked,Not asked,Suspended,2025-01-0[45]$/);
     expect(membersCsv(rows)).not.toMatch(/Springfield|10001|5551234567/);
   });
 

@@ -5,6 +5,7 @@ export const LEDGER_EVENT_TYPES = [
   'identity.linked',
   'identity.unlinked',
   'bylaws.published',
+  'registration_form.changed',
   'role.granted',
   'role.revoked',
   'approval.requested',

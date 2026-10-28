@@ -40,6 +40,7 @@ import { secretStoreProvider } from '../infra/secret-store.js';
 import { PublicLedgerController } from '../ledger/ledger.controller.js';
 import { MembershipAdminController, RegistrationController } from '../membership/membership.controller.js';
 import { MEMBERSHIP_PROVIDERS } from '../membership/providers.js';
+import { PublicRegistrationFormController, RegistrationFormAdminController } from '../membership/registration-form.js';
 import { NoticeSettingsController } from '../notifications/notice-settings.js';
 import { NoticesController } from '../notifications/notices.controller.js';
 import { NOTIFICATION_API_PROVIDERS } from '../notifications/providers.js';
@@ -68,6 +69,8 @@ import { PositionsService } from '../positions/positions.service.js';
     AccountsController,
     RegistrationController,
     MembershipAdminController,
+    PublicRegistrationFormController,
+    RegistrationFormAdminController,
     BylawsChecksController,
     MyPhotoController,
     PhotoReviewController,

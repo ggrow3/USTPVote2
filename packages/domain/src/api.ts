@@ -44,7 +44,12 @@ export const createApplicationSchema = z
     /** `YYYY-MM-DD`; checked against MINIMUM_MEMBER_AGE and kept on the application only (design §5.2). */
     dateOfBirth: z.string().trim().refine(isCalendarDate, 'enter your date of birth'),
     attestsAge: z.literal(true, { error: `confirm that you are at least ${MINIMUM_MEMBER_AGE}` }),
-    supportsPlatform: z.literal(true, { error: 'confirm that you support the USTP platform' }),
+    /** The version of the registration form's wording the applicant was shown; it must be the current one. */
+    formVersion: z.number().int().min(0),
+    /** Yes or No, and neither is refused: the answer decides the member's class (`memberClass`). */
+    usVoteEligible: z.boolean({ error: 'answer Yes or No' }),
+    /** Yes or No, and neither is refused (design §5.2). */
+    agreesWithCoreIdeals: z.boolean({ error: 'answer Yes or No' }),
     state,
     city,
     postalCode,

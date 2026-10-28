@@ -8,10 +8,11 @@ import {
   MINIMUM_MEMBER_AGE,
   type ApplicationRecord,
   type BylawsRecord,
+  type PublicRegistrationForm,
   type SignInProvider,
 } from 'ustp-domain';
 import { focusElement, focusFirstInvalid, focusSoon, usePageTitle } from '../a11y.js';
-import { api, errorMessage } from '../api.js';
+import { api, ApiError, errorMessage } from '../api.js';
 import PageShell from '../components/PageShell.vue';
 import TwoStepCodeCard from '../components/TwoStepCodeCard.vue';
 import { auth } from '../firebase.js';
@@ -27,7 +28,9 @@ import {
   type FederatedProvider,
 } from '../sign-in.js';
 import { useSignInFlow } from '../sign-in-flow.js';
-import { myApplications, submitApplication } from './api.js';
+import { myApplications, registrationForm, submitApplication } from './api.js';
+import MembershipQuestions from './MembershipQuestions.vue';
+import RegistrationIntro from './RegistrationIntro.vue';
 
 const $q = useQuasar();
 usePageTitle('Register');
@@ -44,6 +47,13 @@ const federated = computed(() =>
 const login = reactive({ email: '', password: '' });
 const loginErrors = ref<FieldErrors>({});
 const { busy: signingIn, error: signInError, challenge, code, run, submitCode } = useSignInFlow(toNextStep);
+
+/** The Membership Admins' wording: the intro, the two questions and the Core Ideals, and the bonus link (design §5.2). */
+const wording = ref<PublicRegistrationForm | null>(null);
+const wordingError = ref<string | null>(null);
+const tips = computed(() =>
+  wording.value?.tipsAddress ? { title: wording.value.tipsTitle, address: wording.value.tipsAddress } : null,
+);
 
 // Step 2: the application.
 const bylaws = ref<BylawsRecord | null>(null);
@@ -69,7 +79,9 @@ const form = reactive({
   newsletter: false,
   announcements: false,
   attestsAge: false,
-  supportsPlatform: false,
+  // Yes or No, nothing chosen until the person answers.
+  usVoteEligible: null as boolean | null,
+  agreesWithCoreIdeals: null as boolean | null,
 });
 /** Optional text fields go to the API only when filled in. */
 const optional = (value: string) => value.trim() || undefined;
@@ -92,8 +104,20 @@ const step = computed(() => {
   return canApply.value ? 1 : null;
 });
 
-onMounted(() => document.addEventListener('visibilitychange', onVisibilityChange));
+onMounted(() => {
+  document.addEventListener('visibilitychange', onVisibilityChange);
+  void loadWording();
+});
 onUnmounted(() => document.removeEventListener('visibilitychange', onVisibilityChange));
+
+async function loadWording() {
+  try {
+    wording.value = await registrationForm();
+    wordingError.value = null;
+  } catch (e) {
+    wordingError.value = `Could not load the application form: ${errorMessage(e)}`;
+  }
+}
 
 watch(
   () => !session.user,
@@ -204,7 +228,7 @@ async function resendVerification() {
 }
 
 async function submit() {
-  if (!bylaws.value) return;
+  if (!bylaws.value || !wording.value) return;
   if (!agreed.value) {
     errors.value = { _: 'You must agree to the bylaws to apply.' };
     return;
@@ -216,7 +240,9 @@ async function submit() {
     preferredName: optional(form.preferredName),
     dateOfBirth: form.dateOfBirth,
     attestsAge: form.attestsAge,
-    supportsPlatform: form.supportsPlatform,
+    formVersion: wording.value.version,
+    usVoteEligible: form.usVoteEligible,
+    agreesWithCoreIdeals: form.agreesWithCoreIdeals,
     state: form.state ?? '',
     city: form.city,
     postalCode: form.postalCode,
@@ -251,6 +277,8 @@ async function submit() {
     await focusSoon('#application-status');
   } catch (e) {
     errors.value = { _: errorMessage(e), ...apiFieldErrors(e) };
+    // A Membership Admin may have changed the questions meanwhile: show the new wording, keeping the answers.
+    if (e instanceof ApiError && e.status === 409) await loadWording();
     await focusFirstInvalid();
   } finally {
     busy.value = false;
@@ -262,6 +290,7 @@ async function submit() {
   <PageShell>
     <div class="ustp-content">
       <h1 class="text-h5">Register as a member</h1>
+      <RegistrationIntro v-if="wording && session.ready && step !== null" :intro="wording.intro" />
       <ol v-if="session.ready && step !== null" class="register-steps" aria-label="Steps to register">
         <li
           v-for="(label, i) in STEPS"
@@ -372,6 +401,9 @@ async function submit() {
           There is nothing more to fill in. Once you are admitted you can vote in elections set up after that, on the
           <router-link to="/ballot">Ballot</router-link> page.
         </q-card-section>
+        <q-card-section v-if="tips">
+          Your bonus for applying: <a :href="tips.address">{{ tips.title }}</a>.
+        </q-card-section>
       </q-card>
 
       <!-- Active, lapsed and suspended members: their status and what they can do, instead of the form. -->
@@ -385,6 +417,7 @@ async function submit() {
         <q-card-section v-if="status === 'active'">
           There is nothing to register. Vote on the <router-link to="/ballot">Ballot</router-link> page, and manage
           your membership on your <router-link to="/account">Account page</router-link>.
+          <template v-if="tips"><br />Your bonus for joining: <a :href="tips.address">{{ tips.title }}</a>.</template>
         </q-card-section>
         <q-card-section v-else>
           <template v-if="status === 'lapsed'">
@@ -410,6 +443,12 @@ async function submit() {
         </q-banner>
         <q-banner v-if="bylawsError" class="bg-negative text-white" rounded>{{ bylawsError }}</q-banner>
         <div v-else-if="!bylaws" class="text-grey-7">Loading the bylaws…</div>
+        <q-banner v-if="wordingError && !wording" class="bg-negative text-white" rounded>
+          {{ wordingError }}
+          <template #action>
+            <q-btn flat no-caps label="Try again" @click="loadWording" />
+          </template>
+        </q-banner>
 
         <q-card v-if="bylaws" flat bordered>
           <q-card-section>
@@ -434,7 +473,7 @@ async function submit() {
         </q-card>
 
         <!-- Each section of the form is a card, its legend the card's heading. -->
-        <q-form v-if="bylaws" class="ustp-stack" @submit.prevent="submit">
+        <q-form v-if="bylaws && wording" class="ustp-stack" @submit.prevent="submit">
           <q-card flat bordered>
             <q-card-section>
               <fieldset class="ustp-fieldset">
@@ -527,6 +566,20 @@ async function submit() {
             </q-card-section>
           </q-card>
 
+          <!-- Two Yes-or-No questions in the Membership Admins' words; neither answer is ever refused (design §5.2). -->
+          <q-card flat bordered>
+            <q-card-section>
+              <h3 class="text-subtitle1">Membership questions</h3>
+              <MembershipQuestions
+                v-model:us-vote-eligible="form.usVoteEligible"
+                v-model:agrees-with-core-ideals="form.agreesWithCoreIdeals"
+                class="q-mt-md"
+                :form="wording"
+                :errors="{ usVoteEligible: errors.usVoteEligible, agreesWithCoreIdeals: errors.agreesWithCoreIdeals }"
+              />
+            </q-card-section>
+          </q-card>
+
           <q-card flat bordered>
             <q-card-section>
               <fieldset class="ustp-fieldset">
@@ -575,8 +628,6 @@ async function submit() {
                   <div class="ustp-options">
                     <q-checkbox v-model="form.attestsAge" :label="`I am at least ${MINIMUM_MEMBER_AGE} years old.`" />
                     <div v-if="errors.attestsAge" class="ustp-message text-negative">{{ errors.attestsAge }}</div>
-                    <q-checkbox v-model="form.supportsPlatform" label="I support the platform and goals of the US Transhumanist Party." />
-                    <div v-if="errors.supportsPlatform" class="ustp-message text-negative">{{ errors.supportsPlatform }}</div>
                   </div>
                 </div>
               </fieldset>

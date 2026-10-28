@@ -8,11 +8,11 @@ import { describe, expect, it } from 'vitest';
  */
 const CONTEXTS: Readonly<Record<string, { readonly collections: readonly string[]; readonly repositories: readonly string[] }>> = {
   membership: {
-    collections: ['members', 'memberStatusHistory', 'applications'],
+    collections: ['members', 'memberStatusHistory', 'applications', 'registrationForm', 'registrationFormVersions'],
     repositories: ['member.repository', 'application.repository'],
   },
   notifications: {
-    collections: ['notices', 'noticeOutbox', 'noticeSettings'],
+    collections: ['notices', 'noticeOutbox', 'noticeSettings', 'noticeReceipts', 'noticeTests'],
     repositories: ['notice.repository'],
   },
 };
