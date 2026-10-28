@@ -163,6 +163,7 @@ change only where a context is being reworked anyway.
 | Request, approval (two-person rule) | an action one admin asks and another decides | `approval_requests`, `TWO_PERSON_ACTIONS` |
 | Ledger entry, block, anchor | the hash-chained record, its signed Merkle batches, their WORM copies | `audit_events`, `blocks`, `anchors` |
 | Testing mode, persona | rehearsing alone on a test deployment | `testing_personas`, `X-Act-As` |
+| Demo election | a rehearsal made up at random and scheduled by the personas in one request | `demoElection`, `POST /v1/testing/demo-elections` |
 
 ## 6. Migration path
 

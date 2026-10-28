@@ -139,6 +139,18 @@ export {
   testVotesSchema,
 } from './test-votes.js';
 export type { PlannedBallot, Random, TestVotes, TestVotesInput } from './test-votes.js';
+export {
+  DEMO_MIN_TEST_VOTERS,
+  DEMO_OPENINGS,
+  DEMO_TITLE_PREFIX,
+  DEMO_VOTING_MINUTES,
+  DEMO_FIRST_NAMES,
+  DEMO_MEASURE_NOTE,
+  DEMO_SURNAMES,
+  demoElection,
+  demoElectionInputSchema,
+} from './demo-election.js';
+export type { DemoElectionInput, DemoElectionOptions, DemoElectionResult, DemoOpening } from './demo-election.js';
 export { castBallotSchema, ballotProblems, ballotViewProblems, commitmentsOf } from './ballots.js';
 export {
   buildSealedBlock,

@@ -6,8 +6,12 @@ import { api } from '../../api.js';
 import { roleLabel } from '../../approval-text.js';
 import { attempt } from '../../dialogs.js';
 import { actAs } from '../../session.js';
+import DemoElectionCard from './DemoElectionCard.vue';
 
-/** Testing mode (design §10.4): create test personas and act as them. Shown to System Admins when the deployment allows it. */
+/**
+ * Testing mode (design §10.4): create test personas, act as them, and make a demo election. Shown to System Admins when
+ * the deployment allows it.
+ */
 const router = useRouter();
 const personas = ref<PersonaSummary[] | null>(null);
 const voters = ref(5);
@@ -84,6 +88,8 @@ onMounted(load);
       </q-card-section>
     </q-card>
 
+    <DemoElectionCard :personas="personas" @created="load" />
+
     <q-card flat bordered>
       <q-card-section>
         <h2 class="text-subtitle1">Rehearse an election</h2>
@@ -103,7 +109,9 @@ onMounted(load);
             After voting closes and the results are in, the Test Election Admin requests certification and the Test
             Auditor approves it.
           </li>
+          <li>To clear it away, the Test Election Admin deletes it from its page in the election editor.</li>
         </ol>
+        <p class="q-mt-sm q-mb-none">Create demo election, above, does steps 2 to 4 for you with an election made up at random.</p>
       </q-card-section>
     </q-card>
   </div>
