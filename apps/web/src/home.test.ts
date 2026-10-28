@@ -4,10 +4,11 @@ import { approvalsStatus, ballotStatus, electionsStatus, homeCards, visitorCard,
 
 describe('the signed-out card', () => {
   it('holds the sign-in form, then Register, Verify and Offices, by default', () => {
-    const card = visitorCard(['register', 'ballot', 'verify', 'offices', 'admin', 'signin']);
+    const card = visitorCard(['register', 'ballot', 'verify', 'offices', 'course', 'admin', 'signin']);
     expect(card.signIn).toBe(true);
-    expect(card.links.map((l) => l.key)).toEqual(['register', 'verify', 'offices']);
+    expect(card.links.map((l) => l.key)).toEqual(['register', 'verify', 'offices', 'course']);
     expect(card.links[2]).toMatchObject({ label: 'See who holds each office', to: '/offices' });
+    expect(card.links[3]).toMatchObject({ label: 'Explore the Transhumanism course', to: '/course/transhumanism' });
     expect(card.links[0]).toMatchObject({ label: 'Register as a member', to: '/register' });
   });
 
@@ -25,7 +26,7 @@ describe('the signed-out card', () => {
 describe('home cards', () => {
   it('follow what the person is shown: ballot first, then membership, verify, offices, admin sections and the account', () => {
     const cards = homeCards(
-      { menu: ['register', 'ballot', 'verify', 'offices', 'admin'], sections: ['elections', 'offices', 'approvals'] },
+      { menu: ['register', 'ballot', 'verify', 'offices', 'course', 'admin'], sections: ['elections', 'offices', 'approvals'] },
       'active',
       false,
     );
@@ -34,6 +35,7 @@ describe('home cards', () => {
       'register',
       'verify',
       'offices',
+      'course',
       'admin/elections',
       'admin/offices',
       'admin/approvals',
