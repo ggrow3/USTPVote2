@@ -4,11 +4,29 @@ import { usePageTitle } from '../a11y.js';
 import { session } from '../session.js';
 import { api, errorMessage } from '../api.js';
 import { COURSE_VERSION, courseSections } from '../academy/course.js';
+import { thinkers } from '../academy/thinkers.js';
+import ThinkerPortrait from '../academy/ThinkerPortrait.vue';
 
 usePageTitle('Introduction to Transhumanism');
 const active = ref(courseSections[0]!.id);
 const completed = ref<string[]>([]);
 const busy = ref(false);
+const questions = ref<{section:string;prompt:string;options:readonly string[]}[]>([]);
+const answer = ref<number | null>(null);
+const quizResult = ref<{correct:boolean;explanation:string} | null>(null);
+watch(active, () => { answer.value = null; quizResult.value = null; });
+const currentQuestion = computed(() => questions.value.find(q => q.section === active.value));
+const currentThinkers = computed(() => thinkers.filter(t => t.sections.includes(active.value)));
+api<{questions:{section:string;prompt:string;options:string[]}[]}>('GET','/v1/academy/questions').then(r => { questions.value = r.questions; }).catch(() => undefined);
+async function submitQuiz() {
+  if (!session.user || answer.value === null || busy.value) return;
+  busy.value = true; error.value = '';
+  try {
+    quizResult.value = await api('PUT','/v1/academy/attempts',{section:active.value,answer:answer.value,assessmentVersion:1},{actAs:null});
+  } catch(e) { error.value = errorMessage(e); }
+  finally { busy.value = false; }
+}
+
 const error = ref('');
 watch(() => session.user?.uid, async (uid) => {
   completed.value = [];
@@ -68,6 +86,25 @@ async function toggle(id: string) {
               <h2 class="text-h5">{{ current.title }}</h2>
               <p><strong>Learning objective:</strong> {{ current.objective }}</p>
               <p v-for="(paragraph, index) in current.lesson" :key="index">{{ paragraph }}</p>
+              <h3 class="text-h6 q-mt-lg">People and ideas</h3>
+              <div v-for="person in currentThinkers" :key="person.name" class="row no-wrap q-gutter-md q-mb-lg items-start">
+                <ThinkerPortrait :title="person.wikipediaTitle" :name="person.name" />
+                <div>
+                  <h4 class="text-subtitle1 q-my-none">{{ person.name }} <small>({{ person.years }})</small></h4>
+                  <p class="text-caption q-mb-xs">{{ person.contribution }}</p>
+                  <p class="q-mb-xs">{{ person.biography }}</p>
+                  <a :href="'https://en.wikipedia.org/wiki/' + person.wikipediaTitle" target="_blank" rel="noopener noreferrer">Biography and image source (Wikipedia)</a>
+                </div>
+              </div>
+              <section v-if="currentQuestion" aria-label="Knowledge check" class="q-my-lg">
+                <h3 class="text-h6">Knowledge check</h3>
+                <p>{{ currentQuestion.prompt }}</p>
+                <q-option-group v-model="answer" :options="currentQuestion.options.map((label,index) => ({label,value:index}))" type="radio" :disable="!session.user || busy || !!quizResult" />
+                <q-btn color="deep-orange" label="Submit answer" class="q-mt-sm" :disable="!session.user || answer === null || busy || !!quizResult" @click="submitQuiz" />
+                <p v-if="quizResult" class="q-mt-md" role="status"><strong>{{ quizResult.correct ? 'Correct!' : 'Not quite.' }}</strong> {{ quizResult.explanation }}</p>
+                <q-btn v-if="quizResult" flat label="Try again" @click="quizResult = null; answer = null" />
+                <p v-if="!session.user" class="text-caption">Sign in to submit a graded knowledge check.</p>
+              </section>
               <h3 class="text-subtitle1">Reflection</h3>
               <p>{{ current.reflection }}</p>
               <q-checkbox :model-value="completed.includes(current.id)" :disable="!session.user || busy" label="Mark this section as complete" @update:model-value="toggle(current.id)" />
