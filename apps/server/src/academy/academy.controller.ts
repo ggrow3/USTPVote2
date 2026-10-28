@@ -3,11 +3,14 @@ import { z } from 'zod';
 import { Ctx, requireAccount, requireOwnAccount } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { Firebase } from '../infra/firebase.js';
+import { academyQuestions, ASSESSMENT_VERSION } from './questions.js';
+import { randomUUID } from 'node:crypto';
 import { ZodPipe } from '../common/validation.js';
 
 const sectionIds = ['foundations','history','longevity','enhancement','intelligence','democracy','ethics','earth','space','future'] as const;
 const completionSchema = z.object({ completed: z.boolean(), lessonVersion: z.literal(1) }).strict();
 const sectionSchema = z.enum(sectionIds);
+const attemptSchema = z.object({ section: sectionSchema, answer: z.number().int().min(0).max(3), assessmentVersion: z.literal(1) }).strict();
 const COURSE_VERSION = 1;
 
 /** Records self-attested reading completion, not graded assessment or certificate eligibility. */
@@ -18,6 +21,22 @@ export class AcademyController {
   private ref(ctx: RequestContext) {
     requireOwnAccount(ctx);
     return this.firebase.db.collection('academyProgress').doc(requireAccount(ctx));
+  }
+
+  @Get('questions')
+  questions() {
+    return { assessmentVersion: ASSESSMENT_VERSION, questions: academyQuestions.map(({section,prompt,options}) => ({section,prompt,options})) };
+  }
+
+  @Put('attempts')
+  async attempt(@Ctx() ctx: RequestContext, @Body(new ZodPipe(attemptSchema)) body: z.infer<typeof attemptSchema>) {
+    const question = academyQuestions.find((q) => q.section === body.section);
+    if (!question) throw new BadRequestException('Unknown section');
+    const correct = body.answer === question.answer;
+    const attemptId = randomUUID();
+    const record = { ...body, correct, submittedAt: new Date().toISOString(), questionVersion: ASSESSMENT_VERSION };
+    await this.ref(ctx).collection('courses').doc('introduction-v1').collection('attempts').doc(attemptId).create(record);
+    return { attemptId, correct, explanation: question.explanation, assessmentVersion: ASSESSMENT_VERSION };
   }
 
   @Get('progress')
