@@ -44,7 +44,7 @@ locals {
       BYLAWS_CHECKER            = local.bylaws_checker
       CONSISTENCY_CHECKER       = local.consistency_checker
       ELECTION_CHECKER          = local.election_checker
-      WEB_ORIGIN                = var.web_origin != "" ? var.web_origin : "https://${var.project_id}.web.app"
+      WEB_ORIGIN                = local.web_origin
     },
     local.notices_env,
     local.notices_worker_env,
@@ -245,12 +245,13 @@ resource "google_cloud_run_v2_service_iam_member" "worker_invoker" {
 
 # --- Releases ----------------------------------------------------------------------------------------------------------
 
-# ustp-release (release.tf) rolls both services onto each new attested image. run.developer on a service cannot change
+# ustp-release (release.tf) rolls the services onto each new attested image. run.developer on a service cannot change
 # who may invoke it; Binary Authorization still refuses any image without an attestation.
 resource "google_cloud_run_v2_service_iam_member" "release" {
   for_each = local.deploy ? {
     api    = google_cloud_run_v2_service.api[0].name
     worker = google_cloud_run_v2_service.worker[0].name
+    mcp    = google_cloud_run_v2_service.mcp[0].name
   } : {}
 
   project  = var.project_id

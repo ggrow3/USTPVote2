@@ -1,0 +1,12 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    // The tests reuse ustp-verify's signed test world, which its build leaves out of dist; tsconfig.build.json narrows
+    // this back to src.
+    "rootDir": "../..",
+    "outDir": "dist",
+    // A Node service: global fetch, node:http and node:util come from @types/node.
+    "types": ["node"]
+  },
+  "include": ["src", "../../packages/verify/src/testing"]
+}

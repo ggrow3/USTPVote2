@@ -1,0 +1,28 @@
+{
+  "name": "ustp-mcp",
+  "version": "0.1.0",
+  "description": "Read-only MCP server for AI-assisted election reports (Gemini, Claude): election status, turnout, public results and audit reports from the public api only",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "ustp-mcp": "./dist/main.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "ustp-domain": "^0.1.0",
+    "ustp-verify": "^0.1.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "ustp-audit": "^0.1.0"
+  }
+}

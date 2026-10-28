@@ -64,6 +64,7 @@ resource "google_service_account_iam_member" "release_act_as" {
   for_each = {
     api    = google_service_account.api.name
     worker = google_service_account.worker.name
+    mcp    = google_service_account.mcp.name
   }
 
   service_account_id = each.value

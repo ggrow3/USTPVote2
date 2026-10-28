@@ -41,6 +41,7 @@ photo checks and Cloud KMS have no emulator and have not been exercised in dev y
 - [Accessibility](docs/ACCESSIBILITY.md) — what was checked and fixed, known gaps, the manual screen-reader pass still due
 - [Infrastructure](infra/terraform/README.md) — Terraform layout, IAM per service account, bringing an environment up, releasing
 - [Independent verifier](packages/verify/README.md) — `ustp-verify` usage and what each check proves
+- [Reporting MCP server](apps/mcp/README.md) — read-only election reports for Gemini or Claude, from public data only
 - [Source specification](docs/spec/USTP-Standalone-Technical-Specification.docx) ([text extraction](docs/spec/technical-specification.md))
 
 ## Layout

@@ -330,6 +330,12 @@ variable "worker_max_instances" {
   default     = 2
 }
 
+variable "mcp_max_instances" {
+  description = "Upper bound on instances of the public reporting MCP server (design §3.4); caps what a flood of calls can cost."
+  type        = number
+  default     = 2
+}
+
 variable "deletion_protection" {
   description = "Refuse to delete the Cloud Run services and the Firestore database."
   type        = bool
