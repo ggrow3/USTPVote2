@@ -15,6 +15,7 @@ import {
 } from 'ustp-domain';
 import { announce, usePageTitle } from '../a11y.js';
 import { api, ApiError, errorMessage } from '../api.js';
+import PageShell from '../components/PageShell.vue';
 import { savedReceipts } from '../receipts.js';
 
 const route = useRoute();
@@ -117,7 +118,7 @@ const summary = computed(() => {
 </script>
 
 <template>
-  <q-page padding>
+  <PageShell>
     <div class="ustp-content">
       <h1 class="text-h5">Verify a receipt</h1>
       <p>
@@ -192,5 +193,5 @@ const summary = computed(() => {
         </q-card>
       </template>
     </div>
-  </q-page>
+  </PageShell>
 </template>

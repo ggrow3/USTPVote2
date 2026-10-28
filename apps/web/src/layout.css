@@ -4,6 +4,69 @@
  * row of fields 16px to the right of the full-width fields around it.
  */
 
+/*
+ * A page (<PageShell>, every page but the hub and the voting home): the voting home's sunrise behind, fixed so a long
+ * page scrolls over it, and the page on one card lifted off it like the voting home's cards, white or the dark theme's
+ * card colour, so its text has the contrast it has on a plain page. The card is as wide as its content's column plus
+ * its padding; the gutters are the voting home's, a little tighter on phones.
+ */
+.ustp-page {
+  --ustp-sheet-pad: clamp(16px, 4vw, 40px);
+  padding: clamp(16px, 4vw, 48px) clamp(8px, 2.5vw, 32px);
+}
+/* Under everything on the page, the banner above it included (nothing between it and the page's canvas paints). */
+.ustp-page__backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  width: 100%;
+  height: 100%;
+}
+.ustp-page__sheet {
+  max-width: calc(860px + 2 * var(--ustp-sheet-pad));
+  margin: 0 auto;
+  padding: var(--ustp-sheet-pad);
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18);
+}
+.body--dark .ustp-page__sheet {
+  background: var(--q-dark);
+}
+.ustp-page--narrow .ustp-page__sheet {
+  max-width: calc(480px + 2 * var(--ustp-sheet-pad));
+}
+/* The voting home's width. */
+.ustp-page--wide .ustp-page__sheet {
+  max-width: 1176px;
+}
+
+/*
+ * Text on a page, set for reading rather than Quasar's 14px: 16px with more leading, captions at 14px, a larger and
+ * bolder title and card headings. Fields, buttons, tabs, badges and tables keep their own sizes, and dialogs (outside
+ * the page) are unchanged.
+ */
+.ustp-page__sheet {
+  font-size: 1rem;
+  line-height: 1.6;
+}
+.ustp-page__sheet h1 {
+  font-size: clamp(1.5rem, 1.25rem + 0.9vw, 2rem);
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+.ustp-page__sheet h2.text-subtitle1 {
+  font-size: 1.125rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.ustp-page__sheet .text-caption {
+  font-size: 0.875rem;
+  line-height: 1.45;
+  letter-spacing: normal;
+}
+
 /* A page's content, or an admin panel's: one column, 860px at most, 16px between headings, banners and cards. */
 .ustp-content,
 .ustp-stack,

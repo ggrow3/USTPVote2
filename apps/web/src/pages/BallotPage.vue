@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue';
 import type { VoterElection } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
+import PageShell from '../components/PageShell.vue';
 import { attempt } from '../dialogs.js';
 import { session } from '../session.js';
 
@@ -34,7 +35,7 @@ function status(e: VoterElection): { label: string; color: string } {
 </script>
 
 <template>
-  <q-page padding>
+  <PageShell>
     <div class="ustp-content">
       <h1 class="text-h5">Your ballots</h1>
       <q-banner v-if="elections && elections.length === 0" class="bg-grey-3 text-black" rounded>
@@ -84,5 +85,5 @@ function status(e: VoterElection): { label: string; color: string } {
       <div v-else-if="failed" class="text-grey-7">Could not load your ballots.</div>
       <div v-else class="text-grey-7">Loading…</div>
     </div>
-  </q-page>
+  </PageShell>
 </template>

@@ -6,6 +6,7 @@ import type { IdentityRecord, SignInProvider } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { api, errorMessage } from '../api.js';
 import AuthenticatorSetupDialog from '../components/AuthenticatorSetupDialog.vue';
+import PageShell from '../components/PageShell.vue';
 import ProfilePhotoCard from '../components/ProfilePhotoCard.vue';
 import { confirmIdentity, dialog } from '../dialogs.js';
 import { auth, secondaryAuth } from '../firebase.js';
@@ -131,7 +132,7 @@ function copyId() {
 </script>
 
 <template>
-  <q-page padding>
+  <PageShell>
     <div class="ustp-content">
       <h1 class="text-h5">Your account</h1>
       <div v-if="!me?.account" class="text-grey-7">Loading…</div>
@@ -241,5 +242,5 @@ function copyId() {
         </q-card>
       </template>
     </div>
-  </q-page>
+  </PageShell>
 </template>

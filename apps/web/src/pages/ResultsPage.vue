@@ -19,6 +19,7 @@ import {
 import type { TieBreakRecord } from 'ustp-tally';
 import { usePageTitle } from '../a11y.js';
 import { api, ApiError, errorMessage } from '../api.js';
+import PageShell from '../components/PageShell.vue';
 import { downloadElectionDocx } from '../election-files.js';
 import { rulesText, tieBreakText } from '../election-text.js';
 import ResultsSynopsis from '../elections/ResultsSynopsis.vue';
@@ -173,7 +174,7 @@ const summary = computed(() => {
 </script>
 
 <template>
-  <q-page padding>
+  <PageShell>
     <div class="ustp-content">
       <q-btn flat dense no-caps icon="arrow_back" label="Your ballots" to="/ballot" class="ustp-back ustp-no-print" />
       <q-banner v-if="error" class="bg-negative text-white" rounded>{{ error }}</q-banner>
@@ -410,5 +411,5 @@ const summary = computed(() => {
         </template>
       </template>
     </div>
-  </q-page>
+  </PageShell>
 </template>
