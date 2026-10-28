@@ -51,6 +51,13 @@ export const router = createRouter({
           component: () => import('./pages/ElectionEditorPage.vue'),
           meta: { requiresAuth: true, roles: ['election_admin', 'auditor'] },
         },
+        // The ballot page itself, showing the editor's draft as voters will get it (design §6.5).
+        {
+          path: 'admin/elections/:id/preview',
+          component: () => import('./pages/VotePage.vue'),
+          props: { preview: true },
+          meta: { requiresAuth: true, roles: ['election_admin', 'auditor'] },
+        },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: '/' },
