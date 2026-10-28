@@ -1,0 +1,19 @@
+export interface Thinker {
+  name: string;
+  years: string;
+  contribution: string;
+  biography: string;
+  wikipediaTitle: string;
+  sections: readonly string[];
+}
+export const thinkers: readonly Thinker[] = [
+  {name:'Julian Huxley',years:'1887–1975',contribution:'Biologist and early transhumanist thinker',biography:'British evolutionary biologist, science communicator, and the first director-general of UNESCO. He used the term transhumanism to describe humanity deliberately transcending some of its limitations. His historical views should be examined critically, including his involvement in eugenics.',wikipediaTitle:'Julian_Huxley',sections:['foundations','history']},
+  {name:'Albert Einstein',years:'1879–1955',contribution:'Physicist and public intellectual',biography:'German-born theoretical physicist whose relativity theories reshaped modern physics. He also spoke publicly about peace, civil liberties, and scientific responsibility. He was not a modern transhumanist.',wikipediaTitle:'Albert_Einstein',sections:['history','ethics']},
+  {name:'Bertrand Russell',years:'1872–1970',contribution:'Philosopher, logician, and peace advocate',biography:'British philosopher and mathematician influential in analytic philosophy and logic. Russell advocated critical inquiry, civil liberties, and nuclear disarmament. He should be understood as an intellectual influence, not labeled a transhumanist.',wikipediaTitle:'Bertrand_Russell',sections:['history','ethics']},
+  {name:'Carl Sagan',years:'1934–1996',contribution:'Astronomer and science communicator',biography:'American astronomer and planetary scientist known for Cosmos, planetary research, and public advocacy of scientific skepticism. He emphasized the fragility of Earth and the importance of responsible exploration.',wikipediaTitle:'Carl_Sagan',sections:['history','earth','space']},
+  {name:'David Brin',years:'born 1950',contribution:'Science-fiction author and futurist',biography:'American scientist and science-fiction author known for the Uplift novels and nonfiction about transparency, technology, and civilization. His work explores how institutions and societies respond to technological change.',wikipediaTitle:'David_Brin',sections:['history','future','space']},
+  {name:'James Hughes',years:'born 1961',contribution:'Democratic transhumanist philosopher',biography:'American sociologist and bioethicist associated with democratic transhumanism. His book Citizen Cyborg argues for combining enhancement technologies with democratic governance and social equality.',wikipediaTitle:'James_Hughes_(sociologist)',sections:['democracy','enhancement','ethics']},
+  {name:'Isaac Asimov',years:'1920–1992',contribution:'Science-fiction writer and biochemist',biography:'American writer and biochemistry professor whose stories popularized questions about robotics, ethics, and technological futures. His fictional Three Laws of Robotics are a literary device, not an adequate real-world safety system.',wikipediaTitle:'Isaac_Asimov',sections:['intelligence','future']},
+  {name:'Arthur C. Clarke',years:'1917–2008',contribution:'Science-fiction writer and technology visionary',biography:'British writer and futurist known for 2001: A Space Odyssey and early writing on communications satellites. His fiction helped inspire debate about space exploration and advanced technology.',wikipediaTitle:'Arthur_C._Clarke',sections:['space','future']},
+  {name:'Ramez Naam',years:'born 1972',contribution:'Technologist, author, and clean-energy advocate',biography:'Egyptian-American technologist and author of the Nexus science-fiction trilogy and The Infinite Resource. He writes about clean-energy innovation, technology, and human enhancement, exploring both potential benefits and social risks.',wikipediaTitle:'Ramez_Naam',sections:['enhancement','earth','future']},
+];
