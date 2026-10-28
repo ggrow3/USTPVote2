@@ -8,6 +8,8 @@ import { session } from '../session.js';
 import { changeMemberStatus, memberHistory, members } from './api.js';
 import { stateName } from './member-text.js';
 import {
+  CLASS_FILTERS,
+  classCellText,
   filterRows,
   initials,
   memberRows,
@@ -19,6 +21,7 @@ import {
   STATUS_LABELS,
   statusCounts,
   statusFilters,
+  type ClassFilter,
   type MemberRow,
   type SortKey,
 } from './members-list.js';
@@ -37,6 +40,9 @@ const history = ref<{ member: MemberRecord; entries: StatusHistoryRecord[] } | n
 /** Null once the field's clear button is used. */
 const search = ref<string | null>('');
 const state = ref('');
+/** United States or Allied Members (design §5.2), or those never asked; '' for every class. */
+const memberClass = ref<ClassFilter | ''>('');
+const classOptions = [{ label: 'All classes', value: '' }, ...CLASS_FILTERS];
 const status = ref<MemberStatus | null>(null);
 const sort = ref<{ key: SortKey; descending: boolean }>({ key: 'name', descending: false });
 const page = ref(1);
@@ -64,8 +70,10 @@ const stateOptions = computed(() => [
     .map((code) => ({ label: stateName(code), value: code }))
     .sort((a, b) => a.label.localeCompare(b.label)),
 ]);
-/** Search and state first: the pills count within them. */
-const scoped = computed(() => filterRows(all.value, { search: search.value ?? '', state: state.value }));
+/** Search, state and class first: the pills count within them. */
+const scoped = computed(() =>
+  filterRows(all.value, { search: search.value ?? '', state: state.value, memberClass: memberClass.value }),
+);
 const counts = computed(() => statusCounts(scoped.value));
 const pills = computed(() => statusFilters(counts.value, status.value));
 const filtered = computed(() =>
@@ -84,13 +92,14 @@ const showing = computed(() => {
   const range = pages.value > 1 ? `${(page.value - 1) * PAGE + 1}–${(page.value - 1) * PAGE + shown.value.length}` : `${total}`;
   return `Showing ${range} of ${total} ${total === 1 ? 'member' : 'members'}`;
 });
-watch([search, state, status, sort], () => (page.value = 1));
+watch([search, state, memberClass, status, sort], () => (page.value = 1));
 watch(pages, (n) => (page.value = Math.min(page.value, n)));
 
 const COLUMNS: readonly { key: SortKey; label: string }[] = [
   { key: 'name', label: 'Member' },
   { key: 'position', label: 'Position' },
   { key: 'state', label: 'State' },
+  { key: 'class', label: 'Class' },
   { key: 'status', label: 'Status' },
   { key: 'since', label: 'Member since' },
 ];
@@ -145,6 +154,7 @@ function exportCsv() {
 function clearFilters() {
   search.value = '';
   state.value = '';
+  memberClass.value = '';
   status.value = null;
 }
 
@@ -203,6 +213,10 @@ onMounted(() => load());
       <div class="members-state">
         <label for="members-state" class="members-muted">State</label>
         <q-select v-model="state" for="members-state" outlined dense emit-value map-options :options="stateOptions" />
+      </div>
+      <div class="members-state">
+        <label for="members-class" class="members-muted">Class</label>
+        <q-select v-model="memberClass" for="members-class" outlined dense emit-value map-options :options="classOptions" />
       </div>
       <div role="group" aria-label="Status" class="members-pills">
         <button type="button" class="members-pill" :aria-pressed="status === null" @click="status = null">
@@ -269,6 +283,10 @@ onMounted(() => load());
           </td>
           <td><span class="members-code">{{ r.member.state }}</span></td>
           <td>
+            <span v-if="classCellText(r.member)">{{ classCellText(r.member) }}</span>
+            <span v-else class="members-muted">Not asked</span>
+          </td>
+          <td>
             <span class="members-status" :class="`members--${r.member.status}`">
               <span class="members-dot" aria-hidden="true" />{{ STATUS_LABELS[r.member.status] }}
             </span>
@@ -306,19 +324,19 @@ onMounted(() => load());
           </td>
         </tr>
         <tr v-if="listState === 'loading'">
-          <td colspan="7" class="members-muted">Loading members…</td>
+          <td colspan="8" class="members-muted">Loading members…</td>
         </tr>
         <tr v-else-if="listState === 'failed'">
-          <td colspan="7" class="members-muted">
+          <td colspan="8" class="members-muted">
             Could not load members.
             <q-btn flat dense no-caps color="primary" label="Try again" @click="load()" />
           </td>
         </tr>
         <tr v-else-if="!all.length">
-          <td colspan="7" class="members-muted">No members yet.</td>
+          <td colspan="8" class="members-muted">No members yet.</td>
         </tr>
         <tr v-else-if="!filtered.length">
-          <td colspan="7" class="members-muted">
+          <td colspan="8" class="members-muted">
             No members match.
             <q-btn flat dense no-caps color="primary" label="Clear search and filters" @click="clearFilters" />
           </td>

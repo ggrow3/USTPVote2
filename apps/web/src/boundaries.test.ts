@@ -7,7 +7,14 @@ import { describe, expect, it } from 'vitest';
  * folder, in its `api.ts`, and other code calls that client. A context is listed here once it has that structure.
  */
 const CONTEXTS: Readonly<Record<string, readonly string[]>> = {
-  membership: ['/v1/registration/', '/v1/admin/applications', '/v1/admin/members', '/v1/me/resign', '/v1/me/details'],
+  membership: [
+    '/v1/registration/',
+    '/v1/admin/applications',
+    '/v1/admin/members',
+    '/v1/admin/registration-form',
+    '/v1/me/resign',
+    '/v1/me/details',
+  ],
   notifications: ['/notices', '/notice-settings'],
   governance: ['/v1/navigation', '/v1/admin/navigation', '/v1/home-quote', '/v1/admin/home-quote', '/v1/hub', '/v1/admin/hub'],
   // Its routes end the path after an election ID; the folder's own name appears in imports.

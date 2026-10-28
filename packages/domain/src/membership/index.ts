@@ -35,6 +35,30 @@ export type {
 } from './member.js';
 export { checkApplicantEmail, applicationWindowStart, submitApplication, decideApplication } from './application.js';
 export type { ApplicationChange } from './application.js';
+export {
+  MEMBER_CLASSES,
+  memberClass,
+  REGISTRATION_FORM_LIMITS,
+  REGISTRATION_FORM_PARTS,
+  DEFAULT_REGISTRATION_FORM,
+  tidyIntro,
+  introParagraphs,
+  resolveRegistrationForm,
+  tipsAddressProblem,
+  checkRegistrationForm,
+  registrationFormChanges,
+  registrationFormSchema,
+} from './registration-form.js';
+export type {
+  MemberClass,
+  RegistrationForm,
+  RegistrationFormPart,
+  RegistrationFormRecord,
+  PublicRegistrationForm,
+  RegistrationFormChange,
+  RegistrationFormChangedPayload,
+  RegistrationFormInput,
+} from './registration-form.js';
 export type * from './records.js';
 export { MEMBER_SEARCH_DEFAULT_LIMIT, MEMBER_SEARCH_MAX_LIMIT, foldName, matchMembers } from './search.js';
 export type { MemberMatch } from './search.js';

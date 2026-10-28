@@ -19,6 +19,7 @@ export const ADMIN_SECTIONS = [
   'members',
   'photos',
   'bylaws',
+  'registration',
   'elections',
   'offices',
   'approvals',
@@ -55,6 +56,8 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   members: ['membership_admin'],
   photos: ['membership_admin'],
   bylaws: ['membership_admin'],
+  // The registration form's wording: its intro and questions (design §5.2).
+  registration: ['membership_admin'],
   elections: ['election_admin', 'auditor'],
   // Every admin may read the offices; Membership and Election Admins change them.
   offices: ROLES,

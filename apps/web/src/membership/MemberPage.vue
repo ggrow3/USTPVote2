@@ -13,7 +13,7 @@ import { session } from '../session.js';
 import ApplicationAnswers from './ApplicationAnswers.vue';
 import DetailsFields from './DetailsFields.vue';
 import { changeMemberStatus, correctMemberDetails, member as fetchMember } from './api.js';
-import { consentText, detailsForm, stateName, type DetailsForm } from './member-text.js';
+import { answerText, classOf, consentText, detailsForm, memberClassText, stateName, type DetailsForm } from './member-text.js';
 
 /** One member as a Membership Admin sees them (design §5.2): details, every application's answers, status history. */
 const $q = useQuasar();
@@ -145,6 +145,10 @@ watch(
             <dl class="ustp-facts">
               <dt>Status</dt>
               <dd><q-badge :label="m.status" /></dd>
+              <dt>Class</dt>
+              <dd :class="{ 'text-grey-7': classOf(m) === null }">{{ memberClassText(m.usVoteEligible) }}</dd>
+              <dt>Agrees with the Core Ideals</dt>
+              <dd :class="{ 'text-grey-7': typeof m.agreesWithCoreIdeals !== 'boolean' }">{{ answerText(m.agreesWithCoreIdeals) }}</dd>
               <dt>Member since</dt>
               <dd>{{ m.memberSince ? date(m.memberSince) : 'Not yet' }}</dd>
               <dt>Status changed</dt>

@@ -37,7 +37,9 @@ const input: CreateApplicationInput = {
   preferredName: '',
   dateOfBirth: '1990-12-10',
   attestsAge: true,
-  supportsPlatform: true,
+  formVersion: 2,
+  usVoteEligible: true,
+  agreesWithCoreIdeals: false,
   state: 'NY',
   city: 'Albany',
   postalCode: '122071234',
@@ -55,6 +57,8 @@ function member(status: MemberStatus, memberSince: string | null = null): Member
     state: 'NY',
     contact: null,
     communications: null,
+    usVoteEligible: null,
+    agreesWithCoreIdeals: null,
     bylawsVersion: bylaws.version,
     memberSince,
     statusChangedAt: AT,
@@ -62,7 +66,16 @@ function member(status: MemberStatus, memberSince: string | null = null): Member
 }
 
 function submitted(): ApplicationRecord {
-  const outcome = submitApplication({ applicationId: 'app-1', accountId: 'acc-1', input, bylaws, recent: 0, current: null, at: AT });
+  const outcome = submitApplication({
+    applicationId: 'app-1',
+    accountId: 'acc-1',
+    input,
+    bylaws,
+    formVersion: 2,
+    recent: 0,
+    current: null,
+    at: AT,
+  });
   if (!outcome.ok) throw new Error(outcome.reason);
   return outcome.value.application;
 }
@@ -177,7 +190,15 @@ describe('status changes an admin is offered', () => {
 describe('test voter personas', () => {
   it('join as Active members at once, recorded as a test persona', () => {
     const t = testVoterAdmission({ accountId: 'p-1', label: 'Test voter 1', actor: 'sa', bylawsVersion: '2026.1', at: AT });
-    expect(t.member).toMatchObject({ status: 'active', legalName: 'Test voter 1', state: 'DC', memberSince: AT, contact: null });
+    expect(t.member).toMatchObject({
+      status: 'active',
+      legalName: 'Test voter 1',
+      state: 'DC',
+      memberSince: AT,
+      contact: null,
+      usVoteEligible: null,
+      agreesWithCoreIdeals: null,
+    });
     expect(t.event.payload).toEqual({ from: null, to: 'active', reason: 'test persona', applicationId: null });
   });
 });
@@ -189,12 +210,17 @@ describe('applications', () => {
     expect(applicationWindowStart(new Date(AT))).toBe('2026-09-25T12:00:00.000Z');
   });
 
-  it('are made against the current bylaws, within the limit, by someone who may apply', () => {
-    const base = { applicationId: 'app-1', accountId: 'acc-1', input, bylaws, recent: 0, current: null, at: AT };
+  it('are made against the current bylaws and form, within the limit, by someone who may apply', () => {
+    const base = { applicationId: 'app-1', accountId: 'acc-1', input, bylaws, formVersion: 2, recent: 0, current: null, at: AT };
     expect(submitApplication({ ...base, bylaws: null })).toMatchObject({ ok: false, reason: 'no bylaws have been published yet' });
     expect(submitApplication({ ...base, input: { ...input, bylawsHash: 'b'.repeat(64) } })).toMatchObject({
       ok: false,
       reason: /bylaws have changed/,
+    });
+    expect(submitApplication({ ...base, formVersion: 3 })).toMatchObject({
+      ok: false,
+      refusal: 'conflict',
+      reason: /application form has changed/,
     });
     expect(submitApplication({ ...base, recent: 3 })).toMatchObject({ ok: false, refusal: 'rate_limited' });
     expect(submitApplication({ ...base, current: member('active') })).toMatchObject({ ok: false, reason: /from active to applicant/ });
@@ -202,7 +228,16 @@ describe('applications', () => {
   });
 
   it('store the answers normalised, and give the member record only what membership uses', () => {
-    const outcome = submitApplication({ applicationId: 'app-1', accountId: 'acc-1', input, bylaws, recent: 2, current: null, at: AT });
+    const outcome = submitApplication({
+      applicationId: 'app-1',
+      accountId: 'acc-1',
+      input,
+      bylaws,
+      formVersion: 2,
+      recent: 2,
+      current: null,
+      at: AT,
+    });
     if (!outcome.ok) throw new Error(outcome.reason);
     const { application, transition } = outcome.value;
     expect(application).toMatchObject({
@@ -212,13 +247,49 @@ describe('applications', () => {
       preferredName: null,
       contact: { city: 'Albany', postalCode: '12207-1234', phone: '+15185550100' },
       communications: { newsletter: AT, announcements: null },
-      attestations: { minimumAge: 18, supportsPlatform: true },
+      attestations: { minimumAge: 18 },
+      formVersion: 2,
+      usVoteEligible: true,
+      agreesWithCoreIdeals: false,
       volunteer: false,
       decidedBy: null,
     });
-    expect(transition.member).toMatchObject({ status: 'applicant', memberSince: null, contact: application.contact });
+    expect(transition.member).toMatchObject({
+      status: 'applicant',
+      memberSince: null,
+      contact: application.contact,
+      usVoteEligible: true,
+      agreesWithCoreIdeals: false,
+    });
     expect(transition.member).not.toHaveProperty('dateOfBirth');
     expect(transition.event.payload).toEqual({ from: null, to: 'applicant', reason: null, applicationId: 'app-1' });
+  });
+
+  it('take No to both membership questions, and a new application replaces the answers', () => {
+    const base = { applicationId: 'app-2', accountId: 'acc-1', bylaws, formVersion: 2, recent: 1, at: AT };
+    const no = submitApplication({ ...base, input: { ...input, usVoteEligible: false, agreesWithCoreIdeals: false }, current: null });
+    if (!no.ok) throw new Error(no.reason);
+    expect(no.value.application).toMatchObject({ usVoteEligible: false, agreesWithCoreIdeals: false });
+    expect(no.value.transition.member).toMatchObject({ status: 'applicant', usVoteEligible: false, agreesWithCoreIdeals: false });
+
+    const resigned = { ...member('resigned'), usVoteEligible: false, agreesWithCoreIdeals: false };
+    const again = submitApplication({ ...base, input: { ...input, agreesWithCoreIdeals: true }, current: resigned });
+    if (!again.ok) throw new Error(again.reason);
+    expect(again.value.transition.member).toMatchObject({ usVoteEligible: true, agreesWithCoreIdeals: true });
+  });
+
+  it('keep no answers on members from before the questions, until they apply again', () => {
+    const { usVoteEligible: _, agreesWithCoreIdeals: __, ...old } = member('suspended', AT);
+    const t = memberStatusTransition({
+      accountId: 'acc-1',
+      current: old as MemberRecord,
+      to: 'active',
+      actor: 'admin',
+      reason: 'reinstated',
+      applicationId: null,
+      at: LATER,
+    });
+    expect(t.member).toMatchObject({ usVoteEligible: null, agreesWithCoreIdeals: null });
   });
 
   it('are decided once, by someone else, while the applicant waits', () => {

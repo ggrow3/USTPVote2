@@ -5,6 +5,7 @@ import { MemberDirectory } from './member-directory.js';
 import { MemberRepository } from './member.repository.js';
 import { Members } from './members.service.js';
 import { MembershipService } from './membership.service.js';
+import { RegistrationFormService } from './registration-form.js';
 
 /**
  * Everything the membership context provides, for the API module to register (design §3.3). Other contexts inject
@@ -17,6 +18,7 @@ export const MEMBERSHIP_PROVIDERS: Provider[] = [
   Members,
   MembershipApplications,
   MembershipService,
+  RegistrationFormService,
 ];
 
 /** For a module that only reads members, as the worker does for election notices (design §6.8). */

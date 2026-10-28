@@ -49,7 +49,7 @@ describe('defaults', () => {
 
   it('give each role the console tabs it had, and System Admins the link hub and the home page quote', () => {
     const tabs = (role: Role) => shownTo(DEFAULT_NAVIGATION, viewer('active', role)).sections;
-    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'offices', 'approvals']);
+    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'registration', 'offices', 'approvals']);
     expect(tabs('election_admin')).toEqual(['elections', 'offices', 'approvals']);
     expect(tabs('auditor')).toEqual(['elections', 'offices', 'approvals', 'audit']);
     expect(tabs('system_admin')).toEqual(['approvals', 'people', 'signin', 'claude', 'email', 'testing', 'navigation', 'hub', 'quote']);
@@ -60,6 +60,15 @@ describe('defaults', () => {
     const stored = { ...DEFAULT_NAVIGATION, sections: { ...DEFAULT_NAVIGATION.sections, system_admin: saved } };
     expect(resolveNavigation(stored).sections.system_admin.quote).toBe(true);
     expect(sectionLock('membership_admin', 'quote')).toBe('not_permitted');
+  });
+
+  it('give settings saved before the Registration form section existed its default', () => {
+    const { registration: _, ...saved } = DEFAULT_NAVIGATION.sections.membership_admin;
+    const stored = { ...DEFAULT_NAVIGATION, sections: { ...DEFAULT_NAVIGATION.sections, membership_admin: saved } };
+    expect(resolveNavigation(stored).sections.membership_admin.registration).toBe(true);
+    for (const role of ['election_admin', 'auditor', 'system_admin'] as const) {
+      expect(sectionLock(role, 'registration')).toBe('not_permitted');
+    }
   });
 
   it('give settings saved before the Link hub section existed its default', () => {
@@ -183,6 +192,7 @@ describe('what a person sees', () => {
       'members',
       'photos',
       'bylaws',
+      'registration',
       'elections',
       'offices',
       'approvals',

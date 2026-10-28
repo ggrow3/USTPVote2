@@ -12,6 +12,7 @@ import { confirmIdentity, dialog } from '../dialogs.js';
 import { auth, secondaryAuth } from '../firebase.js';
 import { enrolledFactors, removeFactor } from '../mfa.js';
 import { resign as resignMembership } from '../membership/api.js';
+import { classOf, memberClassText } from '../membership/class-text.js';
 import MyDetailsCard from '../membership/MyDetailsCard.vue';
 import { refreshMe, session } from '../session.js';
 import { PROVIDER_LABELS, signInWithPassword, signInWithProvider, type FederatedProvider } from '../sign-in.js';
@@ -160,6 +161,8 @@ function copyId() {
               <span v-if="me.member.memberSince" class="q-ml-sm text-grey-7">
                 member since {{ new Date(me.member.memberSince).toLocaleDateString() }}
               </span>
+              <!-- From the application's first question: eligible to vote in any US elections (design §5.2). -->
+              <div v-if="classOf(me.member)" class="q-mt-sm">{{ memberClassText(me.member.usVoteEligible) }}</div>
             </template>
             <div v-else>Not a member yet. <router-link to="/register">Apply for membership</router-link>.</div>
           </q-card-section>

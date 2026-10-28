@@ -1,4 +1,5 @@
-import { csvCell, MEMBER_STATUSES, type MemberRecord, type MemberStatus, type PositionsView } from 'ustp-domain';
+import { csvCell, MEMBER_STATUSES, type MemberClass, type MemberRecord, type MemberStatus, type PositionsView } from 'ustp-domain';
+import { answerText, CLASS_NOT_ASKED, classOf, MEMBER_CLASS_LABELS } from './class-text.js';
 
 /**
  * View logic for the Members tab (design §5.2): every member with the offices they hold, filtered, counted, sorted and
@@ -54,23 +55,43 @@ export function initials(name: string): string {
   return (first + last).toUpperCase();
 }
 
+/** A class to keep: United States or Allied Members, or those never asked (they joined before the question). */
+export type ClassFilter = MemberClass | 'not_asked';
+
+/** The class filter's choices after "All classes", in order. */
+export const CLASS_FILTERS: readonly { readonly value: ClassFilter; readonly label: string }[] = [
+  { value: 'united_states', label: 'United States Members' },
+  { value: 'allied', label: 'Allied Members' },
+  { value: 'not_asked', label: 'Not asked' },
+];
+
 export interface MemberFilter {
   /** Part of the legal or preferred name, in any case and with or without accents. */
   readonly search: string;
   /** A two-letter state code, or '' for every state. */
   readonly state: string;
+  /** A member class, or '' (or nothing) for every class. */
+  readonly memberClass?: ClassFilter | '';
 }
 
 const folded = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 
-/** The rows matching the search and state; the status pills then count and filter these. */
+/** The rows matching the search, state and class; the status pills then count and filter these. */
 export function filterRows(rows: readonly MemberRow[], filter: MemberFilter): MemberRow[] {
   const search = folded(filter.search.trim());
+  const wanted = filter.memberClass || null;
   return rows.filter(
     ({ member: m }) =>
       (!filter.state || m.state === filter.state) &&
+      (!wanted || (classOf(m) ?? 'not_asked') === wanted) &&
       (!search || folded(m.legalName).includes(search) || (m.preferredName !== null && folded(m.preferredName).includes(search))),
   );
+}
+
+/** The Class column's text: "United States", "Allied", or nothing for someone never asked. */
+export function classCellText(member: Pick<MemberRecord, 'usVoteEligible'>): string | null {
+  const c = classOf(member);
+  return c === 'united_states' ? 'United States' : c === 'allied' ? 'Allied' : null;
 }
 
 /** How many rows have each status. */
@@ -88,13 +109,13 @@ export function statusFilters(counts: Readonly<Record<MemberStatus, number>>, se
   return MEMBER_STATUSES.filter((s) => (s !== 'applicant' && s !== 'rejected') || counts[s] > 0 || s === selected);
 }
 
-export type SortKey = 'name' | 'position' | 'state' | 'status' | 'since';
+export type SortKey = 'name' | 'position' | 'state' | 'class' | 'status' | 'since';
 
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
 const compare = (a: string, b: string) => collator.compare(a, b);
 
 /**
- * The rows in column order, ties by name. Members without an office, and without a member-since date, come after the
+ * The rows in column order, ties by name. Members without an office, a class or a member-since date come after the
  * others in either direction.
  */
 export function sortRows(rows: readonly MemberRow[], key: SortKey, descending: boolean): MemberRow[] {
@@ -112,6 +133,11 @@ export function sortRows(rows: readonly MemberRow[], key: SortKey, descending: b
       }
       case 'state':
         return sign * compare(a.member.state, b.member.state);
+      case 'class': {
+        const [x, y] = [classCellText(a.member), classCellText(b.member)];
+        if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
+        return sign * compare(x, y);
+      }
       case 'status':
         return sign * compare(STATUS_LABELS[a.member.status], STATUS_LABELS[b.member.status]);
       case 'since': {
@@ -148,21 +174,26 @@ function localDate(d: Date): string {
 }
 
 /**
- * The rows as CSV for a spreadsheet: the table's own columns and the account ID, nothing from the member's contact
- * details. RFC 4180 with CRLF line ends; cells a spreadsheet would read as a formula start with `'`. Member since is
- * the reader's own date, as the table shows it.
+ * The rows as CSV for a spreadsheet: the table's own columns, the account ID and the answer about the Core Ideals,
+ * nothing from the member's contact details. RFC 4180 with CRLF line ends; cells a spreadsheet would read as a formula
+ * start with `'`. Member since is the reader's own date, as the table shows it.
  */
 export function membersCsv(rows: readonly MemberRow[]): string {
   const lines = [
-    ['Name', 'Account ID', 'Offices', 'State', 'Status', 'Member since'],
-    ...rows.map(({ member: m, offices }) => [
-      m.legalName,
-      m.accountId,
-      offices.map((o) => o.title).join('; '),
-      m.state,
-      STATUS_LABELS[m.status],
-      m.memberSince ? localDate(new Date(m.memberSince)) : '',
-    ]),
+    ['Name', 'Account ID', 'Offices', 'State', 'Class', 'Agrees with the Core Ideals', 'Status', 'Member since'],
+    ...rows.map(({ member: m, offices }) => {
+      const c = classOf(m);
+      return [
+        m.legalName,
+        m.accountId,
+        offices.map((o) => o.title).join('; '),
+        m.state,
+        c ? MEMBER_CLASS_LABELS[c] : CLASS_NOT_ASKED,
+        answerText(m.agreesWithCoreIdeals),
+        STATUS_LABELS[m.status],
+        m.memberSince ? localDate(new Date(m.memberSince)) : '',
+      ];
+    }),
   ];
   return lines.map((cells) => cells.map(csvCell).join(',') + '\r\n').join('');
 }
