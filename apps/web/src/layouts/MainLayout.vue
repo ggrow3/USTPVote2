@@ -21,7 +21,7 @@ const who = computed(() => acting.persona?.label || session.me?.account?.display
  */
 const links = computed(() =>
   session.ready && navigationState.loaded
-    ? shown.value.menu.filter((link) => link !== 'signin').map((link) => ({ to: `/${link}`, label: MENU_LABELS[link] }))
+    ? shown.value.menu.filter((link) => link !== 'signin').map((link) => ({ to: link === 'course' ? '/course/transhumanism' : `/${link}`, label: MENU_LABELS[link] }))
     : [],
 );
 

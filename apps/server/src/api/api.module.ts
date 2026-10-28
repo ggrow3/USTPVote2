@@ -20,6 +20,8 @@ import { AnthropicKey } from '../claude-checks/anthropic-key.js';
 import { AnthropicKeyAdminService, AnthropicKeyController } from '../claude-checks/anthropic-key-admin.js';
 import { ANTHROPIC_KEY_TESTER, ClaudeKeyTester, UntriedKeyTester } from '../claude-checks/key-tester.js';
 import { HealthController } from '../common/health.controller.js';
+import { CourseController } from '../course/course.controller.js';
+import { CourseService } from '../course/course.service.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { AdminConsistencyChecksController, ConsistencyChecksController } from '../consistency-check/consistency-checks.controller.js';
 import { ConsistencyChecksService } from '../consistency-check/consistency-checks.service.js';
@@ -102,6 +104,7 @@ import { PositionsService } from '../positions/positions.service.js';
     PublicLedgerController,
     PersonasController,
     DemoElectionsController,
+    CourseController,
   ],
   providers: [
     AccountsService,
@@ -130,6 +133,7 @@ import { PositionsService } from '../positions/positions.service.js';
     DiscordLiveService,
     PersonasService,
     DemoElectionsService,
+    CourseService,
     secretStoreProvider,
     {
       provide: PHOTO_CHECKER,

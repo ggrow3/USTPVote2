@@ -4,6 +4,7 @@ import type { AdminSection } from 'ustp-domain';
 import ClaudeKeyPanel from '../claude-key/ClaudeKeyPanel.vue';
 import ApprovalsPanel from '../components/admin/ApprovalsPanel.vue';
 import AuditPanel from '../components/admin/AuditPanel.vue';
+import CoursePanel from '../components/admin/CoursePanel.vue';
 import BylawsPanel from '../components/admin/BylawsPanel.vue';
 import ElectionsPanel from '../components/admin/ElectionsPanel.vue';
 import OfficesPanel from '../offices/OfficesPanel.vue';
@@ -45,6 +46,7 @@ const PANELS: Record<AdminSection, Component> = {
   navigation: NavigationPanel,
   hub: HubPanel,
   quote: HomeQuotePanel,
+  course: CoursePanel,
 };
 
 usePageTitle('Administration');
@@ -72,7 +74,7 @@ const tab = ref<string>(tabs.value.some((t) => t.name === requested) ? requested
       </p>
       <template v-else>
         <p>
-          The admin console is for party officers: Membership Admins, Election Admins, Auditors and System Admins. Your
+          The admin console is for party officers: Membership Admins, Election Admins, Auditors, System Admins and Course Administrators. Your
           account holds none of these roles.
         </p>
         <p>
