@@ -1,6 +1,7 @@
 import type { ElectionRecord } from '../elections.js';
 import { DEFAULT_NOTICE_TEXT, fillNoticeText, type NoticePlaceholder } from './notice-settings.js';
 import type { NoticeKind } from './notices.js';
+import { TEST_SUBJECT_PREFIX } from './receipts.js';
 
 /**
  * The election notices' emails (design §6.8), as plain text and simple HTML with the same content: real text, no
@@ -29,6 +30,8 @@ export interface NoticeMessageInput {
   readonly now: Date;
   /** A System Admin's subject and opening (design §6.8); null or absent for the built-in wording. */
   readonly text?: { readonly subject: string | null; readonly intro: string | null } | null;
+  /** A test email to the Election Admin who asked for it: "[TEST]" leads the subject, and a note opens the message. */
+  readonly test?: boolean;
 }
 
 /** The time zones the window is given in: the US zones members live in, then UTC. Eastern leads. */
@@ -54,6 +57,11 @@ const SUBJECT_MAX = 200;
 
 const capped = (s: string) => (s.length > SUBJECT_MAX ? `${s.slice(0, SUBJECT_MAX - 1)}…` : s);
 
+/** Opens a test email, so nobody takes it for the real notice. */
+export const TEST_NOTE =
+  'TEST EMAIL. This was sent only to you, because you asked for a test from the election editor. Voters on the roll ' +
+  'get the same email without this note, when it is due.';
+
 export function noticeMessage(kind: NoticeKind, input: NoticeMessageInput): NoticeMessage {
   return kind === 'closing_soon' ? closingSoonMessage(input) : votingOpenMessage(input);
 }
@@ -66,7 +74,7 @@ export function votingOpenMessage(input: NoticeMessageInput): NoticeMessage {
   const window = votingWindow(election.opensAt, election.closesAt);
   const description = paragraphs(election.description);
   const words = wording('voting_open', input, window[0]!.closes);
-  return render(words.subject, words.heading, [
+  return render(input, words.subject, words.heading, [
     greeting(input.name),
     ...words.intro.map((p) => ({ p })),
     { strong: `Vote by ${window[0]!.closes} (${window[0]!.name}).` },
@@ -93,7 +101,7 @@ export function closingSoonMessage(input: NoticeMessageInput): NoticeMessage {
   const links = linksOf(input);
   const window = votingWindow(election.opensAt, election.closesAt);
   const words = wording('closing_soon', input, window[0]!.closes);
-  return render(words.subject, words.heading, [
+  return render(input, words.subject, words.heading, [
     greeting(input.name),
     ...words.intro.map((p) => ({ p })),
     { p: 'If you have voted since this was sent, thank you: there is nothing more to do.' },
@@ -173,7 +181,8 @@ type Block =
   | { closes: Row[] }
   | { hr: true }
   | { small: string }
-  | { contact: string | null };
+  | { contact: string | null }
+  | { test: string };
 
 function linksOf({ election, origin }: NoticeMessageInput) {
   const id = encodeURIComponent(election.electionId);
@@ -239,7 +248,11 @@ function footer(contact: string | null, site: string): Block[] {
   ];
 }
 
-function render(subject: string, heading: string, blocks: readonly Block[]): NoticeMessage {
+function render(input: NoticeMessageInput, subject: string, heading: string, blocks: readonly Block[]): NoticeMessage {
+  if (input.test) {
+    subject = capped(`${TEST_SUBJECT_PREFIX}${subject}`);
+    blocks = [{ test: TEST_NOTE }, ...blocks];
+  }
   return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, heading, blocks) };
 }
 
@@ -257,6 +270,7 @@ function asText(block: Block): string {
   if ('window' in block) return block.window.map((w) => `- ${w.name}: ${w.opens} to ${w.closes}`).join('\n');
   if ('closes' in block) return block.closes.map((w) => `- ${w.name}: ${w.closes}`).join('\n');
   if ('hr' in block) return '--';
+  if ('test' in block) return block.test;
   if ('contact' in block) {
     return `Questions about this election? Replies to this email are not read; write to ${block.contact ? oneLine(block.contact) : NOTICE_CONTACT_PLACEHOLDER}.`;
   }
@@ -300,6 +314,7 @@ function asHtml(subject: string, heading: string, blocks: readonly Block[]): str
       );
     }
     if ('hr' in block) return '<hr style="border:0;border-top:1px solid #757575;margin:24px 0">';
+    if ('test' in block) return `<p style="padding:8px 12px;border:2px solid #000000"><strong>${escapeHtml(block.test)}</strong></p>`;
     if ('contact' in block) {
       const contact = block.contact ? oneLine(block.contact) : null;
       const where = !contact

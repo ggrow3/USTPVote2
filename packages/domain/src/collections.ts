@@ -52,6 +52,10 @@ export const Collections = {
   notices: 'notices',
   noticeOutbox: 'notice_outbox',
   noticeSettings: 'notice_settings',
+  /** `notice_receipts/{receiptId}`: one per send of election email, to the roll or a test (design §6.8). */
+  noticeReceipts: 'notice_receipts',
+  /** `notice_tests/{testId}`: an Election Admin's test email to themselves, queued for the worker (design §6.8). */
+  noticeTests: 'notice_tests',
   // testing mode (design §10.4)
   testingPersonas: 'testing_personas',
 } as const;

@@ -1,17 +1,13 @@
 <script setup lang="ts">
 import { useQuasar } from 'quasar';
-import { computed, onMounted, reactive, ref } from 'vue';
-import { useRoute, useRouter } from 'vue-router';
+import { computed, onMounted, ref } from 'vue';
+import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import {
-  amendmentText,
   buildDefinition,
   checkElectionDeletable,
   consistencyMaterial,
   isRehearsalRoll,
-  updateElectionSchema,
   type ApprovalRequestRecord,
-  type CandidateInput,
-  type ContestRecord,
   type ElectionDetail,
   type ElectionPackage,
   type ProposalSnapshotRecord,
@@ -20,7 +16,6 @@ import {
 import { focusElement, usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
 import { aRole, describeRequest } from '../approval-text.js';
-import ContestDialog from '../components/admin/ContestDialog.vue';
 import PageShell from '../components/PageShell.vue';
 import ConsistencyCheckCard from '../consistency-check/ConsistencyCheckCard.vue';
 import { askReason, attempt, dialog } from '../dialogs.js';
@@ -29,10 +24,10 @@ import ElectionCheckSection from '../election-check/ElectionCheckSection.vue';
 import { pointerText } from '../election-check/election-check-text.js';
 import { useElectionCheck } from '../election-check/use-election-check.js';
 import { downloadElectionDocx, saveElectionPackage } from '../election-files.js';
-import CandidatePicker from '../elections/CandidatePicker.vue';
+import { electionDetail, proposalTexts } from '../elections/api.js';
+import BallotBuilder from '../elections/BallotBuilder.vue';
 import ElectionWorkflow from '../elections/ElectionWorkflow.vue';
-import { fromLocalInput, KIND_LABELS, rulesText, toLocalInput } from '../election-text.js';
-import { validate } from '../forms.js';
+import QuestionView from '../elections/QuestionView.vue';
 import VotingNoticeCard from '../notifications/VotingNoticeCard.vue';
 import { hasRole, session } from '../session.js';
 
@@ -45,16 +40,9 @@ const url = `/v1/admin/elections/${electionId}`;
 const detail = ref<ElectionDetail | null>(null);
 usePageTitle(() => detail.value?.election.title ?? 'Election');
 const proposals = ref<ProposalSnapshotRecord[]>([]);
-const dialogOpen = ref(false);
-const editing = ref<ContestRecord | null>(null);
-const details = reactive({ title: '', description: '', secrecy: 'secret' as 'secret' | 'open', opensAt: '', closesAt: '', kAnonymity: 10 });
 
 const canEdit = computed(() => hasRole('election_admin') && detail.value?.election.state === 'draft');
-const candidatesOf = (c: ContestRecord) =>
-  c.spec.kind === 'proposal'
-    ? []
-    : c.spec.candidates.map((id) => detail.value!.candidates.find((k) => k.candidateId === id)).filter((k) => !!k);
-const proposalOf = (c: ContestRecord) => detail.value?.proposals.find((p) => p.snapshotId === c.proposalSnapshotId);
+const contests = computed(() => [...(detail.value?.contests ?? [])].sort((a, b) => a.order - b.order));
 /** Whether the platform consistency check has anything to read (design §5.5): proposals or options, not only offices. */
 const checkable = computed(() => {
   const d = detail.value;
@@ -63,25 +51,52 @@ const checkable = computed(() => {
 
 async function load() {
   await attempt(async () => {
-    const [d, p] = await Promise.all([
-      api<ElectionDetail>('GET', url),
-      api<ProposalSnapshotRecord[]>('GET', '/v1/admin/proposals'),
-    ]);
+    const [d, p] = await Promise.all([electionDetail(electionId), proposalTexts()]);
     detail.value = d;
     proposals.value = p;
-    const e = d.election;
-    Object.assign(details, {
-      title: e.title,
-      description: e.description,
-      secrecy: e.secrecy,
-      opensAt: toLocalInput(e.opensAt),
-      closesAt: toLocalInput(e.closesAt),
-      kAnonymity: e.kAnonymity,
-    });
   });
   // An edit can leave the election setup check out of date; the api says so.
   await electionCheck.load();
 }
+
+// --- the ballot builder (design §6.5) ------------------------------------------------------------------------
+
+const builder = ref<InstanceType<typeof BallotBuilder> | null>(null);
+/** A new key starts the builder again from what is stored. */
+const builderKey = ref(0);
+
+/** After the builder saves: the problems, the hash, the workflow and the checks, leaving what is being edited alone. */
+async function refresh() {
+  try {
+    detail.value = await electionDetail(electionId);
+  } catch {
+    // The next save or a reload tries again; the builder keeps its own copy meanwhile.
+  }
+  await electionCheck.load();
+}
+
+/** Drops what the builder could not save and starts it again from the stored ballot. */
+async function reloadBallot() {
+  await load();
+  builderKey.value += 1;
+}
+
+// Leaving the page saves what is waiting; if something cannot be saved, the admin decides.
+onBeforeRouteLeave(async () => {
+  if (!builder.value || (await builder.value.flush())) return true;
+  return new Promise<boolean>((resolve) => {
+    dialog({
+      title: 'Leave without saving?',
+      message: 'Some changes to the ballot are not saved. The bar at the bottom of the ballot says why.',
+      cancel: { label: 'Stay', flat: true, noCaps: true },
+      ok: { label: 'Leave anyway', color: 'negative', noCaps: true },
+      focus: 'cancel',
+      persistent: true,
+    })
+      .onOk(() => resolve(true))
+      .onCancel(() => resolve(false));
+  });
+});
 
 // --- the election setup check (design §6.9) ------------------------------------------------------------------
 
@@ -102,42 +117,6 @@ function goToCheck() {
 
 function goToContest(contestId: string) {
   focusElement(document.getElementById(`contest-${contestId}`));
-}
-
-async function saveDetails() {
-  const checked = validate(updateElectionSchema, {
-    ...details,
-    kAnonymity: Number(details.kAnonymity),
-    opensAt: fromLocalInput(details.opensAt),
-    closesAt: fromLocalInput(details.closesAt),
-  });
-  if (!checked.ok) {
-    $q.notify({ type: 'negative', message: Object.values(checked.errors).join('; ') });
-    return;
-  }
-  if (await attempt(() => api('PATCH', url, checked.data), 'Saved')) await load();
-}
-
-function openContest(contest: ContestRecord | null) {
-  editing.value = contest;
-  dialogOpen.value = true;
-}
-
-function removeContest(c: ContestRecord) {
-  dialog({ title: 'Remove contest', message: `Remove “${c.title}” and its candidates?`, cancel: true, focus: 'cancel' }).onOk(async () => {
-    if (await attempt(() => api('DELETE', `${url}/contests/${c.contestId}`), 'Contest removed')) await load();
-  });
-}
-
-/** Adds a candidate, linked to a member's account when one was chosen (design §6.5); whether it was added. */
-async function addCandidate(c: ContestRecord, input: CandidateInput): Promise<boolean> {
-  const added = await attempt(() => api('POST', `${url}/contests/${c.contestId}/candidates`, input));
-  if (added) await load();
-  return added;
-}
-
-async function removeCandidate(c: ContestRecord, candidateId: string) {
-  if (await attempt(() => api('DELETE', `${url}/contests/${c.contestId}/candidates/${candidateId}`))) await load();
 }
 
 /**
@@ -404,6 +383,36 @@ onMounted(load);
           </q-list>
         </q-card>
 
+        <template v-if="canEdit">
+          <div class="ustp-header">
+            <div>
+              <h2 id="ballot-heading" class="text-h6">Ballot</h2>
+              <div class="text-caption text-grey-7">
+                Built as voters will read it. Changes save themselves; scheduling freezes the ballot.
+              </div>
+            </div>
+            <div class="ustp-actions">
+              <q-btn outline no-caps color="primary" icon="visibility" label="Preview as voter" :to="`/admin/elections/${electionId}/preview`" />
+              <q-btn outline no-caps color="primary" icon="description" label="Download ballot as Word" :loading="exporting" @click="downloadWord">
+                <span class="sr-only">: {{ detail.election.title }}</span>
+              </q-btn>
+              <q-btn outline no-caps color="primary" icon="data_object" label="Download as JSON" @click="downloadJson">
+                <span class="sr-only">: {{ detail.election.title }}</span>
+              </q-btn>
+            </div>
+          </div>
+          <BallotBuilder
+            ref="builder"
+            :key="builderKey"
+            :detail="detail"
+            :texts="proposals"
+            :check-notes="checkNotes"
+            @saved="refresh"
+            @text-captured="(t) => proposals.unshift(t)"
+            @reload="reloadBallot"
+          />
+        </template>
+
         <q-card flat bordered>
           <q-card-section class="ustp-header">
             <div>
@@ -489,43 +498,33 @@ onMounted(load);
           </q-card-section>
         </q-card>
 
-        <q-card flat bordered>
+        <q-card v-if="checkNotes && canEdit" flat bordered>
+          <q-card-section>
+            <BylawsCheckNotes :check="checkNotes" :contest-id="null" subject="this election" />
+          </q-card-section>
+        </q-card>
+        <q-card v-if="!canEdit" flat bordered>
           <q-card-section><h2 class="text-subtitle1">Details</h2></q-card-section>
           <q-card-section v-if="checkNotes">
             <BylawsCheckNotes :check="checkNotes" :contest-id="null" subject="this election" />
           </q-card-section>
-          <q-card-section class="ustp-form">
-            <q-input v-model="details.title" outlined dense label="Title" :readonly="!canEdit" />
-            <q-input v-model="details.description" outlined dense autogrow label="Description" :readonly="!canEdit" />
-            <q-btn-toggle
-              v-model="details.secrecy"
-              no-caps
-              toggle-color="primary"
-              role="group"
-              aria-label="Ballot secrecy"
-              :disable="!canEdit"
-              :options="[
-                { label: 'Secret ballot', value: 'secret' },
-                { label: 'Open roll-call', value: 'open' },
-              ]"
-            />
-            <div class="ustp-row">
-              <q-input v-model="details.opensAt" outlined dense type="datetime-local" label="Voting opens" :readonly="!canEdit" />
-              <q-input v-model="details.closesAt" outlined dense type="datetime-local" label="Voting closes" :readonly="!canEdit" />
-            </div>
-            <q-input
-              v-if="details.secrecy === 'secret'"
-              v-model.number="details.kAnonymity"
-              outlined
-              dense
-              type="number"
-              min="2"
-              label="Anonymity threshold (minimum ballots per sealed block)"
-              :readonly="!canEdit"
-            />
-          </q-card-section>
-          <q-card-section v-if="canEdit" class="ustp-actions">
-            <q-btn color="primary" label="Save details" @click="saveDetails" />
+          <q-card-section>
+            <dl class="ustp-facts">
+              <dt>Title</dt>
+              <dd>{{ detail.election.title }}</dd>
+              <dt>Description</dt>
+              <dd>{{ detail.election.description || 'None' }}</dd>
+              <dt>Ballot</dt>
+              <dd>{{ detail.election.secrecy === 'secret' ? 'Secret ballot' : 'Open roll-call' }}</dd>
+              <dt>Voting opens</dt>
+              <dd>{{ new Date(detail.election.opensAt).toLocaleString() }}</dd>
+              <dt>Voting closes</dt>
+              <dd>{{ new Date(detail.election.closesAt).toLocaleString() }}</dd>
+              <template v-if="detail.election.secrecy === 'secret'">
+                <dt>Anonymity threshold</dt>
+                <dd>{{ detail.election.kAnonymity }} ballots per sealed block</dd>
+              </template>
+            </dl>
           </q-card-section>
         </q-card>
 
@@ -551,87 +550,32 @@ onMounted(load);
           :choose-documents="canEdit"
         />
 
-        <div class="ustp-header">
-          <h2 class="text-h6">Contests</h2>
-          <div class="ustp-actions">
-            <q-btn v-if="canEdit" color="primary" no-caps label="Add contest" @click="openContest(null)" />
-            <q-btn outline no-caps color="primary" icon="description" label="Download ballot as Word" :loading="exporting" @click="downloadWord">
-              <span class="sr-only">: {{ detail.election.title }}</span>
-            </q-btn>
-            <q-btn outline no-caps color="primary" icon="data_object" label="Download as JSON" @click="downloadJson">
-              <span class="sr-only">: {{ detail.election.title }}</span>
-            </q-btn>
+        <template v-if="!canEdit">
+          <div class="ustp-header">
+            <h2 class="text-h6">Ballot</h2>
+            <div class="ustp-actions">
+              <q-btn outline no-caps color="primary" icon="visibility" label="Preview as voter" :to="`/admin/elections/${electionId}/preview`" />
+              <q-btn outline no-caps color="primary" icon="description" label="Download ballot as Word" :loading="exporting" @click="downloadWord">
+                <span class="sr-only">: {{ detail.election.title }}</span>
+              </q-btn>
+              <q-btn outline no-caps color="primary" icon="data_object" label="Download as JSON" @click="downloadJson">
+                <span class="sr-only">: {{ detail.election.title }}</span>
+              </q-btn>
+            </div>
           </div>
-        </div>
-        <div v-if="!detail.contests.length" class="text-grey-7">No contests yet.</div>
-
-        <q-card v-for="c in detail.contests" :key="c.contestId" tag="section" :aria-labelledby="`contest-${c.contestId}`" flat bordered>
-          <q-card-section class="ustp-header">
-            <div>
-              <h3 :id="`contest-${c.contestId}`" class="text-subtitle1">{{ c.order }}. {{ c.title }}</h3>
-              <div class="text-caption text-grey-7">{{ KIND_LABELS[c.spec.kind] }}</div>
-            </div>
-            <div v-if="canEdit" class="ustp-actions">
-              <q-btn flat dense no-caps label="Edit" @click="openContest(c)">
-                <span class="sr-only">&nbsp;{{ c.title }}</span>
-              </q-btn>
-              <q-btn flat dense no-caps color="negative" label="Remove" @click="removeContest(c)">
-                <span class="sr-only">&nbsp;{{ c.title }}</span>
-              </q-btn>
-            </div>
-          </q-card-section>
-          <q-card-section>
-            <div v-if="c.description" class="q-mb-xs" style="white-space: pre-wrap">{{ c.description }}</div>
-            <div v-for="line in rulesText(c.spec)" :key="line">{{ line }}</div>
-            <BylawsCheckNotes :check="checkNotes" :contest-id="c.contestId" :subject="c.title" />
-          </q-card-section>
-
-          <q-expansion-item v-if="c.spec.kind === 'proposal'" dense :label="proposalOf(c) ? `Text: ${proposalOf(c)!.title}` : 'No text attached'">
-            <q-card-section v-if="proposalOf(c)">
-              <div style="white-space: pre-wrap">{{ proposalOf(c)!.body }}</div>
-              <div v-if="proposalOf(c)!.amendment" class="q-mt-sm">
-                <div class="text-weight-medium">Changes to the bylaws, version {{ proposalOf(c)!.amendment!.base.version }}</div>
-                <div class="ustp-amendment q-mt-xs">{{ amendmentText(proposalOf(c)!.amendment!) }}</div>
-              </div>
-              <div class="text-caption text-grey-7 q-mt-sm">Content hash <code>{{ proposalOf(c)!.contentHash }}</code></div>
-            </q-card-section>
-          </q-expansion-item>
-
-          <template v-else>
-            <q-separator />
-            <q-list dense>
-              <q-item v-for="k in candidatesOf(c)" :key="k!.candidateId">
-                <q-item-section>
-                  <q-item-label>{{ k!.name }}</q-item-label>
-                  <q-item-label v-if="k!.accountId" caption>
-                    <q-icon name="link" size="14px" aria-hidden="true" /> Linked to a member account
-                  </q-item-label>
-                </q-item-section>
-                <q-item-section v-if="canEdit" side>
-                  <q-btn flat dense round size="sm" icon="close" :aria-label="`Remove ${k!.name}`" @click="removeCandidate(c, k!.candidateId)" />
-                </q-item-section>
-              </q-item>
-              <q-item v-if="!candidatesOf(c).length"><q-item-section class="text-grey-7">No candidates yet.</q-item-section></q-item>
-            </q-list>
-            <q-card-section v-if="canEdit">
-              <CandidatePicker
-                :contest-title="c.title"
-                :standing="candidatesOf(c).flatMap((k) => (k!.accountId ? [k!.accountId] : []))"
-                :add="(input) => addCandidate(c, input)"
-              />
-            </q-card-section>
-          </template>
-        </q-card>
+          <div v-if="!contests.length" class="text-grey-7">No questions yet.</div>
+          <QuestionView
+            v-for="(c, i) in contests"
+            :key="c.contestId"
+            :contest="c"
+            :number="i + 1"
+            :candidates="detail.candidates"
+            :proposals="detail.proposals"
+            :check-notes="checkNotes"
+          />
+        </template>
       </template>
     </div>
 
-    <ContestDialog
-      v-model="dialogOpen"
-      :election-id="electionId"
-      :contest="editing"
-      :proposals="proposals"
-      @saved="load"
-      @proposal-created="(p) => proposals.unshift(p)"
-    />
   </PageShell>
 </template>

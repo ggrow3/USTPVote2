@@ -6,6 +6,8 @@ import { announce } from '../../a11y.js';
 import { api } from '../../api.js';
 import { roleLabel } from '../../approval-text.js';
 import { attempt } from '../../dialogs.js';
+import { heldOffices, type HeldOffice } from '../../membership/members-list.js';
+import { offices as fetchOffices } from '../../offices/api.js';
 import { session } from '../../session.js';
 import RoleChangeForm from './RoleChangeForm.vue';
 
@@ -54,14 +56,28 @@ function copy(text: string) {
 
 const nameOf = (a: AccountSummary) => a.displayName ?? a.primaryEmail ?? a.accountId;
 
-onMounted(() => load());
+/** The offices each account holds now (design §6.4), beside its roles; null until loaded, or if they could not be. */
+const offices = ref<Map<string, HeldOffice[]> | null>(null);
+
+async function loadOffices() {
+  try {
+    offices.value = heldOffices(await fetchOffices());
+  } catch {
+    offices.value = null; // the table still works; the column says the offices are unknown
+  }
+}
+
+onMounted(() => {
+  void load();
+  void loadOffices();
+});
 </script>
 
 <template>
   <div class="ustp-content">
     <p class="text-grey-7">
-      Everyone with an account, and the roles they hold. A role change below takes effect at once; it needs no second
-      admin.
+      Everyone with an account, the roles they hold and the offices they hold now. A role change below takes effect at
+      once; it needs no second admin.
     </p>
     <div class="ustp-toolbar">
       <q-input
@@ -93,6 +109,7 @@ onMounted(() => load());
           <th class="text-left">Email</th>
           <th class="text-left">Membership</th>
           <th class="text-left">Roles</th>
+          <th class="text-left">Offices</th>
           <th class="text-left">Account created</th>
           <th class="text-right">Actions</th>
         </tr>
@@ -114,6 +131,13 @@ onMounted(() => load());
             <q-chip v-for="r in a.roles" :key="r" dense color="primary" text-color="white">{{ roleLabel(r) }}</q-chip>
             <span v-if="!a.roles.length" class="text-grey-7">none</span>
           </td>
+          <td>
+            <template v-if="offices">
+              <div v-for="o in offices.get(a.accountId) ?? []" :key="o.title">{{ o.title }}</div>
+              <span v-if="!offices.get(a.accountId)?.length" class="text-grey-7">none</span>
+            </template>
+            <span v-else class="text-grey-7">—</span>
+          </td>
           <td>{{ new Date(a.createdAt).toLocaleDateString() }}</td>
           <td class="text-right text-no-wrap">
             <q-btn flat dense round size="sm" icon="content_copy" :aria-label="`Copy account ID of ${nameOf(a)}`" @click="copy(a.accountId)" />
@@ -123,10 +147,10 @@ onMounted(() => load());
           </td>
         </tr>
         <tr v-if="listState === 'failed'">
-          <td colspan="6" class="text-grey-7">Could not load people.</td>
+          <td colspan="7" class="text-grey-7">Could not load people.</td>
         </tr>
         <tr v-else-if="listState === 'ready' && !rows.length">
-          <td colspan="6" class="text-grey-7">Nobody found.</td>
+          <td colspan="7" class="text-grey-7">Nobody found.</td>
         </tr>
       </tbody>
     </q-markup-table>

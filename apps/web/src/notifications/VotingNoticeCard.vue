@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import {
   DEFAULT_NOTICE_SETTINGS,
   isRehearsalRoll,
@@ -12,17 +12,29 @@ import {
   type NoticeKind,
   type NoticeStep,
   type NoticeSummary,
+  type NoticeTestSummary,
 } from 'ustp-domain';
 import { announce } from '../a11y.js';
 import { attempt, dialog } from '../dialogs.js';
 import { hasRole, session } from '../session.js';
-import { resendNotice } from './api.js';
+import { resendNotice, sendTestNotice } from './api.js';
 import { loadNotices, noticesOf } from './notice-store.js';
-import { countRows, EMAIL_DESCRIPTION, NOTICE_TITLES, noNoticeText, noticeStatus } from './notice-text.js';
+import {
+  countRows,
+  EMAIL_DESCRIPTION,
+  NOTICE_TITLES,
+  noNoticeText,
+  noticeStatus,
+  receiptText,
+  testBlocked,
+  testReceiptText,
+  testStatusText,
+} from './notice-text.js';
 
 /**
  * The election's emails (design §6.8) on the election editor: the voting-open notice and the closing-soon reminder,
- * whether each went out and how, as counts only; resending to those one failed for; and a preview of each.
+ * whether each went out and how, as counts only; how many the send receipts say went; resending to those one failed
+ * for; a test of each to the Election Admin's own address; and a preview of each.
  */
 const props = defineProps<{ detail: ElectionDetail }>();
 
@@ -44,6 +56,13 @@ const steps = computed(() =>
   }),
 );
 const stepOf = (kind: NoticeKind): NoticeStep => steps.value.find((s) => s.kind === kind)!;
+const rollSent = (kind: NoticeKind) => view.value?.receipts.roll.find((t) => t.kind === kind);
+const testsSent = (kind: NoticeKind) => view.value?.receipts.tests.find((t) => t.kind === kind);
+// The caller's newest test of each email; the view lists them newest first.
+const lastTest = (kind: NoticeKind): NoticeTestSummary | null => view.value?.tests.find((t) => t.kind === kind) ?? null;
+const canTest = computed(() => hasRole('election_admin'));
+const testUnavailable = computed(() => (canTest.value ? testBlocked(view.value, now.value) : null));
+const testWaiting = computed(() => !!view.value?.tests.some((t) => t.status !== 'done'));
 // With the System Admins' wording, lead time and contact, as the worker would send them.
 const previews = computed(() => {
   const settings = view.value?.settings ?? DEFAULT_NOTICE_SETTINGS;
@@ -65,11 +84,23 @@ async function load() {
   await attempt(() => loadNotices(props.detail.election.electionId));
 }
 
-// While an email is due or being sent, the counts change every minute; the workflow shows them too.
+// While an email is due or being sent, or a test is on its way, the counts change every minute; the workflow shows
+// them too.
 const timer = setInterval(() => {
   now.value = new Date();
-  if (steps.value.some((s) => s.status === 'current')) void load();
+  if (testWaiting.value || steps.value.some((s) => s.status === 'current')) void load();
 }, 20_000);
+
+// Say when a test the admin is waiting for has gone, or why not.
+watch(
+  () => NOTICE_KINDS.map((kind) => lastTest(kind)),
+  (tests, before) => {
+    tests.forEach((test, i) => {
+      const was = before?.[i];
+      if (test && was?.testId === test.testId && was.status !== 'done' && test.status === 'done') announce(testStatusText(test));
+    });
+  },
+);
 onMounted(load);
 onBeforeUnmount(() => clearInterval(timer));
 
@@ -89,6 +120,23 @@ function resend(kind: NoticeKind) {
     }
   });
 }
+
+function sendTest(kind: NoticeKind) {
+  dialog({
+    title: `Send a test of “${NOTICE_TITLES[kind]}”?`,
+    message:
+      'The worker sends it within a minute to your own email address only, with [TEST] at the start of the subject and ' +
+      'a note at the top. Nobody on the roll gets anything, and it is not counted with the emails sent to them.',
+    cancel: true,
+    ok: { label: 'Send test email', noCaps: true },
+  }).onOk(async () => {
+    if (await attempt(() => sendTestNotice(props.detail.election.electionId, kind))) {
+      await load();
+      const test = lastTest(kind);
+      announce(test ? testStatusText(test) : 'Test email queued');
+    }
+  });
+}
 </script>
 
 <template>
@@ -96,6 +144,7 @@ function resend(kind: NoticeKind) {
     <q-card-section>
       <h2 id="election-email-heading" class="text-subtitle1">Email to voters</h2>
       <div class="text-caption text-grey-7">{{ EMAIL_DESCRIPTION }}</div>
+      <div v-if="testUnavailable && !testWaiting" class="text-caption text-grey-7">No test emails: {{ testUnavailable }}</div>
     </q-card-section>
     <template v-for="kind in NOTICE_KINDS" :key="kind">
       <q-separator />
@@ -108,6 +157,15 @@ function resend(kind: NoticeKind) {
           </div>
         </div>
         <q-badge v-if="noticeOf(kind)?.rehearsal" color="orange-2" text-color="black" label="Rehearsal: outbox only" />
+        <q-btn
+          v-if="canTest && !testUnavailable"
+          flat
+          no-caps
+          color="primary"
+          label="Send test email"
+          :aria-label="`Send a test of ${NOTICE_TITLES[kind]} to your own email address`"
+          @click="sendTest(kind)"
+        />
         <q-btn
           v-if="canResend(kind)"
           outline
@@ -125,6 +183,11 @@ function resend(kind: NoticeKind) {
             <dd>{{ row.value }} <span class="text-grey-7">({{ row.note }})</span></dd>
           </template>
         </dl>
+      </q-card-section>
+      <q-card-section v-if="view" class="q-pt-none">
+        <p class="q-my-none"><strong>Send receipts:</strong> {{ receiptText(rollSent(kind)) }}</p>
+        <p v-if="testReceiptText(testsSent(kind))" class="q-my-none text-caption text-grey-7">{{ testReceiptText(testsSent(kind)) }}</p>
+        <p v-if="lastTest(kind)" class="q-my-none text-caption">{{ testStatusText(lastTest(kind)!) }}</p>
       </q-card-section>
     </template>
     <q-separator />

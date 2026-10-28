@@ -4,10 +4,13 @@ import {
   changeMemberStatus,
   checkMemberCorrectionRequest,
   checkMemberStatusRequest,
+  Collections,
   correctMemberDetails,
+  preferencesOf,
   resignMembership,
   testVoterAdmission,
   updateOwnDetails,
+  type AccountRecord,
   type DetailsTransition,
   type MemberCorrectionInput,
   type MemberDetail,
@@ -70,13 +73,14 @@ export class Members {
 
   /** One member as a Membership Admin sees them: the record, every application with its answers, and the history. */
   async detail(accountId: string): Promise<MemberDetail> {
-    const [member, applications, history] = await Promise.all([
+    const [member, applications, history, account] = await Promise.all([
       this.members.find(accountId),
       this.applications.ofAccount(accountId),
       this.members.history(accountId),
+      this.firebase.db.collection(Collections.accounts).doc(accountId).get(),
     ]);
     if (!member) throw new NotFoundException('no such member');
-    return { member, applications, history };
+    return { member, applications, history, preferences: preferencesOf(account.data() as AccountRecord | undefined) };
   }
 
   /** The signed-in member changes their own details and email opt-ins. */

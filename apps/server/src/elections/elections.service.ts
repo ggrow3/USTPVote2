@@ -17,6 +17,8 @@ import {
   isRehearsalRoll,
   packageProposals,
   packageRecords,
+  planQuestion,
+  planQuestionOrder,
   PROBLEM_TYPES,
   proposalContentHash,
   resultsSummary,
@@ -40,6 +42,7 @@ import {
   type MemberMatch,
   type ProposalInput,
   type ProposalSnapshotRecord,
+  type QuestionInput,
   type ResultsRecord,
   type PersonaRecord,
   type RollApprovalPayload,
@@ -47,13 +50,14 @@ import {
   type RollRequestInput,
   type RollSnapshotRecord,
   type RollView,
+  type SavedQuestion,
   type SchedulePayload,
   type UpdateElectionInput,
 } from 'ustp-domain';
 import { ApprovalsService } from '../administration/approvals.service.js';
 import { requireAccount } from '../auth/decorators.js';
 import { actorOf, type RequestContext } from '../auth/principal.js';
-import { assertCheck } from '../common/validation.js';
+import { accepted, assertCheck } from '../common/validation.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { SECRET_STORE, type SecretStore } from '../infra/secret-store.js';
@@ -590,6 +594,65 @@ export class ElectionsService {
       );
       candidates.docs.forEach((d) => tx.delete(d.ref));
       tx.delete(ref);
+    });
+  }
+
+  // --- the ballot builder's questions (design §6.5) ------------------------------------------------------------
+
+  /**
+   * Saves one question whole, in one transaction: the contest's rules and its options (candidates) in the order given,
+   * creating the question at `position` when the contest does not exist yet. Options the save leaves out are deleted.
+   * The piecewise endpoints' rules all apply: a draft, an admin who is not a candidate, an existing proposal text and
+   * office, an Active member for each newly linked account and never the admin's own, and amendments that fit.
+   */
+  async saveQuestion(ctx: RequestContext, electionId: string, contestId: string, input: QuestionInput): Promise<SavedQuestion> {
+    const actor = requireAccount(ctx);
+    return this.db.runTransaction(async (tx) => {
+      await this.editable(tx, ctx, electionId);
+      const contestsRef = this.electionRef(electionId).collection(ElectionCollections.contests);
+      const candidatesRef = this.electionRef(electionId).collection(ElectionCollections.candidates);
+      const [contestsSnap, optionsSnap, listedSnaps] = await Promise.all([
+        tx.get(contestsRef),
+        tx.get(candidatesRef.where('contestId', '==', contestId)),
+        input.candidates.length ? tx.getAll(...input.candidates.map((k) => candidatesRef.doc(k.candidateId))) : [],
+      ]);
+      const contests = contestsSnap.docs.map((d) => d.data() as ContestRecord);
+      const plan = accepted(
+        planQuestion({
+          contestId,
+          input,
+          current: contests.find((c) => c.contestId === contestId) ?? null,
+          contests,
+          options: optionsSnap.docs.map((d) => d.data() as CandidateRecord),
+          listed: listedSnaps.map((d) => (d.exists ? (d.data() as CandidateRecord) : null)),
+          actor,
+        }),
+      );
+      const rules = input.contest;
+      if (rules.kind === 'proposal') {
+        if (rules.proposalSnapshotId) await this.assertProposalExists(tx, rules.proposalSnapshotId);
+      } else if (rules.positionId) await this.assertPositionExists(tx, rules.positionId);
+      if (plan.newLinks.length) {
+        const members = await this.members.getAll(tx, [...plan.newLinks]);
+        plan.newLinks.forEach((id, i) => assertCheck(checkCandidateAccount(id, members[i] ?? null), BadRequestException));
+      }
+      await this.assertAmendmentsFit(tx, contests, plan.contest);
+
+      tx.set(contestsRef.doc(contestId), plan.contest);
+      for (const k of plan.candidates) tx.set(candidatesRef.doc(k.candidateId), k);
+      for (const id of plan.removed) tx.delete(candidatesRef.doc(id));
+      for (const { contestId: id, order } of plan.reordered) tx.update(contestsRef.doc(id), { order });
+      return { contest: plan.contest, candidates: plan.candidates };
+    });
+  }
+
+  /** Puts the questions in the order given, which must name every question of the ballot once (409 otherwise). */
+  async reorderQuestions(ctx: RequestContext, electionId: string, contestIds: readonly string[]): Promise<void> {
+    await this.db.runTransaction(async (tx) => {
+      await this.editable(tx, ctx, electionId);
+      const contestsRef = this.electionRef(electionId).collection(ElectionCollections.contests);
+      const contests = (await tx.get(contestsRef)).docs.map((d) => d.data() as ContestRecord);
+      for (const { contestId, order } of accepted(planQuestionOrder(contests, contestIds))) tx.update(contestsRef.doc(contestId), { order });
     });
   }
 

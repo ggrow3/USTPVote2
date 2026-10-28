@@ -1,6 +1,6 @@
 export type { Check, Outcome, Refusal, Refused } from './check.js';
 export { uuidv7, isUuidV7, uuidv7Timestamp } from './ids.js';
-export { ROLES, conflictingRoles, isRole, checkRoleChange } from './roles.js';
+export { ROLES, MAX_ROLES_PER_ACCOUNT, conflictingRoles, isRole, checkRoleChange } from './roles.js';
 export type { Role } from './roles.js';
 export * from './membership/index.js';
 export * from './notifications/index.js';
@@ -111,6 +111,25 @@ export {
   packageWindow,
 } from './election-package.js';
 export type { ElectionPackage, ElectionPackageInput, PackageContest, PackageProposal } from './election-package.js';
+export {
+  MAX_QUESTION_OPTIONS,
+  ballotIdSchema,
+  planQuestion,
+  planQuestionOrder,
+  questionContestSchema,
+  questionInputSchema,
+  questionOptionSchema,
+  questionOrderSchema,
+} from './ballot-questions.js';
+export type {
+  OrderChange,
+  QuestionContest,
+  QuestionInput,
+  QuestionOption,
+  QuestionOrderInput,
+  QuestionPlan,
+  SavedQuestion,
+} from './ballot-questions.js';
 export {
   TEST_VOTES_FORMAT,
   expectedResultProblems,
@@ -267,3 +286,13 @@ export type {
   ConsistencyRunResult,
   ProposalText,
 } from './consistency-check.js';
+export {
+  accountPreferencesSchema,
+  DAILY_JOKES,
+  DAILY_QUOTES,
+  dailyPick,
+  dayNumber,
+  DEFAULT_ACCOUNT_PREFERENCES,
+  preferencesOf,
+} from './daily.js';
+export type { AccountPreferences, AccountPreferencesInput, DailyJoke, DailyQuote } from './daily.js';

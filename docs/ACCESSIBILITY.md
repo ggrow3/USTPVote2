@@ -301,7 +301,7 @@ test. Keep it current when pages change.
 | 2.4.4 / 2.4.6 Link purpose, labels | Many identical names: "Move up", "Remove", "Approve", "Reject", "Check", "Edit", "History", "Change", "Refresh", "Review" | Names say what they act on ("Move Casey Okafor up", "Approve Ada Brooks", "Check the saved receipt", "Change status of Ben Cruz"); the visible text always comes first (2.5.3) |
 | 2.4.7 Focus visible | Quasar's focus tint, nearly invisible on many controls | A 2 px ring with 3:1 or better on every surface: primary on light, accent on dark, white in the header, on coloured banners and on toasts, darker orange on light banners |
 | 2.4.11 Focus not obscured | The fixed header could cover a control the browser scrolled to | `scroll-padding-top` follows the header's height |
-| 2.5.8 Target size (minimum) | "Copy definition hash" 19 × 19 px, the members' copy buttons extra-small, "Clear (skip this contest)" 23 px tall | 24 × 24 px or larger (the Clear button is 32 px tall) |
+| 2.5.8 Target size (minimum) | "Copy definition hash" 19 × 19 px, the members' copy buttons extra-small, "Clear (skip this contest)" 23 px tall | 24 × 24 px or larger (the Clear button is 32 px tall); since 2026-10-28, 48 px on the ballot list, the ballot and its Cast dialog |
 | 3.3.1 Error identification | Errors were shown, but focus stayed on the submit button | Focus goes to the first invalid field; Quasar links its message with `aria-describedby` |
 | 4.1.2 Name, role, value | Prompt dialogs (reasons, codes, passwords) had unnamed inputs and unnamed dialogs; the app's own dialogs were unnamed; sign-in method toggles had no name; filter toggles had no group name | Every dialog is named by its title (`dialog()` in `dialogs.ts` for Quasar's Dialog plugin, `aria-labelledby` elsewhere); prompt inputs are labelled; toggles named; toggle groups named (Quasar already sets `aria-pressed`) |
 | 4.1.3 Status messages | Ranking changes, the limit in choose-N contests and casting were silent (result banners and toasts were already `role="alert"` in Quasar, but the ledger result banner was not re-inserted, so a second run was not read) | Announced through two live regions in the layout (`announce()` in `a11y.ts`), plus "Checking your receipt…"; the ledger result is cleared before each run so its alert is read every time |
@@ -345,6 +345,20 @@ election) open with focus on Cancel.
   before "Save settings". Analytics: the totals as text, and a table with a hidden caption, column headers and each
   link's name as its row header; the bars are `aria-hidden` (the numbers beside them say the same). At 320 px each
   link row puts its clicks and controls under its title, and the table scrolls inside its card.
+- **Added 2026-10-28, the ballot list and the ballot by touch** (design §10.5; against the emulators on private ports
+  as v1@example.test, casting in "Committee Elections (15-minute window)" and reading "Platform Vote #9 (demo)"; desktop
+  width dark, 375 px dark, 320 px light): `/ballot` is a list named "Your elections" of cards, each with an `h2` (the
+  election), its voting window and secrecy as text, and a status line in words beside an icon hidden from screen
+  readers ("Voting is open. You have not voted yet.", "You voted on Oct 28, 3:40 AM."), so the state never rests on
+  colour; the line is primary (accent in the dark theme), positive or `grey-7`, the same pairs as before (4.94 / 5.84,
+  5.13 / 8.38, 4.61 / 7.77, read back from the computed styles). Each button names its election with a
+  screen-reader-only suffix ("Vote now: 2026 Officer Election", "See results: …"), the visible text first (2.5.3).
+  Buttons, choices, toggles and "Read the full text" rows on the list, the ballot and the Cast dialog measured 48 px
+  tall, round icon buttons (move up, move down, remove) 48 × 48 px: 2.5.5's 44 px and more. At 375 and 320 px the
+  buttons stack, each as wide as its card (290 and 238 px), Yes, No and Abstain stack, each choice is a 48 px line as
+  wide as the card, a ranked row puts its three buttons under the name, and nothing scrolls sideways; the dialog's
+  Back and Cast ballot share its width (144 px each at 375 px). Text is 16 px with 14 px captions, in the dialog too.
+  Focus order and the announcements are unchanged.
 
 ### Contrast figures
 
@@ -536,22 +550,9 @@ lane), and every line of every label was measured in the browser to fit its box 
 with no mark overlapping a label. The list (below the lanes on a phone, beside them on wider screens) holds every word
 of them at full size.
 
-The election editor's candidate field (design §6.5) was checked on 2026-10-26 against the emulators as
-elections@example.test, keyboard only, in both themes at 1280 px and at 320 px. It is Quasar's combobox: an input with
-`role="combobox"` named "Candidate name", `aria-autocomplete="list"`, `aria-expanded`, `aria-controls` naming the
-listbox while it shows, and `aria-activedescendant` following the arrow keys; each match is an `option` with the legal
-name and a caption (preferred name and state, so two people with one name differ). A match that cannot be chosen (the
-admin themself, or someone already standing in that contest) is `aria-disabled` with the reason in its caption, and the
-arrow keys skip it. When the search answers, the live region says how many members match and how many can be chosen
-("2 members match. Use the down arrow to choose.", or that none does and Add candidate adds the name as typed);
-choosing a member and adding a candidate are announced too ("Added Ada Brooks to Review Committee, linked to their
-member account."). A line under the field, which the input names with `aria-describedby`, says whether adding links an
-account; an empty Add sets `aria-invalid` and adds the error to the description. Enter with no option highlighted adds
-what is in the field, Tab only moves on (it never adds), Escape closes the list keeping the text, and focus stays in
-the field after an Enter, ready for the next name. Linked candidates carry "Linked to a member account" with a link
-icon hidden from screen readers. Captions: #757575 on white (4.61), and in the dark theme white at .8 on `#1d1d1d`
-and the line under the field `#b0b0b0` (7.77). At 320 px the field and button stack, nothing scrolls sideways, and the
-matches open in Quasar's full-screen options dialog, where the search and its announcement work the same.
+The election editor's candidate field (design §6.5), a combobox checked on 2026-10-26, gave way on 2026-10-28 to
+linking a member from a question's option in the ballot builder: the matches are buttons under the option, reached with
+the down arrow or Tab, and announced (above, "the ballot builder and Preview as voter").
 
 ## Known gaps
 
@@ -571,6 +572,11 @@ matches open in Quasar's full-screen options dialog, where the search and its an
   and the list that changed reloads). The "Two-step verification required" toast stays until dismissed.
 - Wide data tables (audit ledger, members, the navigation matrix) scroll sideways inside their card on phones, which
   WCAG allows for two-dimensional data.
+- The ballot builder's drag handles were tried with a mouse only; touch dragging on a real phone, and Alt+arrow in
+  each screen reader's modes (some readers take Alt+arrows in browse mode; in a field, focus mode passes them on), are
+  untested. Every move also has buttons. Two Election Admins editing one draft at once each save over the other's
+  question; a change to the questions made elsewhere is found when the order is next saved (409), and the bar then
+  offers Reload the ballot.
 - Sign-in with an authenticator code (3.3.8 Accessible authentication) relies on the alternatives: federated
   sign-in and email links are available, and the code field has `autocomplete="one-time-code"` so password managers can
   fill it.
@@ -599,10 +605,13 @@ Android if time allows), on staging or the emulators:
 4. Verify: "Checking your receipt…" and the result summary are read; each step's status is read before its text.
 5. Errors: a wrong password, an invalid form field and an API error toast are each read once.
 6. Dialogs from the Dialog plugin (reasons, codes, confirmations): name and prompt label read; focus returns afterwards.
-7. Admin console: tab and panel relationship, row action names, the status-history dialog, the contest dialog.
+7. Admin console: tab and panel relationship, row action names, the status-history dialog.
 8. Zoom to 200 % and 400 % (desktop) and large text on iOS: no clipped controls.
 9. The menu bar at 320 px: More is read as a collapsed or expanded button in the "Main" navigation, and its list's
    links follow it, the current page announced.
 10. The link hub: the icon row's links read by their names in their navigation, each section's links in their list,
     the theme button's pressed state; in Admin → Link hub, a row's switch and buttons read with its link's name, and
     the "Saved: …" toast after each change.
+11. The ballot builder: each question read as a section with its heading, the option fields by number, the
+    announcements after adding, moving, deleting and undoing, a failed save read once, and the member suggestions
+    reached with the down arrow; Preview as voter read as the ballot with its banner first.

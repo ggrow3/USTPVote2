@@ -305,8 +305,11 @@ export function electionPackageFrom(
   };
 }
 
+/** A contest's rules, where a proposal may still wait for its text (the ballot builder, design §6.5). */
+type ContestRules = ContestInput | (Omit<Extract<ContestInput, { kind: 'proposal' }>, 'proposalSnapshotId'> & { readonly proposalSnapshotId: string | null });
+
 /** The stored contest, with a tally spec whose id is the contest id. */
-export function contestRecord(contestId: string, order: number, input: ContestInput, candidateIds: readonly string[]): ContestRecord {
+export function contestRecord(contestId: string, order: number, input: ContestRules, candidateIds: readonly string[]): ContestRecord {
   let spec: ContestSpec;
   switch (input.kind) {
     case 'proposal':

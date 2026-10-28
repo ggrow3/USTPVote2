@@ -44,9 +44,10 @@
 /*
  * Text on a page, set for reading rather than Quasar's 14px: 16px with more leading, captions at 14px, a larger and
  * bolder title and card headings. Fields, buttons, tabs, badges and tables keep their own sizes, and dialogs (outside
- * the page) are unchanged.
+ * the page) are unchanged, but for the ballot's Cast dialog (`.ustp-touch`, below), which is set like the page.
  */
-.ustp-page__sheet {
+.ustp-page__sheet,
+.q-dialog .ustp-touch {
   font-size: 1rem;
   line-height: 1.6;
 }
@@ -61,7 +62,8 @@
   font-weight: 600;
   line-height: 1.4;
 }
-.ustp-page__sheet .text-caption {
+.ustp-page__sheet .text-caption,
+.q-dialog .ustp-touch .text-caption {
   font-size: 0.875rem;
   line-height: 1.45;
   letter-spacing: normal;
@@ -169,6 +171,44 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+/*
+ * Voting by touch (design §10.5): the ballot list, a ballot and its Cast dialog. Buttons, choices, toggles and the
+ * "Read the full text" rows are 48px tall at least (WCAG 2.5.5 asks for 44px), button text is 16px and round icon
+ * buttons are 48px across. On a phone a row of buttons stacks, each spanning its card (a dialog's two share its
+ * width), and each choice spans the card too, so the whole line is its target.
+ */
+.ustp-touch .q-btn {
+  min-height: 48px;
+}
+.ustp-touch .q-btn:not(.q-btn--round) {
+  font-size: 1rem;
+}
+.ustp-touch .q-btn--round {
+  min-width: 48px;
+}
+.ustp-touch :is(.q-radio, .q-checkbox, .q-toggle),
+.ustp-touch .q-expansion-item__container > .q-item {
+  min-height: 48px;
+}
+@media (max-width: 599.98px) {
+  .ustp-touch .ustp-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .ustp-touch .ustp-actions > .q-space {
+    display: none;
+  }
+  .ustp-touch .q-card__actions > .q-btn {
+    flex: 1 1 0;
+  }
+  .ustp-touch .q-option-group > div {
+    display: block;
+  }
+  .ustp-touch .q-option-group :is(.q-radio, .q-checkbox) {
+    display: flex;
+  }
 }
 
 /* A hint or error under something that is not a field (a list, a checkbox), set like a dense field's own. */

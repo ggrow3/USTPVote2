@@ -22,9 +22,20 @@ import { publishedElectionCheck } from '../election-check/api.js';
 import BylawsCheckNotes from '../election-check/BylawsCheckNotes.vue';
 import { downloadElectionDocx } from '../election-files.js';
 import { rulesText } from '../election-text.js';
+import { electionDetail } from '../elections/api.js';
+import { previewBallotView } from '../elections/ballot-preview.js';
+import { secrecyText, shortWhen, votingWindow } from '../elections/ballot-list.js';
 import { downloadReceipt, forgetReceipt, keepReceipt, savedReceipt } from '../receipts.js';
 
 type Contest = ElectionDefinition['contests'][number];
+
+const props = defineProps<{
+  /**
+   * The election editor's "Preview as voter" (design §6.5): a draft's ballot as voters will get it, built from the
+   * editor's view of it. Every question can be answered; nothing is sent, and there is no receipt or download.
+   */
+  preview?: boolean;
+}>();
 
 const route = useRoute();
 const electionId = String(route.params.id);
@@ -33,22 +44,24 @@ const view = ref<BallotView | null>(null);
 const answers = reactive<Record<string, string | string[] | null>>({});
 const reviewing = ref(false);
 const casting = ref(false);
-const receipt = ref<BallotReceipt | null>(savedReceipt(electionId));
+const receipt = ref<BallotReceipt | null>(props.preview ? null : savedReceipt(electionId));
 const kept = ref(!!receipt.value);
 /** The server's commitments equal the ones this browser computed before sending. */
 const commitmentsMatch = ref<boolean | null>(null);
 /** Side notes from the election setup check (design §6.9), if an admin ran it on this version of the election. */
 const bylawsCheck = ref<PublicElectionCheck | null>(null);
-usePageTitle(() => view.value?.definition.title ?? 'Ballot');
+usePageTitle(() => `${props.preview ? 'Preview: ' : ''}${view.value?.definition.title ?? 'Ballot'}`);
 
 async function load() {
   await attempt(async () => {
-    const v = await api<BallotView>('GET', `/v1/elections/${electionId}/ballot`);
+    const v = props.preview
+      ? previewBallotView(await electionDetail(electionId))
+      : await api<BallotView>('GET', `/v1/elections/${electionId}/ballot`);
     for (const c of v.definition.contests) answers[c.contestId] ??= c.spec.kind === 'proposal' ? null : [];
     view.value = v;
   });
   // Notes only: the ballot works the same without them (none when this version of the election was not checked).
-  bylawsCheck.value = await publishedElectionCheck(electionId);
+  if (!props.preview) bylawsCheck.value = await publishedElectionCheck(electionId);
 }
 onMounted(load);
 
@@ -177,17 +190,22 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
 
 <template>
   <PageShell>
-    <div class="ustp-content">
-      <q-btn flat dense no-caps icon="arrow_back" label="Your ballots" to="/ballot" class="ustp-back" />
+    <div class="ustp-content ustp-touch">
+      <q-btn v-if="preview" flat dense no-caps icon="arrow_back" label="Back to the editor" :to="`/admin/elections/${electionId}`" class="ustp-back" />
+      <q-btn v-else flat dense no-caps icon="arrow_back" label="Your ballots" to="/ballot" class="ustp-back" />
       <div>
         <h1 class="text-h5">{{ view?.definition.title ?? 'Ballot' }}</h1>
-        <div v-if="view" class="text-caption text-grey-7">
-          Voting {{ new Date(view.election.opensAt).toLocaleString() }} – {{ new Date(view.election.closesAt).toLocaleString() }}
-          · {{ view.election.secrecy === 'secret' ? 'Secret ballot' : 'Roll-call: how you vote is published with your name' }}
-        </div>
+        <p v-if="view" class="q-mb-none q-mt-xs text-grey-7">
+          {{ votingWindow(view.election.opensAt, view.election.closesAt) }} · {{ secrecyText(view.election.secrecy) }}
+        </p>
       </div>
       <template v-if="view">
-        <div class="ustp-actions">
+        <q-banner v-if="preview" class="bg-orange-2 text-black" rounded>
+          <template #avatar><q-icon name="visibility" aria-hidden="true" /></template>
+          Preview: this is the ballot as voters will see it once voting opens, as the draft stands now. Try the questions;
+          nothing you choose here is sent.
+        </q-banner>
+        <div v-if="!preview" class="ustp-actions">
           <q-btn
             outline
             no-caps
@@ -209,7 +227,7 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
             <li v-for="p in integrityProblems" :key="p">{{ p }}</li>
           </ul>
         </q-banner>
-        <div v-else class="text-caption text-grey-7">
+        <div v-else-if="!preview" class="text-caption text-grey-7">
           <q-icon name="verified" color="positive" /> Checked in this browser: this is the ballot frozen at scheduling
           (<code>{{ view.definitionHash.slice(0, 16) }}…</code>), proposal texts and bylaws changes included.
         </div>
@@ -223,7 +241,7 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
           bordered
         >
           <q-card-section>
-            <h2 id="receipt-heading" class="text-subtitle1">You voted on {{ new Date(view.election.castAt).toLocaleString() }}</h2>
+            <h2 id="receipt-heading" class="text-subtitle1">You voted on {{ shortWhen(view.election.castAt) }}</h2>
             <div v-if="commitmentsMatch === true" class="text-positive">
               The server's commitments match the ones this browser computed before sending.
             </div>
@@ -268,13 +286,13 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
         </q-card>
 
         <q-banner v-else-if="view.election.state === 'scheduled'" class="bg-grey-3 text-black" rounded>
-          Voting opens {{ new Date(view.election.opensAt).toLocaleString() }}. You can read the ballot now.
+          Voting opens {{ shortWhen(view.election.opensAt) }}. You can read the ballot now.
         </q-banner>
         <q-banner v-else-if="view.election.state !== 'open'" class="bg-grey-3 text-black" rounded>
           Voting has closed.
         </q-banner>
 
-        <ConsistencyCheckCard v-if="integrity !== false" :election-id="electionId" view="ballot" :available="checkable" />
+        <ConsistencyCheckCard v-if="integrity !== false && !preview" :election-id="electionId" view="ballot" :available="checkable" />
         <BylawsCheckNotes :check="bylawsCheck" :contest-id="null" subject="this election" />
 
         <q-card v-for="c in contests" :key="c.contestId" tag="section" :aria-labelledby="`contest-${c.contestId}`" flat bordered>
@@ -329,7 +347,7 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
                 dense
                 bordered
                 separator
-                class="q-mb-sm"
+                class="q-mb-sm ustp-ranking"
                 :aria-label="`Your ranking for ${c.title}`"
               >
                 <q-item v-for="(id, i) in list(c)" :key="id">
@@ -403,6 +421,7 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
           <q-btn
             color="primary"
             size="lg"
+            no-caps
             label="Review and cast"
             :disable="skipped.length === contests.length || integrity === false"
             aria-describedby="cast-hint"
@@ -412,13 +431,13 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
         </div>
 
         <q-dialog v-model="reviewing" aria-labelledby="review-title">
-          <q-card class="ustp-dialog">
+          <q-card class="ustp-dialog ustp-touch">
             <!-- Focus starts at the title, so a screen reader reads the summary from the top. -->
             <q-card-section>
               <h2 id="review-title" class="text-h6 ustp-focus-target" tabindex="-1" data-autofocus>Cast this ballot?</h2>
             </q-card-section>
             <q-card-section>
-              <q-list dense separator>
+              <q-list separator>
                 <q-item v-for="c in contests" :key="c.contestId">
                   <q-item-section>
                     <q-item-label>{{ c.title }}</q-item-label>
@@ -426,11 +445,12 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
                   </q-item-section>
                 </q-item>
               </q-list>
-              <div class="text-caption text-grey-7 q-mt-sm">You cannot change your ballot after casting it.</div>
+              <div v-if="preview" class="text-body2 q-mt-sm">This is a preview, so there is nothing to cast. Voters cast here.</div>
+              <div v-else class="text-caption text-grey-7 q-mt-sm">You cannot change your ballot after casting it.</div>
             </q-card-section>
             <q-card-actions align="right">
-              <q-btn flat label="Back" v-close-popup />
-              <q-btn color="primary" label="Cast ballot" :loading="casting" @click="cast" />
+              <q-btn flat no-caps label="Back" v-close-popup />
+              <q-btn v-if="!preview" color="primary" no-caps label="Cast ballot" :loading="casting" @click="cast" />
             </q-card-actions>
           </q-card>
         </q-dialog>
@@ -438,3 +458,23 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
     </div>
   </PageShell>
 </template>
+
+<style scoped>
+/*
+ * A ranked row: the choice number, the name and three 48px buttons, which move under the name once it would have less
+ * than 8rem beside them (on a phone), rather than squeezing it to a word a line.
+ */
+.ustp-ranking :deep(.q-item) {
+  flex-wrap: wrap;
+}
+.ustp-ranking :deep(.q-item__section--avatar) {
+  min-width: 0;
+}
+.ustp-ranking :deep(.q-item__section--main) {
+  flex: 1 1 8rem;
+}
+.ustp-ranking :deep(.q-item__section--side) {
+  margin-left: auto;
+  padding-left: 0;
+}
+</style>

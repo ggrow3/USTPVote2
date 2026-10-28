@@ -119,7 +119,7 @@ watch(bare, (now) => now && (document.documentElement.style.scrollPaddingTop = '
       <q-resize-observer @resize="onHeaderResize" />
       <q-toolbar>
         <q-toolbar-title shrink style="flex: none">
-          <router-link to="/vote" class="text-white" style="text-decoration: none">USTP Vote</router-link>
+          <router-link to="/" class="text-white" style="text-decoration: none">USTP Vote</router-link>
         </q-toolbar-title>
         <q-space />
         <q-badge v-if="usingEmulators" color="orange" text-color="black" label="Local emulators" class="q-mr-md gt-xs" />
