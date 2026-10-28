@@ -4,7 +4,7 @@ import { electionDocPath, sequenceId } from './collections.js';
 import { checkElectionDeletable, electionTransitionAuthority, isTerminal } from './election-state.js';
 import { isUuidV7, uuidv7, uuidv7Timestamp } from './ids.js';
 import { checkStatusChange, mayApply, type MemberStatus } from './membership/member-status.js';
-import { checkRoleChange, conflictingRoles } from './roles.js';
+import { checkRoleChange, conflictingRoles, MAX_ROLES_PER_ACCOUNT } from './roles.js';
 
 describe('uuidv7', () => {
   it('produces RFC 9562 version 7 IDs that embed the timestamp', () => {
@@ -114,6 +114,29 @@ describe('roles', () => {
     expect(checkRoleChange(['election_admin'], 'grant', 'auditor')).toMatchObject({ ok: false, reason: /election_admin/ });
     expect(checkRoleChange(['auditor'], 'revoke', 'auditor').ok).toBe(true);
     expect(checkRoleChange([], 'revoke', 'auditor')).toMatchObject({ ok: false, reason: /does not hold/ });
+  });
+
+  it('allows two compatible roles but never a third', () => {
+    expect(MAX_ROLES_PER_ACCOUNT).toBe(2);
+    expect(checkRoleChange(['membership_admin'], 'grant', 'election_admin').ok).toBe(true);
+    expect(checkRoleChange(['election_admin'], 'grant', 'system_admin').ok).toBe(true);
+    expect(checkRoleChange(['membership_admin', 'election_admin'], 'grant', 'system_admin')).toEqual({
+      ok: false,
+      reason: 'an account may hold at most 2 roles, and this one already holds membership_admin and election_admin',
+    });
+  });
+
+  it('names the conflict before the limit when a grant breaks both', () => {
+    expect(checkRoleChange(['membership_admin', 'system_admin'], 'grant', 'auditor')).toMatchObject({
+      ok: false,
+      reason: 'auditor cannot be held together with membership_admin, system_admin',
+    });
+  });
+
+  it('always allows a revocation, so an account above the limit can be brought within it', () => {
+    const three = ['membership_admin', 'election_admin', 'system_admin'] as const;
+    expect(checkRoleChange(three, 'revoke', 'election_admin').ok).toBe(true);
+    expect(checkRoleChange(three, 'grant', 'auditor').ok).toBe(false);
   });
 });
 

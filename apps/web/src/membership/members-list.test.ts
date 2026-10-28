@@ -3,6 +3,7 @@ import type { MemberRecord, PositionsView } from 'ustp-domain';
 import {
   filterRows,
   initials,
+  heldOffices,
   memberRows,
   membersCsv,
   membersCsvFileName,
@@ -76,6 +77,16 @@ describe('memberRows', () => {
   it('gives each member the offices their account holds now, by title', () => {
     expect(rows.map((r) => r.offices.map((o) => o.title))).toEqual([[], ['Chair', 'State Chair'], [], []]);
     expect(rows[1]!.offices[1]).toEqual({ title: 'State Chair', description: 'District of Columbia' });
+  });
+});
+
+describe('heldOffices', () => {
+  it('maps each account to the offices it holds now, leaving out ended terms and terms with no account', () => {
+    const held = heldOffices(view);
+    expect([...held.keys()]).toEqual(['a2']);
+    expect(held.get('a2')!.map((o) => o.title)).toEqual(['Chair', 'State Chair']);
+    expect(held.get('a3')).toBeUndefined();
+    expect(heldOffices({ positions: [], terms: view.terms }).size).toBe(0);
   });
 });
 
