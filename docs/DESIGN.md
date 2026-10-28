@@ -107,6 +107,7 @@ flowchart LR
 | `packages/audit` (`ustp-audit`) | Pure TypeScript, depends only on `@noble/hashes` | JCS, SHA-256, hash chains, RFC 9162 Merkle trees and proofs, ballot commitments, tie-break ordering. Isomorphic (Node + browser). Published publicly. |
 | `packages/domain` (`ustp-domain`) | Pure TypeScript | The domain layer (§3.3): shared types, state machines, role rules, two-person checks, aggregate commands, Firestore path constants, sealed blocks, results bundles, and the receipt and results checks the browser, the CLI and the tests share. |
 | `packages/verify` (`ustp-verify`) | Node CLI, depends only on `ustp-audit` and `ustp-domain` | Independent verification from public artifacts only (§16). |
+| `apps/mcp` (`ustp-mcp`) *(added)* | Node, the MCP TypeScript SDK, `ustp-verify` and `ustp-domain`; the server image's third entrypoint as Cloud Run service `mcp`, at `<site>/mcp` through Hosting, or over stdio on someone's machine | Read-only reports for any AI assistant (Claude, Gemini, ChatGPT): election status, turnout, results and audit reports, from the public api only (§3.4). |
 
 **Why one server package with two entrypoints:** the API and worker share Firestore repositories, KMS adapters and
 domain logic. One package and one container image keep them in lockstep; two Cloud Run services with different
@@ -123,6 +124,7 @@ account — one per environment). One-off work (photo checks, emails, tally) goe
 ```
 apps/server        NestJS on Fastify — src/main-api.ts, src/main-worker.ts
 apps/web           Vue 3 + Quasar 2 SPA/PWA
+apps/mcp           ustp-mcp     read-only MCP server for AI-assisted election reports (§3.4)
 packages/tally     ustp-tally   (public)
 packages/audit     ustp-audit   (public)
 packages/domain    ustp-domain  (internal)
@@ -192,6 +194,41 @@ offers come from `adminStatusChanges` in `ustp-domain`), the start of `governanc
 client, panel and wording, the store the menu, the console's tabs and the voting home read, the quote's client,
 store and panel (§10.5), and the hub's client, store, page, admin tabs and wording (§10.6), and `offices/`: the Offices panel, the appointment dialog, the member
 profile's Offices card and the public Offices page (§6.4).
+
+### 3.4 The reporting MCP server *(added)*
+
+`apps/mcp` (`ustp-mcp`) lets an AI assistant answer questions about elections through MCP tools: Gemini CLI or Gemini
+Enterprise writing a report into Google Sheets, say, or Claude. It serves that one workflow, reports, and is kept out
+of the api so the workflow cannot widen what the system exposes:
+
+- **Public data only.** It calls the unauthenticated `/v1/public/...` endpoints through `ustp-verify`'s `PublicApi`
+  and nothing else. It holds no credentials or service account, cannot reach Firestore, and has no tool that writes:
+  an assistant using it sees what any visitor can already read and check. Admin-only figures (participation while
+  voting is open, notice counts, members) stay out. A tool that needs them is a new decision (an authenticated,
+  role-checked route), not an addition here.
+- **Five read-only tools**, annotated `readOnlyHint`: `list_elections`, `get_election_status`, `get_turnout`,
+  `get_results` (the synopsis of §9 with the results page's `checkResults` over the signed bundle, or the CSV) and
+  `get_audit_report` (`verify` from `ustp-verify`). They reuse `ustp-domain` and `ustp-verify`, so a report says what
+  the results page and the CLI say, percentages included.
+- **Listing from the ledger.** The api has no public list of elections, so the server takes election IDs from the
+  public `election.scheduled`, `election.cancelled` and `election.deleted` entries and reads each record; a deleted
+  election shows from its entry. The scan costs one request per ledger entry, so the server keeps what the signed
+  ledger makes immutable (blocks, blocked entries, private entries' 404s) and later scans fetch only new entries. A
+  public list endpoint would replace the scan if the ledger grows large.
+- **Turnout while open** counts sealed ballots only, a lower bound, since the sealer leaves up to 2k − 1 ballots in
+  the pool (§7.2); the tool says so. Nothing reveals more than the public record.
+- **Untrusted text.** Titles, descriptions and candidate names are written by admins and reach the model. The
+  server's instructions tell it to report them and never follow instructions inside them, to name provisional and
+  certified results as such, and to leave rehearsals out of reports on real elections.
+- **Transports.** stdio, for Gemini CLI or Claude Code on someone's machine; stateless Streamable HTTP at `/mcp` for
+  remote clients (the Claude API's MCP connector, claude.ai and ChatGPT connectors, Gemini Enterprise): a fresh MCP
+  server per request, JSON answers, a 64 KiB request cap, CORS open to any origin (no credentials are involved), and
+  only loopback host names when listening on loopback (against DNS rebinding).
+- **Hosted on the site.** `https://<site>/mcp`: Firebase Hosting rewrites `/mcp` to the Cloud Run service `mcp`, the
+  server image's third entrypoint, so it ships, is attested and is rolled with every release (`mcp.tf`, release.yml).
+  Its service account `ustp-mcp` holds no role; anyone may invoke it, without sign-in, since all it serves is public;
+  at most `mcp_max_instances` (2) instances cap what a flood of calls can cost. It reaches the api through the site, as
+  a visitor does, so the CSV's links and the reports' links name the site.
 
 ## 4. Identity and accounts
 
@@ -2331,6 +2368,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/positions` · `POST /admin/positions` · `POST /admin/positions/{id}/terms/{termId}/end` | any admin but a Course Admin (read); Membership or Election Admin | offices and terms; define or change an office (at once), end a term (→ approval) |
 | `POST /admin/positions/{id}/appointments` | Membership or Election Admin | appoint an Active member to a free seat: `accountId`, optional earlier `startsAt`, `endsAt` or `termMonths` (neither: a full term), reason (→ approval; 404 no such office, 409 not Active, no free seat, already a holder or dates outside the office's term; §6.4) |
 | `GET /public/positions` | P | offices and who holds them now, each term marked elected or appointed |
+| `POST /mcp` (not under `/v1`; the `mcp` service, not the api) | P | the reporting MCP server's Streamable HTTP endpoint: read-only tools over the public endpoints above (§3.4) |
 | `GET /admin/elections/{id}/roll` | Election Admin, Auditor | latest roll with member names, for review |
 | `GET /admin/elections/{id}/notices` | Election Admin, Auditor | the election's notices as counts (sent, still to send, failed, bounced, skipped), what the send receipts add up to per email (to the roll, and tests apart), and the caller's own last test emails; never addresses (§6.8) |
 | `GET\|PUT /admin/notice-settings` | System Admin | the election emails' settings: each on or off, the reminder's lead time, the contact, each subject and opening; saved whole against the version read (409 if stale, 400 for unknown placeholders); ledgered (§6.8) |

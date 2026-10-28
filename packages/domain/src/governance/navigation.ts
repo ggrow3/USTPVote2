@@ -148,8 +148,12 @@ const links = (...shown: MenuLink[]) => Object.fromEntries(MENU_LINKS.map((l) =>
 const sectionsOf = (role: Role) =>
   Object.fromEntries(ADMIN_SECTIONS.map((s) => [s, defaultSection(role, s)])) as Record<AdminSection, boolean>;
 
-/** Today's console: each role sees what it may use, except Offices for System Admins (they may read it, not change it). */
+/**
+ * Today's console: each role sees what it may use, except Offices for System Admins (they may read it, not change it),
+ * and only Course for Course Admins (they may read Offices and Approvals, but have nothing to do there).
+ */
 function defaultSection(role: Role, section: AdminSection): boolean {
+  if (role === 'course_admin') return section === 'course';
   return SECTION_ROLES[section].includes(role) && !(section === 'offices' && role === 'system_admin');
 }
 
