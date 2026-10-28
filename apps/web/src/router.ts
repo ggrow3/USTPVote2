@@ -28,6 +28,7 @@ export const router = createRouter({
         // The party's link hub, for everyone (design §10.6).
         { path: '', component: () => import('./pages/HubPage.vue'), meta: { bare: true } },
         // The voting home: signed out, sign in under the party's quote; signed in, what the person can do (§10.5).
+        { path: 'academy', component: () => import('./pages/AcademyPage.vue') },
         { path: 'vote', component: () => import('./pages/VotingPage.vue') },
         { path: 'signin', component: () => import('./pages/SignInPage.vue') },
         { path: 'register', component: () => import('./membership/RegisterPage.vue') },
