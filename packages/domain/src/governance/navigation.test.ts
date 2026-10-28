@@ -266,6 +266,7 @@ describe('saved settings', () => {
       ballot: false,
       verify: true,
       offices: true,
+      course: true,
       admin: true,
       signin: true,
     });
