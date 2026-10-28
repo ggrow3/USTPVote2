@@ -1,6 +1,7 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Query } from 'firebase-admin/firestore';
 import {
+  checkRoleChange,
   Collections,
   isSignInProvider,
   uuidv7,
@@ -36,6 +37,8 @@ export interface AccountQuery {
 /** USTP accounts and the logins linked to them (design §4). */
 @Injectable()
 export class AccountsService {
+  private readonly logger = new Logger(AccountsService.name);
+
   constructor(
     private readonly firebase: Firebase,
     private readonly ledger: LedgerService,
@@ -108,7 +111,9 @@ export class AccountsService {
   /**
    * Mints the caller's account on first sign-in. Idempotent: a uid that already has an account gets it back.
    * Each call also applies the bootstrap System Admin grant once the email is verified (password sign-ups start
-   * unverified), but only to an account that has never held the role, so a revocation is never undone.
+   * unverified), but only to an account that has never held the role, so a revocation is never undone, and only when
+   * the grant keeps to the role rules (design §10.1): an account that is an Auditor or already holds two roles is
+   * left as it is until a System Admin brings it within them.
    */
   async create(ctx: RequestContext): Promise<{ readonly created: boolean; readonly accountId: string }> {
     const { principal } = ctx;
@@ -121,7 +126,14 @@ export class AccountsService {
       const existing = await tx.get(identityRef);
       const accountId = existing.exists ? (existing.data() as IdentityRecord).accountId : uuidv7();
       const roleRef = db.collection(Collections.roleAssignments).doc(roleAssignmentId(accountId, 'system_admin'));
-      const bootstrap = bootstrapEligible && !(existing.exists && (await tx.get(roleRef)).exists);
+      let bootstrap = bootstrapEligible && !(existing.exists && (await tx.get(roleRef)).exists);
+      if (bootstrap && existing.exists) {
+        const fits = checkRoleChange(await this.directory.activeRoles(accountId, tx), 'grant', 'system_admin');
+        if (!fits.ok) {
+          this.logger.warn(`bootstrap System Admin grant for account ${accountId} skipped: ${fits.reason}`);
+          bootstrap = false;
+        }
+      }
       if (existing.exists && !bootstrap) return { created: false, accountId };
 
       const now = new Date().toISOString();

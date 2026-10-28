@@ -345,6 +345,14 @@ election) open with focus on Cancel.
   before "Save settings". Analytics: the totals as text, and a table with a hidden caption, column headers and each
   link's name as its row header; the bars are `aria-hidden` (the numbers beside them say the same). At 320 px each
   link row puts its clicks and controls under its title, and the table scrolls inside its card.
+- **Added 2026-10-28, at most two roles per person** (design §10.1; against the emulators as admin1@example.test,
+  changing elections@example.test, which holds Election Admin and Membership Admin; 1024 px dark and 320 px light): the
+  "Change a role" card's caption now says a person may hold at most two roles and an Auditor holds no other. Choosing a
+  third role shows the refusal before anything is sent, in words with role names rather than IDs ("An account may hold
+  at most 2 roles, and this one already holds Election Admin and Membership Admin."), in the form's existing polite live
+  region (`text-deep-orange-10`, 5.60 on white; `#ffb74d` on the dark card), and Grant role is disabled
+  (`aria-disabled`). At 320 px the role list opens full screen as before, the message wraps, and nothing scrolls
+  sideways.
 
 ### Contrast figures
 
