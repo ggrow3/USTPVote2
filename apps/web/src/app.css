@@ -6,6 +6,11 @@ body {
   --ustp-focus: var(--q-primary);
   --ustp-link: var(--q-primary);
 }
+/* The light theme's page, painted rather than left to the browser's canvas, which is dark on a device in dark mode
+   when someone has picked the light theme (theme.ts also sets color-scheme to match). */
+.body--light {
+  background: #fff;
+}
 .body--dark {
   --ustp-focus: var(--q-accent);
   --ustp-link: var(--q-accent);

@@ -189,8 +189,8 @@ and panels, and its wording. The browser runs `ustp-domain`'s rules to offer onl
 no copy of its own; `apps/web/src/boundaries.test.ts` fails if a context's routes appear outside its client. Converted
 so far: `membership/` (the Register page and the Applications and Members panels; the status changes the Members panel
 offers come from `adminStatusChanges` in `ustp-domain`), the start of `governance/`: the navigation settings'
-client, panel and wording, the store the menu, the console's tabs and the home page read, and the home page
-quote's client, store and panel (§10.5), and `offices/`: the Offices panel, the appointment dialog, the member
+client, panel and wording, the store the menu, the console's tabs and the voting home read, the quote's client,
+store and panel (§10.5), and the hub's client, store, page, admin tabs and wording (§10.6), and `offices/`: the Offices panel, the appointment dialog, the member
 profile's Offices card and the public Offices page (§6.4).
 
 ## 4. Identity and accounts
@@ -1349,7 +1349,7 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled` (M2–M3a), `ballots.sealed`,
   `election.sealed` (M3b), `results.computed` (M4a), `results.certified`, `election.pool_key_destroyed`,
   `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed`,
-  `navigation.changed`, `home_quote.changed`, `notice.sent`, `notice.resend_requested`, `notice.settings_changed`, `anthropic_key.changed`, `position_term.appointed` (M5). The authoritative list is `LEDGER_EVENT_TYPES` in
+  `navigation.changed`, `home_quote.changed`, `hub.changed`, `notice.sent`, `notice.resend_requested`, `notice.settings_changed`, `anthropic_key.changed`, `position_term.appointed` (M5). The authoritative list is `LEDGER_EVENT_TYPES` in
   `ustp-domain`.
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
   entries are public; the election notice entries (`notice.*`, §6.8), about delivering mail rather than the election's
@@ -1681,12 +1681,13 @@ different account on each side. Testing mode lets one System Admin do that alone
 - **Effect on the record:** what a persona does is real data in that deployment's ledger, rolls and results. That is
   acceptable only because testing mode is confined to test deployments.
 
-### 10.5 Who sees which link, and the home page
+### 10.5 Who sees which link, and the voting home
 
 System Admins choose which main-menu links and admin console sections each membership state and staff role is shown,
 and the page each starts on (Admin → Navigation). The settings decide what the web app **shows, never what anyone may
 do**: the API's role checks (§10.1, §12) are unchanged, and a page reached by its address refuses or explains itself
-as before. They also choose the quote on the home page, or switch it off (Admin → Home page quote; below).
+as before. They also choose the quote on the voting home, or switch it off (Admin → Home page quote; below). The home
+page itself, `/`, is the party's link hub (§10.6).
 
 - **Columns (audiences):** signed out; signed in with no membership; each member status (applicant, Active, lapsed,
   suspended, resigned, rejected; §5.1); then each staff role. **Rows:** Register, Ballot, Verify, Offices (the public
@@ -1713,14 +1714,16 @@ as before. They also choose the quote on the home page, or switch it off (Admin 
   staff member with no membership keeps them. A link or section added later takes its default in settings saved
   before it existed, and every other saved cell stays: settings saved before the Sign in row show it to visitors, and
   those saved before the Offices row show Offices to everyone.
-- **Start page.** Each signed-in audience starts on home, their account, a menu page it is shown (Offices included),
+- **Start page.** Each signed-in audience starts on the voting home (`/vote`, the start page `home`, named "Voting home"
+  since the hub took `/`), their account, a menu page it is shown (Offices included),
   or (a role) one of its sections; by default Register with no membership, as signing in did before, and home otherwise. A person with
   roles starts where the first role they hold says, in the order Membership Admin, Election Admin, Auditor, System
   Admin (staff come for their tools, and System Admin's are the occasional ones); without one, where their membership
-  state says; and on home if that page is not shown to them. It applies after signing in without a page to return
-  to, and when a browser tab first opens the app at home (not on reloads). Signed out, the start is always the public
-  home page.
-- **Home page.** `/` is laid out like a sign-in landing page: a picture across the whole page, the party's quote about
+  state says; and on the voting home if that page is not shown to them. It applies after signing in without a page to
+  return to, and when a browser tab first opens the app at the voting home (not on reloads; the installed app opens
+  there, its manifest's `start_url`). The hub at `/` never sends anyone elsewhere.
+- **Voting home.** `/vote` (the home page until the hub took `/`, §10.6; the hub's "USTP Vote" card, the app header's
+  title and signing out lead there) is laid out like a sign-in landing page: a picture across the whole page, the party's quote about
   voting set large on the left with who said it and the source, and a white rounded card on the right. On phones
   (under 1024px) the card stacks under the quote. Signed out, the left side starts with the party's name (the page's
   `h1`, with the app icon), and the card is the sign-in page's own form (`SignInForm`, shared by both pages, so there is
@@ -1746,7 +1749,7 @@ as before. They also choose the quote on the home page, or switch it off (Admin 
   dropped (the page sets its own), the quote is at most 300 characters, the name 80 and the source 160; a quote that is
   shown needs its words and who said them (400 otherwise), the source is optional, and a hidden quote keeps its words
   for when it is shown again. The page sets the quote smaller the longer it is, sized to its column.
-- **Home page picture.** A sunrise over a horizon in the party's oranges, morning in the light theme and dusk in the
+- **Voting home picture.** A sunrise over a horizon in the party's oranges, morning in the light theme and dusk in the
   dark one, drawn for this project as an inline SVG (`apps/web/src/components/HomeBackdrop.vue`), so the party may use
   it freely and there is no licence to track; a public-domain photo could replace it, with its source and licence
   recorded here. With the quote's own code it is a 5 KB chunk (2 KB compressed) of script and CSS, and no image, in the
@@ -1765,13 +1768,13 @@ as before. They also choose the quote on the home page, or switch it off (Admin 
   `GET|PUT /v1/admin/home-quote` (System Admin), the whole quote from the version it was edited from (409 if someone
   saved since), tidied before it is checked and stored, each changed part ledgered with its new value as
   `home_quote.changed` (Auditors only).
-- **Web app.** The menu, the console's tabs and the home page follow the settings; they load with the page (the
+- **Web app.** The menu, the console's tabs and the voting home follow the settings; they load with the page (the
   defaults stand in until then, and if they cannot be loaded). A System Admin's save applies at once in their own tab;
   everyone else gets it the next time they open the app. The matrix is a table: column groups for membership and staff
   roles, row groups for the menu, the sections and the start page, a checkbox per switchable cell named for what it
   does, as its change is listed ("Show Ballot to Applicant", "Show Admin › Offices to Auditor", so the Offices link
   and the Offices section differ), locked cells as text saying why, and the unsaved changes listed in words before
-  saving. The quote loads the first time a tab opens the home page, alongside the sign-in check, and the router waits
+  saving. The quote loads the first time a tab opens the voting home, alongside the sign-in check, and the router waits
   for it so the card does not jump down when it arrives; until then, and if it cannot be loaded, there is no quote, so
   one the party switched off never flashes up. Saving it applies at once in the admin's tab.
 - **One row of links.** The menu bar never wraps, whatever links the settings give and however large the text: the
@@ -1781,6 +1784,97 @@ as before. They also choose the quote on the home page, or switch it off (Admin 
   the five default links, a 320 px phone keeps Register, Ballot and Verify in the row and puts Offices and Admin
   behind More; all five fit from about 400 px. More is underlined while the current page is behind it. The list
   closes on Escape (focus returns to More), when focus or a click leaves it, and on going to another page.
+
+### 10.6 The home page: the party's link hub *(added)*
+
+`/` is a link-tree page for the US Transhumanist Party, the same for everyone, signed in or not: a page of its own,
+without the app's header and menu, from which the voting app (`/vote`, §10.5) is one link. System Admins manage it
+under Admin → Link hub.
+
+- **Page.** One centred column of 560px at most: share and theme buttons at the top right; the profile (the logo or
+  the name's initials on a tile, the name as the page's `h1`, the tagline and a short bio); a row of round monochrome
+  icons; the Discord card ("Join the conversation", "Live on Discord" and how many are online when the live widget is
+  on, a full-width "Join our Discord" button); then each section, a small mono label over its link cards, each card an
+  icon, a title, an optional subtitle and an arrow (↗ for another site, → for a page of this app). A starred card is
+  drawn in the accent. Cards are at least 72px tall and icons 48px across. Share opens the device's share sheet where
+  there is one and otherwise copies the address of `/` (or, where the browser refuses the clipboard, shows it). The
+  page waits for the hub before it shows, as the voting home waits for its quote, so nothing moves; if the hub cannot
+  be loaded, the default's profile and its pages in this app stand in, never the default's outside addresses, which
+  System Admins may have taken down since.
+- **Content** (`governance/hub.ts` in `ustp-domain`): a profile (name, tagline, bio, logo, accent, default theme), the
+  Discord card (invite, server ID, live widget on or off), and sections in order, each with a title, shown or hidden,
+  and its links in order. A link has a title, a subtitle, an address (a page of this app like `/vote`, an `https://`
+  address or `mailto:`; never `http:`, `javascript:` or `//`), an icon (one of twelve networks: Discord, X, Reddit,
+  Facebook, Telegram, Instagram, YouTube, TikTok, LinkedIn, Threads, Bluesky, Mastodon; or a symbol: voting,
+  membership, events, donations, discussion board, chat, news, website, email, video, link), and three switches: shown,
+  in the icon row, starred. **The icon row** is every shown link marked for it, whatever its section's switch (so a
+  section can be hidden and its icons kept), networks first in the order above, then other icons in page order. The
+  Discord card shows while it has an invite. A shown section needs its title; a shown link its title and address; a
+  hidden link may be left unfinished, as a draft. Limits: name 80, tagline 160, bio 280, section title 40, link title
+  60, subtitle 80, address 500 characters; 12 sections of 40 links. Each text is put on one line. A link keeps its ID
+  when it is edited or moved, so it keeps its clicks.
+- **Defaults** (version 0): the name, the tagline in the party site's header ("Putting science, health & technology at
+  the forefront of American politics") and a bio; the party's orange and the dark theme. Apps: USTP Vote (`/vote`,
+  starred), Become a member (`/register`) and the party's site, then Events, Donate, Discussion board and Chat as
+  hidden drafts. Community: Discord server, Subreddit and Telegram channel, drafts in the icon row. Follow us: X,
+  Facebook and the LinkedIn group, shown and in the icon row, then Instagram, YouTube, TikTok, Threads, Bluesky and
+  Mastodon as drafts in the icon row. **Only addresses checked on the party's own site are filled in**
+  (transhumanist-party.org's header and footer, 2026-10-27: the site, `twitter.com/USTranshumanist`,
+  `facebook.com/USTranshumanistParty` and `linkedin.com/groups/13502241`; its only YouTube link is the chairman's own
+  channel, so it is left out). Every other address, the Discord invite and the server ID are for System Admins to fill
+  in, never guessed.
+- **Look ("USTP signal").** Black and charcoal grounds (black at the top of the page, #212121 cards, #424242 hairline
+  borders), the burnt orange #bd4e00 the only strong colour, its bright tone #ff6900 for hover glow and for orange
+  text in the dark theme; light is white cards on a warm off-white (#f6f2ec). Lato for text, Bricolage Grotesque for
+  the name and titles, JetBrains Mono for small labels and numbers. 14px card corners, a soft glow and a 2px lift on
+  hover over 200ms (no movement with reduced motion), brand icons in the text colour. The **accent** is System Admins'
+  choice (empty is the party orange): it fills buttons under white text, so a save refuses one under 4.5:1 with white;
+  the bright tone is the same hue and saturation at 50% lightness or more, raised until it reads at 4.5:1 on the dark
+  card (`brightAccent`; #bd4e00 gives #ff6900). **Fonts** are self-hosted from the `@fontsource` packages (SIL Open
+  Font License): Latin only and WOFF2 only, five files of about 130 KB, in the hub's and the admin tab's chunks and
+  cached by the service worker with the app shell, so no request leaves the site and they work offline. Google Fonts
+  was not used: every visit would send the visitor's address to Google and need a wider CSP. **Brand icons** are Font
+  Awesome Free's (icons CC BY 4.0, Fonticons, Inc.), the twelve SVG paths taken from `@quasar/extras`, so no icon font
+  is added. The rest of the app keeps its look.
+- **Theme.** The default System Admins choose (dark, light or the device's setting; dark to start with, the look the
+  hub is drawn for) applies until a visitor picks one with the hub's theme button or the app header's, a pick kept in
+  that browser (`localStorage`). Quasar's dark mode is page-wide, so the theme is the whole app's, and the root's
+  `color-scheme` follows it, so the browser's canvas and controls match. For that the hub loads with the first page of
+  a tab, alongside the sign-in check and the navigation settings.
+- **Discord, without Discord in the browser.** With the live widget on and the server ID set, the API reads Discord's
+  public widget (`https://discord.com/api/guilds/{id}/widget.json`, which needs Server Settings › Widget › Enable
+  Server Widget) with a 3-second timeout, keeps only the online count, and caches it, failures too, for five minutes;
+  `GET /v1/hub/discord` serves it. There is no iframe and no request from a visitor's browser to Discord, so the CSP
+  is unchanged. The invite is a plain link.
+- **Logo.** Uploaded by a System Admin (PNG, JPEG or WebP, at least 64px square, at most 5 MB), decoded and
+  re-encoded as a 256px square WebP on a transparent ground (metadata dropped, as for profile photos, §5.3), stored in
+  `hub_logos/{sha256}` and served at `GET /v1/hub/logo/{sha256}`, cached for a year as it never changes. Uploading
+  changes nothing visible: the logo shows once the hub is saved with its ID (400 if there is no such upload). It is
+  not an outside address, so visitors never load an image from another site.
+- **Clicks: counts only.** Every link (card or icon) and the Discord button sends `POST /v1/hub/clicks/{target}` as
+  it is followed, same-origin, with no body and no sign-in, `keepalive` so it finishes as the page leaves; the link
+  keeps its real address. `hub_clicks/{target}` (`link-{id}` or `discord`) holds a total and a count per UTC day and
+  nothing about who clicked: no account, address, cookie or device. Only what the hub shows is counted (404
+  otherwise), so nobody can create counters; anyone can still click a link many times, so the counts are a guide, not
+  a record, and they are not ledgered. A link's counts outlive its removal.
+- **Admin → Link hub** (System Admin; a section like any other in the navigation matrix), three tabs. **Links**: a
+  card per section (title, show switch, move up and down, rename, delete, "+ Link") with a dense row per link (icon,
+  title, star, "icon row" badge, address or what a draft still needs, clicks in the last 30 days / in all, show
+  switch, move, edit, delete), and "Add link" and "Add section"; each change is saved at once, and focus stays on the
+  control used. An editor dialog holds a link's fields and its section. **Profile & Discord**: Profile (name, tagline,
+  bio, logo), Look (accent with its contrast with white, default theme) and Discord (invite, server ID, live widget),
+  listed in words before "Save settings". **Analytics**: clicks in the last 30 days and in all, since when, and a
+  table of every link busiest first, removed ones included.
+- **Storage and API.** `hub/current` holds the whole hub with a `version` counter. `GET /v1/hub` (public, cached by
+  each api instance for a minute) serves what the page shows: no hidden sections, hidden or unfinished links, or who
+  changed it. `GET|PUT /v1/admin/hub` (System Admin) reads and saves the whole hub from the version it was edited from
+  (409 if someone saved since; 400 when something shown is unfinished, or an address, the invite, the server ID, the
+  accent or the logo cannot be used). It is tidied before it is checked and stored, and every change is ledgered as
+  `hub.changed` with the System Admin as actor: each profile and Discord field with its new value; each section and
+  link added, removed, renamed or edited (by field), moved, shown, hidden, starred or put in or out of the icon row;
+  each new order. Like the navigation settings it is an internal setting, visible to Auditors only, and saving nothing
+  new writes nothing. `PUT /v1/admin/hub/logo` takes the image as the body; `GET /v1/admin/hub/clicks` gives each
+  target's total, last 30 days and first day.
 
 ## 11. Data model (Firestore `(default)` database)
 
@@ -1835,7 +1929,10 @@ Physically, registration collections are top-level and election data lives under
 | `testing_personas/{accountId}` | accountId | immutable | kind, label, number, createdBy; testing mode only (§10.4) *(added)* |
 | `anthropic_key/current` | `current` | replaced by each key a System Admin adds; deleted when the key is removed | who added the key in use and when, its Secret Manager version and last four characters; never the key, which only Secret Manager holds (§5.6) *(added)* |
 | `navigation/current` | `current` | replaced whole, by one System Admin | menu links and admin sections per membership state and role, start pages, version, updatedAt, updatedBy (§10.5) *(added)* |
-| `home_quote/current` | `current` | replaced whole, by one System Admin | the home page quote: shown, text, attribution, source, version, updatedAt, updatedBy (§10.5) *(added)* |
+| `home_quote/current` | `current` | replaced whole, by one System Admin | the voting home's quote: shown, text, attribution, source, version, updatedAt, updatedBy (§10.5) *(added)* |
+| `hub/current` | `current` | replaced whole, by one System Admin | the link hub: profile, Discord card, sections and links, version, updatedAt, updatedBy (§10.6) *(added)* |
+| `hub_logos/{sha256}` | hash of the stored image | immutable | an uploaded logo as a 256px WebP, uploadedAt, uploadedBy (§10.6) *(added)* |
+| `hub_clicks/{target}` | `link-{id}` or `discord` | counters only | total, and a count per UTC day; nothing about who clicked (§10.6) *(added)* |
 
 The spec places `role_assignments` and `audit_events` in the voting namespace; they serve both modules, so the
 design treats them as a shared audit/admin module. Path constants and document shapes live in `ustp-domain`
@@ -1857,7 +1954,9 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /bylaws` · `GET /bylaws/{version}` | P | every version without its text, newest first; one version in full |
 | `GET /sign-in-methods` | P | which sign-in providers are switched on (sign-in buttons) |
 | `GET /navigation` | P | who sees which menu link and admin section, and where each starts (§10.5) |
-| `GET /home-quote` | P | the home page quote: whether it is shown, its words, who said them and the source (§10.5) |
+| `GET /home-quote` | P | the voting home's quote: whether it is shown, its words, who said them and the source (§10.5) |
+| `GET /hub` · `GET /hub/discord` · `GET /hub/logo/{sha256}` | P | the link hub as the page shows it; how many are online in the party's Discord, from Discord's widget, cached five minutes; an uploaded logo, cached for good (§10.6) |
+| `POST /hub/clicks/{target}` | P | count a click on a link or the Discord button the hub shows (204; 404 for anything else); counts only (§10.6) |
 | `POST /registration/applications` · `GET /registration/applications/me` | M | apply; status |
 | `POST /me/resign` | M | resign membership |
 | `POST /me/details` | M | own preferred name, state, city, ZIP, phone and email opt-ins (§5.2) |
@@ -1903,7 +2002,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/accounts` (paged; `email` prefix, `role` filter) | System Admin | People list: accounts with member status and active roles, read-only (§10.3) |
 | `GET\|PUT\|DELETE /admin/anthropic-key` | System Admin | whether a key is set, its last four characters, who added it and when, and how each Claude check is switched; add a key in place of any before it, after trying it with Anthropic (400 not an API key, 422 refused, 502 Anthropic unreachable; nothing kept); remove it (404 if none); never returns the key; ledgered (§5.6) |
 | `GET\|PUT /admin/navigation` | System Admin | the navigation settings with who saved them; save the whole matrix from the version it was edited from (409 if someone saved since, or a locked cell is switched), ledgered (§10.5) |
-| `GET\|PUT /admin/home-quote` | System Admin | the home page quote with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if shown without its words or who said them, or a part over its limit), ledgered (§10.5) |
+| `GET\|PUT /admin/home-quote` | System Admin | the voting home's quote with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if shown without its words or who said them, or a part over its limit), ledgered (§10.5) |
+| `GET\|PUT /admin/hub` · `PUT /admin/hub/logo` · `GET /admin/hub/clicks` | System Admin | the link hub with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if something shown is unfinished, an address, the accent or the logo cannot be used), ledgered; upload a logo (the image as the body; shown once saved); each link's clicks in the last 30 days and in all (§10.6) |
 | `GET\|POST /testing/personas` · header `X-Act-As` on any signed-in route | System Admin, testing mode only (404 otherwise) | test personas and acting as them (§10.4) |
 
 Errors use RFC 9457 problem details. Request bodies are validated against schemas shared with the web app.
@@ -2000,7 +2100,8 @@ of Cloud Scheduler.
   Platform's quota and reCAPTCHA Enterprise (§4), which see the real client address; behind Hosting and Cloud Run the
   api cannot tell a forwarded address from a forged one.
 - **Hosting headers:** HSTS, `frame-ancestors 'none'`, `nosniff`, strict referrer policy; CSP tightened once the
-  sign-in providers' origins are final.
+  sign-in providers' origins are final. The hub (§10.6) adds no origin: its fonts and logo are served by the site, and
+  the Discord count is read by the API, not the browser.
 
 ## 15. Environments, deployment, cost
 
@@ -2154,4 +2255,4 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Word export done:* the ballot and results as a `.docx` built in the browser, for Word and Google Docs, from the results page, the ballot page and the election editor (§9). *Synopsis done:* the results in brief, as the party publishes them, first on the results page (printable) and first in the Word file (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list, and the emails to voters beside them from their counts (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); the home page laid out as a sign-in landing page, a quote about voting over a sunrise drawn for the project beside the sign-in card or the signed-in cards, the quote FDR's from his 1938 Marietta, Ohio address with its source recorded, changed or switched off by one System Admin and ledgered as `home_quote.changed` (§10.5); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES with bounces read from SQS, and System Admins' settings for them (each on or off, the reminder's lead time, the contact, each subject and opening; ledgered), and an outbox in place of mail with the emulators (§6.8; SES itself not yet set up in any project); the platform consistency check with Claude, once per person per election, from the ballot for voters on the roll and from the election editor for Election Admins and Auditors, comparing the proposals with each other and with the documents an Election Admin chooses for the election, any of the USTP Constitution (its Article VI is the Platform), the Transhumanist Bill of Rights, the bylaws in force and the US Constitution, each result keeping what it was compared with (§5.5; off in real projects until Q18 is settled, and not yet run against Anthropic's API); the Anthropic API key added, replaced or removed by a System Admin under Admin › Claude, tried with Anthropic first and kept in Secret Manager, where the api can store it but not read it, ledgered as `anthropic_key.changed` (§5.6); appointments to offices without an election, for first holders and between elections, requested by a Membership or Election Admin and approved by an Auditor, only an Active member and only to a free seat, ledgered as the public `position_term.appointed`, with Appoint in the Offices tab and on the member profile and a public Offices page (§6.4), in everyone's menu by default, the menu bar keeping one row by putting the links that do not fit behind a More button (§10.5). *Still to do:* the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity (build, push, attest, roll out; §15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list, and the emails to voters beside them from their counts (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); the home page laid out as a sign-in landing page, a quote about voting over a sunrise drawn for the project beside the sign-in card or the signed-in cards, the quote FDR's from his 1938 Marietta, Ohio address with its source recorded, changed or switched off by one System Admin and ledgered as `home_quote.changed` (§10.5), since moved to `/vote` as the voting home; the home page `/` as the party's link hub, managed by System Admins (profile, accent and default theme, sections and links with an icon row and a star, the Discord card with an online count the API reads from Discord), ledgered as `hub.changed`, with click counts per link and no personal data, self-hosted fonts and a light and a dark theme (§10.6); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES with bounces read from SQS, and System Admins' settings for them (each on or off, the reminder's lead time, the contact, each subject and opening; ledgered), and an outbox in place of mail with the emulators (§6.8; SES itself not yet set up in any project); the platform consistency check with Claude, once per person per election, from the ballot for voters on the roll and from the election editor for Election Admins and Auditors, comparing the proposals with each other and with the documents an Election Admin chooses for the election, any of the USTP Constitution (its Article VI is the Platform), the Transhumanist Bill of Rights, the bylaws in force and the US Constitution, each result keeping what it was compared with (§5.5; off in real projects until Q18 is settled, and not yet run against Anthropic's API); the Anthropic API key added, replaced or removed by a System Admin under Admin › Claude, tried with Anthropic first and kept in Secret Manager, where the api can store it but not read it, ledgered as `anthropic_key.changed` (§5.6); appointments to offices without an election, for first holders and between elections, requested by a Membership or Election Admin and approved by an Auditor, only an Active member and only to a free seat, ledgered as the public `position_term.appointed`, with Appoint in the Offices tab and on the member profile and a public Offices page (§6.4), in everyone's menu by default, the menu bar keeping one row by putting the links that do not fit behind a More button (§10.5). *Still to do:* the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |

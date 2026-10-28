@@ -75,6 +75,7 @@ export const SECTION_LABELS: Readonly<Record<AdminSection, string>> = {
   audit: 'Audit ledger',
   testing: 'Testing',
   navigation: 'Navigation',
+  hub: 'Link hub',
   quote: 'Home page quote',
 };
 
@@ -93,12 +94,13 @@ export const SECTION_CAPTIONS: Readonly<Record<AdminSection, string>> = {
   audit: 'Read and verify the audit ledger',
   testing: 'Test personas, where testing mode is on',
   navigation: 'Who sees which link (this page)',
+  hub: "The home page's links, profile and Discord card, and their clicks",
   quote: 'Change the quote on the home page, or switch it off',
 };
 
 /** "Ballot", "Admin › Elections". */
 export function startPageLabel(page: StartPage): string {
-  if (page === 'home') return 'Home';
+  if (page === 'home') return 'Voting home';
   if (page === 'account') return 'Account';
   if (page.startsWith('admin/')) return `Admin › ${SECTION_LABELS[page.slice(6) as AdminSection]}`;
   return MENU_LABELS[page as MenuLink];

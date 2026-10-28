@@ -29,6 +29,7 @@ export const ADMIN_SECTIONS = [
   'audit',
   'testing',
   'navigation',
+  'hub',
   'quote',
 ] as const;
 export type AdminSection = (typeof ADMIN_SECTIONS)[number];
@@ -66,6 +67,7 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   audit: ['auditor'],
   testing: ['system_admin'],
   navigation: ['system_admin'],
+  hub: ['system_admin'],
   quote: ['system_admin'],
 };
 
@@ -336,9 +338,12 @@ export function startPageFor(settings: NavigationSettings, viewer: Viewer): Star
   return page === 'home' || page === 'account' || shown.menu.includes(page as MenuLink) ? page : 'home';
 }
 
-/** The path of a start page in the web app. */
+/**
+ * The path of a start page in the web app. `home` is the voting home, `/vote` (what `/` was before the hub took it,
+ * design §10.6), so settings saved with it keep sending people where they went.
+ */
 export function startPagePath(page: StartPage): string {
-  if (page === 'home') return '/';
+  if (page === 'home') return '/vote';
   return page.startsWith('admin/') ? `/admin?tab=${page.slice(6)}` : `/${page}`;
 }
 

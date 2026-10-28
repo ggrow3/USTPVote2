@@ -1,6 +1,6 @@
 /**
- * The governance context (design §10): what the web app shows each membership state and staff role, and the quote on
- * the home page (§10.5).
+ * The governance context (design §10): what the web app shows each membership state and staff role, the quote on the
+ * home page (§10.5), and the home page hub (§10.6).
  */
 export {
   MENU_LINKS,
@@ -59,3 +59,54 @@ export type {
   HomeQuoteChangedPayload,
   HomeQuoteInput,
 } from './home-quote.js';
+export {
+  SOCIAL_NETWORKS,
+  NETWORK_NAMES,
+  LINK_SYMBOLS,
+  HUB_ICONS,
+  HUB_THEMES,
+  HUB_LIMITS,
+  DEFAULT_HUB,
+  isHubId,
+  isLogoId,
+  newHubId,
+  hubInitials,
+  effectiveAccent,
+  resolveHub,
+  urlProblem,
+  accentProblem,
+  guildIdProblem,
+  linkProblem,
+  checkHub,
+  publicHub,
+  linkTarget,
+  clickTargets,
+  RECENT_DAYS,
+  clickDay,
+  clickCount,
+  hubChanges,
+  hubSchema,
+} from './hub.js';
+export type {
+  SocialNetwork,
+  LinkSymbol,
+  HubIcon,
+  HubTheme,
+  HubProfile,
+  HubDiscord,
+  HubLink,
+  HubSection,
+  Hub,
+  HubRecord,
+  PublicHubLink,
+  PublicHub,
+  DiscordLive,
+  ClickTarget,
+  HubClicksRecord,
+  HubClickCount,
+  LinkChangeKind,
+  HubChange,
+  HubChangedPayload,
+  HubInput,
+} from './hub.js';
+export { DEFAULT_ACCENT, DARK_CARD, TEXT_CONTRAST, isHexColour, luminance, contrast, brightAccent } from './accent.js';

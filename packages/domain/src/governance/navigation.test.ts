@@ -47,12 +47,12 @@ describe('defaults', () => {
     for (const role of ROLES) expect(DEFAULT_NAVIGATION.menu[role]).toMatchObject({ ballot: true, verify: true, offices: true, register: false });
   });
 
-  it('give each role the console tabs it had, and System Admins the home page quote', () => {
+  it('give each role the console tabs it had, and System Admins the link hub and the home page quote', () => {
     const tabs = (role: Role) => shownTo(DEFAULT_NAVIGATION, viewer('active', role)).sections;
     expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'offices', 'approvals']);
     expect(tabs('election_admin')).toEqual(['elections', 'offices', 'approvals']);
     expect(tabs('auditor')).toEqual(['elections', 'offices', 'approvals', 'audit']);
-    expect(tabs('system_admin')).toEqual(['approvals', 'people', 'signin', 'claude', 'email', 'testing', 'navigation', 'quote']);
+    expect(tabs('system_admin')).toEqual(['approvals', 'people', 'signin', 'claude', 'email', 'testing', 'navigation', 'hub', 'quote']);
   });
 
   it('give settings saved before the Home page quote section existed its default', () => {
@@ -60,6 +60,13 @@ describe('defaults', () => {
     const stored = { ...DEFAULT_NAVIGATION, sections: { ...DEFAULT_NAVIGATION.sections, system_admin: saved } };
     expect(resolveNavigation(stored).sections.system_admin.quote).toBe(true);
     expect(sectionLock('membership_admin', 'quote')).toBe('not_permitted');
+  });
+
+  it('give settings saved before the Link hub section existed its default', () => {
+    const { hub: _, ...saved } = DEFAULT_NAVIGATION.sections.system_admin;
+    const stored = { ...DEFAULT_NAVIGATION, sections: { ...DEFAULT_NAVIGATION.sections, system_admin: saved } };
+    expect(resolveNavigation(stored).sections.system_admin.hub).toBe(true);
+    for (const role of ['membership_admin', 'election_admin', 'auditor'] as const) expect(sectionLock(role, 'hub')).toBe('not_permitted');
   });
 
   it('give no admin section to anyone without a role', () => {
@@ -230,7 +237,7 @@ describe('start pages', () => {
   });
 
   it('have paths in the web app', () => {
-    expect(startPagePath('home')).toBe('/');
+    expect(startPagePath('home')).toBe('/vote');
     expect(startPagePath('ballot')).toBe('/ballot');
     expect(startPagePath('offices')).toBe('/offices');
     expect(startPagePath('admin/elections')).toBe('/admin?tab=elections');

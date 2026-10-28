@@ -12,6 +12,7 @@ import PhotosPanel from '../components/admin/PhotosPanel.vue';
 import SignInMethodsPanel from '../components/admin/SignInMethodsPanel.vue';
 import TestingPanel from '../components/admin/TestingPanel.vue';
 import HomeQuotePanel from '../governance/HomeQuotePanel.vue';
+import HubPanel from '../governance/HubPanel.vue';
 import NavigationPanel from '../governance/NavigationPanel.vue';
 import NoticeSettingsPanel from '../notifications/NoticeSettingsPanel.vue';
 import { shown } from '../governance/navigation.js';
@@ -39,6 +40,7 @@ const PANELS: Record<AdminSection, Component> = {
   audit: AuditPanel,
   testing: TestingPanel,
   navigation: NavigationPanel,
+  hub: HubPanel,
   quote: HomeQuotePanel,
 };
 

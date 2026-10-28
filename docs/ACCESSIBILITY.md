@@ -250,7 +250,8 @@ test. Keep it current when pages change.
   so in words (`text-deep-orange-10`, 5.60 on white). At 320 px the labels wrap beside their boxes and nothing
   scrolls sideways.
 
-- **Added 2026-10-27, the home page as a sign-in landing page, and its quote** (design §10.5; against the emulators
+- **Added 2026-10-27, the home page as a sign-in landing page, and its quote** (design §10.5; the page has since moved,
+  unchanged, to `/vote` as the voting home, and `/` is the link hub, next entry; against the emulators
   signed out, as v1 and as admin1 signing in from the home page's card, and as admin1 changing the quote, switching it
   off and restoring the default; light at 1024 and 375 px, dark at 1024, 375 and 320 px): signed out, the page's one
   `h1` is the party's name ("United States Transhumanist Party — Member Voting"), its icon `alt=""`. The quote is a
@@ -295,6 +296,42 @@ Also: the review-and-cast dialog now opens with focus on its title, so a screen 
 (Tab then reaches Back and Cast ballot); destructive confirmations (remove contest, login, device, photo; delete
 election) open with focus on Cancel.
 
+- **Added 2026-10-28, the home page as the party's link hub, and its settings** (design §10.6; against the emulators
+  on private ports, signed out and as admin1@example.test; 320 px and 1024 px, dark and light, the theme picked with
+  the hub's own button): the hub is a page of its own, without the app's header, so it has no skip link (nothing comes
+  before its content but its two buttons). Its one `h1` is the party's name; the logo or initials tile beside it is
+  `alt=""` / `aria-hidden`. The icon row is a `nav` named "U.S. Transhumanist Party online" holding a list of links,
+  each named by its link's title ("X / Twitter", "Discord server") as the icon is its only content; the Discord card is
+  a `section` named by its `h2` "Join the conversation", its button a link named "Join our Discord"; each section is a
+  `section` named by its `h2` (set in capitals by CSS only, so it is read as written) over a list of links whose names
+  are their title and subtitle. Arrows and icons are `aria-hidden`. Share is a button named "Share this page"; the
+  theme button is named "Dark theme" with `aria-pressed`, as is the app header's, now on every other page. Cards are
+  72 px tall at least and icons 48 px across (2.5.8, and the 44 px of 2.5.5). Hover gives a glow and a 2 px lift over
+  200 ms; keyboard focus gets the glow and the ring (in the accent, 4.43 light, 6.82 dark); reduced motion removes the
+  movement. At 320 px the column is 288 px, the icons wrap four to a line, long titles wrap, and nothing scrolls
+  sideways; the name sizes with the width (32 to 46 px). Clicking a card still follows its real `href`, so the
+  address shows on hover and can be copied or opened in a new tab; the count is a `keepalive` request beside it.
+  The default theme a System Admin sets (dark to start with) applies to every page until a visitor picks one, and the
+  root's `color-scheme` follows the theme in force: before that, a device in dark mode drew a picked light theme on a
+  dark canvas with white default text (found here; `.body--light` now paints the page white too).
+  **Admin → Link hub**: three Quasar tabs (Links, Profile & Discord, Analytics) with `aria-controls` and
+  `aria-labelledby`. Links: each section is a `section` named by its `h3`; every control in a row is named for its
+  link ("Show Subreddit on the hub", "Move Discord server up", "Edit Discord server", "Delete Discord server"), the
+  "+ Link" button "Add a link to Community"; a star and "icon row" are visible text or a hidden ", starred", and a
+  hidden link's title is followed by a hidden ", hidden". A draft's switch is disabled and its row says what it still
+  needs ("Draft: needs an address before it can be shown"). Each change saves at once with a toast saying what changed
+  ("Saved: Show “Subreddit”."); controls are disabled while it saves, and focus stays on the control used, or its twin
+  when a move reaches the end (checked: moving Discord server to the top left focus on "Move Discord server down").
+  Deleting asks first, Cancel focused. The link dialog is named by its `h2`, its fields labelled with hints and errors
+  in words ("Needed while the link is shown"), and an invalid save focuses the first field in error; closing it
+  returns focus to the button that opened it. Profile & Discord: three `fieldset`s with `legend`s (Profile, Look,
+  Discord), the accent's contrast with white given in words under it ("White text on it: 4.94:1 (4.5:1 needed)") and a
+  colour too low refused before Save with the reason, the colour picker named "Pick the accent colour", the logo
+  upload a button (its file input is hidden from the tab order and the tree), and the unsaved changes listed in words
+  before "Save settings". Analytics: the totals as text, and a table with a hidden caption, column headers and each
+  link's name as its row header; the bars are `aria-hidden` (the numbers beside them say the same). At 320 px each
+  link row puts its clicks and controls under its title, and the table scrolls inside its card.
+
 ### Contrast figures
 
 The brand colours are those of the party's site, transhumanist-party.org, read from its theme's colour-scheme CSS
@@ -338,6 +375,12 @@ menus and dialogs `#1d1d1d`.
 | Under the hover / focus tint, on a fill (header, filled buttons): black at .15 / .22 darkens primary and positive under the white text | `#fff` on `#a14200` / `#933d00`; on `#276a2b` / `#246227` | 6.37 / 7.22; 6.60 / 7.36 |
 | Under the tint, light theme (the text's own colour at .08, hover and focus): primary on white (flat and outline buttons, tabs, the current menu item); negative on white; black on white | `#bd4e00` on `#fbf6f3`; `#c10015` on `#fbf3f4`; `#000` on `#f3f3f3` | 4.60; 5.87; 18.93 |
 | Under the tint, dark theme (the text's own colour at .12): accent on the page / a card; `#ef9a9a` on a card; white on a card | `#ff6900` on `#2d231c` / `#362d26`; on `#353030`; on `#363636` | 5.31 / 4.66; 6.04; 12.08 |
+| Hub, dark (page `#0b0b0b`, cards `#212121`): name and titles on the page / a card; the bio, subtitles and "Live on Discord" on the page / a card; section labels on the page; the bright tone (initials, a starred row's star, the recent clicks) on a card / black / a tile `#2b2b2b`; under the page's glow (the bright tone at 12% over black), the bio | `#f5f5f5` on `#0b0b0b` / `#212121`; `#b8b8b8` on `#0b0b0b` / `#212121`; `#a6a6a6` on `#0b0b0b`; `#ff6900` on `#212121` / `#000` / `#2b2b2b`; `#b8b8b8` on `#1f0d00` | 18.05 / 14.77; 9.92 / 8.12; 8.09; 5.58 / 7.27 / 4.90; 9.49 |
+| Hub, dark: a starred card's title / subtitle on its tint (the bright tone at 10% over the card) | `#f5f5f5` / `#b8b8b8` on `#37281e` | 12.97 / 7.13 |
+| Hub, both themes: "Join our Discord" and a starred card's icon, white on the accent (System Admins cannot save an accent under 4.5:1 with white) | `#fff` on `#bd4e00` | 4.94 |
+| Hub, light (page `#f6f2ec`, cards `#fff`): text on the page / a card; the bio and subtitles on a card / the page / under the page's glow (`#ffede0`) / on a starred card's tint (`#fff0e6`); section labels on the page; the accent (initials, star, recent clicks) on white | `#1a1a1a` on `#f6f2ec` / `#fff`; `#57524c` on `#fff` / `#f6f2ec` / `#ffede0` / `#fff0e6`; `#645e57` on `#f6f2ec`; `#bd4e00` on `#fff` | 15.61 / 17.40; 7.73 / 6.93 / 6.79 / 6.94; 5.74; 4.94 |
+| Hub focus ring: the accent on the light page; the bright tone on the dark page / a card | `#bd4e00` on `#f6f2ec`; `#ff6900` on `#0b0b0b` / `#212121` | 4.43; 6.82 / 5.58 |
+| Link hub settings, dark (rows `#212121`, cards `#1c1c1c`): captions and addresses on a row / a card; a hidden link's title and address, dimmed to 72%; light: captions on white | `#b8b8b8` on `#212121` / `#1c1c1c`; `#bababa` / `#8e8e8e` on `#212121`; `#5c5650` on `#fff` | 8.12 / 8.59; 8.30 / 4.91; 7.24 |
 | App icon: white ballot box on primary | `#fff` on `#bd4e00` | 4.94 |
 | Home page, light: text on the panel (white at 80%) over the picture's darkest colour, `#bd4e00` (together `#f2dccc`): the quote, the party's name and who said it; the quotation marks; the source | `#1a1a1a`; `#a34400`; `#4a4a4a` on `#f2dccc` | 13.12; 4.68; 6.68 |
 | Home page, dark: text on the panel (`#0c0a0e` at 72%) over the picture's brightest colour, a star (white at 70% on the sky, `#c2bbb4`; together `#3f3c3c`): the quote, the party's name and who said it; the quotation marks; the source | `#fff`; `#ff8a3d`; `#d0d0d0` on `#3f3c3c` | 10.97; 4.68; 7.11 |
@@ -512,6 +555,12 @@ matches open in Quasar's full-screen options dialog, where the search and its an
 - Captions in clickable list rows (the ballot list, the admin election list) keep Quasar's colour, black at 54%, which
   is 4.61:1 on white at rest and 4.46 under the light theme's hover and focus tint (3.54 before the tint was changed).
   Button, tab and menu-item text keeps 4.6:1 or more under it (contrast figures); dark-theme captions stay above 8.
+- The link hub's Share copies the address where the device has no share sheet; the desktop app's browser pane
+  refuses the clipboard, so there the toast gives the address to copy instead, which is all that was seen. A real
+  browser's copy was reviewed in code only.
+- The hub's default theme is dark (the System Admins' setting), so someone whose device asks for light gets dark until
+  they press the theme button; their pick is then kept in that browser. A System Admin can set the default to the
+  device's setting.
 - Not addressed (AAA, outside the target): reduced motion for Quasar transitions, enhanced contrast, target size
   44 px.
 
@@ -532,3 +581,6 @@ Android if time allows), on staging or the emulators:
 8. Zoom to 200 % and 400 % (desktop) and large text on iOS: no clipped controls.
 9. The menu bar at 320 px: More is read as a collapsed or expanded button in the "Main" navigation, and its list's
    links follow it, the current page announced.
+10. The link hub: the icon row's links read by their names in their navigation, each section's links in their list,
+    the theme button's pressed state; in Admin → Link hub, a row's switch and buttons read with its link's name, and
+    the "Saved: …" toast after each change.

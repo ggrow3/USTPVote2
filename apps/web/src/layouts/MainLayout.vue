@@ -7,6 +7,7 @@ import { usingEmulators } from '../firebase.js';
 import { navigationState, shown } from '../governance/navigation.js';
 import { MENU_LABELS } from '../governance/navigation-text.js';
 import { session, signOut } from '../session.js';
+import { toggleTheme } from '../theme.js';
 import { linksInRow } from './menu-fit.js';
 
 const TestingBar = defineAsyncComponent(() => import('../components/TestingBar.vue'));
@@ -25,6 +26,9 @@ const links = computed(() =>
 );
 
 const isActive = (to: string) => route.path === to || route.path.startsWith(`${to}/`);
+
+/** The hub is a page of its own (design §10.6): no header or menu, and its own share and theme buttons. */
+const bare = computed(() => !!route.meta.bare);
 
 /**
  * The bar keeps one row (WCAG 1.4.10 at 320 px): the links that do not fit go behind a More button at its end, measured
@@ -63,11 +67,19 @@ function onPointerDown(event: PointerEvent) {
 }
 
 // The bar's width, and the ruler's as text size and fonts change; measured once at the start too, since a background
-// tab gets no resize notices until it is shown.
+// tab gets no resize notices until it is shown. The header comes and goes with the hub, so they are watched afresh
+// each time it appears.
 const resizes = new ResizeObserver(() => fitLinks());
+watch(
+  [bar, ruler],
+  (now) => {
+    resizes.disconnect();
+    for (const el of now) if (el) resizes.observe(el);
+    fitLinks();
+  },
+  { flush: 'post' },
+);
 onMounted(() => {
-  if (bar.value) resizes.observe(bar.value);
-  if (ruler.value) resizes.observe(ruler.value);
   fitLinks();
   void document.fonts.ready.then(fitLinks);
   document.addEventListener('pointerdown', onPointerDown);
@@ -82,7 +94,7 @@ watch(() => route.fullPath, () => closeMore());
 
 async function onSignOut() {
   await signOut();
-  await router.push('/');
+  await router.push('/vote');
 }
 
 /** The new page's main heading, so keyboard and screen reader users start at the content (WCAG 2.4.3). */
@@ -97,19 +109,28 @@ watch(() => route.path, focusMain, { flush: 'post' });
 function onHeaderResize({ height }: { height: number }) {
   document.documentElement.style.scrollPaddingTop = `${height + 8}px`;
 }
+watch(bare, (now) => now && (document.documentElement.style.scrollPaddingTop = ''));
 </script>
 
 <template>
   <q-layout view="hHh lpR fFf">
-    <a href="#main" class="ustp-skip-link" @click.prevent="focusMain">Skip to main content</a>
-    <q-header elevated class="bg-primary text-white">
+    <a v-if="!bare" href="#main" class="ustp-skip-link" @click.prevent="focusMain">Skip to main content</a>
+    <q-header v-if="!bare" elevated class="bg-primary text-white">
       <q-resize-observer @resize="onHeaderResize" />
       <q-toolbar>
         <q-toolbar-title shrink style="flex: none">
-          <router-link to="/" class="text-white" style="text-decoration: none">USTP Vote</router-link>
+          <router-link to="/vote" class="text-white" style="text-decoration: none">USTP Vote</router-link>
         </q-toolbar-title>
         <q-space />
         <q-badge v-if="usingEmulators" color="orange" text-color="black" label="Local emulators" class="q-mr-md gt-xs" />
+        <q-btn
+          flat
+          round
+          :icon="$q.dark.isActive ? 'dark_mode' : 'light_mode'"
+          aria-label="Dark theme"
+          :aria-pressed="$q.dark.isActive ? 'true' : 'false'"
+          @click="toggleTheme"
+        />
         <template v-if="session.ready">
           <!-- On phones only the icon shows, so the title is not squeezed out (WCAG 1.4.10). -->
           <q-btn-dropdown

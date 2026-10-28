@@ -7,9 +7,9 @@ import { createApp } from 'vue';
 import App from './App.vue';
 import { setUpPwa } from './pwa.js';
 import { router } from './router.js';
+import { restoreTheme } from './theme.js';
 
-createApp(App)
-  .use(Quasar, {
+const app = createApp(App).use(Quasar, {
     plugins: { Dialog, Notify },
     config: {
       dark: 'auto',
@@ -20,8 +20,9 @@ createApp(App)
       brand: { primary: '#bd4e00', accent: '#ff6900', positive: '#2e7d32' },
       notify: { position: 'top', timeout: 4000 },
     },
-  })
-  .use(router)
-  .mount('#app');
+  });
+// Before the first render, so a theme picked on the hub does not flash the other one.
+restoreTheme();
+app.use(router).mount('#app');
 
 setUpPwa();

@@ -40,6 +40,12 @@ export const Collections = {
   navigation: 'navigation',
   /** `home_quote/current`: the quote on the home page (design §10.5). */
   homeQuote: 'home_quote',
+  /** `hub/current`: the home page hub's profile, icons, Discord card and links (design §10.6). */
+  hub: 'hub',
+  /** `hub_logos/{sha256}`: logos uploaded for the hub, as stored after re-encoding (design §10.6). */
+  hubLogos: 'hub_logos',
+  /** `hub_clicks/{target}`: how often each hub link was followed, in total and per day; nothing about who (§10.6). */
+  hubClicks: 'hub_clicks',
   // notifications (design §6.8)
   notices: 'notices',
   noticeOutbox: 'notice_outbox',
