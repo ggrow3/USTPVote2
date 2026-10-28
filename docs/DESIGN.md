@@ -1825,8 +1825,8 @@ page itself, `/`, is the party's link hub (§10.6).
   state says; and on the voting home if that page is not shown to them. It applies after signing in without a page to
   return to, and when a browser tab first opens the app at the voting home (not on reloads; the installed app opens
   there, its manifest's `start_url`). The hub at `/` never sends anyone elsewhere.
-- **Voting home.** `/vote` (the home page until the hub took `/`, §10.6; the hub's "USTP Vote" card, the app header's
-  title and signing out lead there) is laid out like a sign-in landing page: a picture across the whole page, the party's quote about
+- **Voting home.** `/vote` (the home page until the hub took `/`, §10.6; the hub's "USTP Vote" card and signing out
+  lead there, while the app header's title leads back to the home page, the hub) is laid out like a sign-in landing page: a picture across the whole page, the party's quote about
   voting set large on the left with who said it and the source, and a white rounded card on the right. On phones
   (under 1024px) the card stacks under the quote. Signed out, the left side starts with the party's name (the page's
   `h1`, with the app icon), and the card is the sign-in page's own form (`SignInForm`, shared by both pages, so there is
