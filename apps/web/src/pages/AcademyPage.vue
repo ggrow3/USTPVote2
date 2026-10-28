@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { usePageTitle } from '../a11y.js';
+import PageShell from '../components/PageShell.vue';
 import { session } from '../session.js';
 import { COURSE_VERSION, courseSections } from '../academy/course.js';
 
@@ -26,7 +27,7 @@ function toggle(id: string) {
 </script>
 
 <template>
-  <q-page padding class="academy-page">
+  <PageShell width="wide" class="academy-page">
     <div class="academy-container">
       <q-btn flat icon="arrow_back" label="Home" to="/" />
       <h1>Introduction to Transhumanism</h1>
@@ -64,7 +65,7 @@ function toggle(id: string) {
         </article>
       </div>
     </div>
-  </q-page>
+  </PageShell>
 </template>
 <style scoped>
 .academy-container { max-width: 1100px; margin: 0 auto; }
