@@ -22,7 +22,7 @@ function fixture({ missing = '', failed = '', existing = false, revoked = false 
     }),
     get:async () => reads[name as keyof typeof reads] ?? {docs:[]},
   });
-  const db = {collection:collections,runTransaction:vi.fn(async (fn:(tx:typeof tx)=>Promise<unknown>) => fn(tx))};
+  const db = {collection:collections,runTransaction:vi.fn(async (fn:(transaction:{get:typeof tx.get;create:typeof tx.create})=>Promise<unknown>) => fn(tx))};
   return { controller:new AcademyController({db} as unknown as Firebase),db,create,tx };
 }
 
