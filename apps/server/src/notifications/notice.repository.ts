@@ -6,6 +6,8 @@ import {
   RECIPIENT_STATUSES,
   type NoticeRecipientRecord,
   type NoticeRecord,
+  type NoticeTestRecord,
+  type ReceiptCounts,
   type RecipientCounts,
   type RecipientStatus,
 } from 'ustp-domain';
@@ -15,7 +17,8 @@ import { Firebase } from '../infra/firebase.js';
 const ALREADY_EXISTS = 6;
 
 /**
- * The notices and their recipient records (design §6.8, §11), and the outbox. The only code that knows their paths.
+ * The notices and their recipient records (design §6.8, §11), the send receipts, the test emails, and the outbox. The
+ * only code that knows their paths.
  */
 @Injectable()
 export class NoticeRepository {
@@ -116,15 +119,62 @@ export class NoticeRepository {
     return (await tx.get(query.count())).data().count;
   }
 
-  /** Removes an election's notices, their recipient records and its outbox messages (a deleted election, §6.1). */
+  // --- receipts and test emails -----------------------------------------------------------------------------------
+
+  /** A receipt's reference; a new one, with a fresh ID for the receipt to carry, when none is given. */
+  receiptRef(receiptId?: string): DocumentReference {
+    const receipts = this.firebase.db.collection(Collections.noticeReceipts);
+    return receiptId ? receipts.doc(receiptId) : receipts.doc();
+  }
+
+  /** The election's receipts as counts, without reading their message IDs. */
+  async receiptCounts(electionId: string): Promise<ReceiptCounts[]> {
+    const fields: (keyof ReceiptCounts)[] = ['kind', 'test', 'accepted', 'failed', 'skipped', 'finishedAt'];
+    const snap = await this.firebase.db
+      .collection(Collections.noticeReceipts)
+      .where('electionId', '==', electionId)
+      .select(...fields)
+      .get();
+    return snap.docs.map((d) => d.data() as ReceiptCounts);
+  }
+
+  /** A test email's reference; a new one when none is given. */
+  testRef(testId?: string): DocumentReference {
+    const tests = this.firebase.db.collection(Collections.noticeTests);
+    return testId ? tests.doc(testId) : tests.doc();
+  }
+
+  /** The test emails of an election that went, or go, to this account, newest first. */
+  async testsTo(electionId: string, accountId: string, tx?: Transaction): Promise<NoticeTestRecord[]> {
+    const query = this.firebase.db.collection(Collections.noticeTests).where('electionId', '==', electionId);
+    const snap = tx ? await tx.get(query) : await query.get();
+    return snap.docs
+      .map((d) => d.data() as NoticeTestRecord)
+      .filter((t) => t.accountId === accountId)
+      .sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+  }
+
+  /** Test emails the worker has still to send, or has claimed (some of which may have been interrupted). */
+  async unfinishedTests(limit: number): Promise<NoticeTestRecord[]> {
+    const snap = await this.firebase.db.collection(Collections.noticeTests).where('status', 'in', ['pending', 'sending']).limit(limit).get();
+    return snap.docs.map((d) => d.data() as NoticeTestRecord);
+  }
+
+  /**
+   * Removes an election's notices, their recipient records, its receipts, its test emails and its outbox messages (a
+   * deleted election, §6.1).
+   */
   async deleteForElection(electionId: string): Promise<void> {
     const db = this.firebase.db;
-    const [notices, outbox] = await Promise.all([
-      db.collection(Collections.notices).where('electionId', '==', electionId).get(),
-      db.collection(Collections.noticeOutbox).where('electionId', '==', electionId).get(),
+    const ofElection = (collection: string) => db.collection(collection).where('electionId', '==', electionId).get();
+    const [notices, outbox, receipts, tests] = await Promise.all([
+      ofElection(Collections.notices),
+      ofElection(Collections.noticeOutbox),
+      ofElection(Collections.noticeReceipts),
+      ofElection(Collections.noticeTests),
     ]);
     const writer = db.bulkWriter();
-    for (const doc of outbox.docs) void writer.delete(doc.ref);
+    for (const doc of [...outbox.docs, ...receipts.docs, ...tests.docs]) void writer.delete(doc.ref);
     for (const doc of notices.docs) await db.recursiveDelete(doc.ref, writer);
     await writer.close();
   }

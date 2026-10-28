@@ -1,6 +1,22 @@
-import { DEFAULT_NOTICE_SETTINGS, type ElectionDetail, type NoticesView, type NoticeStep } from 'ustp-domain';
+import {
+  DEFAULT_NOTICE_SETTINGS,
+  noticeReceiptTotals,
+  type ElectionDetail,
+  type NoticesView,
+  type NoticeStep,
+  type NoticeTestSummary,
+} from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
-import { leadTimeText, NO_CONTACT, noNoticeText, NOT_SET_UP } from './notice-text.js';
+import {
+  leadTimeText,
+  NO_CONTACT,
+  noNoticeText,
+  NOT_SET_UP,
+  receiptText,
+  testBlocked,
+  testReceiptText,
+  testStatusText,
+} from './notice-text.js';
 
 describe('leadTimeText', () => {
   it('says the reminder lead time in words', () => {
@@ -23,6 +39,8 @@ describe('noNoticeText', () => {
     contact: 'elections@example.org',
     settings: { ...DEFAULT_NOTICE_SETTINGS, reminderHours },
     notices: [],
+    receipts: noticeReceiptTotals([]),
+    tests: [],
   });
   const step = (kind: NoticeStep['kind'], status: NoticeStep['status'], absent: NoticeStep['absent'] = null): NoticeStep => ({
     kind,
@@ -47,5 +65,74 @@ describe('noNoticeText', () => {
     const text = noNoticeText(step('closing_soon', 'upcoming'), detail, view(48));
     expect(text).toContain(`On ${new Date('2026-11-06T00:00:00Z').toLocaleString()}, 2 days before voting closes`);
     expect(text).toContain('never how anyone votes');
+  });
+});
+
+describe('the send receipts and test emails', () => {
+  const at = '2026-11-03T12:00:00.000Z';
+  const totals = (over: Partial<Parameters<typeof receiptText>[0] & object> = {}) => ({
+    kind: 'voting_open' as const,
+    sends: 2,
+    accepted: 237,
+    failed: 0,
+    skipped: 0,
+    lastSentAt: at,
+    ...over,
+  });
+
+  it('say how many went to the roll, in how many sends, and when the last finished', () => {
+    expect(receiptText(undefined)).toBe('No emails sent yet.');
+    expect(receiptText(totals({ sends: 0, accepted: 0, lastSentAt: null }))).toBe('No emails sent yet.');
+    const last = new Date(at).toLocaleString();
+    expect(receiptText(totals())).toBe(`237 emails sent in 2 sends; the last finished ${last}.`);
+    expect(receiptText(totals({ sends: 1, accepted: 1, failed: 1 }))).toBe(
+      `1 email sent in 1 send; the last finished ${last}. The mail service did not take 1 message.`,
+    );
+  });
+
+  it('count test emails apart, and say nothing when there were none', () => {
+    expect(testReceiptText(totals({ sends: 0 }))).toBeNull();
+    expect(testReceiptText(totals({ sends: 3, accepted: 2 }))).toBe(
+      `Test emails to Election Admins: 2 sent, the last ${new Date(at).toLocaleString()}. Not counted above.`,
+    );
+  });
+
+  const test = (over: Partial<NoticeTestSummary> = {}): NoticeTestSummary => ({
+    testId: 't1',
+    kind: 'voting_open',
+    status: 'pending',
+    requestedAt: at,
+    claimedAt: null,
+    doneAt: null,
+    outcome: null,
+    sent: false,
+    ...over,
+  });
+
+  it('say where the admin’s own test stands', () => {
+    expect(testStatusText(test())).toMatch(/^Your test email is queued/);
+    expect(testStatusText(test({ status: 'sending', claimedAt: at }))).toBe('Your test email is being sent.');
+    expect(testStatusText(test({ status: 'done', doneAt: at, sent: true }))).toMatch(/^Your test email went to your own address/);
+    expect(testStatusText(test({ status: 'done', outcome: 'unverified_address' }))).toBe(
+      "Your test email was not sent: your account's email address is not verified.",
+    );
+  });
+
+  it('offer a test only where the API would take it', () => {
+    const now = new Date(at);
+    const base: NoticesView = {
+      delivery: 'mail',
+      contact: 'elections@example.org',
+      settings: DEFAULT_NOTICE_SETTINGS,
+      notices: [],
+      receipts: noticeReceiptTotals([]),
+      tests: [],
+    };
+    expect(testBlocked(null, now)).toBeNull();
+    expect(testBlocked(base, now)).toBeNull();
+    expect(testBlocked({ ...base, delivery: 'none' }, now)).toBe(NOT_SET_UP);
+    expect(testBlocked({ ...base, contact: null }, now)).toBe(NO_CONTACT);
+    expect(testBlocked({ ...base, tests: [test()] }, now)).toBe('Your last test email has not gone yet; wait for it first.');
+    expect(testBlocked({ ...base, tests: [test({ status: 'done', sent: true })] }, now)).toBeNull();
   });
 });

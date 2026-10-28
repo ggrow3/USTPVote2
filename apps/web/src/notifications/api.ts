@@ -1,9 +1,9 @@
-import type { NoticeKind, NoticeSettingsInput, NoticeSettingsRecord, NoticesView, NoticeSummary } from 'ustp-domain';
+import type { NoticeKind, NoticeSettingsInput, NoticeSettingsRecord, NoticesView, NoticeSummary, NoticeTestSummary } from 'ustp-domain';
 import { api } from '../api.js';
 
 /**
- * The notifications context's API (design §6.8, §12): an election's notices as counts, and resending one to those it
- * failed for. The only place its routes are written.
+ * The notifications context's API (design §6.8, §12): an election's notices as counts, resending one to those it
+ * failed for, and a test email to oneself. The only place its routes are written.
  */
 
 export function electionNotices(electionId: string): Promise<NoticesView> {
@@ -13,6 +13,11 @@ export function electionNotices(electionId: string): Promise<NoticesView> {
 /** Election Admin: the worker sends the notice again, on its next tick, to the recipients it failed for. */
 export function resendNotice(electionId: string, kind: NoticeKind): Promise<NoticeSummary> {
   return api<NoticeSummary>('POST', `/v1/admin/elections/${encodeURIComponent(electionId)}/notices/${kind}/resend`);
+}
+
+/** Election Admin: the worker sends the email, marked as a test, to the caller's own address on its next tick. */
+export function sendTestNotice(electionId: string, kind: NoticeKind): Promise<NoticeTestSummary> {
+  return api<NoticeTestSummary>('POST', `/v1/admin/elections/${encodeURIComponent(electionId)}/notices/${kind}/test`);
 }
 
 // --- System Admin ------------------------------------------------------------------------------------------------

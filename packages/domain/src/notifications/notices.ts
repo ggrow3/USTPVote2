@@ -1,6 +1,7 @@
 import { deny, OK, refuse, type Check } from '../check.js';
 import type { ElectionRecord } from '../elections.js';
 import type { NoticeSettings } from './notice-settings.js';
+import type { NoticeReceiptTotals, NoticeTestSummary } from './receipts.js';
 
 /**
  * Election notices (design §6.8): the emails telling everyone on an election's roll that voting is open, and, a day
@@ -156,6 +157,10 @@ export interface NoticesView {
   /** What System Admins have set about the emails (design §6.8). */
   readonly settings: NoticeSettings;
   readonly notices: readonly NoticeSummary[];
+  /** What the election's send receipts add up to, per email: to the roll, and the test emails apart. */
+  readonly receipts: NoticeReceiptTotals;
+  /** The caller's own test emails of the election, newest first (the last few). */
+  readonly tests: readonly NoticeTestSummary[];
 }
 
 /** The `notice.sent` payload: a round finished. Counts only. */
