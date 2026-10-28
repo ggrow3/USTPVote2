@@ -120,7 +120,7 @@ async function submit() {
       <h2 id="role-change-title" class="text-subtitle1">Change a role</h2>
       <div class="text-caption text-grey-7">
         Takes effect as soon as you confirm; no second admin approves it. The change is recorded in the audit ledger.
-        Auditors cannot hold any other role.
+        A person may hold at most two roles, and an Auditor holds no other role.
       </div>
     </q-card-section>
     <q-card-section>

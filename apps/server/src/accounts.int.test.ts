@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { resetEmulators, SA1_EMAIL, signIn, TestApi } from './testing/emulator.js';
+import { resetEmulators, SA1_EMAIL, SA2_EMAIL, signIn, TestApi } from './testing/emulator.js';
 
 let api: TestApi;
 beforeAll(async () => {
@@ -121,6 +121,24 @@ describe('accounts', () => {
       .update({ revokedAt: new Date().toISOString(), revokedBy: 'someone' });
     await api.call('POST', '/v1/accounts', verified);
     expect((await api.call('GET', '/v1/me', verified)).body.roles).toEqual([]);
+  });
+
+  it('skips the bootstrap grant while the account already holds two roles, and applies it once it holds one', async () => {
+    const sa2 = await api.member(SA2_EMAIL);
+    const sa = await api.user(SA1_EMAIL, { emailVerified: false });
+    const { accountId } = (await api.call('POST', '/v1/accounts', sa)).body;
+    await api.grant(accountId, 'membership_admin', sa2);
+    await api.grant(accountId, 'election_admin', sa2);
+
+    await api.firebase.auth.updateUser(sa.uid, { emailVerified: true });
+    const verified = { ...sa, token: await signIn(SA1_EMAIL) };
+    await api.call('POST', '/v1/accounts', verified);
+    expect((await api.call('GET', '/v1/me', verified)).body.roles).toEqual(['election_admin', 'membership_admin']);
+    expect((await api.firebase.db.collection('role_assignments').doc(`${accountId}_system_admin`).get()).exists).toBe(false);
+
+    await api.call('POST', '/v1/admin/roles', sa2, { accountId, role: 'election_admin', change: 'revoke', reason: 'test' });
+    await api.call('POST', '/v1/accounts', verified);
+    expect((await api.call('GET', '/v1/me', verified)).body.roles).toEqual(['membership_admin', 'system_admin']);
   });
 
   it('validates request bodies field by field', async () => {

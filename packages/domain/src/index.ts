@@ -1,6 +1,6 @@
 export type { Check, Outcome, Refusal, Refused } from './check.js';
 export { uuidv7, isUuidV7, uuidv7Timestamp } from './ids.js';
-export { ROLES, conflictingRoles, isRole, checkRoleChange } from './roles.js';
+export { ROLES, MAX_ROLES_PER_ACCOUNT, conflictingRoles, isRole, checkRoleChange } from './roles.js';
 export type { Role } from './roles.js';
 export * from './membership/index.js';
 export * from './notifications/index.js';
