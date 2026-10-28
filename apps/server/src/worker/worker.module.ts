@@ -12,6 +12,11 @@ import { ClaudeConsistencyChecker } from '../consistency-check/claude-consistenc
 import { ConsistencyCheckRunner } from '../consistency-check/consistency-check-runner.js';
 import { StubConsistencyChecker } from '../consistency-check/stub-consistency-checker.js';
 import { CoreModule } from '../core.module.js';
+import { ELECTION_CHECKER } from '../election-check/checker.js';
+import { ClaudeElectionChecker } from '../election-check/claude-election-checker.js';
+import { ElectionCheckMaterials } from '../election-check/election-check-material.js';
+import { ElectionCheckRunner } from '../election-check/election-check-runner.js';
+import { StubElectionChecker } from '../election-check/stub-election-checker.js';
 import { ElectionReader } from '../elections/election-reader.js';
 import { AUDIT_SIGNER, EmulatorAuditSigner, KmsAuditSigner } from '../infra/audit-signer.js';
 import { ballotPoolKeysProvider } from '../infra/ballot-pool.js';
@@ -37,6 +42,8 @@ import { TasksController } from './tasks.controller.js';
     Tallier,
     BylawsCheckRunner,
     ConsistencyCheckRunner,
+    ElectionCheckMaterials,
+    ElectionCheckRunner,
     ballotPoolKeysProvider,
     secretStoreProvider,
     AnthropicKey,
@@ -69,6 +76,16 @@ import { TasksController } from './tasks.controller.js';
           ? new ClaudeConsistencyChecker(key, config.consistencyCheckModel, new ReferenceLibrary(firebase.db))
           : config.consistencyChecker === 'stub'
             ? new StubConsistencyChecker()
+            : null,
+    },
+    {
+      provide: ELECTION_CHECKER,
+      inject: [CONFIG, AnthropicKey],
+      useFactory: (config: ServerConfig, key: AnthropicKey) =>
+        config.electionChecker === 'claude'
+          ? new ClaudeElectionChecker(key, config.electionCheckModel)
+          : config.electionChecker === 'stub'
+            ? new StubElectionChecker()
             : null,
     },
   ],

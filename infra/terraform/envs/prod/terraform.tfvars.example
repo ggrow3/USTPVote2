@@ -23,6 +23,10 @@ bylaws_check_enabled = false
 # platform consistency check (once each per election); uses the same API key (README).
 consistency_check_enabled = false
 
+# Sends an election's rules, offices and proposal texts, with the bylaws, to Anthropic when an Election Admin or Auditor
+# asks for the election setup check (once per version); every user then sees its notes beside the contests (README).
+election_check_enabled = false
+
 # Election notices by Amazon SES (design §6.8): set SES up and add the aws-ses-* secret versions first (README
 # "Election notices"). The From address is the module default, USTP Elections <noreply@transhumanist-party.org>.
 # web_origin           = "https://vote.example.org"  # empty: https://<project>.web.app

@@ -77,6 +77,7 @@ export {
   buildDefinition,
   definitionHash,
   validateDefinition,
+  definitionAdvisories,
   checkCandidateAccount,
 } from './elections.js';
 export type {
@@ -225,6 +226,29 @@ export {
   materialCharacters,
   tidyConsistencyFindings,
 } from './consistency-check.js';
+export {
+  ELECTION_CHECK_TOPICS,
+  ELECTION_CHECK_CHANGES,
+  ELECTION_CHECK_STATES,
+  ELECTION_CHECK_TIMEOUT_MINUTES,
+  MAX_ELECTION_CHECKS_PER_DAY,
+  electionCheckChanges,
+  positionsHash,
+  publicElectionCheck,
+} from './election-check.js';
+export type {
+  ElectionCheckBasis,
+  ElectionCheckChange,
+  ElectionCheckRecord,
+  ElectionCheckState,
+  ElectionCheckStatus,
+  ElectionCheckTopic,
+  ElectionCheckView,
+  ElectionFinding,
+  ElectionRunResult,
+  PublicElectionCheck,
+} from './election-check.js';
+export { KIND_LABELS, ratioText, rulesText, thresholdText } from './election-text.js';
 export { ANTHROPIC_KEY_HINT_CHARACTERS, ANTHROPIC_KEY_SECRET, anthropicKeyHint, anthropicKeySchema, checkAnthropicKey } from './anthropic-key.js';
 export type { AnthropicKeyChangedPayload, AnthropicKeyInput, AnthropicKeyRecord, AnthropicKeyStatus, ClaudeCheckSwitch } from './anthropic-key.js';
 export type {

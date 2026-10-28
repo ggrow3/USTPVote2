@@ -9,6 +9,7 @@ import {
   checkElectionDeletable,
   Collections,
   contestRecord,
+  definitionAdvisories,
   definitionHash,
   ElectionCollections,
   electionPackageFrom,
@@ -265,6 +266,7 @@ export class ElectionsService {
     ]);
     const { election, contests, candidates, proposals, definition } = loaded;
     const results = resultsSnap.data() as ResultsRecord | undefined;
+    const draft = election.state === 'draft';
     const final = election.state === 'cancelled' || election.state === 'certified';
     const [ballotsCast, officeTerms] = await Promise.all([
       final ? this.electionRef(electionId).collection(ElectionCollections.participation).count().get().then((s) => s.data().count) : null,
@@ -279,10 +281,10 @@ export class ElectionsService {
       candidates,
       proposals,
       definitionHash: definitionHash(definition),
-      problems:
-        election.state === 'draft'
-          ? [...validateDefinition(definition), ...amendmentProblems(amendingContests(definition, proposals), await this.membership.currentBylaws())]
-          : [],
+      problems: draft
+        ? [...validateDefinition(definition), ...amendmentProblems(amendingContests(definition, proposals), await this.membership.currentBylaws())]
+        : [],
+      advisories: draft ? definitionAdvisories(definition, await this.reader.positions(contests)) : [],
       roll: roll && withoutList(roll),
       pending: pending.docs.map((d) => d.data() as ApprovalRequestRecord),
     };
@@ -505,16 +507,19 @@ export class ElectionsService {
     await this.notices.forgetElection(electionId).catch((e: unknown) => {
       this.logger.warn(`election ${electionId} deleted, but not its notices: ${e instanceof Error ? e.message : String(e)}`);
     });
-    // Its consistency checks quote its texts, one per person who asked, and what they compare with go too (design §5.5).
-    await this.forgetConsistencyChecks(electionId).catch((e: unknown) => {
-      this.logger.warn(`election ${electionId} deleted, but not its consistency checks: ${e instanceof Error ? e.message : String(e)}`);
+    // Its consistency checks quote its texts, one per person who asked, and what they compare with go too (design §5.5),
+    // as do its election setup checks (§6.9).
+    await this.forgetClaudeChecks(electionId).catch((e: unknown) => {
+      this.logger.warn(`election ${electionId} deleted, but not its Claude checks: ${e instanceof Error ? e.message : String(e)}`);
     });
   }
 
-  private async forgetConsistencyChecks(electionId: string): Promise<void> {
-    const checks = await this.db.collection(Collections.consistencyChecks).where('electionId', '==', electionId).select().get();
+  private async forgetClaudeChecks(electionId: string): Promise<void> {
+    const [consistency, setup] = await Promise.all(
+      [Collections.consistencyChecks, Collections.electionChecks].map((c) => this.db.collection(c).where('electionId', '==', electionId).select().get()),
+    );
     const writer = this.db.bulkWriter();
-    for (const doc of checks.docs) void writer.delete(doc.ref);
+    for (const doc of [...consistency!.docs, ...setup!.docs]) void writer.delete(doc.ref);
     void writer.delete(this.db.collection(Collections.consistencyDocuments).doc(electionId));
     await writer.close();
   }

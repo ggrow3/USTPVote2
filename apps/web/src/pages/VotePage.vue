@@ -11,12 +11,15 @@ import {
   type BallotView,
   type CastResult,
   type ElectionDefinition,
+  type PublicElectionCheck,
 } from 'ustp-domain';
 import { announce, focusSoon, usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
 import PageShell from '../components/PageShell.vue';
 import ConsistencyCheckCard from '../consistency-check/ConsistencyCheckCard.vue';
 import { attempt } from '../dialogs.js';
+import { publishedElectionCheck } from '../election-check/api.js';
+import BylawsCheckNotes from '../election-check/BylawsCheckNotes.vue';
 import { downloadElectionDocx } from '../election-files.js';
 import { rulesText } from '../election-text.js';
 import { downloadReceipt, forgetReceipt, keepReceipt, savedReceipt } from '../receipts.js';
@@ -34,6 +37,8 @@ const receipt = ref<BallotReceipt | null>(savedReceipt(electionId));
 const kept = ref(!!receipt.value);
 /** The server's commitments equal the ones this browser computed before sending. */
 const commitmentsMatch = ref<boolean | null>(null);
+/** Side notes from the election setup check (design §6.9), if an admin ran it on this version of the election. */
+const bylawsCheck = ref<PublicElectionCheck | null>(null);
 usePageTitle(() => view.value?.definition.title ?? 'Ballot');
 
 async function load() {
@@ -42,6 +47,8 @@ async function load() {
     for (const c of v.definition.contests) answers[c.contestId] ??= c.spec.kind === 'proposal' ? null : [];
     view.value = v;
   });
+  // Notes only: the ballot works the same without them (none when this version of the election was not checked).
+  bylawsCheck.value = await publishedElectionCheck(electionId);
 }
 onMounted(load);
 
@@ -268,12 +275,14 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
         </q-banner>
 
         <ConsistencyCheckCard v-if="integrity !== false" :election-id="electionId" view="ballot" :available="checkable" />
+        <BylawsCheckNotes :check="bylawsCheck" :contest-id="null" subject="this election" />
 
         <q-card v-for="c in contests" :key="c.contestId" tag="section" :aria-labelledby="`contest-${c.contestId}`" flat bordered>
           <q-card-section>
             <h2 :id="`contest-${c.contestId}`" class="text-subtitle1">{{ c.title }}</h2>
             <div v-if="c.description" class="text-body2" style="white-space: pre-wrap">{{ c.description }}</div>
             <div v-for="line in rulesText(c.spec)" :key="line" class="text-caption text-grey-7">{{ line }}</div>
+            <BylawsCheckNotes :check="bylawsCheck" :contest-id="c.contestId" :subject="c.title" />
           </q-card-section>
           <!-- A bylaws amendment: the lines it changes are what the vote decides, so they are shown, not folded away. -->
           <q-card-section v-if="proposalText(c)?.amendment" class="q-pt-none">

@@ -34,7 +34,10 @@ export function anthropicKeyHint(key: string): string {
   return key.slice(-ANTHROPIC_KEY_HINT_CHARACTERS);
 }
 
-/** How a check is switched in this deployment (`BYLAWS_CHECKER`, `CONSISTENCY_CHECKER`), which only its configuration changes. */
+/**
+ * How a check is switched in this deployment (`BYLAWS_CHECKER`, `CONSISTENCY_CHECKER`, `ELECTION_CHECKER`), which only its
+ * configuration changes.
+ */
 export type ClaudeCheckSwitch = 'claude' | 'stub' | 'off';
 
 /** `anthropic_key/current`: who added the key in use through the app, and when. Never the key, which only Secret Manager holds. */
@@ -56,7 +59,7 @@ export interface AnthropicKeyStatus {
   /** Who added it in the app, and its last characters; both null for a key added outside the app (with gcloud, say). */
   readonly addedBy: { readonly accountId: string; readonly name: string } | null;
   readonly hint: string | null;
-  readonly checks: { readonly bylaws: ClaudeCheckSwitch; readonly consistency: ClaudeCheckSwitch };
+  readonly checks: { readonly bylaws: ClaudeCheckSwitch; readonly consistency: ClaudeCheckSwitch; readonly election: ClaudeCheckSwitch };
   /** Whether a key is tried with Anthropic before it is kept (always, except with the emulators). */
   readonly tried: boolean;
 }

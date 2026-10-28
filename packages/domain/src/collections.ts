@@ -24,6 +24,8 @@ export const Collections = {
   consistencyChecks: 'consistency_checks',
   /** `consistency_documents/{electionId}`: the documents an election's consistency checks compare with (design §5.5). */
   consistencyDocuments: 'consistency_documents',
+  /** `election_checks/{checkId}`: the advisory election setup checks of an election against the bylaws (design §6.9). */
+  electionChecks: 'election_checks',
   results: 'results',
   // audit & admin
   auditEvents: 'audit_events',

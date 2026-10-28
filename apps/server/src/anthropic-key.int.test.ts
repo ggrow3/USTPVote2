@@ -6,15 +6,17 @@ import { SECRET_STORE, type SecretStore } from './infra/secret-store.js';
 import { seedElection } from './testing/elections.js';
 import { resetEmulators, TestApi, TestWorker, type User } from './testing/emulator.js';
 
-// Both checks as a real project has them, so they wait for a key; the emulators still keep it in their stand-in store.
+// The checks as a real project has them, so they wait for a key; the emulators still keep it in their stand-in store.
 let api: TestApi;
 let worker: TestWorker;
 beforeAll(async () => {
   process.env.BYLAWS_CHECKER = 'claude';
   process.env.CONSISTENCY_CHECKER = 'claude';
+  process.env.ELECTION_CHECKER = 'claude';
   [api, worker] = await Promise.all([TestApi.start(), TestWorker.start()]).finally(() => {
     delete process.env.BYLAWS_CHECKER;
     delete process.env.CONSISTENCY_CHECKER;
+    delete process.env.ELECTION_CHECKER;
   });
 });
 afterAll(() => Promise.all([api.close(), worker.close()]));
@@ -65,13 +67,13 @@ describe('the Anthropic API key (design §5.6)', () => {
     expect((await status()).set).toBe(false);
   });
 
-  it('starts unset, and until one is added neither check can be asked for', async () => {
+  it('starts unset, and until one is added no check can be asked for', async () => {
     expect(await status()).toEqual({
       set: false,
       addedAt: null,
       addedBy: null,
       hint: null,
-      checks: { bylaws: 'claude', consistency: 'claude' },
+      checks: { bylaws: 'claude', consistency: 'claude', election: 'claude' },
       tried: false,
     });
     const { voter, election } = await ballot();
@@ -83,6 +85,15 @@ describe('the Anthropic API key (design §5.6)', () => {
     await api.grant(admin.accountId, 'membership_admin', sa1);
     const bylaws = await api.call('POST', '/v1/admin/bylaws/checks', admin, { title: 'Bylaws', text: 'A\nB', scope: 'draft' });
     expect(bylaws).toMatchObject({ status: 503, body: { detail: expect.stringMatching(/no Anthropic API key has been added/) } });
+
+    const officer = await api.member('officer@example.test');
+    await api.grant(officer.accountId, 'election_admin', sa1);
+    const setup = `/v1/admin/elections/${election.electionId}/bylaws-checks`;
+    expect((await api.call('GET', setup, officer)).body).toEqual({ enabled: false, check: null });
+    expect(await api.call('POST', setup, officer)).toMatchObject({
+      status: 503,
+      body: { detail: expect.stringMatching(/election setup check cannot run yet: no Anthropic API key has been added/) },
+    });
     expect(await workerKey()).toBeNull();
   });
 
@@ -151,7 +162,7 @@ describe('the Anthropic API key (design §5.6)', () => {
     try {
       expect(await api.call('PUT', route, sa1, { key: KEY })).toMatchObject({ status: 422, body: { detail: 'Anthropic did not accept this key' } });
       expect((await api.call('PUT', route, sa1, { key: KEY })).status).toBe(502);
-      expect(tried).toHaveBeenCalledWith(KEY, ['claude-opus-5-5', 'claude-opus-5-5']);
+      expect(tried).toHaveBeenCalledWith(KEY, ['claude-opus-5-5', 'claude-opus-5-5', 'claude-opus-5-5']);
     } finally {
       tried.mockRestore();
     }
