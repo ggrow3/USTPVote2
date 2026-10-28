@@ -108,8 +108,8 @@ export function startPageLabel(page: StartPage): string {
 }
 
 /**
- * The two homes, ahead of the settings' links in the menu bar and at the top of the hub, for everyone on every page
- * (design §10.5): the voting home and the party's link hub. Not settings, so no audience can lose its way back.
+ * The two homes, ahead of the settings' links in the menu bar, for everyone on every page that has it (design §10.5):
+ * the voting home and the party's link hub. Not settings, so no audience can lose its way back.
  */
 export const HOME_LINKS: readonly { readonly to: string; readonly label: string }[] = [
   { to: startPagePath('home'), label: startPageLabel('home') },
