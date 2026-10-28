@@ -22,6 +22,7 @@ import { publishedElectionCheck } from '../election-check/api.js';
 import BylawsCheckNotes from '../election-check/BylawsCheckNotes.vue';
 import { downloadElectionDocx } from '../election-files.js';
 import { rulesText } from '../election-text.js';
+import { secrecyText, shortWhen, votingWindow } from '../elections/ballot-list.js';
 import { downloadReceipt, forgetReceipt, keepReceipt, savedReceipt } from '../receipts.js';
 
 type Contest = ElectionDefinition['contests'][number];
@@ -177,14 +178,13 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
 
 <template>
   <PageShell>
-    <div class="ustp-content">
+    <div class="ustp-content ustp-touch">
       <q-btn flat dense no-caps icon="arrow_back" label="Your ballots" to="/ballot" class="ustp-back" />
       <div>
         <h1 class="text-h5">{{ view?.definition.title ?? 'Ballot' }}</h1>
-        <div v-if="view" class="text-caption text-grey-7">
-          Voting {{ new Date(view.election.opensAt).toLocaleString() }} – {{ new Date(view.election.closesAt).toLocaleString() }}
-          · {{ view.election.secrecy === 'secret' ? 'Secret ballot' : 'Roll-call: how you vote is published with your name' }}
-        </div>
+        <p v-if="view" class="q-mb-none q-mt-xs text-grey-7">
+          {{ votingWindow(view.election.opensAt, view.election.closesAt) }} · {{ secrecyText(view.election.secrecy) }}
+        </p>
       </div>
       <template v-if="view">
         <div class="ustp-actions">
@@ -223,7 +223,7 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
           bordered
         >
           <q-card-section>
-            <h2 id="receipt-heading" class="text-subtitle1">You voted on {{ new Date(view.election.castAt).toLocaleString() }}</h2>
+            <h2 id="receipt-heading" class="text-subtitle1">You voted on {{ shortWhen(view.election.castAt) }}</h2>
             <div v-if="commitmentsMatch === true" class="text-positive">
               The server's commitments match the ones this browser computed before sending.
             </div>
@@ -268,7 +268,7 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
         </q-card>
 
         <q-banner v-else-if="view.election.state === 'scheduled'" class="bg-grey-3 text-black" rounded>
-          Voting opens {{ new Date(view.election.opensAt).toLocaleString() }}. You can read the ballot now.
+          Voting opens {{ shortWhen(view.election.opensAt) }}. You can read the ballot now.
         </q-banner>
         <q-banner v-else-if="view.election.state !== 'open'" class="bg-grey-3 text-black" rounded>
           Voting has closed.
@@ -329,7 +329,7 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
                 dense
                 bordered
                 separator
-                class="q-mb-sm"
+                class="q-mb-sm ustp-ranking"
                 :aria-label="`Your ranking for ${c.title}`"
               >
                 <q-item v-for="(id, i) in list(c)" :key="id">
@@ -403,6 +403,7 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
           <q-btn
             color="primary"
             size="lg"
+            no-caps
             label="Review and cast"
             :disable="skipped.length === contests.length || integrity === false"
             aria-describedby="cast-hint"
@@ -412,13 +413,13 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
         </div>
 
         <q-dialog v-model="reviewing" aria-labelledby="review-title">
-          <q-card class="ustp-dialog">
+          <q-card class="ustp-dialog ustp-touch">
             <!-- Focus starts at the title, so a screen reader reads the summary from the top. -->
             <q-card-section>
               <h2 id="review-title" class="text-h6 ustp-focus-target" tabindex="-1" data-autofocus>Cast this ballot?</h2>
             </q-card-section>
             <q-card-section>
-              <q-list dense separator>
+              <q-list separator>
                 <q-item v-for="c in contests" :key="c.contestId">
                   <q-item-section>
                     <q-item-label>{{ c.title }}</q-item-label>
@@ -429,8 +430,8 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
               <div class="text-caption text-grey-7 q-mt-sm">You cannot change your ballot after casting it.</div>
             </q-card-section>
             <q-card-actions align="right">
-              <q-btn flat label="Back" v-close-popup />
-              <q-btn color="primary" label="Cast ballot" :loading="casting" @click="cast" />
+              <q-btn flat no-caps label="Back" v-close-popup />
+              <q-btn color="primary" no-caps label="Cast ballot" :loading="casting" @click="cast" />
             </q-card-actions>
           </q-card>
         </q-dialog>
@@ -438,3 +439,23 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
     </div>
   </PageShell>
 </template>
+
+<style scoped>
+/*
+ * A ranked row: the choice number, the name and three 48px buttons, which move under the name once it would have less
+ * than 8rem beside them (on a phone), rather than squeezing it to a word a line.
+ */
+.ustp-ranking :deep(.q-item) {
+  flex-wrap: wrap;
+}
+.ustp-ranking :deep(.q-item__section--avatar) {
+  min-width: 0;
+}
+.ustp-ranking :deep(.q-item__section--main) {
+  flex: 1 1 8rem;
+}
+.ustp-ranking :deep(.q-item__section--side) {
+  margin-left: auto;
+  padding-left: 0;
+}
+</style>
