@@ -516,8 +516,9 @@ const errorOf = (q: QuestionDraft) => ({
 }
 .ustp-question__handle {
   display: flex;
+  align-items: center;
   justify-content: center;
-  height: 20px;
+  height: 24px;
   cursor: grab;
   touch-action: none;
   color: rgba(128, 128, 128, 0.9);

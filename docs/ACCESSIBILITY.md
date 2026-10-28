@@ -359,6 +359,58 @@ election) open with focus on Cancel.
   wide as the card, a ranked row puts its three buttons under the name, and nothing scrolls sideways; the dialog's
   Back and Cast ballot share its width (144 px each at 375 px). Text is 16 px with 14 px captions, in the dialog too.
   Focus order and the announcements are unchanged.
+- **Added 2026-10-28, the ballot builder and Preview as voter** (design §6.5; against private emulators as
+  elections@example.test: a new draft built from nothing with a question of each type, then "2027 Bylaws Review
+  (draft)"; by mouse and by keyboard alone, at 1280 px in the dark theme and 320 px in both; the draft then scheduled):
+  - **Structure.** "Ballot" is an `h2`; the ballot's details are a card of labelled fields ("Ballot title", "Voting
+    opens"); each question is a `section` named by its `h3` "Question 3" with the title after it as hidden text ("Question
+    3: Chair"). Its fields have visible labels ("Type", "Question", "Description (optional)", "How many win", "Each voter
+    may tick"); the options are an ordered list named "Options for question 3", each field labelled "Option 1",
+    "Option 2"; a statement field is "Statement for Ada Brooks (optional)". The rules line under the question, in the
+    ballot's words, starts with hidden "Voters read:". The type picker is Quasar's select (`combobox`, arrow keys and
+    Enter), each type with a line saying what it is for.
+  - **Names.** Repeated buttons name what they act on, by place and title: "Move question 3: Chair up", "Duplicate
+    question 3: Chair", "Delete question 3: Chair", "Remove option 2: Blair Chen", "More for option 2: Blair Chen";
+    "Add option" adds hidden "to question 3"; Undo is "Undo delete question “Chair”" (visible "Undo", and on wider
+    screens the rest too, 2.5.3); a member suggestion reads "Link Ada Brooks (NY) to option 1: Ada", its visible text
+    first. Icon-only buttons have a tooltip for sighted mouse users.
+  - **Keyboard.** Each add button adds its type and puts the cursor in the new question's title, selected, so typing
+    replaces "Untitled question"; Enter in an option adds the next and moves there; Backspace in an empty option removes
+    it and goes back to the one before; Alt+↑ / Alt+↓ move the option (in its field) or the question (in its title or
+    description), focus staying put; the down arrow goes from an option to the members it matches and the up arrow comes
+    back. Move up and Move down keep focus on the button pressed, or move it to the other one when the question reaches
+    the top or bottom and the button pressed is disabled. Duplicate moves focus to the copy's title; deleting a question
+    moves it to the next question's heading (or the one before, or the first add button); removing an option to the
+    option before; Undo to what it put back. Leaving the page with something that cannot be saved opens "Leave without
+    saving?", focus on Stay.
+  - **Dragging (2.5.7).** The drag handles (the strip at the top of a question, the dots before an option) are a pointer
+    convenience, hidden from screen readers and out of the tab order: every move they make is also a button (a
+    question's Move up and Move down, an option's menu, single clicks) and a key (Alt+arrows). Dragging was checked
+    with a mouse in the browser pane; the handles take `touch-action: none` so a finger drags rather than scrolls.
+  - **Status and errors.** What changed is announced politely: "Question 4 added: Rank in order. Type the question.",
+    "“Chair” is now question 1 of 4.", "“Fran” is now option 2 of 3.", "Question “Plank XII” deleted. Undo is in the bar
+    at the bottom of the ballot.", "Undone: delete question “Plank XII”.", "Ada Brooks linked to their member account.",
+    "Now a Yes / No / Abstain question.", and when members match a name "An Active member matches. Press the down arrow
+    to link the option to their member account.". The save bar's state is shown, not announced while typing, except a
+    failure, which is announced assertively ("Not saved: …"), and the recovery after it ("All changes saved."). A field
+    the rules refuse is marked `aria-invalid` with its message linked by `aria-describedby` ("Type the question.",
+    "Enter a percentage from 1 to 100, or leave it empty."); what is left to finish a question is a line in the page's
+    text colour beside an info icon hidden from screen readers.
+  - **The save bar** sticks to the bottom of the window while the ballot is in view and rests after the last question
+    otherwise; it is a region named "Saving". So that it never hides the field being edited (2.4.11), the page keeps
+    96 px of `scroll-padding-bottom` while the builder is shown; the bar is 45 px tall at 1280 px and about 70 px at
+    320 px, where its status and buttons take two lines.
+  - **Sizes.** Move, duplicate, delete, remove and menu buttons 34 × 34 px, option drag handles 24 × 40 px, the
+    question's drag strip 24 px tall, add buttons 36 px and the bar's 32 px: 2.5.8's 24 px. At 320 px nothing scrolls
+    sideways; an option's marker (circle, box or number), only a picture of the ballot's control, is left out there so
+    its name field keeps the room (about 140 px).
+  - **Colours.** New: the drag handles and option markers, grey at 90% and 95%, measured 3.33 and 3.62 on the white card
+    and 3.72 and 3.99 on the dark card (`#1d1d1d`), above 1.4.11's 3:1; the save bar is the card's own colours (21 and
+    16.9 for its text). Everything else uses the existing pairs: captions 4.61 / 7.77, field borders, primary buttons.
+  - **Preview as voter** is the ballot page itself at `/admin/elections/{id}/preview`, titled "Preview: …", with a back
+    button "Back to the editor" and a light banner (`orange-2`, black text) saying it is a preview and nothing is sent;
+    the review dialog keeps its focus behaviour and says there is nothing to cast, with only Back. The in-browser check
+    line, the receipt, the download and the consistency check are left out of the preview.
 
 ### Contrast figures
 
@@ -550,22 +602,9 @@ lane), and every line of every label was measured in the browser to fit its box 
 with no mark overlapping a label. The list (below the lanes on a phone, beside them on wider screens) holds every word
 of them at full size.
 
-The election editor's candidate field (design §6.5) was checked on 2026-10-26 against the emulators as
-elections@example.test, keyboard only, in both themes at 1280 px and at 320 px. It is Quasar's combobox: an input with
-`role="combobox"` named "Candidate name", `aria-autocomplete="list"`, `aria-expanded`, `aria-controls` naming the
-listbox while it shows, and `aria-activedescendant` following the arrow keys; each match is an `option` with the legal
-name and a caption (preferred name and state, so two people with one name differ). A match that cannot be chosen (the
-admin themself, or someone already standing in that contest) is `aria-disabled` with the reason in its caption, and the
-arrow keys skip it. When the search answers, the live region says how many members match and how many can be chosen
-("2 members match. Use the down arrow to choose.", or that none does and Add candidate adds the name as typed);
-choosing a member and adding a candidate are announced too ("Added Ada Brooks to Review Committee, linked to their
-member account."). A line under the field, which the input names with `aria-describedby`, says whether adding links an
-account; an empty Add sets `aria-invalid` and adds the error to the description. Enter with no option highlighted adds
-what is in the field, Tab only moves on (it never adds), Escape closes the list keeping the text, and focus stays in
-the field after an Enter, ready for the next name. Linked candidates carry "Linked to a member account" with a link
-icon hidden from screen readers. Captions: #757575 on white (4.61), and in the dark theme white at .8 on `#1d1d1d`
-and the line under the field `#b0b0b0` (7.77). At 320 px the field and button stack, nothing scrolls sideways, and the
-matches open in Quasar's full-screen options dialog, where the search and its announcement work the same.
+The election editor's candidate field (design §6.5), a combobox checked on 2026-10-26, gave way on 2026-10-28 to
+linking a member from a question's option in the ballot builder: the matches are buttons under the option, reached with
+the down arrow or Tab, and announced (above, "the ballot builder and Preview as voter").
 
 ## Known gaps
 
@@ -585,6 +624,11 @@ matches open in Quasar's full-screen options dialog, where the search and its an
   and the list that changed reloads). The "Two-step verification required" toast stays until dismissed.
 - Wide data tables (audit ledger, members, the navigation matrix) scroll sideways inside their card on phones, which
   WCAG allows for two-dimensional data.
+- The ballot builder's drag handles were tried with a mouse only; touch dragging on a real phone, and Alt+arrow in
+  each screen reader's modes (some readers take Alt+arrows in browse mode; in a field, focus mode passes them on), are
+  untested. Every move also has buttons. Two Election Admins editing one draft at once each save over the other's
+  question; a change to the questions made elsewhere is found when the order is next saved (409), and the bar then
+  offers Reload the ballot.
 - Sign-in with an authenticator code (3.3.8 Accessible authentication) relies on the alternatives: federated
   sign-in and email links are available, and the code field has `autocomplete="one-time-code"` so password managers can
   fill it.
@@ -613,10 +657,13 @@ Android if time allows), on staging or the emulators:
 4. Verify: "Checking your receipt…" and the result summary are read; each step's status is read before its text.
 5. Errors: a wrong password, an invalid form field and an API error toast are each read once.
 6. Dialogs from the Dialog plugin (reasons, codes, confirmations): name and prompt label read; focus returns afterwards.
-7. Admin console: tab and panel relationship, row action names, the status-history dialog, the contest dialog.
+7. Admin console: tab and panel relationship, row action names, the status-history dialog.
 8. Zoom to 200 % and 400 % (desktop) and large text on iOS: no clipped controls.
 9. The menu bar at 320 px: More is read as a collapsed or expanded button in the "Main" navigation, and its list's
    links follow it, the current page announced.
 10. The link hub: the icon row's links read by their names in their navigation, each section's links in their list,
     the theme button's pressed state; in Admin → Link hub, a row's switch and buttons read with its link's name, and
     the "Saved: …" toast after each change.
+11. The ballot builder: each question read as a section with its heading, the option fields by number, the
+    announcements after adding, moving, deleting and undoing, a failed save read once, and the member suggestions
+    reached with the down arrow; Preview as voter read as the ballot with its banner first.

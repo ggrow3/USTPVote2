@@ -272,9 +272,9 @@ Each step behaviour-preserving: same routes and URLs, page titles, headings, lab
 - **W2. Bylaws**, **W3. Governance** (begun: `governance/` holds the navigation settings' client, panel, wording
   and store, the quote's, and the hub's (its page, admin tabs and click client), and the admin tabs come from `ADMIN_SECTIONS` and `SECTION_ROLES` in `ustp-domain`, which a server test
   checks against the `@Roles` of each section's routes; still to move: approvals, people, role changes, testing),
-  **W4. Offices** (*done*: `offices/api.ts` is the only place the offices routes are written, and the contest dialog
+  **W4. Offices** (*done*: `offices/api.ts` is the only place the offices routes are written, and the ballot builder
   and the Members tab call it; `offices/` holds the Offices panel, the appointment dialog and its member picker, the
   profile's Offices card and the public Offices page, with their wording in `office-text.ts`; the boundary test
-  includes it), **W5. Elections** (`votingAhead(election)` in `ustp-domain` for "upcoming"), **W6. Ledger and
+  includes it), **W5. Elections** (`votingAhead(election)` in `ustp-domain` for "upcoming"; begun: `elections/api.ts` holds the ballot builder's calls, §6.5, while the rest of the editor still calls its routes itself), **W6. Ledger and
   verification** (one public-ledger client for the audit panel, results and verify), **W7. Accounts and photos**
   (photo limits into `ustp-domain`), each following the matching server step where there is one.

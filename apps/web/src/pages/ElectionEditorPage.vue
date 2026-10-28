@@ -392,6 +392,7 @@ onMounted(load);
               </div>
             </div>
             <div class="ustp-actions">
+              <q-btn outline no-caps color="primary" icon="visibility" label="Preview as voter" :to="`/admin/elections/${electionId}/preview`" />
               <q-btn outline no-caps color="primary" icon="description" label="Download ballot as Word" :loading="exporting" @click="downloadWord">
                 <span class="sr-only">: {{ detail.election.title }}</span>
               </q-btn>
@@ -553,6 +554,7 @@ onMounted(load);
           <div class="ustp-header">
             <h2 class="text-h6">Ballot</h2>
             <div class="ustp-actions">
+              <q-btn outline no-caps color="primary" icon="visibility" label="Preview as voter" :to="`/admin/elections/${electionId}/preview`" />
               <q-btn outline no-caps color="primary" icon="description" label="Download ballot as Word" :loading="exporting" @click="downloadWord">
                 <span class="sr-only">: {{ detail.election.title }}</span>
               </q-btn>

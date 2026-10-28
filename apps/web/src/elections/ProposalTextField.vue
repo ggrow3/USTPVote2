@@ -64,10 +64,10 @@ function useOwnText() {
       <div>
         <div class="text-weight-medium">Changes to the bylaws, version {{ attached.amendment.base.version }}</div>
         <div class="ustp-amendment q-mt-xs">{{ amendmentText(attached.amendment) }}</div>
+        <div class="q-mt-xs" style="white-space: pre-wrap"><span class="text-weight-medium">Reasons given: </span>{{ attached.body }}</div>
         <div class="text-caption text-grey-7 q-mt-xs">
-          Written in the bylaws editor, so it cannot be changed here. Reasons given: {{ attached.body }}
+          Written in the bylaws editor, so it is not changed here · content hash <code>{{ attached.contentHash.slice(0, 16) }}…</code>
         </div>
-        <div class="text-caption text-grey-7">Content hash <code>{{ attached.contentHash.slice(0, 16) }}…</code></div>
       </div>
       <q-btn flat dense no-caps color="primary" label="Write a text instead" @click="useOwnText">
         <span class="sr-only">&nbsp;for question {{ number }}</span>
@@ -104,8 +104,8 @@ function useOwnText() {
       input-debounce="0"
       emit-value
       :options="choices"
-      label="Or use a saved text"
-      :hint="'Texts already captured, a bylaws amendment among them; search by words in the title or text.'"
+      :label="attached ? 'Or use another saved text' : 'Or use a saved text'"
+      hint="Texts captured before, bylaws amendments included. Type words from a title or text to find one."
       hide-bottom-space
       @filter="search"
       @update:model-value="choose"
