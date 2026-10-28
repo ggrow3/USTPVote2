@@ -1731,9 +1731,11 @@ when the account was created, the member status if there is a member record, and
   the admins never means paging through every member. Pages hold up to 100 rows.
 - Roles come from one query for every unrevoked assignment: role holders are few, and the list and the role filter
   both need all of them. The query needs only single-field indexes.
-- The web app's People tab (System Admin) shows the list with role chips. The role-change form picks the person from
+- The web app's People tab (System Admin) shows the list with role chips and an Offices column *(added)*: the offices
+  each account holds now, from the offices list (`GET /v1/admin/positions`, readable by every role; §6.4), as the
+  Members tab shows them (§5.2), so an admin sees roles and offices side by side. The role-change form picks the person from
   the same list, typing an account ID stays as a fallback, and the form explains a refusal before sending it with the
-  API's own checks (`checkCanChangeRole` in `ustp-domain`: not for your own account, compatible with the roles held).
+  API's own checks (`checkCanChangeRole` in `ustp-domain`: not for your own account, compatible with the roles held, at most two roles).
   The form sits in the People tab, under the list ("Change roles" on a row fills it in), and asks for confirmation
   before sending, because the change takes effect at once. The API still decides.
 

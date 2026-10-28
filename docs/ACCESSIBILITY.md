@@ -366,7 +366,9 @@ election) open with focus on Cancel.
   at most 2 roles, and this one already holds Election Admin and Membership Admin."), in the form's existing polite live
   region (`text-deep-orange-10`, 5.60 on white; `#ffb74d` on the dark card), and Grant role is disabled
   (`aria-disabled`). At 320 px the role list opens full screen as before, the message wraps, and nothing scrolls
-  sideways.
+  sideways. The People table gained an Offices column (a `th` like the others): each office held now on its own line,
+  "none" in `text-grey-7` otherwise, and "—" if the offices could not be loaded. Checked with a member appointed to
+  two offices; at 320 px the page does not scroll sideways and the table scrolls inside its card, as it did.
 
 ### Contrast figures
 
