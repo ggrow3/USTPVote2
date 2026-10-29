@@ -52,3 +52,9 @@ Only test voter personas cast these ballots, through the ordinary ballot endpoin
   expected results, certification, and for amendments adopting the bylaws.
 - `packages/domain/src/examples.test.ts` checks every file against its schema, plans every votes file, and checks the
   amended bylaws file against `expectBylawsSha256`.
+
+## Google Sheets
+
+`google-sheets/` is something else: an Apps Script for a Google Sheet that reads the reporting MCP server (design §3.4)
+into tabs, builds an election's results with charts and a plain-language summary, and saves a PDF report. Its README
+says how to set it up.

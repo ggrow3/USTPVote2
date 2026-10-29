@@ -55,7 +55,9 @@ any origin, since nothing it serves needs credentials.
 For Google Sheets, pair it with something that can write to Sheets, such as a Google Workspace MCP server or Gemini
 CLI extension: *"Make a Google Sheet with one row per election from list_elections, and a tab per election with its
 results CSV."* For a sheet that stays current with no assistant at all, `get_results` and `get_election_status` give an
-`IMPORTDATA` formula to paste in a cell; Sheets refreshes it about hourly.
+`IMPORTDATA` formula to paste in a cell; Sheets refreshes it about hourly. For a sheet that calls the tools itself, with
+a menu, results charts and a PDF report, see [`examples/google-sheets`](../../examples/google-sheets/README.md): an Apps
+Script client of `/mcp`.
 
 ## Run it yourself (stdio)
 
