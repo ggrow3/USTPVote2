@@ -15,6 +15,13 @@ import { NavigationAdminController, NavigationService, PublicNavigationControlle
 import { RoleChanges } from '../administration/role-changes.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { BylawsChecksController } from '../bylaws-check/bylaws-checks.controller.js';
+import {
+  CandidaciesAdminController,
+  CandidaciesController,
+  PublicCandidaciesController,
+  PublicDistrictsController,
+} from '../candidacies/candidacies.controller.js';
+import { CANDIDACIES_PROVIDERS } from '../candidacies/providers.js';
 import { BylawsChecksService } from '../bylaws-check/bylaws-checks.service.js';
 import { AnthropicKey } from '../claude-checks/anthropic-key.js';
 import { AnthropicKeyAdminService, AnthropicKeyController } from '../claude-checks/anthropic-key-admin.js';
@@ -62,7 +69,8 @@ import { PositionsService } from '../positions/positions.service.js';
  * M2: election setup, rolls, scheduling and cancellation; the published ledger (blocks, keys, proofs, anchors).
  * M3: voting. M4: results, certification, offices and terms. Testing mode: test personas and demo elections (design
  * §10.4). M5: who sees which link (design §10.5), the home page hub (§10.6); the platform consistency check (design
- * §5.5), the election setup check (§6.9) and the Anthropic API key (design §5.6).
+ * §5.5), the election setup check (§6.9) and the Anthropic API key (design §5.6); candidacies for public office and
+ * their districts' map (design §5.8).
  */
 @Module({
   imports: [CoreModule],
@@ -89,6 +97,10 @@ import { PositionsService } from '../positions/positions.service.js';
     PublicElectionsController,
     PositionsController,
     PublicPositionsController,
+    CandidaciesController,
+    CandidaciesAdminController,
+    PublicCandidaciesController,
+    PublicDistrictsController,
     ApprovalsController,
     AccountsAdminController,
     PublicSignInMethodsController,
@@ -126,6 +138,7 @@ import { PositionsService } from '../positions/positions.service.js';
     RoleChanges,
     PositionApprovals,
     PositionsService,
+    ...CANDIDACIES_PROVIDERS,
     ApprovalsService,
     NavigationService,
     HomeQuoteService,

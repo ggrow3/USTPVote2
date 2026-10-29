@@ -8,6 +8,7 @@ import CoursePanel from '../components/admin/CoursePanel.vue';
 import BylawsPanel from '../components/admin/BylawsPanel.vue';
 import ElectionsPanel from '../components/admin/ElectionsPanel.vue';
 import OfficesPanel from '../offices/OfficesPanel.vue';
+import CandidaciesPanel from '../candidacies/CandidaciesPanel.vue';
 import PeoplePanel from '../components/admin/PeoplePanel.vue';
 import PhotosPanel from '../components/admin/PhotosPanel.vue';
 import SignInMethodsPanel from '../components/admin/SignInMethodsPanel.vue';
@@ -36,6 +37,7 @@ const PANELS: Record<AdminSection, Component> = {
   registration: RegistrationFormPanel,
   elections: ElectionsPanel,
   offices: OfficesPanel,
+  candidacies: CandidaciesPanel,
   approvals: ApprovalsPanel,
   people: PeoplePanel,
   signin: SignInMethodsPanel,

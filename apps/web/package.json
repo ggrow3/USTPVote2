@@ -31,6 +31,7 @@
   },
   "devDependencies": {
     "@quasar/vite-plugin": "^2.0.2",
+    "@types/google.maps": "^3.66.6",
     "@types/qrcode": "^1.5.6",
     "@vitejs/plugin-vue": "^6.0.10",
     "sass-embedded": "^1.106.1",

@@ -63,6 +63,16 @@ export interface ServerConfig {
   /** Where the web app is served (an origin, e.g. `https://ustpvote2-dev.web.app`); notices link to it. */
   readonly webOrigin: string | null;
   /**
+   * Where candidacies' districts come from (design §5.8): `census`, the Census Bureau's TIGERweb boundaries, or `local`
+   * (the emulator-only stand-in, a few made-up districts per state, for tests that must not reach the internet).
+   */
+  readonly districtSource: 'census' | 'local';
+  /**
+   * The browser key for Google Maps on the Candidates page (design §5.8), restricted by Terraform to the Maps JavaScript
+   * API and the web app's origins; it is public by nature. Null leaves the page without its map.
+   */
+  readonly googleMapsKey: string | null;
+  /**
    * Amazon SES (worker only, `MAIL_TRANSPORT=ses`): its region, the configuration set that publishes bounces, the SQS
    * queue they arrive on, and the access key (from Secret Manager in Cloud Run; never logged).
    */
@@ -134,6 +144,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const mailTransport = (env.MAIL_TRANSPORT ?? (usingEmulators ? 'outbox' : 'off')) as ServerConfig['mailTransport'];
   if (!['ses', 'outbox', 'off'].includes(mailTransport)) throw new Error('MAIL_TRANSPORT must be "ses", "outbox" or "off"');
   if (mailTransport === 'outbox' && !usingEmulators) throw new Error('MAIL_TRANSPORT=outbox is only allowed with the Firebase emulators');
+  const districtSource = (env.DISTRICTS ?? 'census') as ServerConfig['districtSource'];
+  if (districtSource !== 'census' && districtSource !== 'local') throw new Error('DISTRICTS must be "census" or "local"');
+  if (districtSource === 'local' && !usingEmulators) throw new Error('DISTRICTS=local is only allowed with the Firebase emulators');
   const webOrigin = env.WEB_ORIGIN ? originOf(env.WEB_ORIGIN, 'WEB_ORIGIN') : usingEmulators ? 'http://localhost:5173' : null;
 
   const projectId = env.GOOGLE_CLOUD_PROJECT || env.GCLOUD_PROJECT || undefined;
@@ -167,6 +180,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     mailReplyTo: env.MAIL_REPLY_TO || null,
     noticeContact: env.NOTICE_CONTACT?.trim() || null,
     webOrigin,
+    districtSource,
+    googleMapsKey: env.GOOGLE_MAPS_BROWSER_KEY?.trim() || null,
     ses: {
       region: env.SES_REGION || null,
       configurationSet: env.SES_CONFIGURATION_SET || null,
