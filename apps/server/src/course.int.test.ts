@@ -1,4 +1,5 @@
 import sharp from 'sharp';
+import { coursePackageSchema } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { resetEmulators, TestApi } from './testing/emulator.js';
 
@@ -74,6 +75,37 @@ describe('Transhumanism course', () => {
     expect(verified.body).not.toHaveProperty('recipientName');
     await api.call('POST', `/v1/admin/certificates/${certificateId}/revoke`, editor, { reason: 'test revocation' });
     expect((await api.call('GET', `/v1/public/certificates/${certificateId}`)).body).toEqual({ valid: false, courseTitle: null, courseVersion: null, issuedAt: null });
+  });
+
+  it('exports the draft or a published version as a ustp.course JSON file, for Course Administrators only', async () => {
+    const [sa] = await api.systemAdmins();
+    const editor = await api.member('exporter@example.test');
+    const learner = await api.member('curious@example.test');
+    await api.grant(editor.accountId, 'course_admin', sa);
+    const url = (version?: string) => `/v1/admin/courses/transhumanism/package${version ? `?version=${version}` : ''}`;
+
+    const published = await api.call('GET', url('1'), editor);
+    expect(published.status).toBe(200);
+    expect(published.body).toMatchObject({ format: 'ustp.course', version: 1, source: { content: 'published', courseVersion: 1 } });
+    expect(published.body.lessons).toHaveLength(6);
+    expect(published.body.lessons[0].questions[0]).toHaveProperty('correctIndex');
+    // Every lesson and profile is what the save routes take.
+    expect(coursePackageSchema.safeParse(published.body).error?.issues ?? []).toEqual([]);
+    expect(JSON.stringify(published.body)).not.toContain('course-seed');
+
+    // The draft follows edits; the published version stays frozen.
+    const [first] = published.body.lessons;
+    expect((await api.call('POST', '/v1/admin/courses/transhumanism/lessons', editor, { ...first, title: 'Edited title' })).status).toBe(201);
+    const draft = await api.call('GET', url(), editor);
+    expect(draft.body.source).toMatchObject({ content: 'draft', status: 'draft', publishedVersion: 1 });
+    expect(draft.body.lessons[0].title).toBe('Edited title');
+    expect(JSON.stringify(draft.body)).not.toContain(editor.accountId);
+    expect((await api.call('GET', url('1'), editor)).body.lessons[0].title).toBe(first.title);
+
+    expect((await api.call('GET', url(), learner)).status).toBe(403);
+    expect((await api.call('GET', url('7'), editor)).status).toBe(404);
+    expect((await api.call('GET', url('latest'), editor)).status).toBe(400);
+    expect((await api.call('GET', '/v1/admin/courses/nope/package', editor)).status).toBe(404);
   });
 
   it('rejects publishing a profile without complete portrait attribution', async () => {
