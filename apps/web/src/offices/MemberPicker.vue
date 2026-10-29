@@ -14,6 +14,8 @@ const props = defineProps<{
   /** Why a member cannot be chosen here, or null. */
   unavailable: (match: MemberMatch) => string | null;
   error?: string;
+  /** What choosing them does, before their name: "Appoints" unless given. */
+  action?: string;
 }>();
 const emit = defineEmits<{ 'update:modelValue': [MemberMatch | null] }>();
 
@@ -100,7 +102,7 @@ function typed(text: string) {
       </template>
     </q-select>
     <div :id="statusId" class="ustp-message text-grey-7">
-      {{ modelValue ? `Appoints ${modelValue.legalName}${modelValue.state ? ` (${modelValue.state})` : ''}.` : 'Type part of an Active member’s name and choose them.' }}
+      {{ modelValue ? `${action ?? 'Appoints'} ${modelValue.legalName}${modelValue.state ? ` (${modelValue.state})` : ''}.` : 'Type part of an Active member’s name and choose them.' }}
     </div>
   </div>
 </template>

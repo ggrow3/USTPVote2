@@ -23,6 +23,7 @@ const CONTEXTS: Readonly<Record<string, readonly string[]>> = {
   // `…/bylaws-checks` (the editor) and `…/bylaws-check` (the public notes), after an election ID.
   'election-check': ['}/bylaws-check'],
   offices: ['/v1/admin/positions', '/v1/public/positions'],
+  teams: ['/v1/teams', '/v1/admin/teams'],
 };
 
 const SRC = import.meta.dirname;
