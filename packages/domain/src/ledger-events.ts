@@ -31,6 +31,7 @@ export const LEDGER_EVENT_TYPES = [
   'notice.sent',
   'notice.resend_requested',
   'notice.settings_changed',
+  'candidacy.changed',
   'position.defined',
   'position_term.created',
   'position_term.appointed',

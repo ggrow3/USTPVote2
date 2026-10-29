@@ -17,6 +17,8 @@ export const Collections = {
   bylawsCheckReferences: 'bylaws_check_references',
   profilePhotos: 'profile_photos',
   photoChecks: 'photo_checks',
+  /** `candidacies/{candidacyId}`: members running for public office, reviewed before they are public (design ง5.8). */
+  candidacies: 'candidacies',
   positions: 'positions',
   positionTerms: 'position_terms',
   /** `teams/{teamId}`: working groups members join (design ยง5.7). */

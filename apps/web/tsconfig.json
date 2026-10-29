@@ -4,7 +4,7 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "lib": ["es2024", "dom", "dom.iterable"],
-    "types": ["vite/client", "node"],
+    "types": ["vite/client", "node", "google.maps"],
     "jsx": "preserve",
     "noEmit": true,
     "declaration": false,

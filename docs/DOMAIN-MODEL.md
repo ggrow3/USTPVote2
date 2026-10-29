@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| Status | Agreed 2026-10-25; step 1 (Membership) done, steps 2–7 to follow (§6). Web app (§7): agreed 2026-10-26; W1 (Membership) and W4 (Offices) done |
+| Status | Agreed 2026-10-25; step 1 (Membership) done, steps 2–7 to follow (§6). Web app (§7): agreed 2026-10-26; W1 (Membership) and W4 (Offices) done. Candidacies (DESIGN §5.8) was built in this structure from the start, server and web |
 | Date | 2026-10-25 |
 | Scope | Structure of `packages/domain`, `apps/server/src` and, lightly, `apps/web/src`. No change to API routes, Firestore layout, ledger format or hashing. |
 
@@ -51,6 +51,7 @@ What is not domain-centred:
 | **Bylaws** | §5.2, §5.4, §6.6 | `bylaws_versions`, `bylaws_checks`, `bylaws_check_references` | core |
 | **Elections** (setup, roll, voting, sealing, results) | §5.5, §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results`, `consistency_checks`, `consistency_documents` | core |
 | **Offices** | §6.4 | `positions`, `position_terms` | supporting |
+| **Candidacies** (members running for public office) | §5.8 | `candidacies` | supporting |
 | **Governance** (roles, two-person rule, testing mode, who sees which link, the voting home's quote, the home page hub, the Anthropic API key) | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `home_quote`, `hub`, `hub_logos`, `hub_covers`, `hub_backgrounds`, `hub_clicks`, `anthropic_key` | core rule, generic mechanism |
 | **Audit ledger** | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` | shared kernel |
 | **Notifications** (election notices by email) | §6.8 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests` | supporting |
@@ -65,6 +66,7 @@ flowchart LR
   BYL[Bylaws]
   ELE[Elections]
   OFF[Offices]
+  CAN[Candidacies]
   GOV[Governance]
   LED[(Audit ledger)]
   VER[Verification]
@@ -75,9 +77,10 @@ flowchart LR
   BYL -- "is an amending election under way? what did a certified one adopt?" --> ELE
   ELE -- "offices exist; create terms at certification" --> OFF
   OFF -- "is the appointee an Active member? (appointment)" --> MEM
+  CAN -- "is the candidate an Active member? their name" --> MEM
   ELE & OFF -- "two-person requests + handlers" --> GOV
   GOV -- "test voters (rehearsal roll), personas" --> MEM
-  ACC & MEM & BYL & ELE & OFF & GOV -- "domain events, same transaction" --> LED
+  ACC & MEM & BYL & ELE & OFF & CAN & GOV -- "domain events, same transaction" --> LED
   LED -- "published language: entries, blocks, anchors" --> VER
   ELE -- "published language: sealed blocks, results bundle" --> VER
 ```
@@ -104,6 +107,7 @@ commit. What changes is that only the owner touches its documents.
 | Elections | **Results** | computed once from sealed blocks; provisional → certified only for the hash requested |
 | Offices | **Office** (position) | defined or changed at once with a reason; running terms untouched |
 | Offices | **Term** | created by certification, or by an appointment two persons approve (an Active member, a free seat, starting no later than approved, no longer than the office's term; the appointee neither requests nor approves); marked elected or appointed (`basis`); active → ended by two persons; holder neither requests nor approves |
+| Candidacies | **Candidacy** (`candidacies/{candidacyId}`) | declared and changed only by its Active member, withdrawn by them at any time; at most five open with elections to come, one per race; the district one the Census lists for that state, stored as the Census names it; only a version a Membership Admin approved is public, never their own, and only while the member is Active; a decision is on the version seen; a change waits while the approved version stays up; withdrawn or taken down (with a reason) is final; decisions, public withdrawals and removals ledgered as `candidacy.changed` |
 | Governance | **ApprovalRequest** | one pending per action and subject; approver ≠ requester ≠ subject; approver's role, MFA, sign-in ≤ 15 min; 7-day expiry; executes exactly the approved payload hash |
 | Governance | **RoleAssignment** | one System Admin, not on their own account; Auditor holds no other role; at most two roles per person |
 | Governance | **NavigationSettings** (`navigation/current`) | shows, never permits; no section for a role the API refuses it to, and none for membership alone; People and Navigation always shown to System Admins; a role's Admin link follows its sections; every start page one its audience is shown; saved whole from the version it was edited from, each changed cell ledgered as `navigation.changed` |
@@ -242,6 +246,7 @@ apps/web/src/
   bylaws/        bylaws pages, editor panel, bylaws check, Word files
   elections/     ballot list, vote, results, editor, contests, receipts, Word export
   offices/       offices panel
+  candidacies/   the Candidates pages and map, the declaration form, the Candidacies panel
   governance/    approvals, people and role changes, testing personas and bar
   ledger/        audit panel; the public ledger client (blocks, keys, anchors, entries)
   verification/  the /verify page
@@ -279,6 +284,6 @@ Each step behaviour-preserving: same routes and URLs, page titles, headings, lab
   **W4. Offices** (*done*: `offices/api.ts` is the only place the offices routes are written, and the ballot builder
   and the Members tab call it; `offices/` holds the Offices panel, the appointment dialog and its member picker, the
   profile's Offices card and the public Offices page, with their wording in `office-text.ts`; the boundary test
-  includes it), **W5. Elections** (`votingAhead(election)` in `ustp-domain` for "upcoming"; begun: `elections/api.ts` holds the ballot builder's calls, §6.5, while the rest of the editor still calls its routes itself), **W6. Ledger and
+  includes it), **W8. Candidacies** (*done*, built this way from the start: `candidacies/api.ts` alone writes its routes, the Census districts' and the Maps key's included; its wording is in `candidacy-text.ts`; the boundary test includes it), **W5. Elections** (`votingAhead(election)` in `ustp-domain` for "upcoming"; begun: `elections/api.ts` holds the ballot builder's calls, §6.5, while the rest of the editor still calls its routes itself), **W6. Ledger and
   verification** (one public-ledger client for the audit panel, results and verify), **W7. Accounts and photos**
   (photo limits into `ustp-domain`), each following the matching server step where there is one.

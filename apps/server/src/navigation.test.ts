@@ -7,6 +7,7 @@ import { HomeQuoteAdminController } from './administration/home-quote.js';
 import { HubAdminController } from './administration/hub.js';
 import { NavigationAdminController } from './administration/navigation.js';
 import { ROLES_KEY } from './auth/decorators.js';
+import { CandidaciesAdminController } from './candidacies/candidacies.controller.js';
 import { AnthropicKeyController } from './claude-checks/anthropic-key-admin.js';
 import { CourseController } from './course/course.controller.js';
 import { ElectionsController } from './elections/elections.controller.js';
@@ -30,6 +31,7 @@ const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
   registration: [RegistrationFormAdminController, 'current'],
   elections: [ElectionsController, 'list'],
   offices: [PositionsController, 'all'],
+  candidacies: [CandidaciesAdminController, 'list'],
   teams: [TeamsAdminController, 'list'],
   approvals: [ApprovalsController, 'list'],
   people: [AccountsAdminController, 'list'],

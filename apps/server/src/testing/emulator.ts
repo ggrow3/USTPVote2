@@ -22,6 +22,8 @@ if (!AUTH_HOST || !FIRESTORE_HOST || !STORAGE_HOST) {
 process.env.APP_CHECK_ENFORCED = 'false';
 process.env.ADMIN_MFA_REQUIRED = 'false';
 process.env.BOOTSTRAP_SYSTEM_ADMIN_EMAILS = `${SA1_EMAIL},${SA2_EMAIL}`;
+// Candidacies look districts up in a few made-up ones, not the Census Bureau: tests do not reach the internet.
+process.env.DISTRICTS = 'local';
 
 export interface Response {
   readonly status: number;

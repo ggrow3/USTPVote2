@@ -228,6 +228,12 @@ variable "election_check_enabled" {
   default     = false
 }
 
+variable "maps_enabled" {
+  description = "Show a Google map on the Candidates page (design §5.8): enables the Maps JavaScript API and creates a browser key restricted to it and to the web app's origins (maps.tf). Google bills map loads beyond its monthly free usage."
+  type        = bool
+  default     = true
+}
+
 # --- Election notices (design §6.8) -----------------------------------------------------------------------------------
 
 variable "web_origin" {

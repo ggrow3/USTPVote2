@@ -38,6 +38,7 @@ export * from './membership/index.js';
 export * from './teams/index.js';
 export * from './notifications/index.js';
 export * from './governance/index.js';
+export * from './candidacies/index.js';
 export { diffLines, splitLines } from './text-diff.js';
 export {
   MAX_AMENDMENT_CHANGES,
