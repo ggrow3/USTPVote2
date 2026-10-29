@@ -19,6 +19,12 @@ export const Collections = {
   photoChecks: 'photo_checks',
   positions: 'positions',
   positionTerms: 'position_terms',
+  /** `teams/{teamId}`: working groups members join (design §5.7). */
+  teams: 'teams',
+  /** `team_members/{teamId}_{accountId}`: who is on each team, as a lead or a member. */
+  teamMembers: 'team_members',
+  /** `team_requests/{teamId}_{accountId}`: each member's latest request to join a team. */
+  teamRequests: 'team_requests',
   eligibilitySnapshots: 'eligibility_snapshots',
   // voting
   elections: 'elections',
