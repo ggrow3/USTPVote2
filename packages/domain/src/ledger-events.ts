@@ -38,6 +38,7 @@ export const LEDGER_EVENT_TYPES = [
   'position_term.ended',
   'team.changed',
   'team.member_changed',
+  'forum.moderated',
   'news.published',
   'news.changed',
   'news.withdrawn',

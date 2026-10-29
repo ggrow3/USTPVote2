@@ -32,14 +32,18 @@ const contestBase = { title, description: description.default('') };
 /** The office a candidate contest fills (design §6.4); omit or null for none. */
 const officeId = z.string().min(1).max(48).nullable().optional();
 
+/** When a proposal passes, and how many must vote for the result to count (design §6.2). */
+export const passRuleSchema = z.strictObject({ threshold, base: z.enum(['yes_no', 'yes_no_abstain', 'roll']) });
+export const quorumSchema = z.strictObject({ minBallots: count.optional(), rollRatio: ratio.optional() });
+
 /** The rules of a contest; candidates are managed separately and fill in the candidate list. */
 export const contestInputSchema = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('proposal'),
     ...contestBase,
     proposalSnapshotId: z.string().min(1, 'choose the proposal text'),
-    passRule: z.strictObject({ threshold, base: z.enum(['yes_no', 'yes_no_abstain', 'roll']) }),
-    quorum: z.strictObject({ minBallots: count.optional(), rollRatio: ratio.optional() }).optional(),
+    passRule: passRuleSchema,
+    quorum: quorumSchema.optional(),
   }),
   z.strictObject({
     kind: z.literal('choose_n'),

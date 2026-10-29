@@ -11,6 +11,7 @@ import OfficesPanel from '../offices/OfficesPanel.vue';
 import CandidaciesPanel from '../candidacies/CandidaciesPanel.vue';
 import TeamsPanel from '../teams/TeamsPanel.vue';
 import CommunicationsPanel from '../communications/CommunicationsPanel.vue';
+import ForumPanel from '../forum/ForumPanel.vue';
 import PeoplePanel from '../components/admin/PeoplePanel.vue';
 import PhotosPanel from '../components/admin/PhotosPanel.vue';
 import SignInMethodsPanel from '../components/admin/SignInMethodsPanel.vue';
@@ -42,6 +43,7 @@ const PANELS: Record<AdminSection, Component> = {
   offices: OfficesPanel,
   candidacies: CandidaciesPanel,
   teams: TeamsPanel,
+  forum: ForumPanel,
   approvals: ApprovalsPanel,
   people: PeoplePanel,
   signin: SignInMethodsPanel,

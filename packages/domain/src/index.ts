@@ -51,6 +51,7 @@ export {
 export type { CoursePackage, CoursePackageSource, PackagedLesson, PackagedProfile } from './course-package.js';
 export * from './membership/index.js';
 export * from './teams/index.js';
+export * from './forum/index.js';
 export * from './communications/index.js';
 export * from './notifications/index.js';
 export * from './governance/index.js';

@@ -34,9 +34,9 @@ function edit(base: NavigationSettings, change: (s: { -readonly [K in keyof Navi
 const viewer = (membership: Viewer['membership'], ...roles: Role[]): Viewer => ({ membership, roles });
 
 describe('defaults', () => {
-  it('show Register, Ballot, Verify, Offices, Candidates, News, Course and Admin to everyone, Teams to Active members, and Sign in while signed out', () => {
+  it('show Register, Ballot, Verify, Offices, Candidates, News, Course and Admin to everyone, Teams and Forum to Active members, and Sign in while signed out', () => {
     const all = ['register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin'];
-    const withTeams = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'news', 'course', 'admin'];
+    const withTeams = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'news', 'course', 'admin'];
     expect(shownTo(DEFAULT_NAVIGATION, viewer('signed_out')).menu).toEqual([...all, 'signin']);
     for (const membership of ['no_membership', ...MEMBER_STATUSES] as const) {
       expect(shownTo(DEFAULT_NAVIGATION, viewer(membership)).menu).toEqual(membership === 'active' ? withTeams : all);
@@ -53,8 +53,8 @@ describe('defaults', () => {
 
   it('give each role the console tabs it had, System Admins the link hub and the home page quote, and Security to both', () => {
     const tabs = (role: Role) => shownTo(DEFAULT_NAVIGATION, viewer('active', role)).sections;
-    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'registration', 'offices', 'candidacies', 'teams', 'approvals']);
-    expect(tabs('election_admin')).toEqual(['elections', 'offices', 'approvals']);
+    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'registration', 'offices', 'candidacies', 'teams', 'forum', 'approvals']);
+    expect(tabs('election_admin')).toEqual(['elections', 'offices', 'forum', 'approvals']);
     expect(tabs('auditor')).toEqual(['elections', 'offices', 'approvals', 'audit', 'security']);
     expect(tabs('system_admin')).toEqual(['approvals', 'people', 'signin', 'claude', 'email', 'security', 'testing', 'navigation', 'hub', 'quote']);
     expect(tabs('course_admin')).toEqual(['course']);
@@ -110,6 +110,18 @@ describe('defaults', () => {
       expect(sectionLock(role, 'teams')).toBe('not_permitted');
     }
     expect(startPagePath('teams')).toBe('/teams');
+  });
+
+  it('give settings saved before the forum existed its defaults: the link for Active members, the section for Membership and Election Admins', () => {
+    const before = edit(DEFAULT_NAVIGATION, (s) => {
+      for (const a of AUDIENCES) delete s.menu[a].forum;
+      for (const r of ROLES) delete s.sections[r].forum;
+    });
+    const resolved = resolveNavigation(before);
+    expect(AUDIENCES.filter((a) => resolved.menu[a].forum)).toEqual(['active']);
+    expect(ROLES.filter((r) => resolved.sections[r].forum)).toEqual(['membership_admin', 'election_admin']);
+    for (const role of ['auditor', 'system_admin', 'course_admin'] as const) expect(sectionLock(role, 'forum')).toBe('not_permitted');
+    expect(startPagePath('forum')).toBe('/forum');
   });
 
   it('give settings saved before News existed its defaults: the link for everyone, the sections for Communications Admins', () => {
@@ -234,7 +246,7 @@ describe('what a person sees', () => {
   it('adds each role they hold, never taking anything away', () => {
     expect(shownTo(resolved, viewer('active', 'election_admin'))).toEqual({
       menu: ['ballot', 'verify', 'admin'],
-      sections: ['elections', 'approvals'],
+      sections: ['elections', 'forum', 'approvals'],
     });
     expect(shownTo(resolved, viewer('applicant', 'membership_admin', 'election_admin')).sections).toEqual([
       'applications',
@@ -246,6 +258,7 @@ describe('what a person sees', () => {
       'offices',
       'candidacies',
       'teams',
+      'forum',
       'approvals',
     ]);
   });
@@ -282,6 +295,7 @@ describe('start pages', () => {
       'course',
       'admin/elections',
       'admin/offices',
+      'admin/forum',
       'admin/approvals',
     ]);
   });
@@ -320,6 +334,7 @@ describe('saved settings', () => {
       offices: true,
       candidates: true,
       teams: false,
+      forum: false,
       news: true,
       course: true,
       admin: true,
@@ -363,7 +378,7 @@ describe('saved settings', () => {
     const after = resolveNavigation(
       edit(DEFAULT_NAVIGATION, (s) => {
         s.menu.applicant.ballot = false;
-        for (const sec of ['elections', 'offices', 'approvals'] satisfies AdminSection[]) s.sections.election_admin[sec] = false;
+        for (const sec of ['elections', 'offices', 'forum', 'approvals'] satisfies AdminSection[]) s.sections.election_admin[sec] = false;
         s.sections.system_admin.offices = true;
         s.startsOn.active = 'verify';
       }),
@@ -373,6 +388,7 @@ describe('saved settings', () => {
       { audience: 'election_admin', link: 'admin', shown: false },
       { audience: 'election_admin', section: 'elections', shown: false },
       { audience: 'election_admin', section: 'offices', shown: false },
+      { audience: 'election_admin', section: 'forum', shown: false },
       { audience: 'election_admin', section: 'approvals', shown: false },
       { audience: 'system_admin', section: 'offices', shown: true },
       { audience: 'active', startsOn: 'verify' },

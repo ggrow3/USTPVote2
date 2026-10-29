@@ -27,6 +27,14 @@ export const Collections = {
   teamMembers: 'team_members',
   /** `team_requests/{teamId}_{accountId}`: each member's latest request to join a team. */
   teamRequests: 'team_requests',
+  /** `forum_posts/{postId}`: discussions and proposals Active members post (design §5.9). */
+  forumPosts: 'forum_posts',
+  /** `forum_comments/{commentId}`: comments on posts and replies to them. */
+  forumComments: 'forum_comments',
+  /** `forum_votes/{kind}_{targetId}_{accountId}`: each member's vote on a post or comment, shown to nobody else. */
+  forumVotes: 'forum_votes',
+  /** `forum_reports/{kind}_{targetId}_{accountId}`: each member's report of a post or comment, for Membership Admins. */
+  forumReports: 'forum_reports',
   eligibilitySnapshots: 'eligibility_snapshots',
   // voting
   elections: 'elections',

@@ -55,6 +55,9 @@ export const router = createRouter({
         // Teams are for Active members; the pages say so to anyone else signed in (design §5.7).
         { path: 'teams', component: () => import('./teams/TeamsPage.vue'), meta: { requiresAuth: true } },
         { path: 'teams/:teamId', component: () => import('./teams/TeamPage.vue'), meta: { requiresAuth: true } },
+        // The forum is for Active members; its pages say so to anyone else signed in (design §5.9).
+        { path: 'forum', component: () => import('./forum/ForumPage.vue'), meta: { requiresAuth: true } },
+        { path: 'forum/:postId', component: () => import('./forum/ForumPostPage.vue'), meta: { requiresAuth: true } },
         // News, the press kit and the suggestions form are for everyone; the share kit for Active members (design §10.9).
         { path: 'news', component: () => import('./communications/NewsPage.vue') },
         { path: 'news/:slug', component: () => import('./communications/NewsPostPage.vue') },
@@ -74,6 +77,13 @@ export const router = createRouter({
           component: () => import('./teams/TeamPage.vue'),
           props: { admin: true },
           meta: { requiresAuth: true, roles: ['membership_admin'] },
+        },
+        // A post as moderators see it, and where Election Admins put proposals on ballots (design §5.9).
+        {
+          path: 'admin/forum/posts/:postId',
+          component: () => import('./forum/ForumPostPage.vue'),
+          props: { admin: true },
+          meta: { requiresAuth: true, roles: ['membership_admin', 'election_admin'] },
         },
         {
           path: 'admin/elections/:id',
