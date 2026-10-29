@@ -54,6 +54,8 @@ export const Collections = {
   courseProgress: 'course_progress',
   courseAttempts: 'course_attempts',
   courseCertificates: 'course_certificates',
+  /** `course_images/{sha256}`: portraits uploaded by Course Administrators, as stored after re-encoding. */
+  courseImages: 'course_images',
   courseLtiDeployments: 'course_lti_deployments',
   courseLtiOutcomes: 'course_lti_outcomes',
   /** `anthropic_key/current`: who added the Anthropic API key in the app, never the key (design §5.6). */

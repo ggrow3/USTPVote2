@@ -1,7 +1,11 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import {
   Collections,
+  isCourseImageId,
+  PASS_PERCENT,
+  portraitProblem,
   uuidv7,
   type CertificateVerification,
   type CourseAttemptRecord,
@@ -10,6 +14,7 @@ import {
   type CourseLesson,
   type CourseMetadataInput,
   type CourseProgressRecord,
+  type CourseQuizFeedback,
   type CourseRecord,
   type CourseVersionRecord,
   type FuturistProfile,
@@ -20,6 +25,7 @@ import {
   type SubmitCourseQuizInput,
 } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
+import { normalizePortrait } from './portrait.js';
 import { transhumanismCourse, transhumanismLessons, transhumanismProfiles } from './transhumanism-seed.js';
 
 const require = createRequire(import.meta.url);
@@ -33,6 +39,14 @@ export interface QuizResult {
   readonly attempt: CourseAttemptRecord;
   readonly progress: CourseProgressRecord;
   readonly certificate: Pick<CourseCertificateRecord, 'certificateId' | 'issuedAt' | 'courseVersion'> | null;
+  /** How each answer went, in the lesson's order. */
+  readonly feedback: readonly CourseQuizFeedback[];
+}
+
+export interface UploadedCourseImage {
+  readonly image: string;
+  readonly width: number;
+  readonly height: number;
 }
 
 /** First-party course storage. Drafts are editable; public learning always reads a frozen published snapshot. */
@@ -50,7 +64,7 @@ export class CourseService {
     return {
       course: { courseId: version.courseId, title: version.title, summary: version.summary, publishedVersion: version.version },
       lessons: version.lessons.map(publicLesson),
-      profiles: version.profiles,
+      profiles: version.profiles.map(withPortraitImage),
     };
   }
 
@@ -86,7 +100,7 @@ export class CourseService {
     return {
       course: course.data() as CourseRecord,
       lessons: lessons.docs.map((d) => d.data() as CourseLesson),
-      profiles: profiles.docs.map((d) => d.data() as FuturistProfile),
+      profiles: profiles.docs.map((d) => withPortraitImage(d.data() as FuturistProfile)),
     };
   }
 
@@ -113,7 +127,8 @@ export class CourseService {
     return db.runTransaction(async (tx) => {
       if (!(await tx.get(courseRef)).exists) throw new NotFoundException('course not found');
       const now = new Date().toISOString();
-      const record: CourseLesson = { courseId, lessonId, ...input, updatedAt: now, updatedBy: accountId };
+      const questions = input.questions.map((question) => ({ ...question, questionId: question.questionId ?? uuidv7() }));
+      const record: CourseLesson = { courseId, lessonId, ...input, questions, updatedAt: now, updatedBy: accountId };
       tx.set(ref, record);
       tx.update(courseRef, { status: 'draft', updatedAt: now, updatedBy: accountId });
       return record;
@@ -132,6 +147,9 @@ export class CourseService {
     const courseRef = db.collection(Collections.courses).doc(courseId);
     return db.runTransaction(async (tx) => {
       if (!(await tx.get(courseRef)).exists) throw new NotFoundException('course not found');
+      if (input.portraitImage && !(await tx.get(this.imageDoc(input.portraitImage))).exists) {
+        throw new BadRequestException('that photo is not one uploaded here; upload it again');
+      }
       const now = new Date().toISOString();
       const record: FuturistProfile = { courseId, profileId, ...input, updatedAt: now, updatedBy: accountId };
       tx.set(ref, record);
@@ -144,12 +162,38 @@ export class CourseService {
     await this.deleteDraftRecord(Collections.courseProfiles, courseId, profileId, accountId, 'profile');
   }
 
+  /**
+   * Stores an uploaded portrait, re-encoded, under the hash of its bytes, and gives that ID. It shows only once a
+   * profile is saved with it and the course published, so uploading changes nothing a learner sees.
+   */
+  async uploadImage(courseId: string, body: unknown, accountId: string): Promise<UploadedCourseImage> {
+    await this.ensureSeeded();
+    if (!Buffer.isBuffer(body) || body.length === 0) throw new BadRequestException('send the image as the request body');
+    if (!(await this.firebase.db.collection(Collections.courses).doc(courseId).get()).exists) throw new NotFoundException('course not found');
+    const { image, width, height } = await normalizePortrait(body);
+    const id = createHash('sha256').update(image).digest('hex');
+    await this.imageDoc(id).set({ image, contentType: 'image/webp', width, height, courseId, uploadedAt: new Date().toISOString(), uploadedBy: accountId });
+    return { image: id, width, height };
+  }
+
+  async image(id: string): Promise<Buffer> {
+    if (!isCourseImageId(id)) throw new NotFoundException('no such image');
+    const image = (await this.imageDoc(id).get()).get('image') as Buffer | undefined;
+    if (!image) throw new NotFoundException('no such image');
+    return Buffer.from(image);
+  }
+
+  private imageDoc(id: string) {
+    return this.firebase.db.collection(Collections.courseImages).doc(id);
+  }
+
   async publish(courseId: string, accountId: string): Promise<CourseVersionRecord> {
     const draft = await this.adminContent(courseId);
     if (draft.lessons.length === 0) throw new ConflictException('add at least one lesson before publishing');
-    if (draft.lessons.some((lesson) => lesson.questions.length !== 5)) throw new ConflictException('every lesson needs exactly five quiz questions');
-    if (draft.profiles.some((profile) => !completePortrait(profile))) {
-      throw new ConflictException('every published profile needs a credited, open-licence portrait');
+    if (draft.lessons.some((lesson) => lesson.questions.length === 0)) throw new ConflictException('every lesson needs at least one quiz question');
+    const unfinished = draft.profiles.find((profile) => portraitProblem(profile));
+    if (unfinished) {
+      throw new ConflictException(`every published profile needs a credited, open-licence portrait: ${unfinished.name} has ${portraitProblem(unfinished)}`);
     }
     const db = this.firebase.db;
     const courseRef = db.collection(Collections.courses).doc(courseId);
@@ -179,9 +223,20 @@ export class CourseService {
     const published = await this.published(courseId);
     const lesson = published.lessons.find((candidate) => candidate.lessonId === lessonId);
     if (!lesson) throw new NotFoundException('lesson not found');
-    const correct = lesson.questions.filter((question, index) => question.correctIndex === input.answers[index]).length;
+    if (input.answers.length !== lesson.questions.length) {
+      throw new BadRequestException(`answer every question: this quiz has ${lesson.questions.length}`);
+    }
+    if (lesson.questions.some((question, index) => input.answers[index]! >= question.choices.length)) {
+      throw new BadRequestException("an answer is not one of its question's choices");
+    }
+    const feedback: CourseQuizFeedback[] = lesson.questions.map((question, index) => ({
+      questionId: question.questionId,
+      correct: question.correctIndex === input.answers[index],
+      explanation: question.explanation,
+    }));
+    const correct = feedback.filter((answer) => answer.correct).length;
     const score = Math.round((correct / lesson.questions.length) * 100);
-    const passed = score >= 80;
+    const passed = score >= PASS_PERCENT;
     const db = this.firebase.db;
     const attempt: CourseAttemptRecord = {
       attemptId: uuidv7(),
@@ -232,6 +287,7 @@ export class CourseService {
         attempt,
         progress,
         certificate: certificate && certificate.revokedAt === null ? pickCertificate(certificate) : null,
+        feedback,
       };
     });
   }
@@ -338,8 +394,8 @@ const publicLesson = (lesson: CourseLesson): PublicCourseLesson => ({
   ...lesson,
   questions: lesson.questions.map(({ questionId, prompt, choices }) => ({ questionId, prompt, choices })),
 });
-const completePortrait = (profile: FuturistProfile) =>
-  !!(profile.portraitUrl && profile.portraitCredit && profile.portraitLicense && profile.portraitSourceUrl && profile.portraitAlt);
+/** Profiles saved, or published, before portraits could be uploaded have no portraitImage. */
+const withPortraitImage = (profile: FuturistProfile): FuturistProfile => ({ ...profile, portraitImage: profile.portraitImage ?? null });
 const pickCertificate = (certificate: CourseCertificateRecord) => ({
   certificateId: certificate.certificateId,
   issuedAt: certificate.issuedAt,

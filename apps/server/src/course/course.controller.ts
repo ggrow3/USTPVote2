@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, HttpCode, Param, Post, Put, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import {
   courseMetadataSchema,
@@ -26,6 +26,15 @@ export class CourseController {
   @Get('public/courses/:courseId')
   catalog(@Param('courseId') courseId: string) {
     return this.courses.catalog(courseId);
+  }
+
+  /** An uploaded portrait's ID is the hash of its bytes, so it never changes and browsers may keep it. */
+  @Public()
+  @Get('public/course-images/:id')
+  @Header('Content-Type', 'image/webp')
+  @Header('Cache-Control', 'public, max-age=31536000, immutable')
+  image(@Param('id') id: string): Promise<Buffer> {
+    return this.courses.image(id);
   }
 
   /** Intentionally returns only validity and course metadata: certificate recipients stay private. */
@@ -92,6 +101,13 @@ export class CourseController {
   @Roles('course_admin')
   profile(@Ctx() ctx: RequestContext, @Param('courseId') courseId: string, @Body(new ZodPipe(saveFuturistProfileSchema)) input: SaveFuturistProfileInput) {
     return this.courses.saveProfile(courseId, input, requireAccount(ctx));
+  }
+
+  /** The raw image as the body (Content-Type image/jpeg, image/png or image/webp), for a profile's portrait. */
+  @Put('admin/courses/:courseId/images')
+  @Roles('course_admin')
+  uploadImage(@Ctx() ctx: RequestContext, @Param('courseId') courseId: string, @Body() body: unknown) {
+    return this.courses.uploadImage(courseId, body, requireAccount(ctx));
   }
 
   @Delete('admin/courses/:courseId/profiles/:profileId')
