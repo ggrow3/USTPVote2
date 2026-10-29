@@ -68,7 +68,6 @@ export {
   HUB_LIMITS,
   DEFAULT_HUB,
   isHubId,
-  isLogoId,
   newHubId,
   hubInitials,
   effectiveAccent,
@@ -109,4 +108,17 @@ export type {
   HubChangedPayload,
   HubInput,
 } from './hub.js';
+export {
+  HUB_IMAGE_KINDS,
+  HUB_IMAGE_NAMES,
+  HUB_IMAGE_SIZES,
+  RATIO_TOLERANCE,
+  BACKDROP_SCRIMS,
+  isHubImageId,
+  hubImageProblem,
+  underScrim,
+  scrimContrast,
+  scrimCss,
+} from './hub-images.js';
+export type { HubImageKind, HubImageSize, Scrim } from './hub-images.js';
 export { DEFAULT_ACCENT, DARK_CARD, TEXT_CONTRAST, isHexColour, luminance, contrast, brightAccent } from './accent.js';

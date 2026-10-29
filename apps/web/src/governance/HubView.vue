@@ -2,18 +2,19 @@
 import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { RouterLink } from 'vue-router';
-import { brightAccent, effectiveAccent, hubInitials, linkTarget, type ClickTarget, type PublicHub } from 'ustp-domain';
+import { brightAccent, effectiveAccent, HUB_IMAGE_SIZES, hubInitials, linkTarget, type ClickTarget, type PublicHub } from 'ustp-domain';
 import { toggleTheme } from '../theme.js';
-import { countHubClick, discordLive, hubLogoUrl } from './api.js';
+import { countHubClick, discordLive, hubImageUrl } from './api.js';
 import { hubIcon } from './hub-icons.js';
 import { liveText } from './hub-text.js';
 import './hub-fonts.css';
 
 /**
- * The home page hub (design §10.6): share and theme buttons, the party's profile, its icon row, the Discord card and
- * the sections of link cards, in one column. Every link counts its clicks.
+ * The home page hub (design §10.6): share and theme buttons, the party's profile under its cover banner if it has one,
+ * its icon row, the Discord card and the sections of link cards, in one column. Every link counts its clicks.
  */
 const props = defineProps<{ hub: PublicHub }>();
+const COVER = HUB_IMAGE_SIZES.cover;
 
 const $q = useQuasar();
 const profile = computed(() => props.hub.profile);
@@ -79,8 +80,11 @@ async function share() {
       </div>
 
       <header class="hub__profile">
-        <div class="hub__logo">
-          <img v-if="profile.logo" :src="hubLogoUrl(profile.logo)" alt="" width="104" height="104" />
+        <div v-if="profile.cover" class="hub__cover">
+          <img :src="hubImageUrl('cover', profile.cover)" alt="" :width="COVER.width" :height="COVER.height" />
+        </div>
+        <div class="hub__logo" :class="{ 'hub__logo--on-cover': profile.cover }">
+          <img v-if="profile.logo" :src="hubImageUrl('logo', profile.logo)" alt="" width="104" height="104" />
           <span v-else aria-hidden="true">{{ initials }}</span>
         </div>
         <h1 class="hub__name">{{ profile.name }}</h1>
@@ -224,6 +228,28 @@ async function share() {
   flex-direction: column;
   align-items: center;
   text-align: center;
+}
+/*
+ * The cover banner: the column's width at 3:1, decorative (alt=""), with the logo's tile over its lower edge: half the
+ * tile on the full column, less on a phone, where the banner is shorter.
+ */
+.hub__cover {
+  width: 100%;
+  aspect-ratio: 3 / 1;
+  overflow: hidden;
+  border: 1px solid var(--hub-line);
+  border-radius: var(--signal-radius);
+  background: var(--hub-card);
+}
+.hub__cover img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.hub__logo--on-cover {
+  position: relative;
+  margin-top: clamp(-52px, -9vw, -32px);
 }
 .hub__logo {
   display: grid;

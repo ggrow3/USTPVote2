@@ -51,7 +51,7 @@ What is not domain-centred:
 | **Bylaws** | §5.2, §5.4, §6.6 | `bylaws_versions`, `bylaws_checks`, `bylaws_check_references` | core |
 | **Elections** (setup, roll, voting, sealing, results) | §5.5, §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results`, `consistency_checks`, `consistency_documents` | core |
 | **Offices** | §6.4 | `positions`, `position_terms` | supporting |
-| **Governance** (roles, two-person rule, testing mode, who sees which link, the voting home's quote, the home page hub, the Anthropic API key) | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `home_quote`, `hub`, `hub_logos`, `hub_clicks`, `anthropic_key` | core rule, generic mechanism |
+| **Governance** (roles, two-person rule, testing mode, who sees which link, the voting home's quote, the home page hub, the Anthropic API key) | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `home_quote`, `hub`, `hub_logos`, `hub_covers`, `hub_backgrounds`, `hub_clicks`, `anthropic_key` | core rule, generic mechanism |
 | **Audit ledger** | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` | shared kernel |
 | **Notifications** (election notices by email) | §6.8 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests` | supporting |
 | **Verification** (`ustp-verify`, `/verify`, receipt and results checks) | §7.5, §16 | — (reads the public record) | conformist |
