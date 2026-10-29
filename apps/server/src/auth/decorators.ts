@@ -12,9 +12,16 @@ declare module 'fastify' {
 export const PUBLIC_KEY = 'ustp:public';
 export const ROLES_KEY = 'ustp:roles';
 export const CHECK_REVOKED_KEY = 'ustp:check-revoked';
+export const APP_CHECKED_KEY = 'ustp:app-checked';
 
 /** No sign-in required. */
 export const Public = () => SetMetadata(PUBLIC_KEY, true);
+
+/**
+ * On a public route, still require a valid App Check token where App Check is enforced, as signed-in routes do: for
+ * routes anyone may write to (the suggestions form, design §10.9), so a script cannot post to them from anywhere.
+ */
+export const AppChecked = () => SetMetadata(APP_CHECKED_KEY, true);
 
 /**
  * The caller must hold at least one of these roles. Also implies multi-factor sign-in and a revocation check on

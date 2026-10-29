@@ -7,6 +7,7 @@ const ROLE_LABELS: Record<Role, string> = {
   auditor: 'Auditor',
   system_admin: 'System Admin',
   course_admin: 'Course Administrator',
+  communications_admin: 'Communications Admin',
 };
 
 /** "Auditor", "System Admin". */

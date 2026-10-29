@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import type { BylawsRunResult, ConsistencyRunResult, ElectionRunResult, TickResult } from 'ustp-domain';
 import { BylawsCheckRunner } from '../bylaws-check/bylaws-check-runner.js';
+import { SuggestionsService } from '../communications/suggestions.service.js';
 import { ConsistencyCheckRunner } from '../consistency-check/consistency-check-runner.js';
 import { ElectionCheckRunner } from '../election-check/election-check-runner.js';
 import { NoticeSender } from '../notifications/notice-sender.js';
@@ -38,13 +39,15 @@ export class TasksController {
     private readonly consistencyChecks: ConsistencyCheckRunner,
     private readonly electionChecks: ElectionCheckRunner,
     private readonly notices: NoticeSender,
+    private readonly suggestions: SuggestionsService,
   ) {}
 
   /**
    * Every minute: prepare ballot-pool keys, open and close elections on time, seal ballots, tally elections that are
    * now fully sealed, destroy the pool keys of certified and cancelled elections, send election notices (for at most
-   * 20 seconds) and the test emails Election Admins asked for, and record their bounces, then seal new ledger entries (including those) into a signed block, sign
-   * approved rolls and anchor new blocks. Each step runs even if an earlier one failed.
+   * 20 seconds) and the test emails Election Admins asked for, and record their bounces, delete suggestions a year old
+   * (design §10.9), then seal new ledger entries (including those) into a signed block, sign approved rolls and anchor
+   * new blocks. Each step runs even if an earlier one failed.
    */
   @Post('tick')
   @HttpCode(200)
@@ -70,6 +73,7 @@ export class TasksController {
       noticesSent: await step('send notices', () => this.notices.sendDue(), 0),
       testEmailsSent: await step('send test emails', () => this.notices.sendTests(), 0),
       bouncesRecorded: await step('record bounces', () => this.notices.recordBounces(), 0),
+      suggestionsDeleted: await step('delete old suggestions', () => this.suggestions.deleteExpired(), 0),
       blocksSealed: (await step('seal blocks', () => this.sealer.sealBlocks(), [])).length,
       rollsSigned: await step('sign rolls', () => this.sealer.signRolls(), 0),
       anchored: await step('anchor blocks', () => this.sealer.anchorBlocks(), 0),

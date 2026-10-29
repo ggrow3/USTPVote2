@@ -1,7 +1,10 @@
 import { deny, OK, type Check } from './check.js';
 
-/** Course Administrators publish learning material only; they receive no membership, election, ballot or audit powers. */
-export const ROLES = ['membership_admin', 'election_admin', 'auditor', 'system_admin', 'course_admin'] as const;
+/**
+ * Course Administrators publish learning material only, and Communications Admins the party's news, press kit and share
+ * kit (design §10.9); neither receives membership, election, ballot or audit powers.
+ */
+export const ROLES = ['membership_admin', 'election_admin', 'auditor', 'system_admin', 'course_admin', 'communications_admin'] as const;
 export type Role = (typeof ROLES)[number];
 
 /** The most roles one person may hold at once (design §10.1). */
@@ -13,6 +16,7 @@ const INCOMPATIBLE: readonly (readonly [Role, Role])[] = [
   ['auditor', 'election_admin'],
   ['auditor', 'system_admin'],
   ['auditor', 'course_admin'],
+  ['auditor', 'communications_admin'],
 ];
 
 /** Roles already held that would conflict with granting `adding`. */
