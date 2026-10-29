@@ -23,6 +23,7 @@ import { SECTION_LABELS } from '../governance/navigation-text.js';
 import ApplicationsPanel from '../membership/ApplicationsPanel.vue';
 import MembersPanel from '../membership/MembersPanel.vue';
 import RegistrationFormPanel from '../membership/RegistrationFormPanel.vue';
+import SecurityPanel from '../security/SecurityPanel.vue';
 import { useRoute } from 'vue-router';
 import { usePageTitle } from '../a11y.js';
 import { acting } from '../acting.js';
@@ -44,6 +45,7 @@ const PANELS: Record<AdminSection, Component> = {
   claude: ClaudeKeyPanel,
   email: NoticeSettingsPanel,
   audit: AuditPanel,
+  security: SecurityPanel,
   testing: TestingPanel,
   navigation: NavigationPanel,
   hub: HubPanel,

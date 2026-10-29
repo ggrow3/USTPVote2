@@ -20,6 +20,29 @@ resource "google_project_iam_audit_config" "kms" {
 # which pool encryption makes harmless but nobody needs (design §14). No audit config is declared for it on purpose; an
 # allServices config set on a parent folder or organization would still turn them on.
 
+# --- Sign-in traffic (design §10.7) --------------------------------------------------------------------------------
+
+# Identity Platform's request logs (identity.tf) hold every sign-in attempt with its address, failed ones included,
+# which the api never sees. The _Default bucket keeps them 30 days; this bucket keeps a copy as long as the app's own
+# sign-in log keeps its records.
+resource "google_logging_project_bucket_config" "sign_in_traffic" {
+  project        = var.project_id
+  location       = "global"
+  bucket_id      = "sign-in-traffic"
+  retention_days = var.sign_in_log_retention_days
+  description    = "Identity Platform request logs: sign-ups, sign-ins and failed attempts with the caller's address (design §10.7)."
+
+  depends_on = [google_project_service.this]
+}
+
+resource "google_logging_project_sink" "sign_in_traffic" {
+  project                = var.project_id
+  name                   = "sign-in-traffic"
+  destination            = "logging.googleapis.com/${google_logging_project_bucket_config.sign_in_traffic.id}"
+  filter                 = "resource.type=\"identitytoolkit_project\""
+  unique_writer_identity = true
+}
+
 # --- Alert: a key used by someone other than the worker -------------------------------------------------------------
 
 locals {

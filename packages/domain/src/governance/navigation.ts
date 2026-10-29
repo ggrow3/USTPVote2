@@ -29,6 +29,7 @@ export const ADMIN_SECTIONS = [
   'claude',
   'email',
   'audit',
+  'security',
   'testing',
   'navigation',
   'hub',
@@ -72,6 +73,8 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   // The election emails' settings (design §6.8).
   email: ['system_admin'],
   audit: ['auditor'],
+  // The sign-in log and site analytics (design §10.7): System Admins and Auditors read the log; System Admins set analytics.
+  security: ['system_admin', 'auditor'],
   testing: ['system_admin'],
   navigation: ['system_admin'],
   hub: ['system_admin'],

@@ -4,6 +4,7 @@ import './app.css';
 import './layout.css';
 import { Dialog, Notify, Quasar } from 'quasar';
 import { createApp } from 'vue';
+import { startAnalytics } from './analytics.js';
 import App from './App.vue';
 import { setUpPwa } from './pwa.js';
 import { router } from './router.js';
@@ -24,5 +25,6 @@ const app = createApp(App).use(Quasar, {
 // Before the first render, so a theme picked on the hub does not flash the other one.
 restoreTheme();
 app.use(router).mount('#app');
+startAnalytics(router);
 
 setUpPwa();
