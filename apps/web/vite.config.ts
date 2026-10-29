@@ -14,10 +14,14 @@ export default defineConfig({
   },
 });
 
+/** What Hosting serves as the deployed build's commit (design §15); never cached by the service worker. */
+const VERSION_FILE = 'version.json';
+
 /**
  * Builds dist/sw.js from service-worker.js: the files to cache are the whole build (the app shell, index.html first),
- * and the version is a hash of their contents, so every deploy that changes the app installs a new worker. Builds
- * only; the dev server has no service worker.
+ * and the version is a hash of their contents, so every deploy that changes the app installs a new worker. Also writes
+ * dist/version.json with the commit the release workflow builds from (VITE_BUILD_COMMIT), which open pages compare
+ * with their own to offer a reload (src/update.ts). Builds only; the dev server has no service worker.
  */
 function serviceWorker(): Plugin {
   let config: ResolvedConfig;
@@ -27,10 +31,15 @@ function serviceWorker(): Plugin {
     configResolved(resolved) {
       config = resolved;
     },
+    generateBundle() {
+      const commit = (config.env.VITE_BUILD_COMMIT as string | undefined) || null;
+      this.emitFile({ type: 'asset', fileName: VERSION_FILE, source: `${JSON.stringify({ commit })}
+` });
+    },
     writeBundle() {
       const outDir = resolve(config.root, config.build.outDir);
       const files = listFiles(outDir)
-        .filter((f) => f !== 'sw.js' && !f.endsWith('.map'))
+        .filter((f) => f !== 'sw.js' && f !== VERSION_FILE && !f.endsWith('.map'))
         .sort((a, b) => (a === 'index.html' ? -1 : b === 'index.html' ? 1 : a.localeCompare(b)));
       const template = readFileSync(resolve(config.root, 'service-worker.js'), 'utf8');
       const hash = createHash('sha256').update(template);

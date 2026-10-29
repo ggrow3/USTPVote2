@@ -56,4 +56,8 @@ COPY --from=build /out /app
 WORKDIR /app/apps/server
 USER node
 EXPOSE 8080
+# The commit the release workflow built (design §15): the api reports it in GET /v1/health and the X-Build-Commit header,
+# and the web app compares it with its own. Empty in other builds. Last, so every layer above stays cached.
+ARG BUILD_COMMIT=""
+ENV BUILD_COMMIT=$BUILD_COMMIT
 CMD ["node", "dist/main-api.js"]
