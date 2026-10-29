@@ -123,6 +123,15 @@ export function homeCards(
       action: 'Open the forum',
     });
   }
+  if (shown.menu.includes('news')) {
+    cards.push({
+      key: 'news',
+      title: 'News',
+      text: 'Press releases and statements, the press kit, posts to share, and a form to send the party your ideas.',
+      to: '/news',
+      action: 'Read the news',
+    });
+  }
   if (shown.menu.includes('course')) {
     cards.push({
       key: 'course',
@@ -166,6 +175,7 @@ const VISITOR_LINKS: readonly VisitorLink[] = [
   { key: 'candidates', before: 'Running for office? ', label: 'See the party’s candidates', after: ' and where they run.', to: '/candidates' },
   { key: 'teams', before: 'Members: ', label: 'join a team', after: ' and work with others between elections.', to: '/teams' },
   { key: 'forum', before: 'Members: ', label: 'discuss and propose', after: ' in the forum.', to: '/forum' },
+  { key: 'news', before: 'What is the party saying? ', label: 'Read the news and press releases', after: ', or send us a suggestion.', to: '/news' },
   { key: 'course', before: 'Interested in the future? ', label: 'Explore the Transhumanism course', after: '.', to: '/course/transhumanism' },
   { key: 'admin', before: 'Party officers: ', label: 'open the admin console', after: '.', to: '/admin' },
 ];

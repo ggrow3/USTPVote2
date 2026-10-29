@@ -1,6 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
-import type { CourseCatalog, FuturistCategory, LearnerCourseView, PublicCourseLesson } from 'ustp-domain';
+import {
+  coursePortraitSrc,
+  PASS_PERCENT,
+  type CourseCatalog,
+  type CourseQuizFeedback,
+  type FuturistCategory,
+  type LearnerCourseView,
+  type PublicCourseLesson,
+} from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { api, apiBlob, errorMessage } from '../api.js';
 import { session } from '../session.js';
@@ -13,7 +21,15 @@ const loading = ref(true);
 const submitting = ref(false);
 const selectedId = ref<string | null>(null);
 const answers = ref<Record<string, number>>({});
-const result = ref<{ lessonId: string; score: number; passed: boolean; certificate: LearnerCourseView['certificate'] } | null>(null);
+/** The last quiz submitted, with the answers it was marked on, so feedback hides on a question once its answer changes. */
+const result = ref<{
+  lessonId: string;
+  score: number;
+  passed: boolean;
+  certificate: LearnerCourseView['certificate'];
+  answers: readonly number[];
+  feedback: readonly CourseQuizFeedback[];
+} | null>(null);
 const hiddenPortraits = ref(new Set<string>());
 
 usePageTitle('Transhumanism course');
@@ -27,10 +43,10 @@ const categoryLabel: Record<FuturistCategory, string> = {
   foundational_visionary: 'Foundational visionary',
 };
 
-async function load() {
-  loading.value = true;
+/** Loads the course; after a quiz, quietly, so the page and the quiz's result stay where they are. */
+async function load({ quiet = false } = {}) {
+  loading.value = !quiet;
   error.value = null;
-  result.value = null;
   try {
     if (session.user) {
       learner.value = await api<LearnerCourseView>('GET', `/v1/courses/${COURSE_ID}`);
@@ -47,6 +63,12 @@ async function load() {
   }
 }
 
+function feedbackFor(index: number, questionId: string): CourseQuizFeedback | null {
+  const marked = result.value?.lessonId === current.value?.lessonId ? result.value : null;
+  if (!marked || marked.answers[index] !== answers.value[questionId]) return null;
+  return marked.feedback[index] ?? null;
+}
+
 function openLesson(lessonId: string) {
   selectedId.value = lessonId;
   answers.value = {};
@@ -58,13 +80,22 @@ async function submit() {
   if (!current.value || !session.user || current.value.questions.some((q) => answers.value[q.questionId] === undefined)) return;
   submitting.value = true;
   try {
-    const response = await api<{ attempt: { score: number; passed: boolean }; certificate: LearnerCourseView['certificate'] }>(
-      'POST',
-      `/v1/courses/${COURSE_ID}/lessons/${current.value.lessonId}/attempts`,
-      { answers: current.value.questions.map((q) => answers.value[q.questionId]) },
-    );
-    result.value = { lessonId: current.value.lessonId, score: response.attempt.score, passed: response.attempt.passed, certificate: response.certificate };
-    await load();
+    const lessonId = current.value.lessonId;
+    const chosen = current.value.questions.map((q) => answers.value[q.questionId]!);
+    const response = await api<{
+      attempt: { score: number; passed: boolean };
+      certificate: LearnerCourseView['certificate'];
+      feedback: CourseQuizFeedback[];
+    }>('POST', `/v1/courses/${COURSE_ID}/lessons/${lessonId}/attempts`, { answers: chosen });
+    result.value = {
+      lessonId,
+      score: response.attempt.score,
+      passed: response.attempt.passed,
+      certificate: response.certificate,
+      answers: chosen,
+      feedback: response.feedback,
+    };
+    await load({ quiet: true });
   } catch (e) {
     error.value = errorMessage(e);
   } finally {
@@ -90,7 +121,14 @@ function hidePortrait(profileId: string) {
   hiddenPortraits.value = new Set([...hiddenPortraits.value, profileId]);
 }
 
-watch(() => session.user?.uid, load, { immediate: true });
+watch(
+  () => session.user?.uid,
+  () => {
+    result.value = null;
+    void load();
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -143,13 +181,27 @@ watch(() => session.user?.uid, load, { immediate: true });
             <q-separator />
             <q-card-section>
               <h3 class="text-h6">Lesson quiz</h3>
-              <p class="text-grey-7">Five questions. A score of 80% passes; you may retry as often as needed.</p>
+              <p class="text-grey-7">
+                {{ current.questions.length === 1 ? 'One question' : `${current.questions.length} questions` }}. A score of {{ PASS_PERCENT }}%
+                passes; you may retry as often as needed. After each try you see which answers were right, and why.
+              </p>
               <template v-if="session.user">
                 <q-list separator>
                   <q-item v-for="(question, index) in current.questions" :key="question.questionId" class="q-px-none q-py-md">
                     <q-item-section>
                       <q-item-label class="text-weight-medium">{{ index + 1 }}. {{ question.prompt }}</q-item-label>
                       <q-option-group v-model="answers[question.questionId]" :options="question.choices.map((label, value) => ({ label, value }))" type="radio" class="q-mt-sm" />
+                      <div
+                        v-if="feedbackFor(index, question.questionId)"
+                        class="quiz-feedback q-mt-sm"
+                        :class="feedbackFor(index, question.questionId)!.correct ? 'quiz-feedback--right' : 'quiz-feedback--wrong'"
+                      >
+                        <q-icon :name="feedbackFor(index, question.questionId)!.correct ? 'check_circle' : 'cancel'" size="20px" aria-hidden="true" />
+                        <div>
+                          <strong>{{ feedbackFor(index, question.questionId)!.correct ? 'Right.' : 'Not this one.' }}</strong>
+                          {{ feedbackFor(index, question.questionId)!.explanation }}
+                        </div>
+                      </div>
                     </q-item-section>
                   </q-item>
                 </q-list>
@@ -170,7 +222,7 @@ watch(() => session.user?.uid, load, { immediate: true });
           <div class="row q-col-gutter-md">
             <div v-for="profile in catalog.profiles" :key="profile.profileId" class="col-12 col-sm-6 col-md-4">
               <q-card flat bordered class="fit column">
-                <q-img v-if="profile.portraitUrl && !hiddenPortraits.has(profile.profileId)" :src="profile.portraitUrl" :alt="profile.portraitAlt" ratio="1.65" fit="cover" @error="hidePortrait(profile.profileId)">
+                <q-img v-if="coursePortraitSrc(profile) && !hiddenPortraits.has(profile.profileId)" :src="coursePortraitSrc(profile)!" :alt="profile.portraitAlt" ratio="1.65" fit="cover" position="50% 30%" @error="hidePortrait(profile.profileId)">
                   <div class="absolute-bottom text-caption portrait-credit">{{ profile.portraitCredit }}</div>
                 </q-img>
                 <div v-else class="portrait-fallback" role="img" :aria-label="`No portrait available for ${profile.name}`">{{ profile.name.charAt(0) }}</div>
@@ -185,6 +237,7 @@ watch(() => session.user?.uid, load, { immediate: true });
                   <a :href="profile.quoteUrl" target="_blank" rel="noopener" class="text-caption">{{ profile.quoteSource }}</a>
                   <div class="q-mt-sm"><a :href="profile.furtherReadingUrl" target="_blank" rel="noopener">Further reading</a></div>
                   <div v-if="profile.portraitSourceUrl" class="q-mt-xs text-caption"><a :href="profile.portraitSourceUrl" target="_blank" rel="noopener">Image source · {{ profile.portraitLicense }}</a></div>
+                  <div v-else-if="profile.portraitLicense" class="q-mt-xs text-caption">Image · {{ profile.portraitLicense }}</div>
                 </q-card-section>
               </q-card>
             </div>
@@ -199,6 +252,9 @@ watch(() => session.user?.uid, load, { immediate: true });
 .course-hero { background: linear-gradient(125deg, #0b2948, #00695c); color: white; }
 .quote { border-left: 3px solid var(--q-secondary); padding-left: 12px; font-style: italic; }
 .portrait-credit { background: rgba(0, 0, 0, 0.7); padding: 3px 8px; }
+.quiz-feedback { display: flex; gap: 8px; align-items: flex-start; border-radius: 6px; padding: 8px 10px; }
+.quiz-feedback--right { background: #e8f5e9; color: #1b5e20; }
+.quiz-feedback--wrong { background: #fff3e0; color: #7a3a00; }
 .portrait-fallback { align-items: center; background: linear-gradient(135deg, #d8e9f1, #e9f0d7); color: #0b2948; display: flex; font-size: 4rem; font-weight: 700; height: 190px; justify-content: center; }
 </style>
 

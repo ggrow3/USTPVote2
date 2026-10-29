@@ -44,6 +44,20 @@ export class DirectoryService {
     return found;
   }
 
+  /** Who holds a role now, by name (or email, for an account without one), in name order. */
+  async roleHolders(role: Role): Promise<{ accountId: string; name: string }[]> {
+    const db = this.firebase.db;
+    const snap = await db.collection(Collections.roleAssignments).where('role', '==', role).where('revokedAt', '==', null).get();
+    const ids = [...new Set(snap.docs.map((d) => (d.data() as RoleAssignmentRecord).accountId))];
+    const accounts = ids.length ? await db.getAll(...ids.map((id) => db.collection(Collections.accounts).doc(id))) : [];
+    return accounts
+      .flatMap((s) => {
+        const a = s.data() as AccountRecord | undefined;
+        return a ? [{ accountId: a.accountId, name: a.displayName || a.primaryEmail || a.accountId }] : [];
+      })
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   /** Every account's active roles, by accountId. Role holders are the few admins, so one query reads them all. */
   async allActiveRoles(): Promise<Map<string, Role[]>> {
     const snap = await this.firebase.db.collection(Collections.roleAssignments).where('revokedAt', '==', null).get();

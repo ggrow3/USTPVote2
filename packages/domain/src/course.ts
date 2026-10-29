@@ -25,6 +25,19 @@ export interface CourseRecord {
   readonly updatedBy: string;
 }
 
+/**
+ * A lesson's quiz: one to ten questions, each with two to six choices and one correct answer. A learner passes with
+ * PASS_PERCENT of the answers right, and may retry as often as they like.
+ */
+export const QUIZ_LIMITS = { minQuestions: 1, maxQuestions: 10, minChoices: 2, maxChoices: 6 } as const;
+export const PASS_PERCENT = 80;
+
+/**
+ * Portraits a Course Administrator uploads: at least MIN_SIDE pixels on the short side, stored as a WebP at most
+ * MAX_SIDE pixels on the long side, on this server, so learners never load them from another site.
+ */
+export const COURSE_IMAGE = { minSide: 200, maxSide: 800 } as const;
+
 export interface CourseQuestion {
   readonly questionId: string;
   readonly prompt: string;
@@ -68,11 +81,17 @@ export interface FuturistProfile {
   readonly quote: string;
   readonly quoteSource: string;
   readonly quoteUrl: string;
-  /** A public-domain or open-licence image.  Null is allowed only while a Course Administrator is preparing a draft. */
+  /**
+   * The portrait: an uploaded photo's ID (the SHA-256 of its stored bytes, see coursePortraitSrc) or the address of a
+   * public-domain or open-licence image elsewhere, never both. Neither is allowed only while a Course Administrator is
+   * preparing a draft. Records saved before uploads existed have no portraitImage; read it as null.
+   */
+  readonly portraitImage: string | null;
   readonly portraitUrl: string | null;
   readonly portraitAlt: string;
   readonly portraitCredit: string | null;
   readonly portraitLicense: string | null;
+  /** Where the picture comes from, when it has a page of its own (a Wikimedia Commons file page, say). */
   readonly portraitSourceUrl: string | null;
   readonly furtherReadingUrl: string;
   readonly updatedAt: string;
@@ -134,6 +153,13 @@ export interface LearnerCourseView extends CourseCatalog {
   readonly certificate: Pick<CourseCertificateRecord, 'certificateId' | 'issuedAt' | 'courseVersion'> | null;
 }
 
+/** How one answer went, shown to the learner after they submit a quiz: right or not, and why. */
+export interface CourseQuizFeedback {
+  readonly questionId: string;
+  readonly correct: boolean;
+  readonly explanation: string;
+}
+
 export interface CertificateVerification {
   readonly valid: boolean;
   readonly courseTitle: string | null;
@@ -161,28 +187,59 @@ export interface LtiGradeOutcome {
   readonly passed: boolean;
 }
 
+const COURSE_IMAGE_ID = /^[0-9a-f]{64}$/;
+
+export function isCourseImageId(id: string): boolean {
+  return COURSE_IMAGE_ID.test(id);
+}
+
+/** Where a browser loads a profile's portrait from: this server for an uploaded photo, else its link, or nowhere. */
+export function coursePortraitSrc(profile: Pick<FuturistProfile, 'portraitImage' | 'portraitUrl'>): string | null {
+  return profile.portraitImage ? `/v1/public/course-images/${profile.portraitImage}` : profile.portraitUrl;
+}
+
+/** What a portrait still needs before the course can be published with it; null when it is complete. */
+export function portraitProblem(
+  profile: Pick<FuturistProfile, 'portraitImage' | 'portraitUrl' | 'portraitAlt' | 'portraitCredit' | 'portraitLicense'>,
+): string | null {
+  if (!profile.portraitImage && !profile.portraitUrl) return 'no portrait yet';
+  if (!profile.portraitAlt) return 'the portrait needs alt text';
+  if (!profile.portraitCredit || !profile.portraitLicense) return 'the portrait needs a credit and a licence';
+  return null;
+}
+
 const text = (max: number) => z.string().trim().min(1).max(max);
 const imageUrl = z.string().url().max(2048).nullable();
 
 export const courseQuestionSchema = z
   .strictObject({
-    questionId: z.string().trim().min(1).max(80),
+    /** Kept when a question is edited; the server gives a new question one. */
+    questionId: z.string().trim().min(1).max(80).optional(),
     prompt: text(1000),
-    choices: z.array(text(500)).length(4),
-    correctIndex: z.number().int().min(0).max(3),
+    choices: z.array(text(500)).min(QUIZ_LIMITS.minChoices).max(QUIZ_LIMITS.maxChoices),
+    correctIndex: z.number().int().min(0),
     explanation: text(2000),
+  })
+  .refine((question) => question.correctIndex < question.choices.length, {
+    path: ['correctIndex'],
+    message: 'the correct answer must be one of the choices',
   })
   .readonly();
 
-export const saveCourseLessonSchema = z.strictObject({
-  lessonId: z.string().trim().min(1).max(80).optional(),
-  order: z.number().int().min(1).max(1000),
-  title: text(200),
-  summary: text(1000),
-  body: text(50_000),
-  estimatedMinutes: z.number().int().min(1).max(240),
-  questions: z.array(courseQuestionSchema).length(5),
-});
+export const saveCourseLessonSchema = z
+  .strictObject({
+    lessonId: z.string().trim().min(1).max(80).optional(),
+    order: z.number().int().min(1).max(1000),
+    title: text(200),
+    summary: text(1000),
+    body: text(50_000),
+    estimatedMinutes: z.number().int().min(1).max(240),
+    questions: z.array(courseQuestionSchema).min(QUIZ_LIMITS.minQuestions).max(QUIZ_LIMITS.maxQuestions),
+  })
+  .superRefine((lesson, ctx) => {
+    const ids = lesson.questions.map((question) => question.questionId).filter(Boolean);
+    if (new Set(ids).size !== ids.length) ctx.addIssue({ code: 'custom', path: ['questions'], message: 'two questions have the same ID' });
+  });
 export type SaveCourseLessonInput = z.infer<typeof saveCourseLessonSchema>;
 
 export const saveFuturistProfileSchema = z
@@ -196,6 +253,8 @@ export const saveFuturistProfileSchema = z
     quote: text(1000),
     quoteSource: text(500),
     quoteUrl: z.string().url().max(2048),
+    // Required, though nullable, so an editor from before uploads gets a 400 rather than clearing an uploaded photo.
+    portraitImage: z.string().regex(COURSE_IMAGE_ID, 'not an uploaded photo').nullable(),
     portraitUrl: imageUrl,
     portraitAlt: z.string().trim().max(500),
     portraitCredit: z.string().trim().max(1000).nullable(),
@@ -204,9 +263,12 @@ export const saveFuturistProfileSchema = z
     furtherReadingUrl: z.string().url().max(2048),
   })
   .superRefine((profile, ctx) => {
-    const imageFields = [profile.portraitUrl, profile.portraitCredit, profile.portraitLicense, profile.portraitSourceUrl];
-    if (imageFields.some(Boolean) && imageFields.some((field) => !field)) {
-      ctx.addIssue({ code: 'custom', path: ['portraitUrl'], message: 'a portrait needs a URL, credit, licence and source link' });
+    if (profile.portraitImage && profile.portraitUrl) {
+      ctx.addIssue({ code: 'custom', path: ['portraitUrl'], message: 'use an uploaded photo or an image link, not both' });
+    }
+    const described = [profile.portraitImage, profile.portraitUrl, profile.portraitAlt, profile.portraitCredit, profile.portraitLicense, profile.portraitSourceUrl];
+    if (described.some(Boolean) && portraitProblem(profile)) {
+      ctx.addIssue({ code: 'custom', path: ['portraitUrl'], message: 'a portrait needs a photo, alt text, a credit and a licence' });
     }
   });
 export type SaveFuturistProfileInput = z.infer<typeof saveFuturistProfileSchema>;
@@ -214,8 +276,12 @@ export type SaveFuturistProfileInput = z.infer<typeof saveFuturistProfileSchema>
 export const courseMetadataSchema = z.strictObject({ title: text(200), summary: text(2000) });
 export type CourseMetadataInput = z.infer<typeof courseMetadataSchema>;
 
+/** One answer per question, in the lesson's order; the server checks the count and range against the lesson. */
 export const submitCourseQuizSchema = z.strictObject({
-  answers: z.array(z.number().int().min(0).max(3)).length(5),
+  answers: z
+    .array(z.number().int().min(0).max(QUIZ_LIMITS.maxChoices - 1))
+    .min(QUIZ_LIMITS.minQuestions)
+    .max(QUIZ_LIMITS.maxQuestions),
 });
 export type SubmitCourseQuizInput = z.infer<typeof submitCourseQuizSchema>;
 

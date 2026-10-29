@@ -58,6 +58,12 @@ export const router = createRouter({
         // The forum is for Active members; its pages say so to anyone else signed in (design §5.9).
         { path: 'forum', component: () => import('./forum/ForumPage.vue'), meta: { requiresAuth: true } },
         { path: 'forum/:postId', component: () => import('./forum/ForumPostPage.vue'), meta: { requiresAuth: true } },
+        // News, the press kit and the suggestions form are for everyone; the share kit for Active members (design §10.9).
+        { path: 'news', component: () => import('./communications/NewsPage.vue') },
+        { path: 'news/:slug', component: () => import('./communications/NewsPostPage.vue') },
+        { path: 'press', component: () => import('./communications/PressPage.vue') },
+        { path: 'suggest', component: () => import('./communications/SuggestPage.vue') },
+        { path: 'share', component: () => import('./communications/SharePage.vue'), meta: { requiresAuth: true } },
         // Open to anyone signed in: the page tells people without an admin role who it is for.
         { path: 'admin', component: () => import('./pages/AdminPage.vue'), meta: { requiresAuth: true } },
         {

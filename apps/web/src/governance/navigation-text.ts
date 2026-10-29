@@ -40,6 +40,7 @@ export const AUDIENCE_CAPTIONS: Readonly<Record<Audience, string>> = {
   auditor: 'Approvals, the ledger',
   system_admin: 'Roles, settings',
   course_admin: 'Course content',
+  communications_admin: 'News, press, social',
 };
 
 export const MENU_LABELS: Readonly<Record<MenuLink, string>> = {
@@ -50,6 +51,7 @@ export const MENU_LABELS: Readonly<Record<MenuLink, string>> = {
   candidates: 'Candidates',
   teams: 'Teams',
   forum: 'Forum',
+  news: 'News',
   course: 'Course',
   admin: 'Admin',
   signin: 'Sign in',
@@ -63,6 +65,7 @@ export const MENU_CAPTIONS: Readonly<Record<MenuLink, string>> = {
   candidates: 'Members running for public office, on a map; members declare theirs',
   teams: 'Join a team, see who is on each; leads run theirs (Active members only)',
   forum: 'Discuss and propose, vote posts up or down (Active members only)',
+  news: 'News and press releases, the press kit, the share kit and the suggestions form',
   course: 'Public Transhumanism lessons, profiles and certification',
   admin: 'The admin console',
   signin: "The header's button, for visitors",
@@ -90,6 +93,7 @@ export const SECTION_LABELS: Readonly<Record<AdminSection, string>> = {
   testing: 'Testing',
   navigation: 'Navigation',
   hub: 'Link hub',
+  communications: 'Communications',
   quote: 'Home page quote',
   course: 'Course administration',
 };
@@ -115,6 +119,7 @@ export const SECTION_CAPTIONS: Readonly<Record<AdminSection, string>> = {
   testing: 'Test personas, where testing mode is on',
   navigation: 'Who sees which link (this page)',
   hub: "The home page's links, profile and Discord card, and their clicks",
+  communications: 'News, the share kit, the social media calendar, suggestions, the press kit and bots',
   quote: 'Change the quote on the home page, or switch it off',
   course: 'Draft, attribute and publish lessons, quizzes and profiles',
 };

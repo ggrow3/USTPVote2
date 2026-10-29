@@ -204,6 +204,10 @@
     { "collectionGroup": "election_checks", "fieldPath": "quotedLines", "indexes": [] },
     { "collectionGroup": "forum_posts", "fieldPath": "body", "indexes": [] },
     { "collectionGroup": "forum_posts", "fieldPath": "ballots", "indexes": [] },
-    { "collectionGroup": "forum_comments", "fieldPath": "body", "indexes": [] }
+    { "collectionGroup": "forum_comments", "fieldPath": "body", "indexes": [] },
+    { "collectionGroup": "news_posts", "fieldPath": "body", "indexes": [] },
+    { "collectionGroup": "press_assets", "fieldPath": "data", "indexes": [] },
+    { "collectionGroup": "suggestions", "fieldPath": "message", "indexes": [] },
+    { "collectionGroup": "calendar_items", "fieldPath": "text", "indexes": [] }
   ]
 }

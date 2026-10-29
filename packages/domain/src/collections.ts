@@ -64,6 +64,8 @@ export const Collections = {
   courseProgress: 'course_progress',
   courseAttempts: 'course_attempts',
   courseCertificates: 'course_certificates',
+  /** `course_images/{sha256}`: portraits uploaded by Course Administrators, as stored after re-encoding. */
+  courseImages: 'course_images',
   courseLtiDeployments: 'course_lti_deployments',
   courseLtiOutcomes: 'course_lti_outcomes',
   /** `anthropic_key/current`: who added the Anthropic API key in the app, never the key (design §5.6). */
@@ -86,6 +88,25 @@ export const Collections = {
   signIns: 'sign_ins',
   /** `site_analytics/current`: the site's Google Analytics measurement ID, if any (design §10.7). */
   siteAnalytics: 'site_analytics',
+  // communications (design §10.9)
+  /** `news_posts/{postId}`: news, statements and press releases, drafts too. */
+  newsPosts: 'news_posts',
+  /** `press_kit/current`: the Press page's contact, description, facts and files. */
+  pressKit: 'press_kit',
+  /** `press_assets/{sha256}`: files uploaded for the press kit, as stored. */
+  pressAssets: 'press_assets',
+  /** `share_posts/{shareId}`: the share kit's ready-made posts for members. */
+  sharePosts: 'share_posts',
+  /** `share_counts/{item}`: how often each share button was pressed; nothing about who. */
+  shareCounts: 'share_counts',
+  /** `calendar_items/{itemId}`: the social media calendar's planned posts. */
+  calendarItems: 'calendar_items',
+  /** `suggestions/{suggestionId}`: suggestions sent with the public form, kept a year. */
+  suggestions: 'suggestions',
+  /** `suggestion_limits/{YYYY-MM-DD}`: each day's salt and counts for the form's limits. */
+  suggestionLimits: 'suggestion_limits',
+  /** `bots/{botId}`: the registry of the party's bots. */
+  bots: 'bots',
   // notifications (design §6.8)
   notices: 'notices',
   noticeOutbox: 'notice_outbox',

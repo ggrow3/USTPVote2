@@ -10,7 +10,7 @@ import { ROLES, type Role } from '../roles.js';
  */
 
 /** The menu bar's links in menu order, then the header's Sign in button (which only signed-out visitors can use). */
-export const MENU_LINKS = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'course', 'admin', 'signin'] as const;
+export const MENU_LINKS = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'news', 'course', 'admin', 'signin'] as const;
 export type MenuLink = (typeof MENU_LINKS)[number];
 
 /** The admin console's sections (tabs), in tab order. */
@@ -34,6 +34,7 @@ export const ADMIN_SECTIONS = [
   'security',
   'testing',
   'navigation',
+  'communications',
   'hub',
   'quote',
   'course',
@@ -83,7 +84,10 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   security: ['system_admin', 'auditor'],
   testing: ['system_admin'],
   navigation: ['system_admin'],
-  hub: ['system_admin'],
+  // The home page hub: System Admins, and Communications Admins, since its links are the party's social accounts.
+  hub: ['system_admin', 'communications_admin'],
+  // News, the press kit, the share kit, the social media calendar, suggestions and bots (design §10.9).
+  communications: ['communications_admin'],
   quote: ['system_admin'],
   course: ['course_admin'],
 };
@@ -109,6 +113,7 @@ export const START_PAGES: readonly StartPage[] = [
   'candidates',
   'teams',
   'forum',
+  'news',
   'course',
   ...ADMIN_SECTIONS.map((s) => `admin/${s}` as const),
 ];
@@ -165,10 +170,12 @@ const sectionsOf = (role: Role) =>
 
 /**
  * Today's console: each role sees what it may use, except Offices for System Admins (they may read it, not change it),
- * and only Course for Course Admins (they may read Offices and Approvals, but have nothing to do there).
+ * only Course for Course Admins, and only Communications and the Link hub for Communications Admins (both may read
+ * Offices and Approvals, but have nothing to do there).
  */
 function defaultSection(role: Role, section: AdminSection): boolean {
   if (role === 'course_admin') return section === 'course';
+  if (role === 'communications_admin') return section === 'communications' || section === 'hub';
   return SECTION_ROLES[section].includes(role) && !(section === 'offices' && role === 'system_admin');
 }
 
@@ -178,19 +185,19 @@ function defaultSection(role: Role, section: AdminSection): boolean {
  * list of who holds each office, came later and is for everyone too, as is Candidates (members running for public
  * office, design §5.8). Roles add Ballot, Verify, Offices and Candidates, so a staff member with no membership keeps
  * them, and Admin (from their sections). Signing in lands on Register with no membership, as it did, and on the home
- * page otherwise. Teams and the forum are for Active members only (design §5.7, §5.9).
+ * page otherwise. Teams and the forum are for Active members only (design §5.7, §5.9); News is for everyone (design §10.9).
  */
 export const DEFAULT_NAVIGATION: NavigationSettings = {
   menu: Object.fromEntries(
     AUDIENCES.map((a) => [
       a,
       isRole(a)
-        ? links('ballot', 'verify', 'offices', 'candidates', 'course', 'admin')
+        ? links('ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin')
         : a === 'signed_out'
-          ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'course', 'admin', 'signin')
+          ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin', 'signin')
           : a === 'active'
-            ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'course', 'admin')
-            : links('register', 'ballot', 'verify', 'offices', 'candidates', 'course', 'admin'),
+            ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'news', 'course', 'admin')
+            : links('register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin'),
     ]),
   ) as Record<Audience, Record<MenuLink, boolean>>,
   sections: Object.fromEntries(ROLES.map((r) => [r, sectionsOf(r)])) as Record<Role, Record<AdminSection, boolean>>,
@@ -352,8 +359,9 @@ export function shownTo(settings: NavigationSettings, viewer: Viewer): { menu: M
 
 /**
  * Where a viewer starts: the start page of the first role they hold, in the order Membership Admin, Election Admin,
- * Auditor, System Admin (staff come for their tools, and System Admin's are the occasional ones); with no role, their
- * membership state's. Signed-out visitors, and anyone whose page is not shown to them, start on home.
+ * Auditor, System Admin, Course Admin, Communications Admin (staff come for their tools, and System Admin's are the
+ * occasional ones); with no role, their membership state's. Signed-out visitors, and anyone whose page is not shown
+ * to them, start on home.
  */
 export function startPageFor(settings: NavigationSettings, viewer: Viewer): StartPage {
   if (viewer.membership === 'signed_out') return 'home';

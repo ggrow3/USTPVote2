@@ -17,6 +17,11 @@ describe('the signed-out card', () => {
     expect(visitorCard(['ballot', 'admin']).signIn).toBe(false);
   });
 
+  it('offers the news to visitors shown it', () => {
+    expect(visitorCard(['news', 'signin']).links).toEqual([expect.objectContaining({ key: 'news', to: '/news' })]);
+    expect(homeCards({ menu: ['news'], sections: [] }, 'active', false).map((c) => c.key)).toEqual(['news', 'account']);
+  });
+
   it('follows what visitors are shown', () => {
     expect(visitorCard(['signin']).links).toEqual([]);
     expect(visitorCard(['register', 'signin']).links.map((l) => l.key)).toEqual(['register']);

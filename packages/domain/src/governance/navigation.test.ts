@@ -34,9 +34,9 @@ function edit(base: NavigationSettings, change: (s: { -readonly [K in keyof Navi
 const viewer = (membership: Viewer['membership'], ...roles: Role[]): Viewer => ({ membership, roles });
 
 describe('defaults', () => {
-  it('show Register, Ballot, Verify, Offices, Candidates, Course and Admin to everyone, Teams and Forum to Active members, and Sign in while signed out', () => {
-    const all = ['register', 'ballot', 'verify', 'offices', 'candidates', 'course', 'admin'];
-    const withTeams = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'course', 'admin'];
+  it('show Register, Ballot, Verify, Offices, Candidates, News, Course and Admin to everyone, Teams and Forum to Active members, and Sign in while signed out', () => {
+    const all = ['register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin'];
+    const withTeams = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'news', 'course', 'admin'];
     expect(shownTo(DEFAULT_NAVIGATION, viewer('signed_out')).menu).toEqual([...all, 'signin']);
     for (const membership of ['no_membership', ...MEMBER_STATUSES] as const) {
       expect(shownTo(DEFAULT_NAVIGATION, viewer(membership)).menu).toEqual(membership === 'active' ? withTeams : all);
@@ -45,9 +45,9 @@ describe('defaults', () => {
     expect(shownTo(DEFAULT_NAVIGATION, viewer('applicant', 'membership_admin')).menu).toEqual(all);
   });
 
-  it('let every role keep Ballot, Verify, Offices, Candidates and Course without a membership', () => {
+  it('let every role keep Ballot, Verify, Offices, Candidates, News and Course without a membership', () => {
     for (const role of ROLES) {
-      expect(DEFAULT_NAVIGATION.menu[role]).toMatchObject({ ballot: true, verify: true, offices: true, candidates: true, course: true, register: false });
+      expect(DEFAULT_NAVIGATION.menu[role]).toMatchObject({ ballot: true, verify: true, offices: true, candidates: true, news: true, course: true, register: false });
     }
   });
 
@@ -58,6 +58,7 @@ describe('defaults', () => {
     expect(tabs('auditor')).toEqual(['elections', 'offices', 'approvals', 'audit', 'security']);
     expect(tabs('system_admin')).toEqual(['approvals', 'people', 'signin', 'claude', 'email', 'security', 'testing', 'navigation', 'hub', 'quote']);
     expect(tabs('course_admin')).toEqual(['course']);
+    expect(tabs('communications_admin')).toEqual(['communications', 'hub']);
   });
 
   it('give settings saved before the Home page quote section existed its default', () => {
@@ -121,6 +122,21 @@ describe('defaults', () => {
     expect(ROLES.filter((r) => resolved.sections[r].forum)).toEqual(['membership_admin', 'election_admin']);
     for (const role of ['auditor', 'system_admin', 'course_admin'] as const) expect(sectionLock(role, 'forum')).toBe('not_permitted');
     expect(startPagePath('forum')).toBe('/forum');
+  });
+
+  it('give settings saved before News existed its defaults: the link for everyone, the sections for Communications Admins', () => {
+    const before = edit(DEFAULT_NAVIGATION, (s) => {
+      for (const a of AUDIENCES) delete s.menu[a].news;
+      for (const r of ROLES) delete s.sections[r].communications;
+    });
+    const resolved = resolveNavigation(before);
+    expect(AUDIENCES.filter((a) => !resolved.menu[a].news)).toEqual([]);
+    expect(ROLES.filter((r) => resolved.sections[r].communications)).toEqual(['communications_admin']);
+    expect(ROLES.filter((r) => resolved.sections[r].hub)).toEqual(['system_admin', 'communications_admin']);
+    for (const role of ['membership_admin', 'election_admin', 'auditor', 'system_admin', 'course_admin'] as const) {
+      expect(sectionLock(role, 'communications')).toBe('not_permitted');
+    }
+    expect(startPagePath('news')).toBe('/news');
   });
 
   it('give no admin section to anyone without a role', () => {
@@ -267,7 +283,7 @@ describe('start pages', () => {
   });
 
   it('offer home, account and what the audience sees', () => {
-    expect(startPageOptions(DEFAULT_NAVIGATION, 'applicant')).toEqual(['home', 'account', 'register', 'ballot', 'verify', 'offices', 'candidates', 'course']);
+    expect(startPageOptions(DEFAULT_NAVIGATION, 'applicant')).toEqual(['home', 'account', 'register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course']);
     expect(startPageOptions(DEFAULT_NAVIGATION, 'election_admin')).toEqual([
       'home',
       'account',
@@ -275,6 +291,7 @@ describe('start pages', () => {
       'verify',
       'offices',
       'candidates',
+      'news',
       'course',
       'admin/elections',
       'admin/offices',
@@ -318,6 +335,7 @@ describe('saved settings', () => {
       candidates: true,
       teams: false,
       forum: false,
+      news: true,
       course: true,
       admin: true,
       signin: true,

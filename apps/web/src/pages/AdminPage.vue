@@ -10,6 +10,7 @@ import ElectionsPanel from '../components/admin/ElectionsPanel.vue';
 import OfficesPanel from '../offices/OfficesPanel.vue';
 import CandidaciesPanel from '../candidacies/CandidaciesPanel.vue';
 import TeamsPanel from '../teams/TeamsPanel.vue';
+import CommunicationsPanel from '../communications/CommunicationsPanel.vue';
 import ForumPanel from '../forum/ForumPanel.vue';
 import PeoplePanel from '../components/admin/PeoplePanel.vue';
 import PhotosPanel from '../components/admin/PhotosPanel.vue';
@@ -53,6 +54,7 @@ const PANELS: Record<AdminSection, Component> = {
   testing: TestingPanel,
   navigation: NavigationPanel,
   hub: HubPanel,
+  communications: CommunicationsPanel,
   quote: HomeQuotePanel,
   course: CoursePanel,
 };
@@ -82,7 +84,8 @@ const tab = ref<string>(tabs.value.some((t) => t.name === requested) ? requested
       </p>
       <template v-else>
         <p>
-          The admin console is for party officers: Membership Admins, Election Admins, Auditors, System Admins and Course Administrators. Your
+          The admin console is for party officers: Membership Admins, Election Admins, Auditors, System Admins, Course Administrators and
+          Communications Admins. Your
           account holds none of these roles.
         </p>
         <p>
