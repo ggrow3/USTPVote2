@@ -1,14 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { resetEmulators, TestApi } from './testing/emulator.js';
 
-// The api seeds the course once per process (CourseService.ensureSeeded), so each test gets a new api on the emptied
-// emulators, as a server starting on a fresh database would.
 let api: TestApi;
-beforeEach(async () => {
-  await resetEmulators();
+beforeAll(async () => {
   api = await TestApi.start();
 });
-afterEach(() => api.close());
+afterAll(() => api.close());
+beforeEach(async () => resetEmulators());
 
 describe('Transhumanism course', () => {
   it('keeps lessons public, awards a private certificate after all passing quizzes, and supports public verification', async () => {
