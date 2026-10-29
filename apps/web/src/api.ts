@@ -36,7 +36,10 @@ export interface ApiOptions {
 async function authHeaders({ actAs = acting.persona?.accountId ?? null }: ApiOptions = {}): Promise<Record<string, string>> {
   const headers: Record<string, string> = actAs ? { [ACT_AS_HEADER]: actAs } : {};
   const user = auth.currentUser;
-  if (user) headers.authorization = `Bearer ${await user.getIdToken()}`;
+  if (!user) return headers;
+  headers.authorization = `Bearer ${await user.getIdToken()}`;
+  // The api checks App Check only with a sign-in: its public routes need neither. So signed-out visitors, search
+  // engines included (design §15), never wait for reCAPTCHA, nor see public pages fail where it cannot give a token.
   const appCheck = await appCheckToken();
   if (appCheck) headers['x-firebase-appcheck'] = appCheck;
   return headers;
