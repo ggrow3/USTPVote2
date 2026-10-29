@@ -392,6 +392,21 @@ election) open with focus on Cancel.
   5.84 on the dark card; the words the caption grey, 4.61 / 7.77; "Staff roles only" the text colour. Seen, not
   changed: in the Membership view the table is 3 px wider than the card at 1600 px (the "Starts on" selects set its
   columns' minimum), so a sideways scrollbar shows; it was so before.
+- **Added 2026-10-28, the hub's cover banner and the page background photo** (design §10.6; against the emulators on
+  private ports as admin1@example.test, uploading a 1500×500 banner and a 2560×1440 photo of a pure white sky over black
+  land, the worst case for a scrim; 1024 px light and dark, 375 px dark): both images are decorative, the banner an
+  `img` with `alt=""` (the settings say to put anything it says in the name, tagline or bio) and the background inside
+  an `aria-hidden` element, as the sunrise is. The hub's `h1` stays the name, under the banner and the logo's tile. The
+  photo lies under a scrim, white at 55% in the light theme and `#0c0a0e` at 60% in the dark one, so the theme's text
+  keeps 5.18:1 and 5.22:1 over any pixel (figures below; the domain tests check them over pure black and white, and the
+  scrim was read back from the computed style in each theme). The voting home's panels and the pages' cards sit on top
+  unchanged, with more contrast still. In the settings, each image is a group with a bold name, a caption giving the
+  sizes to upload, an upload button and a button to go without it, named for what it does ("Use the initials", "Remove
+  the banner", "Use the sunrise"); its preview is `aria-hidden`, and the change is listed in words before saving ("A new
+  cover banner", "Page background: the sunrise instead of the photo"). A file of the wrong type, over 5 MB or the wrong
+  size is refused in words before it is sent ("The cover banner must be 3:1 and at least 1120×374 pixels, such as
+  1500×500; this one is 1920×1080."). At 375 px a wide preview goes above its text, the banner is 343 × 114 px with the
+  tile over a third of it, and nothing scrolls sideways.
 
 ### Contrast figures
 
@@ -443,6 +458,8 @@ home's picture (`PageShell`, white or `#1d1d1d`), so text on those pages has the
 | Hub, light (page `#f6f2ec`, cards `#fff`): text on the page / a card; the bio and subtitles on a card / the page / under the page's glow (`#ffede0`) / on a starred card's tint (`#fff0e6`); section labels on the page; the accent (initials, star, recent clicks) on white | `#1a1a1a` on `#f6f2ec` / `#fff`; `#57524c` on `#fff` / `#f6f2ec` / `#ffede0` / `#fff0e6`; `#645e57` on `#f6f2ec`; `#bd4e00` on `#fff` | 15.61 / 17.40; 7.73 / 6.93 / 6.79 / 6.94; 5.74; 4.94 |
 | Hub focus ring: the accent on the light page; the bright tone on the dark page / a card | `#bd4e00` on `#f6f2ec`; `#ff6900` on `#0b0b0b` / `#212121` | 4.43; 6.82 / 5.58 |
 | Link hub settings, dark (rows `#212121`, cards `#1c1c1c`): captions and addresses on a row / a card; a hidden link's title and address, dimmed to 72%; light: captions on white | `#b8b8b8` on `#212121` / `#1c1c1c`; `#bababa` / `#8e8e8e` on `#212121`; `#5c5650` on `#fff` | 8.12 / 8.59; 8.30 / 4.91; 7.24 |
+| Page background photo (design §10.6), light: text over the scrim (white at 55%) over the photo's darkest pixel, black (together `#8c8c8c`); dark: white over the scrim (`#0c0a0e` at 60%) over its brightest, white (together `#6d6c6e`) | `#1a1a1a` on `#8c8c8c`; `#fff` on `#6d6c6e` | 5.18; 5.22 |
+| Voting home over the photo: the panel over the scrim's worst colour, light (`#e8e8e8`): the quote, the quotation marks, the source; dark (`#272529`): the same | `#1a1a1a`, `#a34400`, `#4a4a4a` on `#e8e8e8`; `#fff`, `#ff8a3d`, `#d0d0d0` on `#272529` | 14.20, 5.06, 7.23; 15.19, 6.48, 9.85 |
 | App icon: white ballot box on primary | `#fff` on `#bd4e00` | 4.94 |
 | Home page, light: text on the panel (white at 80%) over the picture's darkest colour, `#bd4e00` (together `#f2dccc`): the quote, the party's name and who said it; the quotation marks; the source | `#1a1a1a`; `#a34400`; `#4a4a4a` on `#f2dccc` | 13.12; 4.68; 6.68 |
 | Home page, dark: text on the panel (`#0c0a0e` at 72%) over the picture's brightest colour, a star (white at 70% on the sky, `#c2bbb4`; together `#3f3c3c`): the quote, the party's name and who said it; the quotation marks; the source | `#fff`; `#ff8a3d`; `#d0d0d0` on `#3f3c3c` | 10.97; 4.68; 7.11 |

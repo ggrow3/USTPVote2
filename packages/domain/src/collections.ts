@@ -66,6 +66,10 @@ export const Collections = {
   hub: 'hub',
   /** `hub_logos/{sha256}`: logos uploaded for the hub, as stored after re-encoding (design §10.6). */
   hubLogos: 'hub_logos',
+  /** `hub_covers/{sha256}`: cover banners uploaded for the hub, as stored after re-encoding (design §10.6). */
+  hubCovers: 'hub_covers',
+  /** `hub_backgrounds/{sha256}`: background photos uploaded for the pages, as stored after re-encoding (§10.6). */
+  hubBackgrounds: 'hub_backgrounds',
   /** `hub_clicks/{target}`: how often each hub link was followed, in total and per day; nothing about who (§10.6). */
   hubClicks: 'hub_clicks',
   // notifications (design §6.8)

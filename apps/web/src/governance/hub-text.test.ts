@@ -27,6 +27,10 @@ describe('hub wording', () => {
     expect(say({ part: 'profile', field: 'accent', to: '' })).toBe('Accent colour: the USTP orange');
     expect(say({ part: 'profile', field: 'theme', to: 'device' })).toBe("Default theme: The device's setting");
     expect(say({ part: 'profile', field: 'logo', to: null })).toBe('Remove the logo: the initials show instead');
+    expect(say({ part: 'profile', field: 'cover', to: 'a'.repeat(64) })).toBe('A new cover banner');
+    expect(say({ part: 'profile', field: 'cover', to: null })).toBe('Remove the cover banner');
+    expect(say({ part: 'profile', field: 'background', to: 'b'.repeat(64) })).toBe('A new background photo behind the pages');
+    expect(say({ part: 'profile', field: 'background', to: null })).toBe('Page background: the sunrise instead of the photo');
     expect(say({ part: 'discord', field: 'widget', to: true })).toBe('Show the live member widget');
     expect(say({ part: 'section', id: 'x', title: '', change: 'added' })).toBe('New section an untitled section');
     expect(say({ part: 'link', id: 'chat', title: 'Chat', section: 'community', change: 'moved' })).toBe('Move “Chat” to Community');
