@@ -13,6 +13,8 @@ import { HomeQuoteAdminController, HomeQuoteService, PublicHomeQuoteController }
 import { DiscordLiveService, HubAdminController, HubService, PublicHubController } from '../administration/hub.js';
 import { NavigationAdminController, NavigationService, PublicNavigationController } from '../administration/navigation.js';
 import { RoleChanges } from '../administration/role-changes.js';
+import { SecurityController, SignInLogService } from '../security/sign-in-log.js';
+import { PublicSiteAnalyticsController, SiteAnalyticsAdminController, SiteAnalyticsService } from '../security/site-analytics.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { BylawsChecksController } from '../bylaws-check/bylaws-checks.controller.js';
 import {
@@ -116,6 +118,9 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     HomeQuoteAdminController,
     PublicHubController,
     HubAdminController,
+    SecurityController,
+    PublicSiteAnalyticsController,
+    SiteAnalyticsAdminController,
     AuditController,
     PublicLedgerController,
     PersonasController,
@@ -149,6 +154,8 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     HomeQuoteService,
     HubService,
     DiscordLiveService,
+    SignInLogService,
+    SiteAnalyticsService,
     PersonasService,
     DemoElectionsService,
     CourseService,

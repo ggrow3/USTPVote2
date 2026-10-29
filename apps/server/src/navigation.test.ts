@@ -17,6 +17,7 @@ import { NoticeSettingsController } from './notifications/notice-settings.js';
 import { PersonasController } from './personas/personas.controller.js';
 import { PhotoReviewController } from './photos/photos.controller.js';
 import { PositionsController } from './positions/positions.controller.js';
+import { SecurityController } from './security/sign-in-log.js';
 import { TeamsAdminController } from './teams/teams.controller.js';
 
 type Route = readonly [controller: abstract new (...args: never[]) => object, method: string];
@@ -38,6 +39,7 @@ const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
   claude: [AnthropicKeyController, 'status'],
   email: [NoticeSettingsController, 'current'],
   audit: [AuditController, 'events'],
+  security: [SecurityController, 'list'],
   testing: [PersonasController, 'list'],
   navigation: [NavigationAdminController, 'current'],
   hub: [HubAdminController, 'current'],

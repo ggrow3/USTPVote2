@@ -73,6 +73,11 @@ export interface ServerConfig {
    */
   readonly googleMapsKey: string | null;
   /**
+   * How many entries the proxies in front of the api append to X-Forwarded-For after the client's address (design
+   * §10.7): the sign-in log takes the entry just before theirs. 1 unless set; checked on each deployment.
+   */
+  readonly trustedProxyHops: number;
+  /**
    * Amazon SES (worker only, `MAIL_TRANSPORT=ses`): its region, the configuration set that publishes bounces, the SQS
    * queue they arrive on, and the access key (from Secret Manager in Cloud Run; never logged).
    */
@@ -182,6 +187,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     webOrigin,
     districtSource,
     googleMapsKey: env.GOOGLE_MAPS_BROWSER_KEY?.trim() || null,
+    trustedProxyHops: wholeNumber(env.TRUSTED_PROXY_HOPS, 'TRUSTED_PROXY_HOPS') ?? DEFAULT_TRUSTED_PROXY_HOPS,
     ses: {
       region: env.SES_REGION || null,
       configurationSet: env.SES_CONFIGURATION_SET || null,
@@ -198,6 +204,15 @@ export const DEFAULT_MAIL_FROM = 'USTP Elections <noreply@transhumanist-party.or
 
 /** A new SES account in production may send 14 a second; stay under it. */
 export const DEFAULT_SES_MAX_SEND_RATE = 10;
+
+export const DEFAULT_TRUSTED_PROXY_HOPS = 1;
+
+function wholeNumber(value: string | undefined, name: string): number | null {
+  if (!value) return null;
+  const n = Number(value);
+  if (!Number.isInteger(n) || n < 0) throw new Error(`${name} must be a whole number`);
+  return n;
+}
 
 function positiveNumber(value: string | undefined, name: string): number | null {
   if (!value) return null;

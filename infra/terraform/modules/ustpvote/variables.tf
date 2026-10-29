@@ -342,6 +342,12 @@ variable "mcp_max_instances" {
   default     = 2
 }
 
+variable "sign_in_log_retention_days" {
+  description = "Days the sign-in-traffic log bucket keeps Identity Platform's request logs; the app's own sign-in log keeps 180 (design §10.7)."
+  type        = number
+  default     = 180
+}
+
 variable "deletion_protection" {
   description = "Refuse to delete the Cloud Run services and the Firestore database."
   type        = bool

@@ -14,6 +14,7 @@ export const LEDGER_EVENT_TYPES = [
   'navigation.changed',
   'home_quote.changed',
   'hub.changed',
+  'analytics.changed',
   'anthropic_key.changed',
   'photo.decided',
   'roll.approved',
