@@ -146,6 +146,7 @@ export const transhumanismLessons: readonly CourseLesson[] = [
 const commons = (file: string) => `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(file)}?width=640`;
 const commonsPage = (file: string) => `https://commons.wikimedia.org/wiki/File:${encodeURIComponent(file).replace(/%20/g, '_')}`;
 const portrait = (file: string, alt: string) => ({
+  portraitImage: null,
   portraitUrl: commons(file),
   portraitAlt: alt,
   portraitCredit: 'Wikimedia Commons contributor(s)',
