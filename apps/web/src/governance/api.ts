@@ -5,6 +5,7 @@ import type {
   HomeQuoteRecord,
   Hub,
   HubClickCount,
+  HubImageKind,
   HubRecord,
   NavigationRecord,
   NavigationSettingsInput,
@@ -39,9 +40,9 @@ export function discordLive(): Promise<DiscordLive> {
   return api<DiscordLive>('GET', '/v1/hub/discord');
 }
 
-/** Where an uploaded logo is served; its ID never changes, so browsers keep it. */
-export function hubLogoUrl(logo: string): string {
-  return `/v1/hub/logo/${logo}`;
+/** Where an uploaded logo, cover banner or background photo is served; its ID never changes, so browsers keep it. */
+export function hubImageUrl(kind: HubImageKind, id: string): string {
+  return `/v1/hub/${kind}/${id}`;
 }
 
 /**
@@ -84,9 +85,10 @@ export function saveHub(input: Hub & { readonly basedOn: number }): Promise<HubR
   return api<HubRecord>('PUT', '/v1/admin/hub', input);
 }
 
-/** Uploads a logo; it shows once the hub is saved with the ID this gives. */
-export function uploadHubLogo(file: Blob): Promise<{ logo: string }> {
-  return apiUpload<{ logo: string }>('/v1/admin/hub/logo', file);
+/** Uploads a logo, cover banner or background photo, giving its ID; it shows once the hub is saved with that ID. */
+export async function uploadHubImage(kind: HubImageKind, file: Blob): Promise<string> {
+  const uploaded = await apiUpload<Partial<Record<HubImageKind, string>>>(`/v1/admin/hub/${kind}`, file);
+  return uploaded[kind]!;
 }
 
 /** How often each link, icon and the Discord button were followed: in total and in the last 30 days. */

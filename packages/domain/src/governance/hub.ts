@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { deny, OK, type Check } from '../check.js';
 import { contrast, DEFAULT_ACCENT, isHexColour, TEXT_CONTRAST } from './accent.js';
+import { HUB_IMAGE_NAMES, isHubImageId } from './hub-images.js';
 
 /**
  * The home page hub (design §10.6): the party's profile, a row of social icons, a Discord card and sections of link
@@ -73,12 +74,16 @@ export interface HubProfile {
   readonly bio: string;
   /** The uploaded logo's ID (the SHA-256 of its stored bytes), or null for the name's initials on a tile. */
   readonly logo: string | null;
+  /** The uploaded cover banner's ID, shown across the top of the hub above the logo, or null for none. */
+  readonly cover: string | null;
   /**
    * The theme accent, `#rrggbb`, or empty for the party's orange: it fills buttons under white text, so it needs 4.5:1
    * with white (`accent.ts`).
    */
   readonly accent: string;
   readonly theme: HubTheme;
+  /** The uploaded photo behind every page but the hub, under a scrim, or null for the sunrise drawn for the project. */
+  readonly background: string | null;
 }
 
 /** The Discord card, shown while it has an invite; its live line, while switched on with the server's ID. */
@@ -180,8 +185,10 @@ export const DEFAULT_HUB: Hub = {
     tagline: 'Putting science, health & technology at the forefront of American politics',
     bio: 'Vote on proposals, join the conversation on Discord, and follow USTP everywhere.',
     logo: null,
+    cover: null,
     accent: '',
     theme: 'dark',
+    background: null,
   },
   discord: { invite: '', guildId: '', widget: false },
   sections: [
@@ -232,15 +239,10 @@ export const DEFAULT_HUB: Hub = {
 /** A section's or link's ID: lower-case letters, digits and dashes, as made by `newHubId` or chosen for the defaults. */
 const ID = /^[a-z0-9][a-z0-9-]{0,39}$/;
 const GUILD_ID = /^\d{17,20}$/;
-const LOGO_ID = /^[0-9a-f]{64}$/;
 const DISCORD_HOSTS = ['discord.gg', 'discord.com', 'www.discord.com', 'discordapp.com', 'www.discordapp.com'];
 
 export function isHubId(id: string): boolean {
   return ID.test(id);
-}
-
-export function isLogoId(id: string): boolean {
-  return LOGO_ID.test(id);
 }
 
 /** A fresh ID for a section or link someone adds. */
@@ -270,6 +272,7 @@ const flag = (value: unknown, fallback: boolean) => (typeof value === 'boolean' 
 const list = (value: unknown): Record<string, unknown>[] =>
   Array.isArray(value) ? value.filter((v): v is Record<string, unknown> => !!v && typeof v === 'object') : [];
 const isIn = <T extends string>(values: readonly T[], value: unknown): value is T => values.includes(value as T);
+const image = (value: unknown) => (typeof value === 'string' ? value : null);
 
 function resolveProfile(stored: Record<string, unknown> | undefined): HubProfile {
   const d = DEFAULT_HUB.profile;
@@ -277,9 +280,11 @@ function resolveProfile(stored: Record<string, unknown> | undefined): HubProfile
     name: text(stored?.name, d.name),
     tagline: text(stored?.tagline, d.tagline),
     bio: text(stored?.bio, d.bio),
-    logo: typeof stored?.logo === 'string' ? stored.logo : null,
+    logo: image(stored?.logo),
+    cover: image(stored?.cover),
     accent: text(stored?.accent, d.accent).toLowerCase(),
     theme: isIn(HUB_THEMES, stored?.theme) ? stored.theme : d.theme,
+    background: image(stored?.background),
   };
 }
 
@@ -375,7 +380,10 @@ export function checkHub(hub: Hub): Check {
   if (long) return long;
   const accent = accentProblem(profile.accent);
   if (accent) return deny(accent);
-  if (profile.logo !== null && !isLogoId(profile.logo)) return deny('that logo is not one uploaded here');
+  for (const kind of ['logo', 'cover', 'background'] as const) {
+    const id = profile[kind];
+    if (id !== null && !isHubImageId(id)) return deny(`that ${HUB_IMAGE_NAMES[kind]} is not one uploaded here`);
+  }
 
   const invite = discord.invite && urlProblem(discord.invite, 'discord');
   if (invite) return deny(`the Discord invite: ${invite}`);
@@ -549,7 +557,7 @@ function reordered(before: readonly string[], after: readonly string[]): boolean
 /** Every difference between two hubs: profile, the Discord card, then sections and links, in page order. */
 export function hubChanges(before: Hub, after: Hub): HubChange[] {
   const changes: HubChange[] = [];
-  for (const field of ['name', 'tagline', 'bio', 'logo', 'accent', 'theme'] as const) {
+  for (const field of ['name', 'tagline', 'bio', 'logo', 'cover', 'accent', 'theme', 'background'] as const) {
     if (before.profile[field] !== after.profile[field]) changes.push({ part: 'profile', field, to: after.profile[field] });
   }
   for (const field of ['invite', 'guildId', 'widget'] as const) {
@@ -622,8 +630,10 @@ export const hubSchema = z.strictObject({
     tagline: part,
     bio: part,
     logo: z.string().max(64).nullable(),
+    cover: z.string().max(64).nullable(),
     accent: part,
     theme: z.enum(HUB_THEMES),
+    background: z.string().max(64).nullable(),
   }),
   discord: z.strictObject({ invite: part, guildId: part, widget: z.boolean() }),
   sections: z

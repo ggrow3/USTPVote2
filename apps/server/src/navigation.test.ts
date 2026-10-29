@@ -17,6 +17,7 @@ import { NoticeSettingsController } from './notifications/notice-settings.js';
 import { PersonasController } from './personas/personas.controller.js';
 import { PhotoReviewController } from './photos/photos.controller.js';
 import { PositionsController } from './positions/positions.controller.js';
+import { TeamsAdminController } from './teams/teams.controller.js';
 
 type Route = readonly [controller: abstract new (...args: never[]) => object, method: string];
 
@@ -30,6 +31,7 @@ const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
   elections: [ElectionsController, 'list'],
   offices: [PositionsController, 'all'],
   candidacies: [CandidaciesAdminController, 'list'],
+  teams: [TeamsAdminController, 'list'],
   approvals: [ApprovalsController, 'list'],
   people: [AccountsAdminController, 'list'],
   signin: [SignInMethodsController, 'current'],

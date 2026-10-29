@@ -15,16 +15,20 @@ import {
   Put,
 } from '@nestjs/common';
 import { FieldValue } from 'firebase-admin/firestore';
-import sharp from 'sharp';
+import sharp, { type ResizeOptions } from 'sharp';
 import {
   checkHub,
   clickCount,
   clickDay,
   clickTargets,
   Collections,
+  HUB_IMAGE_KINDS,
+  HUB_IMAGE_NAMES,
+  HUB_IMAGE_SIZES,
   hubChanges,
+  hubImageProblem,
   hubSchema,
-  isLogoId,
+  isHubImageId,
   publicHub,
   resolveHub,
   type ClickTarget,
@@ -32,6 +36,7 @@ import {
   type HubChangedPayload,
   type HubClickCount,
   type HubClicksRecord,
+  type HubImageKind,
   type HubInput,
   type HubRecord,
   type PublicHub,
@@ -45,19 +50,47 @@ import { LedgerService } from '../ledger/ledger.service.js';
 const CACHE_MS = 60_000;
 const DOC_ID = 'current';
 
-/** Logos are stored square, at most this many pixels a side, and need at least LOGO_MIN to look sharp on the tile. */
-const LOGO_SIDE = 256;
-const LOGO_MIN = 64;
+/** Where each kind of uploaded image is kept, under the SHA-256 of its stored bytes. */
+const IMAGE_COLLECTIONS: Readonly<Record<HubImageKind, string>> = {
+  logo: Collections.hubLogos,
+  cover: Collections.hubCovers,
+  background: Collections.hubBackgrounds,
+};
+
+/**
+ * How each kind is fitted to its stored size (`HUB_IMAGE_SIZES`): the whole logo on a transparent square; the cover
+ * cropped from the middle to exactly 3:1, since the hub shows it whole; the background shrunk to fit, as the page
+ * crops it to the window anyway.
+ */
+function fitting(kind: HubImageKind): ResizeOptions {
+  const { width, height } = HUB_IMAGE_SIZES[kind];
+  switch (kind) {
+    case 'logo':
+      return { width, height, fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 }, withoutEnlargement: true };
+    case 'cover':
+      return { width, height, fit: 'cover', position: 'centre' };
+    case 'background':
+      return { width, height, fit: 'inside', withoutEnlargement: true };
+  }
+}
+
+/** A Firestore document holds 1 MiB, so an image is stored in at most this many bytes, at the best quality that fits. */
+const MAX_STORED_BYTES = 900_000;
+const QUALITIES: Readonly<Record<HubImageKind, readonly number[]>> = {
+  logo: [90, 75],
+  cover: [85, 75, 65],
+  background: [80, 70, 60, 50],
+};
 
 function record(data: Partial<HubRecord> | undefined): HubRecord {
   return { ...resolveHub(data), version: data?.version ?? 0, updatedAt: data?.updatedAt ?? null, updatedBy: data?.updatedBy ?? null };
 }
 
 /**
- * Decodes an uploaded logo and re-encodes it as a square WebP, the whole logo kept on a transparent ground: decoding
- * proves it is an image, and re-encoding drops its metadata and anything else hidden in the bytes (as profile photos).
+ * Decodes an uploaded image and re-encodes it upright as a WebP of its kind's size: decoding proves it is an image, and
+ * re-encoding drops its metadata and anything else hidden in the bytes (as profile photos).
  */
-async function normalizeLogo(input: Buffer): Promise<Buffer> {
+async function normalizeHubImage(kind: HubImageKind, input: Buffer): Promise<Buffer> {
   const options = { limitInputPixels: 50_000_000, failOn: 'error' } as const;
   let meta;
   try {
@@ -66,14 +99,15 @@ async function normalizeLogo(input: Buffer): Promise<Buffer> {
     throw new BadRequestException('that file is not a readable image');
   }
   if (!['jpeg', 'png', 'webp'].includes(meta.format ?? '')) throw new BadRequestException('use a PNG, JPEG or WebP image');
-  if (Math.min(meta.width ?? 0, meta.height ?? 0) < LOGO_MIN) {
-    throw new BadRequestException(`the logo must be at least ${LOGO_MIN}×${LOGO_MIN} pixels`);
+  // EXIF orientations 5–8 swap width and height.
+  const [width, height] = (meta.orientation ?? 1) >= 5 ? [meta.height, meta.width] : [meta.width, meta.height];
+  const problem = hubImageProblem(kind, width ?? 0, height ?? 0);
+  if (problem) throw new BadRequestException(problem);
+  for (const quality of QUALITIES[kind]) {
+    const image = await sharp(input, options).rotate().resize(fitting(kind)).webp({ quality }).toBuffer();
+    if (image.length <= MAX_STORED_BYTES) return image;
   }
-  return sharp(input, options)
-    .rotate()
-    .resize({ width: LOGO_SIDE, height: LOGO_SIDE, fit: 'contain', background: { r: 0, g: 0, b: 0, alpha: 0 }, withoutEnlargement: true })
-    .webp({ quality: 90 })
-    .toBuffer();
+  throw new BadRequestException(`that ${HUB_IMAGE_NAMES[kind]} has too much fine detail to store; try a smaller or simpler image`);
 }
 
 /**
@@ -93,8 +127,8 @@ export class HubService {
     return this.firebase.db.collection(Collections.hub).doc(DOC_ID);
   }
 
-  private logoDoc(id: string) {
-    return this.firebase.db.collection(Collections.hubLogos).doc(id);
+  private imageDoc(kind: HubImageKind, id: string) {
+    return this.firebase.db.collection(IMAGE_COLLECTIONS[kind]).doc(id);
   }
 
   async current(): Promise<HubRecord> {
@@ -112,7 +146,8 @@ export class HubService {
 
   /**
    * Saves the hub, tidied, if nobody saved since `basedOn`, ledgering every change. Refused (400) when something shown
-   * is unfinished, an address or the accent cannot be used, or the logo is not one uploaded here.
+   * is unfinished, an address or the accent cannot be used, or a new logo, cover banner or background photo is not one
+   * uploaded here.
    */
   async update(ctx: RequestContext, input: HubInput): Promise<HubRecord> {
     const actor = requireAccount(ctx);
@@ -126,9 +161,11 @@ export class HubService {
       }
       const changes = hubChanges(before, after);
       if (changes.length === 0) return before;
-      const logo = after.profile.logo;
-      if (logo && logo !== before.profile.logo && !(await tx.get(this.logoDoc(logo))).exists) {
-        throw new BadRequestException('that logo is not one uploaded here; upload it again');
+      for (const kind of HUB_IMAGE_KINDS) {
+        const id = after.profile[kind];
+        if (id && id !== before.profile[kind] && !(await tx.get(this.imageDoc(kind, id))).exists) {
+          throw new BadRequestException(`that ${HUB_IMAGE_NAMES[kind]} is not one uploaded here; upload it again`);
+        }
       }
       const next: HubRecord = { ...after, version: before.version + 1, updatedAt: new Date().toISOString(), updatedBy: actor };
       const payload: HubChangedPayload = { version: next.version, changes };
@@ -141,23 +178,23 @@ export class HubService {
   }
 
   /**
-   * Stores an uploaded logo, re-encoded, under the hash of its bytes, and gives that ID. It shows only once the hub is
-   * saved with it, so uploading changes nothing a visitor sees.
+   * Stores an uploaded logo, cover banner or background photo, re-encoded, under the hash of its bytes, and gives that
+   * ID. It shows only once the hub is saved with it, so uploading changes nothing a visitor sees.
    */
-  async uploadLogo(ctx: RequestContext, body: unknown): Promise<{ logo: string }> {
+  async uploadImage(ctx: RequestContext, kind: HubImageKind, body: unknown): Promise<string> {
     const actor = requireAccount(ctx);
     if (!Buffer.isBuffer(body) || body.length === 0) throw new BadRequestException('send the image as the request body');
-    const image = await normalizeLogo(body);
+    const image = await normalizeHubImage(kind, body);
     const id = createHash('sha256').update(image).digest('hex');
-    await this.logoDoc(id).set({ image, contentType: 'image/webp', uploadedAt: new Date().toISOString(), uploadedBy: actor });
-    return { logo: id };
+    await this.imageDoc(kind, id).set({ image, contentType: 'image/webp', uploadedAt: new Date().toISOString(), uploadedBy: actor });
+    return id;
   }
 
-  async logo(id: string): Promise<Buffer> {
-    if (!isLogoId(id)) throw new NotFoundException('no such logo');
-    const snap = await this.logoDoc(id).get();
+  async image(kind: HubImageKind, id: string): Promise<Buffer> {
+    if (!isHubImageId(id)) throw new NotFoundException(`no such ${HUB_IMAGE_NAMES[kind]}`);
+    const snap = await this.imageDoc(kind, id).get();
     const image = snap.get('image') as Buffer | undefined;
-    if (!image) throw new NotFoundException('no such logo');
+    if (!image) throw new NotFoundException(`no such ${HUB_IMAGE_NAMES[kind]}`);
     return Buffer.from(image);
   }
 
@@ -233,7 +270,7 @@ export class DiscordLiveService {
   }
 }
 
-/** The hub every visitor's home page shows, its logo, the Discord count and click counting: no sign-in. */
+/** The hub every visitor's home page shows, its images, the Discord count and click counting: no sign-in. */
 @Controller('v1/hub')
 export class PublicHubController {
   constructor(
@@ -253,13 +290,29 @@ export class PublicHubController {
     return this.discord.live();
   }
 
-  /** A logo's ID is the hash of its bytes, so it never changes and browsers may keep it. */
+  /** An image's ID is the hash of its bytes, so it never changes and browsers may keep it. */
   @Public()
   @Get('logo/:id')
   @Header('Content-Type', 'image/webp')
   @Header('Cache-Control', 'public, max-age=31536000, immutable')
   logo(@Param('id') id: string): Promise<Buffer> {
-    return this.hub.logo(id);
+    return this.hub.image('logo', id);
+  }
+
+  @Public()
+  @Get('cover/:id')
+  @Header('Content-Type', 'image/webp')
+  @Header('Cache-Control', 'public, max-age=31536000, immutable')
+  cover(@Param('id') id: string): Promise<Buffer> {
+    return this.hub.image('cover', id);
+  }
+
+  @Public()
+  @Get('background/:id')
+  @Header('Content-Type', 'image/webp')
+  @Header('Cache-Control', 'public, max-age=31536000, immutable')
+  background(@Param('id') id: string): Promise<Buffer> {
+    return this.hub.image('background', id);
   }
 
   @Public()
@@ -286,10 +339,20 @@ export class HubAdminController {
     return this.hub.update(ctx, body);
   }
 
-  /** The raw image as the body (Content-Type image/png, image/jpeg or image/webp). */
+  /** Each upload takes the raw image as the body (Content-Type image/png, image/jpeg or image/webp), at most 5 MB. */
   @Put('logo')
-  uploadLogo(@Ctx() ctx: RequestContext, @Body() body: unknown) {
-    return this.hub.uploadLogo(ctx, body);
+  async uploadLogo(@Ctx() ctx: RequestContext, @Body() body: unknown): Promise<{ logo: string }> {
+    return { logo: await this.hub.uploadImage(ctx, 'logo', body) };
+  }
+
+  @Put('cover')
+  async uploadCover(@Ctx() ctx: RequestContext, @Body() body: unknown): Promise<{ cover: string }> {
+    return { cover: await this.hub.uploadImage(ctx, 'cover', body) };
+  }
+
+  @Put('background')
+  async uploadBackground(@Ctx() ctx: RequestContext, @Body() body: unknown): Promise<{ background: string }> {
+    return { background: await this.hub.uploadImage(ctx, 'background', body) };
   }
 
   @Get('clicks')

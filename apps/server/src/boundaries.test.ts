@@ -19,6 +19,10 @@ const CONTEXTS: Readonly<Record<string, { readonly collections: readonly string[
     collections: ['candidacies'],
     repositories: ['candidacy.repository'],
   },
+  teams: {
+    collections: ['teams', 'teamMembers', 'teamRequests'],
+    repositories: ['team.repository'],
+  },
 };
 
 const SRC = import.meta.dirname;

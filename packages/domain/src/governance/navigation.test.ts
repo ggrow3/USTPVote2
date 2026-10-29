@@ -34,13 +34,15 @@ function edit(base: NavigationSettings, change: (s: { -readonly [K in keyof Navi
 const viewer = (membership: Viewer['membership'], ...roles: Role[]): Viewer => ({ membership, roles });
 
 describe('defaults', () => {
-  it('show Register, Ballot, Verify, Offices, Candidates, Course and Admin to everyone, and Sign in while signed out', () => {
+  it('show Register, Ballot, Verify, Offices, Candidates, Course and Admin to everyone, Teams to Active members, and Sign in while signed out', () => {
     const all = ['register', 'ballot', 'verify', 'offices', 'candidates', 'course', 'admin'];
-    expect(shownTo(DEFAULT_NAVIGATION, viewer('signed_out')).menu).toEqual(MENU_LINKS);
+    const withTeams = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'course', 'admin'];
+    expect(shownTo(DEFAULT_NAVIGATION, viewer('signed_out')).menu).toEqual([...all, 'signin']);
     for (const membership of ['no_membership', ...MEMBER_STATUSES] as const) {
-      expect(shownTo(DEFAULT_NAVIGATION, viewer(membership)).menu).toEqual(all);
+      expect(shownTo(DEFAULT_NAVIGATION, viewer(membership)).menu).toEqual(membership === 'active' ? withTeams : all);
     }
-    expect(shownTo(DEFAULT_NAVIGATION, viewer('active', 'election_admin')).menu).toEqual(all);
+    expect(shownTo(DEFAULT_NAVIGATION, viewer('active', 'election_admin')).menu).toEqual(withTeams);
+    expect(shownTo(DEFAULT_NAVIGATION, viewer('applicant', 'membership_admin')).menu).toEqual(all);
   });
 
   it('let every role keep Ballot, Verify, Offices, Candidates and Course without a membership', () => {
@@ -51,7 +53,7 @@ describe('defaults', () => {
 
   it('give each role the console tabs it had, and System Admins the link hub and the home page quote', () => {
     const tabs = (role: Role) => shownTo(DEFAULT_NAVIGATION, viewer('active', role)).sections;
-    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'registration', 'offices', 'candidacies', 'approvals']);
+    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'registration', 'offices', 'candidacies', 'teams', 'approvals']);
     expect(tabs('election_admin')).toEqual(['elections', 'offices', 'approvals']);
     expect(tabs('auditor')).toEqual(['elections', 'offices', 'approvals', 'audit']);
     expect(tabs('system_admin')).toEqual(['approvals', 'people', 'signin', 'claude', 'email', 'testing', 'navigation', 'hub', 'quote']);
@@ -93,6 +95,20 @@ describe('defaults', () => {
       expect(sectionLock(role, 'candidacies')).toBe('not_permitted');
     }
     expect(startPagePath('candidates')).toBe('/candidates');
+  });
+
+  it('give settings saved before Teams existed its defaults: the link for Active members, the section for Membership Admins', () => {
+    const before = edit(DEFAULT_NAVIGATION, (s) => {
+      for (const a of AUDIENCES) delete s.menu[a].teams;
+      for (const r of ROLES) delete s.sections[r].teams;
+    });
+    const resolved = resolveNavigation(before);
+    expect(AUDIENCES.filter((a) => resolved.menu[a].teams)).toEqual(['active']);
+    expect(ROLES.filter((r) => resolved.sections[r].teams)).toEqual(['membership_admin']);
+    for (const role of ['election_admin', 'auditor', 'system_admin', 'course_admin'] as const) {
+      expect(sectionLock(role, 'teams')).toBe('not_permitted');
+    }
+    expect(startPagePath('teams')).toBe('/teams');
   });
 
   it('give no admin section to anyone without a role', () => {
@@ -213,6 +229,7 @@ describe('what a person sees', () => {
       'elections',
       'offices',
       'candidacies',
+      'teams',
       'approvals',
     ]);
   });
@@ -285,6 +302,7 @@ describe('saved settings', () => {
       verify: true,
       offices: true,
       candidates: true,
+      teams: false,
       course: true,
       admin: true,
       signin: true,

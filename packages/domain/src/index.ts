@@ -35,6 +35,7 @@ export type {
   SubmitCourseQuizInput,
 } from './course.js';
 export * from './membership/index.js';
+export * from './teams/index.js';
 export * from './notifications/index.js';
 export * from './governance/index.js';
 export * from './candidacies/index.js';

@@ -49,8 +49,10 @@ describe('the default hub', () => {
       tagline: 'Putting science, health & technology at the forefront of American politics',
       bio: 'Vote on proposals, join the conversation on Discord, and follow USTP everywhere.',
       logo: null,
+      cover: null,
       accent: '',
       theme: 'dark',
+      background: null,
     });
     expect(effectiveAccent(DEFAULT_HUB.profile)).toBe('#bd4e00');
     expect(checkHub(DEFAULT_HUB)).toEqual({ ok: true });
@@ -94,6 +96,11 @@ describe('resolving what was saved', () => {
     expect(resolved.discord).toEqual(DEFAULT_HUB.discord);
   });
 
+  it('has no cover banner and the drawn sunrise until images are saved, and keeps only text as an image ID', () => {
+    expect(resolveHub({ profile: { name: 'USTP' } }).profile).toMatchObject({ logo: null, cover: null, background: null });
+    expect(resolveHub({ profile: { cover: 'a'.repeat(64), background: 7 } }).profile).toMatchObject({ cover: 'a'.repeat(64), background: null });
+  });
+
   it('gives an unknown icon the plain link icon, and missing flags off', () => {
     const resolved = resolveHub({ sections: [{ id: 'a', title: 'A', shown: true, links: [{ id: 'l', title: 'L', url: '/verify', icon: 'myspace', shown: true }] }] });
     expect(resolved.sections[0]!.links[0]).toMatchObject({ icon: 'link', iconRow: false, featured: false });
@@ -119,9 +126,11 @@ describe('checking', () => {
     expect(effectiveAccent({ accent: '#1565c0' })).toBe('#1565c0');
   });
 
-  it('takes only an uploaded logo ID', () => {
-    expect(reason(profile({ logo: 'a'.repeat(64) }))).toBeNull();
+  it('takes only an uploaded image ID for the logo, the cover banner and the background photo', () => {
+    expect(reason(profile({ logo: 'a'.repeat(64), cover: 'b'.repeat(64), background: 'c'.repeat(64) }))).toBeNull();
     expect(reason(profile({ logo: '../etc/passwd' }))).toBe('that logo is not one uploaded here');
+    expect(reason(profile({ cover: 'https://example.org/banner.png' }))).toBe('that cover banner is not one uploaded here');
+    expect(reason(profile({ background: 'A'.repeat(64) }))).toBe('that background photo is not one uploaded here');
   });
 
   it('needs a title and address for a link that is shown, and lets hidden ones wait', () => {
@@ -293,6 +302,20 @@ describe('changes', () => {
     ]);
   });
 
+  it('list a new or removed cover banner and background photo with the logo, in the profile', () => {
+    const cover = 'a'.repeat(64);
+    const background = 'b'.repeat(64);
+    const after = profile({ cover, background });
+    expect(hubChanges(DEFAULT_HUB, after)).toEqual([
+      { part: 'profile', field: 'cover', to: cover },
+      { part: 'profile', field: 'background', to: background },
+    ]);
+    expect(hubChanges(after, DEFAULT_HUB)).toEqual([
+      { part: 'profile', field: 'cover', to: null },
+      { part: 'profile', field: 'background', to: null },
+    ]);
+  });
+
   it('are none between a hub and itself', () => {
     expect(hubChanges(DEFAULT_HUB, resolveHub(DEFAULT_HUB))).toEqual([]);
   });
@@ -303,6 +326,8 @@ describe('the input', () => {
     expect(hubSchema.safeParse({ basedOn: 0, ...DEFAULT_HUB }).success).toBe(true);
     expect(hubSchema.safeParse({ ...DEFAULT_HUB }).success).toBe(false);
     expect(hubSchema.safeParse({ basedOn: 0, ...DEFAULT_HUB, extra: 1 }).success).toBe(false);
+    const { cover: _, ...withoutCover } = DEFAULT_HUB.profile;
+    expect(hubSchema.safeParse({ basedOn: 0, ...DEFAULT_HUB, profile: withoutCover }).success).toBe(false);
     const sections = [{ ...DEFAULT_HUB.sections[0]!, links: [{ ...DEFAULT_HUB.sections[0]!.links[0]!, icon: 'myspace' }] }];
     expect(hubSchema.safeParse({ basedOn: 0, ...DEFAULT_HUB, sections }).success).toBe(false);
   });
