@@ -41,11 +41,21 @@ export const router = createRouter({
         { path: 'bylaws/:version?', component: () => import('./pages/BylawsPage.vue') },
         { path: 'results/:id', component: () => import('./pages/ResultsPage.vue') },
         { path: 'offices', component: () => import('./offices/OfficesPage.vue') },
+        // Teams are for Active members; the pages say so to anyone else signed in (design §5.7).
+        { path: 'teams', component: () => import('./teams/TeamsPage.vue'), meta: { requiresAuth: true } },
+        { path: 'teams/:teamId', component: () => import('./teams/TeamPage.vue'), meta: { requiresAuth: true } },
         // Open to anyone signed in: the page tells people without an admin role who it is for.
         { path: 'admin', component: () => import('./pages/AdminPage.vue'), meta: { requiresAuth: true } },
         {
           path: 'admin/members/:accountId',
           component: () => import('./membership/MemberPage.vue'),
+          meta: { requiresAuth: true, roles: ['membership_admin'] },
+        },
+        // The team page itself, with a Membership Admin's tools (design §5.7).
+        {
+          path: 'admin/teams/:teamId',
+          component: () => import('./teams/TeamPage.vue'),
+          props: { admin: true },
           meta: { requiresAuth: true, roles: ['membership_admin'] },
         },
         {
