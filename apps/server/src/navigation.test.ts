@@ -10,6 +10,7 @@ import { ROLES_KEY } from './auth/decorators.js';
 import { AnthropicKeyController } from './claude-checks/anthropic-key-admin.js';
 import { CourseController } from './course/course.controller.js';
 import { ElectionsController } from './elections/elections.controller.js';
+import { ForumAdminController } from './forum/forum.controller.js';
 import { MembershipAdminController } from './membership/membership.controller.js';
 import { RegistrationFormAdminController } from './membership/registration-form.js';
 import { NoticeSettingsController } from './notifications/notice-settings.js';
@@ -30,6 +31,7 @@ const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
   elections: [ElectionsController, 'list'],
   offices: [PositionsController, 'all'],
   teams: [TeamsAdminController, 'list'],
+  forum: [ForumAdminController, 'list'],
   approvals: [ApprovalsController, 'list'],
   people: [AccountsAdminController, 'list'],
   signin: [SignInMethodsController, 'current'],

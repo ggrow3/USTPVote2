@@ -36,6 +36,7 @@ export const LEDGER_EVENT_TYPES = [
   'position_term.ended',
   'team.changed',
   'team.member_changed',
+  'forum.moderated',
 ] as const;
 export type LedgerEventType = (typeof LEDGER_EVENT_TYPES)[number];
 

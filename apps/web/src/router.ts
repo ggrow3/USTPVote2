@@ -44,6 +44,9 @@ export const router = createRouter({
         // Teams are for Active members; the pages say so to anyone else signed in (design §5.7).
         { path: 'teams', component: () => import('./teams/TeamsPage.vue'), meta: { requiresAuth: true } },
         { path: 'teams/:teamId', component: () => import('./teams/TeamPage.vue'), meta: { requiresAuth: true } },
+        // The forum is for Active members; its pages say so to anyone else signed in (design §5.8).
+        { path: 'forum', component: () => import('./forum/ForumPage.vue'), meta: { requiresAuth: true } },
+        { path: 'forum/:postId', component: () => import('./forum/ForumPostPage.vue'), meta: { requiresAuth: true } },
         // Open to anyone signed in: the page tells people without an admin role who it is for.
         { path: 'admin', component: () => import('./pages/AdminPage.vue'), meta: { requiresAuth: true } },
         {
@@ -57,6 +60,13 @@ export const router = createRouter({
           component: () => import('./teams/TeamPage.vue'),
           props: { admin: true },
           meta: { requiresAuth: true, roles: ['membership_admin'] },
+        },
+        // A post as moderators see it, and where Election Admins put proposals on ballots (design §5.8).
+        {
+          path: 'admin/forum/posts/:postId',
+          component: () => import('./forum/ForumPostPage.vue'),
+          props: { admin: true },
+          meta: { requiresAuth: true, roles: ['membership_admin', 'election_admin'] },
         },
         {
           path: 'admin/elections/:id',

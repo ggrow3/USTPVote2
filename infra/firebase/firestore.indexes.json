@@ -135,6 +135,54 @@
         { "fieldPath": "courseId", "order": "ASCENDING" },
         { "fieldPath": "order", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "forum_posts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "feeds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "hot", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "forum_posts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "feeds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "forum_posts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "feeds", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "score", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "forum_posts",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "authorId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "forum_comments",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "authorId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "forum_votes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "postId", "order": "ASCENDING" },
+        { "fieldPath": "accountId", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -150,6 +198,9 @@
     { "collectionGroup": "notice_outbox", "fieldPath": "html", "indexes": [] },
     { "collectionGroup": "notice_receipts", "fieldPath": "messageIds", "indexes": [] },
     { "collectionGroup": "election_checks", "fieldPath": "findings", "indexes": [] },
-    { "collectionGroup": "election_checks", "fieldPath": "quotedLines", "indexes": [] }
+    { "collectionGroup": "election_checks", "fieldPath": "quotedLines", "indexes": [] },
+    { "collectionGroup": "forum_posts", "fieldPath": "body", "indexes": [] },
+    { "collectionGroup": "forum_posts", "fieldPath": "ballots", "indexes": [] },
+    { "collectionGroup": "forum_comments", "fieldPath": "body", "indexes": [] }
   ]
 }

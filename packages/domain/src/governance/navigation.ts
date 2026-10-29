@@ -10,7 +10,7 @@ import { ROLES, type Role } from '../roles.js';
  */
 
 /** The menu bar's links in menu order, then the header's Sign in button (which only signed-out visitors can use). */
-export const MENU_LINKS = ['register', 'ballot', 'verify', 'offices', 'teams', 'course', 'admin', 'signin'] as const;
+export const MENU_LINKS = ['register', 'ballot', 'verify', 'offices', 'teams', 'forum', 'course', 'admin', 'signin'] as const;
 export type MenuLink = (typeof MENU_LINKS)[number];
 
 /** The admin console's sections (tabs), in tab order. */
@@ -23,6 +23,7 @@ export const ADMIN_SECTIONS = [
   'elections',
   'offices',
   'teams',
+  'forum',
   'approvals',
   'people',
   'signin',
@@ -65,6 +66,8 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   offices: ROLES,
   // Creating, renaming and archiving teams and naming their leads (design §5.7).
   teams: ['membership_admin'],
+  // Moderating the forum, and reading it to put proposals on ballots (design §5.8).
+  forum: ['membership_admin', 'election_admin'],
   approvals: ROLES,
   people: ['system_admin'],
   signin: ['system_admin'],
@@ -98,6 +101,7 @@ export const START_PAGES: readonly StartPage[] = [
   'verify',
   'offices',
   'teams',
+  'forum',
   'course',
   ...ADMIN_SECTIONS.map((s) => `admin/${s}` as const),
 ];
@@ -166,7 +170,7 @@ function defaultSection(role: Role, section: AdminSection): boolean {
  * explaining itself to people it is not for, and Sign in while signed out; admin sections by role. Offices, the public
  * list of who holds each office, came later and is for everyone too. Roles add Ballot, Verify and Offices, so a staff
  * member with no membership keeps them, and Admin (from their sections). Signing in lands on Register with no
- * membership, as it did, and on the home page otherwise. Teams are for Active members only (design §5.7).
+ * membership, as it did, and on the home page otherwise. Teams and the forum are for Active members only (design §5.7, §5.8).
  */
 export const DEFAULT_NAVIGATION: NavigationSettings = {
   menu: Object.fromEntries(
@@ -177,7 +181,7 @@ export const DEFAULT_NAVIGATION: NavigationSettings = {
         : a === 'signed_out'
           ? links('register', 'ballot', 'verify', 'offices', 'course', 'admin', 'signin')
           : a === 'active'
-            ? links('register', 'ballot', 'verify', 'offices', 'teams', 'course', 'admin')
+            ? links('register', 'ballot', 'verify', 'offices', 'teams', 'forum', 'course', 'admin')
             : links('register', 'ballot', 'verify', 'offices', 'course', 'admin'),
     ]),
   ) as Record<Audience, Record<MenuLink, boolean>>,

@@ -105,6 +105,15 @@ export function homeCards(
       action: 'See the teams',
     });
   }
+  if (shown.menu.includes('forum')) {
+    cards.push({
+      key: 'forum',
+      title: 'Forum',
+      text: 'Talk things over with other members, propose what the party should adopt, and vote posts up or down.',
+      to: '/forum',
+      action: 'Open the forum',
+    });
+  }
   if (shown.menu.includes('course')) {
     cards.push({
       key: 'course',
@@ -146,6 +155,7 @@ const VISITOR_LINKS: readonly VisitorLink[] = [
   { key: 'verify', before: 'Voted already? ', label: 'Verify your receipt', after: ' to check that your vote was counted.', to: '/verify' },
   { key: 'offices', before: 'Who leads the party? ', label: 'See who holds each office', after: ', elected or appointed.', to: '/offices' },
   { key: 'teams', before: 'Members: ', label: 'join a team', after: ' and work with others between elections.', to: '/teams' },
+  { key: 'forum', before: 'Members: ', label: 'discuss and propose', after: ' in the forum.', to: '/forum' },
   { key: 'course', before: 'Interested in the future? ', label: 'Explore the Transhumanism course', after: '.', to: '/course/transhumanism' },
   { key: 'admin', before: 'Party officers: ', label: 'open the admin console', after: '.', to: '/admin' },
 ];
