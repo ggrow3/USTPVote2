@@ -150,6 +150,10 @@
     { "collectionGroup": "notice_outbox", "fieldPath": "html", "indexes": [] },
     { "collectionGroup": "notice_receipts", "fieldPath": "messageIds", "indexes": [] },
     { "collectionGroup": "election_checks", "fieldPath": "findings", "indexes": [] },
-    { "collectionGroup": "election_checks", "fieldPath": "quotedLines", "indexes": [] }
+    { "collectionGroup": "election_checks", "fieldPath": "quotedLines", "indexes": [] },
+    { "collectionGroup": "news_posts", "fieldPath": "body", "indexes": [] },
+    { "collectionGroup": "press_assets", "fieldPath": "data", "indexes": [] },
+    { "collectionGroup": "suggestions", "fieldPath": "message", "indexes": [] },
+    { "collectionGroup": "calendar_items", "fieldPath": "text", "indexes": [] }
   ]
 }

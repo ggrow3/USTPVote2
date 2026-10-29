@@ -8,6 +8,7 @@ import { HubAdminController } from './administration/hub.js';
 import { NavigationAdminController } from './administration/navigation.js';
 import { ROLES_KEY } from './auth/decorators.js';
 import { AnthropicKeyController } from './claude-checks/anthropic-key-admin.js';
+import { CommunicationsAdminController } from './communications/communications.controller.js';
 import { CourseController } from './course/course.controller.js';
 import { ElectionsController } from './elections/elections.controller.js';
 import { MembershipAdminController } from './membership/membership.controller.js';
@@ -41,6 +42,7 @@ const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
   hub: [HubAdminController, 'current'],
   quote: [HomeQuoteAdminController, 'current'],
   course: [CourseController, 'adminContent'],
+  communications: [CommunicationsAdminController, 'allNews'],
 };
 
 function rolesOf([controller, method]: Route): readonly Role[] {

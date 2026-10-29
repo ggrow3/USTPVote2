@@ -13,7 +13,7 @@ import type { FastifyRequest } from 'fastify';
 import { ACT_AS_HEADER, isUuidV7, PROBLEM_TYPES, type Role } from 'ustp-domain';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
-import { CHECK_REVOKED_KEY, PUBLIC_KEY, ROLES_KEY } from './decorators.js';
+import { APP_CHECKED_KEY, CHECK_REVOKED_KEY, PUBLIC_KEY, ROLES_KEY } from './decorators.js';
 import { DirectoryService } from './directory.service.js';
 import { principalFromToken, type Principal, type RequestContext } from './principal.js';
 import { SignInMethodsService } from './sign-in-methods.service.js';
@@ -36,9 +36,12 @@ export class AuthGuard implements CanActivate {
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const targets = [context.getHandler(), context.getClass()];
-    if (this.reflector.getAllAndOverride<boolean>(PUBLIC_KEY, targets)) return true;
-    const required = this.reflector.getAllAndOverride<Role[] | undefined>(ROLES_KEY, targets) ?? [];
     const request = context.switchToHttp().getRequest<FastifyRequest>();
+    if (this.reflector.getAllAndOverride<boolean>(PUBLIC_KEY, targets)) {
+      if (this.reflector.getAllAndOverride<boolean>(APP_CHECKED_KEY, targets)) await this.verifyAppCheck(request);
+      return true;
+    }
+    const required = this.reflector.getAllAndOverride<Role[] | undefined>(ROLES_KEY, targets) ?? [];
     const actAsHeader = request.headers[ACT_AS_HEADER];
     if (actAsHeader !== undefined && (typeof actAsHeader !== 'string' || !isUuidV7(actAsHeader))) {
       throw new BadRequestException(`${ACT_AS_HEADER} must be a test persona's accountId`);
@@ -47,15 +50,7 @@ export class AuthGuard implements CanActivate {
     const checkRevoked =
       required.length > 0 || personaId !== undefined || !!this.reflector.getAllAndOverride<boolean>(CHECK_REVOKED_KEY, targets);
 
-    if (this.config.appCheckEnforced) {
-      const appCheckToken = request.headers['x-firebase-appcheck'];
-      if (typeof appCheckToken !== 'string' || !appCheckToken) throw new UnauthorizedException('App Check token required');
-      try {
-        await this.firebase.appCheck.verifyToken(appCheckToken);
-      } catch {
-        throw new UnauthorizedException('invalid App Check token');
-      }
-    }
+    await this.verifyAppCheck(request);
 
     const match = /^Bearer (\S+)$/.exec(request.headers.authorization ?? '');
     if (!match) throw new UnauthorizedException('sign in required');
@@ -92,6 +87,18 @@ export class AuthGuard implements CanActivate {
    * Checks a request to act as a test persona (design §10.4): testing mode is on, the caller is a System Admin signed
    * in with MFA, and the target is a persona. Returns the caller's own accountId, the operator.
    */
+  /** Where App Check is enforced, the request carries a valid App Check token. */
+  private async verifyAppCheck(request: FastifyRequest): Promise<void> {
+    if (!this.config.appCheckEnforced) return;
+    const appCheckToken = request.headers['x-firebase-appcheck'];
+    if (typeof appCheckToken !== 'string' || !appCheckToken) throw new UnauthorizedException('App Check token required');
+    try {
+      await this.firebase.appCheck.verifyToken(appCheckToken);
+    } catch {
+      throw new UnauthorizedException('invalid App Check token');
+    }
+  }
+
   private async operatorFor(
     request: FastifyRequest,
     principal: Principal,

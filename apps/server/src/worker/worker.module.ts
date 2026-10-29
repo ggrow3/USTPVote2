@@ -11,6 +11,7 @@ import { CONSISTENCY_CHECKER } from '../consistency-check/checker.js';
 import { ClaudeConsistencyChecker } from '../consistency-check/claude-consistency-checker.js';
 import { ConsistencyCheckRunner } from '../consistency-check/consistency-check-runner.js';
 import { StubConsistencyChecker } from '../consistency-check/stub-consistency-checker.js';
+import { COMMUNICATIONS_WORKER_PROVIDERS } from '../communications/providers.js';
 import { CoreModule } from '../core.module.js';
 import { ELECTION_CHECKER } from '../election-check/checker.js';
 import { ClaudeElectionChecker } from '../election-check/claude-election-checker.js';
@@ -50,6 +51,8 @@ import { TasksController } from './tasks.controller.js';
     // Election notices greet roll members by name (design §6.8).
     ...MEMBER_DIRECTORY_PROVIDERS,
     ...NOTIFICATION_WORKER_PROVIDERS,
+    // Suggestions are deleted a year after they arrive (design §10.7).
+    ...COMMUNICATIONS_WORKER_PROVIDERS,
     {
       provide: AUDIT_SIGNER,
       inject: [CONFIG, Firebase],

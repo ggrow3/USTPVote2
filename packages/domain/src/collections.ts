@@ -68,6 +68,25 @@ export const Collections = {
   hubLogos: 'hub_logos',
   /** `hub_clicks/{target}`: how often each hub link was followed, in total and per day; nothing about who (§10.6). */
   hubClicks: 'hub_clicks',
+  // communications (design §10.7)
+  /** `news_posts/{postId}`: news, statements and press releases, drafts too. */
+  newsPosts: 'news_posts',
+  /** `press_kit/current`: the Press page's contact, description, facts and files. */
+  pressKit: 'press_kit',
+  /** `press_assets/{sha256}`: files uploaded for the press kit, as stored. */
+  pressAssets: 'press_assets',
+  /** `share_posts/{shareId}`: the share kit's ready-made posts for members. */
+  sharePosts: 'share_posts',
+  /** `share_counts/{item}`: how often each share button was pressed; nothing about who. */
+  shareCounts: 'share_counts',
+  /** `calendar_items/{itemId}`: the social media calendar's planned posts. */
+  calendarItems: 'calendar_items',
+  /** `suggestions/{suggestionId}`: suggestions sent with the public form, kept a year. */
+  suggestions: 'suggestions',
+  /** `suggestion_limits/{YYYY-MM-DD}`: each day's salt and counts for the form's limits. */
+  suggestionLimits: 'suggestion_limits',
+  /** `bots/{botId}`: the registry of the party's bots. */
+  bots: 'bots',
   // notifications (design §6.8)
   notices: 'notices',
   noticeOutbox: 'notice_outbox',

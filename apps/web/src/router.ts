@@ -44,6 +44,12 @@ export const router = createRouter({
         // Teams are for Active members; the pages say so to anyone else signed in (design §5.7).
         { path: 'teams', component: () => import('./teams/TeamsPage.vue'), meta: { requiresAuth: true } },
         { path: 'teams/:teamId', component: () => import('./teams/TeamPage.vue'), meta: { requiresAuth: true } },
+        // News, the press kit and the suggestions form are for everyone; the share kit for Active members (design §10.7).
+        { path: 'news', component: () => import('./communications/NewsPage.vue') },
+        { path: 'news/:slug', component: () => import('./communications/NewsPostPage.vue') },
+        { path: 'press', component: () => import('./communications/PressPage.vue') },
+        { path: 'suggest', component: () => import('./communications/SuggestPage.vue') },
+        { path: 'share', component: () => import('./communications/SharePage.vue'), meta: { requiresAuth: true } },
         // Open to anyone signed in: the page tells people without an admin role who it is for.
         { path: 'admin', component: () => import('./pages/AdminPage.vue'), meta: { requiresAuth: true } },
         {

@@ -270,9 +270,12 @@ export class PublicHubController {
   }
 }
 
-/** System Admins manage the hub and see how often each link is followed (design §10.6). */
+/**
+ * System Admins and Communications Admins manage the hub and see how often each link is followed (design §10.6,
+ * §10.7): its links are the party's social accounts.
+ */
 @Controller('v1/admin/hub')
-@Roles('system_admin')
+@Roles('system_admin', 'communications_admin')
 export class HubAdminController {
   constructor(private readonly hub: HubService) {}
 

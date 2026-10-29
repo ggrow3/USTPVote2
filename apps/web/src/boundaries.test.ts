@@ -24,6 +24,7 @@ const CONTEXTS: Readonly<Record<string, readonly string[]>> = {
   'election-check': ['}/bylaws-check'],
   offices: ['/v1/admin/positions', '/v1/public/positions'],
   teams: ['/v1/teams', '/v1/admin/teams'],
+  communications: ['/v1/news', '/v1/press', '/v1/share', '/v1/suggestions', '/v1/admin/communications'],
 };
 
 const SRC = import.meta.dirname;

@@ -55,6 +55,14 @@ import { PersonasService } from '../personas/personas.service.js';
 import { PositionApprovals } from '../positions/position-approvals.js';
 import { PositionsController, PublicPositionsController } from '../positions/positions.controller.js';
 import { PositionsService } from '../positions/positions.service.js';
+import { COMMUNICATIONS_PROVIDERS } from '../communications/providers.js';
+import {
+  CommunicationsAdminController,
+  PublicNewsController,
+  PublicPressController,
+  PublicSuggestionsController,
+  ShareController,
+} from '../communications/communications.controller.js';
 import { TEAMS_PROVIDERS } from '../teams/providers.js';
 import { TeamsAdminController, TeamsController } from '../teams/teams.controller.js';
 
@@ -63,8 +71,8 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
  * M1: accounts, registration, membership administration, profile photos, roles and approvals, auth switches, ledger.
  * M2: election setup, rolls, scheduling and cancellation; the published ledger (blocks, keys, proofs, anchors).
  * M3: voting. M4: results, certification, offices and terms; teams (design §5.7). Testing mode: test personas and demo elections (design
- * §10.4). M5: who sees which link (design §10.5), the home page hub (§10.6); the platform consistency check (design
- * §5.5), the election setup check (§6.9) and the Anthropic API key (design §5.6).
+ * §10.4). M5: who sees which link (design §10.5), the home page hub (§10.6) and communications (§10.7); the
+ * platform consistency check (design §5.5), the election setup check (§6.9) and the Anthropic API key (design §5.6).
  */
 @Module({
   imports: [CoreModule],
@@ -104,6 +112,11 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     HomeQuoteAdminController,
     PublicHubController,
     HubAdminController,
+    PublicNewsController,
+    PublicPressController,
+    PublicSuggestionsController,
+    ShareController,
+    CommunicationsAdminController,
     AuditController,
     PublicLedgerController,
     PersonasController,
@@ -131,6 +144,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     PositionApprovals,
     PositionsService,
     ...TEAMS_PROVIDERS,
+    ...COMMUNICATIONS_PROVIDERS,
     ApprovalsService,
     NavigationService,
     HomeQuoteService,

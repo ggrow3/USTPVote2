@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory, type IEntryNestModule } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import { BUILD_COMMIT_HEADER, buildCommit } from 'ustp-domain';
+import { BUILD_COMMIT_HEADER, buildCommit, PRESS_ASSET_MAX_BYTES } from 'ustp-domain';
 import { ACCEPTED_TYPES, MAX_PHOTO_BYTES } from '../photos/image.js';
 import { loggerOptions } from './logging.js';
 import { ProblemDetailsFilter } from './problem.filter.js';
@@ -40,6 +40,11 @@ export async function createFastifyApp(
     .addContentTypeParser([...ACCEPTED_TYPES], { parseAs: 'buffer', bodyLimit: MAX_PHOTO_BYTES }, (_req, body, done) =>
       done(null, body),
     );
+  // Press kit PDFs arrive the same way, and are kept as sent (design §10.7).
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .addContentTypeParser('application/pdf', { parseAs: 'buffer', bodyLimit: PRESS_ASSET_MAX_BYTES }, (_req, body, done) => done(null, body));
   return app;
 }
 
