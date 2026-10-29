@@ -2,8 +2,11 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { createRequire } from 'node:module';
 import {
   Collections,
+  draftCoursePackage,
+  publishedCoursePackage,
   uuidv7,
   type CertificateVerification,
+  type CoursePackage,
   type CourseAttemptRecord,
   type CourseCatalog,
   type CourseCertificateRecord,
@@ -88,6 +91,17 @@ export class CourseService {
       lessons: lessons.docs.map((d) => d.data() as CourseLesson),
       profiles: profiles.docs.map((d) => d.data() as FuturistProfile),
     };
+  }
+
+  /** The course as one `ustp.course` file: the draft, or a published version (404 if it has none by that number). */
+  async package(courseId: string, version: number | 'draft'): Promise<CoursePackage> {
+    const exportedAt = new Date().toISOString();
+    if (version === 'draft') {
+      const { course, lessons, profiles } = await this.adminContent(courseId);
+      return draftCoursePackage(course, lessons, profiles, exportedAt);
+    }
+    await this.ensureSeeded();
+    return publishedCoursePackage(await this.version(courseId, version), exportedAt);
   }
 
   async updateMetadata(courseId: string, input: CourseMetadataInput, accountId: string): Promise<CourseRecord> {

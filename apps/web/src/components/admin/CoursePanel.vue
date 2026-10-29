@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue';
 import {
+  coursePackageFileName,
   FUTURIST_CATEGORIES,
   type CourseLesson,
+  type CoursePackage,
   type CourseRecord,
   type FuturistCategory,
   type FuturistProfile,
 } from 'ustp-domain';
 import { api, errorMessage } from '../../api.js';
+import { saveFile } from '../../bylaws-files.js';
 import { attempt } from '../../dialogs.js';
 
 const COURSE_ID = 'transhumanism';
@@ -143,6 +146,14 @@ async function remove(kind: 'lessons' | 'profiles', id: string) {
   if (await attempt(() => api('DELETE', `/v1/admin/courses/${COURSE_ID}/${kind}/${id}`), 'Draft item deleted')) await load();
 }
 
+/** Saves the course as a `ustp.course` JSON file: the draft as saved (not unsaved edits here), or a published version. */
+async function exportCourse(version: number | 'draft') {
+  await attempt(async () => {
+    const pkg = await api<CoursePackage>('GET', `/v1/admin/courses/${COURSE_ID}/package?version=${version}`);
+    saveFile(new Blob([`${JSON.stringify(pkg, null, 2)}\n`], { type: 'application/json' }), coursePackageFileName(pkg));
+  }, 'Course exported');
+}
+
 async function publish() {
   publishing.value = true;
   try {
@@ -170,6 +181,22 @@ void load().catch((e: unknown) => console.error(errorMessage(e)));
           <q-input v-model="course.summary" outlined type="textarea" autogrow class="q-mt-sm" label="Public summary" />
         </q-card-section>
         <q-card-actions align="right">
+          <q-btn-dropdown flat no-caps icon="download" label="Export JSON">
+            <q-list>
+              <q-item v-close-popup clickable @click="exportCourse('draft')">
+                <q-item-section>
+                  <q-item-label>Current draft</q-item-label>
+                  <q-item-label caption>As last saved, with quiz answers</q-item-label>
+                </q-item-section>
+              </q-item>
+              <q-item v-if="course.publishedVersion" v-close-popup clickable @click="exportCourse(course.publishedVersion)">
+                <q-item-section>
+                  <q-item-label>Published version {{ course.publishedVersion }}</q-item-label>
+                  <q-item-label caption>What learners take now, with quiz answers</q-item-label>
+                </q-item-section>
+              </q-item>
+            </q-list>
+          </q-btn-dropdown>
           <q-btn flat no-caps label="Save draft" @click="saveCourse" />
           <q-btn color="primary" no-caps label="Publish new version" :loading="publishing" @click="publish" />
         </q-card-actions>
