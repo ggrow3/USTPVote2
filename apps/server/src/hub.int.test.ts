@@ -87,6 +87,7 @@ describe('the home page hub (design §10.6)', () => {
           { part: 'section', id: 'apps', title: 'Apps', change: 'removed' },
           { part: 'link', id: 'vote', section: 'apps', change: 'removed' },
           { part: 'link', id: 'register', section: 'apps', change: 'removed' },
+          { part: 'link', id: 'course', section: 'apps', change: 'removed' },
           { part: 'link', id: 'website', section: 'apps', change: 'removed' },
           { part: 'link', id: 'events', section: 'apps', change: 'removed' },
           { part: 'link', id: 'donate', section: 'apps', change: 'removed' },

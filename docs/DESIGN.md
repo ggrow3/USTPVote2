@@ -2171,7 +2171,7 @@ under Admin → Link hub.
   and its links in order. A link has a title, a subtitle, an address (a page of this app like `/vote`, an `https://`
   address or `mailto:`; never `http:`, `javascript:` or `//`), an icon (one of twelve networks: Discord, X, Reddit,
   Facebook, Telegram, Instagram, YouTube, TikTok, LinkedIn, Threads, Bluesky, Mastodon; or a symbol: voting,
-  membership, events, donations, discussion board, chat, news, website, email, video, link), and three switches: shown,
+  membership, course, events, donations, discussion board, chat, news, website, email, video, link), and three switches: shown,
   in the icon row, starred. **The icon row** is every shown link marked for it, whatever its section's switch (so a
   section can be hidden and its icons kept), networks first in the order above, then other icons in page order. The
   Discord card shows while it has an invite. A shown section needs its title; a shown link its title and address; a
@@ -2180,7 +2180,7 @@ under Admin → Link hub.
   when it is edited or moved, so it keeps its clicks.
 - **Defaults** (version 0): the name, the tagline in the party site's header ("Putting science, health & technology at
   the forefront of American politics") and a bio; the party's orange and the dark theme. Apps: USTP Vote (`/vote`,
-  starred), Become a member (`/register`) and the party's site, then Events, Donate, Discussion board and Chat as
+  starred), Become a member (`/register`), the Transhumanism course (`/course/transhumanism`) and the party's site, then Events, Donate, Discussion board and Chat as
   hidden drafts. Community: Discord server, Subreddit and Telegram channel, drafts in the icon row. Follow us: X,
   Facebook and the LinkedIn group, shown and in the icon row, then Instagram, YouTube, TikTok, Threads, Bluesky and
   Mastodon as drafts in the icon row. **Only addresses checked on the party's own site are filled in**

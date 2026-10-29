@@ -5,6 +5,7 @@ import { NETWORK_NAMES, RECENT_DAYS, type HubChange, type HubClickCount, type Hu
 const SYMBOL_LABELS: Readonly<Record<LinkSymbol, string>> = {
   vote: 'Voting',
   register: 'Membership',
+  course: 'Course',
   events: 'Events',
   donate: 'Donations',
   forum: 'Discussion board',
