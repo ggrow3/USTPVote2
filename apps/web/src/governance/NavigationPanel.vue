@@ -22,8 +22,10 @@ import {
   type SignedInAudience,
   type StartPage,
 } from 'ustp-domain';
+import { focusSoon } from '../a11y.js';
 import { attempt } from '../dialogs.js';
 import { navigationSettings, saveNavigation } from './api.js';
+import { cellRuns } from './navigation-matrix.js';
 import { applyNavigation } from './navigation.js';
 import {
   AUDIENCE_CAPTIONS,
@@ -69,6 +71,15 @@ const COLUMN_OPTIONS = [
 const membershipColumns = computed(() => (columns.value === 'roles' ? [] : MEMBERSHIP_AUDIENCES));
 const roleColumns = computed(() => (columns.value === 'membership' ? [] : ROLES));
 const audiences = computed<Audience[]>(() => [...membershipColumns.value, ...roleColumns.value]);
+
+/** Admin sections are only ever a role's, so their rows need the role columns; focus stays with the rows it brings. */
+function showStaffRoles() {
+  columns.value = 'roles';
+  void focusSoon('#nav-sections');
+}
+
+/** A menu link's cells: Sign in for everyone signed in is one cell saying so, not a dash in each column. */
+const menuRow = (l: MenuLink) => cellRuns(audiences.value, (a) => (menuLock(a, l) === 'signed_in' ? lockText('signed_in', a) : null));
 
 async function load() {
   await attempt(async () => {
@@ -127,14 +138,16 @@ onMounted(load);
           <ul class="nav-legend text-caption">
             <li><span class="nav-check nav-check--sample" aria-hidden="true" data-on></span> Shown</li>
             <li><span class="nav-check nav-check--sample" aria-hidden="true"></span> Hidden</li>
-            <li>
-              <span class="nav-fixed" aria-hidden="true">—</span> Not available: admin sections are for staff roles, and
-              each role only gets the sections the API lets it use
-            </li>
-            <li>
-              <span class="nav-fixed nav-fixed--on" aria-hidden="true">✓</span> Always shown: People and Navigation stay
-              with System Admins, and a role's Admin link follows its sections
-            </li>
+            <template v-if="roleColumns.length">
+              <li>
+                <span class="nav-fixed" aria-hidden="true">—</span> Not available: each role only gets the admin sections
+                the API lets it use
+              </li>
+              <li>
+                <span class="nav-fixed nav-fixed--on" aria-hidden="true">✓</span> Always shown: People and Navigation
+                stay with System Admins, and a role's Admin link follows its sections
+              </li>
+            </template>
           </ul>
         </div>
         <q-btn-toggle
@@ -185,55 +198,88 @@ onMounted(load);
                 <span class="nav-item__name">{{ MENU_LABELS[l] }}</span>
                 <span class="nav-caption">{{ MENU_CAPTIONS[l] }}</span>
               </th>
-              <td v-for="a in audiences" :key="a" class="nav-cell">
-                <input
-                  v-if="!menuLock(a, l)"
-                  v-model="draft.menu[a][l]"
-                  type="checkbox"
-                  class="nav-check"
-                  :aria-label="cellName(l, a, 'link')"
-                />
-                <span
-                  v-else
-                  class="nav-fixed"
-                  :class="{ 'nav-fixed--on': resolved.menu[a][l] }"
-                  :title="lockText(menuLock(a, l)!, a, undefined, resolved.menu[a][l])"
-                >
-                  <span aria-hidden="true">{{ resolved.menu[a][l] ? '✓' : '—' }}</span>
-                  <span class="sr-only">{{ lockText(menuLock(a, l)!, a, undefined, resolved.menu[a][l]) }}</span>
-                </span>
-              </td>
+              <template v-for="run in menuRow(l)" :key="'audience' in run ? run.audience : run.audiences[0]">
+                <td v-if="'audience' in run" class="nav-cell">
+                  <input
+                    v-if="!menuLock(run.audience, l)"
+                    v-model="draft.menu[run.audience][l]"
+                    type="checkbox"
+                    class="nav-check"
+                    :aria-label="cellName(l, run.audience, 'link')"
+                  />
+                  <span
+                    v-else
+                    class="nav-fixed"
+                    :class="{ 'nav-fixed--on': resolved.menu[run.audience][l] }"
+                    :title="lockText(menuLock(run.audience, l)!, run.audience, undefined, resolved.menu[run.audience][l])"
+                  >
+                    <span aria-hidden="true">{{ resolved.menu[run.audience][l] ? '✓' : '—' }}</span>
+                    <span class="sr-only">{{ lockText(menuLock(run.audience, l)!, run.audience, undefined, resolved.menu[run.audience][l]) }}</span>
+                  </span>
+                </td>
+                <td v-else :colspan="run.audiences.length" class="nav-merged">
+                  <span class="nav-merged__text nav-caption">{{ run.reason }}</span>
+                </td>
+              </template>
             </tr>
           </tbody>
 
           <tbody>
             <tr>
-              <th scope="rowgroup" :colspan="audiences.length + 1" class="nav-rowgroup"><span class="nav-sticky-inner">Admin sections</span></th>
-            </tr>
-            <tr v-for="s in ADMIN_SECTIONS" :key="s">
-              <th scope="row" class="nav-sticky nav-item">
-                <span class="nav-item__name">{{ SECTION_LABELS[s] }}</span>
-                <span class="nav-caption">{{ SECTION_CAPTIONS[s] }}</span>
+              <th id="nav-sections" scope="rowgroup" :colspan="audiences.length + 1" class="nav-rowgroup">
+                <span class="nav-sticky-inner">Admin sections</span>
               </th>
-              <td v-for="a in audiences" :key="a" class="nav-cell">
-                <input
-                  v-if="!sectionLock(a, s)"
-                  v-model="draft.sections[a as Role][s]"
-                  type="checkbox"
-                  class="nav-check"
-                  :aria-label="cellName(s, a, 'section')"
-                />
-                <span
-                  v-else
-                  class="nav-fixed"
-                  :class="{ 'nav-fixed--on': sectionLock(a, s) === 'guarded' }"
-                  :title="lockText(sectionLock(a, s)!, a, s)"
-                >
-                  <span aria-hidden="true">{{ sectionLock(a, s) === 'guarded' ? '✓' : '—' }}</span>
-                  <span class="sr-only">{{ lockText(sectionLock(a, s)!, a, s) }}</span>
+            </tr>
+            <!-- Membership columns only: nothing here could be switched, so one line says where the sections are. -->
+            <tr v-if="!roleColumns.length">
+              <td :colspan="audiences.length + 1" class="nav-merged nav-merged--note">
+                <span class="nav-merged__text">
+                  Admin sections are given to staff roles, never to a membership state alone.
+                  <q-btn flat dense no-caps color="primary" label="Switch to Staff roles" @click="showStaffRoles" />
                 </span>
               </td>
             </tr>
+            <template v-else>
+              <tr v-for="(s, i) in ADMIN_SECTIONS" :key="s">
+                <th scope="row" class="nav-sticky nav-item">
+                  <span class="nav-item__name">{{ SECTION_LABELS[s] }}</span>
+                  <span class="nav-caption">{{ SECTION_CAPTIONS[s] }}</span>
+                </th>
+                <!-- Beside the role columns, the membership columns are one cell for the whole group, saying why once. -->
+                <td
+                  v-if="i === 0 && membershipColumns.length"
+                  :rowspan="ADMIN_SECTIONS.length"
+                  :colspan="membershipColumns.length"
+                  class="nav-merged nav-merged--block"
+                >
+                  <span class="nav-merged__text">
+                    <span class="nav-item__name">Staff roles only</span>
+                    <span class="nav-caption">
+                      A membership state alone has no admin sections: each role's are in its column, to the right.
+                    </span>
+                    <q-btn flat dense no-caps color="primary" label="Switch to Staff roles" align="left" class="q-mt-xs" @click="showStaffRoles" />
+                  </span>
+                </td>
+                <td v-for="a in roleColumns" :key="a" class="nav-cell">
+                  <input
+                    v-if="!sectionLock(a, s)"
+                    v-model="draft.sections[a][s]"
+                    type="checkbox"
+                    class="nav-check"
+                    :aria-label="cellName(s, a, 'section')"
+                  />
+                  <span
+                    v-else
+                    class="nav-fixed"
+                    :class="{ 'nav-fixed--on': sectionLock(a, s) === 'guarded' }"
+                    :title="lockText(sectionLock(a, s)!, a, s)"
+                  >
+                    <span aria-hidden="true">{{ sectionLock(a, s) === 'guarded' ? '✓' : '—' }}</span>
+                    <span class="sr-only">{{ lockText(sectionLock(a, s)!, a, s) }}</span>
+                  </span>
+                </td>
+              </tr>
+            </template>
           </tbody>
 
           <tbody>
@@ -291,6 +337,8 @@ onMounted(load);
   max-width: 860px;
 }
 .nav-panel {
+  /* The row headers' narrowest width, which they have whenever the table is wider than the card. */
+  --nav-head: 11rem;
   --nav-bg: #fff;
   --nav-line: rgba(0, 0, 0, 0.12);
   --nav-off: #757575;
@@ -324,9 +372,13 @@ onMounted(load);
   height: 20px;
 }
 
-/* The table scrolls sideways inside the card when it is wider than the screen; the row headers stay in view. */
+/* The table scrolls sideways inside the card when it is wider than the screen; the row headers stay in view, and a
+   control reached with Tab is scrolled clear of them (WCAG 2.4.11). It is a size container, so merged cells' words can
+   be kept as narrow as the part of the table in view (cqw). */
 .nav-scroll {
   overflow-x: auto;
+  scroll-padding-left: calc(var(--nav-head) + 8px);
+  container-type: inline-size;
 }
 .nav-matrix {
   border-collapse: separate;
@@ -398,7 +450,7 @@ onMounted(load);
   line-height: 1.3;
 }
 .nav-item {
-  min-width: 11rem;
+  min-width: var(--nav-head);
 }
 /* Positioned (as the sticky headers are), so a cell's hidden text (absolute, .sr-only) stays inside the scrolling
    table instead of widening the admin panel around it. */
@@ -469,6 +521,32 @@ onMounted(load);
   font-weight: 700;
 }
 
+/* Merged cells (nothing in them can be set): their words start beside the row headers and stay there, in view, while
+   the table scrolls under them. The Membership columns' note spans the row header's column too, so it starts at 0. */
+.nav-merged {
+  text-align: left;
+}
+.nav-merged--block {
+  vertical-align: top !important;
+}
+.nav-merged--note {
+  padding-left: 16px !important;
+}
+.nav-merged__text {
+  position: sticky;
+  left: calc(var(--nav-head) + 8px);
+  display: block;
+  width: fit-content;
+  max-width: min(32rem, 100cqw - var(--nav-head) - 16px);
+}
+.nav-merged--block :deep(.q-btn__content) {
+  text-align: left;
+}
+.nav-merged--note .nav-merged__text {
+  left: 16px;
+  max-width: calc(100cqw - 32px);
+}
+
 .nav-select {
   max-width: 7.5rem;
   padding: 4px;
@@ -482,11 +560,11 @@ onMounted(load);
 
 /* Phones: a narrower row header, so more of the matrix shows beside it. */
 @media (max-width: 599.98px) {
+  .nav-panel {
+    --nav-head: 8rem;
+  }
   .nav-matrix__head-col {
     width: 9rem;
-  }
-  .nav-item {
-    min-width: 8rem;
   }
 }
 </style>

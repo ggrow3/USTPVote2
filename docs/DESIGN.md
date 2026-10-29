@@ -2056,6 +2056,12 @@ page itself, `/`, is the party's link hub (§10.6).
   that put everything else back; and signed-out visitors keep at least one way to sign in (Sign in, Register's first
   step, or Ballot or Admin, which send them to sign in), since every admin arrives as a visitor. The API refuses
   settings that break either (409), and the matrix says why before Save.
+- **The matrix shows what can be set.** Its columns are All, Membership or Staff roles. With only the membership
+  columns, the Admin sections group is one line saying admin sections are given to staff roles, and a button that
+  switches to the Staff roles columns (focus moves to the group's header). With all the columns, the membership
+  columns of that group are one cell that says "Staff roles only" once, with the same button. Sign in, for everyone
+  signed in, is one cell across their columns ("Not applicable: already signed in"). The legend lists the fixed dash
+  and tick only while role columns, the only ones that have them, are shown.
 - **Defaults** (version 0, before anyone saves) are the menu as it was, with Offices added: all five links for every
   membership state and Sign in for visitors, each role its own sections (System Admins without the Offices section,
   which they may read but not change), roles adding Ballot, Verify and Offices (and Admin, from their sections) so a
