@@ -28,7 +28,9 @@ locals {
     },
     local.notices_env,
     var.testing_mode ? { TESTING_MODE = "true" } : {},
-    var.maps_enabled ? { GOOGLE_MAPS_BROWSER_KEY = google_apikeys_key.maps_browser[0].key_string } : {},
+    # The provider marks every key string sensitive, but this one is public by nature (maps.tf), and a sensitive value
+    # here would make the api_env output refuse to plan.
+    var.maps_enabled ? { GOOGLE_MAPS_BROWSER_KEY = nonsensitive(google_apikeys_key.maps_browser[0].key_string) } : {},
   )
 
   # worker: Secret Manager (reading seeds at tally), signing ledger blocks and rolls, pool key versions and sealing,
