@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { session } from '../session.js';
 
 /**
- * The links between the public communications pages (design §10.7): News, the Press page, the share kit (shown to
+ * The links between the public communications pages (design §10.9): News, the Press page, the share kit (shown to
  * Active members, the only people it is for) and the suggestions form.
  */
 const links = computed(() => [

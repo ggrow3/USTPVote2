@@ -10,7 +10,7 @@ import { kitShareable, longDate } from './comms-text.js';
 import ShareButtons from './ShareButtons.vue';
 
 /**
- * The share kit (design §10.7): posts the communications team has written for Active members to share from their own
+ * The share kit (design §10.9): posts the communications team has written for Active members to share from their own
  * accounts. Each button opens that site with the post filled in; under it, what the site will make of it.
  */
 usePageTitle('Share kit');

@@ -30,7 +30,7 @@ import type {
 import { api, apiBlob, apiUpload } from '../api.js';
 
 /**
- * The communications context's API (design §10.7, §12): the only place its routes are written. The public reads
+ * The communications context's API (design §10.9, §12): the only place its routes are written. The public reads
  * `/v1/news` and `/v1/press` and sends `/v1/suggestions`; Active members read `/v1/share`; Communications Admins use
  * `/v1/admin/communications`.
  */

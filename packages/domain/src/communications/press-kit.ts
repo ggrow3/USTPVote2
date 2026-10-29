@@ -4,7 +4,7 @@ import type { LedgerEvent } from '../ledger-events.js';
 import { changedFields, communicationsEvent, oneLine, stale, text } from './common.js';
 
 /**
- * The press kit (design §10.7): what a journalist needs, on the public Press page: who to contact, the party's own
+ * The press kit (design §10.9): what a journalist needs, on the public Press page: who to contact, the party's own
  * description of itself, a few facts, and files to download (logos, photos, a fact sheet). Communications Admins keep it;
  * each save is ledgered with what changed.
  */

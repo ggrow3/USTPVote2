@@ -57,7 +57,7 @@ function sendFile(reply: FastifyReply, record: PressAssetRecord, data: Buffer, c
   return data;
 }
 
-/** The News page and its feeds (design §10.7): anyone may read them. */
+/** The News page and its feeds (design §10.9): anyone may read them. */
 @Controller('v1/news')
 @Public()
 export class PublicNewsController {
@@ -90,7 +90,7 @@ export class PublicNewsController {
   }
 }
 
-/** The Press page (design §10.7): the press kit, its files and the party's public bots. */
+/** The Press page (design §10.9): the press kit, its files and the party's public bots. */
 @Controller('v1/press')
 @Public()
 export class PublicPressController {
@@ -109,7 +109,7 @@ export class PublicPressController {
   }
 }
 
-/** The suggestions form (design §10.7): anyone may send one, signed in or not. */
+/** The suggestions form (design §10.9): anyone may send one, signed in or not. */
 @Controller('v1/suggestions')
 export class PublicSuggestionsController {
   constructor(private readonly suggestions: SuggestionsService) {}
@@ -124,7 +124,7 @@ export class PublicSuggestionsController {
   }
 }
 
-/** The share kit for Active members, and counting share buttons (design §10.7). */
+/** The share kit for Active members, and counting share buttons (design §10.9). */
 @Controller('v1/share')
 export class ShareController {
   constructor(private readonly share: ShareKitService) {}
@@ -144,7 +144,7 @@ export class ShareController {
 }
 
 /**
- * Communications Admins (design §10.7): news and press releases, the share kit, the social media calendar,
+ * Communications Admins (design §10.9): news and press releases, the share kit, the social media calendar,
  * suggestions, the press kit and the bot registry.
  */
 @Controller('v1/admin/communications')

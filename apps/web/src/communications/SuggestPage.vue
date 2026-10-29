@@ -10,7 +10,7 @@ import CommsNav from './CommsNav.vue';
 import { SUGGESTION_TOPIC_LABELS } from './comms-text.js';
 
 /**
- * The suggestions form (design §10.7): anyone may send the party an idea, member or not, signed in or not. A name and
+ * The suggestions form (design §10.9): anyone may send the party an idea, member or not, signed in or not. A name and
  * email are optional and kept only with consent; Communications Admins read what arrives; it is deleted after a year.
  */
 usePageTitle('Send a suggestion');

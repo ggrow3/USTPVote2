@@ -4,7 +4,7 @@ import { SLUG } from './common.js';
 import { SHARE_TARGETS, type ShareTarget } from './share.js';
 
 /**
- * How often each share button is pressed (design §10.7): counts only, as the hub's clicks (§10.6). Nothing about who
+ * How often each share button is pressed (design §10.9): counts only, as the hub's clicks (§10.6). Nothing about who
  * pressed it is kept, and whether they then posted is the site's to know, not ours.
  */
 

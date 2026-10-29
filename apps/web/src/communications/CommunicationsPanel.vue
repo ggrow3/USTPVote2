@@ -9,7 +9,7 @@ import SuggestionsAdmin from './SuggestionsAdmin.vue';
 import { suggestions } from './api.js';
 
 /**
- * Communications, for Communications Admins (design §10.7): news and press releases, the share kit for members, the
+ * Communications, for Communications Admins (design §10.9): news and press releases, the share kit for members, the
  * social media calendar, suggestions from the public, the press kit and the party's bots. The home page's Link hub,
  * with the party's social accounts, is its own section beside this one.
  */

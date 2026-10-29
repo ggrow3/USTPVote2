@@ -11,7 +11,7 @@ import CommsNav from './CommsNav.vue';
 import { BOT_SITE_NAMES, BOT_STATUS_LABELS, fileSize, longDate, siteIcon } from './comms-text.js';
 
 /**
- * The Press page (design §10.7): for journalists, who to contact, the party's own description of itself, a few facts,
+ * The Press page (design §10.9): for journalists, who to contact, the party's own description of itself, a few facts,
  * files to download, the latest releases, and every bot the party runs, so its accounts can be told from impostors.
  */
 usePageTitle('Press');

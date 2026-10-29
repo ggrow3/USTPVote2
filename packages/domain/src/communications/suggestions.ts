@@ -3,7 +3,7 @@ import { refuse, type Check, OK } from '../check.js';
 import { oneLine, text } from './common.js';
 
 /**
- * Suggestions (design §10.7): a public form anyone may send, signed in or not, member or not, read by Communications
+ * Suggestions (design §10.9): a public form anyone may send, signed in or not, member or not, read by Communications
  * Admins only. A name and email are optional, kept only with the sender's consent so the party can reply, and every
  * suggestion is deleted a year after it arrives. Nothing here is ledgered: the ledger cannot be erased.
  */

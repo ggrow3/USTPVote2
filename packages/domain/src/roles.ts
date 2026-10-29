@@ -2,7 +2,7 @@ import { deny, OK, type Check } from './check.js';
 
 /**
  * Course Administrators publish learning material only, and Communications Admins the party's news, press kit and share
- * kit (design §10.7); neither receives membership, election, ballot or audit powers.
+ * kit (design §10.9); neither receives membership, election, ballot or audit powers.
  */
 export const ROLES = ['membership_admin', 'election_admin', 'auditor', 'system_admin', 'course_admin', 'communications_admin'] as const;
 export type Role = (typeof ROLES)[number];

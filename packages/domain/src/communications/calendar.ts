@@ -4,7 +4,7 @@ import { SOCIAL_NETWORKS, type SocialNetwork } from '../governance/hub.js';
 import { addressSchema, basedOnSchema, oneLine, stale, text } from './common.js';
 
 /**
- * The social media calendar (design §10.7): Communications Admins plan what the party's own accounts post, and when,
+ * The social media calendar (design §10.9): Communications Admins plan what the party's own accounts post, and when,
  * then mark each as posted with its link, or skipped. It is the team's own planning, so it is not ledgered; what is
  * posted is public on the site it went to.
  */

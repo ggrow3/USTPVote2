@@ -17,7 +17,7 @@ import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { CommunicationsRepository } from './communications.repository.js';
 
-/** The registry of the party's bots (design §10.7). Every change is ledgered; no bot's token or password is kept. */
+/** The registry of the party's bots (design §10.9). Every change is ledgered; no bot's token or password is kept. */
 @Injectable()
 export class BotsService {
   constructor(

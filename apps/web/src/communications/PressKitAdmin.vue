@@ -14,7 +14,7 @@ import { adminPressKit, pressAssetBlob, pressPage, savePressKit, uploadPressAsse
 import { fileSize, longDate } from './comms-text.js';
 
 /**
- * The press kit for Communications Admins (design §10.7): the public Press page's media contact, the party's own
+ * The press kit for Communications Admins (design §10.9): the public Press page's media contact, the party's own
  * description, facts and files. Uploading a file changes nothing the public sees until the kit is saved listing it.
  * Each save is recorded in the audit ledger.
  */

@@ -5,7 +5,7 @@ import type { LedgerEvent } from '../ledger-events.js';
 import { addressSchema, basedOnSchema, changedFields, communicationsEvent, oneLine, stale, text } from './common.js';
 
 /**
- * The bot registry (design §10.7): every automated account the party runs, on any site, so the team knows what speaks
+ * The bot registry (design §10.9): every automated account the party runs, on any site, so the team knows what speaks
  * for the party automatically, who looks after it, and when someone last checked it still behaves. Those marked public
  * are listed on the Press page, so anyone can tell the party's bots from impostors. No bot's token or password is kept
  * here. Changes are ledgered.

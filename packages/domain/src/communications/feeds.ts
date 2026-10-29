@@ -2,7 +2,7 @@ import { escapeHtml, newsHtml, newsText } from './news-body.js';
 import type { NewsKind, NewsPostRecord } from './news.js';
 
 /**
- * The news feeds (design §10.7): the published posts as RSS 2.0 and JSON Feed 1.1, so the party's bots, feed readers
+ * The news feeds (design §10.9): the published posts as RSS 2.0 and JSON Feed 1.1, so the party's bots, feed readers
  * and services such as IFTTT can pick up each post as it is published, without the app holding any site's keys.
  */
 

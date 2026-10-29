@@ -4,6 +4,7 @@ import {
   Inject,
   Injectable,
   Logger,
+  Optional,
   UnauthorizedException,
   type CanActivate,
   type ExecutionContext,
@@ -13,6 +14,7 @@ import type { FastifyRequest } from 'fastify';
 import { ACT_AS_HEADER, isUuidV7, PROBLEM_TYPES, type Role } from 'ustp-domain';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
+import { SignInLogService } from '../security/sign-in-log.js';
 import { APP_CHECKED_KEY, CHECK_REVOKED_KEY, PUBLIC_KEY, ROLES_KEY } from './decorators.js';
 import { DirectoryService } from './directory.service.js';
 import { principalFromToken, type Principal, type RequestContext } from './principal.js';
@@ -32,6 +34,7 @@ export class AuthGuard implements CanActivate {
     @Inject(CONFIG) private readonly config: ServerConfig,
     private readonly signInMethods: SignInMethodsService,
     private readonly directory: DirectoryService,
+    @Optional() private readonly signInLog?: SignInLogService,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -66,6 +69,8 @@ export class AuthGuard implements CanActivate {
     }
 
     const ownAccountId = await this.directory.accountIdForUid(principal.uid);
+    // The sign-in log (design §10.7): the real person who signed in, even while they act as a test persona.
+    await this.signInLog?.note(principal, ownAccountId, request);
     const operator = personaId === undefined ? null : await this.operatorFor(request, principal, ownAccountId, personaId);
     const accountId = personaId === undefined ? ownAccountId : personaId;
     let roles: Role[] = [];

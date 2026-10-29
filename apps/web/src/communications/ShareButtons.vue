@@ -7,7 +7,7 @@ import { countShare } from './api.js';
 import { targetIcon } from './comms-text.js';
 
 /**
- * Share buttons (design §10.7): each is a plain link to a site's own composer with the post filled in, opened in a new
+ * Share buttons (design §10.9): each is a plain link to a site's own composer with the post filled in, opened in a new
  * tab; the person sharing presses Post there. Nothing from those sites loads here. Each press is counted, nothing more.
  */
 const props = defineProps<{

@@ -11,7 +11,7 @@ import { longDate, NEWS_KIND_NAMES, newsShareable } from './comms-text.js';
 import NewsBody from './NewsBody.vue';
 import ShareButtons from './ShareButtons.vue';
 
-/** One news post (design §10.7), with share buttons; or, once withdrawn, a line saying so and when. */
+/** One news post (design §10.9), with share buttons; or, once withdrawn, a line saying so and when. */
 const route = useRoute();
 const post = ref<PublicNewsPost | null>(null);
 const missing = ref(false);

@@ -1,5 +1,5 @@
 /**
- * The communications context (design §10.7): the party's news and press releases, press kit, share kit, social media
+ * The communications context (design §10.9): the party's news and press releases, press kit, share kit, social media
  * calendar, suggestions from the public and its registry of bots, run by Communications Admins.
  */
 export { SLUG, HASHTAG_LIMITS, URL_LIMIT, slugFrom, addressProblem, absoluteUrl } from './common.js';

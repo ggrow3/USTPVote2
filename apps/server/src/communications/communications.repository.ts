@@ -19,7 +19,7 @@ import { Firebase } from '../infra/firebase.js';
 const KIT_DOC = 'current';
 
 /**
- * Storage of the communications context (design §10.7, §11). Only it reads and writes these collections. Queries are on
+ * Storage of the communications context (design §10.9, §11). Only it reads and writes these collections. Queries are on
  * one field each, so they need no composite index; results are sorted by the caller.
  */
 @Injectable()

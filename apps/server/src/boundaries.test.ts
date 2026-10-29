@@ -15,6 +15,10 @@ const CONTEXTS: Readonly<Record<string, { readonly collections: readonly string[
     collections: ['notices', 'noticeOutbox', 'noticeSettings', 'noticeReceipts', 'noticeTests'],
     repositories: ['notice.repository'],
   },
+  candidacies: {
+    collections: ['candidacies'],
+    repositories: ['candidacy.repository'],
+  },
   teams: {
     collections: ['teams', 'teamMembers', 'teamRequests'],
     repositories: ['team.repository'],

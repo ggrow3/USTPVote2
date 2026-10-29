@@ -4,7 +4,7 @@ import type { LedgerEvent } from '../ledger-events.js';
 import { addressSchema, basedOnSchema, changedFields, communicationsEvent, hashtagsSchema, oneLine, stale, text } from './common.js';
 
 /**
- * The share kit (design §10.7): ready-made posts Communications Admins write for Active members to share from their own
+ * The share kit (design §10.9): ready-made posts Communications Admins write for Active members to share from their own
  * accounts, with a share button per site. Publishing one, changing a published one and archiving it are ledgered.
  */
 

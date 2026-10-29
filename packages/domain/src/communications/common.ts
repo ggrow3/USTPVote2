@@ -2,7 +2,7 @@ import { z } from 'zod';
 import type { LedgerEvent, LedgerEventType } from '../ledger-events.js';
 
 /**
- * What the parts of the communications context (design §10.7) share: how a text is tidied and capped, addresses,
+ * What the parts of the communications context (design §10.9) share: how a text is tidied and capped, addresses,
  * hashtags and the ledger entries its public and member-facing changes make.
  */
 

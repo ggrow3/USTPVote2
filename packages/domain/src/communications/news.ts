@@ -4,7 +4,7 @@ import type { LedgerEvent } from '../ledger-events.js';
 import { basedOnSchema, changedFields, communicationsEvent, hashtagsSchema, oneLine, slugSchema, stale, text } from './common.js';
 
 /**
- * News and press releases (design §10.7): what the party says in public, on the News page and in the news feeds. A
+ * News and press releases (design §10.9): what the party says in public, on the News page and in the news feeds. A
  * Communications Admin drafts, publishes, edits and withdraws them alone; each publication, edit of a published post and
  * withdrawal is in the audit ledger. Drafts are the team's own work and are not.
  */

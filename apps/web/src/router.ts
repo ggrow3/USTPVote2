@@ -41,10 +41,20 @@ export const router = createRouter({
         { path: 'bylaws/:version?', component: () => import('./pages/BylawsPage.vue') },
         { path: 'results/:id', component: () => import('./pages/ResultsPage.vue') },
         { path: 'offices', component: () => import('./offices/OfficesPage.vue') },
+        // Members running for public office, for everyone; declaring and editing need a sign-in (design §5.8).
+        { path: 'candidates', component: () => import('./candidacies/CandidatesPage.vue') },
+        { path: 'candidates/declare', component: () => import('./candidacies/CandidacyFormPage.vue'), meta: { requiresAuth: true } },
+        {
+          path: 'candidates/:candidacyId/edit',
+          component: () => import('./candidacies/CandidacyFormPage.vue'),
+          props: true,
+          meta: { requiresAuth: true },
+        },
+        { path: 'candidates/:id', component: () => import('./candidacies/CandidatePage.vue') },
         // Teams are for Active members; the pages say so to anyone else signed in (design §5.7).
         { path: 'teams', component: () => import('./teams/TeamsPage.vue'), meta: { requiresAuth: true } },
         { path: 'teams/:teamId', component: () => import('./teams/TeamPage.vue'), meta: { requiresAuth: true } },
-        // News, the press kit and the suggestions form are for everyone; the share kit for Active members (design §10.7).
+        // News, the press kit and the suggestions form are for everyone; the share kit for Active members (design §10.9).
         { path: 'news', component: () => import('./communications/NewsPage.vue') },
         { path: 'news/:slug', component: () => import('./communications/NewsPostPage.vue') },
         { path: 'press', component: () => import('./communications/PressPage.vue') },

@@ -94,6 +94,12 @@ variable "election_check_enabled" {
   default     = false
 }
 
+variable "maps_enabled" {
+  description = "Show a Google map on the Candidates page, with a browser key restricted to the web app's origins (design §5.8; README \"Candidates map\")."
+  type        = bool
+  default     = true
+}
+
 variable "web_origin" {
   description = "Where the web app is served, which election notices link to; empty for https://<project>.web.app (design §6.8)."
   type        = string

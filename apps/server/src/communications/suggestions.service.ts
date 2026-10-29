@@ -17,7 +17,7 @@ import { Firebase } from '../infra/firebase.js';
 import { CommunicationsRepository } from './communications.repository.js';
 
 /**
- * Suggestions from the public (design §10.7). Anyone may send one; Communications Admins read and handle them. Senders
+ * Suggestions from the public (design §10.9). Anyone may send one; Communications Admins read and handle them. Senders
  * are counted per UTC day under a salted hash of their address, kept only for that day, so a sender can be held to
  * the day's limit without the address being kept. Nothing is ledgered: a suggestion, and the name and email that may
  * come with it, are deleted a year after they arrive.

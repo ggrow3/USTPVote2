@@ -63,7 +63,7 @@ function checkPdf(input: Buffer): Buffer {
   return input;
 }
 
-/** The press kit (design §10.7): the public Press page, and Communications Admins' edits and uploads. */
+/** The press kit (design §10.9): the public Press page, and Communications Admins' edits and uploads. */
 @Injectable()
 export class PressKitService {
   constructor(

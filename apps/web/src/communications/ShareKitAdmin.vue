@@ -30,7 +30,7 @@ import {
 } from './comms-text.js';
 
 /**
- * The share kit for Communications Admins (design §10.7): posts written for Active members to share from their own
+ * The share kit for Communications Admins (design §10.9): posts written for Active members to share from their own
  * accounts. Publishing puts one in the kit at once; it stays until its last day or until archived. Members see it
  * under Share kit; how often each site's button is pressed shows here.
  */

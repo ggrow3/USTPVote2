@@ -7,7 +7,7 @@ import { PressKitService } from './press-kit.service.js';
 import { ShareKitService } from './share-kit.service.js';
 import { SuggestionsService } from './suggestions.service.js';
 
-/** Everything the communications context provides, for the API module to register (design §3.3, §10.7). */
+/** Everything the communications context provides, for the API module to register (design §3.3, §10.9). */
 export const COMMUNICATIONS_PROVIDERS: Provider[] = [
   CommunicationsRepository,
   NewsService,

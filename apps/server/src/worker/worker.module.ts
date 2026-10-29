@@ -51,7 +51,7 @@ import { TasksController } from './tasks.controller.js';
     // Election notices greet roll members by name (design §6.8).
     ...MEMBER_DIRECTORY_PROVIDERS,
     ...NOTIFICATION_WORKER_PROVIDERS,
-    // Suggestions are deleted a year after they arrive (design §10.7).
+    // Suggestions are deleted a year after they arrive (design §10.9).
     ...COMMUNICATIONS_WORKER_PROVIDERS,
     {
       provide: AUDIT_SIGNER,

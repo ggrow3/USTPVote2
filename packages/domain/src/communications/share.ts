@@ -1,7 +1,7 @@
 import { NETWORK_NAMES } from '../governance/hub.js';
 
 /**
- * Share buttons (design §10.7): each opens a site's own composer, or the device's email, with the text filled in, and
+ * Share buttons (design §10.9): each opens a site's own composer, or the device's email, with the text filled in, and
  * the person sharing presses Post. The site gets no script, button or tracker of theirs; nothing is posted for anyone.
  */
 

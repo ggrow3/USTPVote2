@@ -23,7 +23,7 @@ import { calendar, createCalendarItem, deleteCalendarItem, saveCalendarItem, set
 import { CALENDAR_STATUS_LABELS, fromLocalInput, kitShareable, shortTime, siteIcon, toLocalInput } from './comms-text.js';
 
 /**
- * The social media calendar (design §10.7): what the party's own accounts post, and when. "Open composer" opens the
+ * The social media calendar (design §10.9): what the party's own accounts post, and when. "Open composer" opens the
  * site with the post filled in, for whoever is signed in to the party's account there; then mark it posted with its
  * link. The team's own planning: not ledgered.
  */

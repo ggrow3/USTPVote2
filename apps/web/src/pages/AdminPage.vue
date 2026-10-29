@@ -8,6 +8,7 @@ import CoursePanel from '../components/admin/CoursePanel.vue';
 import BylawsPanel from '../components/admin/BylawsPanel.vue';
 import ElectionsPanel from '../components/admin/ElectionsPanel.vue';
 import OfficesPanel from '../offices/OfficesPanel.vue';
+import CandidaciesPanel from '../candidacies/CandidaciesPanel.vue';
 import TeamsPanel from '../teams/TeamsPanel.vue';
 import CommunicationsPanel from '../communications/CommunicationsPanel.vue';
 import PeoplePanel from '../components/admin/PeoplePanel.vue';
@@ -24,6 +25,7 @@ import { SECTION_LABELS } from '../governance/navigation-text.js';
 import ApplicationsPanel from '../membership/ApplicationsPanel.vue';
 import MembersPanel from '../membership/MembersPanel.vue';
 import RegistrationFormPanel from '../membership/RegistrationFormPanel.vue';
+import SecurityPanel from '../security/SecurityPanel.vue';
 import { useRoute } from 'vue-router';
 import { usePageTitle } from '../a11y.js';
 import { acting } from '../acting.js';
@@ -38,6 +40,7 @@ const PANELS: Record<AdminSection, Component> = {
   registration: RegistrationFormPanel,
   elections: ElectionsPanel,
   offices: OfficesPanel,
+  candidacies: CandidaciesPanel,
   teams: TeamsPanel,
   approvals: ApprovalsPanel,
   people: PeoplePanel,
@@ -45,6 +48,7 @@ const PANELS: Record<AdminSection, Component> = {
   claude: ClaudeKeyPanel,
   email: NoticeSettingsPanel,
   audit: AuditPanel,
+  security: SecurityPanel,
   testing: TestingPanel,
   navigation: NavigationPanel,
   hub: HubPanel,

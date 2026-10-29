@@ -19,7 +19,7 @@ import { formatHashtags, longDate, NEWS_KIND_NAMES, NEWS_STATUS_COLORS, NEWS_STA
 import NewsBody from './NewsBody.vue';
 
 /**
- * News and press releases for Communications Admins (design §10.7): drafts, then publishing (public at once, and in
+ * News and press releases for Communications Admins (design §10.9): drafts, then publishing (public at once, and in
  * the audit ledger), edits of published posts (ledgered too) and withdrawal. A draft never published can be deleted.
  */
 const posts = ref<NewsPostRecord[] | null>(null);

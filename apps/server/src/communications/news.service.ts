@@ -34,7 +34,7 @@ import { CommunicationsRepository } from './communications.repository.js';
 const CACHE_MS = 30_000;
 
 /**
- * News and press releases (design §10.7): the public News page and feeds, and Communications Admins' drafts. Each
+ * News and press releases (design §10.9): the public News page and feeds, and Communications Admins' drafts. Each
  * publication, edit of a published post and withdrawal is ledgered in the transaction that makes it.
  */
 @Injectable()

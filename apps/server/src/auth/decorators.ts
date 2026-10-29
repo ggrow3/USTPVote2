@@ -19,7 +19,7 @@ export const Public = () => SetMetadata(PUBLIC_KEY, true);
 
 /**
  * On a public route, still require a valid App Check token where App Check is enforced, as signed-in routes do: for
- * routes anyone may write to (the suggestions form, design §10.7), so a script cannot post to them from anywhere.
+ * routes anyone may write to (the suggestions form, design §10.9), so a script cannot post to them from anywhere.
  */
 export const AppChecked = () => SetMetadata(APP_CHECKED_KEY, true);
 

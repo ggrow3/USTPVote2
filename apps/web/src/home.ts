@@ -96,6 +96,15 @@ export function homeCards(
       action: 'See the offices',
     });
   }
+  if (shown.menu.includes('candidates')) {
+    cards.push({
+      key: 'candidates',
+      title: 'Candidates',
+      text: 'Members running for public office, on a map. Running yourself? Declare it with your platform.',
+      to: '/candidates',
+      action: 'See the candidates',
+    });
+  }
   if (shown.menu.includes('teams')) {
     cards.push({
       key: 'teams',
@@ -154,6 +163,7 @@ const VISITOR_LINKS: readonly VisitorLink[] = [
   { key: 'ballot', before: 'Members: ', label: 'see your ballots and vote', after: '.', to: '/ballot' },
   { key: 'verify', before: 'Voted already? ', label: 'Verify your receipt', after: ' to check that your vote was counted.', to: '/verify' },
   { key: 'offices', before: 'Who leads the party? ', label: 'See who holds each office', after: ', elected or appointed.', to: '/offices' },
+  { key: 'candidates', before: 'Running for office? ', label: 'See the party’s candidates', after: ' and where they run.', to: '/candidates' },
   { key: 'teams', before: 'Members: ', label: 'join a team', after: ' and work with others between elections.', to: '/teams' },
   { key: 'news', before: 'What is the party saying? ', label: 'Read the news and press releases', after: ', or send us a suggestion.', to: '/news' },
   { key: 'course', before: 'Interested in the future? ', label: 'Explore the Transhumanism course', after: '.', to: '/course/transhumanism' },

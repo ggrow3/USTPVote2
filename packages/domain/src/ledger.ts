@@ -125,6 +125,6 @@ export interface TickResult {
   readonly testEmailsSent: number;
   /** Notice recipients the mail provider reported as bounced since the last tick (design §6.8). */
   readonly bouncesRecorded: number;
-  /** Suggestions a year old, and the form's limits for days gone, deleted (design §10.7). */
+  /** Suggestions a year old, and the form's limits for days gone, deleted (design §10.9). */
   readonly suggestionsDeleted: number;
 }

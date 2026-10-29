@@ -7,7 +7,7 @@ import { deleteSuggestion, suggestions, triageSuggestion } from './api.js';
 import { shortTime, SUGGESTION_STATUS_LABELS, SUGGESTION_TOPIC_LABELS } from './comms-text.js';
 
 /**
- * Suggestions sent with the public form (design §10.7), for Communications Admins only: read them, reply by email where
+ * Suggestions sent with the public form (design §10.9), for Communications Admins only: read them, reply by email where
  * the sender left one, note what was done, and mark spam. Opening a new one marks it read. Each is deleted a year after
  * it arrives; delete one sooner when it is spam or the sender asks.
  */

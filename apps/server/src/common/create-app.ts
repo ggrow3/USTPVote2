@@ -40,7 +40,7 @@ export async function createFastifyApp(
     .addContentTypeParser([...ACCEPTED_TYPES], { parseAs: 'buffer', bodyLimit: MAX_PHOTO_BYTES }, (_req, body, done) =>
       done(null, body),
     );
-  // Press kit PDFs arrive the same way, and are kept as sent (design §10.7).
+  // Press kit PDFs arrive the same way, and are kept as sent (design §10.9).
   app
     .getHttpAdapter()
     .getInstance()

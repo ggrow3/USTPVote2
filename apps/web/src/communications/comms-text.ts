@@ -16,7 +16,7 @@ import {
 } from 'ustp-domain';
 import { hubIcon } from '../governance/hub-icons.js';
 
-/** Wording, icons and dates for the communications pages (design §10.7). */
+/** Wording, icons and dates for the communications pages (design §10.9). */
 
 export { NEWS_KIND_NAMES };
 

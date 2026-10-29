@@ -10,7 +10,7 @@ import { addBot, botChecked, bots, FEEDS, removeBot, saveBot } from './api.js';
 import { BOT_SITE_NAMES, BOT_STATUS_LABELS, longDate, siteIcon } from './comms-text.js';
 
 /**
- * The party's bots (design §10.7): every automated account it runs, on any site, who looks after it, and when someone
+ * The party's bots (design §10.9): every automated account it runs, on any site, who looks after it, and when someone
  * last checked it. Those marked public are listed on the Press page. The news feeds are here too, for bots to post
  * each release. Every change is in the audit ledger; no bot's token or password belongs here.
  */

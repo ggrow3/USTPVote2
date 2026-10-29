@@ -1,5 +1,5 @@
 /**
- * The body of a news post (design §10.7): plain text, never HTML. Blank lines separate blocks; a line starting `## ` is a
+ * The body of a news post (design §10.9): plain text, never HTML. Blank lines separate blocks; a line starting `## ` is a
  * heading, lines starting `- ` (or `* `) a list, lines starting `> ` a quotation, anything else a paragraph whose line
  * breaks are kept. `https://` addresses become links. The web app and the news feeds both read it through these, so a
  * post looks the same everywhere and nothing a Communications Admin types can become markup.

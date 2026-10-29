@@ -46,7 +46,7 @@ export class TasksController {
    * Every minute: prepare ballot-pool keys, open and close elections on time, seal ballots, tally elections that are
    * now fully sealed, destroy the pool keys of certified and cancelled elections, send election notices (for at most
    * 20 seconds) and the test emails Election Admins asked for, and record their bounces, delete suggestions a year old
-   * (design §10.7), then seal new ledger entries (including those) into a signed block, sign approved rolls and anchor
+   * (design §10.9), then seal new ledger entries (including those) into a signed block, sign approved rolls and anchor
    * new blocks. Each step runs even if an earlier one failed.
    */
   @Post('tick')

@@ -11,7 +11,7 @@ import CommsNav from './CommsNav.vue';
 import { longDate, NEWS_KIND_NAMES } from './comms-text.js';
 
 /**
- * News (design §10.7): the party's press releases, statements and news, newest first, for everyone. The party's
+ * News (design §10.9): the party's press releases, statements and news, newest first, for everyone. The party's
  * accounts from the hub's icon row, and the feeds for readers and bots.
  */
 usePageTitle('News');

@@ -1,6 +1,6 @@
 /**
  * The governance context (design §10): what the web app shows each membership state and staff role, the quote on the
- * home page (§10.5), and the home page hub (§10.6).
+ * home page (§10.5), the home page hub (§10.6), and the sign-in log and site analytics (§10.7).
  */
 export {
   MENU_LINKS,
@@ -68,7 +68,6 @@ export {
   HUB_LIMITS,
   DEFAULT_HUB,
   isHubId,
-  isLogoId,
   newHubId,
   hubInitials,
   effectiveAccent,
@@ -109,4 +108,39 @@ export type {
   HubChangedPayload,
   HubInput,
 } from './hub.js';
+export {
+  HUB_IMAGE_KINDS,
+  HUB_IMAGE_NAMES,
+  HUB_IMAGE_SIZES,
+  RATIO_TOLERANCE,
+  BACKDROP_SCRIMS,
+  isHubImageId,
+  hubImageProblem,
+  underScrim,
+  scrimContrast,
+  scrimCss,
+} from './hub-images.js';
+export type { HubImageKind, HubImageSize, Scrim } from './hub-images.js';
 export { DEFAULT_ACCENT, DARK_CARD, TEXT_CONTRAST, isHexColour, luminance, contrast, brightAccent } from './accent.js';
+export {
+  SIGN_IN_RETENTION_DAYS,
+  SIGN_IN_LIMITS,
+  SIGN_IN_LOG_PERIODS,
+  SIGN_IN_LOG_MAX,
+  clientAddress,
+  describeUserAgent,
+  MEASUREMENT_ID_PATTERN,
+  DEFAULT_SITE_ANALYTICS,
+  siteAnalyticsSchema,
+  ANALYTICS_EXCLUDED_PATHS,
+  analyticsAllowed,
+} from './security.js';
+export type {
+  SignInRecord,
+  SignInLog,
+  SiteAnalytics,
+  SiteAnalyticsRecord,
+  PublicSiteAnalytics,
+  SiteAnalyticsInput,
+  SiteAnalyticsChangedPayload,
+} from './security.js';

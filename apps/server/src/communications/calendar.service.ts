@@ -24,7 +24,7 @@ export interface TeamMate {
 }
 
 /**
- * The social media calendar (design §10.7): what the party's own accounts will post, and when. The team's own planning,
+ * The social media calendar (design §10.9): what the party's own accounts will post, and when. The team's own planning,
  * so it is not ledgered.
  */
 @Injectable()

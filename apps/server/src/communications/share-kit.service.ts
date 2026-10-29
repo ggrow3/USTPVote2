@@ -27,7 +27,7 @@ import { MemberDirectory } from '../membership/member-directory.js';
 import { CommunicationsRepository } from './communications.repository.js';
 
 /**
- * The share kit (design §10.7): ready-made posts for Active members to share from their own accounts, and how often
+ * The share kit (design §10.9): ready-made posts for Active members to share from their own accounts, and how often
  * each share button is pressed, on these and on news posts. Publishing, editing a published post and archiving are
  * ledgered.
  */

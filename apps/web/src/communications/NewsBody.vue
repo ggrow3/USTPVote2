@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import { newsBlocks, textSegments } from 'ustp-domain';
 
 /**
- * A news post's text (design §10.7): headings, paragraphs, lists and quotations from plain text, with `https://`
+ * A news post's text (design §10.9): headings, paragraphs, lists and quotations from plain text, with `https://`
  * addresses as links. Nothing in it becomes markup: each piece is text Vue escapes.
  */
 const props = defineProps<{ body: string }>();

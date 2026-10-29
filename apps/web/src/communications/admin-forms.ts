@@ -1,6 +1,6 @@
 import { dialog } from '../dialogs.js';
 
-/** What the Communications admin tabs share (design §10.7). */
+/** What the Communications admin tabs share (design §10.9). */
 
 /** Asks before something that cannot be taken back quietly (publishing, withdrawing, deleting). */
 export function confirmAction(title: string, message: string, ok: string): Promise<boolean> {
