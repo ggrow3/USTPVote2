@@ -7,6 +7,7 @@ import { HomeQuoteAdminController } from './administration/home-quote.js';
 import { HubAdminController } from './administration/hub.js';
 import { NavigationAdminController } from './administration/navigation.js';
 import { ROLES_KEY } from './auth/decorators.js';
+import { CandidaciesAdminController } from './candidacies/candidacies.controller.js';
 import { AnthropicKeyController } from './claude-checks/anthropic-key-admin.js';
 import { CourseController } from './course/course.controller.js';
 import { ElectionsController } from './elections/elections.controller.js';
@@ -16,6 +17,7 @@ import { NoticeSettingsController } from './notifications/notice-settings.js';
 import { PersonasController } from './personas/personas.controller.js';
 import { PhotoReviewController } from './photos/photos.controller.js';
 import { PositionsController } from './positions/positions.controller.js';
+import { SecurityController } from './security/sign-in-log.js';
 import { TeamsAdminController } from './teams/teams.controller.js';
 
 type Route = readonly [controller: abstract new (...args: never[]) => object, method: string];
@@ -29,6 +31,7 @@ const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
   registration: [RegistrationFormAdminController, 'current'],
   elections: [ElectionsController, 'list'],
   offices: [PositionsController, 'all'],
+  candidacies: [CandidaciesAdminController, 'list'],
   teams: [TeamsAdminController, 'list'],
   approvals: [ApprovalsController, 'list'],
   people: [AccountsAdminController, 'list'],
@@ -36,6 +39,7 @@ const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
   claude: [AnthropicKeyController, 'status'],
   email: [NoticeSettingsController, 'current'],
   audit: [AuditController, 'events'],
+  security: [SecurityController, 'list'],
   testing: [PersonasController, 'list'],
   navigation: [NavigationAdminController, 'current'],
   hub: [HubAdminController, 'current'],

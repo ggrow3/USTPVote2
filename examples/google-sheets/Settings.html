@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <link rel="stylesheet" href="https://ssl.gstatic.com/docs/script/css/add-ons1.css">
+    <style>
+      body { margin: 0; padding: 2px 4px; }
+      label { display: block; font-weight: bold; margin-bottom: 4px; }
+      input { width: 100%; box-sizing: border-box; }
+      .hint { color: #5f6368; margin: 6px 0 10px; }
+      #status { min-height: 2.8em; margin: 0 0 10px; }
+      .buttons { text-align: right; }
+    </style>
+  </head>
+  <body>
+    <form id="form">
+      <label for="site">Election site</label>
+      <input id="site" name="site" type="text" inputmode="url" autocomplete="url" required
+             placeholder="https://ustpvote2-dev.web.app" value="<?= site ?>">
+      <p class="hint">The web app's address. The sheet calls its reporting MCP server at <i>site</i>/mcp, which is public
+        and read-only: there is no token or key to enter. It is kept in this script's Script Properties.</p>
+      <div id="status" role="status" aria-live="polite"></div>
+      <div class="buttons">
+        <button type="button" onclick="google.script.host.close()">Close</button>
+        <button type="submit" class="action" id="save">Test and save</button>
+      </div>
+    </form>
+    <script>
+      const form = document.getElementById('form');
+      const status = document.getElementById('status');
+      const save = document.getElementById('save');
+      form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        save.disabled = true;
+        status.className = '';
+        status.textContent = 'Asking the server…';
+        google.script.run
+          .withSuccessHandler((message) => {
+            save.disabled = false;
+            status.textContent = message;
+          })
+          .withFailureHandler((error) => {
+            save.disabled = false;
+            status.className = 'error';
+            status.textContent = error.message;
+          })
+          .saveSettings(form.elements.site.value);
+      });
+    </script>
+  </body>
+</html>

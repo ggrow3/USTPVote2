@@ -10,7 +10,7 @@ import { ROLES, type Role } from '../roles.js';
  */
 
 /** The menu bar's links in menu order, then the header's Sign in button (which only signed-out visitors can use). */
-export const MENU_LINKS = ['register', 'ballot', 'verify', 'offices', 'teams', 'course', 'admin', 'signin'] as const;
+export const MENU_LINKS = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'course', 'admin', 'signin'] as const;
 export type MenuLink = (typeof MENU_LINKS)[number];
 
 /** The admin console's sections (tabs), in tab order. */
@@ -22,6 +22,7 @@ export const ADMIN_SECTIONS = [
   'registration',
   'elections',
   'offices',
+  'candidacies',
   'teams',
   'approvals',
   'people',
@@ -29,6 +30,7 @@ export const ADMIN_SECTIONS = [
   'claude',
   'email',
   'audit',
+  'security',
   'testing',
   'navigation',
   'hub',
@@ -63,6 +65,8 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   elections: ['election_admin', 'auditor'],
   // Every admin may read the offices; Membership and Election Admins change them.
   offices: ROLES,
+  // Reviewing members' candidacies for public office before they are public (design §5.8).
+  candidacies: ['membership_admin'],
   // Creating, renaming and archiving teams and naming their leads (design §5.7).
   teams: ['membership_admin'],
   approvals: ROLES,
@@ -72,6 +76,8 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   // The election emails' settings (design §6.8).
   email: ['system_admin'],
   audit: ['auditor'],
+  // The sign-in log and site analytics (design §10.7): System Admins and Auditors read the log; System Admins set analytics.
+  security: ['system_admin', 'auditor'],
   testing: ['system_admin'],
   navigation: ['system_admin'],
   hub: ['system_admin'],
@@ -97,6 +103,7 @@ export const START_PAGES: readonly StartPage[] = [
   'ballot',
   'verify',
   'offices',
+  'candidates',
   'teams',
   'course',
   ...ADMIN_SECTIONS.map((s) => `admin/${s}` as const),
@@ -164,21 +171,22 @@ function defaultSection(role: Role, section: AdminSection): boolean {
 /**
  * The menu as it was before these settings (design §5.2): Register, Ballot, Verify and Admin for everyone, each page
  * explaining itself to people it is not for, and Sign in while signed out; admin sections by role. Offices, the public
- * list of who holds each office, came later and is for everyone too. Roles add Ballot, Verify and Offices, so a staff
- * member with no membership keeps them, and Admin (from their sections). Signing in lands on Register with no
- * membership, as it did, and on the home page otherwise. Teams are for Active members only (design §5.7).
+ * list of who holds each office, came later and is for everyone too, as is Candidates (members running for public
+ * office, design §5.8). Roles add Ballot, Verify, Offices and Candidates, so a staff member with no membership keeps
+ * them, and Admin (from their sections). Signing in lands on Register with no membership, as it did, and on the home
+ * page otherwise. Teams are for Active members only (design §5.7).
  */
 export const DEFAULT_NAVIGATION: NavigationSettings = {
   menu: Object.fromEntries(
     AUDIENCES.map((a) => [
       a,
       isRole(a)
-        ? links('ballot', 'verify', 'offices', 'course', 'admin')
+        ? links('ballot', 'verify', 'offices', 'candidates', 'course', 'admin')
         : a === 'signed_out'
-          ? links('register', 'ballot', 'verify', 'offices', 'course', 'admin', 'signin')
+          ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'course', 'admin', 'signin')
           : a === 'active'
-            ? links('register', 'ballot', 'verify', 'offices', 'teams', 'course', 'admin')
-            : links('register', 'ballot', 'verify', 'offices', 'course', 'admin'),
+            ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'course', 'admin')
+            : links('register', 'ballot', 'verify', 'offices', 'candidates', 'course', 'admin'),
     ]),
   ) as Record<Audience, Record<MenuLink, boolean>>,
   sections: Object.fromEntries(ROLES.map((r) => [r, sectionsOf(r)])) as Record<Role, Record<AdminSection, boolean>>,
