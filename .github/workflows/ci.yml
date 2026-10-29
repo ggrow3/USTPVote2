@@ -33,6 +33,9 @@ jobs:
       - run: npm run build
       - run: npm run typecheck
       - run: npm test
+      # Not a workspace: the Apps Script example runs in Node against stand-ins for Apps Script and recorded answers.
+      - name: Google Sheets example
+        run: node --test "examples/google-sheets/test/*.test.mjs"
       - name: Integration tests (Firebase emulators)
         run: npm run test:int -w apps/server
 
