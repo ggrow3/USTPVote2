@@ -5,6 +5,12 @@ export type { Role } from './roles.js';
 export {
   COURSE_STATUSES,
   FUTURIST_CATEGORIES,
+  QUIZ_LIMITS,
+  PASS_PERCENT,
+  COURSE_IMAGE,
+  isCourseImageId,
+  coursePortraitSrc,
+  portraitProblem,
   courseQuestionSchema,
   saveCourseLessonSchema,
   saveFuturistProfileSchema,
@@ -26,6 +32,7 @@ export type {
   CourseCertificateRecord,
   CourseCatalog,
   LearnerCourseView,
+  CourseQuizFeedback,
   CertificateVerification,
   LtiLaunchContext,
   LtiGradeOutcome,
@@ -34,6 +41,14 @@ export type {
   CourseMetadataInput,
   SubmitCourseQuizInput,
 } from './course.js';
+export {
+  COURSE_PACKAGE_FORMAT,
+  coursePackageFileName,
+  coursePackageSchema,
+  draftCoursePackage,
+  publishedCoursePackage,
+} from './course-package.js';
+export type { CoursePackage, CoursePackageSource, PackagedLesson, PackagedProfile } from './course-package.js';
 export * from './membership/index.js';
 export * from './teams/index.js';
 export * from './notifications/index.js';

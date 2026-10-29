@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Req, Res } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Header, HttpCode, Param, Post, Put, Query, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import {
   courseMetadataSchema,
@@ -13,10 +13,11 @@ import {
 import { z } from 'zod';
 import { Ctx, Public, requireAccount, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
-import { ZodPipe } from '../common/validation.js';
+import { parseQuery, ZodPipe } from '../common/validation.js';
 import { CourseService } from './course.service.js';
 
 const revokeSchema = z.strictObject({ reason: z.string().trim().min(1).max(2000) });
+const packageVersionSchema = z.union([z.literal('draft'), z.coerce.number().int().min(1)]).default('draft');
 
 @Controller('v1')
 export class CourseController {
@@ -26,6 +27,15 @@ export class CourseController {
   @Get('public/courses/:courseId')
   catalog(@Param('courseId') courseId: string) {
     return this.courses.catalog(courseId);
+  }
+
+  /** An uploaded portrait's ID is the hash of its bytes, so it never changes and browsers may keep it. */
+  @Public()
+  @Get('public/course-images/:id')
+  @Header('Content-Type', 'image/webp')
+  @Header('Cache-Control', 'public, max-age=31536000, immutable')
+  image(@Param('id') id: string): Promise<Buffer> {
+    return this.courses.image(id);
   }
 
   /** Intentionally returns only validity and course metadata: certificate recipients stay private. */
@@ -69,6 +79,13 @@ export class CourseController {
     return this.courses.adminContent(courseId);
   }
 
+  /** The course as one `ustp.course` JSON file: `version` is `draft` (the default) or a published version's number. */
+  @Get('admin/courses/:courseId/package')
+  @Roles('course_admin')
+  package(@Param('courseId') courseId: string, @Query('version') version?: string) {
+    return this.courses.package(courseId, parseQuery(packageVersionSchema, version, 'version'));
+  }
+
   @Put('admin/courses/:courseId')
   @Roles('course_admin')
   metadata(@Ctx() ctx: RequestContext, @Param('courseId') courseId: string, @Body(new ZodPipe(courseMetadataSchema)) input: CourseMetadataInput) {
@@ -92,6 +109,13 @@ export class CourseController {
   @Roles('course_admin')
   profile(@Ctx() ctx: RequestContext, @Param('courseId') courseId: string, @Body(new ZodPipe(saveFuturistProfileSchema)) input: SaveFuturistProfileInput) {
     return this.courses.saveProfile(courseId, input, requireAccount(ctx));
+  }
+
+  /** The raw image as the body (Content-Type image/jpeg, image/png or image/webp), for a profile's portrait. */
+  @Put('admin/courses/:courseId/images')
+  @Roles('course_admin')
+  uploadImage(@Ctx() ctx: RequestContext, @Param('courseId') courseId: string, @Body() body: unknown) {
+    return this.courses.uploadImage(courseId, body, requireAccount(ctx));
   }
 
   @Delete('admin/courses/:courseId/profiles/:profileId')
