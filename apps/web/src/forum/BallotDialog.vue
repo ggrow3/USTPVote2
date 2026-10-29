@@ -6,7 +6,7 @@ import { PASS_RULE_PRESETS } from '../election-text.js';
 import { draftElections, putOnBallot } from './api.js';
 
 /**
- * An Election Admin puts a proposal on a draft election (design §5.8): the question's title (the post's, unless they
+ * An Election Admin puts a proposal on a draft election (design §5.9): the question's title (the post's, unless they
  * change it) and when it passes. Its text is frozen as the post reads now; quorum and the rest are set in the election
  * editor afterwards, like any question.
  */

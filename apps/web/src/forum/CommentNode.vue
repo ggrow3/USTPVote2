@@ -7,7 +7,7 @@ import { THREAD_ACTIONS } from './thread.js';
 import VoteButtons from './VoteButtons.vue';
 
 /**
- * One comment and its replies (design §5.8): who wrote it and when, its score and the viewer's vote, and replying,
+ * One comment and its replies (design §5.9): who wrote it and when, its score and the viewer's vote, and replying,
  * changing one's own, reporting, and for Membership Admins removing or restoring. A thread line beside the replies
  * collapses them.
  */

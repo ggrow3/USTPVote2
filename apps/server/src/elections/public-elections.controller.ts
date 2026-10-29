@@ -1,6 +1,7 @@
-import { BadRequestException, Controller, Get, Header, Param, Req, Res } from '@nestjs/common';
+import { Controller, Get, Header, Param, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import { Public } from '../auth/decorators.js';
+import { requestOrigin } from '../common/request-origin.js';
 import { PublicElectionsService } from './public-elections.service.js';
 
 /** The published election record (design §12): anyone may read it, so voters and outsiders can verify. */
@@ -55,15 +56,4 @@ export class PublicElectionsController {
   proof(@Param('id') id: string, @Param('commitment') commitment: string) {
     return this.elections.proof(id, commitment);
   }
-}
-
-/**
- * The origin the caller reached the web app at. Firebase Hosting forwards `/v1/**` with X-Forwarded-Host and
- * X-Forwarded-Proto, which Fastify reads (trustProxy), so links in the CSV and the calendar event point at the site
- * they were fetched from.
- */
-function requestOrigin(req: FastifyRequest): string {
-  const url = URL.parse(`${req.protocol}://${req.host}`);
-  if (!url || (url.protocol !== 'https:' && url.protocol !== 'http:')) throw new BadRequestException('the request has no usable host');
-  return url.origin;
 }

@@ -8,7 +8,7 @@ import { ago, REPORT_REASON_LABELS } from './forum-text.js';
 import PostCard from './PostCard.vue';
 
 /**
- * The forum at the console (design §5.8). Membership Admins see what members reported, grouped by post or comment
+ * The forum at the console (design §5.9). Membership Admins see what members reported, grouped by post or comment
  * without who reported it, and remove it or dismiss the reports, and the posts removed so far. Election Admins see the
  * proposals members support most, to put one on a ballot from its page.
  */

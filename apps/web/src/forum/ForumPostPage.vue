@@ -41,7 +41,7 @@ import { THREAD_ACTIONS } from './thread.js';
 import VoteButtons from './VoteButtons.vue';
 
 /**
- * One post and its comments (design §5.8). Active members vote, comment and reply, change or delete their own, and
+ * One post and its comments (design §5.9). Active members vote, comment and reply, change or delete their own, and
  * report others'. Membership Admins also remove and restore, lock and pin; Election Admins put a proposal on a ballot.
  * At the console (`admin`) the same page shows what moderators see, removed text included, for staff without a
  * membership too; votes and comments are made on the member page.

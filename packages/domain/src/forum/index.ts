@@ -1,4 +1,4 @@
-/** The forum context (design §5.8): Active members' posts, threaded comments and votes; Membership Admins moderate. */
+/** The forum context (design §5.9): Active members' posts, threaded comments and votes; Membership Admins moderate. */
 export {
   FORUM_POST_KINDS,
   FORUM_SORTS,

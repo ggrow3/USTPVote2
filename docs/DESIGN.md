@@ -152,7 +152,8 @@ this structure one at a time, without changing routes, documents or the ledger.
 | Elections | §5.5, §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results`, `consistency_checks`, `consistency_documents`, `election_checks` |
 | Offices | §6.4 | `positions`, `position_terms` |
 | Teams | §5.7 | `teams`, `team_members`, `team_requests` |
-| Forum | §5.8 | `forum_posts`, `forum_comments`, `forum_votes`, `forum_reports` |
+| Candidacies | §5.8 | `candidacies` |
+| Forum | §5.9 | `forum_posts`, `forum_comments`, `forum_votes`, `forum_reports` |
 | Governance | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `anthropic_key` |
 | Audit ledger | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` |
 | Notifications | §6.8 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests` |
@@ -187,11 +188,14 @@ through `Members`. Bylaws versions are still served by `MembershipService` until
 **Teams** (§5.7) was built this way from the start: `ustp-domain/teams/` holds the records, the commands (`createTeam`,
 `updateTeam`, `archiveTeam`, `joinTeam`, `withdrawRequest`, `decideRequest`, `leaveTeam`, `changeMember`, `addMember`)
 and the views; `TeamRepository` stores them, `TeamsService` is the application service, and it reads members only
-through `MemberDirectory`. **The forum** (§5.8) too: `ustp-domain/forum/` holds the records, the commands (`newPost`,
-`editPost`, `deletePost`, `newComment`, `editComment`, `deleteComment`, `castVote`, `newReport`, `moderatePost`,
-`moderateComment`, `linkBallot`), the ranks (`hotRank`, `confidence`) and the views; `ForumRepository` stores them and
-`ForumService` reads members through `MemberDirectory` and puts proposals on ballots through the election editor's own
-`ElectionsService` methods.
+through `MemberDirectory`. So was **Candidacies** (§5.8): `ustp-domain/candidacies/` holds the records, the commands
+(`declareCandidacy`, `changeCandidacy`, `withdrawCandidacy`, `decideCandidacy`, `removeCandidacy`) and the views;
+`CandidacyRepository` stores them, `CandidaciesService` reads members through `MemberDirectory`, and districts come
+through the `DistrictSource` port (TIGERweb, or the emulator-only local stand-in). **The forum** (§5.9) too:
+`ustp-domain/forum/` holds the records, the commands (`newPost`, `editPost`, `deletePost`, `newComment`,
+`editComment`, `deleteComment`, `castVote`, `newReport`, `moderatePost`, `moderateComment`, `linkBallot`), the ranks
+(`hotRank`, `confidence`) and the views; `ForumRepository` stores them and `ForumService` reads members through
+`MemberDirectory` and puts proposals on ballots through the election editor's own `ElectionsService` methods.
 
 **The web app** follows the same contexts ([DOMAIN-MODEL.md](DOMAIN-MODEL.md) §7). The root of `apps/web/src` holds the
 app shell (router, layout and menu, the admin console that composes each context's panels, PWA), the client kernel
@@ -204,8 +208,9 @@ offers come from `adminStatusChanges` in `ustp-domain`), the start of `governanc
 client, panel and wording, the store the menu, the console's tabs and the voting home read, the quote's client,
 store and panel (§10.5), and the hub's client, store, page, admin tabs and wording (§10.6), and `offices/`: the Offices panel, the appointment dialog, the member
 profile's Offices card and the public Offices page (§6.4), `teams/`: the Teams page, one team's page (also the
-Membership Admins' view of it, from the Teams tab) and the Teams panel (§5.7), and `forum/`: the Forum page, a post's
-page (also the console's view of it) and the Forum panel (§5.8).
+Membership Admins' view of it, from the Teams tab) and the Teams panel (§5.7), `candidacies/`: the Candidates pages,
+the declaration form, the Google map and the admin Candidacies tab (§5.8), and `forum/`: the Forum page, a post's
+page (also the console's view of it) and the Forum panel (§5.9).
 
 ### 3.4 The reporting MCP server *(added)*
 
@@ -276,9 +281,9 @@ of the api so the workflow cannot widen what the system exposes:
   them the public reCAPTCHA config answers 500 and enforced email/password sign-in fails, so the rollout is service
   agent, then audit, then a check that the config answers with a key, then enforce. Email-enumeration protection is
   on, so a wrong password and an unknown address get the same answer; Identity Platform's per-IP sign-up quota
-  applies. Behind that, every api request needs an App Check token (reCAPTCHA Enterprise), applying needs a verified
-  email, applications are capped per account (§14) and a person decides each one. These settings are API-only, with no
-  console switch for email/password (infra README "Identity Platform").
+  applies. Behind that, every signed-in api request needs an App Check token (reCAPTCHA Enterprise), applying needs a
+  verified email, applications are capped per account (§14) and a person decides each one. These settings are API-only,
+  with no console switch for email/password (infra README "Identity Platform").
 - **MFA.** Required for every admin role: admin endpoints reject tokens without `firebase.sign_in_second_factor`
   (problem type `/problems/mfa-required`), and approvals additionally require `auth_time` within the last 15 minutes
   (`/problems/reauth-required`; the web app re-authenticates and retries once). `GET /v1/me` reports `mfa.required`
@@ -366,7 +371,7 @@ Every transition writes, in one transaction, the new status on `members/{account
   3. *Membership review*: the submitted application's status, until a Membership Admin decides it, and the bonus
      link the intro promises (Tips for Advancing a Brighter Future) once a Membership Admin has set its address.
      Active members see that link on Register too.
-- **Who sees what.** The web app's menu links (Register, Ballot, Verify, Offices, Admin) and the header's Sign in button
+- **Who sees what.** The web app's menu links (Register, Ballot, Verify, Offices, Candidates, Admin) and the header's Sign in button
   are the ones the navigation settings give the person's membership state and roles (§10.5). By default everyone sees
   all five links, signed in or not, visitors see Sign in, and each page tells people it is not for what they can do
   instead, as it does for anyone who reaches it by its address. Offices is the public list of who holds each office
@@ -774,7 +779,64 @@ the rules; the api's `teams` context owns the three collections.
 - **Not yet:** emailing leads about new requests (leads see a count on the Teams page and the team's page), a team's
   own discussion space, and nested teams.
 
-### 5.8 Forum *(added)*
+### 5.8 Candidacies for public office *(added)*
+
+Members running for public office say so on the Candidates page: what they are running for, where, when and on what
+platform, and the page puts each candidacy on a Google map of its district. Decided with the user (2026-10-29): public
+office, not the party's own offices (§6.4), which its elections fill; a Membership Admin approves every declaration
+before it shows; and the page is public.
+
+- **Who.** Active members declare (`POST /v1/candidacies`), change (`PUT /v1/candidacies/{id}`, with the version they
+  edited) and withdraw (`POST /v1/candidacies/{id}/withdraw`) their own; anyone can withdraw theirs, Active or not. A
+  member has at most five open candidacies whose election is not over, and one per race (office, district, election day
+  and kind).
+- **What.** The kind of office (`PUBLIC_OFFICES`: President, U.S. Senate, U.S. House, a statewide office, the state
+  senate or house, a county office, a city or town office), which fixes the kind of district: the nation, the state, or
+  a congressional, state senate, state house, county or place district within it (`OFFICE_DISTRICTS`); the office as it
+  appears on the ballot ("Mayor"); the state and the district's Census GEOID; the election day and whether it is a
+  primary, the general election, a special election or a runoff; optionally the party or label on the ballot and an
+  https campaign website; and the platform, plain text up to 5,000 characters, shown with its paragraphs and never as
+  HTML. The name shown is the member record's preferred name, else the legal name, so nobody declares in another's
+  name. An election day is accepted until it is over everywhere in the US (from the day before today in UTC) and up to
+  ten years ahead.
+- **Districts come from the Census Bureau**: TIGERweb's current boundaries (the 120th Congressional Districts, the 2026
+  state legislative districts, counties and incorporated places), which need no key. The form lists the districts of
+  the office's kind in the chosen state (`GET /v1/public/districts?kind=&state=`), and the api looks the chosen GEOID up
+  again when it saves, storing the Census name, a point inside the district for its pin and the set of lines it comes
+  from (`vintage`), so a candidacy reads the same after the lines move. Outlines
+  (`GET /v1/public/districts/{kind}/{geoid}/boundary`) are GeoJSON, simplified in proportion to the district (about 500
+  points across it). The api keeps lists a day and the latest 200 outlines; both routes let browsers keep them an hour
+  and Hosting's CDN a day; TIGERweb not answering is a 503. With the emulators, `DISTRICTS=local` swaps in two made-up
+  districts of each kind per state, for tests that must not reach the internet (`DistrictSource`, the context's port to
+  the outside).
+- **Review.** A declaration waits for a Membership Admin under Admin › Candidacies, shown with its district's map and
+  the member's own state. *Approve* makes that version the published one. *Ask for changes* declines it with a note the
+  member sees; they edit it and send it again. A change to a public candidacy waits the same way while the published
+  version stays up, and changing it back to the published text leaves nothing waiting. A decision is on the version the
+  admin saw (`basedOn`; 409 if the member changed it since), approving needs the member to be Active, and nobody reviews
+  their own. A Membership Admin can also take a candidacy down with a reason the member sees. Withdrawn and taken-down
+  candidacies are kept and never shown again; a member declares anew instead.
+- **Public.** `GET /v1/public/candidacies` gives anyone the published version of every open candidacy whose member is
+  Active now (a lapsed or suspended member's are hidden until they are Active again), upcoming elections first and past
+  ones after; `GET /v1/public/candidacies/{id}` is one. The Candidates page puts them on the map, a pin each, with a
+  state filter and the list beneath (past elections folded away); says that a Membership Admin reviewed each and that
+  being listed is not an endorsement (Q20); and shows signed-in members their own, with where each stands. A
+  candidacy's own page draws its district's outline.
+- **The map** is Google Maps' JavaScript API, loaded by the first page that needs it with the browser key the api
+  gives out (`GET /v1/public/maps`, from `GOOGLE_MAPS_BROWSER_KEY`, which Terraform creates restricted to that API and
+  to the web app's origins; infra README "Candidates map"). Pins and outlines are drawn with the Maps data layer, and
+  pop-ups are built from text nodes, since what they show is what members wrote. Everything on the map is in the page's
+  text too; where no key is set, or Google refuses it, a page says the map could not load and keeps its list.
+- **Ledger.** `candidacy.changed`, for Auditors only like other entries about members: `approved` and `declined`, with
+  the `contentHash` H(JCS({v: 1, content})) of the version decided; `withdrawn`, when the candidacy was public; and
+  `removed`. Each names the office, the district's GEOID and the election day. Declaring and changing are not ledgered:
+  nothing is public until a decision.
+- **Code.** `ustp-domain/candidacies/`: the records, schemas, the commands `declareCandidacy`, `changeCandidacy`,
+  `withdrawCandidacy`, `decideCandidacy` and `removeCandidacy`, and the views. `apps/server/src/candidacies/`: the
+  repository, service and controllers, and the `DistrictSource` port with its TIGERweb and local adapters.
+  `apps/web/src/candidacies/`.
+
+### 5.9 Forum *(added)*
 
 A Reddit-style forum where Active members talk things over and propose what the party should adopt. It decides
 nothing: an Election Admin may put a proposal on a ballot, and the election decides. `ustp-domain` (`forum/`) holds the
@@ -1030,7 +1092,7 @@ worker got to it is still signed, since it was approved.
 - `proposal_snapshots` freeze the exact title and text of a proposal with its content hash
   `H(JCS({v: 1, title, body}))`, or for a bylaws amendment `H(JCS({v: 2, title, body, amendment}))` (§6.6); they are
   immutable, and a proposal contest points at one. Proposals are entered in the admin console, or put on a ballot from
-  the forum by an Election Admin (§5.8; Q6). The review that admits a text to the ballot is the Auditor's approval of
+  the forum by an Election Admin (§5.9; Q6). The review that admits a text to the ballot is the Auditor's approval of
   the scheduling request, which covers the whole definition including every proposal's content hash; a separate
   `proposal_reviews` collection is not used.
 
@@ -1749,7 +1811,7 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled` (M2–M3a), `ballots.sealed`,
   `election.sealed` (M3b), `results.computed` (M4a), `results.certified`, `election.pool_key_destroyed`,
   `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed`,
-  `navigation.changed`, `home_quote.changed`, `hub.changed`, `notice.sent`, `notice.resend_requested`, `notice.settings_changed`, `anthropic_key.changed`, `position_term.appointed`, `registration_form.changed`, `team.changed`, `team.member_changed`, `forum.moderated` (M5; Auditors only). The authoritative list is `LEDGER_EVENT_TYPES` in
+  `navigation.changed`, `home_quote.changed`, `hub.changed`, `analytics.changed`, `notice.sent`, `notice.resend_requested`, `notice.settings_changed`, `anthropic_key.changed`, `position_term.appointed`, `registration_form.changed`, `team.changed`, `team.member_changed`, `forum.moderated`, `candidacy.changed` (M5; Auditors only). The authoritative list is `LEDGER_EVENT_TYPES` in
   `ustp-domain`.
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
   entries are public; the election notice entries (`notice.*`, §6.8), about delivering mail rather than the election's
@@ -1949,8 +2011,8 @@ results page, the CLI and the tests pass it that entry.
 |---|:-:|:-:|:-:|:-:|
 | Triage applications and photos; view member profiles; change member status; correct member details; change the registration form's wording (§5.2) | ● | | | |
 | Create, rename, archive and restore teams; name and remove their leads; change anything on any team (§5.7) | ● | | | |
-| Moderate the forum: remove and restore posts and comments, lock and pin threads, see and close reports (§5.8) | ● | | | |
-| Put a forum proposal on a draft election's ballot (§5.8) | | ● | | |
+| Moderate the forum: remove and restore posts and comments, lock and pin threads, see and close reports (§5.9) | ● | | | |
+| Put a forum proposal on a draft election's ballot (§5.9) | | ● | | |
 | Create/edit draft elections, contests, proposals; delete a cancelled election nobody voted in, or a finished rehearsal in testing mode (at once; §6.1) | | ● | | |
 | Request roll snapshot, scheduling, certification, cancellation | | ● | | |
 | Define or change offices (at once; §6.4); request an appointment to an office or the end of a term (§6.4) | ● | ● | | |
@@ -2142,8 +2204,8 @@ page itself, `/`, is the party's link hub (§10.6).
 
 - **Columns (audiences):** signed out; signed in with no membership; each member status (applicant, Active, lapsed,
   suspended, resigned, rejected; §5.1); then each staff role. **Rows:** Register, Ballot, Verify, Offices (the public
-  list of office holders, §6.4), Teams (§5.7), Forum (§5.8) and Admin; Sign in (the header's button for visitors); the admin sections (Applications,
-  Members, Photos, Bylaws, Registration form, Elections, Offices, Teams, Forum, Approvals, People, Sign-in methods, Claude, Election
+  list of office holders, §6.4), Candidates (members running for public office, §5.8), Teams (§5.7), Forum (§5.9) and Admin; Sign in (the header's button for visitors); the admin sections (Applications,
+  Members, Photos, Bylaws, Registration form, Elections, Offices, Candidacies, Teams, Forum, Approvals, People, Sign-in methods, Claude, Election
   emails, Audit ledger, Testing, Navigation, Link hub, Home page quote); and "Starts on". The vocabulary, defaults
   and rules are `MENU_LINKS`, `ADMIN_SECTIONS`, `AUDIENCES` and the functions beside them in `ustp-domain`
   (`governance/navigation.ts`), shared by the API and the web app.
@@ -2170,9 +2232,10 @@ page itself, `/`, is the party's link hub (§10.6).
   which they may read but not change), roles adding Ballot, Verify and Offices (and Admin, from their sections) so a
   staff member with no membership keeps them. A link or section added later takes its default in settings saved
   before it existed, and every other saved cell stays: settings saved before the Sign in row show it to visitors,
-  those saved before the Offices row show Offices to everyone, those saved before Teams show the Teams link to
-  Active members only (the API refuses teams to anyone else) and the Teams section to Membership Admins, and those
-  saved before the Forum show its link to Active members only and its section to Membership and Election Admins.
+  those saved before the Offices row show Offices to everyone, those saved before Candidates show it to everyone
+  (every role included) and the Candidacies section to Membership Admins, those saved before Teams show the Teams
+  link to Active members only (the API refuses teams to anyone else) and the Teams section to Membership Admins, and
+  those saved before the Forum show its link to Active members only and its section to Membership and Election Admins.
 - **Start page.** Each signed-in audience starts on the voting home (`/vote`, the start page `home`, named "Voting home"
   since the hub took `/`), their account, a menu page it is shown (Offices included),
   or (a role) one of its sections; by default Register with no membership, as signing in did before, and home otherwise. A person with
@@ -2210,10 +2273,11 @@ page itself, `/`, is the party's link hub (§10.6).
   for when it is shown again. The page sets the quote smaller the longer it is, sized to its column.
 - **Voting home picture.** A sunrise over a horizon in the party's oranges, morning in the light theme and dusk in the
   dark one, drawn for this project as an inline SVG (`apps/web/src/components/HomeBackdrop.vue`), so the party may use
-  it freely and there is no licence to track; a public-domain photo could replace it, with its source and licence
-  recorded here. With the quote's own code it is a 5 KB chunk (2 KB compressed) of script and CSS, and no image, in the
-  service worker's app shell. Text over it sits on a translucent panel (white at 80% light, near-black at 72% dark),
-  which keeps 4.5:1 or more over every colour of the picture at any width (docs/ACCESSIBILITY.md).
+  it freely and there is no licence to track. System Admins may put a photo of their own in its place, behind the voting
+  home and every other page but the hub (§10.6, "Page background"); the party then answers for its licence. With the
+  quote's own code it is a 5 KB chunk (2 KB compressed) of script and CSS, and no image, in the service worker's app
+  shell. Text over it sits on a translucent panel (white at 80% light, near-black at 72% dark), which keeps 4.5:1 or
+  more over every colour of the picture at any width (docs/ACCESSIBILITY.md).
 - **Every other page looks like the voting home.** Every page but the hub and the voting home has the same picture
   behind it, fixed so a long page scrolls over it, and the page itself on one card lifted off the picture as the voting
   home's cards are (white, or the dark theme's card colour; `apps/web/src/components/PageShell.vue`), set for reading:
@@ -2267,31 +2331,33 @@ page itself, `/`, is the party's link hub (§10.6).
 without the app's header and menu, from which the voting app (`/vote`, §10.5) is one link. System Admins manage it
 under Admin → Link hub.
 
-- **Page.** One centred column of 560px at most: share and theme buttons at the top right; the profile (the logo or
-  the name's initials on a tile, the name as the page's `h1`, the tagline and a short bio); a row of round monochrome
-  icons; the Discord card ("Join the conversation", "Live on Discord" and how many are online when the live widget is
-  on, a full-width "Join our Discord" button); then each section, a small mono label over its link cards, each card an
-  icon, a title, an optional subtitle and an arrow (↗ for another site, → for a page of this app). A starred card is
-  drawn in the accent. Cards are at least 72px tall and icons 48px across. Share opens the device's share sheet where
-  there is one and otherwise copies the address of `/` (or, where the browser refuses the clipboard, shows it). The
-  page waits for the hub before it shows, as the voting home waits for its quote, so nothing moves; if the hub cannot
-  be loaded, the default's profile and its pages in this app stand in, never the default's outside addresses, which
-  System Admins may have taken down since.
-- **Content** (`governance/hub.ts` in `ustp-domain`): a profile (name, tagline, bio, logo, accent, default theme), the
-  Discord card (invite, server ID, live widget on or off), and sections in order, each with a title, shown or hidden,
-  and its links in order. A link has a title, a subtitle, an address (a page of this app like `/vote`, an `https://`
-  address or `mailto:`; never `http:`, `javascript:` or `//`), an icon (one of twelve networks: Discord, X, Reddit,
-  Facebook, Telegram, Instagram, YouTube, TikTok, LinkedIn, Threads, Bluesky, Mastodon; or a symbol: voting,
-  membership, course, events, donations, discussion board, chat, news, website, email, video, link), and three switches: shown,
-  in the icon row, starred. **The icon row** is every shown link marked for it, whatever its section's switch (so a
-  section can be hidden and its icons kept), networks first in the order above, then other icons in page order. The
-  Discord card shows while it has an invite. A shown section needs its title; a shown link its title and address; a
-  hidden link may be left unfinished, as a draft. Limits: name 80, tagline 160, bio 280, section title 40, link title
-  60, subtitle 80, address 500 characters; 12 sections of 40 links. Each text is put on one line. A link keeps its ID
-  when it is edited or moved, so it keeps its clicks.
+- **Page.** One centred column of 560px at most: share and theme buttons at the top right; the profile (the cover
+  banner if there is one, the column's width at 3:1, with the tile over its lower edge, by half the tile on the full
+  column and less on a phone; the logo or the name's initials on a tile, the name as the page's `h1`, the tagline and a
+  short bio); a row of round monochrome icons; the Discord card ("Join the conversation", "Live on Discord" and how many
+  are online when the live widget is on, a full-width "Join our Discord" button); then each section, a small mono label
+  over its link cards, each card an icon, a title, an optional subtitle and an arrow (↗ for another site, → for a page
+  of this app). A starred card is drawn in the accent. Cards are at least 72px tall and icons 48px across. Share opens
+  the device's share sheet where there is one and otherwise copies the address of `/` (or, where the browser refuses the
+  clipboard, shows it). The page waits for the hub before it shows, as the voting home waits for its quote, so nothing
+  moves; if the hub cannot be loaded, the default's profile and its pages in this app stand in, never the default's
+  outside addresses, which System Admins may have taken down since.
+- **Content** (`governance/hub.ts` in `ustp-domain`): a profile (name, tagline, bio, logo, cover banner, accent, default
+  theme, page background), the Discord card (invite, server ID, live widget on or off), and sections in order, each with
+  a title, shown or hidden, and its links in order. A link has a title, a subtitle, an address (a page of this app like
+  `/vote`, an `https://` address or `mailto:`; never `http:`, `javascript:` or `//`), an icon (one of twelve networks:
+  Discord, X, Reddit, Facebook, Telegram, Instagram, YouTube, TikTok, LinkedIn, Threads, Bluesky, Mastodon; or a symbol:
+  voting, membership, course, events, donations, discussion board, chat, news, website, email, video, link), and three
+  switches: shown, in the icon row, starred. **The icon row** is every shown link marked for it, whatever its section's
+  switch (so a section can be hidden and its icons kept), networks first in the order above, then other icons in page
+  order. The Discord card shows while it has an invite. A shown section needs its title; a shown link its title and
+  address; a hidden link may be left unfinished, as a draft. Limits: name 80, tagline 160, bio 280, section title 40,
+  link title 60, subtitle 80, address 500 characters; 12 sections of 40 links. Each text is put on one line. A link
+  keeps its ID when it is edited or moved, so it keeps its clicks.
 - **Defaults** (version 0): the name, the tagline in the party site's header ("Putting science, health & technology at
-  the forefront of American politics") and a bio; the party's orange and the dark theme. Apps: USTP Vote (`/vote`,
-  starred), Become a member (`/register`), the Transhumanism course (`/course/transhumanism`) and the party's site, then Events, Donate, Discussion board and Chat as
+  the forefront of American politics") and a bio; no logo (the initials) and no cover banner; the party's orange, the
+  dark theme and the sunrise behind the pages. Apps: USTP Vote (`/vote`, starred), Become a member (`/register`), the
+  Transhumanism course (`/course/transhumanism`) and the party's site, then Events, Donate, Discussion board and Chat as
   hidden drafts. Community: Discord server, Subreddit and Telegram channel, drafts in the icon row. Follow us: X,
   Facebook and the LinkedIn group, shown and in the icon row, then Instagram, YouTube, TikTok, Threads, Bluesky and
   Mastodon as drafts in the icon row. **Only addresses checked on the party's own site are filled in**
@@ -2322,11 +2388,24 @@ under Admin → Link hub.
   Server Widget) with a 3-second timeout, keeps only the online count, and caches it, failures too, for five minutes;
   `GET /v1/hub/discord` serves it. There is no iframe and no request from a visitor's browser to Discord, so the CSP
   is unchanged. The invite is a plain link.
-- **Logo.** Uploaded by a System Admin (PNG, JPEG or WebP, at least 64px square, at most 5 MB), decoded and
-  re-encoded as a 256px square WebP on a transparent ground (metadata dropped, as for profile photos, §5.3), stored in
-  `hub_logos/{sha256}` and served at `GET /v1/hub/logo/{sha256}`, cached for a year as it never changes. Uploading
-  changes nothing visible: the logo shows once the hub is saved with its ID (400 if there is no such upload). It is
-  not an outside address, so visitors never load an image from another site.
+- **Logo, cover banner and page background** (`governance/hub-images.ts` in `ustp-domain`). Each is uploaded by a System
+  Admin as a PNG, JPEG or WebP of at most 5 MB, decoded and re-encoded upright as WebP (metadata dropped, as for profile
+  photos, §5.3), stored under the SHA-256 of the stored bytes and served at `GET /v1/hub/{kind}/{sha256}`, cached for a
+  year as it never changes. The **logo**: at least 64px each way, kept as a 256px square on a transparent ground, in
+  `hub_logos/{sha256}`. The **cover banner** (optional): 3:1, within 5%, and at least 1120×374, 1500×500 recommended;
+  cropped from the middle to exactly 3:1 and kept at 1120×374, twice the column, in `hub_covers/{sha256}`. It is
+  decorative (`alt=""`), so anything it says belongs in the name, tagline or bio as well, as the settings say. The
+  **page background**: the sunrise drawn for the project (§10.5, the default) or a photo, at least 1920×1080, 2560×1440
+  recommended, shrunk to fit 2560×2560 (never enlarged) and kept in `hub_backgrounds/{sha256}`. The photo covers the
+  window from its centre behind the voting home and every page but the hub (not the hub, which keeps its own ground),
+  fixed as the sunrise is, under a scrim in the theme's ground: white at 55% in the light theme and #0c0a0e at 60% in
+  the dark one, so the theme's text (#1a1a1a, white) keeps 5.2:1 over any pixel of any photo (`BACKDROP_SCRIMS`, checked
+  by the domain tests over pure black and white). Text on the voting home's panels and the pages' cards keeps its own
+  contrast on top. A stored image is at most 900 KB, as a Firestore document holds 1 MiB: the quality steps down until
+  it fits (a background from 80 to 50), and an image that still does not fit is refused. The settings check the type,
+  the 5 MB and the size in the browser before uploading, and the API checks them again. Uploading changes nothing
+  visible: an image shows once the hub is saved with its ID, which must be an upload of that kind (400 if there is no
+  such upload). None is an outside address, so visitors never load an image from another site.
 - **Clicks: counts only.** Every link (card or icon) and the Discord button sends `POST /v1/hub/clicks/{target}` as
   it is followed, same-origin, with no body and no sign-in, `keepalive` so it finishes as the page leaves; the link
   keeps its real address. `hub_clicks/{target}` (`link-{id}` or `discord`) holds a total and a count per UTC day and
@@ -2338,19 +2417,63 @@ under Admin → Link hub.
   title, star, "icon row" badge, address or what a draft still needs, clicks in the last 30 days / in all, show
   switch, move, edit, delete), and "Add link" and "Add section"; each change is saved at once, and focus stays on the
   control used. An editor dialog holds a link's fields and its section. **Profile & Discord**: Profile (name, tagline,
-  bio, logo), Look (accent with its contrast with white, default theme) and Discord (invite, server ID, live widget),
-  listed in words before "Save settings". **Analytics**: clicks in the last 30 days and in all, since when, and a
-  table of every link busiest first, removed ones included.
+  bio, logo, cover banner), Look (accent with its contrast with white, default theme, page background) and Discord
+  (invite, server ID, live widget), listed in words before "Save settings". Each image has a preview (the background's
+  under the scrim of the current theme), the sizes to upload written beside it, an upload button and one to go without
+  it ("Use the initials", "Remove the banner", "Use the sunrise"). **Analytics**: clicks in the last 30 days and in all,
+  since when, and a table of every link busiest first, removed ones included.
 - **Storage and API.** `hub/current` holds the whole hub with a `version` counter. `GET /v1/hub` (public, cached by
   each api instance for a minute) serves what the page shows: no hidden sections, hidden or unfinished links, or who
   changed it. `GET|PUT /v1/admin/hub` (System Admin) reads and saves the whole hub from the version it was edited from
   (409 if someone saved since; 400 when something shown is unfinished, or an address, the invite, the server ID, the
-  accent or the logo cannot be used). It is tidied before it is checked and stored, and every change is ledgered as
-  `hub.changed` with the System Admin as actor: each profile and Discord field with its new value; each section and
-  link added, removed, renamed or edited (by field), moved, shown, hidden, starred or put in or out of the icon row;
-  each new order. Like the navigation settings it is an internal setting, visible to Auditors only, and saving nothing
-  new writes nothing. `PUT /v1/admin/hub/logo` takes the image as the body; `GET /v1/admin/hub/clicks` gives each
-  target's total, last 30 days and first day.
+  accent, or the logo, cover banner or page background cannot be used). It is tidied before it is checked and stored,
+  and every change is ledgered as `hub.changed` with the System Admin as actor: each profile and Discord field with its
+  new value; each section and link added, removed, renamed or edited (by field), moved, shown, hidden, starred or put in
+  or out of the icon row; each new order. Like the navigation settings it is an internal setting, visible to Auditors
+  only, and saving nothing new writes nothing. `PUT /v1/admin/hub/logo`, `/cover` and `/background` take the image as
+  the body and give its ID; `GET /v1/admin/hub/clicks` gives each target's total, last 30 days and first day.
+
+### 10.7 Sign-in log and site analytics *(added)*
+
+For auditing and security: who signed in, when, how and from where, and how many people visit the public pages.
+
+- **Sign-in log.** The first request the api sees with a new `auth_time` on an ID token records a sign-in in
+  `sign_ins/{uid}_{authTime}`: the login (uid), its USTP account (null for a login with no account yet, the first step
+  of Register), email, sign-in method, whether a second factor was used, when they signed in, when the api saw it, the
+  client's address, the whole X-Forwarded-For chain and the user agent. Re-authenticating before an approval is a new
+  `auth_time`, so it is a new record; refreshing a token is not. The AuthGuard records it after checking the token,
+  for the real person even while they act as a test persona (§10.4), and each api instance remembers the sign-ins it
+  recorded so later requests skip Firestore; a record that cannot be written is logged and the request goes on. It
+  never touches a request body, so casting is unchanged (§7.1): a sign-in record says no more than `participation`
+  already does (that someone used the site, and when).
+- **The client's address.** Each proxy appends the address it received the request from to X-Forwarded-For, so the
+  last `TRUSTED_PROXY_HOPS` entries (1 unless set) are the proxies', the entry before them is the client's, and
+  anything further left came from the client and may be forged. With fewer entries the first is taken. How many hops
+  Firebase Hosting and Cloud Run's front end add is not documented, so the whole chain is kept beside the address and
+  the setting is checked on each deployment: sign in, and compare the address shown with your own. If it is a Google
+  proxy's, change `TRUSTED_PROXY_HOPS`. Nothing else relies on the address (§14 "Abuse").
+- **Failed attempts** never reach the api: the browser signs in with Identity Platform directly. Identity Platform's
+  request logging (Terraform, `identity.tf`) writes every sign-up, sign-in, failed attempt and password reset with the
+  caller's real address to Cloud Logging, and a sink copies them into the `sign-in-traffic` log bucket, kept as long as
+  the app's log (`logging.tf`). They are read in Logs Explorer by those with access to the project; the Security tab
+  links there.
+- **Who reads it.** System Admins and Auditors, under Admin › Security (`GET /v1/admin/security/sign-ins?days=`, the
+  last 1, 7, 30, 90 or 180 days, newest first, at most 2,000): a table of sign-ins with search, counts of sign-ins,
+  logins, addresses and two-step sign-ins, a flag on a login's sign-in from an address it had not used earlier in the
+  period, and a CSV export built in the browser with the forwarded chain and user agent. A sign-in recorded before its
+  login had an account is read back with the account the login has by then. Reading the log is not ledgered.
+- **Personal data.** Sign-in records name people and their addresses, so they never enter the ledger (public or
+  Auditors-only), the rules deny clients (§14), and a Firestore TTL policy on `expireAt` deletes each one
+  `SIGN_IN_RETENTION_DAYS` (180) after it was seen.
+- **Google Analytics.** Off until a System Admin enters a Google Analytics 4 measurement ID under Admin › Security
+  (`site_analytics/current`, versioned, saved from the version it was edited from, 409 if someone saved since,
+  ledgered as `analytics.changed`, Auditors only; `GET /v1/site-analytics` is public). The web app then loads
+  `gtag.js` on the first public page it may see and sends a page view per page: the path alone (no query string or
+  fragment), never who someone is, with Google signals and ad personalization off. It never loads on `/ballot`,
+  `/verify`, `/signin`, `/account` or `/admin` and the pages under them, and not at all for browsers that send Global
+  Privacy Control. Google Analytics 4 does not keep IP addresses; the sign-in log does. The hub's own click counts
+  (§10.6) stay as they are, without cookies; Google Analytics, where switched on, sets its cookies on the public
+  pages.
 
 ## 11. Data model (Firestore `(default)` database)
 
@@ -2376,14 +2499,15 @@ Physically, registration collections are top-level and election data lives under
 | `profile_photos/{photoId}` | auto | status only | storage path, status |
 | `photo_checks/{checkId}` | auto | immutable | Vision signals, verdict |
 | `positions/{positionId}` | slug | Membership or Election Admin, at once | title, description, seats, term months, approval if any (§6.4) |
+| `candidacies/{candidacyId}` | UUIDv7 | the member (declare, change, withdraw), a Membership Admin (decide, take down) | status, the published and the proposed version (office, ballot title, the Census district with its point and vintage, election day and kind, ballot label, platform, website), the decline note, `public`, version (§5.8) |
 | `position_terms/{termId}` | auto | created by certification or an approved appointment; ended two-person | holder, `basis` (election or appointment), contest and results hash or the appointment's approval and reason, start/end, status |
 | `teams/{teamId}` | slug | saved whole from the version edited (a lead: all but the name); archived, never deleted | name, description, join policy, join question, size limit, members' link, colour, symbol, archived, version, created and updated by and at (§5.7) *(added)* |
 | `team_members/{teamId}_{accountId}` | team and account | created, role changed, deleted | role (`lead`/`member`), joinedAt, addedBy (§5.7) *(added)* |
 | `team_requests/{teamId}_{accountId}` | team and account | pending → approved / declined / withdrawn; replaced by the next request | message, the team's question and the answer, askedAt, decidedAt, decidedBy, note (§5.7) *(added)* |
-| `forum_posts/{postId}` | UUIDv7 | edited by its author; removed/restored, locked, pinned by Membership Admins; deleted by its author (title and text erased) | kind (`discussion`/`proposal`), title, body, authorId, up, down, score, hot, comments, lastCommentAt, pinned, lock, state, removal, feeds (the lists it is in), ballots it was put on (§5.8) *(added)* |
-| `forum_comments/{commentId}` | UUIDv7 | edited or deleted by its author; removed/restored by Membership Admins | postId, parentId, depth, body, authorId, up, down, score, state, removal (§5.8) *(added)* |
-| `forum_votes/{kind}_{targetId}_{accountId}` | target and account | set, changed, deleted | targetKind, targetId, postId, accountId, value (±1), at; never shown to anyone but the voter (§5.8) *(added)* |
-| `forum_reports/{kind}_{targetId}_{accountId}` | target and account | open → dismissed / actioned; replaced by the member's next report of it | reason, note, at, decidedAt, decidedBy; who reported is never shown (§5.8) *(added)* |
+| `forum_posts/{postId}` | UUIDv7 | edited by its author; removed/restored, locked, pinned by Membership Admins; deleted by its author (title and text erased) | kind (`discussion`/`proposal`), title, body, authorId, up, down, score, hot, comments, lastCommentAt, pinned, lock, state, removal, feeds (the lists it is in), ballots it was put on (§5.9) *(added)* |
+| `forum_comments/{commentId}` | UUIDv7 | edited or deleted by its author; removed/restored by Membership Admins | postId, parentId, depth, body, authorId, up, down, score, state, removal (§5.9) *(added)* |
+| `forum_votes/{kind}_{targetId}_{accountId}` | target and account | set, changed, deleted | targetKind, targetId, postId, accountId, value (±1), at; never shown to anyone but the voter (§5.9) *(added)* |
+| `forum_reports/{kind}_{targetId}_{accountId}` | target and account | open → dismissed / actioned; replaced by the member's next report of it | reason, note, at, decidedAt, decidedBy; who reported is never shown (§5.9) *(added)* |
 | `eligibility_snapshots/{snapshotId}` | auto | immutable once approved; deleted with its election (§6.1) | criteria (`testVotersOnly` on a rehearsal roll, §6.3), count, Merkle root, signature |
 | **voting** | | | |
 | `elections/{electionId}` | UUIDv7 | state transitions; deleted with everything under it if cancelled with no ballot cast (§6.1) | definition, definitionHash, seed commitment, k; `amendsBylaws` once scheduled (§6.6) |
@@ -2420,7 +2544,11 @@ Physically, registration collections are top-level and election data lives under
 | `home_quote/current` | `current` | replaced whole, by one System Admin | the voting home's quote: shown, text, attribution, source, version, updatedAt, updatedBy (§10.5) *(added)* |
 | `hub/current` | `current` | replaced whole, by one System Admin | the link hub: profile, Discord card, sections and links, version, updatedAt, updatedBy (§10.6) *(added)* |
 | `hub_logos/{sha256}` | hash of the stored image | immutable | an uploaded logo as a 256px WebP, uploadedAt, uploadedBy (§10.6) *(added)* |
+| `hub_covers/{sha256}` | hash of the stored image | immutable | an uploaded cover banner as a 1120×374 WebP, uploadedAt, uploadedBy (§10.6) *(added)* |
+| `hub_backgrounds/{sha256}` | hash of the stored image | immutable | an uploaded page background as a WebP at most 2560px wide, uploadedAt, uploadedBy (§10.6) *(added)* |
 | `hub_clicks/{target}` | `link-{id}` or `discord` | counters only | total, and a count per UTC day; nothing about who clicked (§10.6) *(added)* |
+| `sign_ins/{uid}_{authTime}` | the login and its `auth_time` | created once; deleted by TTL | uid, accountId, email, provider, mfa, signedInAt, seenAt, ip, forwardedFor, userAgent, expireAt (180 days on; §10.7) *(added)* |
+| `site_analytics/current` | `current` | replaced whole, by one System Admin | measurementId (null: off), version, updatedAt, updatedBy (§10.7) *(added)* |
 
 The spec places `role_assignments` and `audit_events` in the voting namespace; they serve both modules, so the
 design treats them as a shared audit/admin module. Path constants and document shapes live in `ustp-domain`
@@ -2436,6 +2564,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | Method & path | Auth | Purpose |
 |---|---|---|
 | `GET /healthz` · `GET /v1/health` | P | liveness: `/healthz` for startup probes; `/v1/health` from outside, since Cloud Run's front end reserves some paths ending in "z". `{status, tally, commit}`, never cached: `commit` is the release's (§15), null outside released images, and every response carries it as `X-Build-Commit` |
+| `GET /robots.txt` · `GET /sitemap.xml` | P | for search engines, at the site's root through Hosting (§15): robots.txt opens the site only in prod at its own address; the sitemap lists the public pages, each published bylaws version and each certified result (rehearsals left out). Cached an hour by crawlers, not by Hosting |
 | `GET /me` · `POST /accounts` | M | current account; first-sign-in account creation |
 | `POST /me/identities` · `DELETE /me/identities/{uid}` | M | link / unlink a login method |
 | `PUT /me/preferences` | M | own display choices: the daily quote and joke on or off (§4.1); not ledgered |
@@ -2444,7 +2573,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /sign-in-methods` | P | which sign-in providers are switched on (sign-in buttons) |
 | `GET /navigation` | P | who sees which menu link and admin section, and where each starts (§10.5) |
 | `GET /home-quote` | P | the voting home's quote: whether it is shown, its words, who said them and the source (§10.5) |
-| `GET /hub` · `GET /hub/discord` · `GET /hub/logo/{sha256}` | P | the link hub as the page shows it; how many are online in the party's Discord, from Discord's widget, cached five minutes; an uploaded logo, cached for good (§10.6) |
+| `GET /site-analytics` | P | the Google Analytics measurement ID, or null while it is off (§10.7) |
+| `GET /hub` · `GET /hub/discord` · `GET /hub/logo/{sha256}` · `GET /hub/cover/{sha256}` · `GET /hub/background/{sha256}` | P | the link hub as the page shows it; how many are online in the party's Discord, from Discord's widget, cached five minutes; an uploaded logo, cover banner or page background, cached for good (§10.6) |
 | `POST /hub/clicks/{target}` | P | count a click on a link or the Discord button the hub shows (204; 404 for anything else); counts only (§10.6) |
 | `GET /registration/form` · `GET /registration/form/{version}` | P | the registration form's wording, current or any saved version (0 is the default), without who changed it (§5.2) |
 | `POST /registration/applications` · `GET /registration/applications/me` | M | apply (against the current bylaws and form version; 409 otherwise); status |
@@ -2489,12 +2619,16 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /teams/{teamId}/join` · `DELETE /teams/{teamId}/request` · `POST /teams/{teamId}/leave` | M (Active) | join an open team or ask to join one whose leads decide (`message`, `answer`; 409 closed, full, already on it or asked, an unanswered question, or within 14 days of a decline); withdraw the request; leave (409 for the last lead) |
 | `PUT /teams/{teamId}` · `POST …/requests/{accountId}/decision` · `POST …/members/{accountId}/lead` · `DELETE …/members/{accountId}` · `POST …/step-down` | the team's leads | change the settings but the name, from the version edited (409 if stale); approve or decline a request with an optional note; make a member a co-lead; remove a member (403 for a lead); step down while another lead remains. Every team route answers with the team as the caller now sees it |
 | `GET\|POST /admin/teams` · `GET\|PUT /admin/teams/{teamId}` · `POST …/archive` · `POST …/members` · `DELETE …/members/{accountId}` · `POST …/requests/{accountId}/decision` | Membership Admin | every team, archived ones too; create one with its first lead (an Active member); change any setting; archive or restore; put an Active member on it as a lead or member, or change their role; remove anyone but the last lead; decide requests; ledgered (§5.7) |
-| `GET /forum/posts` (`sort`, `feed`, `after`) · `GET /forum/posts/{postId}` | M (Active) | a page of posts, pinned first on the first; a post with its comments, scores and the caller's own votes (§5.8) |
+| `GET /public/candidacies` · `GET /public/candidacies/{id}` | P | approved candidacies for public office of members who are Active now, upcoming elections first (§5.8) |
+| `GET /public/districts?kind=&state=` · `GET /public/districts/{kind}/{geoid}/boundary` · `GET /public/maps` | P | the Census districts of a kind in a state; a district's outline as GeoJSON (both cached an hour, a day on the CDN; 503 when TIGERweb does not answer); the Google Maps browser key, or null (§5.8) |
+| `GET /candidacies/mine` · `POST /candidacies` · `PUT /candidacies/{id}` · `POST /candidacies/{id}/withdraw` | M (Active to declare or change) | the caller's candidacies and where each stands; declare (400 for a district the Census does not list, 409 for a past election, the same race twice or a sixth open one); change, from the version edited (409 otherwise); withdraw (§5.8) |
+| `GET /admin/candidacies` · `POST /admin/candidacies/{id}/decision` · `POST /admin/candidacies/{id}/remove` | Membership Admin | every candidacy, what waits for review first; approve or decline (with a note) the version reviewed, never one's own, approving only an Active member's; take down with a reason (§5.8) |
+| `GET /forum/posts` (`sort`, `feed`, `after`) · `GET /forum/posts/{postId}` | M (Active) | a page of posts, pinned first on the first; a post with its comments, scores and the caller's own votes (§5.9) |
 | `POST /forum/posts` · `PUT\|DELETE /forum/posts/{postId}` · `POST …/comments` · `PUT\|DELETE /forum/comments/{commentId}` | M (Active) | post (10 a day), comment or reply (200 a day); the author changes or deletes their own (409 once a proposal is on a ballot or removed) |
 | `PUT /forum/posts/{postId}/vote` · `PUT /forum/comments/{commentId}/vote` · `POST …/report` | M (Active) | vote up (1), down (−1) or take it back (0), answering the new score; report someone else's post or comment (204) |
 | `GET /admin/forum/posts` · `GET /admin/forum/posts/{postId}` | Membership Admin, Election Admin | the lists and threads at the console, removed text and open reports for Membership Admins (`feed=removed` theirs only) |
 | `POST /admin/forum/posts/{postId}/moderation` · `POST /admin/forum/comments/{commentId}/moderation` · `GET /admin/forum/reports` · `POST /admin/forum/reports/dismiss` | Membership Admin | remove (reason), restore, lock (reason), unlock, pin, unpin; ledgered `forum.moderated`; reports grouped without who made them |
-| `POST /admin/forum/posts/{postId}/ballot` | Election Admin | put a proposal on a draft election: a proposal snapshot and a proposal question (`electionId`, `title`, `passRule`, `quorum`) (§5.8) |
+| `POST /admin/forum/posts/{postId}/ballot` | Election Admin | put a proposal on a draft election: a proposal snapshot and a proposal question (`electionId`, `title`, `passRule`, `quorum`) (§5.9) |
 | `POST /mcp` (not under `/v1`; the `mcp` service, not the api) | P | the reporting MCP server's Streamable HTTP endpoint: read-only tools over the public endpoints above (§3.4) |
 | `GET /admin/elections/{id}/roll` | Election Admin, Auditor | latest roll with member names, for review |
 | `GET /admin/elections/{id}/notices` | Election Admin, Auditor | the election's notices as counts (sent, still to send, failed, bounced, skipped), what the send receipts add up to per email (to the roll, and tests apart), and the caller's own last test emails; never addresses (§6.8) |
@@ -2507,8 +2641,10 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/accounts` (paged; `email` prefix, `role` filter) | System Admin | People list: accounts with member status and active roles, read-only (§10.3) |
 | `GET\|PUT\|DELETE /admin/anthropic-key` | System Admin | whether a key is set, its last four characters, who added it and when, and how each Claude check is switched; add a key in place of any before it, after trying it with Anthropic (400 not an API key, 422 refused, 502 Anthropic unreachable; nothing kept); remove it (404 if none); never returns the key; ledgered (§5.6) |
 | `GET\|PUT /admin/navigation` | System Admin | the navigation settings with who saved them; save the whole matrix from the version it was edited from (409 if someone saved since, or a locked cell is switched), ledgered (§10.5) |
+| `GET /admin/security/sign-ins?days=` | System Admin, Auditor | the sign-ins of the last 1, 7, 30 (default), 90 or 180 days, newest first, at most 2,000, and whether more were left out (§10.7) |
+| `GET\|PUT /admin/site-analytics` | System Admin | the Google Analytics setting with who saved it; save a measurement ID or null from the version it was edited from (400 not a GA4 ID, 409 if someone saved since), ledgered (§10.7) |
 | `GET\|PUT /admin/home-quote` | System Admin | the voting home's quote with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if shown without its words or who said them, or a part over its limit), ledgered (§10.5) |
-| `GET\|PUT /admin/hub` · `PUT /admin/hub/logo` · `GET /admin/hub/clicks` | System Admin | the link hub with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if something shown is unfinished, an address, the accent or the logo cannot be used), ledgered; upload a logo (the image as the body; shown once saved); each link's clicks in the last 30 days and in all (§10.6) |
+| `GET\|PUT /admin/hub` · `PUT /admin/hub/logo` · `PUT /admin/hub/cover` · `PUT /admin/hub/background` · `GET /admin/hub/clicks` | System Admin | the link hub with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if something shown is unfinished, an address, the accent, or the logo, cover banner or page background cannot be used), ledgered; upload a logo, cover banner or page background (the image as the body, giving its ID; shown once saved); each link's clicks in the last 30 days and in all (§10.6) |
 | `GET\|POST /testing/personas` · header `X-Act-As` on any signed-in route | System Admin, testing mode only (404 otherwise) | test personas and acting as them (§10.4) |
 | `POST /testing/demo-elections` | System Admin, testing mode only (404 otherwise, whatever the body) | make up a demo election at random and schedule it as a rehearsal, built by the Test Election Admin and approved by the Test Auditor; the scheduled election and its seed (201; 403 to re-authenticate first, 409 while no bylaws are published; §10.4) |
 
@@ -2540,7 +2676,9 @@ every 15 seconds in place of Cloud Scheduler.
 ## 14. Security controls
 
 - **Rules:** Firestore and Storage `allow read, write: if false;` (spec §7). Clients use the API and signed URLs only.
-- **App Check** enforced on every API route (reCAPTCHA Enterprise provider for web).
+- **App Check** enforced on every signed-in API route (reCAPTCHA Enterprise provider for web). Public routes (the
+  published record, the hub, bylaws, robots.txt) need neither a sign-in nor App Check, so the web app asks for a token
+  only with a sign-in (§15, "Search engines").
 - **IAM:** separate service accounts for api and worker; no human has Firestore data access or KMS
   encrypt/decrypt in production; break-glass group with alerting. Only the worker's account holds
   `cloudkms.signer` and `cloudkms.publicKeyViewer` on `audit-signing`; it also writes to the anchors bucket, which
@@ -2603,7 +2741,9 @@ every 15 seconds in place of Cloud Scheduler.
   testing mode, which have no address.
 - **Logging:** structured logs with redaction; no request bodies on cast; Firestore Data Access audit logs off in
   production (they would record write paths and times; pool encryption makes them harmless, but there is no need for
-  them); KMS Data Access audit logs on.
+  them); KMS Data Access audit logs on. Sign-ins: the api's sign-in log with each sign-in's address, for System Admins
+  and Auditors, and Identity Platform's request logs with every attempt, failed ones included, both kept 180 days
+  (§10.7).
 - **Supply chain (spec §7 "Binary Authorization"):** committed lockfile, `npm ci --ignore-scripts` (also set in
   `.npmrc` and the Dockerfile), Dependabot (npm, Actions, the base image's digest, the Terraform provider), the base
   image pinned by digest, the server image built only by the release workflow from `main` and attested by digest, and
@@ -2614,9 +2754,10 @@ every 15 seconds in place of Cloud Scheduler.
   can be pending at a time anyway), counted from the account's own applications so no IP addresses are stored; casting
   is limited to one ballot per voter by `participation/{accountId}`. Sign-up volume per IP is left to Identity
   Platform's quota and reCAPTCHA Enterprise (§4), which see the real client address; behind Hosting and Cloud Run the
-  api cannot tell a forwarded address from a forged one.
+  api trusts only the entries its proxies append to X-Forwarded-For (§10.7), so it records addresses for the sign-in
+  log but limits nothing by them.
 - **Hosting headers:** HSTS, `frame-ancestors 'none'`, `nosniff`, strict referrer policy; CSP tightened once the
-  sign-in providers' origins are final. The hub (§10.6) adds no origin: its fonts and logo are served by the site, and
+  sign-in providers' origins are final. The hub (§10.6) adds no origin: its fonts and images are served by the site, and
   the Discord count is read by the API, not the browser.
 
 ## 15. Environments, deployment, cost
@@ -2667,10 +2808,29 @@ every 15 seconds in place of Cloud Scheduler.
   once; a new worker taking over offers a reload only when Hosting's commit differs, not on the first load after a
   deploy. The banner's message goes through the layout's polite live region; Later hides it, for that tab, until
   another commit. Builds without a commit (local, CI) never compare.
-- Web → Firebase Hosting, which rewrites `/v1/**` to the api Cloud Run service so the API is same-origin (no CORS).
+- Web → Firebase Hosting, which rewrites `/v1/**` to the api Cloud Run service so the API is same-origin (no CORS),
+  and `/robots.txt` and `/sitemap.xml` to it too (below).
   api and worker → Cloud Run from one image (`node dist/main-api.js` / `node dist/main-worker.js`).
   Config: [`firebase.json`](../firebase.json) at the repository root (the Firebase CLI only publishes folders inside the
   one holding it) and the rules and indexes in [`infra/firebase`](../infra/firebase).
+- **Search engines** *(added)*: only production, at its own address, is open to them. Dev and staging hold test
+  data, and the site's other addresses (`<project>.firebaseapp.com`) would list the same pages twice, so the api
+  serves a robots.txt that turns every crawler away unless `DEPLOYMENT_ENVIRONMENT` is `prod` and the request came to
+  `WEB_ORIGIN` (Terraform's `web_origin`, by default `https://<project>.web.app`; `crawlAllowed` in `ustp-domain`).
+  There it points at `/sitemap.xml` and keeps crawlers off only `/mcp` and Firebase's `/__/`: `/v1/**` stays open,
+  since a search engine renders the pages and needs their data, and every api response says `X-Robots-Tag: noindex`
+  instead, so the pages are listed and not the JSON, files or images behind them. The sitemap lists the pages that
+  are the same for everyone (`SITEMAP_PAGES`), each published bylaws version and each certified, non-rehearsal
+  result, with when it changed. The web app (`seo.ts`) gives each page its description and a canonical link to its
+  own address (no query), and marks with `noindex` every page behind sign-in, the sign-in page and a person's course
+  certificate; the hub is described by its own tagline and line on what it is for (§10.6). Requests made without a
+  sign-in skip App Check (§14), so a crawler, or any visitor whose browser cannot get a token, still sees the public
+  pages, and none of them waits for reCAPTCHA first. Link previews (Open Graph, X) read `index.html` as served and
+  run no script, so every page shares its site description and the share card, the icon's mark on the brand orange
+  (`make-icons.mjs`), whose address the build makes absolute: `VITE_SITE_ORIGIN` when given, otherwise the
+  project's `https://<project>.web.app`. A production custom domain needs `web_origin` in Terraform and
+  `VITE_SITE_ORIGIN` in the release build. Pages are rendered in the browser (no prerendering): Google and Bing run
+  the script; crawlers that do not see only the shared description.
 - Bucket Lock retention locked in prod only. Testing mode (§10.4) is on in dev and can never be on in prod.
 - Cost deltas against spec §8: + ≈ $0.06/month per election with a live ballot-pool key version; one Scheduler job
   per environment (free); Cloud Tasks well within its free tier. Total remains under $1/month at the stated scale.
@@ -2771,7 +2931,7 @@ Decisions for USTP; the design's proposed default is in brackets.
 4. **Frozen roll:** if a member is suspended after the roll is frozen, can they still vote? [yes; roll is frozen]
 5. **Special candidates:** "None of the above" / "Re-open nominations" options in IRV contests? [modelled as ordinary candidates if wanted]
 6. **Proposal source:** where do platform/bylaw proposals originate — manual entry, a website, a forum export? [Decided
-   2026-10-28: manual entry, or from the forum (§5.8), where an Election Admin puts a member's proposal on a draft
+   2026-10-28: manual entry, or from the forum (§5.9), where an Election Admin puts a member's proposal on a draft
    election's ballot; forum votes are advisory]
 7. **Anonymity threshold k** and minimum election size. [k = 10]
 8. **District lookup provider** for addresses (Google's Civic Information representatives API was retired in 2025). [state only in V1]
@@ -2808,6 +2968,9 @@ Decisions for USTP; the design's proposed default is in brackets.
 19. **Contact for election questions** in the election notices (§6.8), whose From address takes no replies: an address
     or a page members can write to about an election. [none yet: a placeholder in the emulators; nothing is mailed until
     a System Admin sets one in Admin › Election emails, or the deployment's `NOTICE_CONTACT`]
+20. **Candidacies and endorsement** (§5.8): does a Membership Admin's approval of a member's candidacy for public
+    office mean the party endorses them, and should an endorsement be a separate, recorded decision (by whom: the
+    Chairman, an officers' vote)? [approval only lists it; the Candidates page says listing is not an endorsement]
 
 ## 19. Roadmap
 
@@ -2818,7 +2981,4 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Word export done:* the ballot and results as a `.docx` built in the browser, for Word and Google Docs, from the results page, the ballot page and the election editor (§9). *Synopsis done:* the results in brief, as the party publishes them, first on the results page (printable) and first in the Word file (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity, releasing everything from one commit in one run: Firestore rules and indexes (waiting until every index is ready), the api, worker and MCP server, then the web app on Hosting (§15); open pages comparing their commit with the api's and offering a reload, and explaining a request refused by a newer api (§15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2), and at most two roles per person, the Auditor holding no other (§10.1); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4), and demo elections on Transhumanist themes, made up at random and scheduled as rehearsals in one click, mailing nobody (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list, and the emails to voters beside them from their counts (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); the home page laid out as a sign-in landing page, a quote about voting over a sunrise drawn for the project beside the sign-in card or the signed-in cards, the quote FDR's from his 1938 Marietta, Ohio address with its source recorded, changed or switched off by one System Admin and ledgered as `home_quote.changed` (§10.5), since moved to `/vote` as the voting home; the home page `/` as the party's link hub, managed by System Admins (profile, accent and default theme, sections and links with an icon row and a star, the Discord card with an online count the API reads from Discord), ledgered as `hub.changed`, with click counts per link and no personal data, self-hosted fonts and a light and a dark theme (§10.6); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES with bounces read from SQS, and System Admins' settings for them (each on or off, the reminder's lead time, the contact, each subject and opening; ledgered), and an outbox in place of mail with the emulators (§6.8; SES itself not yet set up in any project); the platform consistency check with Claude, once per person per election, from the ballot for voters on the roll and from the election editor for Election Admins and Auditors, comparing the proposals with each other and with the documents an Election Admin chooses for the election, any of the USTP Constitution (its Article VI is the Platform), the Transhumanist Bill of Rights, the bylaws in force and the US Constitution, each result keeping what it was compared with (§5.5; off in real projects until Q18 is settled, and not yet run against Anthropic's API); the Anthropic API key added, replaced or removed by a System Admin under Admin › Claude, tried with Anthropic first and kept in Secret Manager, where the api can store it but not read it, ledgered as `anthropic_key.changed` (§5.6); the election setup check with Claude, run once per version of an election by an Election Admin or Auditor, comparing its rules, offices and proposal texts with the bylaws, with its notes beside the contests on the ballot, the results and in the editor once the election is scheduled, and non-blocking seat advisories (§6.9; off in real projects until Q18 is settled, and not yet run against Anthropic's API); appointments to offices without an election, for first holders and between elections, requested by a Membership or Election Admin and approved by an Auditor, only an Active member and only to a free seat, ledgered as the public `position_term.appointed`, with Appoint in the Offices tab and on the member profile and a public Offices page (§6.4), in everyone's menu by default, the menu bar keeping one row by putting the links that do not fit behind a More button (§10.5); every page but the hub and the voting home styled like the voting home, its picture behind and the page on one card lifted off it, with 16 px text and larger headings (§10.5); the ballot list as a card per election in the voting home's style, and the list, the ballot and its Cast dialog by touch: 48 px buttons and choices, as wide as their card on a phone (§10.5); the Register page's intro and the application's two membership questions, eligibility to vote in US elections (a United States or an Allied Member) and agreement with the Core Ideals, neither ever refusing an application, all worded by Membership Admins under Admin › Registration form, each version kept and ledgered as `registration_form.changed`, with the class in the Members table, its filter and CSV (§5.2); teams that Active members join (at once, by asking a lead, or only when a Membership Admin adds them), each with its own description, question for people asking, size limit, members' link, colour and symbol, created, renamed and archived by Membership Admins with a first lead, and run by their leads, who decide requests, remove members and make co-leads, always keeping one lead; ledgered as `team.changed` and `team.member_changed` (§5.7); a Reddit-style forum for Active members, discussions and
-proposals with threaded comments and private up and down votes (hot, new and top), moderated by Membership Admins with
-reasons and reports and ledgered as `forum.moderated`, from which an Election Admin puts a proposal on a draft
-election's ballot (§5.8). *Still to do:* a roll criterion on the Core Ideals answer (§6.3); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity, releasing everything from one commit in one run: Firestore rules and indexes (waiting until every index is ready), the api, worker and MCP server, then the web app on Hosting (§15); open pages comparing their commit with the api's and offering a reload, and explaining a request refused by a newer api (§15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2), and at most two roles per person, the Auditor holding no other (§10.1); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4), and demo elections on Transhumanist themes, made up at random and scheduled as rehearsals in one click, mailing nobody (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list, and the emails to voters beside them from their counts (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); the home page laid out as a sign-in landing page, a quote about voting over a sunrise drawn for the project beside the sign-in card or the signed-in cards, the quote FDR's from his 1938 Marietta, Ohio address with its source recorded, changed or switched off by one System Admin and ledgered as `home_quote.changed` (§10.5), since moved to `/vote` as the voting home; the home page `/` as the party's link hub, managed by System Admins (profile, accent and default theme, sections and links with an icon row and a star, the Discord card with an online count the API reads from Discord), ledgered as `hub.changed`, with click counts per link and no personal data, self-hosted fonts and a light and a dark theme (§10.6), and a cover banner over the hub's profile and a photo behind every other page in place of the sunrise, under a scrim that keeps text at 4.5:1, uploaded by System Admins (§10.6); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES with bounces read from SQS, and System Admins' settings for them (each on or off, the reminder's lead time, the contact, each subject and opening; ledgered), and an outbox in place of mail with the emulators (§6.8; SES itself not yet set up in any project); the platform consistency check with Claude, once per person per election, from the ballot for voters on the roll and from the election editor for Election Admins and Auditors, comparing the proposals with each other and with the documents an Election Admin chooses for the election, any of the USTP Constitution (its Article VI is the Platform), the Transhumanist Bill of Rights, the bylaws in force and the US Constitution, each result keeping what it was compared with (§5.5; off in real projects until Q18 is settled, and not yet run against Anthropic's API); the Anthropic API key added, replaced or removed by a System Admin under Admin › Claude, tried with Anthropic first and kept in Secret Manager, where the api can store it but not read it, ledgered as `anthropic_key.changed` (§5.6); the election setup check with Claude, run once per version of an election by an Election Admin or Auditor, comparing its rules, offices and proposal texts with the bylaws, with its notes beside the contests on the ballot, the results and in the editor once the election is scheduled, and non-blocking seat advisories (§6.9; off in real projects until Q18 is settled, and not yet run against Anthropic's API); appointments to offices without an election, for first holders and between elections, requested by a Membership or Election Admin and approved by an Auditor, only an Active member and only to a free seat, ledgered as the public `position_term.appointed`, with Appoint in the Offices tab and on the member profile and a public Offices page (§6.4), in everyone's menu by default, the menu bar keeping one row by putting the links that do not fit behind a More button (§10.5); every page but the hub and the voting home styled like the voting home, its picture behind and the page on one card lifted off it, with 16 px text and larger headings (§10.5); the ballot list as a card per election in the voting home's style, and the list, the ballot and its Cast dialog by touch: 48 px buttons and choices, as wide as their card on a phone (§10.5); the Register page's intro and the application's two membership questions, eligibility to vote in US elections (a United States or an Allied Member) and agreement with the Core Ideals, neither ever refusing an application, all worded by Membership Admins under Admin › Registration form, each version kept and ledgered as `registration_form.changed`, with the class in the Members table, its filter and CSV (§5.2); teams that Active members join (at once, by asking a lead, or only when a Membership Admin adds them), each with its own description, question for people asking, size limit, members' link, colour and symbol, created, renamed and archived by Membership Admins with a first lead, and run by their leads, who decide requests, remove members and make co-leads, always keeping one lead; ledgered as `team.changed` and `team.member_changed` (§5.7); members' candidacies for public office, each declaration and change approved by a Membership Admin before the public Candidates page shows it, on a Google map of its Census district (§5.8; the map needs a Terraform apply for its key); a sign-in log for System Admins and Auditors, each sign-in with its login, method, second factor, address and browser, kept 180 days and never ledgered, with Identity Platform's request logs (every attempt, failed ones included) kept as long in their own log bucket, and Google Analytics 4 on the public pages once a System Admin sets a measurement ID, never on the ballot, receipts, sign-in, account or admin pages, ledgered as `analytics.changed` (§10.7); search engines: robots.txt and a sitemap from the api, open only in prod at the site's own address, `noindex` on the api and on pages behind sign-in, a description and canonical link per page, and link preview tags with a share card (§15); a Reddit-style forum for Active members, discussions and proposals with threaded comments and private up and down votes (hot, new and top), moderated by Membership Admins with reasons and reports and ledgered as `forum.moderated`, from which an Election Admin puts a proposal on a draft election's ballot (§5.9). *Still to do:* a roll criterion on the Core Ideals answer (§6.3); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |

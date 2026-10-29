@@ -4,7 +4,7 @@ import { passRuleSchema, quorumSchema } from '../election-api.js';
 import type { LedgerEvent } from '../ledger-events.js';
 
 /**
- * The forum (design §5.8): Active members post discussions and proposals, reply in threads and vote posts and comments
+ * The forum (design §5.9): Active members post discussions and proposals, reply in threads and vote posts and comments
  * up or down, Reddit-style. Each member has one vote per post or comment, which they can change or take back; everyone
  * sees the score, nobody sees who voted. Membership Admins moderate: remove (with a reason the author sees) and restore
  * posts and comments, lock and pin threads. An Election Admin can put a proposal on a draft election's ballot, which

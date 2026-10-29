@@ -17,7 +17,7 @@ import {
 } from './forum.js';
 
 /**
- * What the API shows of the forum (design §5.8, §12). Every Active member sees every visible post and comment, who wrote
+ * What the API shows of the forum (design §5.9, §12). Every Active member sees every visible post and comment, who wrote
  * it and its score, and their own votes, never anyone else's. Of a removed post or comment, its author sees what it said
  * and why it was removed; others see only that it was. Membership Admins at the console see it all, and the reports.
  */

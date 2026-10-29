@@ -4,6 +4,7 @@ import { homeQuoteReady } from './governance/home-quote.js';
 import { hubReady } from './governance/hub.js';
 import { navigationReady, startPath } from './governance/navigation.js';
 import MainLayout from './layouts/MainLayout.vue';
+import { applyRouteSeo } from './seo.js';
 import { hasRole, session, sessionReady } from './session.js';
 
 declare module 'vue-router' {
@@ -41,10 +42,20 @@ export const router = createRouter({
         { path: 'bylaws/:version?', component: () => import('./pages/BylawsPage.vue') },
         { path: 'results/:id', component: () => import('./pages/ResultsPage.vue') },
         { path: 'offices', component: () => import('./offices/OfficesPage.vue') },
+        // Members running for public office, for everyone; declaring and editing need a sign-in (design §5.8).
+        { path: 'candidates', component: () => import('./candidacies/CandidatesPage.vue') },
+        { path: 'candidates/declare', component: () => import('./candidacies/CandidacyFormPage.vue'), meta: { requiresAuth: true } },
+        {
+          path: 'candidates/:candidacyId/edit',
+          component: () => import('./candidacies/CandidacyFormPage.vue'),
+          props: true,
+          meta: { requiresAuth: true },
+        },
+        { path: 'candidates/:id', component: () => import('./candidacies/CandidatePage.vue') },
         // Teams are for Active members; the pages say so to anyone else signed in (design §5.7).
         { path: 'teams', component: () => import('./teams/TeamsPage.vue'), meta: { requiresAuth: true } },
         { path: 'teams/:teamId', component: () => import('./teams/TeamPage.vue'), meta: { requiresAuth: true } },
-        // The forum is for Active members; its pages say so to anyone else signed in (design §5.8).
+        // The forum is for Active members; its pages say so to anyone else signed in (design §5.9).
         { path: 'forum', component: () => import('./forum/ForumPage.vue'), meta: { requiresAuth: true } },
         { path: 'forum/:postId', component: () => import('./forum/ForumPostPage.vue'), meta: { requiresAuth: true } },
         // Open to anyone signed in: the page tells people without an admin role who it is for.
@@ -61,7 +72,7 @@ export const router = createRouter({
           props: { admin: true },
           meta: { requiresAuth: true, roles: ['membership_admin'] },
         },
-        // A post as moderators see it, and where Election Admins put proposals on ballots (design §5.8).
+        // A post as moderators see it, and where Election Admins put proposals on ballots (design §5.9).
         {
           path: 'admin/forum/posts/:postId',
           component: () => import('./forum/ForumPostPage.vue'),
@@ -115,4 +126,9 @@ router.beforeEach(async (to, from) => {
   // The admin console shows each person their own tools, or says who it is for (it has no roles of its own, so no loop).
   if (to.meta.roles && !hasRole(...to.meta.roles)) return { path: '/admin' };
   return true;
+});
+
+// What search engines are told about the page arrived at (design §15).
+router.afterEach((to, _from, failure) => {
+  if (!failure) applyRouteSeo(to);
 });

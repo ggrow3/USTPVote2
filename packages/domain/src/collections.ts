@@ -17,6 +17,8 @@ export const Collections = {
   bylawsCheckReferences: 'bylaws_check_references',
   profilePhotos: 'profile_photos',
   photoChecks: 'photo_checks',
+  /** `candidacies/{candidacyId}`: members running for public office, reviewed before they are public (design §5.8). */
+  candidacies: 'candidacies',
   positions: 'positions',
   positionTerms: 'position_terms',
   /** `teams/{teamId}`: working groups members join (design §5.7). */
@@ -25,7 +27,7 @@ export const Collections = {
   teamMembers: 'team_members',
   /** `team_requests/{teamId}_{accountId}`: each member's latest request to join a team. */
   teamRequests: 'team_requests',
-  /** `forum_posts/{postId}`: discussions and proposals Active members post (design §5.8). */
+  /** `forum_posts/{postId}`: discussions and proposals Active members post (design §5.9). */
   forumPosts: 'forum_posts',
   /** `forum_comments/{commentId}`: comments on posts and replies to them. */
   forumComments: 'forum_comments',
@@ -74,8 +76,16 @@ export const Collections = {
   hub: 'hub',
   /** `hub_logos/{sha256}`: logos uploaded for the hub, as stored after re-encoding (design §10.6). */
   hubLogos: 'hub_logos',
+  /** `hub_covers/{sha256}`: cover banners uploaded for the hub, as stored after re-encoding (design §10.6). */
+  hubCovers: 'hub_covers',
+  /** `hub_backgrounds/{sha256}`: background photos uploaded for the pages, as stored after re-encoding (§10.6). */
+  hubBackgrounds: 'hub_backgrounds',
   /** `hub_clicks/{target}`: how often each hub link was followed, in total and per day; nothing about who (§10.6). */
   hubClicks: 'hub_clicks',
+  /** `sign_ins/{uid}_{authTime}`: each sign-in the api saw, with its address; expires (design §10.7). */
+  signIns: 'sign_ins',
+  /** `site_analytics/current`: the site's Google Analytics measurement ID, if any (design §10.7). */
+  siteAnalytics: 'site_analytics',
   // notifications (design §6.8)
   notices: 'notices',
   noticeOutbox: 'notice_outbox',

@@ -4,7 +4,7 @@ import type { ForumPostView, ForumVoteValue } from 'ustp-domain';
 import { ago, ballotLine, commentsLine, goneText, KIND_LABELS } from './forum-text.js';
 import VoteButtons from './VoteButtons.vue';
 
-/** One post in a list (design §5.8): its votes beside it, its title, kind, who posted it and when, and the start of its text. */
+/** One post in a list (design §5.9): its votes beside it, its title, kind, who posted it and when, and the start of its text. */
 const props = defineProps<{
   post: ForumPostView;
   /** Its page: the member's, or the console's. */

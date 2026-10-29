@@ -18,7 +18,7 @@ import type {
 import { api } from '../api.js';
 
 /**
- * The forum context's API (design §5.8, §12): the only place its routes are written. Active members use `/v1/forum`;
+ * The forum context's API (design §5.9, §12): the only place its routes are written. Active members use `/v1/forum`;
  * Membership Admins (moderating) and Election Admins (putting proposals on ballots) use `/v1/admin/forum`.
  */
 

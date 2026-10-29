@@ -13,8 +13,18 @@ import { HomeQuoteAdminController, HomeQuoteService, PublicHomeQuoteController }
 import { DiscordLiveService, HubAdminController, HubService, PublicHubController } from '../administration/hub.js';
 import { NavigationAdminController, NavigationService, PublicNavigationController } from '../administration/navigation.js';
 import { RoleChanges } from '../administration/role-changes.js';
+import { SearchEnginesController } from '../administration/search-engines.js';
+import { SecurityController, SignInLogService } from '../security/sign-in-log.js';
+import { PublicSiteAnalyticsController, SiteAnalyticsAdminController, SiteAnalyticsService } from '../security/site-analytics.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { BylawsChecksController } from '../bylaws-check/bylaws-checks.controller.js';
+import {
+  CandidaciesAdminController,
+  CandidaciesController,
+  PublicCandidaciesController,
+  PublicDistrictsController,
+} from '../candidacies/candidacies.controller.js';
+import { CANDIDACIES_PROVIDERS } from '../candidacies/providers.js';
 import { BylawsChecksService } from '../bylaws-check/bylaws-checks.service.js';
 import { AnthropicKey } from '../claude-checks/anthropic-key.js';
 import { AnthropicKeyAdminService, AnthropicKeyController } from '../claude-checks/anthropic-key-admin.js';
@@ -64,9 +74,10 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
  * Client-facing API (design §12). Every route requires a verified sign-in unless marked @Public().
  * M1: accounts, registration, membership administration, profile photos, roles and approvals, auth switches, ledger.
  * M2: election setup, rolls, scheduling and cancellation; the published ledger (blocks, keys, proofs, anchors).
- * M3: voting. M4: results, certification, offices and terms; teams (design §5.7), the forum (§5.8). Testing mode: test personas and demo elections (design
- * §10.4). M5: who sees which link (design §10.5), the home page hub (§10.6); the platform consistency check (design
- * §5.5), the election setup check (§6.9) and the Anthropic API key (design §5.6).
+ * M3: voting. M4: results, certification, offices and terms; teams (design §5.7), the forum (§5.9). Testing mode: test personas and demo elections (design
+ * §10.4). M5: who sees which link (design §10.5), the home page hub (§10.6), robots.txt and the sitemap (§15); the
+ * platform consistency check (design §5.5), the election setup check (§6.9) and the Anthropic API key (design §5.6);
+ * candidacies for public office and their districts' map (design §5.8).
  */
 @Module({
   imports: [CoreModule],
@@ -93,6 +104,10 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     PublicElectionsController,
     PositionsController,
     PublicPositionsController,
+    CandidaciesController,
+    CandidaciesAdminController,
+    PublicCandidaciesController,
+    PublicDistrictsController,
     TeamsController,
     TeamsAdminController,
     ForumController,
@@ -108,6 +123,10 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     HomeQuoteAdminController,
     PublicHubController,
     HubAdminController,
+    SearchEnginesController,
+    SecurityController,
+    PublicSiteAnalyticsController,
+    SiteAnalyticsAdminController,
     AuditController,
     PublicLedgerController,
     PersonasController,
@@ -134,6 +153,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     RoleChanges,
     PositionApprovals,
     PositionsService,
+    ...CANDIDACIES_PROVIDERS,
     ...TEAMS_PROVIDERS,
     ...FORUM_PROVIDERS,
     ApprovalsService,
@@ -141,6 +161,8 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     HomeQuoteService,
     HubService,
     DiscordLiveService,
+    SignInLogService,
+    SiteAnalyticsService,
     PersonasService,
     DemoElectionsService,
     CourseService,

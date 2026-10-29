@@ -19,7 +19,7 @@ import { Firebase } from '../infra/firebase.js';
 const SORT_FIELDS: Readonly<Record<ForumSort, keyof ForumPostRecord>> = { hot: 'hot', new: 'createdAt', top: 'score' };
 
 /**
- * Storage of the forum (design §5.8, §11): `forum_posts`, `forum_comments`, `forum_votes` and `forum_reports`. Only the
+ * Storage of the forum (design §5.9, §11): `forum_posts`, `forum_comments`, `forum_votes` and `forum_reports`. Only the
  * forum context uses it. A list is one query on the `feeds` a post is in, ordered by its sort's field (composite
  * indexes in `firestore.indexes.json`); post and comment IDs are UUIDv7, so ID order is the order they were made.
  */

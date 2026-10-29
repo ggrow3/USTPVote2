@@ -29,6 +29,9 @@ module "ustpvote" {
   consistency_check_enabled = var.consistency_check_enabled
   election_check_enabled    = var.election_check_enabled
 
+  # The Candidates page's Google map (design §5.8; README "Candidates map").
+  maps_enabled = var.maps_enabled
+
   # Election notices (design §6.8; README "Election notices").
   web_origin           = var.web_origin
   mail_transport       = var.mail_transport

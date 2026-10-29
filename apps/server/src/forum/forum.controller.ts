@@ -31,7 +31,7 @@ const member = (ctx: RequestContext) => memberCaller(requireAccount(ctx));
 const atConsole = (ctx: RequestContext) => consoleCaller(ctx, requireAccount(ctx));
 
 /**
- * The forum for Active members (design §5.8): read the lists and threads, post discussions and proposals, comment and
+ * The forum for Active members (design §5.9): read the lists and threads, post discussions and proposals, comment and
  * reply, vote posts and comments up or down, report them to Membership Admins, and change or delete their own.
  */
 @Controller('v1/forum')
@@ -107,7 +107,7 @@ export class ForumController {
 }
 
 /**
- * The forum at the console (design §5.8). Membership Admins see removed posts and comments and the reports, and remove,
+ * The forum at the console (design §5.9). Membership Admins see removed posts and comments and the reports, and remove,
  * restore, lock and pin; Election Admins read the forum without needing a membership and put proposals on ballots.
  */
 @Controller('v1/admin/forum')
@@ -148,7 +148,7 @@ export class ForumAdminController {
     await this.forum.dismiss(atConsole(ctx), body);
   }
 
-  /** Puts the proposal on a draft election as a proposal question (design §5.8, §6.4). */
+  /** Puts the proposal on a draft election as a proposal question (design §5.9, §6.4). */
   @Post('posts/:postId/ballot')
   @Roles('election_admin')
   ballot(@Ctx() ctx: RequestContext, @Param('postId') postId: string, @Body(new ZodPipe(forumBallotSchema)) body: ForumBallotInput) {

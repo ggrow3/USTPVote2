@@ -9,7 +9,7 @@ import type {
   ForumState,
 } from 'ustp-domain';
 
-/** Wording for the forum (design §5.8). */
+/** Wording for the forum (design §5.9). */
 
 export const SORT_LABELS: Readonly<Record<ForumSort, string>> = { hot: 'Hot', new: 'New', top: 'Top' };
 export const SORT_ICONS: Readonly<Record<ForumSort, string>> = { hot: 'local_fire_department', new: 'schedule', top: 'trending_up' };

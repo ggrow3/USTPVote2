@@ -52,7 +52,7 @@ import { LedgerService } from '../ledger/ledger.service.js';
 import { MemberDirectory } from '../membership/member-directory.js';
 import { ForumRepository } from './forum.repository.js';
 
-/** Who is calling: an Active member (`/v1/forum`), or someone at the console (`/v1/admin/forum`; design §5.8). */
+/** Who is calling: an Active member (`/v1/forum`), or someone at the console (`/v1/admin/forum`; design §5.9). */
 export interface ForumCaller extends ForumViewer {
   /** At the console: no membership needed, since the route checked the role. */
   readonly admin: boolean;
@@ -61,7 +61,7 @@ export interface ForumCaller extends ForumViewer {
 const DAY_MS = 86_400_000;
 
 /**
- * The forum (design §5.8). Active members post, comment and vote through `/v1/forum`; Membership Admins moderate and
+ * The forum (design §5.9). Active members post, comment and vote through `/v1/forum`; Membership Admins moderate and
  * Election Admins put proposals on ballots through `/v1/admin/forum`. Each change runs in one transaction that re-reads
  * what it changes; moderation is ledgered with it (`forum.moderated`), posts, comments and votes are not.
  */
@@ -266,7 +266,7 @@ export class ForumService {
   }
 
   /**
-   * An Election Admin puts a proposal on a draft election (design §5.8, §6.4): its title and text are frozen as a
+   * An Election Admin puts a proposal on a draft election (design §5.9, §6.4): its title and text are frozen as a
    * proposal snapshot naming the post as its source, a proposal question pointing at it is added to the election, and
    * the post records the election. Each step is the election editor's own, with its checks (a draft, no recusal).
    */

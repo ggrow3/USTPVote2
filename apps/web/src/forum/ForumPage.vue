@@ -13,7 +13,7 @@ import PostCard from './PostCard.vue';
 import PostEditor from './PostEditor.vue';
 
 /**
- * The forum (design §5.8), for Active members: discussions and proposals, hot, new or top first, with pinned posts on
+ * The forum (design §5.9), for Active members: discussions and proposals, hot, new or top first, with pinned posts on
  * top, and a new post. The sort and list are in the address, so a link or the back button keeps them.
  */
 usePageTitle('Forum');
