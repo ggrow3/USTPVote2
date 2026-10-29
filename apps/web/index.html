@@ -3,10 +3,29 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="description" content="USTP member registration and voting" />
+    <meta
+      name="description"
+      content="The U.S. Transhumanist Party's member site: apply to join, vote in party elections, check your ballot receipt, and read the bylaws, offices and certified results."
+    />
     <meta name="theme-color" content="#bd4e00" />
     <meta name="color-scheme" content="light dark" />
     <meta name="apple-mobile-web-app-title" content="USTP Vote" />
+    <!--
+      Link previews (Open Graph, X). Their crawlers read this file as served and run no script, so every page shares
+      these; the build makes the image's address absolute (vite.config.ts, design §15).
+    -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="USTP Vote" />
+    <meta property="og:title" content="USTP Vote · U.S. Transhumanist Party" />
+    <meta
+      property="og:description"
+      content="The U.S. Transhumanist Party's member site: apply to join, vote in party elections, check your ballot receipt, and read the bylaws, offices and certified results."
+    />
+    <meta property="og:image" content="%SITE_ORIGIN%/icons/share-card.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="A ticked ballot box, white on orange" />
+    <meta name="twitter:card" content="summary_large_image" />
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" href="/icons/favicon-32.png" type="image/png" sizes="32x32" />
     <link rel="icon" href="/icons/icon.svg" type="image/svg+xml" />

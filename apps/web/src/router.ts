@@ -4,6 +4,7 @@ import { homeQuoteReady } from './governance/home-quote.js';
 import { hubReady } from './governance/hub.js';
 import { navigationReady, startPath } from './governance/navigation.js';
 import MainLayout from './layouts/MainLayout.vue';
+import { applyRouteSeo } from './seo.js';
 import { hasRole, session, sessionReady } from './session.js';
 
 declare module 'vue-router' {
@@ -115,4 +116,9 @@ router.beforeEach(async (to, from) => {
   // The admin console shows each person their own tools, or says who it is for (it has no roles of its own, so no loop).
   if (to.meta.roles && !hasRole(...to.meta.roles)) return { path: '/admin' };
   return true;
+});
+
+// What search engines are told about the page arrived at (design §15).
+router.afterEach((to, _from, failure) => {
+  if (!failure) applyRouteSeo(to);
 });

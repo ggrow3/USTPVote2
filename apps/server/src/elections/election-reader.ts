@@ -4,6 +4,7 @@ import {
   buildDefinition,
   Collections,
   ElectionCollections,
+  isRehearsalRoll,
   type CandidateRecord,
   type ContestRecord,
   type ElectionDefinition,
@@ -58,6 +59,25 @@ export class ElectionReader {
   async inState(state: ElectionState): Promise<ElectionRecord[]> {
     const snap = await this.firebase.db.collection(Collections.elections).where('state', '==', state).get();
     return snap.docs.map((d) => d.data() as ElectionRecord);
+  }
+
+  /**
+   * Certified elections other than rehearsals (design §10.4), whose results stay public for good: what the sitemap
+   * lists (§15). A rehearsal is known by its roll, of which only the criteria are read.
+   */
+  async certifiedResults(): Promise<{ electionId: string; certifiedAt: string | null }[]> {
+    const db = this.firebase.db;
+    const snap = await db.collection(Collections.elections).where('state', '==', 'certified').select('certifiedAt', 'rollSnapshotId').get();
+    const elections = snap.docs.map((d) => ({ electionId: d.id, ...(d.data() as Pick<ElectionRecord, 'certifiedAt' | 'rollSnapshotId'>) }));
+    const rollIds = [...new Set(elections.map((e) => e.rollSnapshotId).filter((id): id is string => !!id))];
+    const rolls = rollIds.length
+      ? await db.getAll(...rollIds.map((id) => db.collection(Collections.eligibilitySnapshots).doc(id)), { fieldMask: ['criteria'] })
+      : [];
+    const rehearsals = new Set(rolls.filter((r) => isRehearsalRoll((r.data() as RollSnapshotRecord | undefined)?.criteria)).map((r) => r.id));
+    return elections
+      .filter((e) => !e.rollSnapshotId || !rehearsals.has(e.rollSnapshotId))
+      .map(({ electionId, certifiedAt }) => ({ electionId, certifiedAt }))
+      .sort((a, b) => (b.certifiedAt ?? '').localeCompare(a.certifiedAt ?? ''));
   }
 
   /** The roll the election points at (approved before scheduling, design §6.3), or null for none. */

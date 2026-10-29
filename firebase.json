@@ -12,6 +12,8 @@
     "rewrites": [
       { "source": "/v1/**", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/mcp", "run": { "serviceId": "mcp", "region": "us-central1" } },
+      { "source": "/robots.txt", "run": { "serviceId": "api", "region": "us-central1" } },
+      { "source": "/sitemap.xml", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "**", "destination": "/index.html" }
     ],
     "headers": [

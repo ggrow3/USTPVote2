@@ -1,5 +1,5 @@
 // Draws the app icon (a ticked ballot box in the header's primary orange) as SVG and as the PNG sizes browsers and
-// install prompts ask for, with no image libraries: shapes are signed-distance functions, supersampled for
+// install prompts ask for, plus the link preview card, with no image libraries: shapes are signed-distance functions, supersampled for
 // anti-aliasing, and the PNGs are encoded with node:zlib. Run `node apps/web/scripts/make-icons.mjs` after changing it;
 // the output in apps/web/public/icons is committed.
 import { mkdirSync, writeFileSync } from 'node:fs';
@@ -52,22 +52,24 @@ function sample(x, y, maskable) {
   return [background, inBox || inTick];
 }
 
-function rasterize(size, maskable) {
+/** The 512 canvas fills the image's height, centred across its width (a wider image is all background either side). */
+function rasterize(width, height, maskable) {
   const SS = 4; // 4 × 4 samples per pixel
-  const rgba = Buffer.alloc(size * size * 4);
-  for (let py = 0; py < size; py++) {
-    for (let px = 0; px < size; px++) {
+  const rgba = Buffer.alloc(width * height * 4);
+  const left = (width - height) / 2;
+  for (let py = 0; py < height; py++) {
+    for (let px = 0; px < width; px++) {
       let bg = 0;
       let fg = 0;
       for (let sy = 0; sy < SS; sy++) {
         for (let sx = 0; sx < SS; sx++) {
-          const [b, f] = sample(((px + (sx + 0.5) / SS) * 512) / size, ((py + (sy + 0.5) / SS) * 512) / size, maskable);
+          const [b, f] = sample(((px - left + (sx + 0.5) / SS) * 512) / height, ((py + (sy + 0.5) / SS) * 512) / height, maskable);
           if (f) fg++;
           else if (b) bg++;
         }
       }
       const alpha = (bg + fg) / (SS * SS);
-      const i = (py * size + px) * 4;
+      const i = (py * width + px) * 4;
       for (let k = 0; k < 3; k++) rgba[i + k] = alpha ? Math.round((BACKGROUND[k] * bg + WHITE[k] * fg) / (bg + fg)) : 0;
       rgba[i + 3] = Math.round(alpha * 255);
     }
@@ -75,7 +77,7 @@ function rasterize(size, maskable) {
   return rgba;
 }
 
-function png(size, rgba) {
+function png(width, height, rgba) {
   const chunk = (type, data) => {
     const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
     const out = Buffer.alloc(body.length + 8);
@@ -85,12 +87,12 @@ function png(size, rgba) {
     return out;
   };
   const header = Buffer.alloc(13);
-  header.writeUInt32BE(size, 0);
-  header.writeUInt32BE(size, 4);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
   header[8] = 8; // bit depth
   header[9] = 6; // RGBA
-  const rows = Buffer.alloc(size * (size * 4 + 1));
-  for (let y = 0; y < size; y++) rgba.copy(rows, y * (size * 4 + 1) + 1, y * size * 4, (y + 1) * size * 4);
+  const rows = Buffer.alloc(height * (width * 4 + 1));
+  for (let y = 0; y < height; y++) rgba.copy(rows, y * (width * 4 + 1) + 1, y * width * 4, (y + 1) * width * 4);
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     chunk('IHDR', header),
@@ -111,6 +113,8 @@ for (const [name, size, maskable] of [
   // iOS draws its own rounded corners and shows transparency as black, so it gets the full square.
   ['apple-touch-icon.png', 180, true],
 ]) {
-  writeFileSync(join(OUT, name), png(size, rasterize(size, maskable)));
+  writeFileSync(join(OUT, name), png(size, size, rasterize(size, size, maskable)));
 }
+// The picture link previews show (Open Graph's 1.91:1, index.html): the icon's mark on the brand orange, edge to edge.
+writeFileSync(join(OUT, 'share-card.png'), png(1200, 630, rasterize(1200, 630, true)));
 console.log(`icons written to ${OUT}`);
