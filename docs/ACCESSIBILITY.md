@@ -285,6 +285,19 @@ test. Keep it current when pages change.
   alerts, a preview on the picture in the current theme, the unsaved changes listed in words ("Hide the quote", "Who
   said it: Lyndon B. Johnson"), and Save disabled while a field is in error.
 
+- **Added 2026-10-28, the new-version banner** (design §15; a production build against a changed `/version.json`,
+  signed out, on the hub and on `/vote`, at 800 and 320 px; Later clicked, the tab order read from the page): when a release has replaced the web
+  app under an open page, a bar says "A new version of USTP Vote is available." with Reload and Later; after a request
+  the api refused because the page is out of date, it says "USTP Vote was updated while this page was open, so that
+  was not saved. Reload the page, then try again.", and the error's toast ends with the same advice. The bar is a
+  `region` named "New version" at the foot of the fixed header, under the menu (on the hub, which has no header, the
+  header then holds only the bar), so it stays in view, Reload and Later come right after the menu in the tab order,
+  and the scroll padding grows with it (2.4.11). Its message is spoken once through the layout's polite live region,
+  without moving focus. Black on light blue `#e3f2fd` (18.39, 10.95 under the header's black focus tint) in both
+  themes; Reload is white on primary (4.94); Later is a flat black button. Later hides the bar for that tab and puts
+  focus on the page's `h1` (2.4.3). At 320 px the message wraps above the buttons and nothing scrolls sideways. Not yet
+  heard in a screen reader.
+
 ## What was fixed
 
 | WCAG 2.2 | Before | Now |

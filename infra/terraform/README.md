@@ -7,8 +7,8 @@ service accounts with least-privilege IAM (§14), the Cloud KMS keys (§7.3, §8
 and Q16 (`us-central1`) are assumed.
 
 Not managed here, and described [below](#manual-steps): Identity Platform (providers, MFA, password policy), adding
-Firebase to the project, the App Check web registration, Firestore rules and indexes, and Firebase Hosting deploys.
-Nothing has been applied to a real project yet.
+Firebase to the project and the App Check web registration. Firestore rules and indexes and the web app on Firebase
+Hosting are deployed by the [release workflow](#release-workflow), with the server, from the same commit.
 
 ## Layout
 
@@ -55,6 +55,9 @@ API-side limits are only checked by Google on the first apply.
 | `ustp-release` | Push to the `ustpvote` Artifact Registry repository | The release workflow builds the server image |
 | | Sign attestations for `ustpvote-reviewed` (attestor key, note, occurrences) | Binary Authorization lets only attested images run |
 | | `run.developer` on `api`, `worker` and `mcp`; act as `ustp-api`, `ustp-worker` and `ustp-mcp` | Rolls the services onto a new image. It cannot change IAM, invokers or keys, nor read Firestore |
+| | Cloud Datastore Index Admin, Firebase Rules Admin (project) | Deploys the Firestore indexes and rules before each roll-out and waits for the indexes. Definitions only: neither reads nor writes a document |
+| | Firebase Hosting Admin (project) | Deploys the web app after each roll-out; also lets the Firebase CLI find the default site, and the release read the Firebase web app's public config for the build (`firebase.projects.get`, `firebase.clients.get`) |
+| | Service Usage Consumer (project) | The Firebase CLI checks that the Firestore API is enabled, billed to the project. It cannot enable or disable an API |
 | | Only reachable from GitHub Actions: `release.yml` on `main`, in the GitHub environment named after this environment, in this repository (by ID) | Workload Identity Federation; there is no key |
 | everyone | Invoke the api and the reporting MCP server; read anchors if `anchors_public_read` | Hosting proxies unauthenticated; the api checks ID and App Check tokens itself, and the MCP server serves only public data |
 | `operator_members` | View services, logs (including KMS Data Access logs), metrics, schedules, key metadata, IAM | Operations without Firestore data or key use (§14) |
@@ -122,6 +125,7 @@ for running the server locally against a real project. Variable names are those 
 | `ELECTION_CHECKER` | in `api_env` / `worker_env`: `claude` when `election_check_enabled`, else `off` | ● | ● |
 | `BYLAWS_CHECK_MODEL`, `CONSISTENCY_CHECK_MODEL`, `ELECTION_CHECK_MODEL` | not set; the server defaults to `claude-opus-5-5` | | (●) |
 | `PORT` | set by Cloud Run (8080) | ● | ● |
+| `BUILD_COMMIT` | not Terraform's: the release workflow bakes the commit into the image; the api reports it so open pages can offer a reload (design §15) | ● | ● |
 
 Never set: `APP_CHECK_ENFORCED`, `ADMIN_MFA_REQUIRED`, `PHOTO_CHECKER`, `SECRET_STORE`, `AUDIT_SIGNER`, `BALLOT_POOL`
 or an emulator host. Every safety switch then keeps its production default (§4). Testing mode (design §10.4) is
@@ -131,8 +135,8 @@ refused twice in prod: the `testing_mode` variable's validation, and the api and
 | Consumer | Output |
 |---|---|
 | Firebase Hosting (`firebase.json` rewrite `run.serviceId` / `run.region`) | `api_service` (`api`, `us-central1`) |
-| Web build (`apps/web/.env.example`) | `VITE_FIREBASE_PROJECT_ID` = the project; the other values come from the Firebase web app and reCAPTCHA key (below) |
-| Release workflow (GitHub environment variables) | `github_environment_variables` (also `image_repository`, `attestor`, `attestor_key_version`, `release_service_account`) |
+| Web build | In the release workflow, `FIREBASE_WEB_APP_ID` and `RECAPTCHA_SITE_KEY` in `github_environment_variables`; the release reads the rest of the web app's public config from Firebase. By hand (`apps/web/.env.example`): `VITE_FIREBASE_PROJECT_ID` = the project, the other values from the Firebase web app and reCAPTCHA key (below) |
+| Release workflow (GitHub environment variables) | `github_environment_variables` (also `image_repository`, `attestor`, `attestor_key_version`, `release_service_account`, `recaptcha_site_key`) |
 | Mirrors and verifiers | `anchors_public_url` |
 | Checks | `api_url`, `worker_url`, `service_accounts`, `tasks_queue` |
 
@@ -180,8 +184,8 @@ Examples use dev; replace `dev` throughout for the others. Run Terraform with an
    gh workflow run release.yml --ref main -f environment=dev -f roll_out=false
    ```
 
-   It builds the image from `main`, pushes it to `image_repository` as `…/server`, attests it, and prints the digest in
-   the run's summary.
+   It builds the image from `main`, pushes it to `image_repository` as `…/server`, attests it, deploys the Firestore
+   rules and indexes and waits until every index is ready, and prints the digest in the run's summary.
 
 5. **Second apply, with the image.** Creates `api` (public), `worker` (internal, invoker-only) and the `worker-tick`
    job. Put `server_image` in `terraform.tfvars` rather than passing it once: without it, a later apply would try to
@@ -191,11 +195,11 @@ Examples use dev; replace `dev` throughout for the others. Run Terraform with an
    terraform apply -var="server_image=us-central1-docker.pkg.dev/ustpvote2-dev/ustpvote/server@sha256:<digest>"
    ```
 
-6. **Firestore rules and indexes, then Hosting**, from the repository root once the web app is built for this project
-   (see [Firebase Hosting](#firebase-hosting)):
+6. **First full release.** Run the workflow again with roll-out on (the default). It rolls the services onto this
+   commit's image and then deploys the web app to Hosting, which refuses its rewrites until `api` and `mcp` exist:
 
    ```bash
-   npx firebase deploy --project ustpvote2-dev --only firestore,hosting
+   gh workflow run release.yml --ref main -f environment=dev
    ```
 
 7. **Check.** `curl "$(terraform output -raw api_url)/v1/health"` answers, and so does
@@ -217,14 +221,29 @@ Run the release workflow for the environment, from `main`:
 gh workflow run release.yml --ref main -f environment=staging
 ```
 
-It builds the server image from that commit (`apps/server/Dockerfile`), pushes it, attests the digest, rolls the
-`worker`, the `api` and then the reporting MCP server `mcp` onto it with `gcloud run services update`, and checks that
-the api and `mcp` answer. Where `mcp` does not exist yet, the release skips it and its summary gives the
-`terraform apply -var="server_image=…"` that creates it on that image: an older image has no MCP server to start. Terraform
-ignores the services' image, so a later apply neither reverts a release nor needs to know about it; infrastructure
-changes still go through `terraform apply` by someone with Owner rights. To roll back, revert the change on `main` and
-release again, or move both services to an earlier attested digest with
-`gcloud run services update <service> --image=…@sha256:<digest>`.
+One run releases everything from that commit, in this order:
+
+1. **Build.** The web app for this environment (its public config read from the Firebase web app, App Check's site key
+   from `RECAPTCHA_SITE_KEY`, the commit as `VITE_BUILD_COMMIT`), and the server image (`apps/server/Dockerfile`, the
+   commit as `BUILD_COMMIT`), which it pushes and attests. Nothing live has changed yet; it also stops before this if
+   `api`, `worker` or `mcp` is missing.
+2. **Firestore rules and indexes** (`npx firebase deploy --only firestore`), then it waits until every composite and
+   single-field index is `READY` ([`infra/firebase/wait-for-indexes.sh`](../firebase/wait-for-indexes.sh), at most 30
+   minutes; an index needing repair stops it). A query whose index is still building fails with `FAILED_PRECONDITION`,
+   so the new server must not run before its indexes are built. Indexes no longer in `firestore.indexes.json` stay: the
+   older server may still use them; delete them by hand later.
+3. **Services.** It rolls the `worker`, the `api` and then the reporting MCP server `mcp` onto the image with
+   `gcloud run services update`, and checks that the api answers with this commit and that `mcp` answers.
+4. **Hosting** (`npx firebase deploy --only hosting`), last, so a page never runs against an api older than itself;
+   then it checks that the site's `/version.json` and `/v1/health` report this commit. Pages left open notice the new
+   version and offer a reload (design §15, "Version handshake").
+
+If a step fails, the steps after it do not run and the summary says where it stopped; fix the cause and release again
+(every step can be repeated). Terraform ignores the services' image, so a later apply neither reverts a release nor
+needs to know about it; infrastructure changes still go through `terraform apply` by someone with Owner rights. To roll
+back, revert the change on `main` and release again. Moving only the services to an earlier attested digest
+(`gcloud run services update <service> --image=…@sha256:<digest>`) is quicker but leaves Hosting on the newer web app;
+open pages then see the older api and wait rather than offer a reload.
 
 Each environment builds its own image from the same commit, so staging and production run the same code but not
 byte-identical images (builds are not reproducible). Promoting one digest from staging to production, by copying it
@@ -251,8 +270,10 @@ Per environment, once Terraform has been applied (step 2 above):
    terraform output -json github_environment_variables | jq -r 'to_entries[] | "\(.key) \(.value)"' | while read -r name value; do gh variable set "$name" --env dev --body "$value"; done
    ```
 
-   `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_IMAGE`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_RELEASE_SERVICE_ACCOUNT` and
-   `GCP_ATTESTOR_KEY_VERSION`. None is secret.
+   `GCP_PROJECT_ID`, `GCP_REGION`, `GCP_IMAGE`, `GCP_WORKLOAD_IDENTITY_PROVIDER`, `GCP_RELEASE_SERVICE_ACCOUNT`,
+   `GCP_ATTESTOR_KEY_VERSION`, `RECAPTCHA_SITE_KEY` and, once `firebase_web_app_id` is set, `FIREBASE_WEB_APP_ID`.
+   None is secret. Run it again whenever the output changes; a release with roll-out on stops before changing anything
+   while either of the last two is missing.
 
 CI builds the same image on every pull request and starts all three entrypoints (`apps/server/scripts/smoke-image.sh`),
 so a broken Dockerfile shows up before a release.
@@ -321,11 +342,15 @@ factors with `adjacentIntervals: 5` and no SMS (design §4), and the authorized 
 `firebase.json` at the repository root serves `apps/web/dist` and rewrites `/v1/**` to the Cloud Run service `api` and
 `/mcp` to the reporting MCP server `mcp`, both in `us-central1`. Hosting refuses a rewrite to a service that does not
 exist, so deploy it after the apply that creates `mcp`. The file sits at the root because the Firebase CLI only publishes folders inside the one holding
-`firebase.json`. Build the web app for the environment first: write `apps/web/.env.<env>.local` (git-ignored) with the
-web app's config and the `recaptcha_site_key` output (above), then `npm run build -w apps/web -- --mode <env>`. If
-`region` ever changes, change the rewrite with it. Deploy `firestore` and `hosting` only: the deny-all Storage rules apply
-only to buckets linked to Firebase Storage, and the anchors and photos buckets are plain Cloud Storage buckets governed
-by IAM alone.
+`firebase.json`. If `region` ever changes, change the rewrite with it. The [release workflow](#releasing) builds and
+deploys the web app and the Firestore rules and indexes, `firestore` and `hosting` only: the deny-all Storage rules
+apply only to buckets linked to Firebase Storage, and the anchors and photos buckets are plain Cloud Storage buckets
+governed by IAM alone.
+
+By hand, only when the workflow cannot run: write `apps/web/.env.<env>.local` (git-ignored) with the web app's config
+and the `recaptcha_site_key` output (above), `npm run build -w apps/web -- --mode <env>`, then
+`npx firebase deploy --project ustpvote2-<env> --only hosting`, in the same order as a release (Firestore and the
+services first). Such a build has no commit, so its pages never offer a reload.
 
 ### Bucket Lock (production)
 

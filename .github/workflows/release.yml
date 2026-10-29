@@ -1,8 +1,13 @@
 name: Release
 
-# Builds the server image from main, pushes it to the chosen environment's Artifact Registry, attests it for Binary
-# Authorization and rolls the api, worker and reporting MCP server onto it (design §3.4, §14, §15). Run it from the
-# Actions tab or with
+# One release of everything from one commit of main, in the order that keeps the running site working (design §15):
+#   1. build the web app and the server image, push and attest the image: nothing live changes yet;
+#   2. deploy the Firestore rules and indexes and wait until every index is READY (a query whose index is still
+#      building fails with FAILED_PRECONDITION);
+#   3. roll the worker, the api and the reporting MCP server onto the image (design §3.4, §14);
+#   4. deploy the web app to Firebase Hosting, so pages meet the api they were built for; pages already open notice the
+#      new version (the api reports its commit) and offer a reload.
+# Run it from the Actions tab or with
 #   gh workflow run release.yml --ref main -f environment=dev
 # The job runs in the GitHub environment of the same name, whose variables come from that environment's Terraform
 # output github_environment_variables, and whose protection rules decide who may release (infra/terraform/README.md,
@@ -16,7 +21,7 @@ on:
         type: environment
         required: true
       roll_out:
-        description: Roll the services onto the image. Off for an environment's first image, which Terraform's second apply creates the services with.
+        description: Roll the services onto the image and deploy Hosting. Off for an environment's first image, which Terraform's second apply creates the services with.
         type: boolean
         default: true
 
@@ -32,9 +37,14 @@ jobs:
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     environment: ${{ inputs.environment }}
+    timeout-minutes: 75
     permissions:
       contents: read
       id-token: write
+    # -eo pipefail: a failed command anywhere in a pipeline fails the step.
+    defaults:
+      run:
+        shell: bash
     env:
       PROJECT: ${{ vars.GCP_PROJECT_ID }}
       REGION: ${{ vars.GCP_REGION }}
@@ -51,10 +61,57 @@ jobs:
           install_components: beta
       - run: gcloud auth configure-docker "$REGION-docker.pkg.dev" --quiet
 
+      # Hosting rewrites /v1/** to api and /mcp to mcp and refuses a deploy while either is missing, so check before
+      # changing anything. An environment's first image (roll_out off) has no services yet.
+      - name: Check the services exist
+        if: inputs.roll_out
+        run: |
+          for service in worker api mcp; do
+            if ! gcloud run services describe "$service" --project="$PROJECT" --region="$REGION" --format='value(name)' >/dev/null; then
+              echo "::error::There is no $service service. Apply Terraform with server_image first (infra/terraform/README.md, \"Bringing an environment up\"), or release with roll_out off."
+              exit 1
+            fi
+          done
+
+      # The Firebase CLI (deploys) and the web app's build.
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      # Spec §7: locked dependencies, no install scripts.
+      - run: npm ci --ignore-scripts
+
+      # The public Firebase config comes from the web app itself (Hosting Admin may read it) and App Check's site key
+      # from Terraform, so nothing is copied by hand or committed. VITE_BUILD_COMMIT is what the page compares with the
+      # commit the api reports.
+      - name: Build the web app
+        if: inputs.roll_out
+        env:
+          WEB_APP_ID: ${{ vars.FIREBASE_WEB_APP_ID }}
+          VITE_RECAPTCHA_ENTERPRISE_SITE_KEY: ${{ vars.RECAPTCHA_SITE_KEY }}
+          VITE_BUILD_COMMIT: ${{ github.sha }}
+        run: |
+          if [ -z "$WEB_APP_ID" ] || [ -z "$VITE_RECAPTCHA_ENTERPRISE_SITE_KEY" ]; then
+            echo "::error::The GitHub environment needs FIREBASE_WEB_APP_ID and RECAPTCHA_SITE_KEY from Terraform's github_environment_variables (infra/terraform/README.md, \"Release workflow\")."
+            exit 1
+          fi
+          config=$(curl -fsS -H "Authorization: Bearer $(gcloud auth print-access-token)" \
+            "https://firebase.googleapis.com/v1beta1/projects/-/webApps/$WEB_APP_ID/config")
+          VITE_FIREBASE_API_KEY=$(jq -er .apiKey <<<"$config")
+          VITE_FIREBASE_AUTH_DOMAIN=$(jq -er .authDomain <<<"$config")
+          VITE_FIREBASE_PROJECT_ID=$(jq -er .projectId <<<"$config")
+          VITE_FIREBASE_APP_ID=$(jq -er .appId <<<"$config")
+          if [ "$VITE_FIREBASE_PROJECT_ID" != "$PROJECT" ]; then
+            echo "::error::FIREBASE_WEB_APP_ID belongs to $VITE_FIREBASE_PROJECT_ID, not $PROJECT."
+            exit 1
+          fi
+          export VITE_FIREBASE_API_KEY VITE_FIREBASE_AUTH_DOMAIN VITE_FIREBASE_PROJECT_ID VITE_FIREBASE_APP_ID
+          npm run build -w packages/tally -w packages/audit -w packages/domain -w apps/web
+
       - uses: docker/setup-buildx-action@v4
       # A clean build (no cache) of exactly this commit. Tags are immutable in the repository, so each run gets its own.
       # No provenance or SBOM manifests: the pushed digest is the plain image Cloud Run runs and Binary Authorization
-      # checks.
+      # checks. BUILD_COMMIT is what the api reports (GET /v1/health, the X-Build-Commit header).
       - id: build
         uses: docker/build-push-action@v7
         with:
@@ -62,6 +119,7 @@ jobs:
           file: apps/server/Dockerfile
           push: true
           tags: ${{ vars.GCP_IMAGE }}:${{ github.sha }}-${{ github.run_id }}
+          build-args: BUILD_COMMIT=${{ github.sha }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
@@ -80,64 +138,82 @@ jobs:
             --attestor-project="$PROJECT" \
             --keyversion="$KEY_VERSION"
 
-      # The worker first: a newer worker reading what the older api wrote is the usual direction of compatibility.
-      - name: Roll the worker and api onto the image
+      # Before the services: the new server may query with an index the old one did not need. Indexes in the project but
+      # not in the file stay (deleting them needs --force), so the running server keeps every index it uses meanwhile.
+      # The rules deny all client access; the server's Admin SDK does not go through them.
+      - name: Deploy the Firestore rules and indexes
+        run: npx firebase deploy --only firestore --project "$PROJECT" --non-interactive
+      - name: Wait until every index is ready
+        timeout-minutes: 35
+        run: bash infra/firebase/wait-for-indexes.sh "$PROJECT" 1800
+
+      # The worker first: a newer worker reading what the older api wrote is the usual direction of compatibility. The
+      # reporting MCP server (design §3.4) reads only the public api, so it follows the api.
+      - name: Roll the worker, api and MCP server onto the image
         if: inputs.roll_out
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
         run: |
-          for service in worker api; do
+          for service in worker api mcp; do
             gcloud run services update "$service" --project="$PROJECT" --region="$REGION" --image="$IMAGE@$DIGEST" --quiet
           done
 
-      # The reporting MCP server (design §3.4) reads only the public api, so it follows the api. Terraform creates it
-      # with the first image that holds it; until then there is nothing to roll.
-      - name: Roll the reporting MCP server onto the image
-        id: mcp
-        if: inputs.roll_out
-        env:
-          DIGEST: ${{ steps.build.outputs.digest }}
-        run: |
-          if gcloud run services describe mcp --project="$PROJECT" --region="$REGION" --format='value(name)' >/dev/null 2>&1; then
-            gcloud run services update mcp --project="$PROJECT" --region="$REGION" --image="$IMAGE@$DIGEST" --quiet
-            echo "rolled=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "rolled=false" >> "$GITHUB_OUTPUT"
-          fi
-
       - name: Check the api and the MCP server answer
         if: inputs.roll_out
-        env:
-          MCP_ROLLED: ${{ steps.mcp.outputs.rolled }}
         run: |
           url=$(gcloud run services describe api --project="$PROJECT" --region="$REGION" --format='value(status.url)')
           # Not /healthz: Cloud Run's front end reserves some paths ending in "z".
-          curl -fsS --retry 5 --retry-all-errors "$url/v1/health"
-          if [ "$MCP_ROLLED" = true ]; then
-            url=$(gcloud run services describe mcp --project="$PROJECT" --region="$REGION" --format='value(status.url)')
-            curl -fsS --retry 5 --retry-all-errors "$url/health"
+          commit=$(curl -fsS --retry 5 --retry-all-errors "$url/v1/health" | jq -r .commit)
+          if [ "$commit" != "$GITHUB_SHA" ]; then
+            echo "::error::The api reports commit $commit, not $GITHUB_SHA."
+            exit 1
           fi
+          url=$(gcloud run services describe mcp --project="$PROJECT" --region="$REGION" --format='value(status.url)')
+          curl -fsS --retry 5 --retry-all-errors "$url/health"
+
+      # Last, so a page never runs against an api older than itself. Open pages see the api's new commit and offer a
+      # reload; the new service worker takes over at once.
+      - name: Deploy the web app to Firebase Hosting
+        if: inputs.roll_out
+        run: npx firebase deploy --only hosting --project "$PROJECT" --non-interactive --message "Release $GITHUB_SHA (run $GITHUB_RUN_ID)"
+      - name: Check the site serves this commit
+        if: inputs.roll_out
+        run: |
+          site="https://$PROJECT.web.app"
+          for path in version.json v1/health; do
+            for attempt in 1 2 3 4 5 6; do
+              commit=$(curl -fsS --retry 5 --retry-all-errors -H 'Cache-Control: no-cache' "$site/$path" | jq -r .commit)
+              [ "$commit" = "$GITHUB_SHA" ] && continue 2
+              echo "$site/$path reports commit $commit (attempt $attempt); trying again in 10 s."
+              sleep 10
+            done
+            echo "::error::$site/$path reports commit $commit, not $GITHUB_SHA."
+            exit 1
+          done
 
       - name: Summary
+        if: always()
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
           RELEASE_ENVIRONMENT: ${{ inputs.environment }}
           ROLLED_OUT: ${{ inputs.roll_out }}
-          MCP_ROLLED: ${{ steps.mcp.outputs.rolled }}
+          JOB_STATUS: ${{ job.status }}
         run: |
           {
-            echo "### $RELEASE_ENVIRONMENT"
+            echo "### $RELEASE_ENVIRONMENT ($JOB_STATUS)"
             echo
             echo "- Commit: \`$GITHUB_SHA\`"
-            echo "- Image (attested): \`$IMAGE@$DIGEST\`"
-            if [ "$ROLLED_OUT" = true ]; then
-              echo "- The api and worker run it."
-              if [ "$MCP_ROLLED" = true ]; then
-                echo "- The reporting MCP server runs it."
-              else
-                echo "- No reporting MCP server yet: \`terraform apply -var=\"server_image=$IMAGE@$DIGEST\"\` creates it on this image."
-              fi
+            if [ -n "$DIGEST" ]; then
+              echo "- Image (attested): \`$IMAGE@$DIGEST\`"
+            fi
+            if [ "$JOB_STATUS" != success ]; then
+              echo "- Stopped at the failed step; the steps after it did not run (Actions log)."
+            elif [ "$ROLLED_OUT" = true ]; then
+              echo "- Firestore rules and indexes deployed, every index ready."
+              echo "- The worker, api and reporting MCP server run the image."
+              echo "- The web app on Hosting is built from the same commit."
             else
-              echo "- Not rolled out. For a first image: \`terraform apply -var=\"server_image=$IMAGE@$DIGEST\"\`"
+              echo "- Firestore rules and indexes deployed, every index ready."
+              echo "- Not rolled out. For a first image: \`terraform apply -var=\"server_image=$IMAGE@$DIGEST\"\`, then release again with roll_out on."
             fi
           } >> "$GITHUB_STEP_SUMMARY"

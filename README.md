@@ -27,12 +27,13 @@ Auditor can ask Claude, once per version of an election, whether its rules match
 seats, terms); once the election is scheduled, every member sees those notes beside the contests on the ballot and
 results (design §6.9). The web app is an
 installable PWA and has had an accessibility pass. For deployment there are Terraform for dev, staging and prod (validated; applied for
-dev only), the server image (`apps/server/Dockerfile`) and a release workflow that builds, attests and rolls it out
-with a keyless CI identity; CI builds and starts the image on every pull request. The rest of M5 (the
-"you voted" email, load test, reviews) is next. Dev (`ustpvote2-dev`) is up: Terraform applied, Identity Platform
-configured, the api and worker running a released image on Cloud Run with the worker ticking every minute, and the web
-app on Firebase Hosting at https://ustpvote2-dev.web.app (deployed as the
-[infra README](infra/terraform/README.md#firebase-hosting) describes). Authenticator-app (TOTP) setup, Cloud Vision
+dev only), the server image (`apps/server/Dockerfile`) and a release workflow with a keyless CI identity that releases
+everything from one commit in one run: the Firestore rules and indexes (waiting until every index is built), then the
+api, worker and MCP server, then the web app on Firebase Hosting; pages left open across a release offer a reload
+([Releasing](infra/terraform/README.md#releasing)). CI builds and starts the image and lints the workflows on every
+pull request. The rest of M5 (the "you voted" email, load test, reviews) is next. Dev (`ustpvote2-dev`) is up:
+Terraform applied, Identity Platform configured, the api and worker running a released image on Cloud Run with the
+worker ticking every minute, and the web app on Firebase Hosting at https://ustpvote2-dev.web.app. Authenticator-app (TOTP) setup, Cloud Vision
 photo checks and Cloud KMS have no emulator and have not been exercised in dev yet.
 
 ## Documents
@@ -82,6 +83,7 @@ npm test
 | `node packages/verify/dist/cli.js --election <id>` | Verifies the local stack's ledger and an election from public data ([details](packages/verify/README.md)) |
 | `npm run dev:web` | Vite dev server; proxies `/v1` to the local api |
 | `docker build -f apps/server/Dockerfile -t ustp-server .` | Builds the server image (api by default; `node dist/main-worker.js` for the worker), as CI and the [release workflow](infra/terraform/README.md#release-workflow) do |
+| `gh workflow run release.yml --ref main -f environment=dev` | Releases `main` to dev: Firestore rules and indexes, the services, then Hosting ([Releasing](infra/terraform/README.md#releasing)) |
 
 The server uses NestJS decorators with emitted metadata, so it is compiled with `tsc` rather than run through a
 type-stripping loader.

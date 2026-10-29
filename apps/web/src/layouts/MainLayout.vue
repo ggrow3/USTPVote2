@@ -3,11 +3,13 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, r
 import { useRoute, useRouter } from 'vue-router';
 import { focusElement, liveRegions } from '../a11y.js';
 import { acting } from '../acting.js';
+import UpdateBanner from '../components/UpdateBanner.vue';
 import { usingEmulators } from '../firebase.js';
 import { navigationState, shown } from '../governance/navigation.js';
 import { MENU_LABELS } from '../governance/navigation-text.js';
 import { session, signOut } from '../session.js';
 import { toggleTheme } from '../theme.js';
+import { update } from '../update.js';
 import { linksInRow } from './menu-fit.js';
 
 const TestingBar = defineAsyncComponent(() => import('../components/TestingBar.vue'));
@@ -29,6 +31,8 @@ const isActive = (to: string) => route.path === to || route.path.startsWith(`${t
 
 /** The hub is a page of its own (design §10.6): no header or menu, and its own share and theme buttons. */
 const bare = computed(() => !!route.meta.bare);
+/** The header also holds the new-version banner (design §15), so the hub gets one while a reload is offered. */
+const headerShown = computed(() => !bare.value || !!update.banner);
 
 /**
  * The bar keeps one row (WCAG 1.4.10 at 320 px): the links that do not fit go behind a More button at its end, measured
@@ -109,88 +113,91 @@ watch(() => route.path, focusMain, { flush: 'post' });
 function onHeaderResize({ height }: { height: number }) {
   document.documentElement.style.scrollPaddingTop = `${height + 8}px`;
 }
-watch(bare, (now) => now && (document.documentElement.style.scrollPaddingTop = ''));
+watch(headerShown, (now) => now || (document.documentElement.style.scrollPaddingTop = ''));
 </script>
 
 <template>
   <q-layout view="hHh lpR fFf">
     <a v-if="!bare" href="#main" class="ustp-skip-link" @click.prevent="focusMain">Skip to main content</a>
-    <q-header v-if="!bare" elevated class="bg-primary text-white">
+    <q-header v-if="headerShown" elevated class="bg-primary text-white">
       <q-resize-observer @resize="onHeaderResize" />
-      <q-toolbar>
-        <q-toolbar-title shrink style="flex: none">
-          <router-link to="/" class="text-white" style="text-decoration: none">USTP Vote</router-link>
-        </q-toolbar-title>
-        <q-space />
-        <q-badge v-if="usingEmulators" color="orange" text-color="black" label="Local emulators" class="q-mr-md gt-xs" />
-        <q-btn
-          flat
-          round
-          :icon="$q.dark.isActive ? 'dark_mode' : 'light_mode'"
-          aria-label="Dark theme"
-          :aria-pressed="$q.dark.isActive ? 'true' : 'false'"
-          @click="toggleTheme"
-        />
-        <template v-if="session.ready">
-          <!-- On phones only the icon shows, so the title is not squeezed out (WCAG 1.4.10). -->
-          <q-btn-dropdown
-            v-if="session.user"
+      <template v-if="!bare">
+        <q-toolbar>
+          <q-toolbar-title shrink style="flex: none">
+            <router-link to="/" class="text-white" style="text-decoration: none">USTP Vote</router-link>
+          </q-toolbar-title>
+          <q-space />
+          <q-badge v-if="usingEmulators" color="orange" text-color="black" label="Local emulators" class="q-mr-md gt-xs" />
+          <q-btn
             flat
-            no-caps
-            icon="account_circle"
-            :label="$q.screen.gt.xs ? who : undefined"
-            :aria-label="`Account: ${who}`"
+            round
+            :icon="$q.dark.isActive ? 'dark_mode' : 'light_mode'"
+            aria-label="Dark theme"
+            :aria-pressed="$q.dark.isActive ? 'true' : 'false'"
+            @click="toggleTheme"
+          />
+          <template v-if="session.ready">
+            <!-- On phones only the icon shows, so the title is not squeezed out (WCAG 1.4.10). -->
+            <q-btn-dropdown
+              v-if="session.user"
+              flat
+              no-caps
+              icon="account_circle"
+              :label="$q.screen.gt.xs ? who : undefined"
+              :aria-label="`Account: ${who}`"
+            >
+              <q-list>
+                <q-item v-close-popup clickable to="/account"><q-item-section>Account</q-item-section></q-item>
+                <q-item v-close-popup clickable @click="onSignOut"><q-item-section>Sign out</q-item-section></q-item>
+              </q-list>
+            </q-btn-dropdown>
+            <q-btn v-else-if="shown.menu.includes('signin')" flat no-caps label="Sign in" to="/signin" />
+          </template>
+        </q-toolbar>
+        <!-- Links, not tabs: each one loads a page (tab semantics would promise panels on this page). -->
+        <nav ref="bar" aria-label="Main" class="row q-px-sm bg-black ustp-nav">
+          <router-link
+            v-for="l in rowLinks"
+            :key="l.to"
+            :to="l.to"
+            class="ustp-nav-link"
+            :class="{ 'ustp-nav-link--active': isActive(l.to) }"
           >
-            <q-list>
-              <q-item v-close-popup clickable to="/account"><q-item-section>Account</q-item-section></q-item>
-              <q-item v-close-popup clickable @click="onSignOut"><q-item-section>Sign out</q-item-section></q-item>
-            </q-list>
-          </q-btn-dropdown>
-          <q-btn v-else-if="shown.menu.includes('signin')" flat no-caps label="Sign in" to="/signin" />
-        </template>
-      </q-toolbar>
-      <!-- Links, not tabs: each one loads a page (tab semantics would promise panels on this page). -->
-      <nav ref="bar" aria-label="Main" class="row q-px-sm bg-black ustp-nav">
-        <router-link
-          v-for="l in rowLinks"
-          :key="l.to"
-          :to="l.to"
-          class="ustp-nav-link"
-          :class="{ 'ustp-nav-link--active': isActive(l.to) }"
-        >
-          {{ l.label }}
-        </router-link>
-        <!-- A disclosure, not an ARIA menu: its items are the same page links, in the same tab order. -->
-        <div v-if="moreLinks.length" ref="moreBox" class="ustp-nav-more" @keydown.esc="closeMore(true)" @focusout="onMoreFocusOut">
-          <button
-            ref="moreButton"
-            type="button"
-            class="ustp-nav-link ustp-nav-more__button"
-            :class="{ 'ustp-nav-link--active': moreLinks.some((l) => isActive(l.to)), 'ustp-nav-more__button--open': moreOpen }"
-            :aria-expanded="moreOpen"
-            aria-controls="ustp-nav-more"
-            @click="moreOpen = !moreOpen"
-          >
-            More
-          </button>
-          <ul v-show="moreOpen" id="ustp-nav-more" class="ustp-nav-more__list">
-            <li v-for="l in moreLinks" :key="l.to">
-              <router-link :to="l.to" class="ustp-nav-more__link" :class="{ 'ustp-nav-more__link--active': isActive(l.to) }">
-                {{ l.label }}
-              </router-link>
-            </li>
-          </ul>
-        </div>
-        <!-- Every link and More at their rendered width, for fitLinks; never seen or read, and in a box of no size so it
-             cannot widen the page. -->
-        <div class="ustp-nav-ruler-box" aria-hidden="true">
-          <div ref="ruler" class="ustp-nav-ruler">
-            <span v-for="l in links" :key="l.to" class="ustp-nav-link">{{ l.label }}</span>
-            <span class="ustp-nav-link ustp-nav-more__button">More</span>
+            {{ l.label }}
+          </router-link>
+          <!-- A disclosure, not an ARIA menu: its items are the same page links, in the same tab order. -->
+          <div v-if="moreLinks.length" ref="moreBox" class="ustp-nav-more" @keydown.esc="closeMore(true)" @focusout="onMoreFocusOut">
+            <button
+              ref="moreButton"
+              type="button"
+              class="ustp-nav-link ustp-nav-more__button"
+              :class="{ 'ustp-nav-link--active': moreLinks.some((l) => isActive(l.to)), 'ustp-nav-more__button--open': moreOpen }"
+              :aria-expanded="moreOpen"
+              aria-controls="ustp-nav-more"
+              @click="moreOpen = !moreOpen"
+            >
+              More
+            </button>
+            <ul v-show="moreOpen" id="ustp-nav-more" class="ustp-nav-more__list">
+              <li v-for="l in moreLinks" :key="l.to">
+                <router-link :to="l.to" class="ustp-nav-more__link" :class="{ 'ustp-nav-more__link--active': isActive(l.to) }">
+                  {{ l.label }}
+                </router-link>
+              </li>
+            </ul>
           </div>
-        </div>
-      </nav>
-      <TestingBar v-if="acting.persona" />
+          <!-- Every link and More at their rendered width, for fitLinks; never seen or read, and in a box of no size so it
+               cannot widen the page. -->
+          <div class="ustp-nav-ruler-box" aria-hidden="true">
+            <div ref="ruler" class="ustp-nav-ruler">
+              <span v-for="l in links" :key="l.to" class="ustp-nav-link">{{ l.label }}</span>
+              <span class="ustp-nav-link ustp-nav-more__button">More</span>
+            </div>
+          </div>
+        </nav>
+        <TestingBar v-if="acting.persona" />
+      </template>
+      <UpdateBanner />
     </q-header>
 
     <q-page-container>

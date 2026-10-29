@@ -10,6 +10,8 @@ interface ImportMetaEnv {
   /** "true" to use the local Auth emulator. */
   readonly VITE_USE_EMULATORS?: string;
   readonly VITE_AUTH_EMULATOR_URL?: string;
+  /** The commit the release workflow builds from (design §15); unset in local and CI builds. */
+  readonly VITE_BUILD_COMMIT?: string;
 }
 
 interface ImportMeta {

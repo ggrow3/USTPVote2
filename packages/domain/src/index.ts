@@ -66,6 +66,8 @@ export type {
   ProposalOutcome,
 } from './amendments.js';
 export { ACT_AS_HEADER, ADMIN_PERSONAS, MAX_TEST_VOTERS, PERSONA_KINDS, voterPersonaLabel } from './testing.js';
+export { BUILD_COMMIT_HEADER, buildCommit } from './build.js';
+export type { HealthStatus } from './build.js';
 export type { PersonaKind, PersonaRecord, PersonaSummary } from './testing.js';
 export type { DiffLine } from './text-diff.js';
 export { ELECTION_STATES, checkElectionDeletable, electionTransitionAuthority, isTerminal } from './election-state.js';
