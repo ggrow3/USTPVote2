@@ -13,6 +13,7 @@ import { HomeQuoteAdminController, HomeQuoteService, PublicHomeQuoteController }
 import { DiscordLiveService, HubAdminController, HubService, PublicHubController } from '../administration/hub.js';
 import { NavigationAdminController, NavigationService, PublicNavigationController } from '../administration/navigation.js';
 import { RoleChanges } from '../administration/role-changes.js';
+import { SearchEnginesController } from '../administration/search-engines.js';
 import { AuthGuard } from '../auth/auth.guard.js';
 import { BylawsChecksController } from '../bylaws-check/bylaws-checks.controller.js';
 import { BylawsChecksService } from '../bylaws-check/bylaws-checks.service.js';
@@ -63,7 +64,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
  * M1: accounts, registration, membership administration, profile photos, roles and approvals, auth switches, ledger.
  * M2: election setup, rolls, scheduling and cancellation; the published ledger (blocks, keys, proofs, anchors).
  * M3: voting. M4: results, certification, offices and terms; teams (design §5.7). Testing mode: test personas and demo elections (design
- * §10.4). M5: who sees which link (design §10.5), the home page hub (§10.6); the platform consistency check (design
+ * §10.4). M5: who sees which link (design §10.5), the home page hub (§10.6), robots.txt and the sitemap (§15); the platform consistency check (design
  * §5.5), the election setup check (§6.9) and the Anthropic API key (design §5.6).
  */
 @Module({
@@ -104,6 +105,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     HomeQuoteAdminController,
     PublicHubController,
     HubAdminController,
+    SearchEnginesController,
     AuditController,
     PublicLedgerController,
     PersonasController,

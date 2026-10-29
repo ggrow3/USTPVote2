@@ -12,12 +12,13 @@
 locals {
   # api: Secret Manager (creating tie-break seeds, and keeping the Anthropic API key a System Admin adds, which it tries
   # with Anthropic first), encrypting ballots to an election's pool key, Auditor verification of anchors, profile
-  # photos, bootstrap System Admins, testing mode, which the api also refuses in prod, and how election notices go out
-  # (notices.tf).
+  # photos, bootstrap System Admins, testing mode, which the api also refuses in prod, how election notices go out
+  # (notices.tf), and the site's own address, the only one robots.txt opens to search engines (in prod).
   api_env = merge(
     {
       GOOGLE_CLOUD_PROJECT          = var.project_id
       DEPLOYMENT_ENVIRONMENT        = var.environment
+      WEB_ORIGIN                    = local.web_origin
       BALLOT_POOL_KEY               = google_kms_crypto_key.ballot_pool.id
       ANCHORS_BUCKET                = google_storage_bucket.anchors.name
       PHOTOS_BUCKET                 = google_storage_bucket.photos.name
