@@ -38,6 +38,7 @@ const NETWORK_ICONS: Readonly<Record<SocialNetwork, string>> = {
 const SYMBOL_ICONS: Readonly<Record<LinkSymbol, string>> = {
   vote: 'how_to_vote',
   register: 'person_add',
+  course: 'school',
   events: 'event',
   donate: 'volunteer_activism',
   forum: 'forum',
