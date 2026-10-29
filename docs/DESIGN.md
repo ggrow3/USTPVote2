@@ -2056,6 +2056,12 @@ page itself, `/`, is the party's link hub (§10.6).
   that put everything else back; and signed-out visitors keep at least one way to sign in (Sign in, Register's first
   step, or Ballot or Admin, which send them to sign in), since every admin arrives as a visitor. The API refuses
   settings that break either (409), and the matrix says why before Save.
+- **The matrix shows what can be set.** Its columns are All, Membership or Staff roles. With only the membership
+  columns, the Admin sections group is one line saying admin sections are given to staff roles, and a button that
+  switches to the Staff roles columns (focus moves to the group's header). With all the columns, the membership
+  columns of that group are one cell that says "Staff roles only" once, with the same button. Sign in, for everyone
+  signed in, is one cell across their columns ("Not applicable: already signed in"). The legend lists the fixed dash
+  and tick only while role columns, the only ones that have them, are shown.
 - **Defaults** (version 0, before anyone saves) are the menu as it was, with Offices added: all five links for every
   membership state and Sign in for visitors, each role its own sections (System Admins without the Offices section,
   which they may read but not change), roles adding Ballot, Verify and Offices (and Admin, from their sections) so a
@@ -2173,23 +2179,24 @@ under Admin → Link hub.
   a title, shown or hidden, and its links in order. A link has a title, a subtitle, an address (a page of this app like
   `/vote`, an `https://` address or `mailto:`; never `http:`, `javascript:` or `//`), an icon (one of twelve networks:
   Discord, X, Reddit, Facebook, Telegram, Instagram, YouTube, TikTok, LinkedIn, Threads, Bluesky, Mastodon; or a symbol:
-  voting, membership, events, donations, discussion board, chat, news, website, email, video, link), and three switches:
-  shown, in the icon row, starred. **The icon row** is every shown link marked for it, whatever its section's switch (so
-  a section can be hidden and its icons kept), networks first in the order above, then other icons in page order. The
-  Discord card shows while it has an invite. A shown section needs its title; a shown link its title and address; a
-  hidden link may be left unfinished, as a draft. Limits: name 80, tagline 160, bio 280, section title 40, link title
-  60, subtitle 80, address 500 characters; 12 sections of 40 links. Each text is put on one line. A link keeps its ID
-  when it is edited or moved, so it keeps its clicks.
+  voting, membership, course, events, donations, discussion board, chat, news, website, email, video, link), and three
+  switches: shown, in the icon row, starred. **The icon row** is every shown link marked for it, whatever its section's
+  switch (so a section can be hidden and its icons kept), networks first in the order above, then other icons in page
+  order. The Discord card shows while it has an invite. A shown section needs its title; a shown link its title and
+  address; a hidden link may be left unfinished, as a draft. Limits: name 80, tagline 160, bio 280, section title 40,
+  link title 60, subtitle 80, address 500 characters; 12 sections of 40 links. Each text is put on one line. A link
+  keeps its ID when it is edited or moved, so it keeps its clicks.
 - **Defaults** (version 0): the name, the tagline in the party site's header ("Putting science, health & technology at
   the forefront of American politics") and a bio; no logo (the initials) and no cover banner; the party's orange, the
-  dark theme and the sunrise behind the pages. Apps: USTP Vote (`/vote`, starred), Become a member (`/register`) and the
-  party's site, then Events, Donate, Discussion board and Chat as hidden drafts. Community: Discord server, Subreddit
-  and Telegram channel, drafts in the icon row. Follow us: X, Facebook and the LinkedIn group, shown and in the icon
-  row, then Instagram, YouTube, TikTok, Threads, Bluesky and Mastodon as drafts in the icon row. **Only addresses
-  checked on the party's own site are filled in** (transhumanist-party.org's header and footer, 2026-10-27: the site,
-  `twitter.com/USTranshumanist`, `facebook.com/USTranshumanistParty` and `linkedin.com/groups/13502241`; its only
-  YouTube link is the chairman's own channel, so it is left out). Every other address, the Discord invite and the server
-  ID are for System Admins to fill in, never guessed.
+  dark theme and the sunrise behind the pages. Apps: USTP Vote (`/vote`, starred), Become a member (`/register`), the
+  Transhumanism course (`/course/transhumanism`) and the party's site, then Events, Donate, Discussion board and Chat as
+  hidden drafts. Community: Discord server, Subreddit and Telegram channel, drafts in the icon row. Follow us: X,
+  Facebook and the LinkedIn group, shown and in the icon row, then Instagram, YouTube, TikTok, Threads, Bluesky and
+  Mastodon as drafts in the icon row. **Only addresses checked on the party's own site are filled in**
+  (transhumanist-party.org's header and footer, 2026-10-27: the site, `twitter.com/USTranshumanist`,
+  `facebook.com/USTranshumanistParty` and `linkedin.com/groups/13502241`; its only YouTube link is the chairman's own
+  channel, so it is left out). Every other address, the Discord invite and the server ID are for System Admins to fill
+  in, never guessed.
 - **Look ("USTP signal").** Black and charcoal grounds (black at the top of the page, #212121 cards, #424242 hairline
   borders), the burnt orange #bd4e00 the only strong colour, its bright tone #ff6900 for hover glow and for orange
   text in the dark theme; light is white cards on a warm off-white (#f6f2ec). Lato for text, Bricolage Grotesque for

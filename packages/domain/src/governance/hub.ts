@@ -42,7 +42,7 @@ export const NETWORK_NAMES: Readonly<Record<SocialNetwork, string>> = {
 };
 
 /** Icons for links that are not a network: the party's own apps and pages. */
-export const LINK_SYMBOLS = ['vote', 'register', 'events', 'donate', 'forum', 'chat', 'news', 'website', 'email', 'video', 'link'] as const;
+export const LINK_SYMBOLS = ['vote', 'register', 'course', 'events', 'donate', 'forum', 'chat', 'news', 'website', 'email', 'video', 'link'] as const;
 export type LinkSymbol = (typeof LINK_SYMBOLS)[number];
 
 /** A link's icon: a network's mark (monochrome) or a symbol. */
@@ -199,6 +199,7 @@ export const DEFAULT_HUB: Hub = {
       links: [
         link('vote', 'vote', 'USTP Vote', 'Sign in to vote on proposals and in party elections', '/vote', { featured: true }),
         link('register', 'register', 'Become a member', 'Apply to join the USTP', '/register'),
+        link('course', 'course', 'Transhumanism course', 'Free lessons, quizzes and a certificate', '/course/transhumanism'),
         link('website', 'website', 'Official website', 'transhumanist-party.org', VERIFIED.website),
         link('events', 'events', 'Events', 'Meetings and gatherings'),
         link('donate', 'donate', 'Donate', 'Support the party'),

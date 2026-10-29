@@ -150,7 +150,8 @@ test. Keep it current when pages change.
   Brooks"), a caption naming the membership state and roles, and a list named "What you can do" of cards, each an
   `h2` with a button whose text names its destination ("Open your ballots", "Open Applications"); one column at
   320 px with nothing scrolling sideways. The Sign in row, added afterwards, was checked the same way: one checkbox
-  ("Show Sign in to Signed out") and text in every other column ("Not applicable: already signed in"). Hiding every way
+  ("Show Sign in to Signed out") and text in every other column ("Not applicable: already signed in"; since
+  2026-10-28 one cell across those columns, see the matrix without its dashes). Hiding every way
   for visitors to sign in shows a light banner (`orange-2`, black text) saying why, and Save stays disabled. Fixed on
   the way: the cells' hidden text was positioned against the admin panel rather than the table, which gave the panel a
   second sideways scrollbar below the matrix's own.
@@ -359,6 +360,25 @@ election) open with focus on Cancel.
   wide as the card, a ranked row puts its three buttons under the name, and nothing scrolls sideways; the dialog's
   Back and Cast ballot share its width (144 px each at 375 px). Text is 16 px with 14 px captions, in the dialog too.
   Focus order and the announcements are unchanged.
+- **Added 2026-10-28, the matrix without its dashes** (design §10.5; against the emulators on private ports as
+  admin1@example.test; 1600 and 320 px, light and dark, by keyboard): cells with nothing to set are no longer a dash
+  each. With the Membership columns, the Admin sections row group keeps its `th scope="rowgroup"` and has one row, a
+  cell across the table saying "Admin sections are given to staff roles, never to a membership state alone." and a
+  "Switch to Staff roles" button. With All, the first section row has one `td` spanning the eight membership columns
+  and all eighteen section rows ("Staff roles only", why, and the same button); each row keeps its `th scope="row"`,
+  and the role cells their checkbox, lock text and name ("Show Admin › Members to Membership Admin"). Sign in is one
+  `td` across the signed-in columns. The button sets "Columns to show" (Staff roles then `aria-pressed="true"`) and
+  moves focus to the "Admin sections" header (`focusElement`), so Tab goes on to "Show Admin › Applications to
+  Membership Admin"; checked with Enter and Space. The merged cells' words stay beside the row headers while the table
+  scrolls (sticky, no wider than the part in view), and the scrolling region has `scroll-padding-left` as wide as the
+  row headers, so a control reached with Tab or Shift+Tab is scrolled clear of them (2.4.11; the button measured 8 px
+  right of the headers after Shift+Tab from a role column scrolled fully right). The legend's dash and tick show only
+  with role columns. At 1600 px the All view (13 columns since Course Administrator) is wider than the admin card and
+  scrolls inside it; at 320 px the row headers take 128 px and the merged words wrap to the 126 px beside them; the
+  page does not scroll sideways at either width. Colours are existing pairs: the button primary 4.94 on white, accent
+  5.84 on the dark card; the words the caption grey, 4.61 / 7.77; "Staff roles only" the text colour. Seen, not
+  changed: in the Membership view the table is 3 px wider than the card at 1600 px (the "Starts on" selects set its
+  columns' minimum), so a sideways scrollbar shows; it was so before.
 - **Added 2026-10-28, the hub's cover banner and the page background photo** (design §10.6; against the emulators on
   private ports as admin1@example.test, uploading a 1500×500 banner and a 2560×1440 photo of a pure white sky over black
   land, the worst case for a scrim; 1024 px light and dark, 375 px dark): both images are decorative, the banner an

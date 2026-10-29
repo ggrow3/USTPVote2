@@ -76,7 +76,7 @@ describe('the default hub', () => {
   it('leads with the voting app, starred, at its sign-in page', () => {
     const shown = publicHub(DEFAULT_HUB, 0);
     expect(shown.sections.map((s) => [s.title, s.links.map((l) => l.title)])).toEqual([
-      ['Apps', ['USTP Vote', 'Become a member', 'Official website']],
+      ['Apps', ['USTP Vote', 'Become a member', 'Transhumanism course', 'Official website']],
       ['Follow us', ['X / Twitter', 'Facebook', 'LinkedIn']],
     ]);
     expect(shown.sections[0]!.links[0]).toMatchObject({ url: '/vote', icon: 'vote', featured: true });
@@ -246,6 +246,7 @@ describe('clicks', () => {
       'link-linkedin',
       'link-vote',
       'link-register',
+      'link-course',
       'link-website',
     ]);
   });
