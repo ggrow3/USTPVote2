@@ -26,6 +26,10 @@ consistency_check_enabled = false
 # asks for the election setup check (once per version); every user then sees its notes beside the contests (README).
 election_check_enabled = false
 
+# A Google map on the Candidates page (design §5.8), with a browser key restricted to the web app's origins. Google
+# bills map loads beyond its monthly free usage.
+maps_enabled = true
+
 # Election notices by Amazon SES (design §6.8): set SES up and add the aws-ses-* secret versions first (README
 # "Election notices"). The From address is the module default, USTP Elections <noreply@transhumanist-party.org>.
 # web_origin           = "https://vote.example.org"  # empty: https://<project>.web.app

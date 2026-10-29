@@ -92,6 +92,7 @@ Set in each root's `terraform.tfvars` (or with `-var`):
 | `bylaws_check_enabled` | false | false | false | The advisory bylaws check with Claude, which sends drafts to Anthropic; see [Bylaws check](#bylaws-check) |
 | `consistency_check_enabled` | false | false | false | The platform consistency check with Claude, once per person per election, which sends an election's proposals to Anthropic; see [Consistency check](#consistency-check) |
 | `election_check_enabled` | false | false | false | The election setup check with Claude, once per version of an election, which sends its rules, offices and proposal texts with the bylaws to Anthropic, and whose notes every user sees; see [Election setup check](#election-setup-check) |
+| `maps_enabled` | true | true | true | The Candidates page's Google map: the Maps JavaScript API and a browser key restricted to it and to the web app's origins; see [Candidates map](#candidates-map) |
 | `project_id`, `region` | | | | Default to the environment's project and `us-central1` |
 
 Fixed per root: Binary Authorization is a dry run in dev and enforced elsewhere. The module has further knobs with
@@ -120,6 +121,7 @@ for running the server locally against a real project. Variable names are those 
 | `ANCHORS_BUCKET` | `anchors_bucket` (`<project>-anchors`) | ● | ● |
 | `PHOTOS_BUCKET` | `photos_bucket` (`<project>-profile-photos`) | ● | |
 | `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` | from the variable, not output | ● | |
+| `GOOGLE_MAPS_BROWSER_KEY` | not output: the `maps-browser` API key's value, when `maps_enabled`; the api gives it to browsers for the Candidates map (design §5.8) | ● | |
 | `BYLAWS_CHECKER` | in `api_env` / `worker_env`: `claude` when `bylaws_check_enabled`, else `off` | ● | ● |
 | `CONSISTENCY_CHECKER` | in `api_env` / `worker_env`: `claude` when `consistency_check_enabled`, else `off` | ● | ● |
 | `ELECTION_CHECKER` | in `api_env` / `worker_env`: `claude` when `election_check_enabled`, else `off` | ● | ● |
@@ -428,6 +430,22 @@ API key as the bylaws check.
 
 Switching it off (`false`, apply) stops new checks and hides the editor's button; the notes of checks already run are
 still shown beside the contests.
+
+### Candidates map
+
+The Candidates page (design §5.8) shows members' candidacies for public office on a Google map, with each district's
+outline from the Census Bureau's TIGERweb boundaries. TIGERweb needs no key and no setup: the api asks it for the
+districts of a kind in a state and for an outline, and keeps them a day. The map needs the Maps JavaScript API and a
+browser key, which `maps.tf` creates when `maps_enabled` (the default): an API key `maps-browser` restricted to
+`maps-backend.googleapis.com` and to the web app's origins (`https://<project>.web.app/*`, `…firebaseapp.com/*`, the
+`web_origin` if set, and `http://localhost:*/*` outside prod). Terraform passes it to the api as
+`GOOGLE_MAPS_BROWSER_KEY`, and `GET /v1/public/maps` gives it to every visitor's browser: it is public by nature, so
+the restrictions are what protect it. Google bills map loads beyond its monthly free usage, on the project's billing
+account. A custom domain added later needs its origin in `web_origin` (and an apply) before the map works there.
+
+With `maps_enabled = false` the api has no key and the pages list the candidacies without a map. Locally the api
+runs without a key unless `GOOGLE_MAPS_BROWSER_KEY` is set, and the integration tests use made-up districts
+(`DISTRICTS=local`) instead of TIGERweb.
 
 ### Election notices
 

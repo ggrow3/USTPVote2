@@ -12,8 +12,8 @@
 locals {
   # api: Secret Manager (creating tie-break seeds, and keeping the Anthropic API key a System Admin adds, which it tries
   # with Anthropic first), encrypting ballots to an election's pool key, Auditor verification of anchors, profile
-  # photos, bootstrap System Admins, testing mode, which the api also refuses in prod, and how election notices go out
-  # (notices.tf).
+  # photos, bootstrap System Admins, testing mode, which the api also refuses in prod, how election notices go out
+  # (notices.tf), and the Candidates page's Google Maps browser key (maps.tf).
   api_env = merge(
     {
       GOOGLE_CLOUD_PROJECT          = var.project_id
@@ -28,6 +28,9 @@ locals {
     },
     local.notices_env,
     var.testing_mode ? { TESTING_MODE = "true" } : {},
+    # The provider marks every key string sensitive, but this one is public by nature (maps.tf), and a sensitive value
+    # here would make the api_env output refuse to plan.
+    var.maps_enabled ? { GOOGLE_MAPS_BROWSER_KEY = nonsensitive(google_apikeys_key.maps_browser[0].key_string) } : {},
   )
 
   # worker: Secret Manager (reading seeds at tally), signing ledger blocks and rolls, pool key versions and sealing,

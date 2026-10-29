@@ -46,6 +46,14 @@ resource "google_identity_platform_config" "this" {
     }
   }
 
+  # Every request to Identity Platform (sign-ups, sign-ins, failed attempts, password resets) with the caller's
+  # address, in Cloud Logging; kept in the sign-in-traffic bucket (logging.tf, design §10.7).
+  monitoring {
+    request_logging {
+      enabled = true
+    }
+  }
+
   depends_on = [google_project_service.this]
 }
 

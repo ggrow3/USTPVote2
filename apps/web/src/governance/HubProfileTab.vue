@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, reactive, ref, watch } from 'vue';
+import { computed, nextTick, reactive, watch } from 'vue';
 import {
   accentProblem,
   checkHub,
@@ -7,6 +7,7 @@ import {
   DEFAULT_ACCENT,
   effectiveAccent,
   guildIdProblem,
+  HUB_IMAGE_SIZES,
   HUB_LIMITS,
   HUB_THEMES,
   hubChanges,
@@ -16,9 +17,10 @@ import {
   type Hub,
   type HubRecord,
 } from 'ustp-domain';
-import { attempt } from '../dialogs.js';
-import { hubLogoUrl, uploadHubLogo } from './api.js';
+import HomeBackdrop from '../components/HomeBackdrop.vue';
+import { hubImageUrl } from './api.js';
 import { hubIcon } from './hub-icons.js';
+import HubImageField from './HubImageField.vue';
 import { describeHubChange, THEME_LABELS } from './hub-text.js';
 
 /** The hub's profile, look and Discord card (design §10.6), saved together with "Save settings". */
@@ -44,7 +46,16 @@ watch(
 const next = computed<Hub>(() =>
   resolveHub({
     sections: props.saved.sections,
-    profile: { name: draft.name, tagline: draft.tagline, bio: draft.bio, logo: draft.logo, accent: draft.accent, theme: draft.theme },
+    profile: {
+      name: draft.name,
+      tagline: draft.tagline,
+      bio: draft.bio,
+      logo: draft.logo,
+      cover: draft.cover,
+      accent: draft.accent,
+      theme: draft.theme,
+      background: draft.background,
+    },
     discord: { invite: draft.invite, guildId: draft.guildId, widget: draft.widget },
   }),
 );
@@ -69,20 +80,7 @@ const errors = computed(() => ({
 const accent = computed(() => effectiveAccent(next.value.profile));
 const accentContrast = computed(() => (errors.value.accent ? null : contrast(accent.value, '#ffffff').toFixed(2)));
 const themeOptions = HUB_THEMES.map((value) => ({ value, label: THEME_LABELS[value] }));
-
-const fileInput = ref<HTMLInputElement | null>(null);
-const uploading = ref(false);
-
-async function upload(event: Event) {
-  const file = (event.target as HTMLInputElement).files?.[0];
-  (event.target as HTMLInputElement).value = '';
-  if (!file) return;
-  uploading.value = true;
-  await attempt(async () => {
-    draft.logo = (await uploadHubLogo(file)).logo;
-  }, 'Logo uploaded. Save settings to show it on the hub.');
-  uploading.value = false;
-}
+const sizes = HUB_IMAGE_SIZES;
 
 /** Once saved, the form shows what was saved, tidied. */
 function save() {
@@ -118,25 +116,44 @@ function discard() {
         :error="!!errors.bio"
         :error-message="errors.bio"
       />
-      <div class="hp-logo">
-        <div class="hp-logo__tile" aria-hidden="true">
-          <img v-if="draft.logo" :src="hubLogoUrl(draft.logo)" alt="" width="64" height="64" />
-          <span v-else>{{ hubInitials(draft.name) }}</span>
-        </div>
-        <div class="hp-logo__text">
-          <div class="text-body2 text-weight-bold">Logo or avatar</div>
-          <div class="text-caption text-grey-7">
-            {{ draft.logo ? 'Your logo.' : "The name's initials until a logo is uploaded." }} A PNG, JPEG or WebP at least
-            64 pixels square; the hub keeps it as a 256-pixel square on its own server, so visitors never load it from
-            anywhere else.
+      <HubImageField
+        v-model="draft.logo"
+        kind="logo"
+        title="Logo or avatar"
+        upload-label="Upload a logo"
+        remove-label="Use the initials"
+        uploaded="Logo uploaded. Save settings to show it on the hub."
+      >
+        <template #preview>
+          <div class="hp-logo">
+            <img v-if="draft.logo" :src="hubImageUrl('logo', draft.logo)" alt="" width="64" height="64" />
+            <span v-else>{{ hubInitials(draft.name) }}</span>
           </div>
-          <div class="hp-logo__buttons">
-            <q-btn outline no-caps icon="upload" label="Upload a logo" :loading="uploading" @click="fileInput?.click()" />
-            <q-btn v-if="draft.logo" flat no-caps label="Use the initials" @click="draft.logo = null" />
+        </template>
+        {{ draft.logo ? 'Your logo.' : "The name's initials until a logo is uploaded." }} A PNG, JPEG or WebP at least 64
+        pixels square, 5 MB at most; the hub keeps it as a 256-pixel square on its own server, so visitors never load it
+        from anywhere else.
+      </HubImageField>
+      <HubImageField
+        v-model="draft.cover"
+        kind="cover"
+        wide
+        title="Cover banner"
+        upload-label="Upload a cover banner"
+        remove-label="Remove the banner"
+        uploaded="Cover banner uploaded. Save settings to show it on the hub."
+      >
+        <template #preview>
+          <div class="hp-cover">
+            <img v-if="draft.cover" :src="hubImageUrl('cover', draft.cover)" alt="" :width="sizes.cover.width" :height="sizes.cover.height" />
+            <span v-else>No banner</span>
           </div>
-          <input ref="fileInput" type="file" accept="image/png,image/jpeg,image/webp" class="sr-only" tabindex="-1" aria-hidden="true" @change="upload" />
-        </div>
-      </div>
+        </template>
+        {{ draft.cover ? 'Your banner, across the top of the hub above the logo.' : 'Optional: a picture across the top of the hub, above the logo.' }}
+        Upload {{ sizes.cover.recommended }} pixels, or any 3:1 PNG, JPEG or WebP at least {{ sizes.cover.minWidth }}×{{ sizes.cover.minHeight }}
+        and 5 MB at most; it is cropped to 3:1 from the middle and kept as a {{ sizes.cover.width }}×{{ sizes.cover.height }} WebP, twice
+        the hub's column for sharp screens. Screen readers skip it, so put anything it says in the name, tagline or bio too.
+      </HubImageField>
     </fieldset>
 
     <fieldset class="hp-group">
@@ -164,6 +181,25 @@ function discard() {
         </q-input>
         <q-select v-model="draft.theme" outlined dense emit-value map-options :options="themeOptions" label="Default theme" hint="Until a visitor picks one with the hub's theme button; it applies to every page." />
       </div>
+      <HubImageField
+        v-model="draft.background"
+        kind="background"
+        wide
+        title="Page background"
+        upload-label="Upload a photo"
+        remove-label="Use the sunrise"
+        uploaded="Photo uploaded. Save settings to show it behind the pages."
+      >
+        <template #preview>
+          <HomeBackdrop class="hp-backdrop" :photo="draft.background" />
+        </template>
+        Behind every page but the hub.
+        {{ draft.background ? 'Your photo, under a veil that keeps text readable in both themes.' : 'The sunrise drawn for this site until a photo is uploaded.' }}
+        Upload {{ sizes.background.recommended }} pixels, or any PNG, JPEG or WebP at least {{ sizes.background.minWidth }}×{{
+          sizes.background.minHeight
+        }} and 5 MB at most; it is kept as a WebP at most {{ sizes.background.width }} pixels wide. It fills the window from its
+        centre, so keep what matters near the middle.
+      </HubImageField>
     </fieldset>
 
     <fieldset class="hp-group">
@@ -241,42 +277,36 @@ function discard() {
   letter-spacing: 0.2em;
   text-transform: uppercase;
 }
+/* The previews: the logo's tile, the banner at 3:1 and the background at 16:9, each the size it is drawn small. */
 .hp-logo {
-  display: flex;
-  align-items: flex-start;
-  gap: 16px;
-}
-.hp-logo__tile {
   display: grid;
-  flex: none;
   place-items: center;
   width: 64px;
   height: 64px;
-  overflow: hidden;
-  border: 1px solid var(--ha-line);
-  border-radius: 16px;
-  background: var(--ha-row);
   color: var(--ha-letters);
   font-family: var(--signal-display);
   font-size: 24px;
   font-weight: 800;
 }
-.hp-logo__tile img {
+.hp-cover {
+  display: grid;
+  place-items: center;
+  width: 192px;
+  aspect-ratio: 3 / 1;
+  color: var(--ha-muted);
+  font-size: 0.8125rem;
+}
+.hp-backdrop {
+  width: 192px;
+  aspect-ratio: 16 / 9;
+}
+:is(.hp-logo, .hp-cover) img {
   width: 100%;
   height: 100%;
   object-fit: contain;
 }
-.hp-logo__text {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-width: 0;
-}
-.hp-logo__buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-top: 4px;
+.hp-cover img {
+  object-fit: cover;
 }
 /* The browser's colour picker as a swatch inside the field. */
 .hp-swatch {

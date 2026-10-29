@@ -35,6 +35,21 @@ const counts = async () => {
 };
 const png = (side: number) =>
   sharp({ create: { width: side, height: side, channels: 4, background: { r: 189, g: 78, b: 0, alpha: 1 } } }).png().toBuffer();
+/** A photo-like JPEG: a gradient, with camera metadata a re-encode must drop. */
+const jpeg = (width: number, height: number, exif = false) => {
+  const pixels = Buffer.alloc(width * height * 3);
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 3;
+      pixels[i] = (x * 255) / width;
+      pixels[i + 1] = (y * 255) / height;
+      pixels[i + 2] = 120;
+    }
+  }
+  const image = sharp(pixels, { raw: { width, height, channels: 3 } });
+  return (exif ? image.withExif({ IFD0: { Make: 'CameraCo', Copyright: 'secret' }, IFD3: { GPSLatitudeRef: 'N' } }) : image).jpeg().toBuffer();
+};
+const fetchImage = (path: string) => api.app.inject({ method: 'GET', url: path });
 
 const community = (url: string): HubSection => ({
   id: 'community',
@@ -59,6 +74,14 @@ describe('the home page hub (design §10.6)', () => {
     expect((await api.call('GET', '/v1/admin/hub', pat)).status).toBe(403);
     expect((await api.call('GET', '/v1/admin/hub/clicks', pat)).status).toBe(403);
     expect((await api.upload('/v1/admin/hub/logo', pat, await png(128), 'image/png')).status).toBe(403);
+    expect((await api.upload('/v1/admin/hub/cover', pat, await jpeg(1500, 500), 'image/jpeg')).status).toBe(403);
+    const anonymous = await api.app.inject({
+      method: 'PUT',
+      url: '/v1/admin/hub/background',
+      headers: { 'content-type': 'image/jpeg' },
+      payload: await jpeg(1920, 1080),
+    });
+    expect(anonymous.statusCode).toBe(401);
     expect((await put(undefined, {})).status).toBe(401);
   });
 
@@ -157,6 +180,86 @@ describe('the home page hub (design §10.6)', () => {
     expect((await api.upload('/v1/admin/hub/logo', sa1, Buffer.from('not an image'), 'image/png')).status).toBe(400);
     expect((await api.app.inject({ method: 'GET', url: `/v1/hub/logo/${'b'.repeat(64)}` })).statusCode).toBe(404);
     expect((await api.app.inject({ method: 'GET', url: '/v1/hub/logo/..%2F..%2Fsecret' })).statusCode).toBe(404);
+  });
+
+  it('takes a 3:1 cover banner, keeps it as a 1120×374 WebP without its metadata, and shows it once saved', async () => {
+    const res = await api.upload('/v1/admin/hub/cover', sa1, await jpeg(1500, 500, true), 'image/jpeg');
+    expect(res.status).toBe(200);
+    const { cover } = res.body as { cover: string };
+    expect(cover).toMatch(/^[0-9a-f]{64}$/);
+    expect((await api.call('GET', '/v1/hub')).body.profile.cover).toBeNull();
+
+    const image = await fetchImage(`/v1/hub/cover/${cover}`);
+    expect(image.statusCode).toBe(200);
+    expect(image.headers['content-type']).toBe('image/webp');
+    expect(image.headers['cache-control']).toBe('public, max-age=31536000, immutable');
+    const meta = await sharp(image.rawPayload).metadata();
+    expect(meta).toMatchObject({ format: 'webp', width: 1120, height: 374 });
+    expect(meta.exif).toBeUndefined();
+    expect(image.rawPayload.includes('CameraCo')).toBe(false);
+    expect((await fetchImage(`/v1/hub/logo/${cover}`)).statusCode).toBe(404); // each kind is kept apart
+
+    const saved = await put(sa1, { profile: { ...DEFAULT_HUB.profile, cover } });
+    expect(saved.body.profile.cover).toBe(cover);
+    expect((await api.call('GET', '/v1/hub')).body.profile.cover).toBe(cover);
+    expect((await ledger()).at(-1)!.payload).toEqual({ version: 1, changes: [{ part: 'profile', field: 'cover', to: cover }] });
+
+    const removed = await put(sa1, { profile: DEFAULT_HUB.profile }, 1);
+    expect(removed.body.profile.cover).toBeNull();
+    expect((await ledger()).at(-1)!.payload).toEqual({ version: 2, changes: [{ part: 'profile', field: 'cover', to: null }] });
+    expect((await fetchImage(`/v1/hub/cover/${cover}`)).statusCode).toBe(200); // an old copy of the page can still load it
+  });
+
+  it('crops a cover a little off 3:1 from the middle, and refuses other shapes and small ones', async () => {
+    const near = await api.upload('/v1/admin/hub/cover', sa1, await jpeg(1500, 520), 'image/jpeg');
+    expect(near.status).toBe(200);
+    const image = await fetchImage(`/v1/hub/cover/${(near.body as { cover: string }).cover}`);
+    expect(await sharp(image.rawPayload).metadata()).toMatchObject({ width: 1120, height: 374 });
+
+    const wide = await api.upload('/v1/admin/hub/cover', sa1, await jpeg(1920, 1080), 'image/jpeg');
+    expect(wide).toMatchObject({
+      status: 400,
+      body: { detail: 'the cover banner must be 3:1 and at least 1120×374 pixels, such as 1500×500; this one is 1920×1080' },
+    });
+    expect((await api.upload('/v1/admin/hub/cover', sa1, await jpeg(900, 300), 'image/jpeg')).status).toBe(400);
+    expect((await api.upload('/v1/admin/hub/cover', sa1, Buffer.from('not an image'), 'image/jpeg')).status).toBe(400);
+  });
+
+  it('takes a background photo of at least 1920×1080, kept at most 2560 wide, and shows it once saved', async () => {
+    const res = await api.upload('/v1/admin/hub/background', sa1, await jpeg(1920, 1080, true), 'image/jpeg');
+    expect(res.status).toBe(200);
+    const { background } = res.body as { background: string };
+    const image = await fetchImage(`/v1/hub/background/${background}`);
+    expect(image.headers['content-type']).toBe('image/webp');
+    const meta = await sharp(image.rawPayload).metadata();
+    expect(meta).toMatchObject({ format: 'webp', width: 1920, height: 1080 }); // never enlarged
+    expect(meta.exif).toBeUndefined();
+    expect((await api.call('GET', '/v1/hub')).body.profile.background).toBeNull();
+
+    const big = await api.upload('/v1/admin/hub/background', sa1, await jpeg(3200, 1800), 'image/jpeg');
+    expect(big.status).toBe(200);
+    const shrunk = await fetchImage(`/v1/hub/background/${(big.body as { background: string }).background}`);
+    expect(await sharp(shrunk.rawPayload).metadata()).toMatchObject({ width: 2560, height: 1440 });
+
+    const saved = await put(sa1, { profile: { ...DEFAULT_HUB.profile, background } });
+    expect(saved.status).toBe(200);
+    expect((await api.call('GET', '/v1/hub')).body.profile.background).toBe(background);
+    expect((await ledger()).at(-1)!.payload).toEqual({ version: 1, changes: [{ part: 'profile', field: 'background', to: background }] });
+
+    const small = await api.upload('/v1/admin/hub/background', sa1, await jpeg(1280, 720), 'image/jpeg');
+    expect(small).toMatchObject({ status: 400, body: { detail: expect.stringMatching(/at least 1920×1080 pixels.*this one is 1280×720$/) } });
+  });
+
+  it('refuses a cover or background that was never uploaded, or was uploaded as another kind', async () => {
+    const { logo } = (await api.upload('/v1/admin/hub/logo', sa1, await png(512), 'image/png')).body as { logo: string };
+    const asCover = await put(sa1, { profile: { ...DEFAULT_HUB.profile, cover: logo } });
+    expect(asCover).toMatchObject({ status: 400, body: { detail: 'that cover banner is not one uploaded here; upload it again' } });
+    const unknown = await put(sa1, { profile: { ...DEFAULT_HUB.profile, background: 'c'.repeat(64) } });
+    expect(unknown).toMatchObject({ status: 400, body: { detail: 'that background photo is not one uploaded here; upload it again' } });
+    const path = await put(sa1, { profile: { ...DEFAULT_HUB.profile, background: '../hub_logos/x' } });
+    expect(path).toMatchObject({ status: 400, body: { detail: 'that background photo is not one uploaded here' } });
+    expect((await fetchImage(`/v1/hub/background/${'d'.repeat(64)}`)).statusCode).toBe(404);
+    expect((await api.call('GET', '/v1/hub')).body.version).toBe(0);
   });
 });
 

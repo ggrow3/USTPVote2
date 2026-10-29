@@ -56,6 +56,10 @@ export function describeHubChange(change: HubChange, sectionTitle: (id: string) 
       switch (change.field) {
         case 'logo':
           return change.to ? 'A new logo' : 'Remove the logo: the initials show instead';
+        case 'cover':
+          return change.to ? 'A new cover banner' : 'Remove the cover banner';
+        case 'background':
+          return change.to ? 'A new background photo behind the pages' : 'Page background: the sunrise instead of the photo';
         case 'accent':
           return `Accent colour: ${change.to || 'the USTP orange'}`;
         case 'theme':
