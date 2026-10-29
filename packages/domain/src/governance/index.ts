@@ -1,6 +1,7 @@
 /**
  * The governance context (design §10): what the web app shows each membership state and staff role, the quote on the
- * home page (§10.5), the home page hub (§10.6), and the sign-in log and site analytics (§10.7).
+ * home page (§10.5), the home page hub (§10.6), the sign-in log and site analytics (§10.7), and what search engines
+ * are told about the site (§15).
  */
 export {
   MENU_LINKS,
@@ -121,6 +122,8 @@ export {
   scrimCss,
 } from './hub-images.js';
 export type { HubImageKind, HubImageSize, Scrim } from './hub-images.js';
+export { SITEMAP_PAGES, CRAWL_DISALLOWED, crawlAllowed, robotsTxt, sitemapEntries, sitemapXml } from './search.js';
+export type { SearchSite, SitemapEntry } from './search.js';
 export { DEFAULT_ACCENT, DARK_CARD, TEXT_CONTRAST, isHexColour, luminance, contrast, brightAccent } from './accent.js';
 export {
   SIGN_IN_RETENTION_DAYS,

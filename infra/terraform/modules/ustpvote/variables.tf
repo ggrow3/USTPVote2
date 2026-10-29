@@ -237,7 +237,7 @@ variable "maps_enabled" {
 # --- Election notices (design §6.8) -----------------------------------------------------------------------------------
 
 variable "web_origin" {
-  description = "Where the web app is served, which election notices link to (WEB_ORIGIN). Empty: the Firebase Hosting default, https://<project_id>.web.app."
+  description = "Where the web app is served (WEB_ORIGIN): election notices link to it, and in prod it is the one address search engines may crawl. Empty: the Firebase Hosting default, https://<project_id>.web.app."
   type        = string
   default     = ""
 

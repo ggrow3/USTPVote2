@@ -33,6 +33,15 @@ export async function createFastifyApp(
         done();
       });
   }
+  // No response is a page of its own for search results (design §15, "Search engines"): crawlers may still fetch the
+  // api, as they must to render the web app's pages, but they list the pages, not the JSON, files or images behind them.
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .addHook('onRequest', (_req, reply, done) => {
+      reply.header('X-Robots-Tag', 'noindex');
+      done();
+    });
   // Profile photo uploads arrive as the raw image body (design §5.3); anything else image-typed gets 415.
   app
     .getHttpAdapter()
