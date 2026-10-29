@@ -52,6 +52,14 @@ jobs:
           cache-to: type=gha,mode=max
       - run: bash apps/server/scripts/smoke-image.sh ustp-server:ci
 
+  # The workflows themselves (syntax, expressions, action inputs) and the shell in their run steps (shellcheck, which
+  # the image includes), since a mistake in release.yml would otherwise show only during a release.
+  workflows:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
+
   terraform:
     runs-on: ubuntu-latest
     steps:

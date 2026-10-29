@@ -1,29 +1,29 @@
-import { Notify } from 'quasar';
 import { router } from './router.js';
+import { newWorkerTookOver, startUpdateChecks, useServiceWorker } from './update.js';
 
-const UPDATE_CHECK_MS = 60 * 60 * 1000;
 const RELOAD_KEY = 'ustp-chunk-reload';
 
 /**
  * Installs the service worker (production builds only; see service-worker.js) and keeps open tabs working across
  * deploys: a tab whose next page's scripts were replaced by a deploy reloads that page from the network, and a tab
- * that was already open when a new version took over is offered a reload.
+ * left open across a release is offered a reload (update.ts, which also has the worker look for updates).
  */
 export function setUpPwa(): void {
   router.onError((error, to) => {
     if (isStaleChunkError(error)) reloadOnce(to.fullPath);
   });
+  startUpdateChecks();
 
   if (!import.meta.env.PROD || !('serviceWorker' in navigator)) return;
   const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    // The first install also takes control (clients.claim); only a replacement means a new version.
-    if (hadController) offerReload();
+    // The first install also takes control (clients.claim); only a replacement can mean a new version.
+    if (hadController) newWorkerTookOver();
   });
   window.addEventListener('load', () => {
     navigator.serviceWorker
       .register('/sw.js')
-      .then((registration) => setInterval(() => void registration.update().catch(() => {}), UPDATE_CHECK_MS))
+      .then(useServiceWorker)
       .catch((e: unknown) => console.warn('Service worker not registered:', e));
   });
 }
@@ -44,15 +44,4 @@ function reloadOnce(path: string): void {
     // storage blocked: reload anyway
   }
   window.location.assign(path);
-}
-
-function offerReload(): void {
-  Notify.create({
-    message: 'A new version of USTP Vote is available.',
-    timeout: 0,
-    actions: [
-      { label: 'Reload', color: 'white', handler: () => window.location.reload() },
-      { label: 'Later', color: 'white' },
-    ],
-  });
 }

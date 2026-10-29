@@ -1,10 +1,19 @@
 import { ACT_AS_HEADER, type ProblemDetails } from 'ustp-domain';
 import { acting } from './acting.js';
 import { appCheckToken, auth } from './firebase.js';
+import { noteApiResponse, refusedAfterUpdate } from './update.js';
+import { REFUSED_HINT } from './version.js';
 
 /** An API error carrying the server's RFC 9457 problem details. */
 export class ApiError extends Error {
-  constructor(readonly problem: ProblemDetails) {
+  /**
+   * @param afterUpdate The api refused the request while running another build than this page (design §15), so the
+   *   page is likely out of date and a reload may let it through.
+   */
+  constructor(
+    readonly problem: ProblemDetails,
+    readonly afterUpdate = false,
+  ) {
     super(problem.detail ?? problem.title);
   }
 
@@ -50,6 +59,7 @@ export async function apiUpload<T>(path: string, file: Blob): Promise<T> {
 /** Fetches a binary resource (e.g. a photo) that needs the caller's credentials, which an <img> cannot send. */
 export async function apiBlob(path: string): Promise<Blob> {
   const res = await fetch(path, { headers: await authHeaders() });
+  noteApiResponse(res);
   if (!res.ok) throw await toError(res);
   return res.blob();
 }
@@ -72,7 +82,7 @@ const AUTH_MESSAGES: Record<string, string> = {
 };
 
 export function errorMessage(error: unknown): string {
-  if (error instanceof ApiError) return error.message;
+  if (error instanceof ApiError) return error.afterUpdate ? `${error.message} ${REFUSED_HINT}` : error.message;
   const code = (error as { code?: unknown } | null)?.code;
   if (typeof code === 'string' && AUTH_MESSAGES[code]) return AUTH_MESSAGES[code];
   if (error instanceof Error) return error.message.replace(/^Firebase: /, '');
@@ -80,6 +90,7 @@ export function errorMessage(error: unknown): string {
 }
 
 async function readJson<T>(res: Response): Promise<T> {
+  noteApiResponse(res);
   if (res.status === 204) return undefined as T;
   if (!res.ok) throw await toError(res);
   return (await res.json().catch(() => null)) as T;
@@ -89,6 +100,7 @@ async function toError(res: Response): Promise<ApiError> {
   const data: unknown = await res.json().catch(() => null);
   return new ApiError(
     isProblem(data) ? data : { type: 'about:blank', title: res.statusText || 'request failed', status: res.status },
+    refusedAfterUpdate(res),
   );
 }
 
