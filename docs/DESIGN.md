@@ -692,9 +692,11 @@ sent (two or more for a conflict within the ballot), and a passage only if one o
 words; the most severe first.
 
 **On the page.** A card, "Consistency with the platform", on the ballot page (above the questions) and in the election
-editor (above Contests) says what the check reads, naming only the documents chosen, and that it is advisory. In the
-editor an Election Admin on a draft has a checkbox per document ("Compare the questions with"); anyone else there reads
-which are chosen. A result ends with what it was compared with, from its own record, and the editor says when that
+editor (above Contests) is folded to one line until the person opens it, so it does not push the questions down; the
+line says where their check stands ("An advisory check by Claude. Not run yet.", "Checking…", "4 possible
+inconsistencies found."). Opened, it says what the check reads, naming only the documents chosen, and that it is
+advisory. In the editor an Election Admin on a draft has a checkbox per document ("Compare the questions with"); anyone
+else there reads which are chosen. A result ends with what it was compared with, from its own record, and the editor says when that
 differs from what is chosen now. "Check consistency with Claude" opens a
 confirmation that the proposals go to Anthropic and nothing about the person or their vote does, and that it runs once;
 its focus starts on Cancel. The progress and then the outcome take the button's place, focus moves there, and the end

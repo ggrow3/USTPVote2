@@ -407,6 +407,18 @@ election) open with focus on Cancel.
   size is refused in words before it is sent ("The cover banner must be 3:1 and at least 1120×374 pixels, such as
   1500×500; this one is 1920×1080."). At 375 px a wide preview goes above its text, the banner is 343 × 114 px with the
   tile over a third of it, and nothing scrolls sideways.
+- **Added 2026-10-29, the consistency check folded to one line** (design §5.5; against the emulators on private ports
+  with the stand-in checker, as v1@example.test on "Platform Vote #9 (demo)"; desktop width dark, 375 px dark, 320 px
+  light, by keyboard): the card starts folded. Its `h2` holds a native `button` with `aria-expanded` and
+  `aria-controls` naming the folded part, so the heading is still there to move by and the button is read with it:
+  "Consistency with the platform" and a line saying where the person's check stands ("An advisory check by Claude.
+  Not run yet.", "Checking…", "4 possible inconsistencies found."). The `section` is named by the title alone. Its
+  icons are hidden from screen readers; the chevron turns when open, without motion when reduced motion is asked
+  for. The focus ring goes inside the card's edge, as on rows. Folded, the card is 44 px tall at desktop width and
+  52 px at 375 and 320 px (below 360 px the decorative leading icon is dropped so the title keeps to one line); Enter
+  opens it. The folded part is hidden with `display: none`, never removed, so the status line that focus moves to
+  after "Run the check" and the polite announcements work as before; a check running or finished while folded shows
+  in the line.
 
 ### Contrast figures
 
