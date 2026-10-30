@@ -30,6 +30,8 @@ export interface ApiOptions {
    * for the signed-in person themself.
    */
   readonly actAs?: string | null;
+  /** The request outlives the page (leaving the room's call as the tab closes). */
+  readonly keepalive?: boolean;
 }
 
 /** The current ID token and App Check token, and the test persona the request acts as, if any. */
@@ -49,7 +51,7 @@ async function authHeaders({ actAs = acting.persona?.accountId ?? null }: ApiOpt
 export async function api<T>(method: Method, path: string, body?: unknown, options?: ApiOptions): Promise<T> {
   const headers: Record<string, string> = { ...(await authHeaders(options)), accept: 'application/json' };
   if (body !== undefined) headers['content-type'] = 'application/json';
-  const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) });
+  const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), keepalive: options?.keepalive });
   return readJson<T>(res);
 }
 

@@ -100,6 +100,11 @@ export interface ServerConfig {
     readonly workerUrl: string | null;
     /** The account whose OIDC token the tasks carry (the worker admits only it). */
     readonly tasksInvoker: string | null;
+    /**
+     * The STUN servers browsers in the room's call use to find their public address (`ROOM_VOICE_STUN`, comma-separated,
+     * or `off`): they see that address, never the call.
+     */
+    readonly voiceStun: readonly string[];
   };
   /**
    * Amazon SES (worker only, `MAIL_TRANSPORT=ses`): its region, the configuration set that publishes bounces, the SQS
@@ -120,6 +125,8 @@ export interface ServerConfig {
 export const DEFAULT_ROOM_CHAT_MODEL = 'gemma4:26b-a4b-it-qat';
 /** EmbeddingGemma (768 dimensions); `ROOM_EMBED_MODEL` overrides it. */
 export const DEFAULT_ROOM_EMBED_MODEL = 'embeddinggemma';
+/** Google's public STUN server; `ROOM_VOICE_STUN` overrides it. */
+export const DEFAULT_ROOM_VOICE_STUN = ['stun:stun.l.google.com:19302'];
 
 /** Claude Opus 5.5; `BYLAWS_CHECK_MODEL` overrides it. */
 export const DEFAULT_BYLAWS_CHECK_MODEL = 'claude-opus-5-5';
@@ -234,6 +241,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       tasksQueue: env.TASKS_QUEUE || null,
       workerUrl: env.WORKER_URL ? env.WORKER_URL.replace(/\/+$/, '') : null,
       tasksInvoker: env.TASKS_INVOKER || null,
+      voiceStun: voiceStun(env.ROOM_VOICE_STUN),
     },
     ses: {
       region: env.SES_REGION || null,
@@ -266,6 +274,15 @@ function positiveNumber(value: string | undefined, name: string): number | null 
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) throw new Error(`${name} must be a positive number`);
   return n;
+}
+
+/** `ROOM_VOICE_STUN`: `stun:` URLs, comma-separated; `off` for none (calls then work only on one network). */
+function voiceStun(value: string | undefined): string[] {
+  if (!value?.trim()) return DEFAULT_ROOM_VOICE_STUN;
+  if (value.trim() === 'off') return [];
+  const urls = value.split(',').map((u) => u.trim()).filter(Boolean);
+  if (!urls.every((u) => /^stuns?:[^\s/]+$/.test(u))) throw new Error('ROOM_VOICE_STUN must be stun: URLs, comma-separated, or "off"');
+  return urls;
 }
 
 /** An http(s) origin with nothing after it, as links are built from it. */
