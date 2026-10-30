@@ -58,6 +58,8 @@ export const router = createRouter({
         // The forum is for Active members; its pages say so to anyone else signed in (design §5.9).
         { path: 'forum', component: () => import('./forum/ForumPage.vue'), meta: { requiresAuth: true } },
         { path: 'forum/:postId', component: () => import('./forum/ForumPostPage.vue'), meta: { requiresAuth: true } },
+        // The members' room is for Active members who accept its terms; the page is the door (design §5.10).
+        { path: 'room', component: () => import('./room/RoomPage.vue'), meta: { requiresAuth: true } },
         // News, the press kit and the suggestions form are for everyone; the share kit for Active members (design §10.9).
         { path: 'news', component: () => import('./communications/NewsPage.vue') },
         { path: 'news/:slug', component: () => import('./communications/NewsPostPage.vue') },

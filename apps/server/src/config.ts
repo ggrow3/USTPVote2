@@ -78,6 +78,30 @@ export interface ServerConfig {
    */
   readonly trustedProxyHops: number;
   /**
+   * The members' room's model (design §5.10): `ollama`, the self-hosted Ollama server at `roomModelUrl` (Gemma for
+   * answers, EmbeddingGemma for search; nothing goes to an AI company), `local` (the emulator-only stand-in, answering
+   * from keyword overlap) or `off` (`/ask` answers 503; the chat and memory work). Off unless set, outside the emulators.
+   */
+  readonly roomModel: 'ollama' | 'local' | 'off';
+  readonly room: {
+    /** The Ollama server: the private `room-model` Cloud Run service (called with an ID token), or a local one. */
+    readonly modelUrl: string | null;
+    readonly chatModel: string;
+    readonly embedModel: string;
+    /**
+     * How a question reaches the assistant: `cloud-tasks`, a task on the worker queue that calls the worker (the model
+     * may take minutes to load, longer than a request through Hosting may wait), or `inline` (the emulator-only stand-in:
+     * the api answers it itself, after replying).
+     */
+    readonly dispatch: 'cloud-tasks' | 'inline';
+    /** `projects/{p}/locations/{l}/queues/worker`. */
+    readonly tasksQueue: string | null;
+    /** The worker's URL, which the tasks call. */
+    readonly workerUrl: string | null;
+    /** The account whose OIDC token the tasks carry (the worker admits only it). */
+    readonly tasksInvoker: string | null;
+  };
+  /**
    * Amazon SES (worker only, `MAIL_TRANSPORT=ses`): its region, the configuration set that publishes bounces, the SQS
    * queue they arrive on, and the access key (from Secret Manager in Cloud Run; never logged).
    */
@@ -91,6 +115,11 @@ export interface ServerConfig {
     readonly maxSendRate: number;
   };
 }
+
+/** Gemma 4 26B A4B, quantization-aware 4-bit (16 GB, to fit one L4 with its context); `ROOM_CHAT_MODEL` overrides it. */
+export const DEFAULT_ROOM_CHAT_MODEL = 'gemma4:26b-a4b-it-qat';
+/** EmbeddingGemma (768 dimensions); `ROOM_EMBED_MODEL` overrides it. */
+export const DEFAULT_ROOM_EMBED_MODEL = 'embeddinggemma';
 
 /** Claude Opus 5.5; `BYLAWS_CHECK_MODEL` overrides it. */
 export const DEFAULT_BYLAWS_CHECK_MODEL = 'claude-opus-5-5';
@@ -152,6 +181,14 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const districtSource = (env.DISTRICTS ?? 'census') as ServerConfig['districtSource'];
   if (districtSource !== 'census' && districtSource !== 'local') throw new Error('DISTRICTS must be "census" or "local"');
   if (districtSource === 'local' && !usingEmulators) throw new Error('DISTRICTS=local is only allowed with the Firebase emulators');
+  const roomModel = (env.ROOM_MODEL ?? (usingEmulators ? 'local' : 'off')) as ServerConfig['roomModel'];
+  if (!['ollama', 'local', 'off'].includes(roomModel)) throw new Error('ROOM_MODEL must be "ollama", "local" or "off"');
+  if (roomModel === 'local' && !usingEmulators) throw new Error('ROOM_MODEL=local is only allowed with the Firebase emulators');
+  const roomModelUrl = env.ROOM_MODEL_URL ? env.ROOM_MODEL_URL.replace(/\/+$/, '') : null;
+  if (roomModel === 'ollama' && !roomModelUrl) throw new Error('ROOM_MODEL=ollama needs ROOM_MODEL_URL');
+  const roomDispatch = (env.ROOM_DISPATCH ?? (usingEmulators ? 'inline' : 'cloud-tasks')) as ServerConfig['room']['dispatch'];
+  if (roomDispatch !== 'cloud-tasks' && roomDispatch !== 'inline') throw new Error('ROOM_DISPATCH must be "cloud-tasks" or "inline"');
+  if (roomDispatch === 'inline' && !usingEmulators) throw new Error('ROOM_DISPATCH=inline is only allowed with the Firebase emulators');
   const webOrigin = env.WEB_ORIGIN ? originOf(env.WEB_ORIGIN, 'WEB_ORIGIN') : usingEmulators ? 'http://localhost:5173' : null;
 
   const projectId = env.GOOGLE_CLOUD_PROJECT || env.GCLOUD_PROJECT || undefined;
@@ -188,6 +225,16 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     districtSource,
     googleMapsKey: env.GOOGLE_MAPS_BROWSER_KEY?.trim() || null,
     trustedProxyHops: wholeNumber(env.TRUSTED_PROXY_HOPS, 'TRUSTED_PROXY_HOPS') ?? DEFAULT_TRUSTED_PROXY_HOPS,
+    roomModel,
+    room: {
+      modelUrl: roomModelUrl,
+      chatModel: env.ROOM_CHAT_MODEL || DEFAULT_ROOM_CHAT_MODEL,
+      embedModel: env.ROOM_EMBED_MODEL || DEFAULT_ROOM_EMBED_MODEL,
+      dispatch: roomDispatch,
+      tasksQueue: env.TASKS_QUEUE || null,
+      workerUrl: env.WORKER_URL ? env.WORKER_URL.replace(/\/+$/, '') : null,
+      tasksInvoker: env.TASKS_INVOKER || null,
+    },
     ses: {
       region: env.SES_REGION || null,
       configurationSet: env.SES_CONFIGURATION_SET || null,

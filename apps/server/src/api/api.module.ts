@@ -67,6 +67,8 @@ import { PositionsController, PublicPositionsController } from '../positions/pos
 import { PositionsService } from '../positions/positions.service.js';
 import { ForumAdminController, ForumController } from '../forum/forum.controller.js';
 import { FORUM_PROVIDERS } from '../forum/providers.js';
+import { ROOM_PROVIDERS } from '../room/providers.js';
+import { RoomAdminController, RoomController } from '../room/room.controller.js';
 import { COMMUNICATIONS_PROVIDERS } from '../communications/providers.js';
 import {
   CommunicationsAdminController,
@@ -82,7 +84,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
  * Client-facing API (design §12). Every route requires a verified sign-in unless marked @Public().
  * M1: accounts, registration, membership administration, profile photos, roles and approvals, auth switches, ledger.
  * M2: election setup, rolls, scheduling and cancellation; the published ledger (blocks, keys, proofs, anchors).
- * M3: voting. M4: results, certification, offices and terms; teams (design §5.7), the forum (§5.9). Testing mode: test personas and demo elections (design
+ * M3: voting. M4: results, certification, offices and terms; teams (design §5.7), the forum (§5.9), the members' room (§5.10). Testing mode: test personas and demo elections (design
  * §10.4). M5: who sees which link (design §10.5), the home page hub (§10.6), communications (§10.9), robots.txt and
  * the sitemap (§15); the
  * platform consistency check (design §5.5), the election setup check (§6.9) and the Anthropic API key (design §5.6);
@@ -121,6 +123,8 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     TeamsAdminController,
     ForumController,
     ForumAdminController,
+    RoomController,
+    RoomAdminController,
     ApprovalsController,
     AccountsAdminController,
     PublicSignInMethodsController,
@@ -170,6 +174,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     ...CANDIDACIES_PROVIDERS,
     ...TEAMS_PROVIDERS,
     ...FORUM_PROVIDERS,
+    ...ROOM_PROVIDERS,
     ...COMMUNICATIONS_PROVIDERS,
     ApprovalsService,
     NavigationService,

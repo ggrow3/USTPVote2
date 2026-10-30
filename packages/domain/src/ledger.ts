@@ -127,4 +127,6 @@ export interface TickResult {
   readonly bouncesRecorded: number;
   /** Suggestions a year old, and the form's limits for days gone, deleted (design §10.9). */
   readonly suggestionsDeleted: number;
+  /** The room's messages, done action items and finished questions past their time, and questions given up on (design §5.10). */
+  readonly roomExpired: number;
 }

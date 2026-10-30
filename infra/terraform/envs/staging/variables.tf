@@ -129,3 +129,9 @@ variable "ses_events_queue_url" {
   type        = string
   default     = ""
 }
+
+variable "room_model_enabled" {
+  description = "Run the members' room's self-hosted model on one NVIDIA L4 GPU, about $1.05 an hour while warm (design §5.10; README \"Members' room model\"). Off: /ask answers 503; the room's chat and memory work."
+  type        = bool
+  default     = false
+}

@@ -27,6 +27,10 @@ const CONTEXTS: Readonly<Record<string, { readonly collections: readonly string[
     collections: ['forumPosts', 'forumComments', 'forumVotes', 'forumReports'],
     repositories: ['forum.repository'],
   },
+  room: {
+    collections: ['roomConsents', 'roomMessages', 'roomMemory', 'roomJobs', 'roomState'],
+    repositories: ['room.repository'],
+  },
   communications: {
     collections: ['newsPosts', 'pressKit', 'pressAssets', 'sharePosts', 'shareCounts', 'calendarItems', 'suggestions', 'suggestionLimits', 'bots'],
     repositories: ['communications.repository'],

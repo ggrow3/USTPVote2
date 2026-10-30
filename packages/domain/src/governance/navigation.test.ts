@@ -34,9 +34,9 @@ function edit(base: NavigationSettings, change: (s: { -readonly [K in keyof Navi
 const viewer = (membership: Viewer['membership'], ...roles: Role[]): Viewer => ({ membership, roles });
 
 describe('defaults', () => {
-  it('show Register, Ballot, Verify, Offices, Candidates, News, Course and Admin to everyone, Teams and Forum to Active members, and Sign in while signed out', () => {
+  it('show Register, Ballot, Verify, Offices, Candidates, News, Course and Admin to everyone, Teams, Forum and Room to Active members, and Sign in while signed out', () => {
     const all = ['register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin'];
-    const withTeams = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'news', 'course', 'admin'];
+    const withTeams = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'news', 'course', 'admin'];
     expect(shownTo(DEFAULT_NAVIGATION, viewer('signed_out')).menu).toEqual([...all, 'signin']);
     for (const membership of ['no_membership', ...MEMBER_STATUSES] as const) {
       expect(shownTo(DEFAULT_NAVIGATION, viewer(membership)).menu).toEqual(membership === 'active' ? withTeams : all);
@@ -122,6 +122,15 @@ describe('defaults', () => {
     expect(ROLES.filter((r) => resolved.sections[r].forum)).toEqual(['membership_admin', 'election_admin']);
     for (const role of ['auditor', 'system_admin', 'course_admin'] as const) expect(sectionLock(role, 'forum')).toBe('not_permitted');
     expect(startPagePath('forum')).toBe('/forum');
+  });
+
+  it('give settings saved before the members’ room existed its default: the link for Active members, and no section', () => {
+    const before = edit(DEFAULT_NAVIGATION, (s) => {
+      for (const a of AUDIENCES) delete s.menu[a].room;
+    });
+    const resolved = resolveNavigation(before);
+    expect(AUDIENCES.filter((a) => resolved.menu[a].room)).toEqual(['active']);
+    expect(startPagePath('room')).toBe('/room');
   });
 
   it('give settings saved before News existed its defaults: the link for everyone, the sections for Communications Admins', () => {
@@ -335,6 +344,7 @@ describe('saved settings', () => {
       candidates: true,
       teams: false,
       forum: false,
+      room: false,
       news: true,
       course: true,
       admin: true,

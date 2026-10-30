@@ -10,7 +10,7 @@ import { ROLES, type Role } from '../roles.js';
  */
 
 /** The menu bar's links in menu order, then the header's Sign in button (which only signed-out visitors can use). */
-export const MENU_LINKS = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'news', 'course', 'admin', 'signin'] as const;
+export const MENU_LINKS = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'news', 'course', 'admin', 'signin'] as const;
 export type MenuLink = (typeof MENU_LINKS)[number];
 
 /** The admin console's sections (tabs), in tab order. */
@@ -113,6 +113,7 @@ export const START_PAGES: readonly StartPage[] = [
   'candidates',
   'teams',
   'forum',
+  'room',
   'news',
   'course',
   ...ADMIN_SECTIONS.map((s) => `admin/${s}` as const),
@@ -185,7 +186,7 @@ function defaultSection(role: Role, section: AdminSection): boolean {
  * list of who holds each office, came later and is for everyone too, as is Candidates (members running for public
  * office, design §5.8). Roles add Ballot, Verify, Offices and Candidates, so a staff member with no membership keeps
  * them, and Admin (from their sections). Signing in lands on Register with no membership, as it did, and on the home
- * page otherwise. Teams and the forum are for Active members only (design §5.7, §5.9); News is for everyone (design §10.9).
+ * page otherwise. Teams, the forum and the members' room are for Active members only (design §5.7, §5.9, §5.10); News is for everyone (design §10.9).
  */
 export const DEFAULT_NAVIGATION: NavigationSettings = {
   menu: Object.fromEntries(
@@ -196,7 +197,7 @@ export const DEFAULT_NAVIGATION: NavigationSettings = {
         : a === 'signed_out'
           ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin', 'signin')
           : a === 'active'
-            ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'news', 'course', 'admin')
+            ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'news', 'course', 'admin')
             : links('register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin'),
     ]),
   ) as Record<Audience, Record<MenuLink, boolean>>,

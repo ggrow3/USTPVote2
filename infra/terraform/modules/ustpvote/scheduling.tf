@@ -28,7 +28,8 @@ resource "google_cloud_scheduler_job" "tick" {
   depends_on = [google_cloud_run_v2_service_iam_member.worker_invoker]
 }
 
-# For tally, email and destroy-pool-key tasks (design §13). Nothing enqueues yet; see task_enqueuers.
+# One-off work for the worker (design §13): the members' room's questions, which the api queues while the room has a
+# model (room_model.tf). The api is an enqueuer then, whatever task_enqueuers says.
 resource "google_cloud_tasks_queue" "worker" {
   project  = var.project_id
   name     = "worker"
@@ -48,8 +49,12 @@ resource "google_cloud_tasks_queue" "worker" {
   depends_on = [google_project_service.this]
 }
 
+locals {
+  task_enqueuers = setunion(var.task_enqueuers, local.room_model_enabled ? ["api"] : [])
+}
+
 resource "google_cloud_tasks_queue_iam_member" "enqueuers" {
-  for_each = var.task_enqueuers
+  for_each = local.task_enqueuers
 
   project  = var.project_id
   location = google_cloud_tasks_queue.worker.location
@@ -60,7 +65,7 @@ resource "google_cloud_tasks_queue_iam_member" "enqueuers" {
 
 # Creating a task with an OIDC token for the invoker account requires acting as that account.
 resource "google_service_account_iam_member" "enqueuers_act_as_invoker" {
-  for_each = var.task_enqueuers
+  for_each = local.task_enqueuers
 
   service_account_id = google_service_account.invoker.name
   role               = "roles/iam.serviceAccountUser"

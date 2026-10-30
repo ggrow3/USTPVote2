@@ -175,7 +175,7 @@ variable "binauthz_extra_attestors" {
 # --- Worker tasks (design §13) ---------------------------------------------------------------------------------------
 
 variable "task_enqueuers" {
-  description = "Services allowed to enqueue Cloud Tasks for the worker: \"api\" and/or \"worker\". Empty until code enqueues tasks (tally, email, destroy-pool-key)."
+  description = "Services allowed to enqueue Cloud Tasks for the worker: \"api\" and/or \"worker\". The api is added while room_model_enabled, whose questions it queues (room_model.tf)."
   type        = set(string)
   default     = []
 
@@ -183,6 +183,44 @@ variable "task_enqueuers" {
     condition     = alltrue([for s in var.task_enqueuers : contains(["api", "worker"], s)])
     error_message = "task_enqueuers may only contain \"api\" and \"worker\"."
   }
+}
+
+# --- The members' room (design §5.10) --------------------------------------------------------------------------------
+
+variable "room_model_enabled" {
+  description = "Run the members' room's self-hosted model (room_model.tf): a Cloud Run service with one NVIDIA L4 GPU (about $1.05 an hour while warm, scaling to zero), its models bucket and pull job, and the api queueing questions for the worker. Off: the room's chat and memory work, and /ask answers 503."
+  type        = bool
+  default     = false
+}
+
+variable "room_chat_model" {
+  description = "The Ollama tag the room's assistant answers with. Gemma 4 26B A4B, quantization-aware 4-bit (16 GB), fits one L4 with room_model_context; gemma4:e4b is the smaller fallback."
+  type        = string
+  default     = "gemma4:26b-a4b-it-qat"
+}
+
+variable "room_embed_model" {
+  description = "The Ollama tag the room's search embeds with: EmbeddingGemma, 768 dimensions, as the vector indexes in firestore.indexes.json expect."
+  type        = string
+  default     = "embeddinggemma"
+}
+
+variable "room_model_context" {
+  description = "Ollama's context length in tokens for the room's model: the prompt (up to 40 sources, a few thousand tokens) and the answer, within the L4's memory beside the model."
+  type        = number
+  default     = 16384
+}
+
+variable "room_model_ollama_version" {
+  description = "The ollama/ollama image tag the room's model runs (from Docker Hub, through the project's dockerhub repository)."
+  type        = string
+  default     = "0.40.5"
+}
+
+variable "room_model_memory" {
+  description = "Memory of the room's model instance (at least 16Gi with a GPU)."
+  type        = string
+  default     = "16Gi"
 }
 
 # --- People (design §14) ---------------------------------------------------------------------------------------------

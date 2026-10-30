@@ -52,6 +52,7 @@ export type { CoursePackage, CoursePackageSource, PackagedLesson, PackagedProfil
 export * from './membership/index.js';
 export * from './teams/index.js';
 export * from './forum/index.js';
+export * from './room/index.js';
 export * from './communications/index.js';
 export * from './notifications/index.js';
 export * from './governance/index.js';
