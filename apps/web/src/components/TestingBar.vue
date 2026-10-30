@@ -2,7 +2,7 @@
 import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import type { PersonaSummary } from 'ustp-domain';
-import { acting } from '../acting.js';
+import { acting, personaStart } from '../acting.js';
 import { api } from '../api.js';
 import { attempt } from '../dialogs.js';
 import { actAs } from '../session.js';
@@ -25,7 +25,7 @@ async function switchTo(persona: PersonaSummary | null) {
   const ok = await attempt(() => actAs(persona && { accountId: persona.accountId, label: persona.label }));
   if (!ok) return;
   if (!persona) await router.push({ path: '/admin', query: { tab: 'testing' } });
-  else await router.push(persona.kind === 'voter' ? '/ballot' : '/admin');
+  else await router.push(personaStart(persona.kind));
 }
 </script>
 

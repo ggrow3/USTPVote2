@@ -10,7 +10,14 @@ import type { Role } from './roles.js';
 /** Sent with each request made as a persona; the value is the persona's accountId. */
 export const ACT_AS_HEADER = 'x-act-as';
 
-export const PERSONA_KINDS = ['membership_admin', 'election_admin', 'auditor', 'voter'] as const;
+export const PERSONA_KINDS = [
+  'membership_admin',
+  'election_admin',
+  'auditor',
+  'course_admin',
+  'communications_admin',
+  'voter',
+] as const satisfies readonly (Exclude<Role, 'system_admin'> | 'voter')[];
 export type PersonaKind = (typeof PERSONA_KINDS)[number];
 
 /**
@@ -21,6 +28,8 @@ export const ADMIN_PERSONAS: readonly { readonly kind: Exclude<PersonaKind, 'vot
   { kind: 'membership_admin', label: 'Test Membership Admin' },
   { kind: 'election_admin', label: 'Test Election Admin' },
   { kind: 'auditor', label: 'Test Auditor' },
+  { kind: 'course_admin', label: 'Test Course Admin' },
+  { kind: 'communications_admin', label: 'Test Communications Admin' },
 ];
 
 /** Voter personas a deployment may hold in all. */
