@@ -1,4 +1,6 @@
 import { reactive } from 'vue';
+import type { RouteLocationRaw } from 'vue-router';
+import type { AdminSection, PersonaKind } from 'ustp-domain';
 
 /**
  * Testing mode (design §10.4): the test persona this tab acts as, if any. It lives in sessionStorage, so a reload keeps
@@ -24,6 +26,19 @@ function stored(): ActingAs | null {
 }
 
 export const acting = reactive<{ persona: ActingAs | null }>({ persona: stored() });
+
+/** The admin tab each admin persona starts on; the others start on the console's first tab. */
+const PERSONA_TABS: Partial<Record<PersonaKind, AdminSection>> = {
+  course_admin: 'course',
+  communications_admin: 'communications',
+};
+
+/** Where to go on starting to act as a persona: voters to their ballots, admins to their tools. */
+export function personaStart(kind: PersonaKind): RouteLocationRaw {
+  if (kind === 'voter') return '/ballot';
+  const tab = PERSONA_TABS[kind];
+  return tab ? { path: '/admin', query: { tab } } : '/admin';
+}
 
 /** Only the session calls this, so the account it shows always matches. */
 export function setActing(persona: ActingAs | null): void {

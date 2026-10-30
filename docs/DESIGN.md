@@ -2231,8 +2231,9 @@ different account on each side. Testing mode lets one System Admin do that alone
   or `DEPLOYMENT_ENVIRONMENT` is `dev` or `staging`, and Terraform's `testing_mode` variable is refused for `prod`.
   Dev has it on.
 - **Personas:** `POST /v1/testing/personas` (System Admin) creates whichever admin persona is missing (Test
-  Membership Admin, Test Election Admin, Test Auditor) and adds the requested number of numbered test voters, at most
-  50 per deployment. A persona is an ordinary account with no login (no email, no `account_identities`) plus a
+  Membership Admin, Test Election Admin, Test Auditor, Test Course Admin, Test Communications Admin: one per role but
+  System Admin, so a role added later gets its persona the next time this runs) and adds the requested number of
+  numbered test voters, at most 50 per deployment. A persona is an ordinary account with no login (no email, no `account_identities`) plus a
   `testing_personas` record. Admin personas get their role directly; voters become Active members on the current
   bylaws (409 while none is published). Each persona is created in its own transaction with the ledger entry its real
   counterpart gets (`role.granted` or `member.status_changed`, reason `test persona`), naming the System Admin as the
@@ -2248,7 +2249,9 @@ different account on each side. Testing mode lets one System Admin do that alone
 - **Web app:** Admin → Testing (System Admins, testing mode only) creates personas, starts acting as one and makes
   demo elections. A bar under the menu names the persona, switches to another or stops. The choice is per browser tab
   (sessionStorage), so two tabs can be two personas; switching reloads the page as the new persona, and ballot receipts
-  are kept per persona.
+  are kept per persona. While any admin persona is missing, the tab offers to create it, naming each one. Acting as a
+  voter opens the ballots; the Test Course Admin opens on Course and the Test Communications Admin on Communications,
+  the other admin personas on the console's first tab they can see.
 - **Rehearsal roll:** the Election Admin can request a roll of the test voters only (§6.3), which the editor offers as
   "Request rehearsal roll" in testing mode and marks "Rehearsal roll: test voters only". The verify CLI reads who the
   roll holds from the ledger and reports a rehearsal as one.
