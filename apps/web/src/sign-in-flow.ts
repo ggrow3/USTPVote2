@@ -1,6 +1,7 @@
 import type { MultiFactorError, UserCredential } from 'firebase/auth';
 import { ref, shallowRef } from 'vue';
 import { errorMessage } from './api.js';
+import { APP_NAME } from './app-name.js';
 import { auth } from './firebase.js';
 import { CODE_PATTERN, hasAuthenticatorHint, isSecondFactorChallenge, resolveWithAuthenticator } from './mfa.js';
 import { whenSignedIn } from './session.js';
@@ -30,7 +31,7 @@ export function useSignInFlow(onSignedIn: () => Promise<unknown> | void) {
     } catch (e) {
       if (isSecondFactorChallenge(e)) {
         if (hasAuthenticatorHint(auth, e)) challenge.value = e;
-        else error.value = "This account's second step is not an authenticator app, which USTP Vote does not support. Ask a System Admin for help.";
+        else error.value = `This account's second step is not an authenticator app, which ${APP_NAME} does not support. Ask a System Admin for help.`;
         return;
       }
       error.value = errorMessage(e);

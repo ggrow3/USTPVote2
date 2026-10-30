@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { CONSISTENCY_DOCUMENTS, type ConsistencyCheckView, type ConsistencyDocument } from 'ustp-domain';
 import { focusElement, focusSoon } from '../a11y.js';
 import { referenceNote, SEVERITY_ICONS, SEVERITY_LABELS } from '../bylaws-check-text.js';
@@ -13,6 +13,7 @@ import {
   introText,
   sourceText,
   statusText,
+  summaryText,
   usedText,
 } from './consistency-check-text.js';
 import { useConsistencyCheck } from './use-consistency-check.js';
@@ -20,7 +21,8 @@ import { useConsistencyCheck } from './use-consistency-check.js';
 /**
  * The platform consistency check (design §5.5) on the ballot page or in the election editor: what it does, the person's
  * one run, its progress and its findings, which link to the questions they concern, and in the editor the documents it
- * compares with. Shown while the server offers the check, and afterwards to anyone who ran it.
+ * compares with. Shown while the server offers the check, and afterwards to anyone who ran it; folded to one line, which
+ * says where the check stands, until the person opens it.
  */
 const props = defineProps<{
   electionId: string;
@@ -44,6 +46,10 @@ const shown = computed(() => state.enabled === true || !!check.value);
 const checkedAt = computed(() => (check.value?.finishedAt ? new Date(check.value.finishedAt).toLocaleString() : ''));
 /** The check was compared with other documents than the election's checks use now. */
 const otherDocuments = computed(() => !!check.value && check.value.documents.join() !== state.documents.join());
+const open = ref(false);
+const summary = computed(() =>
+  summaryText(check.value, { available: props.available, requesting: state.requesting, error: !!state.error }),
+);
 
 function toggle(document: ConsistencyDocument, on: boolean) {
   void choose(CONSISTENCY_DOCUMENTS.filter((d) => (d === document ? on : state.documents.includes(d))));
@@ -70,113 +76,182 @@ function goTo(contestId: string) {
 
 <template>
   <q-card v-if="shown" flat bordered tag="section" aria-labelledby="consistency-heading">
-    <q-card-section>
-      <h2 id="consistency-heading" class="text-subtitle1">Consistency with the platform</h2>
-      <div class="text-caption text-grey-7">{{ introText(view, state.documents) }}</div>
-    </q-card-section>
-
-    <!-- Others read what is chosen in the intro above. -->
-    <q-card-section v-if="view === 'admin' && chooseDocuments" class="q-pt-none">
-      <fieldset class="ustp-fieldset">
-        <legend class="text-weight-medium">Compare the questions with</legend>
-        <div class="ustp-options">
-          <q-checkbox
-            v-for="d in CONSISTENCY_DOCUMENTS"
-            :key="d"
-            :model-value="state.documents.includes(d)"
-            :label="documentLabel(d)"
-            :disable="state.choosing"
-            @update:model-value="(on: boolean) => toggle(d, on)"
-          />
-        </div>
-        <div class="text-caption text-grey-7">
-          The questions are always compared with each other too. These are chosen while the election is a draft; every
-          check of it, a voter's or an officer's, then compares with the same documents.
-        </div>
-      </fieldset>
-    </q-card-section>
-
-    <q-card-section class="q-pt-none">
-      <div v-if="!check && !available" class="text-grey-7">There is nothing to check: every contest elects someone to an office.</div>
-      <div v-if="canRun" class="ustp-actions">
-        <q-btn color="primary" no-caps icon="fact_check" label="Check consistency with Claude" @click="run" />
-        <span class="text-caption text-grey-7">
-          {{ check?.status === 'failed' ? 'A failed check does not count: you can run it again.' : 'Each person can run it once per election.' }}
+    <!-- The heading holds the toggle, so it is still a heading to move by; its one line is read with it. -->
+    <h2 class="text-body2">
+      <button
+        type="button"
+        class="consistency-toggle"
+        :aria-expanded="open"
+        aria-controls="consistency-details"
+        @click="open = !open"
+      >
+        <q-spinner v-if="busy" size="18px" aria-hidden="true" class="consistency-toggle__lead" />
+        <q-icon v-else name="fact_check" size="18px" aria-hidden="true" class="consistency-toggle__lead" />
+        <span class="consistency-toggle__text">
+          <span id="consistency-heading" class="text-weight-medium">Consistency with the platform</span>
+          <span class="text-caption text-grey-7">{{ summary }}</span>
         </span>
-      </div>
-      <!-- The button's place, once the person has had their one run. -->
-      <div v-else-if="check?.status === 'done'" class="consistency-used">
-        <q-icon name="task_alt" size="20px" aria-hidden="true" class="q-mr-xs" />{{ usedText(check) }}
-      </div>
+        <q-icon name="expand_more" size="20px" aria-hidden="true" class="consistency-toggle__icon" />
+      </button>
+    </h2>
 
-      <div id="consistency-status" class="q-mt-sm">
-        <template v-if="busy">
-          <q-spinner size="1.2em" aria-hidden="true" class="q-mr-xs" />{{ statusText(check, state.requesting) }}
-        </template>
-        <strong v-else-if="check?.status === 'done'">{{ statusText(check) }}</strong>
-      </div>
-      <div v-if="state.gaveUp" class="text-deep-orange-10 q-mt-sm">
-        The check is taking longer than it should. It may still finish; if not, it is marked failed and you can run it again.
-      </div>
+    <div v-show="open" id="consistency-details">
+      <q-card-section class="q-pt-none">
+        <div class="text-caption text-grey-7">{{ introText(view, state.documents) }}</div>
+      </q-card-section>
 
-      <q-banner v-if="state.error" class="bg-negative text-white q-mt-sm" rounded>{{ state.error }}</q-banner>
-      <q-banner v-else-if="check?.status === 'failed'" class="bg-negative text-white q-mt-sm" rounded>
-        The check failed: {{ check.error }}
-      </q-banner>
+      <!-- Others read what is chosen in the intro above. -->
+      <q-card-section v-if="view === 'admin' && chooseDocuments" class="q-pt-none">
+        <fieldset class="ustp-fieldset">
+          <legend class="text-weight-medium">Compare the questions with</legend>
+          <div class="ustp-options">
+            <q-checkbox
+              v-for="d in CONSISTENCY_DOCUMENTS"
+              :key="d"
+              :model-value="state.documents.includes(d)"
+              :label="documentLabel(d)"
+              :disable="state.choosing"
+              @update:model-value="(on: boolean) => toggle(d, on)"
+            />
+          </div>
+          <div class="text-caption text-grey-7">
+            The questions are always compared with each other too. These are chosen while the election is a draft; every
+            check of it, a voter's or an officer's, then compares with the same documents.
+          </div>
+        </fieldset>
+      </q-card-section>
 
-      <template v-if="check?.status === 'done'">
-        <p class="q-mt-xs q-mb-sm">{{ check.summary }}</p>
-        <div v-if="view === 'admin' && changedSince(check, definitionHash ?? null)" class="text-caption text-deep-orange-10 q-mb-sm">
-          The election has changed since this check, which read it as it was then.
-        </div>
-        <div v-if="view === 'admin' && otherDocuments" class="text-caption text-deep-orange-10 q-mb-sm">
-          This check compared with other documents than the ones chosen for the election now.
-        </div>
-        <ol v-if="check.findings.length" class="consistency-findings q-pl-none q-my-sm">
-          <li v-for="(f, i) in check.findings" :key="i" class="consistency-finding">
-            <div class="ustp-toolbar">
-              <span class="text-weight-medium">Finding {{ i + 1 }}</span>
-              <span class="text-deep-orange-10 text-weight-medium">
-                <q-icon :name="SEVERITY_ICONS[f.severity]" size="18px" aria-hidden="true" /> {{ SEVERITY_LABELS[f.severity] }}
-              </span>
-              <span>{{ sourceText(f) }}</span>
-            </div>
-            <blockquote v-if="f.passage" class="consistency-passage">{{ f.passage }}</blockquote>
-            <div class="q-my-xs">{{ f.explanation }}</div>
-            <div class="ustp-toolbar">
-              <span class="text-caption text-grey-7">{{ f.contests.length === 1 ? 'Question' : 'Questions' }}:</span>
-              <q-btn
-                v-for="c in findingContests(check, f)"
-                :key="c.contestId"
-                flat
-                dense
-                no-caps
-                color="primary"
-                class="consistency-link"
-                :label="c.title"
-                :aria-label="`Go to ${c.title}`"
-                @click="goTo(c.contestId)"
-              />
-            </div>
-          </li>
-        </ol>
-        <div class="text-caption text-grey-7">
-          <template v-if="check.checker === 'stub'">Checked by the local stand-in, which only exists with the emulators and is not an AI review.</template>
-          <template v-else>Checked by {{ check.model }} on {{ checkedAt }}.</template>
-          Compared with:
-          <span v-for="(part, i) in comparedParts(check)" :key="i">
-            <template v-if="part.reference">
-              <a :href="part.reference.url" target="_blank" rel="noopener">{{ part.text }}</a> ({{ referenceNote(part.reference) }})</template
-            ><template v-else>{{ part.text }}</template>;
+      <q-card-section class="q-pt-none">
+        <div v-if="!check && !available" class="text-grey-7">There is nothing to check: every contest elects someone to an office.</div>
+        <div v-if="canRun" class="ustp-actions">
+          <q-btn color="primary" no-caps icon="fact_check" label="Check consistency with Claude" @click="run" />
+          <span class="text-caption text-grey-7">
+            {{ check?.status === 'failed' ? 'A failed check does not count: you can run it again.' : 'Each person can run it once per election.' }}
           </span>
-          and the other questions {{ view === 'admin' ? 'in this election' : 'on this ballot' }}.
         </div>
-      </template>
-    </q-card-section>
+        <!-- The button's place, once the person has had their one run. -->
+        <div v-else-if="check?.status === 'done'" class="consistency-used">
+          <q-icon name="task_alt" size="20px" aria-hidden="true" class="q-mr-xs" />{{ usedText(check) }}
+        </div>
+
+        <div id="consistency-status" class="q-mt-sm">
+          <template v-if="busy">
+            <q-spinner size="1.2em" aria-hidden="true" class="q-mr-xs" />{{ statusText(check, state.requesting) }}
+          </template>
+          <strong v-else-if="check?.status === 'done'">{{ statusText(check) }}</strong>
+        </div>
+        <div v-if="state.gaveUp" class="text-deep-orange-10 q-mt-sm">
+          The check is taking longer than it should. It may still finish; if not, it is marked failed and you can run it again.
+        </div>
+
+        <q-banner v-if="state.error" class="bg-negative text-white q-mt-sm" rounded>{{ state.error }}</q-banner>
+        <q-banner v-else-if="check?.status === 'failed'" class="bg-negative text-white q-mt-sm" rounded>
+          The check failed: {{ check.error }}
+        </q-banner>
+
+        <template v-if="check?.status === 'done'">
+          <p class="q-mt-xs q-mb-sm">{{ check.summary }}</p>
+          <div v-if="view === 'admin' && changedSince(check, definitionHash ?? null)" class="text-caption text-deep-orange-10 q-mb-sm">
+            The election has changed since this check, which read it as it was then.
+          </div>
+          <div v-if="view === 'admin' && otherDocuments" class="text-caption text-deep-orange-10 q-mb-sm">
+            This check compared with other documents than the ones chosen for the election now.
+          </div>
+          <ol v-if="check.findings.length" class="consistency-findings q-pl-none q-my-sm">
+            <li v-for="(f, i) in check.findings" :key="i" class="consistency-finding">
+              <div class="ustp-toolbar">
+                <span class="text-weight-medium">Finding {{ i + 1 }}</span>
+                <span class="text-deep-orange-10 text-weight-medium">
+                  <q-icon :name="SEVERITY_ICONS[f.severity]" size="18px" aria-hidden="true" /> {{ SEVERITY_LABELS[f.severity] }}
+                </span>
+                <span>{{ sourceText(f) }}</span>
+              </div>
+              <blockquote v-if="f.passage" class="consistency-passage">{{ f.passage }}</blockquote>
+              <div class="q-my-xs">{{ f.explanation }}</div>
+              <div class="ustp-toolbar">
+                <span class="text-caption text-grey-7">{{ f.contests.length === 1 ? 'Question' : 'Questions' }}:</span>
+                <q-btn
+                  v-for="c in findingContests(check, f)"
+                  :key="c.contestId"
+                  flat
+                  dense
+                  no-caps
+                  color="primary"
+                  class="consistency-link"
+                  :label="c.title"
+                  :aria-label="`Go to ${c.title}`"
+                  @click="goTo(c.contestId)"
+                />
+              </div>
+            </li>
+          </ol>
+          <div class="text-caption text-grey-7">
+            <template v-if="check.checker === 'stub'">Checked by the local stand-in, which only exists with the emulators and is not an AI review.</template>
+            <template v-else>Checked by {{ check.model }} on {{ checkedAt }}.</template>
+            Compared with:
+            <span v-for="(part, i) in comparedParts(check)" :key="i">
+              <template v-if="part.reference">
+                <a :href="part.reference.url" target="_blank" rel="noopener">{{ part.text }}</a> ({{ referenceNote(part.reference) }})</template
+              ><template v-else>{{ part.text }}</template>;
+            </span>
+            and the other questions {{ view === 'admin' ? 'in this election' : 'on this ballot' }}.
+          </div>
+        </template>
+      </q-card-section>
+    </div>
   </q-card>
 </template>
 
 <style scoped>
+.consistency-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 6px 16px;
+  border: 0;
+  border-radius: inherit;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.consistency-toggle:hover {
+  background: rgba(128, 128, 128, 0.08);
+}
+/* It spans the card, so its ring goes inside, as rows' do. */
+.consistency-toggle:focus-visible {
+  outline-offset: -2px;
+}
+.consistency-toggle__text {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 10px;
+}
+.consistency-toggle__icon {
+  transition: transform 0.2s;
+}
+.consistency-toggle[aria-expanded='true'] .consistency-toggle__icon {
+  transform: rotate(180deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .consistency-toggle__icon {
+    transition: none;
+  }
+}
+/* On the narrowest phones the title keeps to one line; the icon only decorates, the line says what it would. */
+@media (max-width: 359px) {
+  .consistency-toggle {
+    gap: 8px;
+  }
+  .consistency-toggle__lead {
+    display: none;
+  }
+}
 .consistency-used {
   display: flex;
   align-items: flex-start;

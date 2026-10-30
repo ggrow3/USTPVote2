@@ -8,6 +8,8 @@ coverage/
 .env.*
 !.env.example
 !.env.emulators
+# The web app's committed, non-secret settings (the site's name).
+!apps/web/.env
 *.local
 
 # firebase

@@ -1,10 +1,9 @@
 import { nextTick, onUnmounted, reactive, readonly, toValue, watchEffect, type MaybeRefOrGetter } from 'vue';
+import { APP_NAME } from './app-name.js';
 
 /** Accessibility helpers shared by the pages (docs/ACCESSIBILITY.md). */
 
-const APP_NAME = 'USTP Vote';
-
-/** The document title for the current page (WCAG 2.4.2), e.g. "Your ballots · USTP Vote". */
+/** The document title for the current page (WCAG 2.4.2), e.g. "Your ballots · USTP Vote" (APP_NAME). */
 export function usePageTitle(title: MaybeRefOrGetter<string>): void {
   const page = {};
   watchEffect(() => {

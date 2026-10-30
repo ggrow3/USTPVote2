@@ -694,9 +694,11 @@ sent (two or more for a conflict within the ballot), and a passage only if one o
 words; the most severe first.
 
 **On the page.** A card, "Consistency with the platform", on the ballot page (above the questions) and in the election
-editor (above Contests) says what the check reads, naming only the documents chosen, and that it is advisory. In the
-editor an Election Admin on a draft has a checkbox per document ("Compare the questions with"); anyone else there reads
-which are chosen. A result ends with what it was compared with, from its own record, and the editor says when that
+editor (above Contests) is folded to one line until the person opens it, so it does not push the questions down; the
+line says where their check stands ("An advisory check by Claude. Not run yet.", "Checking…", "4 possible
+inconsistencies found."). Opened, it says what the check reads, naming only the documents chosen, and that it is
+advisory. In the editor an Election Admin on a draft has a checkbox per document ("Compare the questions with"); anyone
+else there reads which are chosen. A result ends with what it was compared with, from its own record, and the editor says when that
 differs from what is chosen now. "Check consistency with Claude" opens a
 confirmation that the proposals go to Anthropic and nothing about the person or their vote does, and that it runs once;
 its focus starts on Cancel. The progress and then the outcome take the button's place, focus moves there, and the end
@@ -3165,6 +3167,12 @@ every 15 seconds in place of Cloud Scheduler.
   project's `https://<project>.web.app`. A production custom domain needs `web_origin` in Terraform and
   `VITE_SITE_ORIGIN` in the release build. Pages are rendered in the browser (no prerendering): Google and Bing run
   the script; crawlers that do not see only the shared description.
+- **The site's name** ("USTP Vote") is one build setting, `VITE_APP_NAME` in the committed `apps/web/.env`: the
+  header, page titles, the sign-in heading and messages, `index.html`'s title and link preview tags, the manifest
+  (the installed app's name), the author of the Word files the browser builds and the entry in authenticator apps
+  (existing entries keep the name they were added with). An environment's `.env.<mode>.local`, or the build's
+  environment, can set another; the build stops if it is empty. Not covered: the hub's "USTP Vote" link (hub data,
+  §10.6), the api's robots.txt, the MCP server's text (§3.4) and Identity Platform's public name.
 - Bucket Lock retention locked in prod only. Testing mode (§10.4) is on in dev and can never be on in prod.
 - Cost deltas against spec §8: + ≈ $0.06/month per election with a live ballot-pool key version; one Scheduler job
   per environment (free); Cloud Tasks well within its free tier. Total remains under $1/month at the stated scale.
