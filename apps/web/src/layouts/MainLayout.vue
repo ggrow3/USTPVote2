@@ -3,6 +3,7 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, r
 import { useRoute, useRouter } from 'vue-router';
 import { focusElement, liveRegions } from '../a11y.js';
 import { acting } from '../acting.js';
+import { APP_NAME } from '../app-name.js';
 import UpdateBanner from '../components/UpdateBanner.vue';
 import { usingEmulators } from '../firebase.js';
 import { navigationState, shown } from '../governance/navigation.js';
@@ -124,7 +125,7 @@ watch(headerShown, (now) => now || (document.documentElement.style.scrollPadding
       <template v-if="!bare">
         <q-toolbar>
           <q-toolbar-title shrink style="flex: none">
-            <router-link to="/" class="text-white" style="text-decoration: none">USTP Vote</router-link>
+            <router-link to="/" class="text-white" style="text-decoration: none">{{ APP_NAME }}</router-link>
           </q-toolbar-title>
           <q-space />
           <q-badge v-if="usingEmulators" color="orange" text-color="black" label="Local emulators" class="q-mr-md gt-xs" />

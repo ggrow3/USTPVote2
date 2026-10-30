@@ -3,6 +3,7 @@ import { computed, reactive, watch } from 'vue';
 import { preferencesOf, type ApprovalRequestRecord, type ElectionRecord, type ProfilePhotoRecord, type VoterElection } from 'ustp-domain';
 import { focusSoon, usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
+import { APP_NAME } from '../app-name.js';
 import HomeBackdrop from '../components/HomeBackdrop.vue';
 import SignInForm from '../components/SignInForm.vue';
 import DailyQuoteCard from '../daily/DailyQuoteCard.vue';
@@ -109,7 +110,7 @@ watch(signedIn, (now) => now && focusSoon('main h1'));
         <SignInForm v-if="visitor.signIn" card-class="ustp-landing__card">
           <template #header>
             <q-card-section>
-              <h2 class="text-h6">Sign in to USTP Vote</h2>
+              <h2 class="text-h6">Sign in to {{ APP_NAME }}</h2>
               <p v-if="quote" class="q-mb-none q-mt-xs">{{ INTRO }}</p>
             </q-card-section>
           </template>

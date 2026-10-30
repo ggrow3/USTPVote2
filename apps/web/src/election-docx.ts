@@ -28,6 +28,7 @@ import {
   type ResultsRecord,
   type ResultsSynopsis,
 } from 'ustp-domain';
+import { APP_NAME } from './app-name.js';
 import { INK, LETTER_PAGE, STAMP_PARAGRAPH_STYLE, stampLine, textParagraph } from './bylaws-docx.js';
 import { electionSlug, fileDate, KIND_LABELS, rulesText, tieBreakText } from './election-text.js';
 import {
@@ -411,7 +412,7 @@ export function electionDocument(input: ElectionDocxInput): Document {
     : [];
 
   return new Document({
-    creator: 'USTP Vote',
+    creator: APP_NAME,
     title: `${def.title}: ${what.toLowerCase()}`,
     subject: status,
     keywords: [`election ${def.electionId}`, `definition sha256:${hash}`, ...(results ? [`results sha256:${results.resultsHash}`] : [])].join(

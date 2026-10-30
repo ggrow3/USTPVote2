@@ -6,7 +6,7 @@ import vue from '@vitejs/plugin-vue';
 import { defineConfig, type Plugin, type ResolvedConfig } from 'vite';
 
 export default defineConfig({
-  plugins: [vue({ template: { transformAssetUrls } }), quasar(), siteOrigin(), serviceWorker()],
+  plugins: [vue({ template: { transformAssetUrls } }), quasar(), siteOrigin(), appName(), serviceWorker()],
   server: {
     // Local API (npm run dev:api) during development; Firebase Hosting rewrites in deployed environments, robots.txt and
     // sitemap.xml included (design §15). Like Hosting, it sends X-Forwarded-Host, so links the API builds (the results
@@ -31,6 +31,42 @@ function siteOrigin(): Plugin {
       origin = (env.VITE_SITE_ORIGIN as string | undefined) || (project && !project.startsWith('demo-') ? `https://${project}.web.app` : '');
     },
     transformIndexHtml: (html) => html.replaceAll('%SITE_ORIGIN%', origin),
+  };
+}
+
+const MANIFEST = 'manifest.webmanifest';
+
+/**
+ * Fills in %VITE_APP_NAME% with the site's name (apps/web/.env, design §15): in index.html, escaped, ahead of Vite's own
+ * fill-in, which is not; and in the manifest, as the dev server serves it and in the build before serviceWorker()
+ * hashes it. Stops without a name.
+ */
+function appName(): Plugin {
+  let name = '';
+  const fill = (text: string, value: string) => text.replaceAll('%VITE_APP_NAME%', value);
+  const named = (manifest: string) => fill(manifest, JSON.stringify(name).slice(1, -1));
+  let config: ResolvedConfig;
+  return {
+    name: 'ustp-app-name',
+    configResolved(resolved) {
+      config = resolved;
+      name = (config.env.VITE_APP_NAME as string | undefined) ?? '';
+      if (!name) throw new Error('VITE_APP_NAME is empty: apps/web/.env names the site.');
+    },
+    transformIndexHtml: {
+      order: 'pre',
+      handler: (html) => fill(html, name.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`)),
+    },
+    configureServer(server) {
+      server.middlewares.use(`/${MANIFEST}`, (_req, res) => {
+        res.setHeader('Content-Type', 'application/manifest+json');
+        res.end(named(readFileSync(resolve(config.publicDir, MANIFEST), 'utf8')));
+      });
+    },
+    writeBundle() {
+      const built = resolve(config.root, config.build.outDir, MANIFEST);
+      writeFileSync(built, named(readFileSync(built, 'utf8')));
+    },
   };
 }
 
