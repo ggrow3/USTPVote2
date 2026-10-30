@@ -194,6 +194,9 @@ resource "google_cloud_run_v2_service_iam_member" "room_model_worker" {
 
 # Fetches the models into the bucket: run it once after the first apply and again after changing either model
 # (`gcloud run jobs execute room-model-pull --region <region> --wait`; README "Members' room model"). No GPU needed.
+# Ollama downloads each file in parallel parts written out of order, which stall on a Cloud Storage mount (tried on dev,
+# 2026-10-30), so it pulls into the instance's own memory and the finished files are then copied to the bucket in one
+# pass each.
 resource "google_cloud_run_v2_job" "room_model_pull" {
   count = local.room_model_enabled ? 1 : 0
 
@@ -223,7 +226,7 @@ resource "google_cloud_run_v2_job" "room_model_pull" {
       containers {
         image   = local.room_model_image
         command = ["/bin/sh", "-c"]
-        args    = ["ollama serve & sleep 10 && ollama pull ${var.room_chat_model} && ollama pull ${var.room_embed_model}"]
+        args    = ["OLLAMA_MODELS=/tmp/models ollama serve & sleep 10 && ollama pull ${var.room_chat_model} && ollama pull ${var.room_embed_model} && cp -r /tmp/models/. /models/"]
 
         dynamic "env" {
           for_each = local.room_ollama_env
@@ -238,8 +241,7 @@ resource "google_cloud_run_v2_job" "room_model_pull" {
           mount_path = "/models"
         }
 
-        # Cloud Storage FUSE stages a file being written in the instance's memory until it is closed, and the chat
-        # model is one 16 GB file, so the job needs the memory to hold it.
+        # The models (about 16 GB) are held in the instance's in-memory disk until they are copied to the bucket.
         resources {
           limits = {
             cpu    = "8"

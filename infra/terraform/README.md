@@ -464,9 +464,10 @@ company. With `room_model_enabled = true`, `room_model.tf` creates:
   L4s in a region on its first GPU deployment without a quota request; this service uses one.
 - **`<project>-room-models`**, a bucket for the model files (about 17 GB), mounted by the service (writable, since
   Ollama makes its folders when it starts, even before the pull job has run).
-- **`room-model-pull`**, a Cloud Run job that fetches the models into the bucket (8 vCPU and 32 GiB: Cloud Storage FUSE
-  holds a file in memory until it is written, and the chat model is one 16 GB file; a run costs a few cents). Run it
-  once after the first apply, and again after changing either model:
+- **`room-model-pull`**, a Cloud Run job that fetches the models into the bucket (8 vCPU and 32 GiB: it downloads them
+  into its own memory, since Ollama's parallel, out-of-order writes stall on a Cloud Storage mount, then copies them to
+  the bucket; about 5 minutes and a few cents a run). Run it once after the first apply, and again after changing either
+  model:
 
   ```
   gcloud run jobs execute room-model-pull --region us-central1 --project <project> --wait
