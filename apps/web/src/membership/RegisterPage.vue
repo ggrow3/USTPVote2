@@ -4,6 +4,7 @@ import { useQuasar } from 'quasar';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import {
   createApplicationSchema,
+  DEFAULT_REGISTRATION_FORM,
   mayApply,
   MINIMUM_MEMBER_AGE,
   type ApplicationRecord,
@@ -48,7 +49,10 @@ const login = reactive({ email: '', password: '' });
 const loginErrors = ref<FieldErrors>({});
 const { busy: signingIn, error: signInError, challenge, code, run, submitCode } = useSignInFlow(toNextStep);
 
-/** The Membership Admins' wording: the intro, the two questions and the Core Ideals, and the bonus link (design §5.2). */
+/**
+ * The Membership Admins' wording: the heading and intro, the two questions and the Core Ideals, and the bonus link
+ * (design §5.2). The heading is the default's until the wording loads, and if it cannot.
+ */
 const wording = ref<PublicRegistrationForm | null>(null);
 const wordingError = ref<string | null>(null);
 const tips = computed(() =>
@@ -289,7 +293,7 @@ async function submit() {
 <template>
   <PageShell>
     <div class="ustp-content">
-      <h1 class="text-h5">Register as a member</h1>
+      <h1 class="text-h5">{{ wording?.title ?? DEFAULT_REGISTRATION_FORM.title }}</h1>
       <RegistrationIntro v-if="wording && session.ready && step !== null" :intro="wording.intro" />
       <ol v-if="session.ready && step !== null" class="register-steps" aria-label="Steps to register">
         <li
