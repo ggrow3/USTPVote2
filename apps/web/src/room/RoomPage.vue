@@ -342,7 +342,12 @@ watch(
             questions about them.
           </div>
         </div>
-        <q-banner v-if="!status.member" class="bg-blue-1 text-black" rounded>
+        <q-banner v-if="!status.open" class="bg-grey-3 text-black" rounded>
+          <template #avatar><q-icon name="lock" /></template>
+          The room is closed for now{{ status.closed?.by ? `: ${status.closed.by.name} closed it` : '' }}. Nothing in it
+          is deleted; it opens again when an admin opens it.
+        </q-banner>
+        <q-banner v-else-if="!status.member" class="bg-blue-1 text-black" rounded>
           The room is for Active members. <router-link v-if="!session.me?.member" to="/register">Apply to join the party</router-link
           ><template v-else>Your membership is not active now.</template>
         </q-banner>

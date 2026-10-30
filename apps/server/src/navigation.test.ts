@@ -13,6 +13,7 @@ import { CommunicationsAdminController } from './communications/communications.c
 import { CourseController } from './course/course.controller.js';
 import { ElectionsController } from './elections/elections.controller.js';
 import { ForumAdminController } from './forum/forum.controller.js';
+import { RoomAdminController } from './room/room.controller.js';
 import { MembershipAdminController } from './membership/membership.controller.js';
 import { RegistrationFormAdminController } from './membership/registration-form.js';
 import { NoticeSettingsController } from './notifications/notice-settings.js';
@@ -36,6 +37,7 @@ const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
   candidacies: [CandidaciesAdminController, 'list'],
   teams: [TeamsAdminController, 'list'],
   forum: [ForumAdminController, 'list'],
+  room: [RoomAdminController, 'settings'],
   approvals: [ApprovalsController, 'list'],
   people: [AccountsAdminController, 'list'],
   signin: [SignInMethodsController, 'current'],

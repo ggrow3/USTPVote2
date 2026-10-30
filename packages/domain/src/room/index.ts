@@ -7,6 +7,7 @@ export {
   ROOM_MESSAGE_KINDS,
   ROOM_MEMORY_KINDS,
   EMPTY_FEED,
+  ROOM_SETTINGS,
   expiresAfter,
   roomConsentSchema,
   roomMessageSchema,
@@ -30,6 +31,8 @@ export {
   updateAction,
   checkForget,
   switchAssistant,
+  changeRoomSetting,
+  checkRoomOpen,
   checkAsk,
   checkMessageRate,
   citations,
@@ -58,11 +61,13 @@ export type {
   RoomJobState,
   RoomJobRecord,
   RoomFeedRecord,
+  RoomSetting,
+  RoomSettingsChangedPayload,
   RoomConsentChangedPayload,
 } from './room.js';
 export { ROOM_COMMANDS, ROOM_COMMAND_HELP, parseRoomInput } from './commands.js';
 export type { RoomCommand, ParsedRoomInput } from './commands.js';
-export { messageView, memoryView, memoryLists, assistantView, roomStatus } from './views.js';
+export { messageView, memoryView, memoryLists, assistantView, roomStatus, roomSettingsView } from './views.js';
 export type {
   RoomPerson,
   RoomModelKind,
@@ -76,4 +81,5 @@ export type {
   RoomMemoryView,
   RoomMemory,
   RoomViewContext,
+  RoomSettingsView,
 } from './views.js';

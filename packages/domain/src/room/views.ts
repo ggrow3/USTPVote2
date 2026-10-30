@@ -29,6 +29,9 @@ export type RoomModelKind = 'self-hosted' | 'stand-in' | 'off';
 export interface RoomStatus {
   /** An Active member: may read the terms and enter. */
   readonly member: boolean;
+  /** An admin has the room open; closed, nobody enters or uses it (`closed` says who and when). */
+  readonly open: boolean;
+  readonly closed: { readonly at: string | null; readonly by: RoomPerson | null } | null;
   readonly terms: { readonly version: number; readonly text: string; readonly hash: string };
   /** Accepted the current terms and not left since. */
   readonly inRoom: boolean;
@@ -48,6 +51,8 @@ export interface RoomStatus {
 
 export interface RoomAssistantView {
   readonly on: boolean;
+  /** The model server's switch (a System Admin's): off, nothing goes to the model. */
+  readonly server: boolean;
   readonly model: RoomModelKind;
   readonly switchedAt: string | null;
   readonly switchedBy: RoomPerson | null;
@@ -134,6 +139,51 @@ export interface RoomMemory {
   readonly memorySeq: number;
 }
 
+/** `GET /v1/admin/room/settings`: the admins' switches, who changed each last, and how the room is doing. */
+export interface RoomSettingsView {
+  readonly open: boolean;
+  readonly openChangedAt: string | null;
+  readonly openChangedBy: RoomPerson | null;
+  readonly server: {
+    readonly on: boolean;
+    readonly changedAt: string | null;
+    readonly changedBy: RoomPerson | null;
+    /** How this deployment runs the model; `off` until Terraform creates the server (room_model_enabled). */
+    readonly model: RoomModelKind;
+  };
+  /** The Membership Admins' kill switch in the room itself. */
+  readonly assistantOn: boolean;
+  /** Members in the room now, and questions waiting for the assistant. */
+  readonly people: number;
+  readonly pending: number;
+  /** This admin may switch the server: System Admins only, since it decides what the GPU costs. */
+  readonly canSwitchServer: boolean;
+}
+
+export function roomSettingsView(
+  feed: RoomFeedRecord,
+  model: RoomModelKind,
+  people: number,
+  canSwitchServer: boolean,
+  ctx: RoomViewContext,
+): RoomSettingsView {
+  return {
+    open: feed.open,
+    openChangedAt: feed.openChangedAt,
+    openChangedBy: feed.openChangedBy ? person(ctx, feed.openChangedBy) : null,
+    server: {
+      on: feed.serverOn,
+      changedAt: feed.serverChangedAt,
+      changedBy: feed.serverChangedBy ? person(ctx, feed.serverChangedBy) : null,
+      model,
+    },
+    assistantOn: feed.assistantOn,
+    people,
+    pending: feed.pending.length,
+    canSwitchServer,
+  };
+}
+
 /** Who is looking, and the names of everyone mentioned. */
 export interface RoomViewContext {
   readonly accountId: string;
@@ -211,6 +261,7 @@ export function memoryLists(items: readonly RoomMemoryRecord[], ctx: RoomViewCon
 export function assistantView(feed: RoomFeedRecord, model: RoomModelKind, ctx: RoomViewContext): RoomAssistantView {
   return {
     on: feed.assistantOn,
+    server: feed.serverOn,
     model,
     switchedAt: feed.switchedAt,
     switchedBy: feed.switchedBy ? person(ctx, feed.switchedBy) : null,
@@ -218,15 +269,18 @@ export function assistantView(feed: RoomFeedRecord, model: RoomModelKind, ctx: R
   };
 }
 
-/** The door: the terms always; the room's state only for a member in it. */
+/** The door: the terms always; the room's state only for a member in it, while it is open. */
 export function roomStatus(
   member: boolean,
   consent: RoomConsentRecord | null,
   room: RoomStatus['room'],
+  closed: RoomStatus['closed'] = null,
 ): RoomStatus {
-  const entered = member && inRoom(consent);
+  const entered = member && inRoom(consent) && !closed;
   return {
     member,
+    open: !closed,
+    closed,
     terms: { version: ROOM_TERMS.version, text: ROOM_TERMS.text, hash: ROOM_TERMS_HASH },
     inRoom: entered,
     consent: consent ? { version: consent.termsVersion, acceptedAt: consent.acceptedAt, withdrawnAt: consent.withdrawnAt } : null,

@@ -224,7 +224,10 @@ export interface RoomJobRecord {
   readonly expireAt: string | null;
 }
 
-/** `room_state/feed`: the room's change counter, the assistant's switch and the questions it is working on. */
+/**
+ * `room_state/feed`: the room's change counter, its switches (the room open, its model server on, the assistant on) and
+ * the questions the assistant is working on. Every switch is a change, so open pages learn of it at once.
+ */
 export interface RoomFeedRecord {
   /** The number of the room's latest change; each change takes the next. */
   readonly seq: number;
@@ -237,9 +240,41 @@ export interface RoomFeedRecord {
   readonly switchedBy: string | null;
   /** The question messages waiting for an answer, oldest first. */
   readonly pending: readonly string[];
+  /** An admin's switch (Admin › Members' room): closed, nobody uses the room; nothing in it is deleted. */
+  readonly open: boolean;
+  readonly openChangedAt: string | null;
+  readonly openChangedBy: string | null;
+  /** A System Admin's switch: off, nothing goes to the model server, so its GPU scales to zero and costs nothing. */
+  readonly serverOn: boolean;
+  readonly serverChangedAt: string | null;
+  readonly serverChangedBy: string | null;
 }
 
-export const EMPTY_FEED: RoomFeedRecord = { seq: 0, memorySeq: 0, peopleSeq: 0, assistantOn: true, switchedAt: null, switchedBy: null, pending: [] };
+export const EMPTY_FEED: RoomFeedRecord = {
+  seq: 0,
+  memorySeq: 0,
+  peopleSeq: 0,
+  assistantOn: true,
+  switchedAt: null,
+  switchedBy: null,
+  pending: [],
+  open: true,
+  openChangedAt: null,
+  openChangedBy: null,
+  serverOn: true,
+  serverChangedAt: null,
+  serverChangedBy: null,
+};
+
+/** The admins' switches (Admin › Members' room): the room open or closed, its model server on or off. */
+export const ROOM_SETTINGS = ['open', 'server'] as const;
+export type RoomSetting = (typeof ROOM_SETTINGS)[number];
+
+/** `room.settings_changed`: an admin opened or closed the room, or switched its model server (public to Auditors only). */
+export interface RoomSettingsChangedPayload {
+  readonly setting: RoomSetting;
+  readonly on: boolean;
+}
 
 /** `room.consent_changed`: a member accepted the terms or left (Auditors only). */
 export interface RoomConsentChangedPayload {
@@ -453,8 +488,44 @@ export function switchAssistant(
   };
 }
 
+/**
+ * An admin opens or closes the room (System or Membership Admin), or a System Admin switches its model server on or
+ * off. Switching the server off cancels the questions waiting, as the assistant's own switch does, since none of them
+ * may reach the model now.
+ */
+export function changeRoomSetting(
+  feed: RoomFeedRecord,
+  setting: RoomSetting,
+  on: boolean,
+  actor: string,
+  at: string,
+): Outcome<{ feed: Omit<RoomFeedRecord, 'seq'>; cancelled: readonly string[]; event: LedgerEvent }> {
+  const current = setting === 'open' ? feed.open : feed.serverOn;
+  if (current === on) {
+    return refuse('conflict', setting === 'open' ? `the room is already ${on ? 'open' : 'closed'}` : `the model server is already ${on ? 'on' : 'off'}`);
+  }
+  const changed: Omit<RoomFeedRecord, 'seq'> =
+    setting === 'open'
+      ? { ...feed, open: on, openChangedAt: at, openChangedBy: actor }
+      : { ...feed, serverOn: on, serverChangedAt: at, serverChangedBy: actor, pending: on ? feed.pending : [] };
+  const payload: RoomSettingsChangedPayload = { setting, on };
+  return {
+    ok: true,
+    value: {
+      feed: changed,
+      cancelled: setting === 'server' && !on ? feed.pending : [],
+      event: { type: 'room.settings_changed', actor, subject: null, payload: { ...payload } },
+    },
+  };
+}
+
+/** Whether the room is open: an admin may close it for everyone for a while. */
+export const checkRoomOpen = (feed: RoomFeedRecord): Check =>
+  feed.open ? OK : refuse('forbidden', 'the room is closed for now: an admin closed it');
+
 /** Whether a member may ask another question, having asked `asked` in the last 24 hours with `pending` waiting room-wide. */
 export function checkAsk(feed: RoomFeedRecord, asked: number): Check {
+  if (!feed.serverOn) return refuse('conflict', 'a System Admin has switched the room’s model server off; ask again once it is on');
   if (!feed.assistantOn) return refuse('conflict', 'a Membership Admin has switched the assistant off');
   if (feed.pending.length >= ROOM_LIMITS.pending) return refuse('rate_limited', 'the assistant has too many questions waiting; ask again in a minute');
   if (asked >= ROOM_LIMITS.questionsPerDay) return refuse('rate_limited', `you can ask ${ROOM_LIMITS.questionsPerDay} questions in any 24 hours`);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { answerParts, assistantLine, commandHints, dayLabel, dueLabel, overdue, peopleLine } from './room-text.js';
+import { answerParts, assistantLine, changedLine, commandHints, dayLabel, dueLabel, overdue, peopleLine, serverLine } from './room-text.js';
 
 const NOW = new Date(2026, 9, 29, 15, 0);
 const local = (y: number, m: number, d: number, h = 12) => new Date(y, m - 1, d, h).toISOString();
@@ -45,9 +45,18 @@ describe('room wording', () => {
   });
 
   it('says how the assistant runs, or why it does not', () => {
-    const base = { on: true, model: 'self-hosted' as const, switchedAt: null, switchedBy: null, pending: [] };
+    const base = { on: true, server: true, model: 'self-hosted' as const, switchedAt: null, switchedBy: null, pending: [] };
     expect(assistantLine(base)).toMatchObject({ label: 'Assistant on', on: true, caption: expect.stringContaining('nothing said here goes to an AI company') });
     expect(assistantLine({ ...base, on: false, switchedBy: { accountId: 'm', name: 'Morgan' } })).toMatchObject({ label: 'Assistant off', caption: expect.stringContaining('Morgan switched it off') });
     expect(assistantLine({ ...base, model: 'off' })).toMatchObject({ label: 'Assistant not set up', on: false });
+    expect(assistantLine({ ...base, server: false })).toMatchObject({ label: 'Assistant’s server off', on: false });
+  });
+
+  it('describes the admins’ switches', () => {
+    expect(changedLine(null, null)).toBe('');
+    expect(changedLine({ accountId: 'a', name: 'Ada' }, local(2026, 10, 29, 9), NOW)).toMatch(/^by Ada, \d{1,2}:\d{2} AM$/);
+    expect(serverLine({ on: true, changedAt: null, changedBy: null, model: 'off' })).toMatchObject({ title: 'No model server yet', running: false });
+    expect(serverLine({ on: false, changedAt: null, changedBy: null, model: 'self-hosted' })).toMatchObject({ title: 'The model server is off', running: false });
+    expect(serverLine({ on: true, changedAt: null, changedBy: null, model: 'self-hosted' })).toMatchObject({ running: true, caption: expect.stringContaining('$1.05') });
   });
 });

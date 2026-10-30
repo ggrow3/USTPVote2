@@ -25,6 +25,7 @@ export const ADMIN_SECTIONS = [
   'candidacies',
   'teams',
   'forum',
+  'room',
   'approvals',
   'people',
   'signin',
@@ -73,6 +74,9 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   teams: ['membership_admin'],
   // Moderating the forum, and reading it to put proposals on ballots (design §5.9).
   forum: ['membership_admin', 'election_admin'],
+  // The members' room's switches: open or closed (Membership and System Admins), its model server on or off (System
+  // Admins; design §5.10).
+  room: ['membership_admin', 'system_admin'],
   approvals: ROLES,
   people: ['system_admin'],
   signin: ['system_admin'],
