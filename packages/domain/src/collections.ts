@@ -35,6 +35,16 @@ export const Collections = {
   forumVotes: 'forum_votes',
   /** `forum_reports/{kind}_{targetId}_{accountId}`: each member's report of a post or comment, for Membership Admins. */
   forumReports: 'forum_reports',
+  /** `room_consents/{accountId}`: each member's acceptance of the room's terms, or its withdrawal (design §5.10). */
+  roomConsents: 'room_consents',
+  /** `room_messages/{messageId}`: the room's messages, the assistant's answers and notices; kept 90 days. */
+  roomMessages: 'room_messages',
+  /** `room_memory/{itemId}`: the room's decisions and action items, the assistant's project memory. */
+  roomMemory: 'room_memory',
+  /** `room_jobs/{jobId}`: questions waiting for the assistant, run on the worker. */
+  roomJobs: 'room_jobs',
+  /** `room_state/feed`: the room's change counter, the assistant's switch and the questions it is working on. */
+  roomState: 'room_state',
   eligibilitySnapshots: 'eligibility_snapshots',
   // voting
   elections: 'elections',

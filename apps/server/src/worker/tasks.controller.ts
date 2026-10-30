@@ -1,4 +1,5 @@
 import {
+  Body,
   Controller,
   HttpCode,
   InternalServerErrorException,
@@ -14,6 +15,8 @@ import { SuggestionsService } from '../communications/suggestions.service.js';
 import { ConsistencyCheckRunner } from '../consistency-check/consistency-check-runner.js';
 import { ElectionCheckRunner } from '../election-check/election-check-runner.js';
 import { NoticeSender } from '../notifications/notice-sender.js';
+import { RoomAssistant } from '../room/room-assistant.js';
+import { RoomRetention } from '../room/room-retention.js';
 import { BallotSealer } from './ballot-sealer.js';
 import { ElectionClock } from './election-clock.js';
 import { LedgerSealer } from './ledger-sealer.js';
@@ -23,7 +26,7 @@ import { Tallier } from './tallier.js';
  * Worker task endpoints (design §13), invoked by Cloud Scheduler and Cloud Tasks. The worker's Cloud Run service only
  * admits their OIDC tokens (IAM invoker), so these routes have no sign-in of their own.
  */
-export const WORKER_TASKS = ['tick', 'bylaws-checks', 'consistency-checks', 'election-checks', 'email'] as const;
+export const WORKER_TASKS = ['tick', 'bylaws-checks', 'consistency-checks', 'election-checks', 'room-assistant', 'email'] as const;
 export type WorkerTask = (typeof WORKER_TASKS)[number];
 
 @Controller('tasks')
@@ -40,13 +43,15 @@ export class TasksController {
     private readonly electionChecks: ElectionCheckRunner,
     private readonly notices: NoticeSender,
     private readonly suggestions: SuggestionsService,
+    private readonly roomRetention: RoomRetention,
+    private readonly roomAssistant: RoomAssistant,
   ) {}
 
   /**
    * Every minute: prepare ballot-pool keys, open and close elections on time, seal ballots, tally elections that are
    * now fully sealed, destroy the pool keys of certified and cancelled elections, send election notices (for at most
    * 20 seconds) and the test emails Election Admins asked for, and record their bounces, delete suggestions a year old
-   * (design §10.9), then seal new ledger entries (including those) into a signed block, sign approved rolls and anchor
+   * (design §10.9) and the members' room's records past their time (§5.10), then seal new ledger entries (including those) into a signed block, sign approved rolls and anchor
    * new blocks. Each step runs even if an earlier one failed.
    */
   @Post('tick')
@@ -74,6 +79,7 @@ export class TasksController {
       testEmailsSent: await step('send test emails', () => this.notices.sendTests(), 0),
       bouncesRecorded: await step('record bounces', () => this.notices.recordBounces(), 0),
       suggestionsDeleted: await step('delete old suggestions', () => this.suggestions.deleteExpired(), 0),
+      roomExpired: await step('expire room records', () => this.roomRetention.run(), 0),
       blocksSealed: (await step('seal blocks', () => this.sealer.sealBlocks(), [])).length,
       rollsSigned: await step('sign rolls', () => this.sealer.signRolls(), 0),
       anchored: await step('anchor blocks', () => this.sealer.anchorBlocks(), 0),
@@ -104,6 +110,19 @@ export class TasksController {
   @HttpCode(200)
   runElectionChecks(): Promise<ElectionRunResult> {
     return this.electionChecks.runQueued();
+  }
+
+  /**
+   * A Cloud Task the api queued for a question in the members' room (design §5.10): the assistant answers it, which may
+   * take minutes while the room's model starts. The answer, or why there is none, is posted in the room, so the task
+   * itself never fails and Cloud Tasks does not retry it; a retry would find the question taken anyway.
+   */
+  @Post('room-assistant')
+  @HttpCode(200)
+  async answerRoomQuestion(@Body() body: unknown): Promise<{ outcome: string }> {
+    const jobId = typeof body === 'object' && body && typeof (body as { jobId?: unknown }).jobId === 'string' ? (body as { jobId: string }).jobId : null;
+    if (!jobId) throw new NotFoundException('no jobId');
+    return { outcome: await this.roomAssistant.run(jobId) };
   }
 
   @Post(':task')

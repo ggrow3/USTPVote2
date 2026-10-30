@@ -32,6 +32,9 @@ module "ustpvote" {
   # The Candidates page's Google map (design §5.8; README "Candidates map").
   maps_enabled = var.maps_enabled
 
+  # The members' room's self-hosted model, one L4 GPU (design §5.10; README "Members' room model").
+  room_model_enabled = var.room_model_enabled
+
   # Election notices (design §6.8; README "Election notices").
   web_origin           = var.web_origin
   mail_transport       = var.mail_transport

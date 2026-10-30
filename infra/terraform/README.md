@@ -50,7 +50,9 @@ API-side limits are only checked by Google on the first apply.
 | | Create, get, decrypt with and destroy `ballot-pool` versions (custom role, on that key only) | One version per election, unwrapping at sealing, destruction after certification (§7.3, §13) |
 | | Create and read objects in the anchors bucket; never delete | Write-once anchors; overwriting needs delete, which it lacks (§8.4) |
 | | Access secrets | Tie-break seeds at tally (§9), the Anthropic API key for the bylaws, consistency and election setup checks, read each time it runs them (§5.4–§5.6, §6.9), the AWS key for election notices by SES (§6.8) |
+| | Invoke `room-model` (while `room_model_enabled`) | Answers questions in the members' room with the self-hosted model (§5.10) |
 | `ustp-worker-invoker` | Invoke the worker | Identity of the Scheduler tick and of Cloud Tasks; nothing else |
+| `ustp-room-model` | Read and write objects in the room models bucket | The members' room's model loads its files from there; the pull job fetches them (§5.10) |
 | `ustp-mcp` | Nothing | The reporting MCP server (`mcp.tf`, design §3.4) reads only the public api, through the site, as any visitor does |
 | `ustp-release` | Push to the `ustpvote` Artifact Registry repository | The release workflow builds the server image |
 | | Sign attestations for `ustpvote-reviewed` (attestor key, note, occurrences) | Binary Authorization lets only attested images run |
@@ -88,11 +90,12 @@ Set in each root's `terraform.tfvars` (or with `-var`):
 | `operator_members` | | | | `user:…` / `group:…` with read-only operations roles |
 | `developer_data_members` | yes | yes | (absent) | People with Firestore data access |
 | `alert_emails` | | | | Recipients of the KMS break-glass alert; empty means no alert policy |
-| `task_enqueuers` | | | | `"api"` and/or `"worker"`, once code enqueues Cloud Tasks |
+| `task_enqueuers` | | | | `"api"` and/or `"worker"`; the api is added while `room_model_enabled` |
 | `bylaws_check_enabled` | false | false | false | The advisory bylaws check with Claude, which sends drafts to Anthropic; see [Bylaws check](#bylaws-check) |
 | `consistency_check_enabled` | false | false | false | The platform consistency check with Claude, once per person per election, which sends an election's proposals to Anthropic; see [Consistency check](#consistency-check) |
 | `election_check_enabled` | false | false | false | The election setup check with Claude, once per version of an election, which sends its rules, offices and proposal texts with the bylaws to Anthropic, and whose notes every user sees; see [Election setup check](#election-setup-check) |
 | `maps_enabled` | true | true | true | The Candidates page's Google map: the Maps JavaScript API and a browser key restricted to it and to the web app's origins; see [Candidates map](#candidates-map) |
+| `room_model_enabled` | false | false | false | The members' room's self-hosted model on one L4 GPU (about $1.05 an hour while warm), and the api queueing questions for the worker; see [Members' room model](#members-room-model) |
 | `project_id`, `region` | | | | Default to the environment's project and `us-central1` |
 
 Fixed per root: Binary Authorization is a dry run in dev and enforced elsewhere. The module has further knobs with
@@ -446,6 +449,43 @@ account. A custom domain added later needs its origin in `web_origin` (and an ap
 With `maps_enabled = false` the api has no key and the pages list the candidacies without a map. Locally the api
 runs without a key unless `GOOGLE_MAPS_BROWSER_KEY` is set, and the integration tests use made-up districts
 (`DISTRICTS=local`) instead of TIGERweb.
+
+### Members' room model
+
+The members' room (design §5.10) answers `/ask` with a self-hosted model, so nothing said in the room goes to an AI
+company. With `room_model_enabled = true`, `room_model.tf` creates:
+
+- **`room-model`**, a private Cloud Run service with one NVIDIA L4 GPU running Ollama (`ollama/ollama`, tag
+  `room_model_ollama_version`, pulled through the project's `dockerhub` Artifact Registry repository), with Gemma 4 26B
+  A4B for answers (`room_chat_model`, the 16 GB quantization-aware build) and EmbeddingGemma for search
+  (`room_embed_model`, 768 dimensions, as the vector indexes expect). Only the worker's account holds `run.invoker`.
+  It scales to zero after idling; while warm it costs about $1.05 an hour (GPU $0.67, plus 4 vCPU and 16 GiB), and the
+  first question after a quiet spell waits a minute or two while it starts and loads the models. A new project gets 3
+  L4s in a region on its first GPU deployment without a quota request; this service uses one.
+- **`<project>-room-models`**, a bucket for the model files (about 17 GB), mounted by the service (writable, since
+  Ollama makes its folders when it starts, even before the pull job has run).
+- **`room-model-pull`**, a Cloud Run job that fetches the models into the bucket (8 vCPU and 32 GiB: Cloud Storage FUSE
+  holds a file in memory until it is written, and the chat model is one 16 GB file; a run costs a few cents). Run it
+  once after the first apply, and again after changing either model:
+
+  ```
+  gcloud run jobs execute room-model-pull --region us-central1 --project <project> --wait
+  ```
+
+- The api's env (`ROOM_MODEL=ollama`, `TASKS_QUEUE`, `WORKER_URL`, `TASKS_INVOKER`) and the right to queue Cloud Tasks
+  on the worker queue as the invoker account: each question becomes a task that calls the worker's
+  `/tasks/room-assistant`, since an answer can take longer than a request through Hosting may wait. The worker gets
+  `ROOM_MODEL_URL` and the model tags.
+
+The image is a third party's, pinned to a release rather than attested by the release pipeline, so the service does not
+ask Binary Authorization (design §14); it holds no secrets, and its account can only read and fetch its models.
+EmbeddingGemma's licence is the Gemma Terms of Use; Gemma 4 is Apache 2.0.
+
+With `room_model_enabled = false` (the default) `ROOM_MODEL` is `off`: the room's chat, decisions and action items work,
+and `/ask` answers 503. Not yet tried against a real project: the GPU service, the bucket mount and the pull job, nor
+that Docker Hub has `ollama/ollama` at the pinned tag (the release the developer machine ran in October 2026).
+Locally the emulators use a stand-in (`ROOM_MODEL=local`); to try the real models, run Ollama on your machine, pull both
+models, and start the api with `ROOM_MODEL=ollama ROOM_MODEL_URL=http://localhost:11434`.
 
 ### Election notices
 

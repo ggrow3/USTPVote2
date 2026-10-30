@@ -123,6 +123,15 @@ export function homeCards(
       action: 'Open the forum',
     });
   }
+  if (shown.menu.includes('room')) {
+    cards.push({
+      key: 'room',
+      title: 'Members’ room',
+      text: 'Chat with other members. Its assistant keeps the group’s decisions and action items and answers questions about them.',
+      to: '/room',
+      action: 'Enter the room',
+    });
+  }
   if (shown.menu.includes('news')) {
     cards.push({
       key: 'news',
@@ -175,6 +184,7 @@ const VISITOR_LINKS: readonly VisitorLink[] = [
   { key: 'candidates', before: 'Running for office? ', label: 'See the party’s candidates', after: ' and where they run.', to: '/candidates' },
   { key: 'teams', before: 'Members: ', label: 'join a team', after: ' and work with others between elections.', to: '/teams' },
   { key: 'forum', before: 'Members: ', label: 'discuss and propose', after: ' in the forum.', to: '/forum' },
+  { key: 'room', before: 'Members: ', label: 'work together in the members’ room', after: ', with its assistant.', to: '/room' },
   { key: 'news', before: 'What is the party saying? ', label: 'Read the news and press releases', after: ', or send us a suggestion.', to: '/news' },
   { key: 'course', before: 'Interested in the future? ', label: 'Explore the Transhumanism course', after: '.', to: '/course/transhumanism' },
   { key: 'admin', before: 'Party officers: ', label: 'open the admin console', after: '.', to: '/admin' },

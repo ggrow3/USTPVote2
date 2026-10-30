@@ -7,7 +7,7 @@
 # uses. Nothing here sets APP_CHECK_ENFORCED, ADMIN_MFA_REQUIRED, PHOTO_CHECKER, SECRET_STORE, AUDIT_SIGNER,
 # BALLOT_POOL or an emulator host, so every safety switch keeps its production default (design §4). BYLAWS_CHECKER,
 # CONSISTENCY_CHECKER and ELECTION_CHECKER are "claude" or "off" (bylaws_check.tf, consistency_check.tf,
-# election_check.tf), never the emulator-only stand-ins.
+# election_check.tf), and ROOM_MODEL "ollama" or "off" (room_model.tf), never the emulator-only stand-ins.
 
 locals {
   # api: Secret Manager (creating tie-break seeds, and keeping the Anthropic API key a System Admin adds, which it tries
@@ -33,6 +33,8 @@ locals {
     # The provider marks every key string sensitive, but this one is public by nature (maps.tf), and a sensitive value
     # here would make the api_env output refuse to plan.
     var.maps_enabled ? { GOOGLE_MAPS_BROWSER_KEY = nonsensitive(google_apikeys_key.maps_browser[0].key_string) } : {},
+    # The members' room: which model it runs, and the queue its questions go to (room_model.tf).
+    local.room_api_env,
   )
 
   # worker: Secret Manager (reading seeds at tally), signing ledger blocks and rolls, pool key versions and sealing,
@@ -55,6 +57,8 @@ locals {
     local.notices_worker_env,
     # Rehearsals' notices go to the outbox in testing mode (design §10.4), so the worker must know it is on too.
     var.testing_mode ? { TESTING_MODE = "true" } : {},
+    # The members' room's model, which the worker calls to answer questions (room_model.tf).
+    local.room_worker_env,
   )
 
   # The api queues the checks and the worker runs them, so both must agree. Each waits for a key (design §5.6).

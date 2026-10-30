@@ -183,6 +183,60 @@
         { "fieldPath": "postId", "order": "ASCENDING" },
         { "fieldPath": "accountId", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "room_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "authorId", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "room_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "kind", "order": "ASCENDING" },
+        { "fieldPath": "messageId", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "room_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "embedding", "vectorConfig": { "dimension": 768, "flat": {} } }
+      ]
+    },
+    {
+      "collectionGroup": "room_memory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "kind", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "room_memory",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "embedding", "vectorConfig": { "dimension": 768, "flat": {} } }
+      ]
+    },
+    {
+      "collectionGroup": "room_jobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "askedBy", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "room_jobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "state", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -208,6 +262,11 @@
     { "collectionGroup": "news_posts", "fieldPath": "body", "indexes": [] },
     { "collectionGroup": "press_assets", "fieldPath": "data", "indexes": [] },
     { "collectionGroup": "suggestions", "fieldPath": "message", "indexes": [] },
-    { "collectionGroup": "calendar_items", "fieldPath": "text", "indexes": [] }
+    { "collectionGroup": "calendar_items", "fieldPath": "text", "indexes": [] },
+    { "collectionGroup": "room_messages", "fieldPath": "body", "indexes": [] },
+    { "collectionGroup": "room_messages", "fieldPath": "sources", "indexes": [] },
+    { "collectionGroup": "room_memory", "fieldPath": "text", "indexes": [] },
+    { "collectionGroup": "room_memory", "fieldPath": "quote", "indexes": [] },
+    { "collectionGroup": "room_jobs", "fieldPath": "question", "indexes": [] }
   ]
 }
