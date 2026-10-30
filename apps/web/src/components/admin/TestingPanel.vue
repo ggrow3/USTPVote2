@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { MAX_TEST_VOTERS, type PersonaSummary } from 'ustp-domain';
+import { ADMIN_PERSONAS, MAX_TEST_VOTERS, type PersonaSummary } from 'ustp-domain';
+import { personaStart } from '../../acting.js';
 import { api } from '../../api.js';
 import { roleLabel } from '../../approval-text.js';
 import { attempt } from '../../dialogs.js';
@@ -16,6 +17,8 @@ const router = useRouter();
 const personas = ref<PersonaSummary[] | null>(null);
 const voters = ref(5);
 const hasAdmins = computed(() => personas.value?.some((p) => p.kind !== 'voter') ?? false);
+/** Admin personas not made yet, such as one for a role added since the others were created. */
+const missingAdmins = computed(() => ADMIN_PERSONAS.filter((a) => !personas.value?.some((p) => p.kind === a.kind)));
 const room = computed(() => MAX_TEST_VOTERS - (personas.value?.filter((p) => p.kind === 'voter').length ?? 0));
 
 function describe(p: PersonaSummary): string {
@@ -38,7 +41,7 @@ async function create(count: number) {
 
 async function actAsPersona(p: PersonaSummary) {
   if (await attempt(() => actAs({ accountId: p.accountId, label: p.label }))) {
-    await router.push(p.kind === 'voter' ? '/ballot' : '/admin');
+    await router.push(personaStart(p.kind));
   }
 }
 
@@ -51,15 +54,20 @@ onMounted(load);
       <q-card-section>
         <h2 class="text-subtitle1">Test personas</h2>
         <p class="q-mt-sm q-mb-none">
-          This deployment lets System Admins rehearse elections. Test personas are accounts with no login: one for each
-          admin role, and as many voters as you need. Act as one and the app shows and does exactly what that person
+          This deployment lets System Admins rehearse elections and try every admin role. Test personas are accounts
+          with no login: one for each admin role but System Admin, and as many voters as you need. Act as one and the app shows and does exactly what that person
           could, so every two-person step is still done by two different accounts. Actions are recorded under the
           persona; the server log records that you were acting. Open another browser tab to be a second persona at the
           same time.
         </p>
       </q-card-section>
-      <q-card-section v-if="personas && !hasAdmins" class="ustp-actions">
-        <q-btn color="primary" no-caps label="Create admin personas" @click="create(0)" />
+      <q-card-section v-if="personas && missingAdmins.length" class="ustp-actions">
+        <q-btn
+          color="primary"
+          no-caps
+          :label="hasAdmins ? `Create ${missingAdmins.map((a) => a.label).join(', ')}` : 'Create admin personas'"
+          @click="create(0)"
+        />
       </q-card-section>
       <q-list v-if="personas?.length" separator>
         <q-item v-for="p in personas" :key="p.accountId">

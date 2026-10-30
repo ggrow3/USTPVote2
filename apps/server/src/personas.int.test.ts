@@ -40,8 +40,10 @@ describe('test personas', () => {
       ['Test Membership Admin', 'membership_admin', ['membership_admin'], null, sa1.accountId],
       ['Test Election Admin', 'election_admin', ['election_admin'], null, sa1.accountId],
       ['Test Auditor', 'auditor', ['auditor'], null, sa1.accountId],
+      ['Test Course Admin', 'course_admin', ['course_admin'], null, sa1.accountId],
+      ['Test Communications Admin', 'communications_admin', ['communications_admin'], null, sa1.accountId],
     ]);
-    expect((await api.call('POST', '/v1/testing/personas', sa2, {})).body).toHaveLength(3);
+    expect((await api.call('POST', '/v1/testing/personas', sa2, {})).body).toHaveLength(5);
     expect((await api.call('GET', '/v1/testing/personas', sa2)).body).toEqual(first.body);
 
     const grants = await api.firebase.db.collection('audit_events').where('type', '==', 'role.granted').get();
@@ -50,7 +52,30 @@ describe('test personas', () => {
       { role: 'membership_admin', reason: 'test persona' },
       { role: 'election_admin', reason: 'test persona' },
       { role: 'auditor', reason: 'test persona' },
+      { role: 'course_admin', reason: 'test persona' },
+      { role: 'communications_admin', reason: 'test persona' },
     ]);
+  });
+
+  it('lets the Course and Communications Admin personas use their own tools and nothing else', async () => {
+    const personas = (await api.call('POST', '/v1/testing/personas', sa1, {})).body as PersonaSummary[];
+    const course = as(idOf(personas, 'Test Course Admin'));
+    const comms = as(idOf(personas, 'Test Communications Admin'));
+    expect((await api.call('GET', '/v1/admin/courses/transhumanism', sa1, undefined, course)).status).toBe(200);
+    expect((await api.call('GET', '/v1/admin/communications/news', sa1, undefined, comms)).status).toBe(200);
+    expect((await api.call('GET', '/v1/admin/communications/news', sa1, undefined, course)).status).toBe(403);
+    expect((await api.call('GET', '/v1/admin/courses/transhumanism', sa1, undefined, comms)).status).toBe(403);
+  });
+
+  it('adds an admin persona for a role that had none when the others were made', async () => {
+    const before = (await api.call('POST', '/v1/testing/personas', sa1, {})).body as PersonaSummary[];
+    const course = before.find((p) => p.kind === 'course_admin')!;
+    await api.firebase.db.collection('testing_personas').doc(course.accountId).delete();
+
+    const after = (await api.call('POST', '/v1/testing/personas', sa1, {})).body as PersonaSummary[];
+    expect(after.map((p) => p.kind)).toEqual(before.map((p) => p.kind));
+    expect(after.find((p) => p.kind === 'course_admin')!.accountId).not.toBe(course.accountId);
+    expect(after.filter((p) => p.kind !== 'course_admin')).toEqual(before.filter((p) => p.kind !== 'course_admin'));
   });
 
   it('adds numbered voters as Active members once bylaws are published', async () => {
