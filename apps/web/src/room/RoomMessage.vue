@@ -6,7 +6,8 @@ import { answerParts, messageTime, SOURCE_LABELS } from './room-text.js';
 
 /**
  * One message in the members' room (design §5.10): a member's (a question for the assistant marked as such, with
- * "thinking" while it waits), the assistant's answer with its numbered sources, or a notice of what someone did.
+ * "thinking" while it waits), the assistant's answer with its numbered sources or a joke someone asked for, or a
+ * notice of what someone did.
  */
 const props = defineProps<{
   message: RoomMessageView;
@@ -51,6 +52,7 @@ const sourceId = (n: number) => `src-${m.value.messageId}-${n}`;
       <div class="room-msg__head">
         <span class="room-msg__name">{{ m.kind === 'assistant' ? 'Assistant' : m.author?.name }}</span>
         <q-badge v-if="m.ask" outline color="primary" label="/ask" class="q-ml-xs" />
+        <span v-if="m.joke" class="room-joke-for text-grey-7">a lame joke for {{ m.author?.name }}</span>
         <span class="room-time text-grey-7">{{ messageTime(m.createdAt) }}</span>
         <q-space />
         <q-btn v-if="canDelete || canDecide" flat round dense size="sm" icon="more_horiz" :aria-label="`Actions for this message`">
@@ -116,6 +118,10 @@ const sourceId = (n: number) => `src-${m.value.messageId}-${n}`;
 .room-time {
   font-size: 0.8em;
   margin-left: 6px;
+}
+.room-joke-for {
+  font-size: 0.8em;
+  font-style: italic;
 }
 .room-msg__body {
   white-space: pre-line;

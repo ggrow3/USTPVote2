@@ -9,8 +9,10 @@ import type {
   RoomMessageView,
   RoomSetting,
   RoomSettingsView,
+  RoomSignalsInput,
   RoomStatus,
   RoomUpdates,
+  RoomVoiceJoined,
 } from 'ustp-domain';
 import { api } from '../api.js';
 
@@ -30,11 +32,25 @@ export function history(before?: string | null): Promise<RoomHistory> {
   return api<RoomHistory>('GET', `/v1/room/messages${before ? `?before=${enc(before)}` : ''}`);
 }
 
-/** Waits up to 25 seconds for a change after `since` (the api holds the request). */
-export const updates = (since: number) => api<RoomUpdates>('GET', `/v1/room/updates?since=${since}&wait=1`);
+/**
+ * Waits up to 25 seconds for a change after `since` (the api holds the request). A page in the call names its session,
+ * and gets the handshakes sent to it.
+ */
+export function updates(since: number, voice: string | null = null, wait = true): Promise<RoomUpdates> {
+  return api<RoomUpdates>('GET', `/v1/room/updates?since=${since}&wait=${wait ? 1 : 0}${voice ? `&voice=${enc(voice)}` : ''}`);
+}
 
 export const postMessage = (body: string) => api<RoomMessageView>('POST', '/v1/room/messages', { body });
 export const ask = (question: string) => api<RoomMessageView>('POST', '/v1/room/ask', { question });
+export const joke = () => api<RoomMessageView>('POST', '/v1/room/joke');
+
+/** The call (peer to peer): the api says who is in it and passes handshakes; the sound goes between browsers. */
+export const joinVoice = (muted: boolean) => api<RoomVoiceJoined>('POST', '/v1/room/voice', { muted });
+export const updateVoice = (sessionId: string, muted: boolean) => api<void>('PUT', '/v1/room/voice', { sessionId, muted });
+export function leaveVoice(sessionId: string, keepalive = false): Promise<void> {
+  return api<void>('DELETE', `/v1/room/voice?sessionId=${enc(sessionId)}`, undefined, { keepalive });
+}
+export const sendSignals = (sessionId: string, signals: RoomSignalsInput['signals']) => api<void>('POST', '/v1/room/voice/signals', { sessionId, signals });
 
 /** The caller's own message, or as a Membership Admin anyone's. */
 export function deleteMessage(messageId: string, asAdmin: boolean): Promise<RoomMessageView> {

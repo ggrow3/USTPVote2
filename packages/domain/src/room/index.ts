@@ -65,9 +65,35 @@ export type {
   RoomSettingsChangedPayload,
   RoomConsentChangedPayload,
 } from './room.js';
+export {
+  ROOM_VOICE_LIMITS,
+  ROOM_SIGNAL_KINDS,
+  JOKE_STRIDE,
+  roomVoiceJoinSchema,
+  roomVoiceUpdateSchema,
+  roomVoiceLeaveQuerySchema,
+  roomSignalsSchema,
+  voiceLive,
+  joinVoice,
+  touchVoice,
+  checkSignals,
+  signalRecord,
+  offersTo,
+  nextJoke,
+  jokeBody,
+} from './voice.js';
+export type {
+  RoomVoiceJoinInput,
+  RoomVoiceUpdateInput,
+  RoomVoiceLeaveQuery,
+  RoomSignalKind,
+  RoomSignalsInput,
+  RoomVoiceRecord,
+  RoomSignalRecord,
+} from './voice.js';
 export { ROOM_COMMANDS, ROOM_COMMAND_HELP, parseRoomInput } from './commands.js';
 export type { RoomCommand, ParsedRoomInput } from './commands.js';
-export { messageView, memoryView, memoryLists, assistantView, roomStatus, roomSettingsView } from './views.js';
+export { messageView, memoryView, memoryLists, assistantView, voiceView, signalView, roomStatus, roomSettingsView } from './views.js';
 export type {
   RoomPerson,
   RoomModelKind,
@@ -82,4 +108,8 @@ export type {
   RoomMemory,
   RoomViewContext,
   RoomSettingsView,
+  RoomVoiceView,
+  RoomSignalView,
+  RoomIceServer,
+  RoomVoiceJoined,
 } from './views.js';
