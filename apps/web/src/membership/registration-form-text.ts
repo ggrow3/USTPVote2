@@ -3,6 +3,7 @@ import { introParagraphs, type RegistrationFormChange, type RegistrationFormPart
 /** Wording for the registration form's settings (design §5.2): each part's name and its unsaved changes. */
 
 export const FORM_PART_LABELS: Readonly<Record<RegistrationFormPart, string>> = {
+  title: 'Page heading',
   intro: 'Intro',
   usVoterQuestion: 'First question',
   usVoterHelp: "First question's help",

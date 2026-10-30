@@ -17,8 +17,9 @@ import { describeFormChange } from './registration-form-text.js';
 import RegistrationIntro from './RegistrationIntro.vue';
 
 /**
- * The registration form's wording (design §5.2): Membership Admins change the intro on the Register page, the two
- * questions and their help, the Core Ideals, and the bonus link applicants get. What the answers mean stays as it is.
+ * The registration form's wording (design §5.2): Membership Admins change the heading and intro on the Register page,
+ * the two questions and their help, the Core Ideals, and the bonus link applicants get. What the answers mean stays as
+ * it is.
  */
 
 type Draft = { -readonly [K in keyof RegistrationForm]: RegistrationForm[K] extends readonly string[] ? string[] : RegistrationForm[K] };
@@ -43,7 +44,7 @@ const previewVoter = ref<boolean | null>(null);
 const previewIdeals = ref<boolean | null>(null);
 
 /** Why a one-line or paragraph part cannot be saved, if it cannot. */
-function partError(part: 'usVoterQuestion' | 'coreIdealsQuestion' | 'idealsTitle' | 'tipsTitle', max: number): string | undefined {
+function partError(part: 'title' | 'usVoterQuestion' | 'coreIdealsQuestion' | 'idealsTitle' | 'tipsTitle', max: number): string | undefined {
   const value = resolved.value[part];
   if (value.length > max) return `Over ${max} characters`;
   if (!value && part !== 'tipsTitle') return 'Needed';
@@ -103,8 +104,8 @@ onMounted(load);
       </div>
     </div>
     <p>
-      The intro above the steps on the Register page, the application's two membership questions and their help, the
-      Core Ideals shown before the second question, and the link applicants get once they have applied. Each
+      The Register page's heading and the intro above its steps, the application's two membership questions and their
+      help, the Core Ideals shown before the second question, and the link applicants get once they have applied. Each
       application records the version it answered, and is refused if the wording changed while it was being filled
       in, so the applicant reads the new wording first.
     </p>
@@ -116,7 +117,16 @@ onMounted(load);
 
     <q-card v-if="saved" flat bordered>
       <q-card-section class="ustp-form">
-        <h3 class="text-subtitle2">Intro</h3>
+        <h3 class="text-subtitle2">Heading and intro</h3>
+        <q-input
+          v-model="draft.title"
+          outlined
+          dense
+          counter
+          label="Page heading"
+          :error="!!partError('title', L.title)"
+          :error-message="partError('title', L.title)"
+        />
         <q-input
           v-model="draft.intro"
           type="textarea"
@@ -255,6 +265,7 @@ onMounted(load);
       <q-card-section>
         <h3 class="text-subtitle2 q-mb-sm">Preview</h3>
         <div class="form-preview ustp-stack">
+          <h4 class="text-h5 q-my-none">{{ resolved.title }}</h4>
           <RegistrationIntro :intro="resolved.intro" />
           <p v-if="!resolved.intro" class="text-grey-7 q-mb-none">No intro: the Register page starts with its steps.</p>
           <MembershipQuestions

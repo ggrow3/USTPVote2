@@ -1,4 +1,4 @@
-import { DEFAULT_REGISTRATION_FORM, type RegistrationForm } from 'ustp-domain';
+import { Collections, DEFAULT_REGISTRATION_FORM, type RegistrationForm } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { resetEmulators, TestApi, type User } from './testing/emulator.js';
 
@@ -53,12 +53,14 @@ describe('the registration form (design §5.2)', () => {
 
   it('saves the wording tidied, keeps each version, and ledgers each changed part', async () => {
     const res = await put(admin, {
+      title: '  Join the\n USTP ',
       intro: '  Join the party.\n\n\n  It is   free. ',
       ideals: [...DEFAULT_REGISTRATION_FORM.ideals, ' A fourth ideal.\n', ''],
       tipsAddress: TIPS,
     });
     const saved = {
       ...DEFAULT_REGISTRATION_FORM,
+      title: 'Join the USTP',
       intro: 'Join the party.\n\nIt is free.',
       ideals: [...DEFAULT_REGISTRATION_FORM.ideals, 'A fourth ideal.'],
       tipsAddress: TIPS,
@@ -74,6 +76,7 @@ describe('the registration form (design §5.2)', () => {
       payload: {
         version: 1,
         changes: [
+          { part: 'title', to: 'Join the USTP' },
           { part: 'intro', to: saved.intro },
           { part: 'ideals', to: saved.ideals },
           { part: 'tipsAddress', to: TIPS },
@@ -86,6 +89,15 @@ describe('the registration form (design §5.2)', () => {
     expect((await api.call('GET', '/v1/registration/form/1')).body.usVoterQuestion).toBe(DEFAULT_REGISTRATION_FORM.usVoterQuestion);
     expect((await api.call('GET', '/v1/registration/form/3')).status).toBe(404);
     expect((await api.call('GET', '/v1/registration/form/latest')).status).toBe(404);
+  });
+
+  it('serves wording saved before the heading could be changed with the default heading', async () => {
+    const { title: _, ...older } = { ...DEFAULT_REGISTRATION_FORM, intro: 'Join us.' };
+    await api.firebase.db
+      .collection(Collections.registrationForm)
+      .doc('current')
+      .set({ ...older, version: 1, updatedAt: new Date().toISOString(), updatedBy: admin.accountId });
+    expect((await api.call('GET', '/v1/registration/form')).body).toEqual({ ...DEFAULT_REGISTRATION_FORM, intro: 'Join us.', version: 1 });
   });
 
   it('records nothing when nothing changed', async () => {
@@ -101,7 +113,8 @@ describe('the registration form (design §5.2)', () => {
     expect((await api.call('GET', '/v1/registration/form')).body.intro).toBe('Join us.');
   });
 
-  it('refuses wording without its questions or ideals, and a bonus link that is not https', async () => {
+  it('refuses wording without its heading, questions or ideals, and a bonus link that is not https', async () => {
+    expect(await put(admin, { title: ' \n ' })).toMatchObject({ status: 400, body: { detail: /page needs a heading/ } });
     expect(await put(admin, { usVoterQuestion: '  ' })).toMatchObject({ status: 400, body: { detail: /first question/ } });
     expect(await put(admin, { ideals: [' '] })).toMatchObject({ status: 400, body: { detail: /at least one Core Ideal/ } });
     expect(await put(admin, { tipsAddress: 'http://example.org' })).toMatchObject({ status: 400, body: { detail: /https/ } });

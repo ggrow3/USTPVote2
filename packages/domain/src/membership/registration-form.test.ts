@@ -29,6 +29,7 @@ describe('member classes', () => {
 
 describe('the default', () => {
   it("is the party's wording, without the sentence about a separate page", () => {
+    expect(DEFAULT_REGISTRATION_FORM.title).toBe('Register as a member');
     expect(introParagraphs(DEFAULT_REGISTRATION_FORM.intro)).toEqual([
       'Become a member of the U.S. Transhumanist Party for free by filling out this concise Membership Application Form.',
       expect.stringMatching(/^As a bonus for completing this form, you will receive a link to a free compilation of Tips/),
@@ -59,6 +60,11 @@ describe('the default', () => {
     expect(resolveRegistrationForm(null)).toEqual(DEFAULT_REGISTRATION_FORM);
     expect(resolveRegistrationForm({ intro: '', ideals: 'not a list' })).toEqual(form({ intro: '' }));
   });
+
+  it('gives wording saved before the heading could be changed the default heading', () => {
+    const { title: _, ...older } = form({ intro: 'Join us.' });
+    expect(resolveRegistrationForm(older)).toEqual(form({ intro: 'Join us.' }));
+  });
 });
 
 describe('tidying', () => {
@@ -67,19 +73,30 @@ describe('tidying', () => {
     expect(introParagraphs('')).toEqual([]);
   });
 
-  it('puts the questions, help and ideals on one line and drops empty ideals', () => {
+  it('puts the heading, questions, help and ideals on one line and drops empty ideals', () => {
     const tidied = resolveRegistrationForm(
-      form({ usVoterQuestion: ' Can you\n vote? ', ideals: ['  One.\n', '', '   ', 'Two.'], tipsAddress: ' https://example.org/tips ' }),
+      form({
+        title: '  Join the\n party ',
+        usVoterQuestion: ' Can you\n vote? ',
+        ideals: ['  One.\n', '', '   ', 'Two.'],
+        tipsAddress: ' https://example.org/tips ',
+      }),
     );
-    expect(tidied).toMatchObject({ usVoterQuestion: 'Can you vote?', ideals: ['One.', 'Two.'], tipsAddress: 'https://example.org/tips' });
+    expect(tidied).toMatchObject({
+      title: 'Join the party',
+      usVoterQuestion: 'Can you vote?',
+      ideals: ['One.', 'Two.'],
+      tipsAddress: 'https://example.org/tips',
+    });
   });
 });
 
 describe('checking', () => {
-  it('needs both questions, a heading and at least one ideal', () => {
+  it("needs the page's heading, both questions, the Core Ideals' heading and at least one ideal", () => {
+    expect(checkRegistrationForm(form({ title: '' }))).toMatchObject({ ok: false, reason: 'the page needs a heading' });
     expect(checkRegistrationForm(form({ usVoterQuestion: '' }))).toMatchObject({ ok: false, reason: /first question/ });
     expect(checkRegistrationForm(form({ coreIdealsQuestion: '' }))).toMatchObject({ ok: false, reason: /second question/ });
-    expect(checkRegistrationForm(form({ idealsTitle: '' }))).toMatchObject({ ok: false, reason: /heading/ });
+    expect(checkRegistrationForm(form({ idealsTitle: '' }))).toMatchObject({ ok: false, reason: /Core Ideals need a heading/ });
     expect(checkRegistrationForm(form({ ideals: [] }))).toMatchObject({ ok: false, reason: /at least one/ });
   });
 
@@ -89,6 +106,8 @@ describe('checking', () => {
 
   it('holds each part to its limit', () => {
     const L = REGISTRATION_FORM_LIMITS;
+    expect(checkRegistrationForm(form({ title: 'x'.repeat(L.title) })).ok).toBe(true);
+    expect(checkRegistrationForm(form({ title: 'x'.repeat(L.title + 1) }))).toMatchObject({ ok: false, reason: /page's heading/ });
     expect(checkRegistrationForm(form({ intro: 'x'.repeat(L.intro) })).ok).toBe(true);
     expect(checkRegistrationForm(form({ intro: 'x'.repeat(L.intro + 1) }))).toMatchObject({ ok: false, reason: /intro/ });
     expect(checkRegistrationForm(form({ usVoterQuestion: 'x'.repeat(L.question + 1) })).ok).toBe(false);
@@ -117,8 +136,14 @@ describe('checking', () => {
 
 describe('changes', () => {
   it('list every part that differs, with its new value, in the settings order', () => {
-    const after = form({ tipsAddress: 'https://example.org/tips', ideals: [...DEFAULT_REGISTRATION_FORM.ideals, 'A fourth.'], intro: '' });
+    const after = form({
+      tipsAddress: 'https://example.org/tips',
+      ideals: [...DEFAULT_REGISTRATION_FORM.ideals, 'A fourth.'],
+      intro: '',
+      title: 'Join the USTP',
+    });
     expect(registrationFormChanges(DEFAULT_REGISTRATION_FORM, after)).toEqual([
+      { part: 'title', to: 'Join the USTP' },
       { part: 'intro', to: '' },
       { part: 'ideals', to: after.ideals },
       { part: 'tipsAddress', to: 'https://example.org/tips' },
