@@ -117,14 +117,24 @@ export class RoomAssistant {
     return (await this.firebase.db.runTransaction((tx) => this.repo.getJob(tx, jobId)))?.state === 'running';
   }
 
-  /** Takes a queued job; while the assistant is switched off, cancels it instead. */
+  /**
+   * Starts the model server and loads both models, after a System Admin switches it on, so the next question need not
+   * wait for them. Nothing from the room is sent. True if the models answered.
+   */
+  async warm(): Promise<boolean> {
+    if (this.model.kind === 'off' || !(await this.repo.findFeed()).serverOn) return false;
+    await this.model.warm(Date.now() + RUN_MS);
+    return true;
+  }
+
+  /** Takes a queued job; while the assistant or its server is switched off, cancels it instead. */
   private claim(jobId: string): Promise<RoomJobRecord | null> {
     return this.firebase.db.runTransaction(async (tx) => {
       const job = await this.repo.getJob(tx, jobId);
       if (!job || job.state !== 'queued') return null;
       const feed = await this.repo.getFeed(tx);
       const at = new Date().toISOString();
-      if (!feed.assistantOn) {
+      if (!feed.assistantOn || !feed.serverOn) {
         this.repo.setJob(tx, { ...job, state: 'cancelled', finishedAt: at, expireAt: expiresAfter(at, ROOM_RETENTION.jobDays) });
         return null;
       }

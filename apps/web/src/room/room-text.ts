@@ -1,4 +1,13 @@
-import { ROOM_COMMAND_HELP, ROOM_COMMANDS, type RoomAssistantView, type RoomCommand, type RoomMessageView, type RoomSource } from 'ustp-domain';
+import {
+  ROOM_COMMAND_HELP,
+  ROOM_COMMANDS,
+  type RoomAssistantView,
+  type RoomCommand,
+  type RoomMessageView,
+  type RoomPerson,
+  type RoomSettingsView,
+  type RoomSource,
+} from 'ustp-domain';
 
 /** Wording for the members' room (design §5.10). */
 
@@ -44,6 +53,9 @@ export const SOURCE_LABELS: Readonly<Record<RoomSource['kind'], string>> = { mes
 /** The assistant's state in the room's header. */
 export function assistantLine(a: RoomAssistantView): { readonly label: string; readonly caption: string; readonly on: boolean } {
   if (a.model === 'off') return { label: 'Assistant not set up', caption: 'This deployment has no model for the room yet; the chat and memory work.', on: false };
+  if (!a.server) {
+    return { label: 'Assistant’s server off', caption: 'A System Admin has switched the room’s model server off. The chat and memory still work.', on: false };
+  }
   if (!a.on) {
     return {
       label: 'Assistant off',
@@ -89,4 +101,32 @@ export function answerParts(text: string, sources: number): { readonly text: str
   }
   if (at < text.length) parts.push({ text: text.slice(at) });
   return parts;
+}
+
+/** "by Ada Brooks, Oct 20 3:04 PM", or empty when nobody has changed it yet. */
+export function changedLine(by: RoomPerson | null, at: string | null, now: Date = new Date()): string {
+  if (!at) return '';
+  return `${by ? `by ${by.name}, ` : ''}${messageTime(at, now)}`;
+}
+
+/** The model server's card in Admin › Members' room. */
+export function serverLine(server: RoomSettingsView['server']): { readonly title: string; readonly caption: string; readonly running: boolean } {
+  if (server.model === 'off') {
+    return {
+      title: 'No model server yet',
+      caption: 'Terraform creates it once (room_model_enabled); until then the assistant does not answer and this switch does nothing.',
+      running: false,
+    };
+  }
+  if (!server.on) {
+    return { title: 'The model server is off', caption: 'Nothing goes to the model, so its GPU costs nothing. The chat and memory work.', running: false };
+  }
+  return {
+    title: 'The model server is on',
+    caption:
+      server.model === 'stand-in'
+        ? 'A stand-in for testing answers here; a real deployment starts its GPU for each question.'
+        : 'It starts for a question and stops after about 15 quiet minutes; about $1.05 an hour while it runs.',
+    running: true,
+  };
 }

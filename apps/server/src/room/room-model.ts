@@ -17,6 +17,8 @@ export interface RoomModel {
   embed(texts: readonly string[], as: 'query' | 'document', until?: number): Promise<number[][]>;
   /** The answer to `question` from `sources`, citing them as `[n]` (1-based). */
   answer(question: AskQuestion, sources: readonly AskSource[], until?: number): Promise<string>;
+  /** Starts the server and loads both models, sending nothing from the room. */
+  warm(until?: number): Promise<void>;
 }
 
 export const ROOM_MODEL = Symbol('RoomModel');
@@ -93,6 +95,8 @@ export class NoRoomModel implements RoomModel {
   answer(): Promise<string> {
     return Promise.reject(new Error('the room has no model on this deployment'));
   }
+
+  async warm(): Promise<void> {}
 }
 
 /**
@@ -126,6 +130,8 @@ export class LocalRoomModel implements RoomModel {
     if (!scored.length) return 'The room’s memory does not say.';
     return `From the room’s memory: ${scored.map(({ i }) => `“${sources[i]!.text.slice(0, 200)}” [${i + 1}]`).join('; ')}.`;
   }
+
+  async warm(): Promise<void> {}
 }
 
 function hash(word: string): number {
@@ -177,6 +183,12 @@ export class OllamaRoomModel implements RoomModel {
     const content = body.choices?.[0]?.message?.content?.trim();
     if (!content) throw new Error('the model gave no answer');
     return content;
+  }
+
+  /** One word embedded and one token generated: the server starts and both models load into the GPU. */
+  async warm(until?: number): Promise<void> {
+    await this.post('/v1/embeddings', { model: this.embedModel, input: ['warm-up'] }, until);
+    await this.post('/v1/chat/completions', { model: this.chatModel, stream: false, max_tokens: 1, messages: [{ role: 'user', content: 'Reply with OK.' }] }, until);
   }
 
   private async post(path: string, payload: unknown, until?: number): Promise<unknown> {

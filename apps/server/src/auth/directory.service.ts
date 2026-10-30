@@ -44,6 +44,18 @@ export class DirectoryService {
     return found;
   }
 
+  /** Each account's display name, by accountId, where it has one (never its email); for naming staff who need no membership. */
+  async displayNames(accountIds: readonly string[]): Promise<Map<string, string>> {
+    const db = this.firebase.db;
+    const snaps = accountIds.length ? await db.getAll(...accountIds.map((id) => db.collection(Collections.accounts).doc(id))) : [];
+    const found = new Map<string, string>();
+    for (const snap of snaps) {
+      const account = snap.data() as AccountRecord | undefined;
+      if (account?.displayName) found.set(account.accountId, account.displayName);
+    }
+    return found;
+  }
+
   /** Who holds a role now, by name (or email, for an account without one), in name order. */
   async roleHolders(role: Role): Promise<{ accountId: string; name: string }[]> {
     const db = this.firebase.db;

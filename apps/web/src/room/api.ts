@@ -7,6 +7,8 @@ import type {
   RoomHistory,
   RoomMemory,
   RoomMessageView,
+  RoomSetting,
+  RoomSettingsView,
   RoomStatus,
   RoomUpdates,
 } from 'ustp-domain';
@@ -54,3 +56,7 @@ export function forget(itemId: string, asAdmin: boolean): Promise<void> {
 }
 
 export const switchAssistant = (on: boolean) => api<RoomStatus>('PUT', '/v1/admin/room/assistant', { on });
+
+/** Admin › Members' room: the room open or closed, its model server on or off. */
+export const roomSettings = () => api<RoomSettingsView>('GET', '/v1/admin/room/settings');
+export const setRoomSetting = (setting: RoomSetting, on: boolean) => api<RoomSettingsView>('PUT', `/v1/admin/room/settings/${setting}`, { on });

@@ -138,6 +138,30 @@ export class RoomAdminController {
     await this.room.forget(moderator(ctx), itemId);
   }
 
+  /**
+   * Admin › Members' room: the room open or closed and its model server on or off, and how the room is doing. These
+   * act on the room from the console, so the admin need not be in it.
+   */
+  @Get('settings')
+  @Roles('membership_admin', 'system_admin')
+  settings(@Ctx() ctx: RequestContext) {
+    return this.room.settings(moderator(ctx));
+  }
+
+  /** Opens or closes the room for everyone, ledgered. */
+  @Put('settings/open')
+  @Roles('membership_admin', 'system_admin')
+  setOpen(@Ctx() ctx: RequestContext, @Body(new ZodPipe(roomAssistantSchema)) body: RoomAssistantInput) {
+    return this.room.changeSetting(moderator(ctx), 'open', body.on);
+  }
+
+  /** Lets the model server run, starting it, or stops anything reaching it, so its GPU scales to zero. Ledgered. */
+  @Put('settings/server')
+  @Roles('system_admin')
+  setServer(@Ctx() ctx: RequestContext, @Body(new ZodPipe(roomAssistantSchema)) body: RoomAssistantInput) {
+    return this.room.changeSetting(moderator(ctx), 'server', body.on);
+  }
+
   /** `/assistant on|off`: the kill switch, ledgered. */
   @Put('assistant')
   switchAssistant(@Ctx() ctx: RequestContext, @Body(new ZodPipe(roomAssistantSchema)) body: RoomAssistantInput) {

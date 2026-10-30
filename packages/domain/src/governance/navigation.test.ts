@@ -53,10 +53,10 @@ describe('defaults', () => {
 
   it('give each role the console tabs it had, System Admins the link hub and the home page quote, and Security to both', () => {
     const tabs = (role: Role) => shownTo(DEFAULT_NAVIGATION, viewer('active', role)).sections;
-    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'registration', 'offices', 'candidacies', 'teams', 'forum', 'approvals']);
+    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'registration', 'offices', 'candidacies', 'teams', 'forum', 'room', 'approvals']);
     expect(tabs('election_admin')).toEqual(['elections', 'offices', 'forum', 'approvals']);
     expect(tabs('auditor')).toEqual(['elections', 'offices', 'approvals', 'audit', 'security']);
-    expect(tabs('system_admin')).toEqual(['approvals', 'people', 'signin', 'claude', 'email', 'security', 'testing', 'navigation', 'hub', 'quote']);
+    expect(tabs('system_admin')).toEqual(['room', 'approvals', 'people', 'signin', 'claude', 'email', 'security', 'testing', 'navigation', 'hub', 'quote']);
     expect(tabs('course_admin')).toEqual(['course']);
     expect(tabs('communications_admin')).toEqual(['communications', 'hub']);
   });
@@ -268,6 +268,7 @@ describe('what a person sees', () => {
       'candidacies',
       'teams',
       'forum',
+      'room',
       'approvals',
     ]);
   });

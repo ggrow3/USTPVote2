@@ -26,7 +26,7 @@ import { Tallier } from './tallier.js';
  * Worker task endpoints (design §13), invoked by Cloud Scheduler and Cloud Tasks. The worker's Cloud Run service only
  * admits their OIDC tokens (IAM invoker), so these routes have no sign-in of their own.
  */
-export const WORKER_TASKS = ['tick', 'bylaws-checks', 'consistency-checks', 'election-checks', 'room-assistant', 'email'] as const;
+export const WORKER_TASKS = ['tick', 'bylaws-checks', 'consistency-checks', 'election-checks', 'room-assistant', 'room-warm', 'email'] as const;
 export type WorkerTask = (typeof WORKER_TASKS)[number];
 
 @Controller('tasks')
@@ -123,6 +123,21 @@ export class TasksController {
     const jobId = typeof body === 'object' && body && typeof (body as { jobId?: unknown }).jobId === 'string' ? (body as { jobId: string }).jobId : null;
     if (!jobId) throw new NotFoundException('no jobId');
     return { outcome: await this.roomAssistant.run(jobId) };
+  }
+
+  /**
+   * A Cloud Task the api queued when a System Admin switched the room's model server on: start it and load the models,
+   * so the next question need not wait. A failure is logged, not retried: the next question starts the server anyway.
+   */
+  @Post('room-warm')
+  @HttpCode(200)
+  async warmRoomModel(): Promise<{ warmed: boolean }> {
+    try {
+      return { warmed: await this.roomAssistant.warm() };
+    } catch (e) {
+      this.logger.warn(`room model warm-up failed: ${e instanceof Error ? e.message : e}`);
+      return { warmed: false };
+    }
   }
 
   @Post(':task')

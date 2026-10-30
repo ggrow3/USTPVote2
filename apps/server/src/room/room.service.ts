@@ -6,8 +6,10 @@ import {
   checkAsk,
   checkForget,
   checkInRoom,
+  changeRoomSetting,
   checkMessageRate,
   checkRoomMember,
+  checkRoomOpen,
   deleteMessage,
   inRoom,
   erased,
@@ -18,6 +20,7 @@ import {
   newAction,
   newDecision,
   newMessage,
+  roomSettingsView,
   roomStatus,
   ROOM_LIMITS,
   ROOM_RETENTION,
@@ -39,6 +42,8 @@ import {
   type RoomMessageRecord,
   type RoomMessageView,
   type RoomPerson,
+  type RoomSetting,
+  type RoomSettingsView,
   type RoomStatus,
   type RoomUpdates,
   type RoomViewContext,
@@ -97,12 +102,24 @@ export class RoomService {
     @Inject(ASSISTANT_DISPATCH) private readonly dispatch: AssistantDispatch,
   ) {}
 
-  /** The door: the terms, whether the caller accepted them, and for members in the room its state. */
+  /**
+   * The door: the terms, whether the caller accepted them, whether an admin has closed the room, and for members in
+   * the room its state.
+   */
   async status(caller: RoomCaller): Promise<RoomStatus> {
-    const [member, consent] = await Promise.all([this.members.find(caller.accountId), this.repo.findConsent(caller.accountId)]);
+    const [member, consent, feed] = await Promise.all([
+      this.members.find(caller.accountId),
+      this.repo.findConsent(caller.accountId),
+      this.repo.findFeed(),
+    ]);
     const active = checkRoomMember(member?.status).ok;
+    if (!feed.open) {
+      const ctx = await this.adminsNamed(caller, feed.openChangedBy ? [feed.openChangedBy] : []);
+      const by = feed.openChangedBy ? { accountId: feed.openChangedBy, name: ctx.people.get(feed.openChangedBy)! } : null;
+      return roomStatus(active, consent, null, { at: feed.openChangedAt, by });
+    }
     if (!active || !inRoom(consent)) return roomStatus(active, consent, null);
-    const [feed, people, roles] = await Promise.all([this.repo.findFeed(), this.people(), this.directory.activeRoles(caller.accountId)]);
+    const [people, roles] = await Promise.all([this.people(), this.directory.activeRoles(caller.accountId)]);
     const ctx = await this.contextFor(caller, [], feed);
     return roomStatus(true, consent, {
       seq: feed.seq,
@@ -337,6 +354,35 @@ export class RoomService {
     return this.status(caller);
   }
 
+  /** The admins' switches and how the room is doing (Admin › Members' room). */
+  async settings(caller: RoomCaller): Promise<RoomSettingsView> {
+    const [feed, people, roles] = await Promise.all([this.repo.findFeed(), this.people(), this.directory.activeRoles(caller.accountId)]);
+    const ctx = await this.adminsNamed(caller, [feed.openChangedBy, feed.serverChangedBy].filter((x): x is string => !!x));
+    return roomSettingsView(feed, this.model.kind, people.length, roles.includes('system_admin'), ctx);
+  }
+
+  /**
+   * An admin opens or closes the room, or a System Admin switches its model server (the routes check the roles):
+   * ledgered as `room.settings_changed`, with a notice in the room. Switching the server off cancels the questions
+   * waiting; switching it on starts the model, so the next question need not wait while it loads.
+   */
+  async changeSetting(caller: RoomCaller, setting: RoomSetting, on: boolean): Promise<RoomSettingsView> {
+    await this.change(async (tx, feed) => {
+      const at = new Date().toISOString();
+      const { feed: changed, cancelled: waiting, event } = accepted(changeRoomSetting(feed, setting, on, caller.accountId, at));
+      const jobs = await this.repo.getJobsFor(tx, waiting);
+      await this.ledger.record(tx, [event]);
+      for (const job of jobs) if (job.state === 'queued' || job.state === 'running') this.repo.setJob(tx, cancelled(job, at));
+      const said = setting === 'open' ? (on ? 'opened the room' : 'closed the room') : on ? 'switched the assistant’s server on' : 'switched the assistant’s server off';
+      this.notice(tx, caller.accountId, said, null, feed.seq + 1, at);
+      return { result: undefined, feed: changed };
+    });
+    if (setting === 'server' && on && this.model.kind !== 'off') {
+      await this.dispatch.warm().catch((e: unknown) => this.logger.warn(`room model warm-up not queued: ${e instanceof Error ? e.message : e}`));
+    }
+    return this.settings(caller);
+  }
+
   /**
    * One change to the room in one transaction: `run` reads what it needs and writes with feed number `feed.seq + 1`,
    * which this then records (with any other change to the feed). Reads come first, as transactions require.
@@ -357,10 +403,11 @@ export class RoomService {
     this.repo.createMessage(tx, newMessage({ messageId: uuidv7(), kind: 'notice', authorId: actor, body, createdAt: at, ref }, seq));
   }
 
-  /** Active, and accepted the current terms (spec rule 1); checked on every request. */
+  /** Active, accepted the current terms (spec rule 1), and the room open; checked on every request. */
   private async assertInRoom(caller: RoomCaller): Promise<void> {
-    const [member, consent] = await Promise.all([this.members.find(caller.accountId), this.repo.findConsent(caller.accountId)]);
+    const [member, consent, feed] = await Promise.all([this.members.find(caller.accountId), this.repo.findConsent(caller.accountId), this.repo.findFeed()]);
     assertCheck(checkRoomMember(member?.status));
+    assertCheck(checkRoomOpen(feed));
     assertCheck(checkInRoom(consent));
   }
 
@@ -404,6 +451,16 @@ export class RoomService {
   private async memoryContext(caller: RoomCaller, items: readonly RoomMemoryRecord[]): Promise<RoomViewContext> {
     const ids = [...new Set(items.flatMap((i) => (i.kind === 'action' ? [i.createdBy, i.ownerId] : [i.createdBy])))];
     return this.named(caller, ids);
+  }
+
+  /**
+   * Names for admins who switched something: a System Admin may hold no membership, so their account's display name,
+   * else "an admin"; never an email address.
+   */
+  private async adminsNamed(caller: RoomCaller, ids: readonly string[]): Promise<RoomViewContext> {
+    const [records, accounts] = await Promise.all([this.members.findMany(ids), this.directory.displayNames(ids)]);
+    const people = new Map(ids.map((id, i) => [id, records[i] ? (records[i]!.preferredName ?? records[i]!.legalName) : (accounts.get(id) ?? 'an admin')]));
+    return { accountId: caller.accountId, moderator: caller.moderator, people };
   }
 
   private async named(caller: RoomCaller, ids: readonly string[]): Promise<RoomViewContext> {

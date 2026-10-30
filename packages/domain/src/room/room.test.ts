@@ -3,7 +3,9 @@ import { describe, expect, it } from 'vitest';
 import { parseRoomInput } from './commands.js';
 import {
   acceptTerms,
+  changeRoomSetting,
   checkAsk,
+  checkRoomOpen,
   checkForget,
   checkInRoom,
   checkMessageRate,
@@ -86,7 +88,7 @@ describe('the door', () => {
 
   it('shows the room’s state only to a member in it', () => {
     const consent: RoomConsentRecord = { accountId: 'ada', termsVersion: ROOM_TERMS.version, termsHash: ROOM_TERMS_HASH, acceptedAt: AT, withdrawnAt: null };
-    const room = { seq: 3, memorySeq: 1, peopleSeq: 1, assistant: { on: true, model: 'stand-in' as const, switchedAt: null, switchedBy: null, pending: [] }, moderator: false, people: [] };
+    const room = { seq: 3, memorySeq: 1, peopleSeq: 1, assistant: { on: true, server: true, model: 'stand-in' as const, switchedAt: null, switchedBy: null, pending: [] }, moderator: false, people: [] };
     expect(roomStatus(true, consent, room)).toMatchObject({ member: true, inRoom: true, room: { seq: 3 } });
     expect(roomStatus(false, consent, room)).toMatchObject({ member: false, inRoom: false, room: null });
     expect(roomStatus(true, { ...consent, withdrawnAt: AT }, room)).toMatchObject({ inRoom: false, room: null, consent: { withdrawnAt: AT } });
@@ -222,5 +224,40 @@ describe('the composer', () => {
     expect(parseRoomInput('see /ask later')).toEqual({ kind: 'message', text: 'see /ask later' });
     expect(parseRoomInput('//ask is a command')).toEqual({ kind: 'message', text: '/ask is a command' });
     expect(parseRoomInput('/ask\nmulti\nline')).toEqual({ kind: 'command', command: 'ask', args: 'multi\nline' });
+  });
+});
+
+describe('the admins’ switches', () => {
+  it('open and close the room, refusing everyone while it is closed', () => {
+    const closed = changeRoomSetting(EMPTY_FEED, 'open', false, 'ma', AT);
+    expect(closed).toMatchObject({
+      ok: true,
+      value: { feed: { open: false, openChangedBy: 'ma', openChangedAt: AT }, cancelled: [], event: { type: 'room.settings_changed', payload: { setting: 'open', on: false } } },
+    });
+    const feed = { ...(closed as { ok: true; value: { feed: Omit<typeof EMPTY_FEED, 'seq'> } }).value.feed, seq: 1 };
+    expect(checkRoomOpen(feed)).toMatchObject({ ok: false, refusal: 'forbidden', reason: expect.stringContaining('closed') });
+    expect(checkRoomOpen(EMPTY_FEED).ok).toBe(true);
+    expect(changeRoomSetting(feed, 'open', false, 'ma', AT)).toMatchObject({ ok: false, reason: 'the room is already closed' });
+  });
+
+  it('switch the model server off, cancelling what waits and refusing questions until it is on', () => {
+    const feed = { ...EMPTY_FEED, pending: ['q1'] };
+    const off = changeRoomSetting(feed, 'server', false, 'sa', AT);
+    expect(off).toMatchObject({ ok: true, value: { feed: { serverOn: false, serverChangedBy: 'sa', pending: [] }, cancelled: ['q1'] } });
+    const offFeed = { ...(off as { ok: true; value: { feed: Omit<typeof EMPTY_FEED, 'seq'> } }).value.feed, seq: 1 };
+    expect(checkAsk(offFeed, 0)).toMatchObject({ ok: false, reason: expect.stringContaining('model server off') });
+    expect(changeRoomSetting(offFeed, 'server', true, 'sa', AT)).toMatchObject({ ok: true, value: { feed: { serverOn: true }, cancelled: [] } });
+    expect(changeRoomSetting(EMPTY_FEED, 'server', true, 'sa', AT)).toMatchObject({ ok: false, reason: 'the model server is already on' });
+  });
+
+  it('show a closed room’s door with who closed it, and nothing of the room', () => {
+    const consent: RoomConsentRecord = { accountId: 'ada', termsVersion: ROOM_TERMS.version, termsHash: ROOM_TERMS_HASH, acceptedAt: AT, withdrawnAt: null };
+    const room = { seq: 3, memorySeq: 1, peopleSeq: 1, assistant: { on: true, server: true, model: 'stand-in' as const, switchedAt: null, switchedBy: null, pending: [] }, moderator: false, people: [] };
+    expect(roomStatus(true, consent, room, { at: AT, by: { accountId: 'ma', name: 'Morgan' } })).toMatchObject({
+      open: false,
+      inRoom: false,
+      room: null,
+      closed: { by: { name: 'Morgan' } },
+    });
   });
 });

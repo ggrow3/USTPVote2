@@ -290,6 +290,54 @@ describe('the assistant', () => {
   });
 });
 
+describe('the admins’ switches', () => {
+  beforeEach(async () => {
+    await enter(ada);
+  });
+
+  it('let Membership and System Admins close and open the room for everyone, ledgered', async () => {
+    expect((await api.call('GET', '/v1/admin/room/settings', ada)).status).toBe(403);
+    const settings = await api.call('GET', '/v1/admin/room/settings', ma);
+    expect(settings.body).toMatchObject({ open: true, server: { on: true, model: 'stand-in' }, people: 1, canSwitchServer: false });
+
+    const closed = await api.call('PUT', '/v1/admin/room/settings/open', ma, { on: false });
+    expect(closed.body).toMatchObject({ open: false, openChangedBy: { name: 'Morgan Admin' } });
+    expect(await status(ada)).toMatchObject({ open: false, inRoom: false, room: null, closed: { by: { name: 'Morgan Admin' } } });
+    expect((await api.call('GET', '/v1/room/messages', ada)).status).toBe(403);
+    expect((await api.call('POST', '/v1/room/messages', ada, { body: 'hello?' })).status).toBe(403);
+    expect((await api.call('PUT', '/v1/admin/room/settings/open', sa1, { on: false })).status).toBe(409);
+
+    const opened = (await api.call('PUT', '/v1/admin/room/settings/open', sa1, { on: true })).body;
+    expect(opened).toMatchObject({ open: true, canSwitchServer: true });
+    // A System Admin with no membership is named by their account's display name, else "an admin"; never by email.
+    expect(opened.openChangedBy.name).not.toMatch(/@|Former member/);
+    expect((await say(ada, 'Back again')).body).toBe('Back again');
+    expect((await entries('room.settings_changed')).map((e) => e.payload)).toEqual([
+      { setting: 'open', on: false },
+      { setting: 'open', on: true },
+    ]);
+  });
+
+  it('let only System Admins switch the model server; off, questions are refused and the chat goes on', async () => {
+    expect((await api.call('PUT', '/v1/admin/room/settings/server', ma, { on: false })).status).toBe(403);
+    const off = await api.call('PUT', '/v1/admin/room/settings/server', sa1, { on: false });
+    expect(off.body).toMatchObject({ server: { on: false }, canSwitchServer: true });
+    expect((await status(ada)).room!.assistant).toMatchObject({ server: false });
+    const refused = await api.call('POST', '/v1/room/ask', ada, { question: 'Anything new?' });
+    expect(refused.status).toBe(409);
+    expect(refused.body.detail).toContain('model server off');
+    await say(ada, 'The chat still works');
+    expect((await api.call('PUT', '/v1/admin/room/settings/server', sa1, { on: true })).body).toMatchObject({ server: { on: true } });
+    const asked = await api.call('POST', '/v1/room/ask', ada, { question: 'Anything new?' });
+    expect(asked.status).toBe(201);
+    await answerTo(ada, asked.body.messageId);
+    expect((await entries('room.settings_changed')).map((e) => e.payload)).toEqual([
+      { setting: 'server', on: false },
+      { setting: 'server', on: true },
+    ]);
+  });
+});
+
 describe('retention', () => {
   it('deletes messages and done action items past their time, and gives up on stale questions', async () => {
     await enter(ada);

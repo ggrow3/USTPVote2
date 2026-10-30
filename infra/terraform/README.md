@@ -481,6 +481,10 @@ The image is a third party's, pinned to a release rather than attested by the re
 ask Binary Authorization (design §14); it holds no secrets, and its account can only read and fetch its models.
 EmbeddingGemma's licence is the Gemma Terms of Use; Gemma 4 is Apache 2.0.
 
+Once it exists, a System Admin switches the server on and off in the app, under **Admin › Members' room**, with no
+apply: off, nothing reaches it, so it scales to zero and bills nothing; on, the worker starts it at once (a `room-warm`
+Cloud Task) so the next question need not wait.
+
 With `room_model_enabled = false` (the default) `ROOM_MODEL` is `off`: the room's chat, decisions and action items work,
 and `/ask` answers 503. Not yet tried against a real project: the GPU service, the bucket mount and the pull job, nor
 that Docker Hub has `ollama/ollama` at the pinned tag (the release the developer machine ran in October 2026).
