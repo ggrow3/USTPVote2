@@ -2,11 +2,11 @@ import { z } from 'zod';
 import { deny, OK, type Check } from '../check.js';
 
 /**
- * The registration form's wording (design §5.2): the intro above Register's steps, the two membership questions and
- * their help text, the Core Ideals shown before the second question, and the bonus link applicants get once they have
- * applied. Membership Admins change the wording. What each answer means is fixed here, since rules hang off it: Yes
- * or No to the first makes a United States or an Allied Member, and the second records agreement with the Core Ideals.
- * Neither answer ever blocks an application.
+ * The registration form's wording (design §5.2): the Register page's heading and the intro above its steps, the two
+ * membership questions and their help text, the Core Ideals shown before the second question, and the bonus link
+ * applicants get once they have applied. Membership Admins change the wording. What each answer means is fixed here,
+ * since rules hang off it: Yes or No to the first makes a United States or an Allied Member, and the second records
+ * agreement with the Core Ideals. Neither answer ever blocks an application.
  */
 
 /** A member's class, from their answer to the first question. */
@@ -21,6 +21,7 @@ export function memberClass(usVoteEligible: boolean | null | undefined): MemberC
 
 /** The most each part may hold once tidied, and how many Core Ideals there may be. */
 export const REGISTRATION_FORM_LIMITS = {
+  title: 120,
   intro: 4000,
   question: 300,
   help: 1000,
@@ -32,6 +33,8 @@ export const REGISTRATION_FORM_LIMITS = {
 } as const;
 
 export interface RegistrationForm {
+  /** The Register page's heading: "Register as a member". */
+  readonly title: string;
   /** Paragraphs, separated by a blank line; empty shows no intro. */
   readonly intro: string;
   /** "Are you eligible to vote in any United States elections?" */
@@ -52,6 +55,7 @@ export interface RegistrationForm {
 
 /** The parts of the form in the order the settings show them, as changes name them. */
 export const REGISTRATION_FORM_PARTS = [
+  'title',
   'intro',
   'usVoterQuestion',
   'usVoterHelp',
@@ -80,6 +84,7 @@ export type PublicRegistrationForm = RegistrationForm & { readonly version: numb
  * left out: here the form is the page itself. No address is filled in for the bonus link, which is never guessed.
  */
 export const DEFAULT_REGISTRATION_FORM: RegistrationForm = {
+  title: 'Register as a member',
   intro: [
     'Become a member of the U.S. Transhumanist Party for free by filling out this concise Membership Application Form.',
     "As a bonus for completing this form, you will receive a link to a free compilation of Tips for Advancing a Brighter Future, providing insights from the U.S. Transhumanist Party's Advisors and Officers on some of what you can do as an individual to improve the world and bring it closer to the kind of future we wish to see. This short document could help you see improvement in your own life, while you become empowered to act to bring about the next era of our civilization.",
@@ -127,6 +132,7 @@ export function resolveRegistrationForm(stored: Stored | null | undefined): Regi
   };
   const ideals = Array.isArray(stored?.ideals) ? stored.ideals.filter((i): i is string => typeof i === 'string') : DEFAULT_REGISTRATION_FORM.ideals;
   return {
+    title: oneLine(text('title')),
     intro: tidyIntro(text('intro')),
     usVoterQuestion: oneLine(text('usVoterQuestion')),
     usVoterHelp: oneLine(text('usVoterHelp')),
@@ -156,13 +162,14 @@ export function tipsAddressProblem(address: string): string | null {
 }
 
 /**
- * Whether tidied wording can be saved: each part within its limit; both questions, the Core Ideals' heading and at
- * least one ideal (the second question refers to them); and a bonus link with a title and an https:// address, or no
- * address at all. The intro and the help texts may be empty.
+ * Whether tidied wording can be saved: each part within its limit; the page's heading, both questions, the Core
+ * Ideals' heading and at least one ideal (the second question refers to them); and a bonus link with a title and an
+ * https:// address, or no address at all. The intro and the help texts may be empty.
  */
 export function checkRegistrationForm(form: RegistrationForm): Check {
   const L = REGISTRATION_FORM_LIMITS;
   const lengths: [string, number, number][] = [
+    ["the page's heading", form.title.length, L.title],
     ['the intro', form.intro.length, L.intro],
     ['the first question', form.usVoterQuestion.length, L.question],
     ["the first question's help", form.usVoterHelp.length, L.help],
@@ -174,6 +181,7 @@ export function checkRegistrationForm(form: RegistrationForm): Check {
   for (const [name, length, max] of lengths) {
     if (length > max) return deny(`${name} can be at most ${max} characters`);
   }
+  if (!form.title) return deny('the page needs a heading');
   if (!form.usVoterQuestion) return deny('the first question needs its words');
   if (!form.coreIdealsQuestion) return deny('the second question needs its words');
   if (!form.idealsTitle) return deny('the Core Ideals need a heading');
@@ -214,6 +222,7 @@ const raw = (max: number) => z.string().max(max);
 /** `PUT /v1/admin/registration-form`: the whole wording, and the version it was edited from. */
 export const registrationFormSchema = z.strictObject({
   basedOn: z.number().int().min(0),
+  title: raw(1000),
   intro: raw(8000),
   usVoterQuestion: raw(1000),
   usVoterHelp: raw(3000),
