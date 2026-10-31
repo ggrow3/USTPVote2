@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { findEmojis } from './emoji.js';
 import {
   answerParts,
   assistantLine,
@@ -6,9 +7,12 @@ import {
   commandHints,
   dayLabel,
   dueLabel,
+  insertText,
+  messageName,
   microphoneProblem,
   overdue,
   peopleLine,
+  reactionLabel,
   serverLine,
 } from './room-text.js';
 
@@ -69,6 +73,30 @@ describe('room wording', () => {
     expect(serverLine({ on: true, changedAt: null, changedBy: null, model: 'off' })).toMatchObject({ title: 'No model server yet', running: false });
     expect(serverLine({ on: false, changedAt: null, changedBy: null, model: 'self-hosted' })).toMatchObject({ title: 'The model server is off', running: false });
     expect(serverLine({ on: true, changedAt: null, changedBy: null, model: 'self-hosted' })).toMatchObject({ running: true, caption: expect.stringContaining('$1.05') });
+  });
+
+  it('puts an emoji where the caret is, replacing what is selected, within the message limit', () => {
+    expect(insertText('Great work', 5, 5, ' 🎉', 4000)).toEqual({ text: 'Great 🎉 work', caret: 8 });
+    expect(insertText('Great work', 6, 10, '🔥', 4000)).toEqual({ text: 'Great 🔥', caret: 8 });
+    expect(insertText('', 0, 0, '👍', 4000)).toEqual({ text: '👍', caret: 2 });
+    expect(insertText('abc', 3, 3, '👍', 4)).toBeNull();
+  });
+
+  it('finds emojis by the start of any word of their names', () => {
+    expect(findEmojis('thumbs').map((e) => e.char)).toEqual(['👍', '👎']);
+    expect(findEmojis('heart br').map((e) => e.char)).toEqual(['💔']);
+    expect(findEmojis('vote').map((e) => e.char)).toEqual(['🗳️']);
+    expect(findEmojis('  ')).toEqual([]);
+    expect(findEmojis('zzzz')).toEqual([]);
+  });
+
+  it('names reactions and messages for their buttons', () => {
+    expect(reactionLabel('thumbs up', 3, false)).toBe('thumbs up: 3');
+    expect(reactionLabel('thumbs up', 3, true)).toBe('thumbs up: 3, yours among them');
+    expect(reactionLabel('heart', 1, true)).toBe('heart: yours');
+    expect(messageName({ kind: 'member', mine: true, author: { accountId: 'a', name: 'Ada' } })).toBe('your message');
+    expect(messageName({ kind: 'member', mine: false, author: { accountId: 'a', name: 'Ada' } })).toBe('Ada’s message');
+    expect(messageName({ kind: 'assistant', mine: false, author: null })).toBe('the assistant’s answer');
   });
 
   it('says why the call could not use the microphone', () => {

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { OK, refuse, type Check, type Outcome } from '../check.js';
 import { passRuleSchema, quorumSchema } from '../election-api.js';
 import type { LedgerEvent } from '../ledger-events.js';
+import { changeVote, voteSchema, type VoteTally, type VoteValue } from '../votes.js';
 
 /**
  * The forum (design §5.9): Active members post discussions and proposals, reply in threads and vote posts and comments
@@ -89,9 +90,9 @@ export type CreateCommentInput = z.infer<typeof createCommentSchema>;
 export const editCommentSchema = createCommentSchema.pick({ body: true });
 export type EditCommentInput = z.infer<typeof editCommentSchema>;
 
-/** `PUT …/vote`: up, down, or 0 to take the vote back. */
-export const forumVoteSchema = z.strictObject({ value: z.union([z.literal(1), z.literal(0), z.literal(-1)]) });
-export type ForumVoteValue = z.infer<typeof forumVoteSchema>['value'];
+/** `PUT …/vote`: up, down, or 0 to take the vote back (the votes the room takes too, §5.10). */
+export const forumVoteSchema = voteSchema;
+export type ForumVoteValue = VoteValue;
 
 /** `POST …/report`: why a member thinks a Membership Admin should look at a post or comment. */
 export const forumReportSchema = z.strictObject({
@@ -154,12 +155,7 @@ export interface ForumBallotLink {
 }
 
 /** What votes add up to on a post or comment. */
-export interface ForumTally {
-  readonly up: number;
-  readonly down: number;
-  /** `up - down`. */
-  readonly score: number;
-}
+export type ForumTally = VoteTally;
 
 /** `forum_posts/{postId}` */
 export interface ForumPostRecord extends ForumTally {
@@ -418,10 +414,8 @@ export function castVote(
   if (!target || target.state === 'deleted') return notFound(kind);
   if (target.state === 'removed') return refuse('conflict', `you cannot vote on it: ${GONE.removed}`);
   const before = current?.value ?? 0;
-  const up = target.up - (before === 1 ? 1 : 0) + (value === 1 ? 1 : 0);
-  const down = target.down - (before === -1 ? 1 : 0) + (value === -1 ? 1 : 0);
   const vote: ForumVoteRecord | null = value === 0 ? null : { targetKind: kind, ...ids, value, at: before === value ? current!.at : at };
-  return { ok: true, value: { tally: { up, down, score: up - down }, vote } };
+  return { ok: true, value: { tally: changeVote(target, before, value), vote } };
 }
 
 /** A member's report of someone else's visible post or comment, for Membership Admins to look at. */

@@ -24,6 +24,7 @@ import {
   newDecision,
   newMessage,
   nextJoke,
+  reactToMessage,
   roomSettingsView,
   roomStatus,
   ROOM_LIMITS,
@@ -63,6 +64,12 @@ import {
   type RoomVoiceUpdateInput,
   type RoomVoiceView,
   updateAction,
+  voteOnMessage,
+  type Outcome,
+  type RoomReactionChange,
+  type RoomReactionInput,
+  type RoomReactionRecord,
+  type VoteValue,
 } from 'ustp-domain';
 import { DirectoryService } from '../auth/directory.service.js';
 import { accepted, assertCheck } from '../common/validation.js';
@@ -236,20 +243,56 @@ export class RoomService {
 
   /**
    * Its author deletes a message, or a Membership Admin any. Answers that cite it are erased with it, so its text
-   * survives nowhere in the room; a question still waiting for the assistant is cancelled.
+   * survives nowhere in the room, and the votes and reactions on each go too; a question still waiting for the
+   * assistant is cancelled.
    */
   async deleteMessage(caller: RoomCaller, messageId: string): Promise<RoomMessageView> {
     await this.assertInRoom(caller);
     const message = await this.change(async (tx, feed) => {
       const current = await this.repo.getMessage(tx, messageId);
       const [citing, jobs] = await Promise.all([this.repo.getAnswersCiting(tx, messageId), current?.ask ? this.repo.getJobsFor(tx, [messageId]) : []]);
+      const erasing = citing.filter((answer) => !answer.deletedAt);
+      const reactions = await this.repo.getReactionsOn(tx, [messageId, ...erasing.map((m) => m.messageId)]);
       const at = new Date().toISOString();
       const seq = feed.seq + 1;
       const deleted = accepted(deleteMessage(current, caller.accountId, caller.moderator, seq, at));
       this.repo.setMessage(tx, deleted);
-      for (const answer of citing) if (!answer.deletedAt) this.repo.setMessage(tx, erased(answer, caller.accountId, seq, at));
+      for (const answer of erasing) this.repo.setMessage(tx, erased(answer, caller.accountId, seq, at));
+      this.deleteReactions(tx, reactions);
       for (const job of jobs) if (job.state === 'queued' || job.state === 'running') this.repo.setJob(tx, cancelled(job, at));
       return { result: deleted, feed: { pending: feed.pending.filter((id) => id !== messageId) } };
+    });
+    return messageView(message, await this.contextFor(caller, [message]));
+  }
+
+  /** The caller's vote on a member's message or an answer, replacing theirs; 0 takes it back. Who voted is never shown. */
+  vote(caller: RoomCaller, messageId: string, value: VoteValue): Promise<RoomMessageView> {
+    return this.respond(caller, messageId, (message, current, seq, at) => voteOnMessage(message, current, value, caller.accountId, seq, at));
+  }
+
+  /** The caller's emoji reaction on a member's message or an answer, added or taken back. Who reacted is never shown. */
+  react(caller: RoomCaller, messageId: string, input: RoomReactionInput): Promise<RoomMessageView> {
+    return this.respond(caller, messageId, (message, current, seq, at) => reactToMessage(message, current, input, caller.accountId, seq, at));
+  }
+
+  /**
+   * A vote or reaction: the message's totals change with its feed number, so every page in the room gets them as an
+   * update, and the caller's own record is kept (or deleted, once it holds neither). Nothing changes if it was theirs.
+   */
+  private async respond(
+    caller: RoomCaller,
+    messageId: string,
+    decide: (message: RoomMessageRecord | null, current: RoomReactionRecord | null, seq: number, at: string) => Outcome<RoomReactionChange | null>,
+  ): Promise<RoomMessageView> {
+    await this.assertInRoom(caller);
+    const message = await this.change(async (tx, feed) => {
+      const [current, mine] = await Promise.all([this.repo.getMessage(tx, messageId), this.repo.getReaction(tx, messageId, caller.accountId)]);
+      const changed = accepted(decide(current, mine, feed.seq + 1, new Date().toISOString()));
+      if (!changed) return { result: current!, unchanged: true };
+      this.repo.setMessage(tx, changed.message);
+      if (changed.record) this.repo.setReaction(tx, changed.record);
+      else this.repo.deleteReaction(tx, messageId, caller.accountId);
+      return { result: changed.message };
     });
     return messageView(message, await this.contextFor(caller, [message]));
   }
@@ -352,7 +395,10 @@ export class RoomService {
     return { ...memoryLists(items, await this.memoryContext(caller, items)), memorySeq: feed.memorySeq };
   }
 
-  /** `/forget`: the item is deleted for good, and the notices about it and the answers citing it are erased with it. */
+  /**
+   * `/forget`: the item is deleted for good, and the notices about it and the answers citing it are erased with it, the
+   * answers' votes and reactions too.
+   */
   async forget(caller: RoomCaller, itemId: string): Promise<void> {
     await this.assertInRoom(caller);
     await this.change(async (tx, feed) => {
@@ -362,10 +408,13 @@ export class RoomService {
         this.repo.getAnswersCiting(tx, itemId),
       ]);
       assertCheck(checkForget(item, caller.accountId, caller.moderator));
+      const erasing = [...notices, ...citing].filter((m) => !m.deletedAt);
+      const reactions = await this.repo.getReactionsOn(tx, erasing.map((m) => m.messageId));
       const at = new Date().toISOString();
       const seq = feed.seq + 1;
       this.repo.deleteItem(tx, itemId);
-      for (const m of [...notices, ...citing]) if (!m.deletedAt) this.repo.setMessage(tx, erased(m, caller.accountId, seq, at));
+      for (const m of erasing) this.repo.setMessage(tx, erased(m, caller.accountId, seq, at));
+      this.deleteReactions(tx, reactions);
       return { result: undefined, feed: { memorySeq: seq } };
     });
   }
@@ -511,6 +560,10 @@ export class RoomService {
     });
   }
 
+  private deleteReactions(tx: Transaction, reactions: readonly RoomReactionRecord[]): void {
+    for (const r of reactions) this.repo.deleteReaction(tx, r.messageId, r.accountId);
+  }
+
   /** A notice in the room of what someone did. */
   private notice(tx: Transaction, actor: string, body: string, ref: RoomMessageRecord['ref'], seq: number, at: string): void {
     this.repo.createMessage(tx, newMessage({ messageId: uuidv7(), kind: 'notice', authorId: actor, body, createdAt: at, ref }, seq));
@@ -555,10 +608,15 @@ export class RoomService {
     return m ? (m.preferredName ?? m.legalName) : 'a former member';
   }
 
-  /** Names for the messages' authors and whoever switched the assistant. */
+  /**
+   * Names for the messages' authors and whoever switched the assistant, and the caller's own votes and reactions on
+   * the messages that have any.
+   */
   private async contextFor(caller: RoomCaller, messages: readonly RoomMessageRecord[], feed?: RoomFeedRecord): Promise<RoomViewContext> {
     const ids = [...new Set([...messages.map((m) => m.authorId), feed?.switchedBy].filter((x): x is string => !!x))];
-    return this.named(caller, ids);
+    const voted = messages.filter((m) => !m.deletedAt && (m.up || m.down || m.reactions.length)).map((m) => m.messageId);
+    const [ctx, reactions] = await Promise.all([this.named(caller, ids), this.repo.reactionsOf(caller.accountId, voted)]);
+    return { ...ctx, reactions };
   }
 
   /** Who is in the call, by name. */
