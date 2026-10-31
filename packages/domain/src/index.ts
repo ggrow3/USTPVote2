@@ -87,6 +87,8 @@ export {
 export type { CoursePackage, CoursePackageSource, PackagedLesson, PackagedProfile } from './course-package.js';
 export * from './membership/index.js';
 export * from './teams/index.js';
+export { voteSchema, NO_VOTES, changeVote } from './votes.js';
+export type { VoteValue, VoteTally } from './votes.js';
 export * from './forum/index.js';
 export * from './room/index.js';
 export * from './communications/index.js';

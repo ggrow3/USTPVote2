@@ -163,6 +163,120 @@ describe('the chat', () => {
   });
 });
 
+describe('votes and reactions', () => {
+  const vote = async (by: User, messageId: string, value: number) => {
+    const res = await api.call('PUT', `/v1/room/messages/${messageId}/vote`, by, { value });
+    expect(res.status).toBe(200);
+    return res.body as RoomMessageView;
+  };
+  const react = async (by: User, messageId: string, reaction: string, on = true) => {
+    const res = await api.call('PUT', `/v1/room/messages/${messageId}/reactions`, by, { reaction, on });
+    expect(res.status).toBe(200);
+    return res.body as RoomMessageView;
+  };
+  const seen = async (by: User, messageId: string) =>
+    ((await api.call('GET', '/v1/room/messages', by)).body as RoomHistory).messages.find((m) => m.messageId === messageId)!;
+  const records = async (messageId: string) =>
+    (await api.firebase.db.collection('room_reactions').where('messageId', '==', messageId).get()).docs.map((d) => d.data());
+
+  beforeEach(async () => {
+    await enter(ada);
+    await enter(bo);
+  });
+
+  it('takes one vote per member, changed or taken back, and shows only the score', async () => {
+    const m = await say(bo, 'Canvass the north side first');
+    expect(m).toMatchObject({ reactable: true, score: 0, myVote: 0, reactions: [] });
+    expect(await vote(ada, m.messageId, 1)).toMatchObject({ score: 1, myVote: 1 });
+    expect(await seen(bo, m.messageId)).toMatchObject({ score: 1, myVote: 0 });
+    // Authors may vote on their own, as on the forum.
+    expect(await vote(bo, m.messageId, -1)).toMatchObject({ score: 0, myVote: -1 });
+    expect(await vote(ada, m.messageId, -1)).toMatchObject({ score: -2, myVote: -1 });
+
+    // The same vote again changes nothing, not even the feed.
+    const before = (await status(ada)).room!.seq;
+    expect(await vote(ada, m.messageId, -1)).toMatchObject({ score: -2, myVote: -1 });
+    expect((await status(ada)).room!.seq).toBe(before);
+
+    expect(await vote(ada, m.messageId, 0)).toMatchObject({ score: -1, myVote: 0 });
+    expect(await records(m.messageId)).toMatchObject([{ accountId: bo.accountId, vote: -1, reactions: [] }]);
+    // Totals only: nothing Bo is shown says who else voted.
+    await vote(ada, m.messageId, 1);
+    expect(JSON.stringify(await seen(bo, m.messageId))).not.toContain(ada.accountId);
+    expect((await api.call('PUT', `/v1/room/messages/${m.messageId}/vote`, bo, { value: 2 })).status).toBe(400);
+  });
+
+  it('counts emoji reactions, each member’s own taken back by giving it again', async () => {
+    const m = await say(ada, 'Flyers are printed');
+    expect(await react(bo, m.messageId, 'celebrate')).toMatchObject({ reactions: [{ reaction: 'celebrate', count: 1, mine: true }] });
+    expect(await react(bo, m.messageId, 'like')).toMatchObject({
+      reactions: [
+        { reaction: 'like', count: 1, mine: true },
+        { reaction: 'celebrate', count: 1, mine: true },
+      ],
+    });
+    expect(await react(ada, m.messageId, 'like')).toMatchObject({
+      reactions: [
+        { reaction: 'like', count: 2, mine: true },
+        { reaction: 'celebrate', count: 1, mine: false },
+      ],
+    });
+    expect(await react(bo, m.messageId, 'celebrate', false)).toMatchObject({ reactions: [{ reaction: 'like', count: 2, mine: true }] });
+    expect(await seen(ada, m.messageId)).toMatchObject({ reactions: [{ reaction: 'like', count: 2, mine: true }] });
+    expect((await api.call('PUT', `/v1/room/messages/${m.messageId}/reactions`, bo, { reaction: 'angry', on: true })).status).toBe(400);
+  });
+
+  it('reaches every page in the room as an update, waking one that waits', async () => {
+    const m = await say(ada, 'Who can drive on Saturday?');
+    const { seq } = (await status(ada)).room!;
+    const waiting = updates(ada, seq, true);
+    setTimeout(() => void react(bo, m.messageId, 'thanks'), 300);
+    expect((await waiting).messages).toMatchObject([{ messageId: m.messageId, reactions: [{ reaction: 'thanks', count: 1, mine: false }] }]);
+    await vote(bo, m.messageId, 1);
+    expect((await updates(ada, seq + 1)).messages).toMatchObject([{ messageId: m.messageId, score: 1, myVote: 0 }]);
+  });
+
+  it('is for Active members in the room, on members’ messages and answers but not notices', async () => {
+    const m = await say(ada, 'Hello');
+    expect((await api.call('PUT', `/v1/room/messages/${m.messageId}/vote`, cy, { value: 1 })).status).toBe(403);
+    // Not in the room: a Membership Admin who has not accepted the terms.
+    expect((await api.call('PUT', `/v1/room/messages/${m.messageId}/reactions`, ma, { reaction: 'like', on: true })).status).toBe(403);
+    await api.call('DELETE', '/v1/room/consent', bo);
+    expect((await api.call('PUT', `/v1/room/messages/${m.messageId}/vote`, bo, { value: 1 })).status).toBe(403);
+
+    await api.call('POST', '/v1/room/decisions', ada, { text: 'Meet on Tuesdays' });
+    const notice = ((await api.call('GET', '/v1/room/messages', ada)).body as RoomHistory).messages.find((x) => x.kind === 'notice')!;
+    expect(notice.reactable).toBe(false);
+    expect((await api.call('PUT', `/v1/room/messages/${notice.messageId}/vote`, ada, { value: 1 })).status).toBe(409);
+    expect((await api.call('PUT', '/v1/room/messages/no-such-message/vote', ada, { value: 1 })).status).toBe(404);
+  });
+
+  it('go with their message: deleted, or an answer erased with what it cites', async () => {
+    const m = await say(bo, 'The canvassing plan v2 starts on the north side');
+    await vote(ada, m.messageId, 1);
+    await react(ada, m.messageId, 'love');
+    const answer = await answerTo(ada, (await api.call('POST', '/v1/room/ask', ada, { question: 'What is the canvassing plan?' })).body.messageId);
+    expect(await react(bo, answer.messageId, 'thinking')).toMatchObject({ reactable: true, reactions: [{ count: 1 }] });
+    await vote(ada, answer.messageId, -1);
+
+    await enter(ma);
+    const gone = await api.call('DELETE', `/v1/admin/room/messages/${m.messageId}`, ma);
+    expect(gone.body).toMatchObject({ deleted: true, reactable: false, score: 0, myVote: 0, reactions: [] });
+    expect(await seen(ada, answer.messageId)).toMatchObject({ deleted: true, score: 0, myVote: 0, reactions: [] });
+    expect(await records(m.messageId)).toEqual([]);
+    expect(await records(answer.messageId)).toEqual([]);
+    expect((await api.call('PUT', `/v1/room/messages/${m.messageId}/vote`, ada, { value: 1 })).status).toBe(404);
+
+    // Forgetting a decision erases the answers citing it, their reactions too.
+    const d = (await api.call('POST', '/v1/room/decisions', ada, { text: 'Adopted canvassing plan v2' })).body;
+    const second = await answerTo(ada, (await api.call('POST', '/v1/room/ask', ada, { question: 'What is the canvassing plan?' })).body.messageId);
+    await react(bo, second.messageId, 'like');
+    expect((await api.call('DELETE', `/v1/room/memory/${d.itemId}`, ada)).status).toBe(204);
+    expect(await records(second.messageId)).toEqual([]);
+    expect(await seen(bo, second.messageId)).toMatchObject({ deleted: true, reactions: [] });
+  });
+});
+
 describe('memory', () => {
   beforeEach(async () => {
     await enter(ada);
@@ -341,13 +455,20 @@ describe('the admins’ switches', () => {
 });
 
 describe('retention', () => {
-  it('deletes messages and done action items past their time, and gives up on stale questions', async () => {
+  it('deletes messages with their votes and reactions, and done action items, past their time, and gives up on stale questions', async () => {
     await enter(ada);
     const old = await say(ada, 'Old news');
-    await say(ada, 'Fresh news');
+    const fresh = await say(ada, 'Fresh news');
+    // A reaction expires with its message: it takes the message's expireAt.
+    await api.call('PUT', `/v1/room/messages/${fresh.messageId}/reactions`, ada, { reaction: 'like', on: true });
+    const reaction = (await api.firebase.db.collection('room_reactions').get()).docs[0]!;
+    const freshDoc = await api.firebase.db.collection('room_messages').doc(fresh.messageId).get();
+    expect(reaction.get('expireAt')).toBe(freshDoc.get('expireAt'));
+    await api.call('PUT', `/v1/room/messages/${old.messageId}/vote`, ada, { value: 1 });
     const todo = (await api.call('POST', '/v1/room/actions', ada, { task: 'Done long ago', ownerId: ada.accountId })).body;
     const past = '2026-01-01T00:00:00.000Z';
     await api.firebase.db.collection('room_messages').doc(old.messageId).update({ expireAt: past });
+    await api.firebase.db.collection('room_reactions').where('messageId', '==', old.messageId).get().then((s) => s.docs[0]!.ref.update({ expireAt: past }));
     await api.firebase.db.collection('room_memory').doc(todo.itemId).update({ status: 'done', doneAt: past, expireAt: past });
     await api.firebase.db.collection('room_jobs').doc('stale').set({
       jobId: 'stale',
@@ -365,10 +486,11 @@ describe('retention', () => {
 
     const tick = await worker.tick();
     expect(tick.status).toBe(200);
-    expect(tick.body.roomExpired).toBe(3);
+    expect(tick.body.roomExpired).toBe(4);
     const bodies = ((await api.call('GET', '/v1/room/messages', ada)).body as RoomHistory).messages.map((m) => m.body);
     expect(bodies).not.toContain('Old news');
     expect(bodies).toContain('Fresh news');
+    expect((await api.firebase.db.collection('room_reactions').get()).docs.map((d) => d.get('messageId'))).toEqual([fresh.messageId]);
     expect(bodies.at(-1)).toBe(`I could not answer this: it took longer than 10 minutes. Ask again in a minute.`);
     expect((await memory(ada)).actions).toEqual([]);
     expect((await api.firebase.db.collection('room_jobs').doc('stale').get()).data()).toMatchObject({ state: 'failed' });
