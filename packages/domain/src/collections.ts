@@ -39,6 +39,8 @@ export const Collections = {
   roomConsents: 'room_consents',
   /** `room_messages/{messageId}`: the room's messages, the assistant's answers and notices; kept 90 days. */
   roomMessages: 'room_messages',
+  /** `room_reactions/{messageId}_{accountId}`: a member's vote and emoji reactions on a message, shown to them only. */
+  roomReactions: 'room_reactions',
   /** `room_memory/{itemId}`: the room's decisions and action items, the assistant's project memory. */
   roomMemory: 'room_memory',
   /** `room_jobs/{jobId}`: questions waiting for the assistant, run on the worker. */

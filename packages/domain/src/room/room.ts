@@ -2,6 +2,8 @@ import { sha256Hex } from 'ustp-audit';
 import { z } from 'zod';
 import { OK, refuse, type Check, type Outcome } from '../check.js';
 import type { LedgerEvent } from '../ledger-events.js';
+import { NO_VOTES, type VoteTally } from '../votes.js';
+import type { RoomReactionCount } from './reactions.js';
 
 /**
  * The members' room (design §5.10): a chat room for Active members who have accepted its terms, with an assistant that
@@ -220,10 +222,13 @@ export interface RoomRef {
   readonly itemId: string;
 }
 
-/** `room_messages/{messageId}` (UUIDv7, so ID order is time order). */
-export interface RoomMessageRecord {
+/**
+ * `room_messages/{messageId}` (UUIDv7, so ID order is time order), with its votes' totals and how many gave each
+ * reaction; who did is in `room_reactions` (`./reactions.ts`).
+ */
+export interface RoomMessageRecord extends VoteTally {
   readonly messageId: string;
-  /** The feed number of its last change (made, deleted), so updates are one query. */
+  /** The feed number of its last change (made, voted on, reacted to, deleted), so updates are one query. */
   readonly seq: number;
   readonly kind: RoomMessageKind;
   /** The member who posted it, who did what a notice tells of, or who asked for a joke; null for the assistant's answers. */
@@ -241,11 +246,15 @@ export interface RoomMessageRecord {
   /** The IDs of an answer's sources, so deleting or forgetting one finds the answers that cite it. */
   readonly cites: readonly string[];
   readonly ref: RoomRef | null;
+  readonly reactions: readonly RoomReactionCount[];
   readonly deletedAt: string | null;
   readonly deletedBy: string | null;
   /** When the tick deletes it: `ROOM_RETENTION.messageDays` after it was posted. */
   readonly expireAt: string;
 }
+
+/** What a message written before votes and reactions lacks. */
+export const NO_REACTIONS: Pick<RoomMessageRecord, 'up' | 'down' | 'score' | 'reactions'> = { ...NO_VOTES, reactions: [] };
 
 export const ROOM_MEMORY_KINDS = ['decision', 'action'] as const;
 export type RoomMemoryKind = (typeof ROOM_MEMORY_KINDS)[number];
@@ -473,6 +482,7 @@ export function newMessage(
     ref: null,
     ...fields,
     cites: (fields.sources ?? []).map((s) => s.id),
+    ...NO_REACTIONS,
     seq,
     deletedAt: null,
     deletedBy: null,
@@ -497,10 +507,10 @@ export function deleteMessage(
 
 /**
  * A message with its text gone: deleted, or an answer that cited something since deleted or forgotten (forgetting is
- * real, so nothing the room shows keeps the text). The place stays.
+ * real, so nothing the room shows keeps the text). The place stays; its votes and reactions go with the text.
  */
 export function erased(message: RoomMessageRecord, actor: string, seq: number, at: string): RoomMessageRecord {
-  return { ...message, body: '', sources: [], cites: [], ref: null, deletedAt: at, deletedBy: actor, seq };
+  return { ...message, body: '', sources: [], cites: [], ref: null, ...NO_REACTIONS, deletedAt: at, deletedBy: actor, seq };
 }
 
 /** A decision, the group's; logged from a message it keeps a quote of what that said. */

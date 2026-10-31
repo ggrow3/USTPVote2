@@ -1,4 +1,4 @@
-/** The members' room (design §5.10): consent at the door, the chat, the assistant's project memory. */
+/** The members' room (design §5.10): consent at the door, the chat with its votes and reactions, the assistant's project memory. */
 export {
   ROOM_TERMS,
   ROOM_TERMS_HASH,
@@ -11,6 +11,7 @@ export {
   ROOM_MESSAGE_KINDS,
   ROOM_MEMORY_KINDS,
   EMPTY_FEED,
+  NO_REACTIONS,
   ROOM_SETTINGS,
   expiresAfter,
   roomConsentSchema,
@@ -76,6 +77,16 @@ export type {
   RoomConsentChangedPayload,
 } from './room.js';
 export {
+  ROOM_REACTIONS,
+  ROOM_REACTION_EMOJI,
+  roomReactionSchema,
+  roomReactionId,
+  checkReactable,
+  voteOnMessage,
+  reactToMessage,
+} from './reactions.js';
+export type { RoomReaction, RoomReactionInput, RoomReactionCount, RoomReactionRecord, RoomReactionChange } from './reactions.js';
+export {
   ROOM_VOICE_LIMITS,
   ROOM_SIGNAL_KINDS,
   JOKE_STRIDE,
@@ -110,6 +121,7 @@ export type {
   RoomStatus,
   RoomAssistantView,
   RoomMessageView,
+  RoomReactionView,
   RoomHistory,
   RoomUpdates,
   RoomDecisionView,

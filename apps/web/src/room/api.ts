@@ -8,12 +8,14 @@ import type {
   RoomHistory,
   RoomMemory,
   RoomMessageView,
+  RoomReaction,
   RoomSetting,
   RoomSettingsView,
   RoomSignalsInput,
   RoomStatus,
   RoomUpdates,
   RoomVoiceJoined,
+  VoteValue,
 } from 'ustp-domain';
 import { api } from '../api.js';
 
@@ -56,6 +58,12 @@ export const sendSignals = (sessionId: string, signals: RoomSignalsInput['signal
 /** The caller's own message, or as a Membership Admin anyone's. */
 export function deleteMessage(messageId: string, asAdmin: boolean): Promise<RoomMessageView> {
   return api<RoomMessageView>('DELETE', `/v1/${asAdmin ? 'admin/' : ''}room/messages/${enc(messageId)}`);
+}
+
+/** The caller's vote on a message (0 takes it back), and their reaction added or taken back; the message comes back. */
+export const voteOn = (messageId: string, value: VoteValue) => api<RoomMessageView>('PUT', `/v1/room/messages/${enc(messageId)}/vote`, { value });
+export function reactTo(messageId: string, reaction: RoomReaction, on: boolean): Promise<RoomMessageView> {
+  return api<RoomMessageView>('PUT', `/v1/room/messages/${enc(messageId)}/reactions`, { reaction, on });
 }
 
 export const decide = (input: RoomDecisionInput) => api<RoomDecisionView>('POST', '/v1/room/decisions', input);

@@ -147,3 +147,24 @@ export function serverLine(server: RoomSettingsView['server']): { readonly title
     running: true,
   };
 }
+
+/**
+ * The composer's text with `insert` in place of what is selected (or at the caret), and where the caret goes after it;
+ * null when the result would be longer than `max`.
+ */
+export function insertText(text: string, start: number, end: number, insert: string, max: number): { readonly text: string; readonly caret: number } | null {
+  const next = text.slice(0, start) + insert + text.slice(end);
+  return next.length > max ? null : { text: next, caret: start + insert.length };
+}
+
+/** What a reaction's button says to a screen reader and in its tooltip: "thumbs up: 3, yours among them". */
+export function reactionLabel(label: string, count: number, mine: boolean): string {
+  if (mine) return `${label}: ${count === 1 ? 'yours' : `${count}, yours among them`}`;
+  return `${label}: ${count}`;
+}
+
+/** What a message's vote and reaction buttons name it as: "your message", "Ada Brooks’s message", "the assistant’s answer". */
+export function messageName(m: Pick<RoomMessageView, 'kind' | 'mine' | 'author'>): string {
+  if (m.kind === 'assistant') return 'the assistant’s answer';
+  return m.mine ? 'your message' : `${m.author?.name ?? 'a member'}’s message`;
+}
