@@ -7,10 +7,10 @@ import { answerParts, messageName, messageTime, reactionLabel, SOURCE_LABELS } f
 
 /**
  * One message in the members' room (design §5.10): a member's (a question for the assistant marked as such, with
- * "thinking" while it waits), the assistant's answer with its numbered sources, or a notice of what someone did. A
- * member's message or an answer takes up and down votes, as the forum's posts do, and emoji reactions: its score and
- * how many gave each reaction are shown, never who. While a message has neither, its vote and reaction buttons show
- * only when it is pointed at or focused, so the chat stays quiet.
+ * "thinking" while it waits), the assistant's answer with its numbered sources or a joke someone asked for, or a
+ * notice of what someone did. A member's message or an answer takes up and down votes, as the forum's posts do, and
+ * emoji reactions: its score and how many gave each reaction are shown, never who. While a message has neither, its
+ * vote and reaction buttons show only when it is pointed at or focused, so the chat stays quiet.
  */
 const props = defineProps<{
   message: RoomMessageView;
@@ -60,6 +60,7 @@ const given = computed(() => new Set(m.value.reactions.filter((r) => r.mine).map
       <div class="room-msg__head">
         <span class="room-msg__name">{{ m.kind === 'assistant' ? 'Assistant' : m.author?.name }}</span>
         <q-badge v-if="m.ask" outline color="primary" label="/ask" class="q-ml-xs" />
+        <span v-if="m.joke" class="room-joke-for text-grey-7">a lame joke for {{ m.author?.name }}</span>
         <span class="room-time text-grey-7">{{ messageTime(m.createdAt) }}</span>
         <div class="room-msg__actions">
           <div v-if="m.reactable" class="room-msg__tools" :class="{ 'room-msg__tools--idle': idle }">
@@ -170,6 +171,10 @@ const given = computed(() => new Set(m.value.reactions.filter((r) => r.mine).map
   font-size: 0.8em;
   margin-left: 6px;
   white-space: nowrap;
+}
+.room-joke-for {
+  font-size: 0.8em;
+  font-style: italic;
 }
 .room-msg__body {
   white-space: pre-line;

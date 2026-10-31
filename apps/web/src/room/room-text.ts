@@ -80,6 +80,23 @@ export function commandHints(text: string, moderator: boolean): { readonly comma
   return ROOM_COMMANDS.filter((c) => c.startsWith(typed) && (moderator || c !== 'assistant')).map((command) => ({ command, ...ROOM_COMMAND_HELP[command] }));
 }
 
+/** Why the call could not start, when the browser refused the microphone (`getUserMedia`'s errors); else null. */
+export function microphoneProblem(error: unknown): string | null {
+  switch ((error as { name?: unknown } | null)?.name) {
+    case 'NotAllowedError':
+    case 'SecurityError':
+      return 'Microphone access is blocked. Allow the microphone for this site (the icon in the address bar), then join again.';
+    case 'NotFoundError':
+    case 'OverconstrainedError':
+      return 'No microphone was found. Plug one in, then join again.';
+    case 'NotReadableError':
+    case 'AbortError':
+      return 'The microphone is busy, perhaps in another app. Close that app and try again.';
+    default:
+      return null;
+  }
+}
+
 /** "Ada, Bo and 3 others". */
 export function peopleLine(names: readonly string[]): string {
   if (names.length <= 3) return names.length === 0 ? 'Nobody yet' : names.join(names.length === 2 ? ' and ' : ', ');

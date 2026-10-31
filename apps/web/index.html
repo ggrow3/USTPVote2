@@ -9,14 +9,14 @@
     />
     <meta name="theme-color" content="#bd4e00" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="apple-mobile-web-app-title" content="USTP Vote" />
+    <meta name="apple-mobile-web-app-title" content="%VITE_APP_NAME%" />
     <!--
       Link previews (Open Graph, X). Their crawlers read this file as served and run no script, so every page shares
       these; the build makes the image's address absolute (vite.config.ts, design §15).
     -->
     <meta property="og:type" content="website" />
-    <meta property="og:site_name" content="USTP Vote" />
-    <meta property="og:title" content="USTP Vote · U.S. Transhumanist Party" />
+    <meta property="og:site_name" content="%VITE_APP_NAME%" />
+    <meta property="og:title" content="%VITE_APP_NAME% · U.S. Transhumanist Party" />
     <meta
       property="og:description"
       content="The U.S. Transhumanist Party's member site: apply to join, vote in party elections, check your ballot receipt, and read the bylaws, offices and certified results."
@@ -33,7 +33,7 @@
     <!-- The party's news feeds, for feed readers and bots (design §10.9). -->
     <link rel="alternate" type="application/rss+xml" title="News" href="/v1/news/feed.xml" />
     <link rel="alternate" type="application/feed+json" title="News" href="/v1/news/feed.json" />
-    <title>USTP Vote</title>
+    <title>%VITE_APP_NAME%</title>
   </head>
   <body>
     <div id="app"></div>

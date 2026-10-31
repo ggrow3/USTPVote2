@@ -9,6 +9,7 @@ import {
   dueLabel,
   insertText,
   messageName,
+  microphoneProblem,
   overdue,
   peopleLine,
   reactionLabel,
@@ -34,7 +35,7 @@ describe('room wording', () => {
   });
 
   it('suggests the commands that start with what was typed, the switch only to Membership Admins', () => {
-    expect(commandHints('/', false).map((h) => h.command)).toEqual(['ask', 'decide', 'todo', 'memory', 'forget', 'leave-room']);
+    expect(commandHints('/', false).map((h) => h.command)).toEqual(['ask', 'decide', 'todo', 'memory', 'forget', 'joke', 'leave-room']);
     expect(commandHints('/', true).map((h) => h.command)).toContain('assistant');
     expect(commandHints('/de', false).map((h) => h.command)).toEqual(['decide']);
     expect(commandHints('/ask what', false)).toEqual([]);
@@ -96,5 +97,12 @@ describe('room wording', () => {
     expect(messageName({ kind: 'member', mine: true, author: { accountId: 'a', name: 'Ada' } })).toBe('your message');
     expect(messageName({ kind: 'member', mine: false, author: { accountId: 'a', name: 'Ada' } })).toBe('Ada’s message');
     expect(messageName({ kind: 'assistant', mine: false, author: null })).toBe('the assistant’s answer');
+  });
+
+  it('says why the call could not use the microphone', () => {
+    expect(microphoneProblem({ name: 'NotAllowedError' })).toContain('Allow the microphone');
+    expect(microphoneProblem({ name: 'NotFoundError' })).toContain('No microphone');
+    expect(microphoneProblem({ name: 'NotReadableError' })).toContain('busy');
+    expect(microphoneProblem(new Error('the call is full'))).toBeNull();
   });
 });

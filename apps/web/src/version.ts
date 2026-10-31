@@ -1,4 +1,5 @@
 import { buildCommit } from 'ustp-domain';
+import { APP_NAME } from './app-name.js';
 
 /**
  * The version handshake (design §15). A release builds the web app and the server from one commit of main; the api
@@ -69,9 +70,9 @@ export function nextBanner(
 /** The banner's text; its button says Reload. */
 export function updateMessage(reason: UpdateReason): string {
   return reason === 'refused'
-    ? 'USTP Vote was updated while this page was open, so that was not saved. Reload the page, then try again.'
-    : 'A new version of USTP Vote is available.';
+    ? `${APP_NAME} was updated while this page was open, so that was not saved. Reload the page, then try again.`
+    : `A new version of ${APP_NAME} is available.`;
 }
 
 /** Added to the message of a request refused by another build (see refusedByOtherBuild), where the error is shown. */
-export const REFUSED_HINT = 'USTP Vote was updated while this page was open: reload the page, then try again.';
+export const REFUSED_HINT = `${APP_NAME} was updated while this page was open: reload the page, then try again.`;

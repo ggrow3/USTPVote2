@@ -113,6 +113,17 @@ export function statusText(check: ConsistencyCheckResult | null, requesting = fa
   }
 }
 
+/** The card's one line while it is folded: where the person's check stands, or that there is one they can run. */
+export function summaryText(
+  check: ConsistencyCheckResult | null,
+  { available, requesting = false, error = false }: { available: boolean; requesting?: boolean; error?: boolean },
+): string {
+  if (error) return 'Something went wrong: open this to read what.';
+  if (requesting || check?.status === 'queued' || check?.status === 'running') return 'Checking…';
+  if (check) return statusText(check);
+  return available ? 'An advisory check by Claude. Not run yet.' : 'Nothing to check: every contest elects someone.';
+}
+
 /** In the button's place once the person has had their check: it runs once, so here is the saved result. */
 export function usedText(check: Pick<ConsistencyCheckResult, 'requestedAt'>, locale?: string): string {
   const day = new Date(check.requestedAt).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });

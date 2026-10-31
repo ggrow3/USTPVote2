@@ -10,13 +10,14 @@ import {
   type UserCredential,
 } from 'firebase/auth';
 import QRCode from 'qrcode';
+import { APP_NAME } from './app-name.js';
 
 /**
  * Two-step verification with an authenticator app (TOTP), required for admin roles (design §4). SMS is not offered:
  * NIST SP 800-63B-4 restricts it, and Identity Platform bills per message.
  */
 
-export const ISSUER = 'USTP Vote';
+export const ISSUER = APP_NAME;
 export const CODE_PATTERN = /^\d{6}$/;
 
 /** Sign-in (or re-authentication) stopped and needs the second step. */
@@ -37,7 +38,7 @@ export async function resolveWithAuthenticator(auth: Auth, challenge: MultiFacto
   const resolver = getMultiFactorResolver(auth, challenge);
   const hint = resolver.hints.find((h) => h.factorId === TotpMultiFactorGenerator.FACTOR_ID);
   if (!hint) {
-    throw new Error("This account's second step is not an authenticator app, which USTP Vote does not support. Ask a System Admin for help.");
+    throw new Error(`This account's second step is not an authenticator app, which ${APP_NAME} does not support. Ask a System Admin for help.`);
   }
   return resolver.resolveSignIn(TotpMultiFactorGenerator.assertionForSignIn(hint.uid, code.trim()));
 }

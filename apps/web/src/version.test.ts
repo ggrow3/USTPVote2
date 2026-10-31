@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { APP_NAME } from './app-name.js';
 import { buildsDiffer, checkResult, nextBanner, refusedByOtherBuild, updateMessage, type PendingUpdate } from './version.js';
 
 const A = 'aaaaaaa';
@@ -95,8 +96,9 @@ describe('nextBanner', () => {
 
 describe('updateMessage', () => {
   it('offers the new version, or explains a refused request', () => {
-    expect(updateMessage('web-changed')).toBe('A new version of USTP Vote is available.');
-    expect(updateMessage('api-changed')).toBe('A new version of USTP Vote is available.');
+    expect(APP_NAME).toBeTruthy();
+    expect(updateMessage('web-changed')).toBe(`A new version of ${APP_NAME} is available.`);
+    expect(updateMessage('api-changed')).toBe(`A new version of ${APP_NAME} is available.`);
     expect(updateMessage('refused')).toMatch(/updated while this page was open, so that was not saved\. Reload/);
   });
 });

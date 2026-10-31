@@ -9,6 +9,7 @@ import {
   type RoomReaction,
   type RoomSource,
   type RoomStatus,
+  type RoomVoiceView,
   type VoteValue,
 } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
@@ -17,18 +18,21 @@ import PageShell from '../components/PageShell.vue';
 import { attempt, dialog } from '../dialogs.js';
 import { session } from '../session.js';
 import ActionDialog from './ActionDialog.vue';
-import { acceptTerms, ask, deleteMessage, history, leaveRoom, postMessage, reactTo, roomStatus, switchAssistant, updates, voteOn } from './api.js';
+import { acceptTerms, ask, deleteMessage, history, joke, leaveRoom, postMessage, reactTo, roomStatus, switchAssistant, updates, voteOn } from './api.js';
 import DecisionDialog from './DecisionDialog.vue';
 import EmojiPicker from './EmojiPicker.vue';
+import { JokeVoice } from './joke-voice.js';
 import MemoryPanel from './MemoryPanel.vue';
 import RoomMessage from './RoomMessage.vue';
-import { assistantLine, commandHints, dayLabel, insertText, peopleLine, startsDay } from './room-text.js';
+import { assistantLine, commandHints, dayLabel, insertText, microphoneProblem, peopleLine, startsDay } from './room-text.js';
+import { VoiceCall } from './voice.js';
+import VoiceBar from './VoiceBar.vue';
 
 /**
  * The members' room (design §5.10): at the door, the terms an Active member accepts before anything of the room is
  * shown; inside, the chat with its assistant, its votes and emoji reactions, kept current by asking the api for
- * updates (it holds each request until something changes), the composer with its slash commands and emoji picker, and
- * the room's memory.
+ * updates (it holds each request until something changes), the composer with its slash commands and emoji picker, the
+ * room's memory, and its call, which members join to talk while they chat.
  */
 usePageTitle('Members’ room');
 
@@ -63,12 +67,23 @@ const hints = computed(() => commandHints(text.value, moderator.value));
 const myId = computed(() => session.me?.account?.accountId ?? '');
 const people = computed(() => room.value?.people ?? []);
 
+/** Who is in the call, and the feed number of that list. */
+const voice = ref<RoomVoiceView[]>([]);
+const voiceSeq = ref(-1);
+const call = new VoiceCall({ dropped: (reason) => Notify.create({ type: 'info', message: reason }) });
+const jokes = new JokeVoice();
+/** Closing the tab leaves the call at once, rather than when the page goes quiet. */
+const unloading = () => call.leave(true);
+window.addEventListener('pagehide', unloading);
+
 let polling = 0;
 /** Stops waiting for the tab to be shown again, when the page closes. */
 let stopWaiting: (() => void) | null = null;
 onBeforeUnmount(() => {
   polling++;
   stopWaiting?.();
+  window.removeEventListener('pagehide', unloading);
+  leaveCall();
 });
 
 async function load() {
@@ -89,6 +104,7 @@ async function enter() {
   older.value = page.before;
   seq.value = page.seq;
   memorySeq.value = status.value?.room?.memorySeq ?? 0;
+  if (status.value?.room) setVoice(status.value.room.voice, status.value.room.voiceSeq);
   await scrollToEnd();
   void poll(++polling);
 }
@@ -116,10 +132,12 @@ function visible(): Promise<void> {
 async function poll(run: number) {
   let failures = 0;
   while (run === polling && status.value?.room) {
-    await visible();
+    // In the call the page keeps asking while hidden: others joining need its answer to reach it.
+    if (!call.joined) await visible();
     if (run !== polling) return;
     try {
-      const u = await updates(seq.value);
+      const asked = call.sessionId;
+      const u = await updates(seq.value, asked);
       if (run !== polling) return;
       failures = 0;
       if (u.reset) {
@@ -127,16 +145,22 @@ async function poll(run: number) {
         return;
       }
       const atEnd = nearEnd();
-      merge(u.messages);
+      const added = merge(u.messages);
       seq.value = u.seq;
       memorySeq.value = u.memorySeq;
       if (status.value.room) status.value = { ...status.value, room: { ...status.value.room, assistant: u.assistant } };
+      if (u.voice) setVoice(u.voice, u.voiceSeq);
+      await call.receive(u.signals);
+      // Joined while this request was out: handshakes sent to the new page since it joined come now.
+      if (call.sessionId && call.sessionId !== asked) await call.receive((await updates(call.joinedSeq, call.sessionId, false)).signals);
+      announce(added);
       // Someone entered or left: who is in the room (the header, action items' owners) comes with the status.
       if (u.peopleSeq !== status.value.room?.peopleSeq) status.value = await roomStatus();
       if (atEnd && u.messages.length) await scrollToEnd();
     } catch (e) {
       if (e instanceof ApiError && e.status === 403) {
-        // Left in another tab, the membership ended, or the terms changed: back to the door.
+        // Left in another tab, the membership ended, or the terms changed: back to the door, out of the call.
+        leaveCall();
         try {
           status.value = await roomStatus();
         } catch (again) {
@@ -150,11 +174,53 @@ async function poll(run: number) {
   }
 }
 
-/** Adds new messages and replaces changed ones, in time order (message IDs are time-ordered). */
-function merge(changed: readonly RoomMessageView[]) {
+/** Adds new messages and replaces changed ones, in time order (message IDs are time-ordered); returns the new ones. */
+function merge(changed: readonly RoomMessageView[]): RoomMessageView[] {
   const byId = new Map(messages.value.map((m) => [m.messageId, m]));
+  const added = changed.filter((m) => !byId.has(m.messageId));
   for (const m of changed) byId.set(m.messageId, m);
   messages.value = [...byId.values()].sort((a, b) => (a.messageId < b.messageId ? -1 : a.messageId > b.messageId ? 1 : 0));
+  return added;
+}
+
+/** A joke told just now is read out to a member in the call, with the assistant shown in it while it speaks. */
+function announce(added: readonly RoomMessageView[]) {
+  const told = added.filter((m) => m.joke && !m.deleted).at(-1);
+  if (told && call.joined) jokes.tell(told.body);
+}
+
+/** Who is in the call, unless the list is older than the one shown. */
+function setVoice(list: readonly RoomVoiceView[], at: number) {
+  if (at < voiceSeq.value) return;
+  voiceSeq.value = at;
+  voice.value = [...list];
+  call.apply(list, at);
+}
+
+async function joinCall() {
+  await attempt(async () => {
+    try {
+      const joined = await call.join();
+      setVoice(joined.voice, joined.voiceSeq);
+    } catch (e) {
+      const problem = microphoneProblem(e);
+      throw problem ? new Error(problem) : e;
+    }
+  });
+}
+
+function leaveCall() {
+  jokes.stop();
+  call.leave();
+}
+
+async function tellJoke() {
+  sending.value = true;
+  await attempt(async () => {
+    announce(merge([await joke()]));
+    await scrollToEnd();
+  });
+  sending.value = false;
 }
 
 async function loadOlder() {
@@ -201,6 +267,7 @@ function leave() {
     void attempt(async () => {
       const left = await leaveRoom();
       polling++;
+      leaveCall();
       status.value = left;
       messages.value = [];
     }, 'You have left the room');
@@ -234,6 +301,9 @@ async function send() {
     case 'memory':
     case 'forget':
       openMemory(args, null);
+      break;
+    case 'joke':
+      await tellJoke();
       break;
     case 'assistant':
       await switchTo(args.toLowerCase());
@@ -357,6 +427,7 @@ watch(
   (now, before) => {
     if (now !== before && before !== undefined) {
       polling++;
+      leaveCall();
       void load();
     }
   },
@@ -437,6 +508,8 @@ watch(
           </q-btn>
         </div>
 
+        <VoiceBar :voice="voice" :call="call" :jokes="jokes" @join="joinCall" @leave="leaveCall" @mute="(m) => attempt(() => call.setMuted(m))" @joke="tellJoke" />
+
         <div ref="list" class="room-list" role="log" aria-live="polite" aria-label="Messages">
           <div v-if="older" class="text-center q-pa-sm">
             <q-btn flat no-caps dense color="primary" label="Show earlier messages" :loading="loadingOlder" @click="loadOlder" />
@@ -494,6 +567,7 @@ watch(
             <q-btn flat dense no-caps size="sm" icon="smart_toy" label="Ask" @click="useHint('ask')" />
             <q-btn flat dense no-caps size="sm" icon="gavel" label="Decision" @click="openDecision(null, '')" />
             <q-btn flat dense no-caps size="sm" icon="task_alt" label="Action item" @click="openAction(null, '')" />
+            <q-btn flat dense no-caps size="sm" icon="sentiment_very_satisfied" label="Joke" :disable="sending" @click="tellJoke" />
             <q-space />
             <span class="text-caption text-grey-7">Enter sends · Shift+Enter for a new line</span>
           </div>

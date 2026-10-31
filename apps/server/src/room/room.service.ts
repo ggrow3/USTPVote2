@@ -10,23 +10,32 @@ import {
   checkMessageRate,
   checkRoomMember,
   checkRoomOpen,
+  checkSignals,
   deleteMessage,
   inRoom,
   erased,
   expiresAfter,
+  jokeBody,
+  joinVoice,
   memoryLists,
   memoryView,
   messageView,
   newAction,
   newDecision,
   newMessage,
+  nextJoke,
   reactToMessage,
   roomSettingsView,
   roomStatus,
   ROOM_LIMITS,
   ROOM_RETENTION,
+  signalRecord,
+  signalView,
   switchAssistant,
+  touchVoice,
   uuidv7,
+  voiceLive,
+  voiceView,
   withdrawConsent,
   type RoomActionInput,
   type RoomActionUpdate,
@@ -45,9 +54,15 @@ import {
   type RoomPerson,
   type RoomSetting,
   type RoomSettingsView,
+  type RoomSignalsInput,
   type RoomStatus,
   type RoomUpdates,
   type RoomViewContext,
+  type RoomVoiceJoined,
+  type RoomVoiceJoinInput,
+  type RoomVoiceRecord,
+  type RoomVoiceUpdateInput,
+  type RoomVoiceView,
   updateAction,
   voteOnMessage,
   type Outcome,
@@ -58,6 +73,7 @@ import {
 } from 'ustp-domain';
 import { DirectoryService } from '../auth/directory.service.js';
 import { accepted, assertCheck } from '../common/validation.js';
+import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { MemberDirectory } from '../membership/member-directory.js';
@@ -91,7 +107,8 @@ const DAY_MS = 86_400_000;
  * The members' room (design §5.10). Every route but the door (`GET /v1/room`, accepting the terms) is for Active members
  * who accepted the current terms, checked on each request, so the room only ever holds people who said yes. Each change
  * runs in one transaction that takes the next number from `room_state/feed`, which is how pages learn of it; accepting
- * and withdrawing consent and the assistant's kill switch are ledgered with the change.
+ * and withdrawing consent and the assistant's kill switch are ledgered with the change. The call is peer to peer: the
+ * api says who is in it and passes each pair's handshake, and never carries its sound.
  */
 @Injectable()
 export class RoomService {
@@ -107,6 +124,7 @@ export class RoomService {
     private readonly assistant: RoomAssistant,
     @Inject(ROOM_MODEL) private readonly model: RoomModel,
     @Inject(ASSISTANT_DISPATCH) private readonly dispatch: AssistantDispatch,
+    @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
   /**
@@ -126,7 +144,8 @@ export class RoomService {
       return roomStatus(active, consent, null, { at: feed.openChangedAt, by });
     }
     if (!active || !inRoom(consent)) return roomStatus(active, consent, null);
-    const [people, roles] = await Promise.all([this.people(), this.directory.activeRoles(caller.accountId)]);
+    // Read after the feed, so who is in the call is never older than the `voiceSeq` it is shown with.
+    const [people, roles, call] = await Promise.all([this.people(), this.directory.activeRoles(caller.accountId), this.repo.allVoice()]);
     const ctx = await this.contextFor(caller, [], feed);
     return roomStatus(true, consent, {
       seq: feed.seq,
@@ -135,6 +154,8 @@ export class RoomService {
       assistant: assistantView(feed, this.model.kind, ctx),
       moderator: roles.includes('membership_admin'),
       people,
+      voiceSeq: feed.voiceSeq,
+      voice: await this.callView(caller, call),
     });
   }
 
@@ -150,13 +171,15 @@ export class RoomService {
     return this.status(caller);
   }
 
-  /** `/leave-room`: consent withdrawn, effective at once. Anyone may leave, Active or not. */
+  /** `/leave-room`: consent withdrawn, effective at once, and out of the call. Anyone may leave, Active or not. */
   async leave(caller: RoomCaller): Promise<RoomStatus> {
     await this.change(async (tx, feed) => {
-      const { consent, event } = accepted(withdrawConsent(await this.repo.getConsent(tx, caller.accountId), new Date().toISOString()));
+      const [current, voice] = await Promise.all([this.repo.getConsent(tx, caller.accountId), this.repo.getVoiceOf(tx, caller.accountId)]);
+      const { consent, event } = accepted(withdrawConsent(current, new Date().toISOString()));
       await this.ledger.record(tx, [event]);
       this.repo.setConsent(tx, consent);
-      return { result: undefined, feed: { peopleSeq: feed.seq + 1 } };
+      if (voice) this.repo.deleteVoice(tx, caller.accountId);
+      return { result: undefined, feed: { peopleSeq: feed.seq + 1, ...(voice && { voiceSeq: feed.seq + 1 }) } };
     });
     return this.status(caller);
   }
@@ -175,9 +198,10 @@ export class RoomService {
 
   /**
    * What changed after `since`: at once if anything did, else when something does or `ROOM_LIMITS.waitSeconds` pass.
-   * A page more than `ROOM_LIMITS.updates` changes behind is told to reload.
+   * A page more than `ROOM_LIMITS.updates` changes behind is told to reload. A page in the call (`voiceSession`) gets
+   * the handshakes sent to it too, and every page who is in the call whenever that changed.
    */
-  async updates(caller: RoomCaller, since: number, wait: boolean): Promise<RoomUpdates> {
+  async updates(caller: RoomCaller, since: number, wait: boolean, voiceSession?: string): Promise<RoomUpdates> {
     await this.assertInRoom(caller);
     let feed = await this.repo.findFeed();
     if (wait && feed.seq <= since) {
@@ -188,13 +212,20 @@ export class RoomService {
     }
     const changed = feed.seq > since ? await this.repo.changedSince(since, ROOM_LIMITS.updates + 1) : [];
     const reset = changed.length > ROOM_LIMITS.updates || since > feed.seq;
-    const ctx = await this.contextFor(caller, reset ? [] : changed, feed);
+    const [ctx, call, signals] = await Promise.all([
+      this.contextFor(caller, reset ? [] : changed, feed),
+      feed.voiceSeq > since || reset ? this.repo.allVoice() : null,
+      voiceSession && feed.seq > since ? this.repo.signalsFor(caller.accountId, since) : [],
+    ]);
     return {
       seq: feed.seq,
       memorySeq: feed.memorySeq,
       peopleSeq: feed.peopleSeq,
       messages: reset ? [] : changed.map((m) => messageView(m, ctx)),
       assistant: assistantView(feed, this.model.kind, ctx),
+      voiceSeq: feed.voiceSeq,
+      voice: call ? await this.callView(caller, call) : null,
+      signals: signals.filter((s) => s.toSession === voiceSession).map(signalView),
       reset,
     };
   }
@@ -420,16 +451,98 @@ export class RoomService {
       const at = new Date().toISOString();
       const { feed: changed, cancelled: waiting, event } = accepted(changeRoomSetting(feed, setting, on, caller.accountId, at));
       const jobs = await this.repo.getJobsFor(tx, waiting);
+      // Closing the room ends its call too.
+      const call = setting === 'open' && !on ? await this.repo.getAllVoice(tx) : [];
       await this.ledger.record(tx, [event]);
       for (const job of jobs) if (job.state === 'queued' || job.state === 'running') this.repo.setJob(tx, cancelled(job, at));
+      for (const v of call) this.repo.deleteVoice(tx, v.accountId);
       const said = setting === 'open' ? (on ? 'opened the room' : 'closed the room') : on ? 'switched the assistant’s server on' : 'switched the assistant’s server off';
       this.notice(tx, caller.accountId, said, null, feed.seq + 1, at);
-      return { result: undefined, feed: changed };
+      return { result: undefined, feed: call.length ? { ...changed, voiceSeq: feed.seq + 1 } : changed };
     });
     if (setting === 'server' && on && this.model.kind !== 'off') {
       await this.dispatch.warm().catch((e: unknown) => this.logger.warn(`room model warm-up not queued: ${e instanceof Error ? e.message : e}`));
     }
     return this.settings(caller);
+  }
+
+  /**
+   * `/joke`: the assistant tells a lame joke from its list (no model needed) as its message, for whoever asked; pages in
+   * the call read it out. It counts towards the asker's messages, and stops while the assistant is switched off.
+   */
+  async joke(caller: RoomCaller): Promise<RoomMessageView> {
+    await this.assertInRoom(caller);
+    await this.assertUnderRate(caller.accountId);
+    const message = await this.change(async (tx, feed) => {
+      const joke = accepted(nextJoke(feed));
+      const m = newMessage(
+        { messageId: uuidv7(), kind: 'assistant', authorId: caller.accountId, body: jokeBody(joke), createdAt: new Date().toISOString(), joke: true },
+        feed.seq + 1,
+      );
+      this.repo.createMessage(tx, m);
+      return { result: m, feed: { jokes: feed.jokes + 1 } };
+    });
+    return messageView(message, await this.contextFor(caller, [message]));
+  }
+
+  /**
+   * Joining the call from a page: an earlier page of the member's in it is replaced, and anyone gone quiet is dropped.
+   * The page then calls everyone already there.
+   */
+  async joinVoice(caller: RoomCaller, input: RoomVoiceJoinInput): Promise<RoomVoiceJoined> {
+    await this.assertInRoom(caller);
+    const sessionId = uuidv7();
+    const { call, voiceSeq } = await this.change(async (tx, feed) => {
+      const at = new Date().toISOString();
+      const everyone = await this.repo.getAllVoice(tx);
+      const others = everyone.filter((v) => v.accountId !== caller.accountId && voiceLive(v, at));
+      const mine = accepted(joinVoice(everyone.find((v) => v.accountId === caller.accountId) ?? null, others, caller.accountId, sessionId, input.muted, at));
+      this.repo.setVoice(tx, mine);
+      for (const v of everyone) if (v.accountId !== caller.accountId && !voiceLive(v, at)) this.repo.deleteVoice(tx, v.accountId);
+      return { result: { call: [...others, mine], voiceSeq: feed.seq + 1 }, feed: { voiceSeq: feed.seq + 1 } };
+    });
+    const stun = this.config.room.voiceStun;
+    return { sessionId, voiceSeq, voice: await this.callView(caller, call), iceServers: stun.length ? [{ urls: [...stun] }] : [] };
+  }
+
+  /**
+   * The page is still in the call (it says so every `ROOM_VOICE_LIMITS.heartbeatSeconds`), muted or not; anyone gone
+   * quiet is dropped. Only muting, unmuting or a drop changes the room.
+   */
+  async updateVoice(caller: RoomCaller, input: RoomVoiceUpdateInput): Promise<void> {
+    await this.assertInRoom(caller);
+    await this.change(async (tx, feed) => {
+      const at = new Date().toISOString();
+      const everyone = await this.repo.getAllVoice(tx);
+      const { record, changed } = accepted(touchVoice(everyone.find((v) => v.accountId === caller.accountId) ?? null, input.sessionId, input.muted, at));
+      const stale = everyone.filter((v) => v.accountId !== caller.accountId && !voiceLive(v, at));
+      this.repo.setVoice(tx, record);
+      for (const v of stale) this.repo.deleteVoice(tx, v.accountId);
+      return changed || stale.length ? { result: undefined, feed: { voiceSeq: feed.seq + 1 } } : { result: undefined, unchanged: true };
+    });
+  }
+
+  /** This page leaves the call; the member in it from another page is left alone. Anyone may leave, Active or not. */
+  async leaveVoice(caller: RoomCaller, sessionId: string): Promise<void> {
+    await this.change(async (tx, feed) => {
+      const mine = await this.repo.getVoiceOf(tx, caller.accountId);
+      if (!mine || mine.sessionId !== sessionId) return { result: undefined, unchanged: true };
+      this.repo.deleteVoice(tx, caller.accountId);
+      return { result: undefined, feed: { voiceSeq: feed.seq + 1 } };
+    });
+  }
+
+  /** Handshakes from a page in the call to others in it, which their next update brings them. */
+  async signal(caller: RoomCaller, input: RoomSignalsInput): Promise<void> {
+    await this.assertInRoom(caller);
+    await this.change(async (tx, feed) => {
+      const at = new Date().toISOString();
+      const call = new Map((await this.repo.getAllVoice(tx)).map((v) => [v.accountId, v]));
+      const sender = accepted(checkSignals(call.get(caller.accountId) ?? null, input, call, at));
+      this.repo.setVoice(tx, sender);
+      for (const s of input.signals) this.repo.createSignal(tx, signalRecord(sender, s, uuidv7(), feed.seq + 1, at));
+      return { result: undefined };
+    });
   }
 
   /**
@@ -504,6 +617,11 @@ export class RoomService {
     const voted = messages.filter((m) => !m.deletedAt && (m.up || m.down || m.reactions.length)).map((m) => m.messageId);
     const [ctx, reactions] = await Promise.all([this.named(caller, ids), this.repo.reactionsOf(caller.accountId, voted)]);
     return { ...ctx, reactions };
+  }
+
+  /** Who is in the call, by name. */
+  private async callView(caller: RoomCaller, call: readonly RoomVoiceRecord[]): Promise<RoomVoiceView[]> {
+    return voiceView(call, new Date().toISOString(), await this.named(caller, call.map((v) => v.accountId)));
   }
 
   private async memoryContext(caller: RoomCaller, items: readonly RoomMemoryRecord[]): Promise<RoomViewContext> {

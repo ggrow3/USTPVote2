@@ -2,7 +2,7 @@
  * The room's slash commands (design §5.10), typed in the composer. The page turns each into its API call or form; the
  * API has a route per action and never parses commands itself.
  */
-export const ROOM_COMMANDS = ['ask', 'decide', 'todo', 'memory', 'forget', 'assistant', 'leave-room'] as const;
+export const ROOM_COMMANDS = ['ask', 'decide', 'todo', 'memory', 'forget', 'joke', 'assistant', 'leave-room'] as const;
 export type RoomCommand = (typeof ROOM_COMMANDS)[number];
 
 /** What each command does, as the composer's hints say it. */
@@ -12,6 +12,7 @@ export const ROOM_COMMAND_HELP: Readonly<Record<RoomCommand, { readonly usage: s
   todo: { usage: '/todo task', does: 'Add an action item, with its owner and due date' },
   memory: { usage: '/memory [search]', does: 'See everything the assistant keeps, or search it' },
   forget: { usage: '/forget', does: 'Delete a decision or action item you added' },
+  joke: { usage: '/joke', does: 'The assistant tells a lame joke, out loud to anyone in the call' },
   assistant: { usage: '/assistant on|off', does: 'Switch the assistant on or off (Membership Admins)' },
   'leave-room': { usage: '/leave-room', does: 'Withdraw your consent and leave the room, at once' },
 };

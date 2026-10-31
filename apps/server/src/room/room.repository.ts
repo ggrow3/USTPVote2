@@ -6,12 +6,15 @@ import {
   NO_REACTIONS,
   ROOM_TERMS,
   roomReactionId,
+  voiceLive,
   type RoomConsentRecord,
   type RoomFeedRecord,
   type RoomJobRecord,
   type RoomMemoryRecord,
   type RoomMessageRecord,
   type RoomReactionRecord,
+  type RoomSignalRecord,
+  type RoomVoiceRecord,
 } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 
@@ -23,7 +26,7 @@ export interface Nearest<T> {
 
 /**
  * Storage of the members' room (design §5.10, §11): `room_consents`, `room_messages`, `room_reactions`, `room_memory`,
- * `room_jobs` and `room_state/feed`. Only the room context uses it. Members' messages and memory items carry an `embedding` (a
+ * `room_jobs`, `room_voice`, `room_signals` and `room_state/feed`. Only the room context uses it. Members' messages and memory items carry an `embedding` (a
  * Firestore vector, top-level so the emulator finds it too) and `embedModel`, the model that made it, null until the
  * assistant embeds them; the vector search needs the vector indexes in `firestore.indexes.json`.
  */
@@ -53,6 +56,14 @@ export class RoomRepository {
 
   private feedDoc() {
     return this.firebase.db.collection(Collections.roomState).doc('feed');
+  }
+
+  private voice() {
+    return this.firebase.db.collection(Collections.roomVoice);
+  }
+
+  private signals() {
+    return this.firebase.db.collection(Collections.roomSignals);
   }
 
   // --- consent ---------------------------------------------------------------------------------------------------
@@ -177,6 +188,54 @@ export class RoomRepository {
     return new Map(snaps.filter((s) => s.exists).map((s) => [s.get('messageId') as string, s.data() as RoomReactionRecord]));
   }
 
+  // --- the call --------------------------------------------------------------------------------------------------
+
+  /** Everyone with a record in the call, live or not (eight or so). */
+  async allVoice(): Promise<RoomVoiceRecord[]> {
+    return (await this.voice().get()).docs.map((d) => d.data() as RoomVoiceRecord);
+  }
+
+  async getAllVoice(tx: Transaction): Promise<RoomVoiceRecord[]> {
+    return (await tx.get(this.voice())).docs.map((d) => d.data() as RoomVoiceRecord);
+  }
+
+  async getVoiceOf(tx: Transaction, accountId: string): Promise<RoomVoiceRecord | null> {
+    return ((await tx.get(this.voice().doc(accountId))).data() as RoomVoiceRecord | undefined) ?? null;
+  }
+
+  setVoice(tx: Transaction, record: RoomVoiceRecord): void {
+    tx.set(this.voice().doc(record.accountId), record);
+  }
+
+  deleteVoice(tx: Transaction, accountId: string): void {
+    tx.delete(this.voice().doc(accountId));
+  }
+
+  createSignal(tx: Transaction, signal: RoomSignalRecord): void {
+    tx.create(this.signals().doc(signal.signalId), signal);
+  }
+
+  /** Handshakes sent to the member after feed number `since`, in order. */
+  async signalsFor(accountId: string, since: number): Promise<RoomSignalRecord[]> {
+    const snap = await this.signals().where('to', '==', accountId).where('seq', '>', since).orderBy('seq').limit(50).get();
+    return snap.docs.map((d) => d.data() as RoomSignalRecord);
+  }
+
+  /**
+   * Drops from the call everyone whose page went quiet (closed without leaving, or lost), telling open pages; returns
+   * how many went.
+   */
+  async sweepVoice(now: string): Promise<number> {
+    return this.firebase.db.runTransaction(async (tx) => {
+      const [feed, call] = await Promise.all([this.getFeed(tx), this.getAllVoice(tx)]);
+      const stale = call.filter((v) => !voiceLive(v, now));
+      if (!stale.length) return 0;
+      for (const v of stale) this.deleteVoice(tx, v.accountId);
+      this.setFeed(tx, { ...feed, seq: feed.seq + 1, voiceSeq: feed.seq + 1 });
+      return stale.length;
+    });
+  }
+
   // --- memory ----------------------------------------------------------------------------------------------------
 
   /** A new or changed item; a changed one waits to be embedded again. */
@@ -281,17 +340,18 @@ export class RoomRepository {
   // --- retention -------------------------------------------------------------------------------------------------
 
   /**
-   * Deletes up to `limit` each of messages, the votes and reactions on them, action items and finished jobs whose
-   * `expireAt` is before `now`; returns how many went.
+   * Deletes up to `limit` each of messages, the votes and reactions on them, action items, finished jobs and handshakes
+   * whose `expireAt` is before `now`; returns how many went.
    */
   async deleteExpired(now: string, limit: number): Promise<number> {
-    const [messages, reactions, items, jobs] = await Promise.all([
+    const [messages, reactions, items, jobs, signals] = await Promise.all([
       this.messages().where('expireAt', '<', now).limit(limit).get(),
       this.reactions().where('expireAt', '<', now).limit(limit).get(),
       this.memory().where('expireAt', '<', now).limit(limit).get(),
       this.jobs().where('expireAt', '<', now).limit(limit).get(),
+      this.signals().where('expireAt', '<', now).limit(limit).get(),
     ]);
-    const docs = [...messages.docs, ...reactions.docs, ...items.docs, ...jobs.docs];
+    const docs = [...messages.docs, ...reactions.docs, ...items.docs, ...jobs.docs, ...signals.docs];
     for (let i = 0; i < docs.length; i += 400) {
       const batch = this.firebase.db.batch();
       for (const d of docs.slice(i, i + 400)) batch.delete(d.ref);

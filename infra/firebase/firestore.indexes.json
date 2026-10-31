@@ -237,6 +237,14 @@
         { "fieldPath": "state", "order": "ASCENDING" },
         { "fieldPath": "createdAt", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "room_signals",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "to", "order": "ASCENDING" },
+        { "fieldPath": "seq", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -267,6 +275,7 @@
     { "collectionGroup": "room_messages", "fieldPath": "sources", "indexes": [] },
     { "collectionGroup": "room_memory", "fieldPath": "text", "indexes": [] },
     { "collectionGroup": "room_memory", "fieldPath": "quote", "indexes": [] },
-    { "collectionGroup": "room_jobs", "fieldPath": "question", "indexes": [] }
+    { "collectionGroup": "room_jobs", "fieldPath": "question", "indexes": [] },
+    { "collectionGroup": "room_signals", "fieldPath": "sdp", "indexes": [] }
   ]
 }
