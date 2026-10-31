@@ -1055,6 +1055,227 @@ AI company, and only documents a member submits to `/analyze` will go to Claude;
   the assistant answering `/ask` out loud during a call; editing messages; attachments; replies in threads; any emoji
   as a reaction; a room per team.
 
+### 5.11 Law analysis *(proposed, not built)*
+
+An advisory analysis of a law or bill by Claude: what it would change, whether it agrees with the constitutions, laws
+and treaties above it, what it would likely do to goals the party and the world have stated (the party's platform, the
+World Happiness Report's measures, the UN's Sustainable Development Goals), and amendments that would fix what it
+finds, shown in pictures as well as words. Asked for by the user on 2026-10-31: a system good at reading, evaluating and
+suggesting laws, judged against world happiness and stated goals and for consistency with state, US and international
+law, that explains itself visually. Nothing here is built; every choice below that is not the user's is my default,
+and the decisions for USTP are Q22. Like the checks (§5.4, §5.5, §6.9) it is a reading aid: it can be wrong, it is not
+legal advice and not a party position, and it decides nothing.
+
+**Three kinds of statement, kept apart.** Every statement in an analysis is one of: *what the law says* (quoted, with
+its source and pinpoint citation), *what it would do* (a prediction, its evidence graded, as a range rather than a
+number), or *how that serves a goal* (an effect on a named goal, weighed by the reader, never by the model). The
+answer's schema has no field for anything else and none for an overall verdict: the model never says whether to support
+a bill or how to vote on one.
+
+**What can be analyzed.**
+- A federal bill or public law, picked on the Policy page by number ("H.R. 1234, 119th Congress") or by words, and
+  one of its text versions, from the Congress.gov API.
+- A state bill, from Open States, once that state is turned on (Q22: which first).
+- Text a member pastes, or a forum proposal (§5.9) through "Analyze as a law" on the post, with the jurisdiction it
+  would be enacted in.
+
+Up to the panel's longest text (below: 200,000 characters by default, 400,000 at most, about 100 pages); an omnibus
+bill is analyzed a title at a time.
+
+**Sources: fetched, never remembered.** The model's memory of the law is out of date and cannot be checked, so it is
+given the law, never asked for it. The worker reads from an allowlist of hosts, `https` only, with a size cap and no
+redirect off the list (the source fetcher §5.10 plans for `/analyze`, shared), and caches each text in a private
+bucket by its SHA-256, with its URL, when it was read and its last-modified time, reading it again after 24 hours as it
+does the party's texts (§5.4):
+
+| Layer | Text | From |
+|---|---|---|
+| US Constitution | With all 27 amendments, and the Constitution Annotated's essay on each clause the model asks for | The checks' vendored copy (§5.4); constitution.congress.gov |
+| Federal statutes | The US Code sections a bill amends or cites, and those the model asks for, as they stood on the analysis's date | The Office of the Law Revision Counsel's USLM XML release points |
+| Federal regulations | The CFR parts it names, on that date | The eCFR API, which answers for a date |
+| Bills | Text versions, amendments, CBO cost estimates, sponsors | The Congress.gov API |
+| Cases | Cases the model cites, each checked to exist, and searches it asks for | CourtListener's citation lookup and search APIs |
+| A state's law | Its constitution, its code, its bills | Its legislature's own site, through an adapter per state; Open States |
+| Treaties | Which the US has ratified and with what reservations (the ICCPR ratified but not self-executing; the ICESCR, CEDAW and the CRC signed, never ratified), and their texts | A dated table vendored with the server; the UN Treaty Collection |
+| The party's goals | Article VI of the USTP Constitution (the Platform), Article I's Core Ideals, the Transhumanist Bill of Rights 3.0 | The checks' cache of the party's texts (§5.4) |
+| The world's goals | The World Happiness Report's life evaluations and its six factors (GDP per head, social support, healthy life expectancy, freedom to make life choices, generosity, perceived corruption); the SDGs' 17 goals and 169 targets | worldhappiness.report (Q22: its terms); the UN Statistics Division's SDG API |
+| Evidence | CBO estimates and CRS reports on the bill; studies a member links from an allowlisted host | congress.gov, cbo.gov; Q22 for the other hosts |
+
+A bill's sponsors and their parties are shown on the page, from Congress.gov, but kept from the model, so who proposed
+a bill cannot colour what is said about it.
+
+**Stages.** An analysis is `law_analyses/{analysisId}` (UUIDv7), moving through stages, each kept as
+`law_analyses/{id}/stages/{stage}` when it finishes (in the bucket, with its SHA-256 on the document, when too large for
+one), so the page shows each as it lands:
+
+1. *Read.* The bill as provisions, each with a plain summary: who it binds; what it requires, allows or forbids; on
+   what conditions and with what exceptions; from when. Most bills are instructions to amend ("strike 'X' and insert
+   'Y'"): for each, the model writes the section as it would read, and the worker checks that every struck passage is
+   in the section as fetched and every inserted one is in the result, else that redline is marked unchecked.
+2. *Consistency*, one request per layer, side by side: the US Constitution (and the state's, for state law), federal
+   and state statutes, and treaties the jurisdiction is party to. Each finding names the provisions, the layer, the
+   source and its pinpoint ("5 U.S.C. 552(b)(6)", "Amendment XIV, Section 1"), a short exact quote of each side, its
+   kind (contradiction, overlap, gap, preemption, constitutional risk), a severity worded as the consistency check
+   words it ("Clear conflict", "Likely conflict", "Possible tension"), the cases it relies on and a plain explanation.
+   A constitutional finding is a risk, never a ruling. Treaties signed and never ratified, and declarations such as the
+   Universal Declaration of Human Rights, are reported as what they are, never as binding.
+3. *Impact.* For each provision a chain: the mechanism, the outcome it changes and the goals that outcome serves or
+   harms, each effect from −3 (large harm) to +3 (large gain) as a range, with who gains, who loses and when. Every link
+   names its evidence and grades it: `experimental`, `quasi-experimental`, `observational`, `model` (a CBO estimate),
+   `theory`, or `unsourced` (the model's own knowledge with nothing fetched behind it, shown as such and never given
+   more than low confidence).
+4. *Review.* A second request argues the other side of every finding and effect, as opposing counsel would; where it
+   disagrees, the finding is marked contested and the page shows both readings. It also writes the strongest case for
+   the bill and the strongest case against it, at the same length.
+5. *Draft*, only when a member asks for it after reading (`POST /v1/law/analyses/{id}/amendments`, naming the findings
+   or goals to address): amendments in the drafting style of the bill's legislature, analyzed in turn as a new
+   analysis linked to this one, so the page can show before and after.
+
+Then the worker's own checks, as §5.5 keeps only passages a question really has: a finding or effect whose quote is
+not word for word in the source it names, or that names a source never fetched, is dropped, as is a case citation
+CourtListener cannot resolve; the page says how many were dropped and why.
+
+**The request to Claude.** As the checks', but with each stage's model and effort from the panel (**Cost**, below:
+`claude-opus-5-5`, `claude-sonnet-5-5` or `claude-haiku-5-5`): adaptive thinking, streamed, structured output with a
+schema per stage, `fallbacks: "default"` where it is taken (Opus and Sonnet, outside a batch), and a prompt-cache
+breakpoint after the material every request of the analysis shares. Within a request the model can ask for more law
+through three tools the worker answers from the allowlist and the cache: `get_section` (a US Code, CFR or state section
+by citation, as it stood on the analysis's date), `find_cases` (a CourtListener search) and `get_essay` (a Constitution
+Annotated essay). The system prompt says the texts are material, not instructions; to quote, never paraphrase, what the
+law says; to say plainly when the sources do not settle a point; to give effects on named goals and no overall verdict;
+to describe nobody's motives and use the same words whichever party a bill would suit; and never to say how anyone
+should vote.
+
+**Running it.** As the checks: asking stores the analysis `queued` and answers 202; a Cloud Scheduler job of its own
+calls `POST /tasks/law-analyses` every minute, which takes the next stage of up to three analyses and runs them side by
+side through the checks' queue (`runCheckQueue`). Each request is sized to finish inside the worker's 300 s (a long
+bill's provisions go in batches); a stage still running after 10 minutes fails the analysis, which may then be asked for
+again. An analysis takes about five to ten minutes; the page polls `GET /v1/law/analyses/{id}` every 5 seconds. An
+overnight one (**Cost**) sends its stages as batches in three rounds (reading; consistency and impact; review) that the
+same job submits and collects, and is usually done within a few hours; its page polls once a minute. Asking again for
+the same thing (the same bill version or text, jurisdiction and date) within 30 days returns the analysis already made,
+at no cost.
+
+**Who, switched by System Admins** (asked for by the user on 2026-10-31: an admin turns access on and off and decides
+who has it, admins first). Under **Admin › Law analysis** a System Admin sets, in `law_analysis_settings/current`:
+- *On or off.* Off, nobody asks for an analysis, the ones waiting are cancelled (a stage under way finishes), and the
+  finished ones stay readable by whoever may read them. It starts off, even once Terraform allows it (below).
+- *Who asks* (runs analyses and asks for drafts, which is what costs money) and *who reads* (sees finished analyses on
+  the Policy page), each any mix of: staff roles, by role (§10.1); teams, by team (§5.7: a policy team, say); and all
+  Active members. Whoever may ask may also read. **Admins first:** both start as anyone holding a staff role, so members
+  without one see nothing of it until a System Admin widens it. A person allowed only through a staff role uses their
+  second factor, as on admin routes. Everyone else is refused (403), and the Policy link is in the menu only for people
+  who may read (§10.5).
+- *What it may cost*, the options under **Cost** below: how deep an analysis goes, which models, how hard they think,
+  overnight at half price, how long a text may be, and the limits: per person (3 in 30 days, a draft counting as one),
+  for the server (10 in 24 hours, 429 after), and a monthly budget in dollars ($50) that stops new analyses once spent.
+
+Narrowing who asks cancels the waiting analyses of people no longer allowed; narrowing who reads hides the page from
+them at once. Each change is saved whole from the version it was edited from (409 if someone saved since), and
+ledgered as `law_analysis.settings_changed` with what changed (Auditors only). System Admins only, as they alone switch
+the members' room's model server (§5.10), since both decide what the party spends.
+
+Readers see every finished analysis (`/policy`, newest first), and never who asked for it: what someone wants analyzed
+says what they care about, as a reaction in the room does (§5.10). Membership Admins remove one with a reason, as on
+the forum, ledgered as `law_analysis.removed` (Auditors only); whoever asked for an analysis of pasted text may delete
+it. Otherwise analyses are not ledgered and are kept until removed. What goes to Anthropic is the bill or text and the
+public law and evidence around it, never anything about who asked.
+
+**Cost** (asked for by the user on 2026-10-31: options to make it cheaper). Each is a setting in the same panel, which
+shows beside it what a bill of about 20 pages would cost with the settings as they stand (prices in code, dated):
+- *Depth.* **Quick**: reading, then one consistency request against the US Constitution and the sections the bill
+  itself amends or cites, with no tools. **Standard**: adds impact, and reviews only the findings rated "Clear
+  conflict". **Full**: every stage, every finding reviewed. The panel sets the deepest an asker may choose (Standard).
+- *Models.* **Thorough**: Opus 5.5 throughout. **Balanced**: Opus 5.5 for consistency and review, where errors cost
+  most, and Sonnet 5.5 (half Opus's price per token) for reading and impact. **Lean**: Sonnet 5.5 throughout, and
+  Haiku 5.5 (a fortieth of Opus's price) for the plain summaries of provisions. Default Balanced. Each model keeps its
+  own prompt cache, so mixing them pays to write the shared material once per model, which the panel's figure includes.
+- *Effort.* `high` or `medium` per stage (default `high` for consistency and review, `medium` for reading and impact):
+  lower effort mostly saves thinking, which is billed as output.
+- *Overnight.* Through Anthropic's Message Batches API at half the price of every token, cache reads and writes
+  included. Most batches finish within an hour, all within 24; the analysis says it is waiting. A batch request cannot
+  call tools back and forth, so an overnight analysis works from the sections fetched beforehand and says what it would
+  have looked up; and batches take no `fallbacks`, so a request declined there is retried at full price outside one.
+  The panel allows it (askers choose "Now" or "Overnight, half price"), requires it, or turns it off. Default: allowed.
+- *Less to read.* The longest text accepted (400,000 characters at most, 200,000 by default); at most 10 tool calls a
+  request; the impact stage sent only the provisions it scores, not the whole bill; and stages queued back to back so
+  the material they share is read from the cache (5 minutes; $0.20 rather than $4 per million tokens on Opus 5.5).
+- *Reuse.* Asking for what was analyzed in the last 30 days returns that analysis, free; readers see "Analyzed on…".
+- *A budget.* The worker adds each request's cost, from the tokens Anthropic reports, to `law_analysis_spend/{month}`.
+  The panel shows the month so far and the cost of each analysis; at 80% of the budget it warns System Admins, and at
+  100% asking says the month's budget is spent until the next month or a bigger budget. The Anthropic workspace's own
+  spend limit (§15) stays the backstop for every Claude feature together.
+
+At list prices, a bill of about 20 pages (12,000 tokens) should cost about:
+
+| Settings | Now | Overnight |
+|---|---|---|
+| Full, Thorough | $2.20 | $1.10 |
+| Standard, Balanced (the defaults) | $1.60 | $0.80 |
+| Standard, Lean | $1.00 | $0.50 |
+| Quick, Lean | $0.20 | $0.10 |
+
+Estimates before any run, from the token counts each stage is expected to use; the first real analyses replace them.
+The test set (below) is run at each setting a deployment uses, since a cheaper model may miss what a dearer one finds.
+
+**Reproducible.** Each stage records the model that answered, the SHA-256 of its system prompt and schema, and every
+source it was given (URL, when read, last-modified, SHA-256); the analysis's fingerprint is the SHA-256 of its stages in
+canonical form (§1). A model does not answer the same way twice, so a re-run checks the sources and the method, not the
+wording: the page offers "Run again with today's law", which makes a new analysis and shows what changed.
+
+**On the page** (`/policy/{analysisId}`). The pictures are drawn by the web app's own SVG components from the analysis's
+numbers, as the election editor's swim lanes are (§6.1), never by the model, and each has its content as a table or list
+beside it (WCAG 2.2 AA, `docs/ACCESSIBILITY.md`):
+- *What changes*: each amended section as a redline, insertions underlined and deletions struck through, never by colour
+  alone.
+- *Consistency matrix*: provisions down, layers across (US Constitution, state constitution, federal law, state law,
+  treaties); each cell a severity in words with an icon, "none found" or "not checked", opening its findings with their
+  quotes and sources.
+- *Goal chains*: provision → mechanism → outcome → goal, left to right, each link's evidence grade shown by its dash
+  pattern and the size of the effect by its thickness.
+- *Goal scorecard*: each goal's effect as a range on the −3 to +3 scale around zero, the party's goals, the World
+  Happiness Report's six factors and the SDGs each in their own group; for a draft, before and after.
+- *Who gains, who loses, and when*: the groups affected, and the dates provisions take effect, phase in and end.
+- *Weights*: sliders per goal group and per goal, with presets ("The party's platform", "World happiness", "The SDGs",
+  "Equal"). The weighted total is computed in the browser for the person moving them and labelled as theirs, with the
+  smallest change of weight that would flip its sign. Weights never leave the browser.
+
+The page opens with "An advisory analysis by Claude: not legal advice and not a party position", the date of the law it
+used, and the strongest cases for and against.
+
+**Without Anthropic.** With the emulators `LAW_ANALYZER=stub` (the default there, refused outside them) answers a
+fixture bill from fixture sources with a fixed analysis holding every kind of finding and effect, fetching nothing, so
+CI and local development exercise the stages, the worker's checks and the page. A real project has `LAW_ANALYZER=off`
+until `law_analysis_enabled` in Terraform sets it to `claude`, which decides whether this deployment may send anything
+to Anthropic for it at all (Q18); within that, the panel decides whether it runs, for whom and how cheaply, and it
+starts switched off there. It runs once a System Admin has turned it on, added the Anthropic API key (§5.6) and the free
+data keys (an api.data.gov key for Congress.gov, a CourtListener token), each its own Secret
+Manager secret added under Admin › Claude the same way. Only the worker reads the Anthropic key; the api also reads the
+data keys, to look bills up while a member picks one, since their worst misuse is their rate limits.
+
+**Tested before it is switched on.** A manual workflow (`law-evals.yml`) runs a fixed set against Anthropic with a
+spend-limited key, before a real project turns the analysis on and after any change of model or prompt, and puts the
+scores in the run's summary:
+- quotes and citations: how many the worker's checks dropped (none should reach a page unverified);
+- known conflicts found: provisions the Congressional Research Service or a state's revisor has reported in conflict;
+- constitutional risk against later rulings: laws courts struck down or upheld after the model's training data ends,
+  so it cannot remember the answer;
+- mirror pairs: the same mechanism aimed at opposite political ends, and pasted texts that name a party (which the
+  model does see) with the party swapped, which must be treated alike;
+- the direction of budget effects against CBO's estimates.
+
+**In stages** (my default): federal bills first, with the panel (on and off, who, the cost settings and the budget),
+reading, consistency with the US Constitution, federal law and treaties, the redline and the matrix, and the test set,
+used by admins only; then impact, the chains, the scorecard and the weights; then drafts, overnight runs and forum
+proposals; then members, as System Admins open it to them; then the states, one at a time.
+
+**Not yet**, beyond all of it being proposed: the room's `/analyze` handing a bill to an analysis (§5.10); formal checks
+of rules that can be written as logic, with a solver (Z3) finding a case where two provisions cannot both be obeyed;
+tax and benefit bills run through a microsimulation (PolicyEngine US) for amounts by income; maps of who gains by state
+or county; a record of how its risks fared in later rulings, to calibrate them; an analysis shown beside a ballot's
+proposal, as §6.9's notes are; and, cheaper still, the members' room's self-hosted model (§5.10) for the plain
+summaries, at no cost per token once it runs (it waits on GPU quota), though weaker than Claude at reading law.
+
 ## 6. Elections
 
 ### 6.1 Lifecycle
@@ -3226,6 +3447,16 @@ every 15 seconds in place of Cloud Scheduler.
   shown the api has a request in flight, so Cloud Run bills one api instance as busy: about $0.10 an hour (1 vCPU, 1 GiB),
   after the free 50 vCPU-hours a month. The call adds nothing to that: its sound goes between browsers, a page in it
   writes once every 20 seconds, and a join costs two small writes per pair.
+- **Law analysis (§5.11), if built and switched on:** an estimate before any run, at list prices (Opus 5.5 $4 and $20
+  per million input and output tokens, Sonnet 5.5 $2 and $10, Haiku 5.5 $0.10 and $0.50; half in a batch). A bill of
+  about 20 pages (12,000 tokens) at the default settings (Standard depth, Balanced models) costs about $1.60, or $0.80
+  overnight; at the dearest (Full, Opus throughout) about $2.20, and at the cheapest (Quick, Lean, overnight) about
+  $0.10 (the bill and the sections it amends read in each stage, mostly from the cache after the first, a few hundred
+  thousand input tokens in all with the sources the tools fetch, and some tens of thousands of tokens of thinking and
+  answers). The longest text the panel can allow (400,000 characters) costs up to about $8 at the dearest. The panel's
+  monthly budget ($50 by default) bounds the spend whatever the limits allow; asking again for the same bill within
+  30 days costs nothing. Its Scheduler job is a fifth of the checks' kind ($0.10/month), and the cached sources a few
+  cents a month in Cloud Storage. The data APIs are free.
 
 ## 16. Testing and verification strategy
 
@@ -3349,6 +3580,16 @@ Decisions for USTP; the design's proposed default is in brackets.
     [the wording in `ROOM_TERMS`; Membership Admins in the room; Claude, chosen by the user on 2026-10-29, under
     Anthropic's API terms, which bar training on inputs; after the call; transcripts 7 days, notes 180 days, as the spec
     proposes]
+22. **Law analysis** (§5.11, proposed): should it be built, and may it ever be opened beyond members to the public (a
+    public page may read as the party's view)? May bills, pasted drafts and forum proposals go to Anthropic, under
+    which account (as Q18)? What monthly budget, and which cost settings to start with? Should others see who asked?
+    Which state's law comes first? Which hosts count as evidence beyond Congress.gov, the CBO and CourtListener? May the
+    World Happiness Report's published scores be used under its terms? Should the party's goals and the world's sit in
+    one scorecard? [Decided by the user on 2026-10-31: System Admins switch it on and off and choose who asks and who
+    reads, admins first. My defaults: staff roles only to start, never the public; yes, under the Q18 account; $50 a
+    month, Standard depth, Balanced models, overnight allowed, 3 a person in 30 days and 10 a day; never shown; none
+    until USTP picks one; none until USTP lists them; read the terms first; yes, each in its own group, weighed only by
+    each reader]
 
 ## 19. Roadmap
 
@@ -3359,4 +3600,4 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
 | **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Word export done:* the ballot and results as a `.docx` built in the browser, for Word and Google Docs, from the results page, the ballot page and the election editor (§9). *Synopsis done:* the results in brief, as the party publishes them, first on the results page (printable) and first in the Word file (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity, releasing everything from one commit in one run: Firestore rules and indexes (waiting until every index is ready), the api, worker and MCP server, then the web app on Hosting (§15); open pages comparing their commit with the api's and offering a reload, and explaining a request refused by a newer api (§15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2), and at most two roles per person, the Auditor holding no other (§10.1); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4), and demo elections on Transhumanist themes, made up at random and scheduled as rehearsals in one click, mailing nobody (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list, and the emails to voters beside them from their counts (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); the home page laid out as a sign-in landing page, a quote about voting over a sunrise drawn for the project beside the sign-in card or the signed-in cards, the quote FDR's from his 1938 Marietta, Ohio address with its source recorded, changed or switched off by one System Admin and ledgered as `home_quote.changed` (§10.5), since moved to `/vote` as the voting home; the home page `/` as the party's link hub, managed by System Admins (profile, accent and default theme, sections and links with an icon row and a star, the Discord card with an online count the API reads from Discord), ledgered as `hub.changed`, with click counts per link and no personal data, self-hosted fonts and a light and a dark theme (§10.6), and a cover banner over the hub's profile and a photo behind every other page in place of the sunrise, under a scrim that keeps text at 4.5:1, uploaded by System Admins (§10.6); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES with bounces read from SQS, and System Admins' settings for them (each on or off, the reminder's lead time, the contact, each subject and opening; ledgered), and an outbox in place of mail with the emulators (§6.8; SES itself not yet set up in any project); the platform consistency check with Claude, once per person per election, from the ballot for voters on the roll and from the election editor for Election Admins and Auditors, comparing the proposals with each other and with the documents an Election Admin chooses for the election, any of the USTP Constitution (its Article VI is the Platform), the Transhumanist Bill of Rights, the bylaws in force and the US Constitution, each result keeping what it was compared with (§5.5; off in real projects until Q18 is settled, and not yet run against Anthropic's API); the Anthropic API key added, replaced or removed by a System Admin under Admin › Claude, tried with Anthropic first and kept in Secret Manager, where the api can store it but not read it, ledgered as `anthropic_key.changed` (§5.6); the election setup check with Claude, run once per version of an election by an Election Admin or Auditor, comparing its rules, offices and proposal texts with the bylaws, with its notes beside the contests on the ballot, the results and in the editor once the election is scheduled, and non-blocking seat advisories (§6.9; off in real projects until Q18 is settled, and not yet run against Anthropic's API); appointments to offices without an election, for first holders and between elections, requested by a Membership or Election Admin and approved by an Auditor, only an Active member and only to a free seat, ledgered as the public `position_term.appointed`, with Appoint in the Offices tab and on the member profile and a public Offices page (§6.4), in everyone's menu by default, the menu bar keeping one row by putting the links that do not fit behind a More button (§10.5); every page but the hub and the voting home styled like the voting home, its picture behind and the page on one card lifted off it, with 16 px text and larger headings (§10.5); the ballot list as a card per election in the voting home's style, and the list, the ballot and its Cast dialog by touch: 48 px buttons and choices, as wide as their card on a phone (§10.5); the Register page's heading and intro and the application's two membership questions, eligibility to vote in US elections (a United States or an Allied Member) and agreement with the Core Ideals, neither ever refusing an application, all worded by Membership Admins under Admin › Registration form, each version kept and ledgered as `registration_form.changed`, with the class in the Members table, its filter and CSV (§5.2); teams that Active members join (at once, by asking a lead, or only when a Membership Admin adds them), each with its own description, question for people asking, size limit, members' link, colour and symbol, created, renamed and archived by Membership Admins with a first lead, and run by their leads, who decide requests, remove members and make co-leads, always keeping one lead; ledgered as `team.changed` and `team.member_changed` (§5.7); members' candidacies for public office, each declaration and change approved by a Membership Admin before the public Candidates page shows it, on a Google map of its Census district (§5.8; the map needs a Terraform apply for its key); a sign-in log for System Admins and Auditors, each sign-in with its login, method, second factor, address and browser, kept 180 days and never ledgered, with Identity Platform's request logs (every attempt, failed ones included) kept as long in their own log bucket, and Google Analytics 4 on the public pages once a System Admin sets a measurement ID, never on the ballot, receipts, sign-in, account or admin pages, ledgered as `analytics.changed` (§10.7); search engines: robots.txt and a sitemap from the api, open only in prod at the site's own address, `noindex` on the api and on pages behind sign-in, a description and canonical link per page, and link preview tags with a share card (§15); the course's quizzes edited freely by Course Administrators (1 to 10 questions of 2 to 6 choices), learners told after each try which answers were right and why, and futurist portraits uploaded and kept on the site, with dead links flagged (§10.8); communications, run by a new Communications Admin role that also edits the Link hub: news and press releases published by one admin and ledgered, with RSS and JSON feeds for the party's bots; share buttons that open each site's own composer, counted with nothing about who; a share kit of ready-made posts for Active members; a social media calendar for the party's accounts; a public suggestions form, its senders' contact details optional and every suggestion deleted after a year; a press kit with files to download; and a registry of the party's bots, the public ones listed on the Press page (§10.9); a Reddit-style forum for Active members, discussions and proposals with threaded comments and private up and down votes (hot, new and top), moderated by Membership Admins with reasons and reports and ledgered as `forum.moderated`, from which an Election Admin puts a proposal on a draft election's ballot (§5.9); the members' room, a chat for Active members who accept its AI terms at the door (ledgered as `room.consent_changed`), kept current by long polling, with an assistant on a self-hosted model that answers `/ask` from the room's messages, decisions and action items by vector search with cited sources, `/decide`, `/todo`, `/memory` and `/forget`, a kill switch for Membership Admins ledgered as `room.assistant_switched`, Admin › Members' room where Membership and System Admins open and close the room and System Admins switch its model server on (starting it) or off (no GPU cost), ledgered as `room.settings_changed`, and messages kept 90 days, and its peer-to-peer call with whoever is speaking shown and the assistant's spoken `/joke` (§5.10; the model needs a Terraform apply with `room_model_enabled`), with an emoji picker in the composer, six emoji reactions and up and down votes on messages, totals shown and never who, going with their message (§5.10). *Still to do:* the members' room's political analysis with Claude, then the rest of voice (§5.10); Claude drafting each site's version of a post, and bots the app runs itself (§10.9); a roll criterion on the Core Ideals answer (§6.3); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity, releasing everything from one commit in one run: Firestore rules and indexes (waiting until every index is ready), the api, worker and MCP server, then the web app on Hosting (§15); open pages comparing their commit with the api's and offering a reload, and explaining a request refused by a newer api (§15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2), and at most two roles per person, the Auditor holding no other (§10.1); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4), and demo elections on Transhumanist themes, made up at random and scheduled as rehearsals in one click, mailing nobody (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list, and the emails to voters beside them from their counts (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); the home page laid out as a sign-in landing page, a quote about voting over a sunrise drawn for the project beside the sign-in card or the signed-in cards, the quote FDR's from his 1938 Marietta, Ohio address with its source recorded, changed or switched off by one System Admin and ledgered as `home_quote.changed` (§10.5), since moved to `/vote` as the voting home; the home page `/` as the party's link hub, managed by System Admins (profile, accent and default theme, sections and links with an icon row and a star, the Discord card with an online count the API reads from Discord), ledgered as `hub.changed`, with click counts per link and no personal data, self-hosted fonts and a light and a dark theme (§10.6), and a cover banner over the hub's profile and a photo behind every other page in place of the sunrise, under a scrim that keeps text at 4.5:1, uploaded by System Admins (§10.6); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES with bounces read from SQS, and System Admins' settings for them (each on or off, the reminder's lead time, the contact, each subject and opening; ledgered), and an outbox in place of mail with the emulators (§6.8; SES itself not yet set up in any project); the platform consistency check with Claude, once per person per election, from the ballot for voters on the roll and from the election editor for Election Admins and Auditors, comparing the proposals with each other and with the documents an Election Admin chooses for the election, any of the USTP Constitution (its Article VI is the Platform), the Transhumanist Bill of Rights, the bylaws in force and the US Constitution, each result keeping what it was compared with (§5.5; off in real projects until Q18 is settled, and not yet run against Anthropic's API); the Anthropic API key added, replaced or removed by a System Admin under Admin › Claude, tried with Anthropic first and kept in Secret Manager, where the api can store it but not read it, ledgered as `anthropic_key.changed` (§5.6); the election setup check with Claude, run once per version of an election by an Election Admin or Auditor, comparing its rules, offices and proposal texts with the bylaws, with its notes beside the contests on the ballot, the results and in the editor once the election is scheduled, and non-blocking seat advisories (§6.9; off in real projects until Q18 is settled, and not yet run against Anthropic's API); appointments to offices without an election, for first holders and between elections, requested by a Membership or Election Admin and approved by an Auditor, only an Active member and only to a free seat, ledgered as the public `position_term.appointed`, with Appoint in the Offices tab and on the member profile and a public Offices page (§6.4), in everyone's menu by default, the menu bar keeping one row by putting the links that do not fit behind a More button (§10.5); every page but the hub and the voting home styled like the voting home, its picture behind and the page on one card lifted off it, with 16 px text and larger headings (§10.5); the ballot list as a card per election in the voting home's style, and the list, the ballot and its Cast dialog by touch: 48 px buttons and choices, as wide as their card on a phone (§10.5); the Register page's heading and intro and the application's two membership questions, eligibility to vote in US elections (a United States or an Allied Member) and agreement with the Core Ideals, neither ever refusing an application, all worded by Membership Admins under Admin › Registration form, each version kept and ledgered as `registration_form.changed`, with the class in the Members table, its filter and CSV (§5.2); teams that Active members join (at once, by asking a lead, or only when a Membership Admin adds them), each with its own description, question for people asking, size limit, members' link, colour and symbol, created, renamed and archived by Membership Admins with a first lead, and run by their leads, who decide requests, remove members and make co-leads, always keeping one lead; ledgered as `team.changed` and `team.member_changed` (§5.7); members' candidacies for public office, each declaration and change approved by a Membership Admin before the public Candidates page shows it, on a Google map of its Census district (§5.8; the map needs a Terraform apply for its key); a sign-in log for System Admins and Auditors, each sign-in with its login, method, second factor, address and browser, kept 180 days and never ledgered, with Identity Platform's request logs (every attempt, failed ones included) kept as long in their own log bucket, and Google Analytics 4 on the public pages once a System Admin sets a measurement ID, never on the ballot, receipts, sign-in, account or admin pages, ledgered as `analytics.changed` (§10.7); search engines: robots.txt and a sitemap from the api, open only in prod at the site's own address, `noindex` on the api and on pages behind sign-in, a description and canonical link per page, and link preview tags with a share card (§15); the course's quizzes edited freely by Course Administrators (1 to 10 questions of 2 to 6 choices), learners told after each try which answers were right and why, and futurist portraits uploaded and kept on the site, with dead links flagged (§10.8); communications, run by a new Communications Admin role that also edits the Link hub: news and press releases published by one admin and ledgered, with RSS and JSON feeds for the party's bots; share buttons that open each site's own composer, counted with nothing about who; a share kit of ready-made posts for Active members; a social media calendar for the party's accounts; a public suggestions form, its senders' contact details optional and every suggestion deleted after a year; a press kit with files to download; and a registry of the party's bots, the public ones listed on the Press page (§10.9); a Reddit-style forum for Active members, discussions and proposals with threaded comments and private up and down votes (hot, new and top), moderated by Membership Admins with reasons and reports and ledgered as `forum.moderated`, from which an Election Admin puts a proposal on a draft election's ballot (§5.9); the members' room, a chat for Active members who accept its AI terms at the door (ledgered as `room.consent_changed`), kept current by long polling, with an assistant on a self-hosted model that answers `/ask` from the room's messages, decisions and action items by vector search with cited sources, `/decide`, `/todo`, `/memory` and `/forget`, a kill switch for Membership Admins ledgered as `room.assistant_switched`, Admin › Members' room where Membership and System Admins open and close the room and System Admins switch its model server on (starting it) or off (no GPU cost), ledgered as `room.settings_changed`, and messages kept 90 days, and its peer-to-peer call with whoever is speaking shown and the assistant's spoken `/joke` (§5.10; the model needs a Terraform apply with `room_model_enabled`), with an emoji picker in the composer, six emoji reactions and up and down votes on messages, totals shown and never who, going with their message (§5.10). *Still to do:* the members' room's political analysis with Claude, then the rest of voice (§5.10); the law analysis, proposed and not started, switched on and off by System Admins for the people they choose, admins first, with settings and a budget to keep it cheap (§5.11, Q22); Claude drafting each site's version of a post, and bots the app runs itself (§10.9); a roll criterion on the Core Ideals answer (§6.3); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
