@@ -8,7 +8,7 @@ describe('the signed-out card', () => {
     expect(card.signIn).toBe(true);
     expect(card.links.map((l) => l.key)).toEqual(['register', 'verify', 'offices', 'course']);
     expect(card.links[2]).toMatchObject({ label: 'See who holds each office', to: '/offices' });
-    expect(card.links[3]).toMatchObject({ label: 'Explore the Transhumanism course', to: '/course/transhumanism' });
+    expect(card.links[3]).toMatchObject({ label: 'Explore the courses', to: '/courses' });
     expect(card.links[0]).toMatchObject({ label: 'Register as a member', to: '/register' });
   });
 

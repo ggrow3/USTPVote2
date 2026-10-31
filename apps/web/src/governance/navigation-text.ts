@@ -53,7 +53,7 @@ export const MENU_LABELS: Readonly<Record<MenuLink, string>> = {
   forum: 'Forum',
   room: 'Room',
   news: 'News',
-  course: 'Course',
+  course: 'Courses',
   admin: 'Admin',
   signin: 'Sign in',
 };
@@ -68,7 +68,7 @@ export const MENU_CAPTIONS: Readonly<Record<MenuLink, string>> = {
   forum: 'Discuss and propose, vote posts up or down (Active members only)',
   room: 'The members’ chat room and its assistant, after accepting its terms (Active members only)',
   news: 'News and press releases, the press kit, the share kit and the suggestions form',
-  course: 'Public Transhumanism lessons, profiles and certification',
+  course: 'The course map: public lessons, quizzes and a certificate for each course',
   admin: 'The admin console',
   signin: "The header's button, for visitors",
 };
@@ -125,7 +125,7 @@ export const SECTION_CAPTIONS: Readonly<Record<AdminSection, string>> = {
   hub: "The home page's links, profile and Discord card, and their clicks",
   communications: 'News, the share kit, the social media calendar, suggestions, the press kit and bots',
   quote: 'Change the quote on the home page, or switch it off',
-  course: 'Draft, attribute and publish lessons, quizzes and profiles',
+  course: 'Add courses and place them on the map; write and publish their lessons, quizzes and profiles; see how students stand and switch their messages',
 };
 
 /** "Ballot", "Admin › Elections". */

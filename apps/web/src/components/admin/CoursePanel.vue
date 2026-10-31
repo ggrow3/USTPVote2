@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
 import {
   COURSE_IMAGE,
   coursePackageFileName,
@@ -28,8 +29,14 @@ import {
   removeChoice,
   type QuestionDraft,
 } from '../../academy/course-editor.js';
+import CourseLearnersCard from './CourseLearnersCard.vue';
+import CourseMapCard from './CourseMapCard.vue';
 
-const COURSE_ID = 'transhumanism';
+const route = useRoute();
+const router = useRouter();
+/** Every course, for the map and the picker; the one being edited is in the address (`?course=`), so a reload keeps it. */
+const courses = ref<readonly CourseRecord[]>([]);
+const courseId = ref(typeof route.query.course === 'string' ? route.query.course : 'transhumanism');
 const course = ref<CourseRecord | null>(null);
 const lessons = ref<readonly CourseLesson[]>([]);
 const profiles = ref<readonly FuturistProfile[]>([]);
@@ -86,13 +93,35 @@ function portraitStatus(item: FuturistProfile): { text: string; problem: boolean
 async function load() {
   loading.value = true;
   try {
-    const content = await api<{ course: CourseRecord; lessons: CourseLesson[]; profiles: FuturistProfile[] }>('GET', `/v1/admin/courses/${COURSE_ID}`);
+    const content = await api<{ course: CourseRecord; lessons: CourseLesson[]; profiles: FuturistProfile[] }>('GET', `/v1/admin/courses/${courseId.value}`);
     course.value = content.course;
     lessons.value = content.lessons;
     profiles.value = content.profiles;
   } finally {
     loading.value = false;
   }
+}
+
+/** Reloads the course list, then the chosen course: `select` picks another, such as one just added. */
+async function loadCourses(select?: string) {
+  courses.value = await api<CourseRecord[]>('GET', '/v1/admin/courses');
+  const wanted = select ?? courseId.value;
+  const next = courses.value.some((item) => item.courseId === wanted) ? wanted : (courses.value[0]?.courseId ?? 'transhumanism');
+  if (next !== courseId.value) courseId.value = next;
+  else await load();
+}
+
+watch(courseId, (id) => {
+  lessonOpen.value = false;
+  profileOpen.value = false;
+  void router.replace({ query: { ...route.query, course: id } });
+  void load().catch((e: unknown) => console.error(errorMessage(e)));
+});
+
+/** Deletes the chosen course; only one never published can go (the api says why otherwise). */
+async function deleteCourse() {
+  if (!course.value || !window.confirm(`Delete “${course.value.title}” and its draft lessons and profiles? This cannot be undone.`)) return;
+  if (await attempt(() => api('DELETE', `/v1/admin/courses/${courseId.value}`), 'Course deleted')) await loadCourses();
 }
 
 function editLesson(value?: CourseLesson) {
@@ -123,7 +152,7 @@ function editProfile(value?: FuturistProfile) {
 
 async function saveCourse() {
   if (!course.value) return;
-  if (await attempt(() => api('PUT', `/v1/admin/courses/${COURSE_ID}`, { title: course.value!.title, summary: course.value!.summary }), 'Course draft saved')) await load();
+  if (await attempt(() => api('PUT', `/v1/admin/courses/${courseId.value}`, { title: course.value!.title, summary: course.value!.summary }), 'Course draft saved')) await loadCourses();
 }
 
 async function saveLesson() {
@@ -139,7 +168,7 @@ async function saveLesson() {
     estimatedMinutes: draft.estimatedMinutes,
     questions: questionsPayload(lesson.questions),
   };
-  if (await attempt(() => api('POST', `/v1/admin/courses/${COURSE_ID}/lessons`, payload), 'Lesson draft saved')) {
+  if (await attempt(() => api('POST', `/v1/admin/courses/${courseId.value}/lessons`, payload), 'Lesson draft saved')) {
     lessonOpen.value = false;
     await load();
   }
@@ -170,7 +199,7 @@ async function saveProfile() {
   };
   profileErrors.value = profileProblems(payload);
   if (profileErrors.value.length) return;
-  if (await attempt(() => api('POST', `/v1/admin/courses/${COURSE_ID}/profiles`, payload), 'Profile draft saved')) {
+  if (await attempt(() => api('POST', `/v1/admin/courses/${courseId.value}/profiles`, payload), 'Profile draft saved')) {
     profileOpen.value = false;
     await load();
   }
@@ -191,7 +220,7 @@ async function upload(event: Event) {
   }
   uploading.value = true;
   await attempt(async () => {
-    profile.portraitImage = (await apiUpload<{ image: string }>(`/v1/admin/courses/${COURSE_ID}/images`, file)).image;
+    profile.portraitImage = (await apiUpload<{ image: string }>(`/v1/admin/courses/${courseId.value}/images`, file)).image;
     profile.portraitUrl = '';
     profileErrors.value = [];
   }, 'Photo uploaded. Save the profile, then publish, to show it.');
@@ -200,13 +229,13 @@ async function upload(event: Event) {
 
 async function remove(kind: 'lessons' | 'profiles', id: string) {
   if (!window.confirm('Delete this draft item? Existing published course versions remain unchanged.')) return;
-  if (await attempt(() => api('DELETE', `/v1/admin/courses/${COURSE_ID}/${kind}/${id}`), 'Draft item deleted')) await load();
+  if (await attempt(() => api('DELETE', `/v1/admin/courses/${courseId.value}/${kind}/${id}`), 'Draft item deleted')) await load();
 }
 
 /** Saves the course as a `ustp.course` JSON file: the draft as saved (not unsaved edits here), or a published version. */
 async function exportCourse(version: number | 'draft') {
   await attempt(async () => {
-    const pkg = await api<CoursePackage>('GET', `/v1/admin/courses/${COURSE_ID}/package?version=${version}`);
+    const pkg = await api<CoursePackage>('GET', `/v1/admin/courses/${courseId.value}/package?version=${version}`);
     saveFile(new Blob([`${JSON.stringify(pkg, null, 2)}\n`], { type: 'application/json' }), coursePackageFileName(pkg));
   }, 'Course exported');
 }
@@ -214,7 +243,7 @@ async function exportCourse(version: number | 'draft') {
 async function publish() {
   publishing.value = true;
   try {
-    if (await attempt(() => api('POST', `/v1/admin/courses/${COURSE_ID}/publish`), 'Published a new immutable course version')) await load();
+    if (await attempt(() => api('POST', `/v1/admin/courses/${courseId.value}/publish`), 'Published a new immutable course version')) await loadCourses();
   } finally {
     publishing.value = false;
   }
@@ -222,18 +251,19 @@ async function publish() {
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
 
-void load().catch((e: unknown) => console.error(errorMessage(e)));
+void loadCourses().catch((e: unknown) => console.error(errorMessage(e)));
 </script>
 
 <template>
   <div style="max-width: 1000px">
     <p class="text-grey-7">Course Administrators edit a draft. Publishing freezes a new public version; learners already completing an earlier version retain its content and progress.</p>
+    <CourseMapCard v-if="courses.length" :courses="courses" :course-id="courseId" @select="(id) => (courseId = id)" @changed="(id) => loadCourses(id)" />
     <q-skeleton v-if="loading && !course" type="rect" height="200px" />
     <template v-else-if="course">
       <q-card flat bordered class="q-mb-lg">
         <q-card-section>
           <div class="row items-center justify-between q-gutter-sm">
-            <h2 class="text-h6 q-my-none">Course settings</h2>
+            <h2 class="text-h6 q-my-none">Course settings · {{ course.title }}</h2>
             <q-badge :color="course.status === 'published' ? 'positive' : 'orange'" :label="course.status" />
           </div>
           <q-input v-model="course.title" outlined class="q-mt-md" label="Course title" />
@@ -256,10 +286,17 @@ void load().catch((e: unknown) => console.error(errorMessage(e)));
               </q-item>
             </q-list>
           </q-btn-dropdown>
+          <q-btn v-if="course.publishedVersion === null" flat no-caps color="negative" label="Delete course" @click="deleteCourse" />
           <q-btn flat no-caps label="Save draft" @click="saveCourse" />
           <q-btn color="primary" no-caps label="Publish new version" :loading="publishing" @click="publish" />
         </q-card-actions>
       </q-card>
+
+      <CourseLearnersCard v-if="course.publishedVersion !== null" :course-id="courseId" />
+      <q-banner v-else class="bg-blue-1 text-black q-mb-lg" rounded>
+        This course has not been published, so it has no students yet. Once it is, they are listed here with how they stand,
+        and you turn their messages with the instructors on or off.
+      </q-banner>
 
       <q-card flat bordered class="q-mb-lg">
         <q-card-section class="row items-center justify-between">
