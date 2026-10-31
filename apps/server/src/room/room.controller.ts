@@ -8,7 +8,9 @@ import {
   roomDecisionSchema,
   roomHistoryQuerySchema,
   roomMessageSchema,
+  roomReactionSchema,
   roomUpdatesQuerySchema,
+  voteSchema,
   type RoomActionInput,
   type RoomActionUpdate,
   type RoomAskInput,
@@ -17,7 +19,9 @@ import {
   type RoomDecisionInput,
   type RoomHistoryQuery,
   type RoomMessageInput,
+  type RoomReactionInput,
   type RoomUpdatesQuery,
+  type VoteValue,
 } from 'ustp-domain';
 import { Ctx, requireAccount, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
@@ -72,6 +76,18 @@ export class RoomController {
   @Delete('messages/:messageId')
   deleteMessage(@Ctx() ctx: RequestContext, @Param('messageId') messageId: string) {
     return this.room.deleteMessage(member(ctx), messageId);
+  }
+
+  /** The caller's vote on a message: up, down, or 0 to take it back. */
+  @Put('messages/:messageId/vote')
+  vote(@Ctx() ctx: RequestContext, @Param('messageId') messageId: string, @Body(new ZodPipe(voteSchema)) body: { value: VoteValue }) {
+    return this.room.vote(member(ctx), messageId, body.value);
+  }
+
+  /** The caller's emoji reaction on a message, added (`on`) or taken back. */
+  @Put('messages/:messageId/reactions')
+  react(@Ctx() ctx: RequestContext, @Param('messageId') messageId: string, @Body(new ZodPipe(roomReactionSchema)) body: RoomReactionInput) {
+    return this.room.react(member(ctx), messageId, body);
   }
 
   /** `/ask`: the question is posted at once; the answer follows as the assistant's message. */

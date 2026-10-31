@@ -10,6 +10,8 @@ import {
   type RoomRef,
   type RoomSource,
 } from './room.js';
+import { checkReactable, type RoomReaction, type RoomReactionRecord } from './reactions.js';
+import type { VoteValue } from '../votes.js';
 
 /**
  * What the API shows of the room (design §5.10, §12). Only members in the room see any of it; everyone in it sees the
@@ -76,6 +78,20 @@ export interface RoomMessageView {
   readonly mine: boolean;
   /** The viewer may delete it: their own, or any for a Membership Admin. */
   readonly deletable: boolean;
+  /** Members may vote on it and react to it: a member's message or an answer, while it is there. */
+  readonly reactable: boolean;
+  /** Up votes less down votes; who voted is never shown. */
+  readonly score: number;
+  /** The viewer's own vote. */
+  readonly myVote: VoteValue;
+  /** Each reaction given, how many gave it and whether the viewer did; who else did is never shown. */
+  readonly reactions: readonly RoomReactionView[];
+}
+
+export interface RoomReactionView {
+  readonly reaction: RoomReaction;
+  readonly count: number;
+  readonly mine: boolean;
 }
 
 /** `GET /v1/room/messages`: a page of history, oldest first, and the feed number to ask for updates after. */
@@ -184,11 +200,12 @@ export function roomSettingsView(
   };
 }
 
-/** Who is looking, and the names of everyone mentioned. */
+/** Who is looking, the names of everyone mentioned, and the viewer's own votes and reactions by message ID. */
 export interface RoomViewContext {
   readonly accountId: string;
   readonly moderator: boolean;
   readonly people: ReadonlyMap<string, string>;
+  readonly reactions?: ReadonlyMap<string, RoomReactionRecord>;
 }
 
 const person = (ctx: RoomViewContext, accountId: string): RoomPerson => ({ accountId, name: ctx.people.get(accountId) ?? 'Former member' });
@@ -196,6 +213,7 @@ const person = (ctx: RoomViewContext, accountId: string): RoomPerson => ({ accou
 export function messageView(m: RoomMessageRecord, ctx: RoomViewContext): RoomMessageView {
   const deleted = m.deletedAt !== null;
   const mine = m.kind === 'member' && m.authorId === ctx.accountId;
+  const own = deleted ? undefined : ctx.reactions?.get(m.messageId);
   return {
     messageId: m.messageId,
     kind: m.kind,
@@ -209,6 +227,10 @@ export function messageView(m: RoomMessageRecord, ctx: RoomViewContext): RoomMes
     deleted,
     mine,
     deletable: !deleted && (mine || ctx.moderator),
+    reactable: checkReactable(m).ok,
+    score: m.score,
+    myVote: own?.vote ?? 0,
+    reactions: m.reactions.map((r) => ({ ...r, mine: own?.reactions.includes(r.reaction) ?? false })),
   };
 }
 

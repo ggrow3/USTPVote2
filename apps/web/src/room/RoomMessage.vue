@@ -1,12 +1,16 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import type { RoomMessageView, RoomSource } from 'ustp-domain';
+import { ROOM_REACTION_EMOJI, ROOM_REACTIONS, type RoomMessageView, type RoomReaction, type RoomSource, type VoteValue } from 'ustp-domain';
 import { linkParts } from '../forum/forum-text.js';
-import { answerParts, messageTime, SOURCE_LABELS } from './room-text.js';
+import VoteButtons from '../forum/VoteButtons.vue';
+import { answerParts, messageName, messageTime, reactionLabel, SOURCE_LABELS } from './room-text.js';
 
 /**
  * One message in the members' room (design §5.10): a member's (a question for the assistant marked as such, with
- * "thinking" while it waits), the assistant's answer with its numbered sources, or a notice of what someone did.
+ * "thinking" while it waits), the assistant's answer with its numbered sources, or a notice of what someone did. A
+ * member's message or an answer takes up and down votes, as the forum's posts do, and emoji reactions: its score and
+ * how many gave each reaction are shown, never who. While a message has neither, its vote and reaction buttons show
+ * only when it is pointed at or focused, so the chat stays quiet.
  */
 const props = defineProps<{
   message: RoomMessageView;
@@ -19,6 +23,8 @@ const emit = defineEmits<{
   decide: [message: RoomMessageView];
   delete: [message: RoomMessageView];
   source: [source: RoomSource];
+  vote: [message: RoomMessageView, value: VoteValue];
+  react: [message: RoomMessageView, reaction: RoomReaction, on: boolean];
 }>();
 
 const m = computed(() => props.message);
@@ -26,6 +32,9 @@ const parts = computed(() => (m.value.kind === 'assistant' ? answerParts(m.value
 const canDelete = computed(() => !m.value.deleted && (m.value.deletable || props.moderator));
 const canDecide = computed(() => m.value.kind === 'member' && !m.value.deleted);
 const sourceId = (n: number) => `src-${m.value.messageId}-${n}`;
+const name = computed(() => messageName(m.value));
+const idle = computed(() => m.value.score === 0 && m.value.myVote === 0 && !m.value.reactions.length);
+const given = computed(() => new Set(m.value.reactions.filter((r) => r.mine).map((r) => r.reaction)));
 </script>
 
 <template>
@@ -52,21 +61,45 @@ const sourceId = (n: number) => `src-${m.value.messageId}-${n}`;
         <span class="room-msg__name">{{ m.kind === 'assistant' ? 'Assistant' : m.author?.name }}</span>
         <q-badge v-if="m.ask" outline color="primary" label="/ask" class="q-ml-xs" />
         <span class="room-time text-grey-7">{{ messageTime(m.createdAt) }}</span>
-        <q-space />
-        <q-btn v-if="canDelete || canDecide" flat round dense size="sm" icon="more_horiz" :aria-label="`Actions for this message`">
-          <q-menu auto-close>
-            <q-list dense style="min-width: 180px">
-              <q-item v-if="canDecide" clickable @click="emit('decide', m)">
-                <q-item-section avatar><q-icon name="gavel" /></q-item-section>
-                <q-item-section>Log as a decision</q-item-section>
-              </q-item>
-              <q-item v-if="canDelete" clickable @click="emit('delete', m)">
-                <q-item-section avatar><q-icon name="delete" /></q-item-section>
-                <q-item-section>Delete{{ m.mine ? '' : ' (Membership Admin)' }}</q-item-section>
-              </q-item>
-            </q-list>
-          </q-menu>
-        </q-btn>
+        <div class="room-msg__actions">
+          <div v-if="m.reactable" class="room-msg__tools" :class="{ 'room-msg__tools--idle': idle }">
+            <VoteButtons row :score="m.score" :my-vote="m.myVote" :what="name" @vote="(v) => emit('vote', m, v)" />
+            <q-btn flat round dense size="sm" icon="add_reaction" color="grey-7" :aria-label="`React to ${name}`">
+              <q-tooltip>React</q-tooltip>
+              <q-menu auto-close anchor="bottom right" self="top right">
+                <div class="room-react-menu" role="group" :aria-label="`Reactions to ${name}`">
+                  <q-btn
+                    v-for="r in ROOM_REACTIONS"
+                    :key="r"
+                    flat
+                    dense
+                    class="room-react-menu__emoji"
+                    :class="{ 'room-react-menu__emoji--mine': given.has(r) }"
+                    :aria-label="ROOM_REACTION_EMOJI[r].label"
+                    :aria-pressed="given.has(r)"
+                    @click="emit('react', m, r, !given.has(r))"
+                  >
+                    <span aria-hidden="true">{{ ROOM_REACTION_EMOJI[r].emoji }}</span>
+                  </q-btn>
+                </div>
+              </q-menu>
+            </q-btn>
+          </div>
+          <q-btn v-if="canDelete || canDecide" flat round dense size="sm" icon="more_horiz" :aria-label="`Actions for this message`">
+            <q-menu auto-close>
+              <q-list dense style="min-width: 180px">
+                <q-item v-if="canDecide" clickable @click="emit('decide', m)">
+                  <q-item-section avatar><q-icon name="gavel" /></q-item-section>
+                  <q-item-section>Log as a decision</q-item-section>
+                </q-item>
+                <q-item v-if="canDelete" clickable @click="emit('delete', m)">
+                  <q-item-section avatar><q-icon name="delete" /></q-item-section>
+                  <q-item-section>Delete{{ m.mine ? '' : ' (Membership Admin)' }}</q-item-section>
+                </q-item>
+              </q-list>
+            </q-menu>
+          </q-btn>
+        </div>
       </div>
       <div v-if="m.deleted" class="room-msg__gone text-grey-7">Message deleted.</div>
       <div v-else class="room-msg__body">
@@ -82,6 +115,25 @@ const sourceId = (n: number) => `src-${m.value.messageId}-${n}`;
           <span class="text-grey-7"> · {{ messageTime(s.at) }} · </span>{{ s.excerpt }}
         </li>
       </ol>
+      <div v-if="m.reactions.length" class="room-reactions" role="group" aria-label="Reactions">
+        <q-btn
+          v-for="r in m.reactions"
+          :key="r.reaction"
+          unelevated
+          dense
+          no-caps
+          rounded
+          class="room-reaction"
+          :class="{ 'room-reaction--mine': r.mine }"
+          :aria-label="reactionLabel(ROOM_REACTION_EMOJI[r.reaction].label, r.count, r.mine)"
+          :aria-pressed="r.mine"
+          @click="emit('react', m, r.reaction, !r.mine)"
+        >
+          <span aria-hidden="true">{{ ROOM_REACTION_EMOJI[r.reaction].emoji }}</span>
+          <span class="room-reaction__count" aria-hidden="true">{{ r.count }}</span>
+          <q-tooltip>{{ reactionLabel(ROOM_REACTION_EMOJI[r.reaction].label, r.count, r.mine) }}</q-tooltip>
+        </q-btn>
+      </div>
       <div v-if="pending" class="room-thinking" role="status">
         <q-spinner-dots size="18px" color="primary" /> The assistant is thinking… The first question after a quiet spell
         waits a minute or two while its model starts.
@@ -106,8 +158,9 @@ const sourceId = (n: number) => `src-${m.value.messageId}-${n}`;
 }
 .room-msg__head {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: 0 6px;
   min-height: 24px;
 }
 .room-msg__name {
@@ -116,6 +169,7 @@ const sourceId = (n: number) => `src-${m.value.messageId}-${n}`;
 .room-time {
   font-size: 0.8em;
   margin-left: 6px;
+  white-space: nowrap;
 }
 .room-msg__body {
   white-space: pre-line;
@@ -144,6 +198,63 @@ const sourceId = (n: number) => `src-${m.value.messageId}-${n}`;
   gap: 8px;
   margin-top: 4px;
   font-size: 0.875em;
+}
+.room-msg__actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  /* On a narrow screen the buttons wrap below the name together, still to the right. */
+  margin-left: auto;
+}
+.room-msg__tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+/* Pointing devices see a quiet message's buttons on hover or focus; touch screens always see them. */
+@media (hover: hover) {
+  .room-msg__tools--idle {
+    opacity: 0;
+    transition: opacity 0.12s;
+  }
+  .room-msg:hover .room-msg__tools--idle,
+  .room-msg:focus-within .room-msg__tools--idle {
+    opacity: 1;
+  }
+}
+.room-reactions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.room-reaction {
+  background: rgba(128, 128, 128, 0.12);
+  border: 1px solid transparent;
+  padding: 0 8px;
+  min-height: 26px;
+  font-size: 0.9rem;
+}
+.room-reaction--mine {
+  background: rgba(25, 118, 210, 0.12);
+  border-color: var(--q-primary);
+}
+.room-reaction__count {
+  margin-left: 4px;
+  font-weight: 600;
+  font-size: 0.8rem;
+}
+.room-react-menu {
+  display: flex;
+  padding: 4px;
+}
+.room-react-menu__emoji {
+  font-size: 1.35rem;
+  min-width: 40px;
+  min-height: 40px;
+}
+.room-react-menu__emoji--mine {
+  background: rgba(25, 118, 210, 0.15);
 }
 .room-notice {
   text-align: center;

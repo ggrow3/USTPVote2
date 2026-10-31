@@ -1,23 +1,34 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
-import { Notify } from 'quasar';
-import { parseRoomInput, ROOM_LIMITS, type RoomActionView, type RoomMessageView, type RoomSource, type RoomStatus } from 'ustp-domain';
+import { Notify, type QInput } from 'quasar';
+import {
+  parseRoomInput,
+  ROOM_LIMITS,
+  type RoomActionView,
+  type RoomMessageView,
+  type RoomReaction,
+  type RoomSource,
+  type RoomStatus,
+  type VoteValue,
+} from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { ApiError, errorMessage } from '../api.js';
 import PageShell from '../components/PageShell.vue';
 import { attempt, dialog } from '../dialogs.js';
 import { session } from '../session.js';
 import ActionDialog from './ActionDialog.vue';
-import { acceptTerms, ask, deleteMessage, history, leaveRoom, postMessage, roomStatus, switchAssistant, updates } from './api.js';
+import { acceptTerms, ask, deleteMessage, history, leaveRoom, postMessage, reactTo, roomStatus, switchAssistant, updates, voteOn } from './api.js';
 import DecisionDialog from './DecisionDialog.vue';
+import EmojiPicker from './EmojiPicker.vue';
 import MemoryPanel from './MemoryPanel.vue';
 import RoomMessage from './RoomMessage.vue';
-import { assistantLine, commandHints, dayLabel, peopleLine, startsDay } from './room-text.js';
+import { assistantLine, commandHints, dayLabel, insertText, peopleLine, startsDay } from './room-text.js';
 
 /**
  * The members' room (design §5.10): at the door, the terms an Active member accepts before anything of the room is
- * shown; inside, the chat with its assistant, kept current by asking the api for updates (it holds each request until
- * something changes), the composer with its slash commands, and the room's memory.
+ * shown; inside, the chat with its assistant, its votes and emoji reactions, kept current by asking the api for
+ * updates (it holds each request until something changes), the composer with its slash commands and emoji picker, and
+ * the room's memory.
  */
 usePageTitle('Members’ room');
 
@@ -32,6 +43,7 @@ const sending = ref(false);
 const entering = ref(false);
 const loadingOlder = ref(false);
 const list = ref<HTMLElement | null>(null);
+const composer = ref<QInput | null>(null);
 
 const decisionOpen = ref(false);
 const decisionFrom = ref<RoomMessageView | null>(null);
@@ -271,6 +283,30 @@ function useHint(command: string) {
   text.value = `/${command} `;
 }
 
+/** Puts a picked emoji where the caret was (a textarea keeps its selection while the picker has the focus). */
+async function insertEmoji(emoji: string) {
+  const el = composer.value?.getNativeElement() as HTMLTextAreaElement | undefined;
+  const start = el?.selectionStart ?? text.value.length;
+  const next = insertText(text.value, start, el?.selectionEnd ?? start, emoji, ROOM_LIMITS.message);
+  if (!next) {
+    Notify.create({ type: 'warning', message: `A message holds at most ${ROOM_LIMITS.message} characters.` });
+    return;
+  }
+  text.value = next.text;
+  await nextTick();
+  el?.focus();
+  el?.setSelectionRange(next.caret, next.caret);
+}
+
+/** Votes and reactions come back as the message, as everyone else's reach this page through the updates. */
+function vote(m: RoomMessageView, value: VoteValue) {
+  void attempt(async () => merge([await voteOn(m.messageId, value)]));
+}
+
+function react(m: RoomMessageView, reaction: RoomReaction, on: boolean) {
+  void attempt(async () => merge([await reactTo(m.messageId, reaction, on)]));
+}
+
 function openDecision(from: RoomMessageView | null, prefill: string) {
   decisionFrom.value = from;
   decisionText.value = prefill;
@@ -417,6 +453,8 @@ watch(
               @decide="(msg) => openDecision(msg, '')"
               @delete="remove"
               @source="showSource"
+              @vote="vote"
+              @react="react"
             />
           </template>
         </div>
@@ -434,6 +472,7 @@ watch(
           </q-card>
           <div class="row no-wrap items-end q-gutter-sm">
             <q-input
+              ref="composer"
               v-model="text"
               class="col"
               outlined
@@ -444,7 +483,11 @@ watch(
               aria-label="Message"
               :input-style="{ maxHeight: '160px' }"
               @keydown="onKey"
-            />
+            >
+              <template #append>
+                <EmojiPicker @pick="insertEmoji" />
+              </template>
+            </q-input>
             <q-btn unelevated round color="primary" icon="send" aria-label="Send" :loading="sending" :disable="!text.trim()" @click="send" />
           </div>
           <div class="room-quick">

@@ -3,12 +3,15 @@ import { FieldValue, type CollectionReference, type DocumentSnapshot, type Trans
 import {
   Collections,
   EMPTY_FEED,
+  NO_REACTIONS,
   ROOM_TERMS,
+  roomReactionId,
   type RoomConsentRecord,
   type RoomFeedRecord,
   type RoomJobRecord,
   type RoomMemoryRecord,
   type RoomMessageRecord,
+  type RoomReactionRecord,
 } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 
@@ -19,8 +22,8 @@ export interface Nearest<T> {
 }
 
 /**
- * Storage of the members' room (design §5.10, §11): `room_consents`, `room_messages`, `room_memory`, `room_jobs` and
- * `room_state/feed`. Only the room context uses it. Members' messages and memory items carry an `embedding` (a
+ * Storage of the members' room (design §5.10, §11): `room_consents`, `room_messages`, `room_reactions`, `room_memory`,
+ * `room_jobs` and `room_state/feed`. Only the room context uses it. Members' messages and memory items carry an `embedding` (a
  * Firestore vector, top-level so the emulator finds it too) and `embedModel`, the model that made it, null until the
  * assistant embeds them; the vector search needs the vector indexes in `firestore.indexes.json`.
  */
@@ -34,6 +37,10 @@ export class RoomRepository {
 
   private messages() {
     return this.firebase.db.collection(Collections.roomMessages);
+  }
+
+  private reactions() {
+    return this.firebase.db.collection(Collections.roomReactions);
   }
 
   private memory() {
@@ -137,6 +144,37 @@ export class RoomRepository {
   async postedSince(authorId: string, since: string): Promise<number> {
     const snap = await this.messages().where('authorId', '==', authorId).where('createdAt', '>=', since).count().get();
     return snap.data().count;
+  }
+
+  // --- votes and reactions ---------------------------------------------------------------------------------------
+
+  async getReaction(tx: Transaction, messageId: string, accountId: string): Promise<RoomReactionRecord | null> {
+    return ((await tx.get(this.reactions().doc(roomReactionId(messageId, accountId)))).data() as RoomReactionRecord | undefined) ?? null;
+  }
+
+  setReaction(tx: Transaction, record: RoomReactionRecord): void {
+    tx.set(this.reactions().doc(roomReactionId(record.messageId, record.accountId)), record);
+  }
+
+  deleteReaction(tx: Transaction, messageId: string, accountId: string): void {
+    tx.delete(this.reactions().doc(roomReactionId(messageId, accountId)));
+  }
+
+  /** Everyone's votes and reactions on these messages, read in `tx`, so they can be deleted with their text. */
+  async getReactionsOn(tx: Transaction, messageIds: readonly string[]): Promise<RoomReactionRecord[]> {
+    const found: RoomReactionRecord[] = [];
+    for (let i = 0; i < messageIds.length; i += 30) {
+      const snap = await tx.get(this.reactions().where('messageId', 'in', messageIds.slice(i, i + 30)));
+      found.push(...snap.docs.map((d) => d.data() as RoomReactionRecord));
+    }
+    return found;
+  }
+
+  /** One member's votes and reactions on these messages, by message ID. */
+  async reactionsOf(accountId: string, messageIds: readonly string[]): Promise<Map<string, RoomReactionRecord>> {
+    if (!messageIds.length) return new Map();
+    const snaps = await this.firebase.db.getAll(...messageIds.map((id) => this.reactions().doc(roomReactionId(id, accountId))));
+    return new Map(snaps.filter((s) => s.exists).map((s) => [s.get('messageId') as string, s.data() as RoomReactionRecord]));
   }
 
   // --- memory ----------------------------------------------------------------------------------------------------
@@ -243,16 +281,17 @@ export class RoomRepository {
   // --- retention -------------------------------------------------------------------------------------------------
 
   /**
-   * Deletes up to `limit` each of messages, action items and finished jobs whose `expireAt` is before `now`; returns how
-   * many went.
+   * Deletes up to `limit` each of messages, the votes and reactions on them, action items and finished jobs whose
+   * `expireAt` is before `now`; returns how many went.
    */
   async deleteExpired(now: string, limit: number): Promise<number> {
-    const [messages, items, jobs] = await Promise.all([
+    const [messages, reactions, items, jobs] = await Promise.all([
       this.messages().where('expireAt', '<', now).limit(limit).get(),
+      this.reactions().where('expireAt', '<', now).limit(limit).get(),
       this.memory().where('expireAt', '<', now).limit(limit).get(),
       this.jobs().where('expireAt', '<', now).limit(limit).get(),
     ]);
-    const docs = [...messages.docs, ...items.docs, ...jobs.docs];
+    const docs = [...messages.docs, ...reactions.docs, ...items.docs, ...jobs.docs];
     for (let i = 0; i < docs.length; i += 400) {
       const batch = this.firebase.db.batch();
       for (const d of docs.slice(i, i + 400)) batch.delete(d.ref);
@@ -268,5 +307,6 @@ function strip<T>(doc: DocumentSnapshot): T {
   return record as T;
 }
 
-const asMessage = (doc: DocumentSnapshot) => strip<RoomMessageRecord>(doc);
+/** A message, with no votes or reactions if it was written before the room had them. */
+const asMessage = (doc: DocumentSnapshot): RoomMessageRecord => ({ ...NO_REACTIONS, ...strip<RoomMessageRecord>(doc) });
 const asItem = (doc: DocumentSnapshot) => strip<RoomMemoryRecord>(doc);
