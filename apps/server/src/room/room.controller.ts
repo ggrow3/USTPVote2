@@ -9,7 +9,11 @@ import {
   roomDoorSchema,
   roomHistoryQuerySchema,
   roomMessageSchema,
+  roomSignalsSchema,
   roomUpdatesQuerySchema,
+  roomVoiceJoinSchema,
+  roomVoiceLeaveQuerySchema,
+  roomVoiceUpdateSchema,
   type RoomActionInput,
   type RoomActionUpdate,
   type RoomAskInput,
@@ -19,7 +23,11 @@ import {
   type RoomDoorInput,
   type RoomHistoryQuery,
   type RoomMessageInput,
+  type RoomSignalsInput,
   type RoomUpdatesQuery,
+  type RoomVoiceJoinInput,
+  type RoomVoiceLeaveQuery,
+  type RoomVoiceUpdateInput,
 } from 'ustp-domain';
 import { Ctx, requireAccount, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
@@ -62,7 +70,7 @@ export class RoomController {
   /** Long-polled: answers when something changes after `since`, or after 25 seconds. */
   @Get('updates')
   updates(@Ctx() ctx: RequestContext, @Query(new ZodPipe(roomUpdatesQuerySchema)) query: RoomUpdatesQuery) {
-    return this.room.updates(member(ctx), query.since, query.wait === '1');
+    return this.room.updates(member(ctx), query.since, query.wait === '1', query.voice);
   }
 
   @Post('messages')
@@ -111,6 +119,38 @@ export class RoomController {
   @HttpCode(204)
   async forget(@Ctx() ctx: RequestContext, @Param('itemId') itemId: string) {
     await this.room.forget(member(ctx), itemId);
+  }
+
+  /** `/joke`: the assistant's lame joke, posted in the room. */
+  @Post('joke')
+  joke(@Ctx() ctx: RequestContext) {
+    return this.room.joke(member(ctx));
+  }
+
+  /** Joining the call from this page; the page then calls everyone in it. */
+  @Post('voice')
+  joinVoice(@Ctx() ctx: RequestContext, @Body(new ZodPipe(roomVoiceJoinSchema)) body: RoomVoiceJoinInput) {
+    return this.room.joinVoice(member(ctx), body);
+  }
+
+  /** Still in the call, muted or not. */
+  @Put('voice')
+  @HttpCode(204)
+  async updateVoice(@Ctx() ctx: RequestContext, @Body(new ZodPipe(roomVoiceUpdateSchema)) body: RoomVoiceUpdateInput) {
+    await this.room.updateVoice(member(ctx), body);
+  }
+
+  @Delete('voice')
+  @HttpCode(204)
+  async leaveVoice(@Ctx() ctx: RequestContext, @Query(new ZodPipe(roomVoiceLeaveQuerySchema)) query: RoomVoiceLeaveQuery) {
+    await this.room.leaveVoice(member(ctx), query.sessionId);
+  }
+
+  /** Handshakes to others in the call. */
+  @Post('voice/signals')
+  @HttpCode(204)
+  async signal(@Ctx() ctx: RequestContext, @Body(new ZodPipe(roomSignalsSchema)) body: RoomSignalsInput) {
+    await this.room.signal(member(ctx), body);
   }
 }
 

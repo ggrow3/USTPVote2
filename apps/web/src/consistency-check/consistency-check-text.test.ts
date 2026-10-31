@@ -12,6 +12,7 @@ import {
   introText,
   sourceText,
   statusText,
+  summaryText,
   usedText,
 } from './consistency-check-text.js';
 
@@ -58,6 +59,16 @@ describe('consistency check wording', () => {
     expect(finishedAnnouncement(check({ status: 'done', findings: [{ ...finding, contests: [1] }, { ...finding, contests: [4] }] }))).toBe(
       'Consistency check finished: 2 possible inconsistencies found.',
     );
+  });
+
+  it('sums up the folded card in one line', () => {
+    expect(summaryText(null, { available: true })).toBe('An advisory check by Claude. Not run yet.');
+    expect(summaryText(null, { available: false })).toBe('Nothing to check: every contest elects someone.');
+    expect(summaryText(null, { available: true, requesting: true })).toBe('Checking…');
+    expect(summaryText(check({ status: 'running' }), { available: true })).toBe('Checking…');
+    expect(summaryText(check({ status: 'failed' }), { available: true })).toBe('The check failed.');
+    expect(summaryText(check({ status: 'done', findings: [{ ...finding, contests: [1] }] }), { available: true })).toBe('1 possible inconsistency found.');
+    expect(summaryText(check({ status: 'done' }), { available: true, error: true })).toMatch(/^Something went wrong/);
   });
 
   it('names the source and provision, or that the conflict is within the ballot', () => {

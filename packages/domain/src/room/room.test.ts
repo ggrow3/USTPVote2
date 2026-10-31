@@ -97,7 +97,16 @@ describe('the door', () => {
 
   it('shows the room’s state only to a member in it', () => {
     const consent: RoomConsentRecord = { accountId: 'ada', termsVersion: ROOM_TERMS.version, termsHash: ROOM_TERMS_HASH, acceptedAt: AT, withdrawnAt: null };
-    const room = { seq: 3, memorySeq: 1, peopleSeq: 1, assistant: { on: true, server: true, model: 'stand-in' as const, switchedAt: null, switchedBy: null, pending: [] }, moderator: false, people: [] };
+    const room = {
+      seq: 3,
+      memorySeq: 1,
+      peopleSeq: 1,
+      assistant: { on: true, server: true, model: 'stand-in' as const, switchedAt: null, switchedBy: null, pending: [] },
+      moderator: false,
+      people: [],
+      voiceSeq: 0,
+      voice: [],
+    };
     expect(roomStatus(DEFAULT_DOOR, true, consent, room)).toMatchObject({ member: true, inRoom: true, room: { seq: 3 } });
     expect(roomStatus(DEFAULT_DOOR, false, consent, room)).toMatchObject({ member: false, inRoom: false, room: null });
     expect(roomStatus(DEFAULT_DOOR, true, { ...consent, withdrawnAt: AT }, room)).toMatchObject({ inRoom: false, room: null, consent: { withdrawnAt: AT } });
@@ -315,7 +324,7 @@ describe('the admins’ switches', () => {
 
   it('show a closed room’s door with who closed it, and nothing of the room', () => {
     const consent: RoomConsentRecord = { accountId: 'ada', termsVersion: ROOM_TERMS.version, termsHash: ROOM_TERMS_HASH, acceptedAt: AT, withdrawnAt: null };
-    const room = { seq: 3, memorySeq: 1, peopleSeq: 1, assistant: { on: true, server: true, model: 'stand-in' as const, switchedAt: null, switchedBy: null, pending: [] }, moderator: false, people: [] };
+    const room = { seq: 3, memorySeq: 1, peopleSeq: 1, assistant: { on: true, server: true, model: 'stand-in' as const, switchedAt: null, switchedBy: null, pending: [] }, moderator: false, people: [], voiceSeq: 0, voice: [] };
     expect(roomStatus(DEFAULT_DOOR, true, consent, room, { at: AT, by: { accountId: 'ma', name: 'Morgan' } })).toMatchObject({
       open: false,
       inRoom: false,

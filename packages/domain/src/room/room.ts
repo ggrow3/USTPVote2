@@ -187,6 +187,8 @@ export type RoomHistoryQuery = z.infer<typeof roomHistoryQuerySchema>;
 export const roomUpdatesQuerySchema = z.strictObject({
   since: z.coerce.number().int().min(0),
   wait: z.enum(['0', '1']).default('1'),
+  /** The page is in the call from this session: the update brings the handshakes sent to it. */
+  voice: id.optional(),
 });
 export type RoomUpdatesQuery = z.infer<typeof roomUpdatesQuerySchema>;
 
@@ -224,13 +226,15 @@ export interface RoomMessageRecord {
   /** The feed number of its last change (made, deleted), so updates are one query. */
   readonly seq: number;
   readonly kind: RoomMessageKind;
-  /** The member who posted it, or who did what a notice tells of; null for the assistant. */
+  /** The member who posted it, who did what a notice tells of, or who asked for a joke; null for the assistant's answers. */
   readonly authorId: string | null;
   /** Empty once deleted. */
   readonly body: string;
   readonly createdAt: string;
   /** A question for the assistant (`/ask`). */
   readonly ask: boolean;
+  /** The assistant's lame joke (`/joke`), which pages in the call read out. */
+  readonly joke: boolean;
   /** An answer's question. */
   readonly replyTo: string | null;
   readonly sources: readonly RoomSource[];
@@ -307,6 +311,10 @@ export interface RoomFeedRecord {
   readonly memorySeq: number;
   /** The number of the latest time someone entered or left, so pages reload who is in the room. */
   readonly peopleSeq: number;
+  /** The number of the latest time someone joined or left the call, or muted or unmuted. */
+  readonly voiceSeq: number;
+  /** How many jokes the assistant has told, so it goes through them all before repeating one. */
+  readonly jokes: number;
   readonly assistantOn: boolean;
   readonly switchedAt: string | null;
   readonly switchedBy: string | null;
@@ -326,6 +334,8 @@ export const EMPTY_FEED: RoomFeedRecord = {
   seq: 0,
   memorySeq: 0,
   peopleSeq: 0,
+  voiceSeq: 0,
+  jokes: 0,
   assistantOn: true,
   switchedAt: null,
   switchedBy: null,
@@ -452,11 +462,12 @@ const consentEvent = (accountId: string, payload: RoomConsentChangedPayload): Le
 
 /** A message as posted, before it takes its feed number. */
 export function newMessage(
-  fields: Pick<RoomMessageRecord, 'messageId' | 'kind' | 'authorId' | 'body' | 'createdAt'> & Partial<Pick<RoomMessageRecord, 'ask' | 'replyTo' | 'sources' | 'ref'>>,
+  fields: Pick<RoomMessageRecord, 'messageId' | 'kind' | 'authorId' | 'body' | 'createdAt'> & Partial<Pick<RoomMessageRecord, 'ask' | 'joke' | 'replyTo' | 'sources' | 'ref'>>,
   seq: number,
 ): RoomMessageRecord {
   return {
     ask: false,
+    joke: false,
     replyTo: null,
     sources: [],
     ref: null,

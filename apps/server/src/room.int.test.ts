@@ -1,4 +1,5 @@
 import {
+  DAILY_JOKES,
   ROOM_INTRO,
   ROOM_TERMS,
   ROOM_TERMS_HASH,
@@ -9,6 +10,7 @@ import {
   type RoomSettingsView,
   type RoomStatus,
   type RoomUpdates,
+  type RoomVoiceJoined,
 } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { resetEmulators, TestApi, TestWorker, type User } from './testing/emulator.js';
@@ -354,6 +356,7 @@ describe('the admins’ switches', () => {
     expect((await door(sa1, { basedOn: 0, intro: '', terms: 'New' })).status).toBe(409);
     expect((await door(sa1, { basedOn: 1, intro: '', terms: ' \n\n ' })).status).toBe(400);
 
+    expect((await api.call('POST', '/v1/room/voice', ada, {})).status).toBe(201);
     const terms = 'The assistant reads the room.\n\nLeave with /leave-room.';
     const saved = await door(sa1, { basedOn: 1, intro: 'Where the group plans.', terms: `${terms}\n\n\n` });
     expect(saved.body).toMatchObject({ people: 0, door: { revision: 2, terms: { version: 2, text: terms }, termsChangedBy: { name: expect.any(String) } } });
@@ -363,7 +366,8 @@ describe('the admins’ switches', () => {
     expect(await status(ada)).toMatchObject({ inRoom: false, room: null, consent: { version: 1 }, terms: { version: 2, text: terms, hash } });
     expect((await api.call('POST', '/v1/room/consent', ada, { version: 1 })).status).toBe(409);
     const back = await api.call('POST', '/v1/room/consent', ada, { version: 2 });
-    expect(back.body).toMatchObject({ inRoom: true, room: { people: [{ name: 'Ada Brooks' }] } });
+    // Back in the room, and out of the call she was in.
+    expect(back.body).toMatchObject({ inRoom: true, room: { people: [{ name: 'Ada Brooks' }], voice: [] } });
     const said = ((await api.call('GET', '/v1/room/messages', ada)).body as RoomHistory).messages;
     const notice = said.find((m) => m.kind === 'notice' && m.body === 'changed the room’s terms (version 2); everyone accepts them again to stay');
     // The System Admin who changed them holds no membership: named as an admin, never "Former member" or by email.
@@ -410,5 +414,126 @@ describe('retention', () => {
     expect(bodies.at(-1)).toBe(`I could not answer this: it took longer than 10 minutes. Ask again in a minute.`);
     expect((await memory(ada)).actions).toEqual([]);
     expect((await api.firebase.db.collection('room_jobs').doc('stale').get()).data()).toMatchObject({ state: 'failed' });
+  });
+
+  it('drops pages gone quiet from the call and deletes old handshakes', async () => {
+    await enter(ada);
+    const past = '2026-01-01T00:00:00.000Z';
+    await api.firebase.db.collection('room_voice').doc(bo.accountId).set({ accountId: bo.accountId, sessionId: 'gone', joinedAt: past, seenAt: past, muted: false, actions: [] });
+    await api.firebase.db.collection('room_signals').doc('old').set({ signalId: 'old', seq: 1, from: bo.accountId, fromSession: 'gone', to: ada.accountId, toSession: 's', kind: 'offer', sdp: 'v=0', createdAt: past, expireAt: past });
+    // Already left out of who is in the call; the tick deletes it, and tells open pages.
+    const before = await status(ada);
+    expect(before.room?.voice).toEqual([]);
+    const tick = await worker.tick();
+    expect(tick.body.roomExpired).toBe(2);
+    expect((await api.firebase.db.collection('room_voice').doc(bo.accountId).get()).exists).toBe(false);
+    expect((await api.firebase.db.collection('room_signals').doc('old').get()).exists).toBe(false);
+    expect((await updates(ada, before.room!.seq)).voice).toEqual([]);
+  });
+});
+
+describe('the call', () => {
+  const join = async (by: User, body: object = {}) => {
+    const res = await api.call('POST', '/v1/room/voice', by, body);
+    expect(res.status).toBe(201);
+    return res.body as RoomVoiceJoined;
+  };
+  const inCall = async (by: User, since: number, sessionId: string) =>
+    (await api.call('GET', `/v1/room/updates?since=${since}&wait=0&voice=${sessionId}`, by)).body as RoomUpdates;
+
+  beforeEach(async () => {
+    await enter(ada);
+    await enter(bo);
+  });
+
+  it('says who is in it, passes each pair’s handshake, and lets them leave', async () => {
+    const a = await join(ada);
+    expect(a).toMatchObject({ voice: [{ name: 'Ada Brooks', mine: true, muted: false }], iceServers: [{ urls: [expect.stringMatching(/^stun:/)] }] });
+    const b = await join(bo, { muted: true });
+    expect(b.voice.map((v) => [v.name, v.muted])).toEqual([['Ada Brooks', false], ['Bo', true]]);
+    // Everyone in the room sees who is in the call, in or out of it.
+    expect((await updates(ada, a.voiceSeq)).voice?.map((v) => v.name)).toEqual(['Ada Brooks', 'Bo']);
+    expect((await status(ada)).room?.voice).toHaveLength(2);
+
+    // Bo joined later, so Bo offers; only Ada's page in the call gets it.
+    const offer = { to: ada.accountId, toSession: a.sessionId, kind: 'offer', sdp: 'v=0 offer' };
+    expect((await api.call('POST', '/v1/room/voice/signals', bo, { sessionId: b.sessionId, signals: [offer] })).status).toBe(204);
+    expect((await inCall(ada, b.voiceSeq, a.sessionId)).signals).toEqual([{ signalId: expect.any(String), from: bo.accountId, fromSession: b.sessionId, kind: 'offer', sdp: 'v=0 offer' }]);
+    expect((await inCall(ada, b.voiceSeq, 'another-page')).signals).toEqual([]);
+    expect((await updates(ada, b.voiceSeq)).signals).toEqual([]);
+    const answer = { to: bo.accountId, toSession: b.sessionId, kind: 'answer', sdp: 'v=0 answer' };
+    expect((await api.call('POST', '/v1/room/voice/signals', ada, { sessionId: a.sessionId, signals: [answer] })).status).toBe(204);
+    expect((await inCall(bo, b.voiceSeq, b.sessionId)).signals.map((s) => s.kind)).toEqual(['answer']);
+    // Never to a page not in the call, nor from one.
+    expect((await api.call('POST', '/v1/room/voice/signals', bo, { sessionId: b.sessionId, signals: [{ ...offer, toSession: 'old' }] })).status).toBe(409);
+    expect((await api.call('POST', '/v1/room/voice/signals', bo, { sessionId: 'old', signals: [offer] })).status).toBe(409);
+
+    // Muting tells the room; a page saying it is still there does not.
+    const seq = (await status(ada)).room!.seq;
+    expect((await api.call('PUT', '/v1/room/voice', bo, { sessionId: b.sessionId, muted: true })).status).toBe(204);
+    expect((await status(ada)).room!.seq).toBe(seq);
+    expect((await api.call('PUT', '/v1/room/voice', bo, { sessionId: b.sessionId, muted: false })).status).toBe(204);
+    expect((await updates(ada, seq)).voice?.find((v) => v.name === 'Bo')?.muted).toBe(false);
+
+    // Leaving from another page changes nothing; from the page in the call, it leaves.
+    expect((await api.call('DELETE', '/v1/room/voice?sessionId=old', ada)).status).toBe(204);
+    expect((await status(bo)).room!.voice).toHaveLength(2);
+    expect((await api.call('DELETE', `/v1/room/voice?sessionId=${a.sessionId}`, ada)).status).toBe(204);
+    expect((await status(bo)).room!.voice.map((v) => v.name)).toEqual(['Bo']);
+    expect((await api.call('PUT', '/v1/room/voice', ada, { sessionId: a.sessionId, muted: false })).status).toBe(409);
+  });
+
+  it('moves a member to the page they last joined from, and drops them when they leave the room', async () => {
+    const first = await join(ada);
+    const second = await join(ada);
+    expect(second.voice).toEqual([expect.objectContaining({ sessionId: second.sessionId, mine: true })]);
+    expect((await api.call('PUT', '/v1/room/voice', ada, { sessionId: first.sessionId, muted: false })).status).toBe(409);
+    expect((await api.call('POST', '/v1/room/voice', cy, {})).status).toBe(403);
+    expect((await api.call('DELETE', '/v1/room/consent', ada)).status).toBe(200);
+    expect((await status(bo)).room!.voice).toEqual([]);
+  });
+
+  it('ends when an admin closes the room', async () => {
+    const a = await join(ada);
+    await join(bo);
+    await api.call('PUT', '/v1/admin/room/settings/open', ma, { on: false });
+    expect((await api.call('PUT', '/v1/room/voice', ada, { sessionId: a.sessionId, muted: false })).status).toBe(403);
+    expect((await api.call('POST', '/v1/room/voice', ada, {})).status).toBe(403);
+    expect((await api.call('POST', '/v1/room/joke', ada)).status).toBe(403);
+    await api.call('PUT', '/v1/admin/room/settings/open', ma, { on: true });
+    expect((await status(ada)).room?.voice).toEqual([]);
+  });
+
+  it('holds eight at most', async () => {
+    const now = new Date().toISOString();
+    for (let i = 0; i < 8; i++) {
+      await api.firebase.db.collection('room_voice').doc(`m${i}`).set({ accountId: `m${i}`, sessionId: `s${i}`, joinedAt: now, seenAt: now, muted: false, actions: [] });
+    }
+    const full = await api.call('POST', '/v1/room/voice', ada, {});
+    expect(full.status).toBe(409);
+    expect(full.body.detail).toContain('the call is full');
+  });
+});
+
+describe('/joke', () => {
+  beforeEach(async () => {
+    await enter(ada);
+  });
+
+  it('tells a lame joke for whoever asked, a different one each time, as the assistant', async () => {
+    const first = await api.call('POST', '/v1/room/joke', ada);
+    expect(first.status).toBe(201);
+    expect(first.body).toMatchObject({ kind: 'assistant', joke: true, author: { name: 'Ada Brooks' }, mine: false, deletable: false });
+    const told = DAILY_JOKES.find((j) => (first.body as RoomMessageView).body === `${j.setup}\n${j.punchline}`);
+    expect(told).toBeDefined();
+    const second = (await api.call('POST', '/v1/room/joke', ada)).body as RoomMessageView;
+    expect(second.body).not.toBe(first.body.body);
+    expect((await updates(ada, 0)).messages.filter((m) => m.joke)).toHaveLength(2);
+  });
+
+  it('stops while the assistant is switched off', async () => {
+    await enter(ma);
+    await api.call('PUT', '/v1/admin/room/assistant', ma, { on: false });
+    expect((await api.call('POST', '/v1/room/joke', ada)).status).toBe(409);
   });
 });

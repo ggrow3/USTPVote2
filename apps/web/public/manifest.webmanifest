@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "USTP Vote",
-  "short_name": "USTP Vote",
+  "name": "%VITE_APP_NAME%",
+  "short_name": "%VITE_APP_NAME%",
   "description": "United States Transhumanist Party member registration, voting and receipt verification",
   "lang": "en",
   "dir": "ltr",

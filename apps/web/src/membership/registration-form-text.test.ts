@@ -7,6 +7,7 @@ describe('describeFormChange', () => {
     expect(describeFormChange({ part: 'usVoterQuestion', to: 'Can you vote in a US election?' })).toBe(
       'First question: “Can you vote in a US election?”',
     );
+    expect(describeFormChange({ part: 'title', to: 'Join the USTP' })).toBe('Page heading: “Join the USTP”');
     const help = describeFormChange({ part: 'coreIdealsHelp', to: DEFAULT_REGISTRATION_FORM.coreIdealsHelp });
     expect(help).toMatch(/^Second question's help: “\(Answer "Yes" or "No"\..*…”$/);
     expect(help.length).toBeLessThan(130);

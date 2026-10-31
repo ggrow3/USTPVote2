@@ -10,6 +10,7 @@ import {
   type RoomSource,
   type RoomTerms,
 } from './room.js';
+import { voiceLive, type RoomSignalKind, type RoomSignalRecord, type RoomVoiceRecord } from './voice.js';
 
 /**
  * What the API shows of the room (design §5.10, §12). Only members in the room see any of it; everyone in it sees the
@@ -48,7 +49,41 @@ export interface RoomStatus {
     /** Holds Membership Admin: switches the assistant, deletes any message or memory item. */
     readonly moderator: boolean;
     readonly people: readonly RoomPerson[];
+    readonly voiceSeq: number;
+    /** Who is in the call, in the order they joined. */
+    readonly voice: readonly RoomVoiceView[];
   } | null;
+}
+
+/** Someone in the call, from one page. */
+export interface RoomVoiceView extends RoomPerson {
+  readonly sessionId: string;
+  readonly joinedAt: string;
+  readonly muted: boolean;
+  readonly mine: boolean;
+}
+
+/** Half of a handshake sent to the viewer's page in the call. */
+export interface RoomSignalView {
+  readonly signalId: string;
+  readonly from: string;
+  readonly fromSession: string;
+  readonly kind: RoomSignalKind;
+  readonly sdp: string;
+}
+
+/** A STUN (or TURN) server browsers use to find a way to each other. */
+export interface RoomIceServer {
+  readonly urls: readonly string[];
+}
+
+/** `POST /v1/room/voice`: the page is in the call; it calls everyone already there. */
+export interface RoomVoiceJoined {
+  readonly sessionId: string;
+  /** The feed number of joining: a list of who is in the call from before it is out of date. */
+  readonly voiceSeq: number;
+  readonly voice: readonly RoomVoiceView[];
+  readonly iceServers: readonly RoomIceServer[];
 }
 
 export interface RoomAssistantView {
@@ -71,6 +106,8 @@ export interface RoomMessageView {
   readonly body: string;
   readonly createdAt: string;
   readonly ask: boolean;
+  /** The assistant's joke; `author` is who asked for it. */
+  readonly joke: boolean;
   readonly replyTo: string | null;
   readonly sources: readonly RoomSource[];
   readonly ref: RoomRef | null;
@@ -99,6 +136,11 @@ export interface RoomUpdates {
   readonly peopleSeq: number;
   readonly messages: readonly RoomMessageView[];
   readonly assistant: RoomAssistantView;
+  readonly voiceSeq: number;
+  /** Who is in the call, when that changed after `since`; null when it did not. */
+  readonly voice: readonly RoomVoiceView[] | null;
+  /** Handshakes sent to the page's session in the call (`voice=`) after `since`, in order. */
+  readonly signals: readonly RoomSignalView[];
   readonly reset: boolean;
 }
 
@@ -225,6 +267,7 @@ export function messageView(m: RoomMessageRecord, ctx: RoomViewContext): RoomMes
     body: m.body,
     createdAt: m.createdAt,
     ask: m.ask,
+    joke: m.joke === true,
     replyTo: m.replyTo,
     sources: m.sources,
     ref: m.ref,
@@ -290,6 +333,16 @@ export function assistantView(feed: RoomFeedRecord, model: RoomModelKind, ctx: R
     pending: feed.pending,
   };
 }
+
+/** Who is in the call now (live pages only), in the order they joined. */
+export function voiceView(records: readonly RoomVoiceRecord[], now: string, ctx: RoomViewContext): RoomVoiceView[] {
+  return records
+    .filter((v) => voiceLive(v, now))
+    .sort((a, b) => a.joinedAt.localeCompare(b.joinedAt) || a.accountId.localeCompare(b.accountId))
+    .map((v) => ({ ...person(ctx, v.accountId), sessionId: v.sessionId, joinedAt: v.joinedAt, muted: v.muted, mine: v.accountId === ctx.accountId }));
+}
+
+export const signalView = (s: RoomSignalRecord): RoomSignalView => ({ signalId: s.signalId, from: s.from, fromSession: s.fromSession, kind: s.kind, sdp: s.sdp });
 
 /** The door: its intro and terms always; the room's state only for a member in it, while it is open. */
 export function roomStatus(

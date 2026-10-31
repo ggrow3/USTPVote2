@@ -14,6 +14,7 @@ import {
 } from 'docx';
 import JSZip from 'jszip';
 import { splitLines, type BylawsRecord } from 'ustp-domain';
+import { APP_NAME } from './app-name.js';
 
 /**
  * Word documents for the bylaws (design §5.2): reading the text out of a .docx so a Membership Admin can start a
@@ -301,7 +302,7 @@ export function bylawsDocument(b: BylawsRecord, options: StampOptions): Document
     new Paragraph({ style: STAMP_STYLE, children: [] }),
   ];
   return new Document({
-    creator: 'USTP Vote',
+    creator: APP_NAME,
     title: `${b.title}, version ${b.version}`,
     subject: `Version ${b.version}${b.amends ? `, amending ${b.amends}` : ''}`,
     keywords: `bylaws; version ${b.version}; sha256:${b.contentHash}`,

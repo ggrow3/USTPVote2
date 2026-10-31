@@ -48,6 +48,10 @@ export const Collections = {
    * `room_state/door`: the door's intro line and the terms in force.
    */
   roomState: 'room_state',
+  /** `room_voice/{accountId}`: who is in the room's call, from which page. */
+  roomVoice: 'room_voice',
+  /** `room_signals/{signalId}`: handshakes between pages in the call; deleted 5 minutes after they were sent. */
+  roomSignals: 'room_signals',
   eligibilitySnapshots: 'eligibility_snapshots',
   // voting
   elections: 'elections',
