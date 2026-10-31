@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { CourseLink, CoursePosition } from './course-map.js';
 
 /** The first-party course catalogue is intentionally independent of party membership and voting. */
 export const COURSE_STATUSES = ['draft', 'published'] as const;
@@ -20,6 +21,16 @@ export interface CourseRecord {
   /** Draft revision number; it is copied to an immutable CourseVersionRecord when published. */
   readonly version: number;
   readonly publishedVersion: number | null;
+  /**
+   * The courses a learner must have passed (holding their certificate) before taking this one's quizzes, and where it
+   * sits on the course map, null for off it (design §10.8). Both apply at once rather than with the next published
+   * version. Records from before the map have neither: read them with placementOf.
+   */
+  readonly prerequisites: readonly string[];
+  readonly position: CoursePosition | null;
+  /** Who last changed the prerequisites or position, and when; absent until someone does. */
+  readonly placedAt?: string;
+  readonly placedBy?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly updatedBy: string;
@@ -146,11 +157,17 @@ export interface CourseCatalog {
   readonly course: Pick<CourseRecord, 'courseId' | 'title' | 'summary' | 'publishedVersion'>;
   readonly lessons: readonly PublicCourseLesson[];
   readonly profiles: readonly FuturistProfile[];
+  /** The courses to pass before this one's quizzes open, in the order the course lists them. */
+  readonly prerequisites: readonly CourseLink[];
 }
 
 export interface LearnerCourseView extends CourseCatalog {
   readonly progress: CourseProgressRecord | null;
   readonly certificate: Pick<CourseCertificateRecord, 'certificateId' | 'issuedAt' | 'courseVersion'> | null;
+  /** The prerequisites this learner has not passed yet; while any are left they can read but not take quizzes. */
+  readonly missingPrerequisites: readonly CourseLink[];
+  /** Whether they may write to the course's instructors now (a Course Administrator turns it on for them). */
+  readonly messaging: boolean;
 }
 
 /** How one answer went, shown to the learner after they submit a quiz: right or not, and why. */

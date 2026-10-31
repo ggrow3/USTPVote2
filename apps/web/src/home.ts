@@ -144,10 +144,10 @@ export function homeCards(
   if (shown.menu.includes('course')) {
     cards.push({
       key: 'course',
-      title: 'Transhumanism course',
-      text: 'Read the public lessons, take quizzes when signed in, and earn a verified certificate.',
-      to: '/course/transhumanism',
-      action: 'Explore the course',
+      title: 'Courses',
+      text: 'Read the public lessons, take quizzes when signed in, and earn a verified certificate for each course.',
+      to: '/courses',
+      action: 'Explore the courses',
     });
   }
   if (shown.menu.includes('admin')) {
@@ -186,7 +186,7 @@ const VISITOR_LINKS: readonly VisitorLink[] = [
   { key: 'forum', before: 'Members: ', label: 'discuss and propose', after: ' in the forum.', to: '/forum' },
   { key: 'room', before: 'Members: ', label: 'work together in the members’ room', after: ', with its assistant.', to: '/room' },
   { key: 'news', before: 'What is the party saying? ', label: 'Read the news and press releases', after: ', or send us a suggestion.', to: '/news' },
-  { key: 'course', before: 'Interested in the future? ', label: 'Explore the Transhumanism course', after: '.', to: '/course/transhumanism' },
+  { key: 'course', before: 'Interested in the future? ', label: 'Explore the courses', after: '.', to: '/courses' },
   { key: 'admin', before: 'Party officers: ', label: 'open the admin console', after: '.', to: '/admin' },
 ];
 

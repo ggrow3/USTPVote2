@@ -32,6 +32,7 @@ import { ANTHROPIC_KEY_TESTER, ClaudeKeyTester, UntriedKeyTester } from '../clau
 import { HealthController } from '../common/health.controller.js';
 import { CourseController } from '../course/course.controller.js';
 import { CourseService } from '../course/course.service.js';
+import { CourseLearnersService } from '../course/course-learners.service.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { AdminConsistencyChecksController, ConsistencyChecksController } from '../consistency-check/consistency-checks.controller.js';
 import { ConsistencyChecksService } from '../consistency-check/consistency-checks.service.js';
@@ -186,6 +187,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     PersonasService,
     DemoElectionsService,
     CourseService,
+    CourseLearnersService,
     secretStoreProvider,
     {
       provide: PHOTO_CHECKER,

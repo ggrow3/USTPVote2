@@ -82,6 +82,12 @@ export const Collections = {
   courseCertificates: 'course_certificates',
   /** `course_images/{sha256}`: portraits uploaded by Course Administrators, as stored after re-encoding. */
   courseImages: 'course_images',
+  /** `course_seeds/{seed}`: which starter courses have been added, so a course deleted later is not added again. */
+  courseSeeds: 'course_seeds',
+  /** `course_threads/{courseId}_{accountId}`: a learner's conversation with the course's instructors, and its switch. */
+  courseThreads: 'course_threads',
+  /** `course_messages/{messageId}`: the messages in those conversations. */
+  courseMessages: 'course_messages',
   courseLtiDeployments: 'course_lti_deployments',
   courseLtiOutcomes: 'course_lti_outcomes',
   /** `anthropic_key/current`: who added the Anthropic API key in the app, never the key (design §5.6). */

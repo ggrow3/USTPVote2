@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import {
   coursePortraitSrc,
   PASS_PERCENT,
   type CourseCatalog,
+  type CourseConversation as Conversation,
   type CourseQuizFeedback,
   type FuturistCategory,
   type LearnerCourseView,
@@ -11,9 +13,12 @@ import {
 } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { api, apiBlob, errorMessage } from '../api.js';
+import { attempt } from '../dialogs.js';
 import { session } from '../session.js';
+import CourseConversation from './CourseConversation.vue';
 
-const COURSE_ID = 'transhumanism';
+const route = useRoute();
+const courseId = computed(() => String(route.params.courseId));
 const catalog = ref<CourseCatalog | null>(null);
 const learner = ref<LearnerCourseView | null>(null);
 const error = ref<string | null>(null);
@@ -31,11 +36,16 @@ const result = ref<{
   feedback: readonly CourseQuizFeedback[];
 } | null>(null);
 const hiddenPortraits = ref(new Set<string>());
+/** The learner's conversation with the instructors; loaded once signed in. */
+const conversation = ref<Conversation | null>(null);
 
-usePageTitle('Transhumanism course');
+usePageTitle(() => catalog.value?.course.title ?? 'Course');
 
 const current = computed<PublicCourseLesson | null>(() => catalog.value?.lessons.find((l) => l.lessonId === selectedId.value) ?? catalog.value?.lessons[0] ?? null);
 const progress = computed(() => learner.value?.progress ?? null);
+/** Prerequisites the learner has still to pass; until then they read the lessons but cannot take the quizzes. */
+const locked = computed(() => learner.value?.missingPrerequisites ?? []);
+const signInLink = computed(() => ({ path: '/signin', query: { redirect: `/course/${courseId.value}` } }));
 const categoryLabel: Record<FuturistCategory, string> = {
   democratic_transhumanist: 'Democratic transhumanist',
   transhumanist_pioneer: 'Transhumanist pioneer',
@@ -49,14 +59,21 @@ async function load({ quiet = false } = {}) {
   error.value = null;
   try {
     if (session.user) {
-      learner.value = await api<LearnerCourseView>('GET', `/v1/courses/${COURSE_ID}`);
-      catalog.value = learner.value;
+      const [view, messages] = await Promise.all([
+        api<LearnerCourseView>('GET', `/v1/courses/${courseId.value}`),
+        quiet ? Promise.resolve(conversation.value) : api<Conversation>('GET', `/v1/courses/${courseId.value}/messages`),
+      ]);
+      learner.value = view;
+      catalog.value = view;
+      conversation.value = messages;
     } else {
       learner.value = null;
-      catalog.value = await api<CourseCatalog>('GET', `/v1/public/courses/${COURSE_ID}`);
+      conversation.value = null;
+      catalog.value = await api<CourseCatalog>('GET', `/v1/public/courses/${courseId.value}`);
     }
     selectedId.value ??= catalog.value.lessons[0]?.lessonId ?? null;
   } catch (e) {
+    catalog.value = null;
     error.value = errorMessage(e);
   } finally {
     loading.value = false;
@@ -86,7 +103,7 @@ async function submit() {
       attempt: { score: number; passed: boolean };
       certificate: LearnerCourseView['certificate'];
       feedback: CourseQuizFeedback[];
-    }>('POST', `/v1/courses/${COURSE_ID}/lessons/${lessonId}/attempts`, { answers: chosen });
+    }>('POST', `/v1/courses/${courseId.value}/lessons/${lessonId}/attempts`, { answers: chosen });
     result.value = {
       lessonId,
       score: response.attempt.score,
@@ -105,11 +122,11 @@ async function submit() {
 
 async function downloadCertificate() {
   try {
-    const blob = await apiBlob(`/v1/courses/${COURSE_ID}/certificate.pdf`);
+    const blob = await apiBlob(`/v1/courses/${courseId.value}/certificate.pdf`);
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'transhumanism-certificate.pdf';
+    link.download = `${courseId.value}-certificate.pdf`;
     link.click();
     URL.revokeObjectURL(url);
   } catch (e) {
@@ -121,9 +138,21 @@ function hidePortrait(profileId: string) {
   hiddenPortraits.value = new Set([...hiddenPortraits.value, profileId]);
 }
 
+/** Writes to the instructors; the answer is the whole conversation, with the new message. */
+async function sendMessage(body: string): Promise<boolean> {
+  return attempt(async () => {
+    conversation.value = await api<Conversation>('POST', `/v1/courses/${courseId.value}/messages`, { body });
+  }, 'Message sent');
+}
+
 watch(
-  () => session.user?.uid,
-  () => {
+  [() => session.user?.uid, courseId],
+  ([, id], previous) => {
+    if (previous && id !== previous[1]) {
+      catalog.value = null;
+      selectedId.value = null;
+      answers.value = {};
+    }
     result.value = null;
     void load();
   },
@@ -134,7 +163,8 @@ watch(
 <template>
   <q-page padding>
     <div style="max-width: 1100px; margin: auto">
-      <q-banner v-if="error" class="bg-negative text-white q-mb-md" rounded>{{ error }}</q-banner>
+      <q-btn flat no-caps icon="arrow_back" label="All courses" to="/courses" class="q-mb-sm" />
+      <q-banner v-if="error" class="bg-negative text-white q-mb-md" rounded role="alert">{{ error }}</q-banner>
       <q-skeleton v-if="loading" type="rect" height="360px" />
       <template v-else-if="catalog">
         <section class="course-hero q-pa-lg q-mb-lg rounded-borders">
@@ -143,10 +173,20 @@ watch(
           <p class="text-body1 q-mb-md">{{ catalog.course.summary }}</p>
           <q-chip color="white" text-color="primary" icon="public">Lessons are open to everyone</q-chip>
           <q-chip color="white" text-color="primary" icon="workspace_premium">Sign in to save progress and earn a certificate</q-chip>
+          <q-chip v-for="before in catalog.prerequisites" :key="before.courseId" color="white" text-color="primary" icon="route" clickable @click="$router.push(`/course/${before.courseId}`)">
+            Comes after {{ before.title }}
+          </q-chip>
         </section>
 
         <q-banner v-if="!session.user" class="bg-blue-1 text-black q-mb-lg" rounded>
-          You can read every lesson and explore the directory. <router-link :to="{ path: '/signin', query: { redirect: '/course/transhumanism' } }">Sign in</router-link> to take quizzes, save progress, and earn a named certificate.
+          You can read every lesson and explore the directory. <router-link :to="signInLink">Sign in</router-link> to take quizzes, save progress, and earn a named certificate.
+        </q-banner>
+        <q-banner v-else-if="locked.length" class="bg-orange-1 text-black q-mb-lg" rounded role="status">
+          <template #avatar><q-icon name="lock" /></template>
+          You can read every lesson. The quizzes open once you have passed
+          <template v-for="(before, index) in locked" :key="before.courseId"
+            ><template v-if="index"> and </template><router-link :to="`/course/${before.courseId}`">{{ before.title }}</router-link></template
+          >.
         </q-banner>
         <q-banner v-else-if="progress" class="bg-green-1 text-black q-mb-lg" rounded>
           {{ progress.completedLessonIds.length }} of {{ catalog.lessons.length }} lessons passed at 80% or above.
@@ -185,7 +225,10 @@ watch(
                 {{ current.questions.length === 1 ? 'One question' : `${current.questions.length} questions` }}. A score of {{ PASS_PERCENT }}%
                 passes; you may retry as often as needed. After each try you see which answers were right, and why.
               </p>
-              <template v-if="session.user">
+              <p v-if="session.user && locked.length" class="text-body2 q-mb-none">
+                <q-icon name="lock" class="q-mr-xs" />This quiz opens once you have passed {{ locked.map((before) => before.title).join(' and ') }}.
+              </p>
+              <template v-else-if="session.user">
                 <q-list separator>
                   <q-item v-for="(question, index) in current.questions" :key="question.questionId" class="q-px-none q-py-md">
                     <q-item-section>
@@ -211,12 +254,27 @@ watch(
                 </q-banner>
                 <q-btn class="q-mt-md" color="primary" no-caps :disable="current.questions.some((q) => answers[q.questionId] === undefined)" :loading="submitting" label="Submit quiz" @click="submit" />
               </template>
-              <q-btn v-else color="primary" no-caps label="Sign in to take this quiz" :to="{ path: '/signin', query: { redirect: '/course/transhumanism' } }" />
+              <q-btn v-else color="primary" no-caps label="Sign in to take this quiz" :to="signInLink" />
             </q-card-section>
           </q-card>
         </section>
 
-        <section aria-labelledby="voices-heading" class="q-mb-xl">
+        <section v-if="session.user && conversation" aria-labelledby="instructor-heading" class="q-mb-xl">
+          <q-card flat bordered>
+            <q-card-section>
+              <h2 id="instructor-heading" class="text-h6 q-mt-none q-mb-xs">Ask the instructor</h2>
+              <p class="text-grey-7">Questions about this course go to its instructors, the party's Course Administrators. Only you and they see this conversation.</p>
+              <CourseConversation
+                :conversation="conversation"
+                viewer="learner"
+                off-text="Messages with the instructor are off for you in this course. A Course Administrator can turn them on for you."
+                :send="sendMessage"
+              />
+            </q-card-section>
+          </q-card>
+        </section>
+
+        <section v-if="catalog.profiles.length" aria-labelledby="voices-heading" class="q-mb-xl">
           <h2 id="voices-heading" class="text-h5">Voices, visions, and ethical debate</h2>
           <p class="text-grey-8">Profiles describe each person’s ideas in context. Category labels prevent foundational visionaries and critics from being inaccurately presented as transhumanists.</p>
           <div class="row q-col-gutter-md">

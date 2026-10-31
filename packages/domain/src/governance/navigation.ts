@@ -385,7 +385,7 @@ export function startPageFor(settings: NavigationSettings, viewer: Viewer): Star
  */
 export function startPagePath(page: StartPage): string {
   if (page === 'home') return '/vote';
-  if (page === 'course') return '/course/transhumanism';
+  if (page === 'course') return '/courses';
   return page.startsWith('admin/') ? `/admin?tab=${page.slice(6)}` : `/${page}`;
 }
 

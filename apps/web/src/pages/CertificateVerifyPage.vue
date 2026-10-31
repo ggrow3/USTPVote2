@@ -46,7 +46,7 @@ watch(
   <q-page padding>
     <div style="max-width: 640px; margin: auto">
       <h1 class="text-h4">Verify a course certificate</h1>
-      <p>Enter a certificate number or scan the QR code from a Transhumanism course certificate. Verification never reveals a learner’s name.</p>
+      <p>Enter a certificate number or scan the QR code from a course certificate. Verification never reveals a learner’s name.</p>
       <q-form class="row q-gutter-sm q-mb-lg" @submit.prevent="verifyEntered">
         <q-input v-model="certificateId" outlined class="col" label="Certificate number" autocomplete="off" />
         <q-btn type="submit" color="primary" no-caps label="Verify" :loading="loading" />

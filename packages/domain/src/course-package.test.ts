@@ -10,6 +10,8 @@ const course: CourseRecord = {
   status: 'draft',
   version: 2,
   publishedVersion: 2,
+  prerequisites: [],
+  position: { row: 0, column: 0 },
   createdAt: '2026-10-01T00:00:00.000Z',
   updatedAt: '2026-10-28T00:00:00.000Z',
   updatedBy: '01a1-editor',
