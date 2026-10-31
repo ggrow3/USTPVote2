@@ -42,6 +42,7 @@ export const LEDGER_EVENT_TYPES = [
   'room.consent_changed',
   'room.assistant_switched',
   'room.settings_changed',
+  'room.door_changed',
   'news.published',
   'news.changed',
   'news.withdrawn',

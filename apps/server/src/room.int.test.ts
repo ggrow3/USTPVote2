@@ -1,9 +1,12 @@
 import {
+  ROOM_INTRO,
   ROOM_TERMS,
+  ROOM_TERMS_HASH,
   type LedgerEntry,
   type RoomHistory,
   type RoomMemory,
   type RoomMessageView,
+  type RoomSettingsView,
   type RoomStatus,
   type RoomUpdates,
 } from 'ustp-domain';
@@ -335,6 +338,43 @@ describe('the admins’ switches', () => {
       { setting: 'server', on: false },
       { setting: 'server', on: true },
     ]);
+  });
+
+  it('let Membership and System Admins change the door’s words; new terms send everyone back to accept them, ledgered', async () => {
+    const door = (by: User, input: { basedOn: number; intro: string; terms: string }) => api.call('PUT', '/v1/admin/room/door', by, input);
+    expect((await door(ada, { basedOn: 0, intro: '', terms: 'Mine now' })).status).toBe(403);
+    const before = (await api.call('GET', '/v1/admin/room/settings', ma)).body as RoomSettingsView;
+    expect(before.door).toMatchObject({ revision: 0, intro: ROOM_INTRO, terms: { version: 1, text: ROOM_TERMS.text, hash: ROOM_TERMS_HASH }, termsChangedBy: null });
+
+    // The intro alone is no new version: nobody leaves.
+    const intro = await door(ma, { basedOn: 0, intro: '  Where the group plans. ', terms: ROOM_TERMS.text });
+    expect(intro.body.door).toMatchObject({ revision: 1, intro: 'Where the group plans.', terms: { version: 1 }, introChangedBy: { name: 'Morgan Admin' } });
+    expect(await status(ada)).toMatchObject({ inRoom: true, intro: 'Where the group plans.', terms: { version: 1 } });
+    // An edit of an older revision is refused, and so are empty terms.
+    expect((await door(sa1, { basedOn: 0, intro: '', terms: 'New' })).status).toBe(409);
+    expect((await door(sa1, { basedOn: 1, intro: '', terms: ' \n\n ' })).status).toBe(400);
+
+    const terms = 'The assistant reads the room.\n\nLeave with /leave-room.';
+    const saved = await door(sa1, { basedOn: 1, intro: 'Where the group plans.', terms: `${terms}\n\n\n` });
+    expect(saved.body).toMatchObject({ people: 0, door: { revision: 2, terms: { version: 2, text: terms }, termsChangedBy: { name: expect.any(String) } } });
+    const hash = (saved.body as RoomSettingsView).door.terms.hash;
+    // Ada is back at the door at once, and accepts the new terms (not the old ones) to come back.
+    expect((await api.call('GET', '/v1/room/updates?since=0&wait=0', ada)).status).toBe(403);
+    expect(await status(ada)).toMatchObject({ inRoom: false, room: null, consent: { version: 1 }, terms: { version: 2, text: terms, hash } });
+    expect((await api.call('POST', '/v1/room/consent', ada, { version: 1 })).status).toBe(409);
+    const back = await api.call('POST', '/v1/room/consent', ada, { version: 2 });
+    expect(back.body).toMatchObject({ inRoom: true, room: { people: [{ name: 'Ada Brooks' }] } });
+    const said = ((await api.call('GET', '/v1/room/messages', ada)).body as RoomHistory).messages;
+    const notice = said.find((m) => m.kind === 'notice' && m.body === 'changed the room’s terms (version 2); everyone accepts them again to stay');
+    // The System Admin who changed them holds no membership: named as an admin, never "Former member" or by email.
+    expect(notice?.author?.name).toEqual(expect.any(String));
+    expect(notice?.author?.name).not.toMatch(/@|Former member/);
+
+    expect((await entries('room.door_changed')).map((e) => e.payload)).toEqual([
+      { termsVersion: 1, termsHash: ROOM_TERMS_HASH, changes: [{ part: 'intro', to: 'Where the group plans.' }] },
+      { termsVersion: 2, termsHash: hash, changes: [{ part: 'terms', to: terms }] },
+    ]);
+    expect((await entries('room.consent_changed')).at(-1)).toMatchObject({ payload: { change: 'accepted', termsVersion: 2, termsHash: hash } });
   });
 });
 

@@ -11,8 +11,9 @@ import type { LedgerEvent } from '../ledger-events.js';
  */
 
 /**
- * What a member accepts at the door (spec rule 1), before any of the room is shown to them. A new version puts everyone
- * back at the door; the ledger records the version and the SHA-256 of the text each member accepted.
+ * The first terms, version 1: what a member accepts at the door (spec rule 1), before any of the room is shown to them,
+ * until an admin saves others (`changeDoor`). A new version puts everyone back at the door; the ledger records the
+ * version and the SHA-256 of the text each member accepted.
  */
 export const ROOM_TERMS = {
   version: 1,
@@ -31,7 +32,59 @@ export const ROOM_TERMS = {
 } as const;
 export const ROOM_TERMS_HASH = sha256Hex(ROOM_TERMS.text);
 
+/** The line under the door's heading until an admin changes it. */
+export const ROOM_INTRO =
+  'A chat room for Active members, with an assistant that keeps the group’s decisions and action items and answers questions about them.';
+
+/** Terms a member accepts: their version, their text (paragraphs split by a blank line) and its SHA-256. */
+export interface RoomTerms {
+  readonly version: number;
+  readonly text: string;
+  readonly hash: string;
+}
+
+/**
+ * `room_state/door`: what the door shows, as admins last saved it (Admin › Members' room); `DEFAULT_DOOR` until one
+ * does. The intro line changes freely; changed terms are a new version, which sends everyone back to the door.
+ */
+export interface RoomDoorRecord {
+  /** Counts every save, so two admins editing at once cannot overwrite each other unseen. */
+  readonly revision: number;
+  /** Empty shows no line. */
+  readonly intro: string;
+  readonly terms: RoomTerms;
+  readonly introChangedAt: string | null;
+  readonly introChangedBy: string | null;
+  readonly termsChangedAt: string | null;
+  readonly termsChangedBy: string | null;
+}
+
+export const DEFAULT_DOOR: RoomDoorRecord = {
+  revision: 0,
+  intro: ROOM_INTRO,
+  terms: { version: ROOM_TERMS.version, text: ROOM_TERMS.text, hash: ROOM_TERMS_HASH },
+  introChangedAt: null,
+  introChangedBy: null,
+  termsChangedAt: null,
+  termsChangedBy: null,
+};
+
+/** The intro as saved: one line, its spaces collapsed. */
+export const tidyRoomIntro = (intro: string): string => intro.replace(/\s+/g, ' ').trim();
+
+/** Terms as saved: line ends unified, no trailing spaces, and one blank line at most between paragraphs. */
+export function tidyRoomTerms(terms: string): string {
+  return terms
+    .replace(/\r\n?/g, '\n')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export const ROOM_LIMITS = {
+  /** The door's intro line and its terms, once tidied. */
+  intro: 300,
+  terms: 8000,
   message: 4000,
   question: 1000,
   decision: 1000,
@@ -106,6 +159,25 @@ export type RoomActionUpdate = z.infer<typeof roomActionUpdateSchema>;
 /** `PUT /v1/room/assistant`: a Membership Admin's kill switch. */
 export const roomAssistantSchema = z.strictObject({ on: z.boolean() });
 export type RoomAssistantInput = z.infer<typeof roomAssistantSchema>;
+
+/**
+ * `PUT /v1/admin/room/door`: the door's intro line and terms, tidied, and the revision they were edited from. Raw text is
+ * capped well above the limits, which apply once it is tidied.
+ */
+export const roomDoorSchema = z.strictObject({
+  basedOn: z.number().int().min(0),
+  intro: z
+    .string()
+    .max(3000)
+    .transform(tidyRoomIntro)
+    .pipe(z.string().max(ROOM_LIMITS.intro, `the intro can be at most ${ROOM_LIMITS.intro} characters`)),
+  terms: z
+    .string()
+    .max(40_000)
+    .transform(tidyRoomTerms)
+    .pipe(z.string().min(1, 'write the terms').max(ROOM_LIMITS.terms, `the terms can be at most ${ROOM_LIMITS.terms} characters`)),
+});
+export type RoomDoorInput = z.infer<typeof roomDoorSchema>;
 
 /** `GET /v1/room/messages`: a page of history, newest last, before a message (or the latest). */
 export const roomHistoryQuerySchema = z.strictObject({ before: id.optional() });
@@ -283,34 +355,80 @@ export interface RoomConsentChangedPayload {
   readonly termsHash: string;
 }
 
+/**
+ * `room.door_changed`: an admin changed the door's words (Auditors only). Each part changed, with its new text, so the
+ * ledger keeps every version of the terms members accepted; the terms' version and hash are those in force after.
+ */
+export interface RoomDoorChangedPayload {
+  readonly termsVersion: number;
+  readonly termsHash: string;
+  readonly changes: readonly { readonly part: 'intro' | 'terms'; readonly to: string }[];
+}
+
 export const checkRoomMember = (status: string | null | undefined): Check =>
   status === 'active' ? OK : refuse('forbidden', 'the room is for Active members');
 
-/** Whether the member accepted the current terms and has not left since. */
-export const inRoom = (consent: RoomConsentRecord | null): boolean =>
-  !!consent && consent.withdrawnAt === null && consent.termsVersion === ROOM_TERMS.version;
+/** Whether the member accepted the terms in force (`version`) and has not left since. */
+export const inRoom = (consent: RoomConsentRecord | null, version: number): boolean =>
+  !!consent && consent.withdrawnAt === null && consent.termsVersion === version;
 
-export const checkInRoom = (consent: RoomConsentRecord | null): Check =>
-  inRoom(consent)
+export const checkInRoom = (consent: RoomConsentRecord | null, version: number): Check =>
+  inRoom(consent, version)
     ? OK
     : refuse('forbidden', consent && !consent.withdrawnAt ? 'the room’s terms have changed: accept them to enter again' : 'accept the room’s terms to enter');
 
 /** Accepting the terms shown: the consent record and its ledger entry, written together before the room opens. */
 export function acceptTerms(
   current: RoomConsentRecord | null,
+  terms: RoomTerms,
   input: RoomConsentInput,
   accountId: string,
   at: string,
 ): Outcome<{ consent: RoomConsentRecord; event: LedgerEvent }> {
-  if (input.version !== ROOM_TERMS.version) return refuse('conflict', 'the terms have changed since you read them: read them again');
-  if (inRoom(current)) return refuse('conflict', 'you have already accepted these terms');
+  if (input.version !== terms.version) return refuse('conflict', 'the terms have changed since you read them: read them again');
+  if (inRoom(current, terms.version)) return refuse('conflict', 'you have already accepted these terms');
   return {
     ok: true,
     value: {
-      consent: { accountId, termsVersion: ROOM_TERMS.version, termsHash: ROOM_TERMS_HASH, acceptedAt: at, withdrawnAt: null },
-      event: consentEvent(accountId, { change: 'accepted', termsVersion: ROOM_TERMS.version, termsHash: ROOM_TERMS_HASH }),
+      consent: { accountId, termsVersion: terms.version, termsHash: terms.hash, acceptedAt: at, withdrawnAt: null },
+      event: consentEvent(accountId, { change: 'accepted', termsVersion: terms.version, termsHash: terms.hash }),
     },
   };
+}
+
+/**
+ * An admin saves the door's words, tidied, if nobody saved since `basedOn`. Changed terms are the next version, so
+ * everyone in the room goes back to the door to accept them (`newTerms`); the intro line changes on its own. Null when
+ * nothing changed.
+ */
+export function changeDoor(
+  door: RoomDoorRecord,
+  input: RoomDoorInput,
+  actor: string,
+  at: string,
+): Outcome<{ door: RoomDoorRecord; newTerms: boolean; event: LedgerEvent } | null> {
+  if (input.basedOn !== door.revision) {
+    return refuse('conflict', 'someone else changed the room’s door since you opened it; reload to see their change');
+  }
+  const newIntro = input.intro !== door.intro;
+  const newTerms = input.terms !== door.terms.text;
+  if (!newIntro && !newTerms) return { ok: true, value: null };
+  const terms: RoomTerms = newTerms ? { version: door.terms.version + 1, text: input.terms, hash: sha256Hex(input.terms) } : door.terms;
+  const changed: RoomDoorRecord = {
+    revision: door.revision + 1,
+    intro: input.intro,
+    terms,
+    introChangedAt: newIntro ? at : door.introChangedAt,
+    introChangedBy: newIntro ? actor : door.introChangedBy,
+    termsChangedAt: newTerms ? at : door.termsChangedAt,
+    termsChangedBy: newTerms ? actor : door.termsChangedBy,
+  };
+  const payload: RoomDoorChangedPayload = {
+    termsVersion: terms.version,
+    termsHash: terms.hash,
+    changes: [...(newIntro ? [{ part: 'intro' as const, to: input.intro }] : []), ...(newTerms ? [{ part: 'terms' as const, to: input.terms }] : [])],
+  };
+  return { ok: true, value: { door: changed, newTerms, event: { type: 'room.door_changed', actor, subject: null, payload: { ...payload } } } };
 }
 
 /** `/leave-room`: consent withdrawn, effective from the next request. */

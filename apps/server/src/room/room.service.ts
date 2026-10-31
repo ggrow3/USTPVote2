@@ -3,6 +3,7 @@ import type { Transaction } from 'firebase-admin/firestore';
 import {
   acceptTerms,
   assistantView,
+  changeDoor,
   checkAsk,
   checkForget,
   checkInRoom,
@@ -32,6 +33,7 @@ import {
   type RoomAskInput,
   type RoomConsentInput,
   type RoomDecisionInput,
+  type RoomDoorInput,
   type RoomFeedRecord,
   type RoomHistory,
   type RoomJobRecord,
@@ -107,21 +109,22 @@ export class RoomService {
    * the room its state.
    */
   async status(caller: RoomCaller): Promise<RoomStatus> {
-    const [member, consent, feed] = await Promise.all([
+    const [member, consent, feed, door] = await Promise.all([
       this.members.find(caller.accountId),
       this.repo.findConsent(caller.accountId),
       this.repo.findFeed(),
+      this.repo.findDoor(),
     ]);
     const active = checkRoomMember(member?.status).ok;
     if (!feed.open) {
       const ctx = await this.adminsNamed(caller, feed.openChangedBy ? [feed.openChangedBy] : []);
       const by = feed.openChangedBy ? { accountId: feed.openChangedBy, name: ctx.people.get(feed.openChangedBy)! } : null;
-      return roomStatus(active, consent, null, { at: feed.openChangedAt, by });
+      return roomStatus(door, active, consent, null, { at: feed.openChangedAt, by });
     }
-    if (!active || !inRoom(consent)) return roomStatus(active, consent, null);
-    const [people, roles] = await Promise.all([this.people(), this.directory.activeRoles(caller.accountId)]);
+    if (!active || !inRoom(consent, door.terms.version)) return roomStatus(door, active, consent, null);
+    const [people, roles] = await Promise.all([this.people(door.terms.version), this.directory.activeRoles(caller.accountId)]);
     const ctx = await this.contextFor(caller, [], feed);
-    return roomStatus(true, consent, {
+    return roomStatus(door, true, consent, {
       seq: feed.seq,
       memorySeq: feed.memorySeq,
       peopleSeq: feed.peopleSeq,
@@ -135,7 +138,8 @@ export class RoomService {
   async accept(caller: RoomCaller, input: RoomConsentInput): Promise<RoomStatus> {
     assertCheck(checkRoomMember((await this.members.find(caller.accountId))?.status));
     await this.change(async (tx, feed) => {
-      const { consent, event } = accepted(acceptTerms(await this.repo.getConsent(tx, caller.accountId), input, caller.accountId, new Date().toISOString()));
+      const [current, door] = await Promise.all([this.repo.getConsent(tx, caller.accountId), this.repo.getDoor(tx)]);
+      const { consent, event } = accepted(acceptTerms(current, door.terms, input, caller.accountId, new Date().toISOString()));
       await this.ledger.record(tx, [event]);
       this.repo.setConsent(tx, consent);
       return { result: undefined, feed: { peopleSeq: feed.seq + 1 } };
@@ -354,11 +358,32 @@ export class RoomService {
     return this.status(caller);
   }
 
-  /** The admins' switches and how the room is doing (Admin › Members' room). */
+  /** The admins' switches, the door's words and how the room is doing (Admin › Members' room). */
   async settings(caller: RoomCaller): Promise<RoomSettingsView> {
-    const [feed, people, roles] = await Promise.all([this.repo.findFeed(), this.people(), this.directory.activeRoles(caller.accountId)]);
-    const ctx = await this.adminsNamed(caller, [feed.openChangedBy, feed.serverChangedBy].filter((x): x is string => !!x));
-    return roomSettingsView(feed, this.model.kind, people.length, roles.includes('system_admin'), ctx);
+    const [feed, door, roles] = await Promise.all([this.repo.findFeed(), this.repo.findDoor(), this.directory.activeRoles(caller.accountId)]);
+    const people = await this.people(door.terms.version);
+    const changers = [feed.openChangedBy, feed.serverChangedBy, door.introChangedBy, door.termsChangedBy].filter((x): x is string => !!x);
+    const ctx = await this.adminsNamed(caller, [...new Set(changers)]);
+    return roomSettingsView(feed, door, this.model.kind, people.length, roles.includes('system_admin'), ctx);
+  }
+
+  /**
+   * An admin saves the door's intro line and terms, ledgered as `room.door_changed`. Changed terms are a new version:
+   * everyone in the room is back at the door at once (open pages learn of it through the feed) and accepts them to come
+   * back, and a notice in the room says who changed them.
+   */
+  async saveDoor(caller: RoomCaller, input: RoomDoorInput): Promise<RoomSettingsView> {
+    await this.change(async (tx, feed) => {
+      const at = new Date().toISOString();
+      const saved = accepted(changeDoor(await this.repo.getDoor(tx), input, caller.accountId, at));
+      if (!saved) return { result: undefined, unchanged: true };
+      await this.ledger.record(tx, [saved.event]);
+      this.repo.setDoor(tx, saved.door);
+      if (!saved.newTerms) return { result: undefined, unchanged: true };
+      this.notice(tx, caller.accountId, `changed the room’s terms (version ${saved.door.terms.version}); everyone accepts them again to stay`, null, feed.seq + 1, at);
+      return { result: undefined, feed: { peopleSeq: feed.seq + 1 } };
+    });
+    return this.settings(caller);
   }
 
   /**
@@ -405,15 +430,20 @@ export class RoomService {
 
   /** Active, accepted the current terms (spec rule 1), and the room open; checked on every request. */
   private async assertInRoom(caller: RoomCaller): Promise<void> {
-    const [member, consent, feed] = await Promise.all([this.members.find(caller.accountId), this.repo.findConsent(caller.accountId), this.repo.findFeed()]);
+    const [member, consent, feed, door] = await Promise.all([
+      this.members.find(caller.accountId),
+      this.repo.findConsent(caller.accountId),
+      this.repo.findFeed(),
+      this.repo.findDoor(),
+    ]);
     assertCheck(checkRoomMember(member?.status));
     assertCheck(checkRoomOpen(feed));
-    assertCheck(checkInRoom(consent));
+    assertCheck(checkInRoom(consent, door.terms.version));
   }
 
   private async isInRoom(accountId: string): Promise<boolean> {
-    const [member, consent] = await Promise.all([this.members.find(accountId), this.repo.findConsent(accountId)]);
-    return checkRoomMember(member?.status).ok && inRoom(consent);
+    const [member, consent, door] = await Promise.all([this.members.find(accountId), this.repo.findConsent(accountId), this.repo.findDoor()]);
+    return checkRoomMember(member?.status).ok && inRoom(consent, door.terms.version);
   }
 
   private async assertUnderRate(accountId: string): Promise<void> {
@@ -425,9 +455,9 @@ export class RoomService {
     assertCheck(checkMessageRate(minute, day));
   }
 
-  /** Everyone in the room: Active members who accepted the current terms, by name. */
-  private async people(): Promise<RoomPerson[]> {
-    const ids = await this.repo.consentedIds();
+  /** Everyone in the room: Active members who accepted the terms in force (`version`), by name. */
+  private async people(version: number): Promise<RoomPerson[]> {
+    const ids = await this.repo.consentedIds(version);
     const records = await this.members.findMany(ids);
     return ids
       .flatMap((accountId, i) => {
@@ -442,10 +472,14 @@ export class RoomService {
     return m ? (m.preferredName ?? m.legalName) : 'a former member';
   }
 
-  /** Names for the messages' authors and whoever switched the assistant. */
+  /**
+   * Names for the messages' authors and whoever switched the assistant. A notice's author may be an admin with no
+   * membership (who opened or closed the room, switched its server or changed its terms), named as `adminsNamed` does.
+   */
   private async contextFor(caller: RoomCaller, messages: readonly RoomMessageRecord[], feed?: RoomFeedRecord): Promise<RoomViewContext> {
     const ids = [...new Set([...messages.map((m) => m.authorId), feed?.switchedBy].filter((x): x is string => !!x))];
-    return this.named(caller, ids);
+    const admins = messages.flatMap((m) => (m.kind === 'notice' && m.authorId ? [m.authorId] : []));
+    return this.named(caller, ids, admins);
   }
 
   private async memoryContext(caller: RoomCaller, items: readonly RoomMemoryRecord[]): Promise<RoomViewContext> {
@@ -457,15 +491,18 @@ export class RoomService {
    * Names for admins who switched something: a System Admin may hold no membership, so their account's display name,
    * else "an admin"; never an email address.
    */
-  private async adminsNamed(caller: RoomCaller, ids: readonly string[]): Promise<RoomViewContext> {
-    const [records, accounts] = await Promise.all([this.members.findMany(ids), this.directory.displayNames(ids)]);
-    const people = new Map(ids.map((id, i) => [id, records[i] ? (records[i]!.preferredName ?? records[i]!.legalName) : (accounts.get(id) ?? 'an admin')]));
-    return { accountId: caller.accountId, moderator: caller.moderator, people };
+  private adminsNamed(caller: RoomCaller, ids: readonly string[]): Promise<RoomViewContext> {
+    return this.named(caller, ids, ids);
   }
 
-  private async named(caller: RoomCaller, ids: readonly string[]): Promise<RoomViewContext> {
+  /** Members by name (preferred, else legal); anyone else is a former member, or, if among `admins`, named as an admin. */
+  private async named(caller: RoomCaller, ids: readonly string[], admins: readonly string[] = []): Promise<RoomViewContext> {
     const records = await this.members.findMany(ids);
-    const people = new Map(ids.map((id, i) => [id, records[i] ? (records[i]!.preferredName ?? records[i]!.legalName) : 'Former member']));
+    const unlisted = ids.filter((id, i) => !records[i] && admins.includes(id));
+    const accounts = unlisted.length ? await this.directory.displayNames(unlisted) : new Map<string, string>();
+    const name = (id: string, i: number) =>
+      records[i] ? (records[i]!.preferredName ?? records[i]!.legalName) : unlisted.includes(id) ? (accounts.get(id) ?? 'an admin') : 'Former member';
+    const people = new Map(ids.map((id, i) => [id, name(id, i)]));
     return { accountId: caller.accountId, moderator: caller.moderator, people };
   }
 }

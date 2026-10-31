@@ -1,14 +1,14 @@
 import {
-  ROOM_TERMS,
-  ROOM_TERMS_HASH,
   inRoom,
   type RoomConsentRecord,
+  type RoomDoorRecord,
   type RoomFeedRecord,
   type RoomMemoryRecord,
   type RoomMessageKind,
   type RoomMessageRecord,
   type RoomRef,
   type RoomSource,
+  type RoomTerms,
 } from './room.js';
 
 /**
@@ -32,7 +32,9 @@ export interface RoomStatus {
   /** An admin has the room open; closed, nobody enters or uses it (`closed` says who and when). */
   readonly open: boolean;
   readonly closed: { readonly at: string | null; readonly by: RoomPerson | null } | null;
-  readonly terms: { readonly version: number; readonly text: string; readonly hash: string };
+  /** The line under the door's heading, as an admin set it; empty shows none. */
+  readonly intro: string;
+  readonly terms: RoomTerms;
   /** Accepted the current terms and not left since. */
   readonly inRoom: boolean;
   /** Their last acceptance, of whichever version, and whether they left after it. */
@@ -158,10 +160,21 @@ export interface RoomSettingsView {
   readonly pending: number;
   /** This admin may switch the server: System Admins only, since it decides what the GPU costs. */
   readonly canSwitchServer: boolean;
+  /** What the door shows, who changed each part last, and the revision to edit from. */
+  readonly door: {
+    readonly revision: number;
+    readonly intro: string;
+    readonly terms: RoomTerms;
+    readonly introChangedAt: string | null;
+    readonly introChangedBy: RoomPerson | null;
+    readonly termsChangedAt: string | null;
+    readonly termsChangedBy: RoomPerson | null;
+  };
 }
 
 export function roomSettingsView(
   feed: RoomFeedRecord,
+  door: RoomDoorRecord,
   model: RoomModelKind,
   people: number,
   canSwitchServer: boolean,
@@ -181,6 +194,15 @@ export function roomSettingsView(
     people,
     pending: feed.pending.length,
     canSwitchServer,
+    door: {
+      revision: door.revision,
+      intro: door.intro,
+      terms: door.terms,
+      introChangedAt: door.introChangedAt,
+      introChangedBy: door.introChangedBy ? person(ctx, door.introChangedBy) : null,
+      termsChangedAt: door.termsChangedAt,
+      termsChangedBy: door.termsChangedBy ? person(ctx, door.termsChangedBy) : null,
+    },
   };
 }
 
@@ -269,19 +291,21 @@ export function assistantView(feed: RoomFeedRecord, model: RoomModelKind, ctx: R
   };
 }
 
-/** The door: the terms always; the room's state only for a member in it, while it is open. */
+/** The door: its intro and terms always; the room's state only for a member in it, while it is open. */
 export function roomStatus(
+  door: RoomDoorRecord,
   member: boolean,
   consent: RoomConsentRecord | null,
   room: RoomStatus['room'],
   closed: RoomStatus['closed'] = null,
 ): RoomStatus {
-  const entered = member && inRoom(consent) && !closed;
+  const entered = member && inRoom(consent, door.terms.version) && !closed;
   return {
     member,
     open: !closed,
     closed,
-    terms: { version: ROOM_TERMS.version, text: ROOM_TERMS.text, hash: ROOM_TERMS_HASH },
+    intro: door.intro,
+    terms: door.terms,
     inRoom: entered,
     consent: consent ? { version: consent.termsVersion, acceptedAt: consent.acceptedAt, withdrawnAt: consent.withdrawnAt } : null,
     room: entered ? room : null,

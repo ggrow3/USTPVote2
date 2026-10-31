@@ -2,9 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { FieldValue, type CollectionReference, type DocumentSnapshot, type Transaction } from 'firebase-admin/firestore';
 import {
   Collections,
+  DEFAULT_DOOR,
   EMPTY_FEED,
-  ROOM_TERMS,
   type RoomConsentRecord,
+  type RoomDoorRecord,
   type RoomFeedRecord,
   type RoomJobRecord,
   type RoomMemoryRecord,
@@ -19,8 +20,8 @@ export interface Nearest<T> {
 }
 
 /**
- * Storage of the members' room (design §5.10, §11): `room_consents`, `room_messages`, `room_memory`, `room_jobs` and
- * `room_state/feed`. Only the room context uses it. Members' messages and memory items carry an `embedding` (a
+ * Storage of the members' room (design §5.10, §11): `room_consents`, `room_messages`, `room_memory`, `room_jobs`,
+ * `room_state/feed` and `room_state/door`. Only the room context uses it. Members' messages and memory items carry an `embedding` (a
  * Firestore vector, top-level so the emulator finds it too) and `embedModel`, the model that made it, null until the
  * assistant embeds them; the vector search needs the vector indexes in `firestore.indexes.json`.
  */
@@ -48,6 +49,10 @@ export class RoomRepository {
     return this.firebase.db.collection(Collections.roomState).doc('feed');
   }
 
+  private doorDoc() {
+    return this.firebase.db.collection(Collections.roomState).doc('door');
+  }
+
   // --- consent ---------------------------------------------------------------------------------------------------
 
   async findConsent(accountId: string): Promise<RoomConsentRecord | null> {
@@ -62,10 +67,25 @@ export class RoomRepository {
     tx.set(this.consents().doc(consent.accountId), consent);
   }
 
-  /** Everyone who accepted the current terms and has not left (some may no longer be Active). */
-  async consentedIds(): Promise<string[]> {
-    const snap = await this.consents().where('withdrawnAt', '==', null).where('termsVersion', '==', ROOM_TERMS.version).get();
+  /** Everyone who accepted terms `version` and has not left (some may no longer be Active). */
+  async consentedIds(version: number): Promise<string[]> {
+    const snap = await this.consents().where('withdrawnAt', '==', null).where('termsVersion', '==', version).get();
     return snap.docs.map((d) => (d.data() as RoomConsentRecord).accountId);
+  }
+
+  // --- the door --------------------------------------------------------------------------------------------------
+
+  /** The door's words as an admin last saved them, else the first ones. */
+  async findDoor(): Promise<RoomDoorRecord> {
+    return ((await this.doorDoc().get()).data() as RoomDoorRecord | undefined) ?? DEFAULT_DOOR;
+  }
+
+  async getDoor(tx: Transaction): Promise<RoomDoorRecord> {
+    return ((await tx.get(this.doorDoc())).data() as RoomDoorRecord | undefined) ?? DEFAULT_DOOR;
+  }
+
+  setDoor(tx: Transaction, door: RoomDoorRecord): void {
+    tx.set(this.doorDoc(), door);
   }
 
   // --- the feed --------------------------------------------------------------------------------------------------

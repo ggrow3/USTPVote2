@@ -43,7 +43,10 @@ export const Collections = {
   roomMemory: 'room_memory',
   /** `room_jobs/{jobId}`: questions waiting for the assistant, run on the worker. */
   roomJobs: 'room_jobs',
-  /** `room_state/feed`: the room's change counter, the assistant's switch and the questions it is working on. */
+  /**
+   * `room_state/feed`: the room's change counter, the assistant's switch and the questions it is working on;
+   * `room_state/door`: the door's intro line and the terms in force.
+   */
   roomState: 'room_state',
   eligibilitySnapshots: 'eligibility_snapshots',
   // voting
