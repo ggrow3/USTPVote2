@@ -129,6 +129,14 @@
       ]
     },
     {
+      "collectionGroup": "course_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "threadId", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "DESCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "course_profiles",
       "queryScope": "COLLECTION",
       "fields": [

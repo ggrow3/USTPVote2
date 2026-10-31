@@ -199,7 +199,7 @@ export const DEFAULT_HUB: Hub = {
       links: [
         link('vote', 'vote', 'USTP Vote', 'Sign in to vote on proposals and in party elections', '/vote', { featured: true }),
         link('register', 'register', 'Become a member', 'Apply to join the USTP', '/register'),
-        link('course', 'course', 'Transhumanism course', 'Free lessons, quizzes and a certificate', '/course/transhumanism'),
+        link('course', 'course', 'Courses', 'Free lessons, quizzes and certificates', '/courses'),
         link('website', 'website', 'Official website', 'transhumanist-party.org', VERIFIED.website),
         link('events', 'events', 'Events', 'Meetings and gatherings'),
         link('donate', 'donate', 'Donate', 'Support the party'),

@@ -328,7 +328,7 @@ describe('start pages', () => {
     expect(startPagePath('home')).toBe('/vote');
     expect(startPagePath('ballot')).toBe('/ballot');
     expect(startPagePath('offices')).toBe('/offices');
-    expect(startPagePath('course')).toBe('/course/transhumanism');
+    expect(startPagePath('course')).toBe('/courses');
     expect(startPagePath('admin/elections')).toBe('/admin?tab=elections');
   });
 });

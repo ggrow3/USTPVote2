@@ -3,13 +3,25 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import {
   Collections,
+  courseIdFromTitle,
+  coursePlacementProblem,
+  courseThreadId,
   draftCoursePackage,
+  isCourseId,
   isCourseImageId,
+  learnerCourseState,
+  missingPrerequisites,
   PASS_PERCENT,
+  placementOf,
   portraitProblem,
   publishedCoursePackage,
   uuidv7,
   type CertificateVerification,
+  type CourseLink,
+  type CourseMap,
+  type CourseMapEntry,
+  type CourseMapInput,
+  type CourseThreadRecord,
   type CoursePackage,
   type CourseAttemptRecord,
   type CourseCatalog,
@@ -28,6 +40,7 @@ import {
   type SubmitCourseQuizInput,
 } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
+import { FIRST_COURSE_POSITION, MAP_SEED, mapCourses } from './course-map-seed.js';
 import { normalizePortrait } from './portrait.js';
 import { transhumanismCourse, transhumanismLessons, transhumanismProfiles } from './transhumanism-seed.js';
 
@@ -60,22 +73,28 @@ export class CourseService {
   ) {}
 
   async catalog(courseId: string): Promise<CourseCatalog> {
-    return this.catalogOf(await this.published(courseId));
+    const { course, version } = await this.publishedCourse(courseId);
+    return this.catalogOf(version, await this.links(course.prerequisites));
   }
 
-  private catalogOf(version: CourseVersionRecord): CourseCatalog {
+  private catalogOf(version: CourseVersionRecord, prerequisites: readonly CourseLink[]): CourseCatalog {
     return {
       course: { courseId: version.courseId, title: version.title, summary: version.summary, publishedVersion: version.version },
       lessons: version.lessons.map(publicLesson),
       profiles: version.profiles.map(withPortraitImage),
+      prerequisites,
     };
   }
 
   async learner(courseId: string, accountId: string): Promise<LearnerCourseView> {
-    const [currentVersion, progress, certificate] = await Promise.all([
-      this.published(courseId),
-      this.firebase.db.collection(Collections.courseProgress).doc(progressId(courseId, accountId)).get(),
-      this.firebase.db.collection(Collections.courseCertificates).doc(progressId(courseId, accountId)).get(),
+    const db = this.firebase.db;
+    const { course, version: currentVersion } = await this.publishedCourse(courseId);
+    const [progress, certificate, thread, prerequisites, passed] = await Promise.all([
+      db.collection(Collections.courseProgress).doc(progressId(courseId, accountId)).get(),
+      db.collection(Collections.courseCertificates).doc(progressId(courseId, accountId)).get(),
+      db.collection(Collections.courseThreads).doc(courseThreadId(courseId, accountId)).get(),
+      this.links(course.prerequisites),
+      this.passedCourses(accountId, course.prerequisites),
     ]);
     const savedProgress = progress.data() as CourseProgressRecord | undefined;
     const savedCertificate = certificate.data() as CourseCertificateRecord | undefined;
@@ -83,12 +102,196 @@ export class CourseService {
     // immutable version they started, while people who have already finished see the current catalogue and can still
     // download their earlier credential.
     const learningVersion = savedProgress && savedProgress.version !== currentVersion.version ? await this.version(courseId, savedProgress.version) : currentVersion;
-    const catalog = this.catalogOf(learningVersion);
+    const catalog = this.catalogOf(learningVersion, prerequisites);
     return {
       ...catalog,
       progress: savedProgress?.version === learningVersion.version ? savedProgress : null,
       certificate: savedCertificate && savedCertificate.revokedAt === null ? pickCertificate(savedCertificate) : null,
+      missingPrerequisites: prerequisites.filter((link) => !passed.has(link.courseId)),
+      messaging: (thread.data() as CourseThreadRecord | undefined)?.messaging ?? false,
     };
+  }
+
+  /**
+   * The course map and list (design §10.8): every published course, and every course placed on the map, a draft
+   * showing only its title as coming soon. For a signed-in learner, how they stand in each.
+   */
+  async courseMap(accountId: string | null): Promise<CourseMap> {
+    const records = await this.records();
+    const listings = await this.listings(records);
+    const courses: CourseMapEntry[] = records
+      .filter((record) => listings.has(record.courseId) || record.position)
+      .map((record) => {
+        const listed = listings.get(record.courseId);
+        return {
+          courseId: record.courseId,
+          title: listed?.title ?? record.title,
+          summary: listed?.summary ?? null,
+          published: !!listed,
+          lessonCount: listed?.lessons ?? 0,
+          prerequisites: record.prerequisites,
+          position: record.position,
+        };
+      });
+    if (!accountId) return { courses };
+    if (!courses.length) return { courses, status: [] };
+
+    const db = this.firebase.db;
+    const ids = courses.map((course) => course.courseId);
+    const progress = new Map(
+      (await db.getAll(...ids.map((id) => db.collection(Collections.courseProgress).doc(progressId(id, accountId)))))
+        .filter((snap) => snap.exists)
+        .map((snap) => [snap.get('courseId') as string, snap.data() as CourseProgressRecord]),
+    );
+    const passed = await this.passedCourses(accountId, ids);
+    // A learner part-way through an earlier version is counted against that version's lessons.
+    const earlier = records.filter((record) => progress.has(record.courseId) && progress.get(record.courseId)!.version !== record.publishedVersion);
+    const earlierLessons = new Map(
+      (await this.versionsOf(earlier.map((record) => [record.courseId, progress.get(record.courseId)!.version] as const))).map((version) => [
+        version.courseId,
+        version.lessons.length,
+      ]),
+    );
+    const status = courses.map((course) => {
+      const started = progress.get(course.courseId);
+      const lessonCount = earlierLessons.get(course.courseId) ?? course.lessonCount;
+      const missing = missingPrerequisites(course.prerequisites, passed);
+      return {
+        courseId: course.courseId,
+        state: learnerCourseState({ passed: passed.has(course.courseId), missing, started: !!started }),
+        lessonsPassed: passed.has(course.courseId) ? lessonCount : Math.min(started?.completedLessonIds.length ?? 0, lessonCount),
+        lessonCount,
+        missing,
+      };
+    });
+    return { courses, status };
+  }
+
+  /** Every course, drafts included, for the Course tab's course picker and map, in map order. */
+  async adminCourses(): Promise<readonly CourseRecord[]> {
+    return this.records();
+  }
+
+  /** A new draft course, off the map, with an ID made from its title. */
+  async createCourse(input: CourseMetadataInput, accountId: string): Promise<CourseRecord> {
+    await this.ensureSeeded();
+    const db = this.firebase.db;
+    const base = courseIdFromTitle(input.title).slice(0, 56).replace(/-+$/, '') || 'course';
+    const candidates = [base, ...Array.from({ length: 19 }, (_, i) => `${base}-${i + 2}`)];
+    return db.runTransaction(async (tx) => {
+      const snaps = await tx.getAll(...candidates.map((id) => db.collection(Collections.courses).doc(id)));
+      const index = snaps.findIndex((snap) => !snap.exists);
+      if (index < 0) throw new ConflictException('there are already many courses with this title; choose another');
+      const now = new Date().toISOString();
+      const record: CourseRecord = {
+        courseId: candidates[index]!,
+        ...input,
+        status: 'draft',
+        version: 0,
+        publishedVersion: null,
+        prerequisites: [],
+        position: null,
+        createdAt: now,
+        updatedAt: now,
+        updatedBy: accountId,
+      };
+      tx.create(snaps[index]!.ref, record);
+      return record;
+    });
+  }
+
+  /** Deletes a course that was never published, with its draft lessons and profiles; one that was keeps its record. */
+  async deleteCourse(courseId: string): Promise<void> {
+    await this.ensureSeeded();
+    const db = this.firebase.db;
+    const ref = db.collection(Collections.courses).doc(courseId);
+    await db.runTransaction(async (tx) => {
+      const [snap, all, lessons, profiles] = await Promise.all([
+        tx.get(ref),
+        tx.get(db.collection(Collections.courses)),
+        tx.get(db.collection(Collections.courseLessons).where('courseId', '==', courseId)),
+        tx.get(db.collection(Collections.courseProfiles).where('courseId', '==', courseId)),
+      ]);
+      if (!snap.exists) throw new NotFoundException('course not found');
+      if ((snap.data() as CourseRecord).publishedVersion !== null) {
+        throw new ConflictException('a published course cannot be deleted: learners keep its certificates and can still check them');
+      }
+      const after = all.docs.map((doc) => withPlacement(doc.data() as CourseRecord)).find((course) => course.prerequisites.includes(courseId));
+      if (after) throw new ConflictException(`${after.title} comes after this course; take it off that course's prerequisites first`);
+      for (const doc of [...lessons.docs, ...profiles.docs]) tx.delete(doc.ref);
+      tx.delete(ref);
+    });
+  }
+
+  /** Puts a course on the map, or takes it off, and sets the courses before it; both apply at once (design §10.8). */
+  async placeCourse(courseId: string, input: CourseMapInput, accountId: string): Promise<CourseRecord> {
+    await this.ensureSeeded();
+    const db = this.firebase.db;
+    return db.runTransaction(async (tx) => {
+      const courses = (await tx.get(db.collection(Collections.courses))).docs.map((doc) => withPlacement(doc.data() as CourseRecord));
+      const course = courses.find((candidate) => candidate.courseId === courseId);
+      if (!course) throw new NotFoundException('course not found');
+      const problem = coursePlacementProblem(courses, courseId, input);
+      if (problem) throw new ConflictException(problem);
+      tx.update(db.collection(Collections.courses).doc(courseId), {
+        prerequisites: input.prerequisites,
+        position: input.position,
+        placedAt: new Date().toISOString(),
+        placedBy: accountId,
+      });
+      return { ...course, prerequisites: input.prerequisites, position: input.position };
+    });
+  }
+
+  /** A course's record, placement included (404 for an ID that is no course). */
+  async record(courseId: string): Promise<CourseRecord> {
+    await this.ensureSeeded();
+    if (!isCourseId(courseId)) throw new NotFoundException('course not found');
+    const snap = await this.firebase.db.collection(Collections.courses).doc(courseId).get();
+    if (!snap.exists) throw new NotFoundException('course not found');
+    return withPlacement(snap.data() as CourseRecord);
+  }
+
+  private async records(): Promise<CourseRecord[]> {
+    await this.ensureSeeded();
+    const snap = await this.firebase.db.collection(Collections.courses).get();
+    return snap.docs.map((doc) => withPlacement(doc.data() as CourseRecord)).sort(mapOrder);
+  }
+
+  /** What learners see of each published course: its title, summary and number of lessons. */
+  private async listings(records: readonly CourseRecord[]): Promise<Map<string, { title: string; summary: string; lessons: number }>> {
+    const published = records.filter((record) => record.publishedVersion !== null);
+    const versions = await this.versionsOf(published.map((record) => [record.courseId, record.publishedVersion!] as const));
+    return new Map(versions.map((version) => [version.courseId, { title: version.title, summary: version.summary, lessons: version.lessons.length }]));
+  }
+
+  /** Published versions by course and number, without their profiles; one that is missing is left out. */
+  private async versionsOf(wanted: readonly (readonly [string, number])[]): Promise<Pick<CourseVersionRecord, 'courseId' | 'title' | 'summary' | 'lessons'>[]> {
+    if (!wanted.length) return [];
+    const db = this.firebase.db;
+    const refs = wanted.map(([courseId, version]) => db.collection(Collections.courseVersions).doc(versionId(courseId, version)));
+    const snaps = await db.getAll(...refs, { fieldMask: ['courseId', 'title', 'summary', 'lessons'] });
+    return snaps.filter((snap) => snap.exists).map((snap) => snap.data() as Pick<CourseVersionRecord, 'courseId' | 'title' | 'summary' | 'lessons'>);
+  }
+
+  /** The courses named, with the title learners see: the published one, or the draft's while none is published. */
+  private async links(courseIds: readonly string[]): Promise<CourseLink[]> {
+    if (!courseIds.length) return [];
+    const db = this.firebase.db;
+    const records = (await db.getAll(...courseIds.map((id) => db.collection(Collections.courses).doc(id))))
+      .filter((snap) => snap.exists)
+      .map((snap) => snap.data() as CourseRecord);
+    const listings = await this.listings(records);
+    return records.map((record) => ({ courseId: record.courseId, title: listings.get(record.courseId)?.title ?? record.title }));
+  }
+
+  /** Which of these courses the learner has passed: they hold its certificate, not revoked. */
+  async passedCourses(accountId: string, courseIds: readonly string[]): Promise<Set<string>> {
+    if (!courseIds.length) return new Set();
+    const db = this.firebase.db;
+    const snaps = await db.getAll(...courseIds.map((id) => db.collection(Collections.courseCertificates).doc(progressId(id, accountId))));
+    const certificates = snaps.map((snap) => snap.data() as CourseCertificateRecord | undefined);
+    return new Set(certificates.filter((certificate) => certificate?.revokedAt === null).map((certificate) => certificate!.courseId));
   }
 
   async adminContent(courseId: string): Promise<{ readonly course: CourseRecord; readonly lessons: readonly CourseLesson[]; readonly profiles: readonly FuturistProfile[] }> {
@@ -235,7 +438,12 @@ export class CourseService {
   }
 
   async submitQuiz(courseId: string, lessonId: string, input: SubmitCourseQuizInput, accountId: string): Promise<QuizResult> {
-    const published = await this.published(courseId);
+    const { course, version: published } = await this.publishedCourse(courseId);
+    const missing = missingPrerequisites(course.prerequisites, await this.passedCourses(accountId, course.prerequisites));
+    if (missing.length) {
+      const titles = (await this.links(missing)).map((link) => link.title);
+      throw new ConflictException(`pass ${titles.join(' and ')} first: this course's quizzes open once you have`);
+    }
     const lesson = published.lessons.find((candidate) => candidate.lessonId === lessonId);
     if (!lesson) throw new NotFoundException('lesson not found');
     if (input.answers.length !== lesson.questions.length) {
@@ -349,16 +557,13 @@ export class CourseService {
     });
   }
 
-  private async published(courseId: string): Promise<CourseVersionRecord> {
-    await this.ensureSeeded();
-    const course = await this.firebase.db.collection(Collections.courses).doc(courseId).get();
-    if (!course.exists) throw new NotFoundException('course not found');
-    const record = course.data() as CourseRecord;
-    if (record.publishedVersion === null) throw new NotFoundException('course is not published');
-    return this.version(courseId, record.publishedVersion);
+  private async publishedCourse(courseId: string): Promise<{ readonly course: CourseRecord; readonly version: CourseVersionRecord }> {
+    const course = await this.record(courseId);
+    if (course.publishedVersion === null) throw new NotFoundException('course is not published');
+    return { course, version: await this.version(courseId, course.publishedVersion) };
   }
 
-  private async version(courseId: string, version: number): Promise<CourseVersionRecord> {
+  async version(courseId: string, version: number): Promise<CourseVersionRecord> {
     const snapshot = await this.firebase.db.collection(Collections.courseVersions).doc(versionId(courseId, version)).get();
     if (!snapshot.exists) throw new NotFoundException('published course version not found');
     return snapshot.data() as CourseVersionRecord;
@@ -372,11 +577,32 @@ export class CourseService {
   }
 
   /**
-   * Seeds the course if it is missing. Checked each time, not remembered: the database can be emptied under a running
-   * server (the emulators between tests), and a seed that failed is simply tried again.
+   * Seeds the first course if it is missing, and the map's courses once. Checked each time, not remembered: the
+   * database can be emptied under a running server (the emulators between tests), and a seed that failed is simply
+   * tried again.
    */
   private async ensureSeeded(): Promise<void> {
-    if (!(await this.firebase.db.collection(Collections.courses).doc(COURSE_ID).get()).exists) await this.seedTranshumanism();
+    const db = this.firebase.db;
+    const [first, map] = await db.getAll(db.collection(Collections.courses).doc(COURSE_ID), db.collection(Collections.courseSeeds).doc(MAP_SEED));
+    if (!first!.exists) await this.seedTranshumanism();
+    if (!map!.exists) await this.seedMap();
+  }
+
+  /** Adds the map's draft courses that are missing, and puts the first course on the map if it is not on it yet. */
+  private async seedMap(): Promise<void> {
+    const db = this.firebase.db;
+    const markerRef = db.collection(Collections.courseSeeds).doc(MAP_SEED);
+    const firstRef = db.collection(Collections.courses).doc(COURSE_ID);
+    const refs = mapCourses.map((course) => db.collection(Collections.courses).doc(course.courseId));
+    await db.runTransaction(async (tx) => {
+      const [marker, first, ...existing] = await tx.getAll(markerRef, firstRef, ...refs);
+      if (marker!.exists) return;
+      existing.forEach((snap, index) => {
+        if (!snap.exists) tx.create(refs[index]!, mapCourses[index]!);
+      });
+      if (first!.exists && first!.get('position') === undefined) tx.update(firstRef, { prerequisites: [], position: FIRST_COURSE_POSITION });
+      tx.create(markerRef, { seed: MAP_SEED, seededAt: new Date().toISOString() });
+    });
   }
 
   private async seedTranshumanism(): Promise<void> {
@@ -409,6 +635,14 @@ const publicLesson = (lesson: CourseLesson): PublicCourseLesson => ({
   ...lesson,
   questions: lesson.questions.map(({ questionId, prompt, choices }) => ({ questionId, prompt, choices })),
 });
+/** Courses saved before the map have no prerequisites or position. */
+const withPlacement = (course: CourseRecord): CourseRecord => ({ ...course, ...placementOf(course) });
+/** Map order: row by row, left to right, then the courses off the map by title. */
+const mapOrder = (a: CourseRecord, b: CourseRecord) =>
+  (a.position ? 0 : 1) - (b.position ? 0 : 1) ||
+  (a.position?.row ?? 0) - (b.position?.row ?? 0) ||
+  (a.position?.column ?? 0) - (b.position?.column ?? 0) ||
+  a.title.localeCompare(b.title);
 /** Profiles saved, or published, before portraits could be uploaded have no portraitImage. */
 const withPortraitImage = (profile: FuturistProfile): FuturistProfile => ({ ...profile, portraitImage: profile.portraitImage ?? null });
 const pickCertificate = (certificate: CourseCertificateRecord) => ({

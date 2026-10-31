@@ -222,3 +222,167 @@ describe('Transhumanism course', () => {
     expect(published[1].portraitImage).toBeNull();
   });
 });
+
+type Learner = Awaited<ReturnType<TestApi['member']>>;
+
+/** Passes every lesson of a published course as the learner, with the answers its Course Administrator can see. */
+async function passCourse(courseId: string, learner: Learner, editor: Learner) {
+  const admin = await api.call('GET', `/v1/admin/courses/${courseId}`, editor);
+  for (const lesson of admin.body.lessons) {
+    const answers = lesson.questions.map((question: { correctIndex: number }) => question.correctIndex);
+    expect((await api.call('POST', `/v1/courses/${courseId}/lessons/${lesson.lessonId}/attempts`, learner, { answers })).status).toBe(201);
+  }
+}
+
+const oneQuestionLesson = {
+  order: 1,
+  title: 'Where the lab starts',
+  summary: 'A first lesson.',
+  body: 'One paragraph.',
+  estimatedMinutes: 5,
+  questions: [{ prompt: 'Is this the first lesson?', choices: ['Yes', 'No'], correctIndex: 0, explanation: 'It is.' }],
+};
+
+const FIRST_TITLE = 'Transhumanism: Human Flourishing and Democratic Futures';
+
+describe('Course map, students and instructor messages', () => {
+  it('lists the first course on its own and the map courses as coming soon, joined by their prerequisites', async () => {
+    const map = await api.call('GET', '/v1/public/courses');
+    expect(map.status).toBe(200);
+    expect(map.body.status).toBeUndefined();
+    const courses = map.body.courses as { courseId: string; prerequisites: string[] }[];
+    expect(courses.map((course) => course.courseId)).toEqual([
+      'transhumanism',
+      'fundamental-questions',
+      'the-coalition',
+      'allies',
+      'transhumanist-party',
+      'new-york-transhumanist-party',
+      'figures-of-transhumanism',
+      'why-the-transhumanist-party',
+      'why-the-new-york-transhumanist-party',
+    ]);
+    expect(courses[0]).toMatchObject({ title: FIRST_TITLE, published: true, lessonCount: 6, prerequisites: [], position: { row: 0, column: 0 } });
+    expect(courses.find((course) => course.courseId === 'the-coalition')).toMatchObject({
+      title: 'The Coalition',
+      summary: null,
+      published: false,
+      prerequisites: ['allies'],
+      position: { row: 1, column: 0 },
+    });
+    expect(courses.find((course) => course.courseId === 'why-the-new-york-transhumanist-party')!.prerequisites).toEqual(['new-york-transhumanist-party']);
+    expect((await api.call('GET', '/v1/public/courses/allies')).status).toBe(404);
+
+    const learner = await api.member('map-learner@example.test');
+    const status = (await api.call('GET', '/v1/courses', learner)).body.status as { courseId: string }[];
+    expect(status.find((s) => s.courseId === 'transhumanism')).toMatchObject({ state: 'not_started', lessonsPassed: 0, lessonCount: 6, missing: [] });
+    expect(status.find((s) => s.courseId === 'allies')).toMatchObject({ state: 'locked', missing: ['fundamental-questions'] });
+  });
+
+  it('lets Course Administrators add, place and delete courses, refusing loops, taken squares and published courses', async () => {
+    const editor = await courseAdmin('map-editor@example.test');
+    const learner = await api.member('not-an-editor@example.test');
+    expect((await api.call('POST', '/v1/admin/courses', learner, { title: 'Futures Lab', summary: 'Hands-on.' })).status).toBe(403);
+    expect((await api.call('PUT', '/v1/admin/courses/a%2Fb/map', editor, { prerequisites: [], position: null })).status).toBe(404);
+
+    const created = await api.call('POST', '/v1/admin/courses', editor, { title: 'Futures Lab', summary: 'Hands-on.' });
+    expect(created.status).toBe(201);
+    expect(created.body).toMatchObject({ courseId: 'futures-lab', status: 'draft', publishedVersion: null, prerequisites: [], position: null });
+    expect((await api.call('POST', '/v1/admin/courses', editor, { title: 'Futures lab!', summary: 'Again.' })).body.courseId).toBe('futures-lab-2');
+    const listed = async () => ((await api.call('GET', '/v1/public/courses')).body.courses as { courseId: string }[]).map((course) => course.courseId);
+    expect(await listed()).not.toContain('futures-lab');
+    expect((await api.call('GET', '/v1/admin/courses', editor)).body.map((course: { courseId: string }) => course.courseId)).toContain('futures-lab');
+
+    const placed = await api.call('PUT', '/v1/admin/courses/futures-lab/map', editor, { prerequisites: ['transhumanism'], position: { row: 3, column: 0 } });
+    expect(placed.status).toBe(200);
+    expect(await listed()).toContain('futures-lab');
+    const loop = await api.call('PUT', '/v1/admin/courses/transhumanism/map', editor, { prerequisites: ['futures-lab'], position: { row: 0, column: 0 } });
+    expect(loop.status).toBe(409);
+    expect(loop.body.detail).toBe(`that makes a loop nobody could finish: ${FIRST_TITLE} → Futures Lab → ${FIRST_TITLE}`);
+    const taken = await api.call('PUT', '/v1/admin/courses/futures-lab/map', editor, { prerequisites: [], position: { row: 0, column: 0 } });
+    expect(taken.status).toBe(409);
+    expect(taken.body.detail).toBe(`${FIRST_TITLE} is already on the map at row 1, column 1`);
+
+    expect((await api.call('DELETE', '/v1/admin/courses/fundamental-questions', editor)).status).toBe(409);
+    expect((await api.call('DELETE', '/v1/admin/courses/transhumanism', editor)).status).toBe(409);
+    expect((await api.call('POST', '/v1/admin/courses/futures-lab-2/lessons', editor, oneQuestionLesson)).status).toBe(201);
+    expect((await api.call('DELETE', '/v1/admin/courses/futures-lab-2', editor)).status).toBe(204);
+    expect((await api.call('GET', '/v1/admin/courses/futures-lab-2', editor)).status).toBe(404);
+  });
+
+  it('opens quizzes only once the prerequisites are passed, while the lessons stay readable', async () => {
+    const editor = await courseAdmin('lock-editor@example.test');
+    await api.call('POST', '/v1/admin/courses', editor, { title: 'Futures Lab', summary: 'Hands-on.' });
+    await api.call('POST', '/v1/admin/courses/futures-lab/lessons', editor, oneQuestionLesson);
+    expect((await api.call('POST', '/v1/admin/courses/futures-lab/publish', editor)).body.version).toBe(1);
+    await api.call('PUT', '/v1/admin/courses/futures-lab/map', editor, { prerequisites: ['transhumanism'], position: { row: 3, column: 0 } });
+
+    const learner = await api.member('lock-learner@example.test');
+    expect((await api.call('GET', '/v1/public/courses/futures-lab')).body.prerequisites).toEqual([{ courseId: 'transhumanism', title: FIRST_TITLE }]);
+    const before = await api.call('GET', '/v1/courses/futures-lab', learner);
+    expect(before.body.lessons).toHaveLength(1);
+    expect(before.body.missingPrerequisites).toEqual([{ courseId: 'transhumanism', title: FIRST_TITLE }]);
+    const lessonId = before.body.lessons[0].lessonId as string;
+    const refused = await api.call('POST', `/v1/courses/futures-lab/lessons/${lessonId}/attempts`, learner, { answers: [0] });
+    expect(refused.status).toBe(409);
+    expect(refused.body.detail).toBe(`pass ${FIRST_TITLE} first: this course's quizzes open once you have`);
+
+    await passCourse('transhumanism', learner, editor);
+    expect((await api.call('GET', '/v1/courses/futures-lab', learner)).body.missingPrerequisites).toEqual([]);
+    expect((await api.call('POST', `/v1/courses/futures-lab/lessons/${lessonId}/attempts`, learner, { answers: [0] })).body.attempt.passed).toBe(true);
+    const status = (await api.call('GET', '/v1/courses', learner)).body.status as { courseId: string; state: string }[];
+    expect(status.filter((s) => ['transhumanism', 'futures-lab'].includes(s.courseId)).map((s) => s.state)).toEqual(['passed', 'passed']);
+  });
+
+  it('shows Course Administrators how each learner stands, without their email, and switches messaging per learner', async () => {
+    const editor = await courseAdmin('status-editor@example.test');
+    const learner = await api.member('status-learner@example.test');
+    const other = await api.member('status-other@example.test');
+    expect((await api.call('POST', '/v1/courses/transhumanism/lessons/foundations/attempts', learner, { answers: [0, 0, 0, 0, 0] })).status).toBe(201);
+    expect((await api.call('POST', '/v1/courses/transhumanism/lessons/foundations/attempts', learner, { answers: [1, 1, 1, 1, 1] })).status).toBe(201);
+
+    expect((await api.call('GET', '/v1/admin/courses/transhumanism/learners', learner)).status).toBe(403);
+    const rows = await api.call('GET', '/v1/admin/courses/transhumanism/learners', editor);
+    expect(rows.status).toBe(200);
+    expect(rows.body).toHaveLength(1);
+    expect(JSON.stringify(rows.body)).not.toContain('@example.test');
+    expect(rows.body[0]).toMatchObject({ accountId: learner.accountId, version: 1, attempts: 2, certificate: null, messaging: false, unread: false });
+    expect(rows.body[0].name).toMatch(/^Learner /);
+    expect(rows.body[0].lessons).toHaveLength(6);
+    expect(rows.body[0].lessons[0]).toMatchObject({ lessonId: 'foundations', title: 'Foundations: What is transhumanism?', bestScore: expect.any(Number) });
+    expect(rows.body[0].lastActivityAt).toEqual(expect.any(String));
+
+    // Off by default: nobody can write, either way round.
+    expect((await api.call('GET', '/v1/courses/transhumanism/messages', learner)).body).toEqual({ messaging: false, messages: [] });
+    expect((await api.call('POST', '/v1/courses/transhumanism/messages', learner, { body: 'Hello?' })).status).toBe(403);
+    const learnerPath = `/v1/admin/courses/transhumanism/learners/${learner.accountId}`;
+    expect((await api.call('POST', `${learnerPath}/messages`, editor, { body: 'Hi' })).status).toBe(409);
+    expect((await api.call('PUT', `${learnerPath}/messaging`, learner, { messaging: true })).status).toBe(403);
+    expect((await api.call('PUT', '/v1/admin/courses/transhumanism/learners/not-an-id/messaging', editor, { messaging: true })).status).toBe(404);
+
+    expect((await api.call('PUT', `${learnerPath}/messaging`, editor, { messaging: true })).body).toMatchObject({ messaging: true, switchedBy: editor.accountId });
+    expect((await api.call('GET', '/v1/courses/transhumanism', learner)).body.messaging).toBe(true);
+    expect((await api.call('GET', '/v1/courses/transhumanism', other)).body.messaging).toBe(false);
+    expect((await api.call('POST', '/v1/courses/transhumanism/messages', other, { body: 'Me too?' })).status).toBe(403);
+
+    const sent = await api.call('POST', '/v1/courses/transhumanism/messages', learner, { body: 'What does healthspan mean?' });
+    expect(sent.status).toBe(201);
+    expect(sent.body.messages).toEqual([expect.objectContaining({ from: 'learner', body: 'What does healthspan mean?' })]);
+    expect(sent.body.messages[0]).not.toHaveProperty('authorId');
+    expect((await api.call('GET', '/v1/admin/courses/transhumanism/learners', editor)).body[0].unread).toBe(true);
+    expect((await api.call('GET', `${learnerPath}/messages`, editor)).body.messages).toHaveLength(1);
+    expect((await api.call('GET', '/v1/admin/courses/transhumanism/learners', editor)).body[0].unread).toBe(false);
+
+    expect((await api.call('POST', `${learnerPath}/messages`, editor, { body: 'The years lived in good health.' })).status).toBe(201);
+    const seen = (await api.call('GET', '/v1/courses/transhumanism/messages', learner)).body;
+    expect(seen.messages.map((message: { from: string }) => message.from)).toEqual(['learner', 'instructor']);
+    expect(seen.messages[1]).toMatchObject({ body: 'The years lived in good health.', authorName: expect.any(String) });
+    expect(JSON.stringify(seen)).not.toContain(editor.accountId);
+
+    // Off again: the history stays, and nobody can add to it.
+    await api.call('PUT', `${learnerPath}/messaging`, editor, { messaging: false });
+    expect((await api.call('POST', '/v1/courses/transhumanism/messages', learner, { body: 'One more thing' })).status).toBe(403);
+    expect((await api.call('GET', '/v1/courses/transhumanism/messages', learner)).body).toMatchObject({ messaging: false, messages: [{}, {}] });
+    expect((await api.call('GET', '/v1/admin/courses/transhumanism/learners', editor)).body[0].messaging).toBe(false);
+  });
+});

@@ -1,4 +1,5 @@
 import type { CourseLesson, CourseRecord, FuturistProfile } from 'ustp-domain';
+import { FIRST_COURSE_POSITION } from './course-map-seed.js';
 
 const COURSE_ID = 'transhumanism';
 const SOURCE = 'course-seed';
@@ -21,6 +22,8 @@ export const transhumanismCourse: CourseRecord = {
   status: 'published',
   version: 1,
   publishedVersion: 1,
+  prerequisites: [],
+  position: FIRST_COURSE_POSITION,
   createdAt: UPDATED_AT,
   updatedAt: UPDATED_AT,
   updatedBy: SOURCE,
