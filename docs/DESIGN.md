@@ -3451,7 +3451,7 @@ members, and how many people visit the public pages.
 
 ### 10.8 Courses: the map, quizzes, portraits, videos, students and messages *(added)*
 
-Courses are open to everyone: `/courses` has the course map and a list of every course, and each course has its page
+Courses are open to everyone: `/courses` is a catalogue of every course with the course map, and each course has its page
 at `/course/{courseId}`, where signed-in learners take its quizzes and earn its certificate. Courses are kept apart
 from membership, elections and the ledger. Course Administrators (`course_admin`, a role that sees only Admin › Course
 by default, §10.5) pick a course in that tab and edit a draft of its lessons and futurist profiles, and **Publish new
@@ -3467,12 +3467,37 @@ students and messages were added 2026-10-31; before, there was the one course at
   a loop that nobody could finish, or when another course has the square. The map draws a card for each course on it and a line
   from each prerequisite to the course after it: down from the earlier card, across the gap above the later one and
   down into it, so courses after the same one share a bar, and sideways between courses on the same row. It scrolls
-  sideways in its own box where the screen is narrower. The Courses page shows the map and then every course as a
-  list, which is also how a phone picks a course. A published course shows its published title and summary; a draft
+  sideways in its own box where the screen is narrower. The Courses page shows it on a tab beside the list of every
+  course, which is also how a phone picks a course (below). A published course shows its published title and summary; a draft
   placed on the map shows only its title, as coming soon, and has no page yet. A published course off the map is still
   listed; a draft off the map is not shown. A course that was never published can be deleted with its draft lessons
   and profiles, unless another course comes after it; a published one cannot, since its certificates must stay
   checkable.
+- **The Courses page** *(restyled 2026-11-01 after a course catalogue the user pointed to; the user's choices:
+  artwork made from each course rather than uploaded covers, featured courses picked automatically rather than by
+  Course Administrators, and panels Start here, Continue learning and Coming soon)*. Courses have no cover, rating or
+  count of learners, so the page is made from the map's own data (`course-catalog.ts`), top to bottom:
+  - **Search.** A box beside the title finds every word typed in a course's title or summary, in any case and order;
+    while it holds text, the matching courses replace everything below, with how many match.
+  - **Artwork.** Each course has a gradient and an icon picked from its ID (`courseArt`), so it looks the same on every
+    visit and wherever it shows; none is green, which says passed.
+  - **Featured courses**, large cards that scroll sideways, two at a time on a wide screen and one with the next peeking
+    in on a phone, dark and light in turn, with arrows and a dot for each place the row stops; they never move by
+    themselves. Signed in: the courses the learner is part-way through (Continue), then those they can start (Start
+    the course), then those they have passed (Review it), never a locked one; for a visitor, the published courses
+    that come after no other first. At most five, then a card naming the drafts still to come, whose button opens the
+    map.
+  - **Find your next course**, three tinted panels of course rows: **Start here** (signed in, the courses not started
+    and not locked; for a visitor, the published courses that come after no other), **Continue learning** (signed in,
+    those in progress) and **Coming soon** (drafts on the map), each in map order, three rows until Show all; an empty
+    panel is not shown.
+  - **Every course**, on two tabs: **All courses**, every course as a row, and **Course map**, the map as above. The tab
+    is kept in the address (`?view=map`).
+
+  A row shows the course's artwork, title, a short line (its summary; for a draft, the courses it comes after) and
+  where the learner stands: open to everyone (visitors, with the courses it comes after), not started, in progress
+  with how many lessons are passed and a bar, passed, locked with the courses to pass first, or coming soon. A
+  published course's row links to its page; a draft's links nowhere.
 - **The board** *(added 2026-11-01; the user's choices: an "Arrange as org chart" button, and changes kept on the board
   until Save map)*. In the Course tab the map is a board of every square (the rows in use and one more, at least
   three; all six columns). A Course Administrator drags a course to another square, where a course already there swaps
