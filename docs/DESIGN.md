@@ -1080,7 +1080,8 @@ AI company, and only documents a member submits to `/analyze` will go to Claude;
   framework documents in memory; a relay (TURN) for networks that block direct calls, and a media server (the spec's
   self-hosted LiveKit) for calls of more than 8; voice notes, transcription, call recaps and the weekly audio digest;
   the assistant answering `/ask` out loud during a call; editing messages; attachments; replies in threads; any emoji
-  as a reaction; a room per team.
+  as a reaction; a room per team; the law analysis's `/bill` and `/law`, private to whoever types them unless they
+  post the reply to the room (§5.11).
 
 ### 5.11 Law analysis *(proposed, not built)*
 
@@ -1092,6 +1093,108 @@ suggesting laws, judged against world happiness and stated goals and for consist
 law, that explains itself visually. Nothing here is built; every choice below that is not the user's is my default,
 and the decisions for USTP are Q22. Like the checks (§5.4, §5.5, §6.9) it is a reading aid: it can be wrong, it is not
 legal advice and not a party position, and it decides nothing.
+
+**At a glance.** One analysis, from asking for it to the page, as the whole design has it (each part is described
+below; the first stage to be built is much smaller, **In stages**):
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 300
+---
+flowchart TB
+  subgraph ASK["1 · What is analyzed"]
+    direction LR
+    FED["Federal bill<br/>(Congress.gov API)"]
+    ST["State bill<br/>(Open States)"]
+    TXT["Pasted text or<br/>a forum proposal"]
+  end
+
+  subgraph GATE["2 · Admin › Law analysis"]
+    SW{"Switched on?"}
+    WHO{{"May this person ask?<br/>staff roles · teams · all members<br/>(admins only at first)"}}
+    LIM{{"Within the limits?<br/>3 per person in 30 days<br/>10 a day · $50 a month"}}
+    REUSE{"Done in the<br/>last 30 days?"}
+  end
+
+  FED & ST & TXT --> SW
+  SW -- yes --> WHO
+  WHO -- yes --> LIM
+  LIM -- yes --> REUSE
+  SW -- no --> REF["Refused<br/>403 · 429 · budget spent"]
+  WHO -- no --> REF
+  LIM -- no --> REF
+  REUSE -- yes --> OLD["The same analysis,<br/>returned free"]
+
+  subgraph RUN["3 · Queue on the worker"]
+    Q["Stored as queued (202)<br/>Cloud Scheduler each minute<br/>runs up to 3 side by side"]
+    MODE{"Now or<br/>overnight?"}
+    NOW["Streamed requests<br/>full price"]
+    BATCH["Message Batches API<br/>half price"]
+  end
+
+  REUSE -- no --> Q
+  Q --> MODE
+  MODE -- now --> NOW
+  MODE -- overnight --> BATCH
+
+  subgraph SRC["Sources, always fetched"]
+    direction LR
+    LAW["Law<br/>US Constitution · US Code<br/>eCFR · state codes"]
+    CASES["Cases<br/>CourtListener"]
+    TREATY["Treaties<br/>ratified or only signed"]
+    GOALS["Goals<br/>USTP Platform · TBR 3.0<br/>World Happiness · SDGs"]
+    FETCH["Source fetcher<br/>allowlisted hosts<br/>cached by SHA-256"]
+  end
+
+  LAW & CASES & TREATY & GOALS --> FETCH
+
+  subgraph CLAUDE["4 · Claude stages"]
+    S1["Read<br/>each provision in plain words<br/>amendments as redlines"]
+    S2["Consistency, one request per layer<br/>constitutions · statutes · treaties"]
+    S3["Impact<br/>provision → outcome → goal<br/>−3 to +3 ranges, evidence graded"]
+    S4["Review<br/>opposing counsel on each finding<br/>best case for and against"]
+  end
+
+  NOW & BATCH --> S1
+  S1 --> S2 --> S3 --> S4
+  FETCH -. "texts, sponsors withheld" .-> S1
+  FETCH -. "get_section · find_cases · get_essay" .-> S2
+
+  K{{"5 · Worker's checks<br/>quotes word for word?<br/>cases resolve? redlines match?"}}
+  STORE["Saved with its sources<br/>and SHA-256 fingerprint<br/>cost added to the month"]
+  DROP["Dropped or marked unchecked,<br/>counted on the page"]
+
+  S4 --> K
+  K -- passes --> STORE
+  K -- fails --> DROP
+  DROP --> STORE
+
+  V["6 · The page, drawn by the app<br/>redline · consistency matrix<br/>goal chains · goal scorecard<br/>who gains and loses, and when<br/>weights kept in the browser<br/>no verdict, no voting advice"]
+  S5["Draft amendments or a new proposal<br/>↻ analyzed again as a new, linked analysis<br/>a proposal may go to the forum (§5.9)"]
+
+  STORE --> V
+  V -- a member asks --> S5
+
+  classDef ask fill:#e8eef7,stroke:#4a6a99,color:#14233a
+  classDef admin fill:#fff2d1,stroke:#a87400,color:#3a2900
+  classDef run fill:#e4f1fb,stroke:#2f6db5,color:#0c2340
+  classDef src fill:#eef6ea,stroke:#4e8a3a,color:#16300e
+  classDef claude fill:#efe6ff,stroke:#7a4fd0,color:#21123a
+  classDef check fill:#e6f5f5,stroke:#2b8585,color:#0c2c2c
+  classDef stop fill:#fde4e4,stroke:#b83a3a,color:#3d0d0d
+  classDef page fill:#e3f5e9,stroke:#2e8b57,color:#0d2e1a
+
+  class FED,ST,TXT ask
+  class SW,WHO,LIM,REUSE admin
+  class Q,MODE,NOW,BATCH,STORE run
+  class LAW,CASES,TREATY,GOALS,FETCH src
+  class S1,S2,S3,S4,S5 claude
+  class K check
+  class REF,DROP stop
+  class OLD,V page
+```
 
 **Three kinds of statement, kept apart.** Every statement in an analysis is one of: *what the law says* (quoted, with
 its source and pinpoint citation), *what it would do* (a prediction, its evidence graded, as a range rather than a
@@ -1120,7 +1223,7 @@ does the party's texts (§5.4):
 | US Constitution | With all 27 amendments, and the Constitution Annotated's essay on each clause the model asks for | The checks' vendored copy (§5.4); constitution.congress.gov |
 | Federal statutes | The US Code sections a bill amends or cites, and those the model asks for, as they stood on the analysis's date | The Office of the Law Revision Counsel's USLM XML release points |
 | Federal regulations | The CFR parts it names, on that date | The eCFR API, which answers for a date |
-| Bills | Text versions, amendments, CBO cost estimates, sponsors | The Congress.gov API |
+| Bills | Text versions, with their XML, which marks the bill's references to the law and, in GovInfo's USLM form, its amending actions; amendments, CBO cost estimates, sponsors | The Congress.gov API; GovInfo |
 | Cases | Cases the model cites, each checked to exist, and searches it asks for | CourtListener's citation lookup and search APIs |
 | A state's law | Its constitution, its code, its bills | Its legislature's own site, through an adapter per state; Open States |
 | Treaties | Which the US has ratified and with what reservations (the ICCPR ratified but not self-executing; the ICESCR, CEDAW and the CRC signed, never ratified), and their texts | A dated table vendored with the server; the UN Treaty Collection |
@@ -1137,8 +1240,10 @@ one), so the page shows each as it lands:
 
 1. *Read.* The bill as provisions, each with a plain summary: who it binds; what it requires, allows or forbids; on
    what conditions and with what exceptions; from when. Most bills are instructions to amend ("strike 'X' and insert
-   'Y'"): for each, the model writes the section as it would read, and the worker checks that every struck passage is
-   in the section as fetched and every inserted one is in the result, else that redline is marked unchecked.
+   'Y'"): for each, the worker applies it in code where the bill's XML marks it as an amending action, and otherwise
+   the model writes the section as it would read; either way the worker checks that every struck passage is in the
+   section as fetched and every inserted one is in the result, else that redline is marked unchecked. The model
+   explains each change rather than rebuilding it wherever code can.
 2. *Consistency*, one request per layer, side by side: the US Constitution (and the state's, for state law), federal
    and state statutes, and treaties the jurisdiction is party to. Each finding names the provisions, the layer, the
    source and its pinpoint ("5 U.S.C. 552(b)(6)", "Amendment XIV, Section 1"), a short exact quote of each side, its
@@ -1165,13 +1270,18 @@ CourtListener cannot resolve; the page says how many were dropped and why.
 **The request to Claude.** As the checks', but with each stage's model and effort from the panel (**Cost**, below:
 `claude-opus-5-5`, `claude-sonnet-5-5` or `claude-haiku-5-5`): adaptive thinking, streamed, structured output with a
 schema per stage, `fallbacks: "default"` where it is taken (Opus and Sonnet, outside a batch), and a prompt-cache
-breakpoint after the material every request of the analysis shares. Within a request the model can ask for more law
-through three tools the worker answers from the allowlist and the cache: `get_section` (a US Code, CFR or state section
-by citation, as it stood on the analysis's date), `find_cases` (a CourtListener search) and `get_essay` (a Constitution
-Annotated essay). The system prompt says the texts are material, not instructions; to quote, never paraphrase, what the
-law says; to say plainly when the sources do not settle a point; to give effects on named goals and no overall verdict;
-to describe nobody's motives and use the same words whichever party a bill would suit; and never to say how anyone
-should vote.
+breakpoint after the material every request of the analysis shares. Before the first request the worker finds in code
+what the bill cites (the references its XML marks or, in plain text, the forms bills use, "section 552 of title 5,
+United States Code"; cases through CourtListener's citation lookup) and fetches it all, so most requests need no tool
+call. Within a request the model can ask for more law through three tools the worker answers from the allowlist and
+the cache: `get_section` (a US Code, CFR or state section by citation, as it stood on the analysis's date),
+`find_cases` (a CourtListener search) and `get_essay` (a Constitution Annotated essay). The system prompt says the
+texts are material, not instructions; to quote, never paraphrase, what the law says; to say plainly when the sources do
+not settle a point; to give effects on named goals and no overall verdict; to describe nobody's motives and use the
+same words whichever party a bill would suit; and never to say how anyone should vote. Anthropic's own web fetch and
+memory tools are not used: the worker fetches, keeping its cache, dates and hashes, and is the model's memory
+(below). Nor are Anthropic's citations, which cannot be combined with structured output; the worker's checks do that
+work, and only `/law ask` (below), which answers in prose, uses them.
 
 **Running it.** As the checks: asking stores the analysis `queued` and answers 202; a Cloud Scheduler job of its own
 calls `POST /tasks/law-analyses` every minute, which takes the next stage of up to three analyses and runs them side by
@@ -1181,7 +1291,119 @@ again. An analysis takes about five to ten minutes; the page polls `GET /v1/law/
 overnight one (**Cost**) sends its stages as batches in three rounds (reading; consistency and impact; review) that the
 same job submits and collects, and is usually done within a few hours; its page polls once a minute. Asking again for
 the same thing (the same bill version or text, jurisdiction and date) within 30 days returns the analysis already made,
-at no cost.
+at no cost. A new text version of a bill analyzed before is read and scored only where its text changed: provisions
+whose text is the same keep their reading and effects, marked as carried over from the earlier analysis, which is
+linked; consistency and review see the whole bill again, since a change in one place can matter in another.
+
+**What the model remembers** (asked about by the user on 2026-10-31). Nothing from one request to the next: each
+request to Claude starts empty, and the worker alone decides what goes in it. Everything it carries forward is a source
+it fetched (dated, with its SHA-256) or a finding that passed its checks, never something the model recalled:
+
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 300
+---
+flowchart TB
+  subgraph KEPT["Read from the server's memory"]
+    direction LR
+    SC["Source cache<br/>private bucket, by SHA-256<br/>re-read after 24 h"]
+    ST["Earlier stages of this analysis<br/>law_analyses/{id}/stages"]
+    PC[("Prompt cache, 5 minutes<br/>shared material read back<br/>at $0.20, not $4, per M tokens")]
+  end
+
+  subgraph CTX["One request: everything the model sees"]
+    direction LR
+    SYS["System prompt<br/>and schema"]
+    BILL["The bill, the law<br/>fetched for it, the goals"]
+    PREV["Earlier stages'<br/>checked findings"]
+    TOOL["Tool results, at most 10<br/>get_section · find_cases<br/>get_essay"]
+  end
+
+  SC --> BILL
+  SC --> TOOL
+  ST --> PREV
+  PC -. cached .-> SYS
+  PC -. cached .-> BILL
+
+  subgraph NEVER["Never given to the model"]
+    direction LR
+    N1["Who asked"]
+    N2["Sponsors and<br/>their parties"]
+    N3["A reader's weights<br/>(browser only)"]
+    N4["The members' room<br/>and its memory"]
+  end
+
+  KEPT ~~~ NEVER
+
+  MODEL(["Claude<br/>keeps nothing between requests"])
+  TRAIN["Its training memory of the law<br/>may be out of date: allowed only<br/>as 'unsourced', low confidence"]
+
+  SYS & BILL & PREV & TOOL --> MODEL
+  TRAIN -.-> MODEL
+
+  CHK{{"Worker's checks<br/>quotes · cases · redlines"}}
+  MODEL --> CHK
+
+  subgraph WRITE["Written back by the worker"]
+    direction LR
+    SAVE["Stage saved<br/>↻ read by the next stage<br/>as its earlier stages"]
+    DONE["Finished analysis<br/>reused free for 30 days<br/>for the same bill, date and place"]
+  end
+
+  CHK --> SAVE
+  CHK -- after the last stage --> DONE
+
+  subgraph NEXT["Later stages"]
+    direction LR
+    FI["Findings index<br/>earlier findings on the same sections<br/>given as dated prior analysis, re-checked"]
+    CAL["Track record (not yet)<br/>later rulings against the risks flagged<br/>added to the test set"]
+  end
+
+  DONE -.-> FI
+  DONE -.-> CAL
+
+  classDef kept fill:#e4f1fb,stroke:#2f6db5,color:#0c2340
+  classDef ctx fill:#efe6ff,stroke:#7a4fd0,color:#21123a
+  classDef model fill:#fff2d1,stroke:#a87400,color:#3a2900
+  classDef check fill:#e6f5f5,stroke:#2b8585,color:#0c2c2c
+  classDef never fill:#fde4e4,stroke:#b83a3a,color:#3d0d0d
+  classDef next fill:#f3f3f1,stroke:#77766f,color:#2c2c2a,stroke-dasharray:5 4
+
+  class SC,ST,PC,SAVE,DONE kept
+  class SYS,BILL,PREV,TOOL ctx
+  class MODEL,TRAIN model
+  class CHK check
+  class N1,N2,N3,N4 never
+  class FI,CAL next
+```
+
+- *In one request:* the system prompt and the stage's schema; the bill, the law fetched for it and the goals; the
+  checked findings of the stages before it; and what the three tools return (at most 10 calls). Nothing else.
+- *Between the stages of one analysis:* each stage, once checked, is kept as `law_analyses/{id}/stages/{stage}` and
+  given to the next. The prompt cache (5 minutes, per model, **Cost**) only makes the material they share cheaper to
+  read again; it remembers nothing of its own.
+- *Across analyses:* the source cache (read again after 24 hours), the finished analyses that answer the same request
+  for 30 days (above), and, from a later stage, the findings index (below).
+- *Never:* who asked; the sponsors and their parties (above); a reader's weights, which stay in the browser; and
+  anything from the members' room, where nothing said goes to an AI company (§5.10). No conversation with the model
+  runs on from one request to the next, and it is given no memory tool.
+- *From its training:* what the model knows of the law may be out of date and cannot be checked. A statement resting
+  on that alone is graded `unsourced`, with low confidence (stage 3), and a quote or citation found in no fetched
+  source is dropped by the worker's checks.
+
+**The findings index** (my default, from a later stage), so that analyses of related bills agree where the law has not
+changed. The worker keeps `law_findings/{citation}`: for each section of law, by its normalized pinpoint ("5 U.S.C.
+552(b)(6)"), the findings that finished analyses made about it, each with its analysis, date, kind and severity,
+whether review contested it, and the SHA-256 of the section's text it read. Once the reading names the sections a bill
+touches, the consistency and impact requests are given up to 20 of those findings, newest first (about 3,000 tokens),
+each labelled as an earlier analysis with its date, and as "the law has changed since" where the section's text no
+longer has that SHA-256. They are material, never authority: an earlier analysis is not a source a finding may name,
+so a new finding must still quote the law or be dropped, and review argues against an earlier finding as against any
+other. Findings are looked up by citation, not by likeness, so no embeddings are needed. An analysis removed or deleted
+(below) takes its findings out of the index, a contested finding is given as contested, and the page lists the earlier
+analyses an analysis was given.
 
 **Who, switched by System Admins** (asked for by the user on 2026-10-31: an admin turns access on and off and decides
 who has it, admins first). Under **Admin › Law analysis** a System Admin sets, in `law_analysis_settings/current`:
@@ -1196,6 +1418,9 @@ who has it, admins first). Under **Admin › Law analysis** a System Admin sets,
 - *What it may cost*, the options under **Cost** below: how deep an analysis goes, which models, how hard they think,
   overnight at half price, how long a text may be, and the limits: per person (3 in 30 days, a draft counting as one),
   for the server (10 in 24 hours, 429 after), and a monthly budget in dollars ($50) that stops new analyses once spent.
+- *Reviewed first.* When on, an analysis reaches readers beyond those who may ask only once someone holding a staff
+  role the panel names (System Admins to start) has read it and marked it reviewed, with a note, ledgered as
+  `law_analysis.reviewed` (Auditors only); until then it is labelled "Not yet reviewed". On by default.
 
 Narrowing who asks cancels the waiting analyses of people no longer allowed; narrowing who reads hides the page from
 them at once. Each change is saved whole from the version it was edited from (409 if someone saved since), and
@@ -1203,10 +1428,67 @@ ledgered as `law_analysis.settings_changed` with what changed (Auditors only). S
 the members' room's model server (§5.10), since both decide what the party spends.
 
 Readers see every finished analysis (`/policy`, newest first), and never who asked for it: what someone wants analyzed
-says what they care about, as a reaction in the room does (§5.10). Membership Admins remove one with a reason, as on
-the forum, ledgered as `law_analysis.removed` (Auditors only); whoever asked for an analysis of pasted text may delete
-it. Otherwise analyses are not ledgered and are kept until removed. What goes to Anthropic is the bill or text and the
+says what they care about, as a reaction in the room does (§5.10). A member who posts one to the room shows only that
+they posted it (**Posting to the room**, below). Membership Admins remove one with a reason, as on the forum, ledgered
+as `law_analysis.removed` (Auditors only); whoever asked for an analysis of pasted text may delete it. Otherwise
+analyses are not ledgered and are kept until removed. What goes to Anthropic is the bill or text and the
 public law and evidence around it, never anything about who asked.
+
+**Readers correct it.** Each finding and effect has "This is wrong", and the page "It missed something", each with a
+reason (20 a day a person). Reports go to the System Admins under Admin › Law analysis, with who sent them, and to
+nobody else; a finding reported is shown as "Disputed by a reader" until one of them decides. A report judged right
+changes nothing by hand (the analysis stays as the model made it, the report beside it) but becomes a case in the test
+set (**Tested before it is switched on**, below), the bill and what should have been found, so every later prompt and
+model is measured against it. Reports are not ledgered, as analyses are not.
+
+**Slash commands in the members' room** (asked for by the user on 2026-10-31). The room's parser (§5.10) takes:
+- `/bill H.R. 1234`, or words: the bill's title, status, latest action and text versions from Congress.gov, with a
+  link to pick it on the Policy page. No Claude and no cost, for any member in the room, 30 a day each, since the data
+  key's rate limit is shared.
+- `/law H.R. 1234`, or `/law` and pasted text: asks for an analysis, through the same switch, who may ask, limits and
+  budget as the Policy page. `/law cost H.R. 1234` gives its price first, free (**Cost**).
+- `/law ask {analysis} {question}`: a question about one analysis, answered by one request from its sources and
+  findings alone, with Anthropic's citations on so each passage it relies on links to where it is; for whoever may read
+  that analysis, 10 a day each, within the budget, and not kept.
+- `/law watch H.R. 1234` and `/law unwatch`: the worker looks at Congress.gov daily and, when a new text version
+  appears, analyzes what changed (**Running it**), within the budget and the server's limit; 5 bills a person.
+- `/propose {goal}`, or `/propose` and pasted text: drafts a proposal, or analyzes the member's own (**Members'
+  proposals**, below), private until they post it to the forum.
+- Later: `/amend {analysis} {findings}` for draft amendments, and `/laws` for the latest analyses.
+
+The commands are not posted to the room, and their replies are seen only by whoever typed them, shown on their page
+and not kept as messages, since posting them would tell the room who asked (above). A finished analysis is announced
+the same way, while the person's page waits on their own analyses (`GET /v1/law/analyses?mine=true`). Text pasted
+after `/law` is the only thing typed in the room that goes to Claude, as a document given to `/analyze` would (§5.10),
+which stays for documents that are not laws.
+
+**Posting to the room, if they want to** (asked for by the user on 2026-10-31). A reply with something to show (a
+bill, a finished analysis, an answer from `/law ask`) has **Post to the room**, which posts a message of theirs holding
+a card: the bill's number, title and status; for an analysis, also the date of the law it used, its counts ("1 likely
+conflict, 4 effects on goals"), "An advisory analysis by Claude: not legal advice and not a party position" and a link
+to `/policy/{id}`; for an answer, the question, the answer and the passages it cites. The card says who posted it,
+never who asked for the analysis, who may be someone else (**Reuse**, below). A bill can always be posted, being public
+record; an analysis or an answer only while everyone in the room may read it (who reads includes all Active members)
+and, with **Reviewed first** on, once it has been reviewed; otherwise the button says why not yet. The api builds the
+card from what is posted (`POST /v1/room/messages` with `{share: {kind, id}}` in place of text), so a member cannot
+make one up. Posted, it is a room message like any other (§5.10): 90 days, deleted by its poster or a Membership
+Admin, open to reactions and votes, and read by the room's assistant like the rest; an analysis removed later (above)
+leaves its card saying so.
+
+**Members' proposals** (asked for by the user on 2026-10-31). Active members already propose in the forum (§5.9);
+this lets them start from the law, with Claude's help, and carry the analysis with them:
+- *Drafted from a goal.* "Draft a proposal" on the Policy page, or `/propose` and a goal in the room: the member says
+  what it should achieve and where it would be enacted, and one request drafts it as bill text in that legislature's
+  style, each section with a plain summary, from the same fetched law and goals an analysis uses. The draft is then
+  analyzed like pasted text, the two counting as one analysis against the limits. Whoever may ask may draft.
+- *Or written by the member*: pasted, or taken from an analysis's draft amendments (stage 5).
+- *Private until posted.* A draft (`law_proposals/{id}`) is seen only by its member, who edits it freely, has each
+  saved version analyzed again on request, and deletes it whenever they like.
+- *To the forum.* **Propose in the forum** posts it as that member's forum proposal, under the forum's own rules
+  (§5.9: their name, its limits, moderation and votes), from which an Election Admin may put it on a ballot like any
+  other. The post says "Drafted with Claude's help" where Claude drafted it, and links its latest analysis for those
+  who may read analyses; the rest see the text alone. Editing the post later marks that analysis as of an earlier
+  version, with "Analyze again".
 
 **Cost** (asked for by the user on 2026-10-31: options to make it cheaper). Each is a setting in the same panel, which
 shows beside it what a bill of about 20 pages would cost with the settings as they stand (prices in code, dated):
@@ -1219,6 +1501,12 @@ shows beside it what a bill of about 20 pages would cost with the settings as th
   own prompt cache, so mixing them pays to write the shared material once per model, which the panel's figure includes.
 - *Effort.* `high` or `medium` per stage (default `high` for consistency and review, `medium` for reading and impact):
   lower effort mostly saves thinking, which is billed as output.
+- *Triage.* A first request to Haiku 5.5, a fraction of a cent, sorts the bill: whether it amends the US Code, which
+  titles and subjects it touches, whether treaties or a state's law could apply. A layer that cannot apply is shown as
+  "Not checked: does not apply" rather than asked about; the US Constitution is always checked.
+- *Price first.* Before anyone asks, the page and `/law cost` show what the analysis would cost with the settings as
+  they stand, from Anthropic's token counting (free) and the prices in code; a text over the limit, or one that would
+  overrun the month's budget, is refused before anything is spent.
 - *Overnight.* Through Anthropic's Message Batches API at half the price of every token, cache reads and writes
   included. Most batches finish within an hour, all within 24; the analysis says it is waiting. A batch request cannot
   call tools back and forth, so an overnight analysis works from the sections fetched beforehand and says what it would
@@ -1227,6 +1515,9 @@ shows beside it what a bill of about 20 pages would cost with the settings as th
 - *Less to read.* The longest text accepted (400,000 characters at most, 200,000 by default); at most 10 tool calls a
   request; the impact stage sent only the provisions it scores, not the whole bill; and stages queued back to back so
   the material they share is read from the cache (5 minutes; $0.20 rather than $4 per million tokens on Opus 5.5).
+  What every analysis shares, the system prompt, the Constitution and the party's texts, is cached for an hour instead
+  while more than one analysis waits and for overnight rounds: writing it costs twice the input price, and each read a
+  tenth.
 - *Reuse.* Asking for what was analyzed in the last 30 days returns that analysis, free; readers see "Analyzed on…".
 - *A budget.* The worker adds each request's cost, from the tokens Anthropic reports, to `law_analysis_spend/{month}`.
   The panel shows the month so far and the cost of each analysis; at 80% of the budget it warns System Admins, and at
@@ -1241,6 +1532,7 @@ At list prices, a bill of about 20 pages (12,000 tokens) should cost about:
 | Standard, Balanced (the defaults) | $1.60 | $0.80 |
 | Standard, Lean | $1.00 | $0.50 |
 | Quick, Lean | $0.20 | $0.10 |
+| The first stage: one request to Sonnet 5.5 (**In stages**) | $0.20 | – |
 
 Estimates before any run, from the token counts each stage is expected to use; the first real analyses replace them.
 The test set (below) is run at each setting a deployment uses, since a cheaper model may miss what a dearer one finds.
@@ -1289,19 +1581,94 @@ scores in the run's summary:
   so it cannot remember the answer;
 - mirror pairs: the same mechanism aimed at opposite political ends, and pasted texts that name a party (which the
   model does see) with the party swapped, which must be treated alike;
-- the direction of budget effects against CBO's estimates.
+- the direction of budget effects against CBO's estimates;
+- readers' reports judged right (**Readers correct it**, above), each kept as a case.
 
-**In stages** (my default): federal bills first, with the panel (on and off, who, the cost settings and the budget),
-reading, consistency with the US Constitution, federal law and treaties, the redline and the matrix, and the test set,
-used by admins only; then impact, the chains, the scorecard and the weights; then drafts, overnight runs and forum
-proposals; then members, as System Admins open it to them; then the states, one at a time.
+**In stages** (my default). First the simplest version that works (asked for by the user on 2026-10-31: as simple and
+as viable as possible). It keeps what makes an analysis worth trusting (law fetched, never remembered; every quote
+checked; no verdict; the sponsors withheld; the switch and the budget) and leaves the rest for later:
 
-**Not yet**, beyond all of it being proposed: the room's `/analyze` handing a bill to an analysis (§5.10); formal checks
-of rules that can be written as logic, with a solver (Z3) finding a case where two provisions cannot both be obeyed;
-tax and benefit bills run through a microsimulation (PolicyEngine US) for amounts by income; maps of who gains by state
-or county; a record of how its risks fared in later rulings, to calibrate them; an analysis shown beside a ballot's
-proposal, as §6.9's notes are; and, cheaper still, the members' room's self-hosted model (§5.10) for the plain
-summaries, at no cost per token once it runs (it waits on GPU quota), though weaker than Claude at reading law.
+```mermaid
+---
+config:
+  flowchart:
+    wrappingWidth: 300
+---
+flowchart TB
+  subgraph IN["Ask: members' room or Policy page"]
+    direction LR
+    BILLCMD["/bill H.R. 1234<br/>title, status, text versions<br/>Congress.gov only, no Claude, free"]
+    LAWCMD["/law H.R. 1234<br/>/law + pasted text<br/>private unless you post it"]
+    PAGE["Policy page<br/>pick a bill or paste text"]
+  end
+
+  GATE{{"Switched on? Allowed to ask?<br/>Money left this month?"}}
+  NO["Private reply<br/>not open to you yet · budget spent"]
+  REUSE{"Same text<br/>in 30 days?"}
+
+  LAWCMD & PAGE --> GATE
+  GATE -- no --> NO
+  GATE -- yes --> REUSE
+
+  FETCH["Worker fetches everything first<br/>the bill (Congress.gov)<br/>the US Code sections it amends or cites<br/>the US Constitution · the party's Platform"]
+  ONE["One Claude request · Sonnet 5.5 · about $0.20<br/>each provision in plain words<br/>conflicts, each with exact quotes<br/>effects on the party's goals as ranges<br/>no tools, no verdict, sponsors withheld"]
+  CHK{{"Worker's checks<br/>every quote word for word<br/>in the text it names?"}}
+  DROP["Dropped and counted"]
+  OUT["The analysis page, as tables<br/>provisions · findings · effects<br/>sources and the date of the law"]
+  DONE["Private reply in the room<br/>Done: 1 likely conflict, 4 effects, open it"]
+  POST{"Post it to<br/>the room?"}
+  CARD["Your message in the room<br/>a card with the counts and a link<br/>if everyone there may read it"]
+  KEEP["Stays private"]
+
+  REUSE -- no --> FETCH --> ONE --> CHK
+  CHK -- fails --> DROP --> OUT
+  CHK -- passes --> OUT
+  REUSE -- yes --> OUT
+  OUT --> DONE --> POST
+  POST -- yes --> CARD
+  POST -- no --> KEEP
+
+  classDef cmd fill:#e8eef7,stroke:#4a6a99,color:#14233a
+  classDef gate fill:#fff2d1,stroke:#a87400,color:#3a2900
+  classDef run fill:#e4f1fb,stroke:#2f6db5,color:#0c2340
+  classDef claude fill:#efe6ff,stroke:#7a4fd0,color:#21123a
+  classDef stop fill:#fde4e4,stroke:#b83a3a,color:#3d0d0d
+  classDef page fill:#e3f5e9,stroke:#2e8b57,color:#0d2e1a
+
+  class BILLCMD,LAWCMD,PAGE,KEEP cmd
+  class GATE,REUSE,POST gate
+  class FETCH,CHK run
+  class ONE claude
+  class NO,DROP stop
+  class OUT,DONE,CARD page
+```
+
+- Federal bills and pasted text only, measured against the US Constitution, the US Code sections the bill amends or
+  cites, and the party's goals.
+- One request to Sonnet 5.5 (about $0.20 for 20 pages): reading, consistency and effects in one schema, with no
+  tools, since the worker finds the citations and fetches everything first (**The request to Claude**). There is no
+  review stage, so nothing argues against each finding and the quote checks and the cautious severity words carry it;
+  and no case law, so a constitutional finding rests on the text and says so.
+- The redlines built in code where the XML allows, the worker's checks, and the price shown before it runs.
+- The page as tables (provisions, findings, effects), with "This is wrong" and "It missed something"; no pictures yet.
+- The panel: on or off, who asks and reads (staff roles, reviewed first), and the monthly budget; one model, one depth.
+- `/bill`, `/law` and `/law cost` in the room, private unless the person posts the reply, and the test set.
+- A member's own text, once analyzed, posted to the forum as their proposal (**Members' proposals**); Claude does not
+  draft proposals yet.
+- Built as one more of the checks: `runCheckQueue`, the key under Admin › Claude (§5.6) and the stub (above).
+
+Then, in this order: the separate stages, with review and the depth, model and effort settings, and the triage; the
+treaties, regulations and cases, with the tools; impact on the world's goals, the chains, the scorecard and the
+weights; drafts (`/amend`) and proposals drafted from a goal (`/propose`), overnight runs, `/law watch`, `/law ask`
+and analyzing forum proposals; members, as System Admins
+open it to them; the findings index, once there are analyses to draw on; and the states, one at a time.
+
+**Not yet**, beyond all of it being proposed: formal checks of rules that can be written as logic, with a solver (Z3)
+finding a case where two provisions cannot both be obeyed; tax and benefit bills run through a microsimulation
+(PolicyEngine US) for amounts by income; maps of who gains by state or county; a record of how its risks fared in later
+rulings, to calibrate them and to add to the test set; an analysis shown beside a ballot's proposal, as §6.9's notes
+are; and, cheaper still, the members' room's self-hosted model (§5.10) for the plain summaries, at no cost per token
+once it runs (it waits on GPU quota), though weaker than Claude at reading law.
 
 ## 6. Elections
 
@@ -3673,11 +4040,16 @@ Decisions for USTP; the design's proposed default is in brackets.
     which account (as Q18)? What monthly budget, and which cost settings to start with? Should others see who asked?
     Which state's law comes first? Which hosts count as evidence beyond Congress.gov, the CBO and CourtListener? May the
     World Happiness Report's published scores be used under its terms? Should the party's goals and the world's sit in
-    one scorecard? [Decided by the user on 2026-10-31: System Admins switch it on and off and choose who asks and who
-    reads, admins first. My defaults: staff roles only to start, never the public; yes, under the Q18 account; $50 a
-    month, Standard depth, Balanced models, overnight allowed, 3 a person in 30 days and 10 a day; never shown; none
-    until USTP picks one; none until USTP lists them; read the terms first; yes, each in its own group, weighed only by
-    each reader]
+    one scorecard? Should an analysis be given what earlier ones found about the same law (the findings index)? Should
+    someone review each analysis before readers beyond staff see it, and who? May Claude draft members' proposals, and
+    must a forum proposal it drafted say so? [Decided by the user on 2026-10-31:
+    System Admins switch it on and off and choose who asks and who reads, admins first; it starts as the simplest
+    version that works, with `/bill` and `/law` in the members' room, whose replies a member may post there. My
+    defaults: staff roles only to start, never the
+    public; yes, under the Q18 account; $50 a month, Standard depth, Balanced models, overnight allowed, 3 a person in
+    30 days and 10 a day; never shown; none until USTP picks one; none until USTP lists them; read the terms first; yes,
+    each in its own group, weighed only by each reader; yes, from a later stage, dated and re-checked, never taken as
+    the law; yes, System Admins; yes, for whoever may ask, and yes, "Drafted with Claude's help"]
 
 ## 19. Roadmap
 
