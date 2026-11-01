@@ -13,13 +13,30 @@ const HOLDERS = { zip: null, holders: true } as const;
 type Seen = { url: string; headers: Record<string, string> };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 
-/** The FEC, congress-legislators and Open States as they answer for San Diego; `down` lists hosts that fail. */
-function fakeRecords(seen: Seen[], down: string[] = []): typeof globalThis.fetch {
+/** A race on California's list, published `when`. */
+const caRace = (raceTitle: string, candidates: [name: string, party: string, incumbent?: boolean][], when = 'October 31, 2026, 1:12 p.m.') => ({
+  raceTitle,
+  Reporting: '0% (0 of 699) precincts reporting',
+  ReportingTime: when,
+  candidates: candidates.map(([Name, Party, incumbent = false]) => ({ Name, Party, Votes: '0', Percent: '0.0', incumbent })),
+});
+
+/**
+ * The FEC, congress-legislators, Open States and California's list as they answer for San Diego; `down` lists hosts
+ * that fail. California's list has `sos` by race, any other race answering 500 (not on the ballot); without `sos` it
+ * still has the 2024 election.
+ */
+function fakeRecords(seen: Seen[], down: string[] = [], sos?: Record<string, unknown>): typeof globalThis.fetch {
   return (async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
     seen.push({ url, headers: (init?.headers ?? {}) as Record<string, string> });
     const host = new URL(url).host;
     if (down.includes(host)) return json({ error: 'down' }, 503);
+    if (host === 'api.sos.ca.gov') {
+      const race = new URL(url).pathname.replace('/returns/', '');
+      if (!sos) return json(caRace('Governor - Statewide Results', [['Old Name', 'Dem']], 'November 5, 2024, 8:00 p.m.'));
+      return race in sos ? json(sos[race]) : new Response('', { status: 500 });
+    }
     if (host === 'api.open.fec.gov') {
       const q = new URL(url).searchParams;
       if (q.get('office') === 'H') {
@@ -70,7 +87,7 @@ describe('the public records for a member’s area', () => {
     const seen: Seen[] = [];
     const source = new PublicContactSource({ fec: 'fec-key', openStates: 'os-key', civic: null }, fakeRecords(seen));
     const { contacts, feeds } = await source.forArea('CA', [CA49, SD38, AD76], 2026, HOLDERS);
-    expect(feeds).toEqual({ fec: 'ok', congress: 'ok', openstates: 'ok', civic: 'off' });
+    expect(feeds).toEqual({ fec: 'ok', congress: 'ok', openstates: 'ok', civic: 'off', sos: 'off' });
     expect(contacts.map((c) => `${c.source} ${c.role} ${c.office}@${c.district.geoid} ${c.name}`)).toEqual([
       'fec candidate us_house@0649 Mike Levin',
       'fec candidate us_house@0649 Armen Kurdian',
@@ -116,7 +133,7 @@ describe('the public records for a member’s area', () => {
 
   it('says which record did not answer, and keeps the others', async () => {
     const { contacts, feeds } = await new PublicContactSource({ fec: 'k', openStates: 'k', civic: null }, fakeRecords([], ['api.open.fec.gov'])).forArea('CA', [CA49], 2026, HOLDERS);
-    expect(feeds).toEqual({ fec: 'unavailable', congress: 'ok', openstates: 'ok', civic: 'off' });
+    expect(feeds).toEqual({ fec: 'unavailable', congress: 'ok', openstates: 'ok', civic: 'off', sos: 'off' });
     expect(contacts.map((c) => c.source)).toEqual(['congress', 'congress']);
   });
 
@@ -136,6 +153,8 @@ describe('the public records for a member’s area', () => {
       'candidate us_house Hal House',
       'candidate us_house Cass Challenger',
       'holder state_upper Uma Upper',
+      'candidate statewide Gil Governor',
+      'candidate statewide Rita Rival',
     ]);
   });
 });
@@ -206,7 +225,7 @@ describe('the ballot, from the Civic Information API', () => {
     const seen: Seen[] = [];
     const source = new PublicContactSource({ fec: 'k', openStates: null, civic: 'civic-key' }, fakeCivic(seen, [{ cache: 'public, max-age=600' }]));
     const { contacts, ballot, feeds } = await source.forArea('CA', [CA49, SD38, COUNTY, CITY], 2026, { zip: '92130', holders: false });
-    expect(feeds).toEqual({ fec: 'ok', congress: 'off', openstates: 'off', civic: 'ok' });
+    expect(feeds).toEqual({ fec: 'ok', congress: 'off', openstates: 'off', civic: 'ok', sos: 'off' });
     expect(contacts.map(line)).toEqual([
       'fec us_house@0649 U.S. Representative: Mike Levin',
       'fec us_house@0649 U.S. Representative: Armen Kurdian',
@@ -278,15 +297,107 @@ describe('the ballot, from the Civic Information API', () => {
 
   it('the local stand-in: the challenger’s website, a State Senate race, and a school board contest apart', async () => {
     const { contacts, ballot, feeds } = await new LocalContactSource().forArea('CA', [CA49, { ...SD38, geoid: '06001' }], 2026, { zip: '94615', holders: false });
-    expect(feeds).toEqual({ fec: 'ok', congress: 'off', openstates: 'off', civic: 'ok' });
+    expect(feeds).toEqual({ fec: 'ok', congress: 'off', openstates: 'off', civic: 'ok', sos: 'ok' });
     expect(contacts.map((c) => `${c.source} ${c.office} ${c.name} ${c.website ?? '-'}`)).toEqual([
       'fec us_senate Sid Hopeful -',
       'fec us_house Hal House -',
       'fec us_house Cass Challenger https://cass.example',
       'civic state_upper Uma Upper -',
       'civic state_upper Bea Ballot https://bea.example',
+      'sos statewide Gil Governor -',
+      'sos statewide Rita Rival -',
     ]);
     expect(ballot.map((b) => [b.office, b.candidates.map((c) => c.name)])).toEqual([['Governing Board Member', ['Sal School']]]);
+  });
+});
+
+describe('California’s own list of who is on the ballot', () => {
+  const ON_THE_BALLOT = {
+    governor: caRace('Governor - Statewide Results', [
+      ['Xavier Becerra', 'Dem'],
+      ['Steve Hilton', 'Rep'],
+    ]),
+    'superintendent-of-public-instruction': caRace('Superintendent of Public Instruction - Statewide Results', [
+      ['Richard Barrera', 'Non'],
+      ['Sonja Shaw', 'Non'],
+    ]),
+    // The FEC lists Kurdian too, who is not on this ballot.
+    'us-rep/district/49': caRace('U.S. House of Representatives District 49 - Districtwide Results', [
+      ['Mike Levin', 'Dem'],
+      ['Pat Newcomer', 'PF'],
+    ]),
+    'state-senate/district/38': caRace('State Senate District 38 - Districtwide Results', [
+      ['Catherine S. Blakespear', 'Dem', true],
+      ['Laura Bassett', 'Rep'],
+    ]),
+  };
+
+  it('lists the state’s candidates for the area’s races, over the FEC’s, and the seats not on the ballot', async () => {
+    const seen: Seen[] = [];
+    const source = new PublicContactSource({ fec: 'k', openStates: null, civic: null }, fakeRecords(seen, [], ON_THE_BALLOT));
+    const { contacts, notUp, feeds } = await source.forArea('CA', [CA49, SD38, AD76, COUNTY], 2026, { zip: '92130', holders: false });
+    expect(feeds.sos).toBe('ok');
+    expect(contacts.map(line)).toEqual([
+      'sos statewide@06 Governor: Xavier Becerra',
+      'sos statewide@06 Governor: Steve Hilton',
+      'sos statewide@06 Superintendent of Public Instruction: Richard Barrera',
+      'sos statewide@06 Superintendent of Public Instruction: Sonja Shaw',
+      'fec us_house@0649 U.S. Representative: Mike Levin',
+      'sos us_house@0649 U.S. Representative: Pat Newcomer',
+      'sos state_upper@06038 State Senator: Catherine S. Blakespear',
+      'sos state_upper@06038 State Senator: Laura Bassett',
+    ]);
+    // The FEC's record is kept for the one it also lists; parties as people say them; the incumbent marked.
+    expect(contacts[4]).toMatchObject({ contactId: 'fec:H8CA49058', incumbent: true, election: '2026' });
+    expect(contacts.map((c) => c.party)).toEqual(['Democratic', 'Republican', null, null, 'Democratic', 'Peace and Freedom', 'Democratic', 'Republican']);
+    expect(contacts[6]).toMatchObject({ incumbent: true, election: '2026', sourceUrl: 'https://www.sos.ca.gov/elections/upcoming-elections', photo: null });
+    // No U.S. Senate race in California this year, and none for this Assembly seat; nothing asked for the county.
+    expect(notUp).toEqual([
+      { office: 'us_senate', kind: 'state', geoid: '06' },
+      { office: 'state_lower', kind: 'state_lower', geoid: '06076' },
+    ]);
+    const races = seen.filter((r) => r.url.startsWith('https://api.sos.ca.gov')).map((r) => r.url.replace('https://api.sos.ca.gov/returns/', ''));
+    expect(races).toEqual([
+      'governor',
+      'lieutenant-governor',
+      'secretary-of-state',
+      'controller',
+      'treasurer',
+      'attorney-general',
+      'insurance-commissioner',
+      'superintendent-of-public-instruction',
+      'us-senate',
+      'us-rep/district/49',
+      'state-senate/district/38',
+      'state-assembly/district/76',
+    ]);
+    // Kept: asking again sends nothing.
+    const asked = seen.length;
+    await source.forArea('CA', [CA49, SD38, AD76, COUNTY], 2026, { zip: '92130', holders: false });
+    expect(seen).toHaveLength(asked);
+  });
+
+  it('leaves out the FEC’s filers for a seat that is not up, and asks only for California', async () => {
+    const seen: Seen[] = [];
+    const source = new PublicContactSource({ fec: 'k', openStates: null, civic: null }, fakeRecords(seen, [], { governor: ON_THE_BALLOT.governor }));
+    const { contacts, notUp } = await source.forArea('CA', [CA49], 2026, { zip: null, holders: false });
+    expect(notUp).toContainEqual({ office: 'us_house', kind: 'congressional', geoid: '0649' });
+    expect(contacts.filter((c) => c.office === 'us_house')).toEqual([]);
+    const asked = seen.filter((r) => r.url.startsWith('https://api.sos.ca.gov')).length;
+    const texas = await new PublicContactSource({ fec: 'k', openStates: null, civic: null }, fakeRecords(seen, [], ON_THE_BALLOT)).forArea('TX', [], 2026, HOLDERS);
+    expect([texas.feeds.sos, texas.notUp]).toEqual(['off', []]);
+    expect(seen.filter((r) => r.url.startsWith('https://api.sos.ca.gov'))).toHaveLength(asked);
+  });
+
+  it('uses no list from another election, and says when the list does not answer', async () => {
+    const stale = await new PublicContactSource({ fec: 'k', openStates: null, civic: null }, fakeRecords([])).forArea('CA', [CA49], 2026, HOLDERS);
+    expect([stale.feeds.sos, stale.notUp, stale.contacts.some((c) => c.source === 'sos')]).toEqual(['off', [], false]);
+    const down = await new PublicContactSource({ fec: 'k', openStates: null, civic: null }, fakeRecords([], ['api.sos.ca.gov'])).forArea('CA', [CA49], 2026, HOLDERS);
+    expect([down.feeds.sos, down.notUp]).toEqual(['unavailable', []]);
+    // Every race answering 500 is the service failing, not an empty ballot.
+    const empty = await new PublicContactSource({ fec: 'k', openStates: null, civic: null }, fakeRecords([], [], {})).forArea('CA', [CA49], 2026, HOLDERS);
+    expect([empty.feeds.sos, empty.notUp]).toEqual(['unavailable', []]);
+    expect(empty.contacts.filter((c) => c.office === 'us_house' && c.role === 'candidate')).toHaveLength(2);
   });
 });
 

@@ -6,6 +6,7 @@ import {
   currentContent,
   groupAreaContacts,
   inCandidateArea,
+  seatNotUp,
   STATE_FIPS,
   type AreaCandidatesView,
   type CandidateArea,
@@ -30,6 +31,8 @@ import {
   electionText,
   emptyOfficeText,
   feedNote,
+  notUpText,
+  recordsCredit,
   localToday,
   officeShown,
   profilesNote,
@@ -137,7 +140,9 @@ const withHolders = computed(() => where.value === 'area');
 const fromParty = computed(() => people.value.some((c) => c.source === 'admin'));
 const runningNotes = computed(() => {
   const v = running.value;
-  return v ? [...CONTACT_FEEDS.map((f) => feedNote(f, v.feeds[f])), profilesNote(v.profiles)].filter((n): n is string => n !== null) : [];
+  // A typed ZIP code is not asked who holds office, so those records have nothing to say there.
+  const feeds = withHolders.value ? CONTACT_FEEDS : CONTACT_FEEDS.filter((f) => f !== 'congress' && f !== 'openstates');
+  return v ? [...feeds.map((f) => feedNote(f, v.feeds[f])), profilesNote(v.profiles)].filter((n): n is string => n !== null) : [];
 });
 const fromBallot = computed(() => !!running.value && (people.value.some((c) => c.source === 'civic') || running.value.ballot.length > 0));
 
@@ -398,7 +403,8 @@ function withdraw(c: MyCandidacy) {
           <div class="text-grey-7 q-mb-sm">
             Every office{{ whereText }}, with the area each is elected from. Choose a person’s photo or name to see them
             with that area on the map. From public records: candidates for Congress and President who have filed with the
-            FEC, and the contests on the ballot while Google has an election loaded,
+            FEC, the contests on the ballot while Google has an election loaded, in California the Secretary of State’s
+            list of who is on the ballot,
             <template v-if="withHolders">members of Congress, and state legislators from Open States,</template>
             with biographies from Wikipedia and Wikidata where they have one.
             <template v-if="fromParty">
@@ -419,7 +425,8 @@ function withdraw(c: MyCandidacy) {
                 :office="g.office"
                 :district="g.district"
                 :mappable="mapReady && g.district.kind !== 'nation'"
-                :empty="g.holders.length || g.candidates.length ? null : emptyOfficeText(g.office, !withHolders)"
+                :note="seatNotUp(running.notUp, g) && !g.candidates.length ? notUpText(running.electionYear) : null"
+                :empty="g.holders.length || g.candidates.length || seatNotUp(running.notUp, g) ? null : emptyOfficeText(g.office, !withHolders)"
                 @map="showOnMap(g.district)"
               >
                 <template v-for="part in [
@@ -435,9 +442,7 @@ function withdraw(c: MyCandidacy) {
             </div>
             <BallotContests :contests="running.ballot" class="q-mb-md" />
             <div class="text-caption text-grey-7">
-              Candidates for Congress and President from the FEC;
-              <template v-if="withHolders">members of Congress from the congress-legislators project; state legislators from Open States;</template>
-              biographies from Wikipedia and Wikidata, by FEC and Congress ID.
+              {{ recordsCredit(withHolders, running.feeds.sos === 'ok') }}
               <a v-if="fromBallot" :href="CIVIC_CREDIT.url" target="_blank" rel="noopener noreferrer">{{ CIVIC_CREDIT.text }}</a>
             </div>
           </template>

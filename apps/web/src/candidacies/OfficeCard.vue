@@ -17,6 +17,8 @@ defineProps<{
   mappable?: boolean;
   /** What the card says when nobody is listed for the office; none while someone is. */
   empty?: string | null;
+  /** A line under its people, such as that the seat is not on this election's ballot. */
+  note?: string | null;
 }>();
 const emit = defineEmits<{ map: [] }>();
 </script>
@@ -43,6 +45,7 @@ const emit = defineEmits<{ map: [] }>();
       />
     </div>
     <slot />
+    <div v-if="note" class="text-caption text-grey-7 q-px-md q-pb-sm">{{ note }}</div>
     <div v-if="empty" class="text-caption text-grey-7 q-px-md q-pb-sm">
       {{ empty }}
       <router-link v-if="hasRole('communications_admin')" to="/admin?tab=communications&view=people">Add someone</router-link>

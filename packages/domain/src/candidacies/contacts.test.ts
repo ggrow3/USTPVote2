@@ -12,9 +12,11 @@ import {
   isPublicLedgerEvent,
   mergeBallot,
   mergeContacts,
+  mergeStateList,
   nextFederalElectionYear,
   OFFICES_OF_KIND,
   removeAreaContact,
+  seatNotUp,
   type AreaContact,
   type CandidateArea,
   type District,
@@ -157,6 +159,51 @@ describe('the Your area page', () => {
     // Two FEC candidates with one surname: the ballot cannot say which, so it adds its own.
     const twins = mergeBallot([kurdian, { ...kurdian, contactId: 'fec:2', name: 'Ara Kurdian' }], [ballot({ contactId: 'civic:k', name: 'A. Kurdian' })]);
     expect(twins.map((c) => c.contactId)).toEqual(['fec:H6CA49169', 'fec:2', 'civic:k']);
+  });
+
+  it('takes the state’s own list over the other records, race by race, and drops candidates for seats not up', () => {
+    const levin = person({ contactId: 'fec:H8CA49058', name: 'Mike Levin', incumbent: true, sourceUrl: 'https://www.fec.gov/data/candidate/H8CA49058/' });
+    const loser = person({ contactId: 'fec:H6CA49999', name: 'Lost Primary' });
+    const senateFiler = person({ contactId: 'fec:S6CA00001', office: 'us_senate', officeTitle: 'U.S. Senator', district: { kind: 'state', geoid: '06', state: 'CA', name: 'CA' }, name: 'Sen Filer' });
+    const holder = person({ contactId: 'congress:L000593', source: 'congress', role: 'holder', name: 'Mike Levin' });
+    const civicGovernor = person({ contactId: 'civic:gov', source: 'civic', office: 'statewide', officeTitle: 'Governor', district: { kind: 'state', geoid: '06', state: 'CA', name: 'CA' }, name: 'Xavier Becerra', website: 'https://becerra.example' });
+    const listed = (over: Partial<AreaContact>) => person({ source: 'sos', election: '2026', sourceUrl: 'https://www.sos.ca.gov/elections/upcoming-elections', ...over });
+    const merged = mergeStateList(
+      [levin, loser, senateFiler, holder, civicGovernor],
+      [
+        listed({ contactId: 'sos:levin', name: 'Mike Levin' }),
+        listed({ contactId: 'sos:cohen', name: 'Steve Cohen', party: 'Republican' }),
+        listed({ contactId: 'sos:becerra', office: 'statewide', officeTitle: 'Governor', district: civicGovernor.district, name: 'Xavier Becerra', incumbent: true }),
+      ],
+      [{ office: 'us_senate', kind: 'state', geoid: '06' }],
+    );
+    // Kept as they were: the person in office. Left out: the primary's loser and the filer for a seat not up.
+    expect(merged.map((c) => c.contactId)).toEqual(['congress:L000593', 'fec:H8CA49058', 'sos:cohen', 'civic:gov']);
+    expect(merged[1]).toMatchObject({ source: 'fec', incumbent: true, election: '2026', sourceUrl: levin.sourceUrl });
+    expect(merged[3]).toMatchObject({ website: 'https://becerra.example', incumbent: true });
+    // A race the state does not list keeps the other records.
+    expect(mergeStateList([levin, loser], [], []).map((c) => c.contactId)).toEqual(['fec:H8CA49058', 'fec:H6CA49999']);
+    expect(seatNotUp([{ office: 'us_senate', kind: 'state', geoid: '06' }], senateFiler)).toBe(true);
+    expect(seatNotUp([{ office: 'us_senate', kind: 'state', geoid: '06' }], levin)).toBe(false);
+  });
+
+  it('keeps an office’s several seats in the order the records give them', () => {
+    const state = { kind: 'state', geoid: '06', state: 'CA', name: 'CA' } as const;
+    const statewide = (officeTitle: string, name: string, incumbent = false) => person({ contactId: name, office: 'statewide', officeTitle, district: state, name, incumbent });
+    const groups = groupAreaContacts(AREA, [
+      statewide('Governor', 'Xavier Becerra'),
+      statewide('Governor', 'Steve Hilton'),
+      statewide('Treasurer', 'Alpha Treasurer'),
+      statewide('Attorney General', 'Rob Bonta', true),
+      statewide('Attorney General', 'Michael Gates'),
+    ]);
+    expect(groups.find((g) => g.office === 'statewide')!.candidates.map((c) => c.name)).toEqual([
+      'Steve Hilton',
+      'Xavier Becerra',
+      'Alpha Treasurer',
+      'Rob Bonta',
+      'Michael Gates',
+    ]);
   });
 
   it('knows the next federal general election', () => {

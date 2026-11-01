@@ -47,9 +47,10 @@ describe('the Your area page', () => {
   it('lists who holds and who runs for each office the ZIP code reaches, with every office’s email', async () => {
     const v = await view(ada);
     expect(v.area).toMatchObject({ state: 'CA', basis: 'zip' });
-    expect(v.feeds).toEqual({ fec: 'ok', congress: 'ok', openstates: 'ok', civic: 'ok' });
+    expect(v.feeds).toEqual({ fec: 'ok', congress: 'ok', openstates: 'ok', civic: 'ok', sos: 'ok' });
     expect(v.profiles).toBe('ok');
     expect(v.electionYear % 2).toBe(0);
+    expect(v.notUp).toEqual([]);
     expect(names(v)).toEqual([
       'congress holder us_senate@06 Sam Senator',
       'congress holder us_senate@06 Sky Senator',
@@ -64,6 +65,10 @@ describe('the Your area page', () => {
       'openstates holder state_lower@06001 Lou Lower',
       'civic candidate state_upper@06001 Uma Upper',
       'civic candidate state_upper@06001 Bea Ballot',
+      'sos candidate statewide@06 Gil Governor',
+      'sos candidate statewide@06 Rita Rival',
+      'sos candidate state_lower@06001 Lou Lower',
+      'sos candidate state_lower@06001 Ana Assembly',
     ]);
     // The ballot adds the challenger's website and a State Senate race; a school board is listed apart.
     expect(v.contacts.find((c) => c.contactId === 'fec:C0601')).toMatchObject({ website: 'https://cass.example', election: expect.stringMatching(/-11-03$/) });

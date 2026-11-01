@@ -152,21 +152,24 @@ export const CONTACT_SOURCE_TEXT: Readonly<Record<ContactSource, string>> = {
   congress: 'Member of Congress',
   openstates: 'From Open States',
   civic: 'On the ballot',
+  sos: 'On the state’s ballot',
   admin: 'Added by the party',
 };
 
 /**
- * What a page says when a public record is missing; nothing when it answered. The ballot is off where this site has
- * no key for it, and between elections it simply has nothing: neither is worth a note.
+ * What a page says when a public record is missing; nothing when it answered. A record that is off (the ballot where
+ * this site has no key for it or between elections, the state's list outside California, people in office where they
+ * are not asked for) is worth no note, except Open States, which this site can be connected to.
  */
 export function feedNote(feed: ContactFeed, state: ContactFeedState): string | null {
-  if (state === 'ok' || (feed === 'civic' && state === 'off')) return null;
+  if (state === 'ok' || (state === 'off' && feed !== 'openstates')) return null;
   if (feed === 'openstates' && state === 'off') return 'State legislators are not listed yet: this site is not connected to Open States.';
   const what: Readonly<Record<ContactFeed, string>> = {
     fec: 'The FEC’s candidate lists',
     congress: 'The list of members of Congress',
     openstates: 'Open States, which lists state legislators,',
     civic: 'Google’s ballot data, which lists state and local contests,',
+    sos: 'The Secretary of State’s list of who is on the ballot',
   };
   return `${what[feed]} did not answer, so some people are missing here. Try again later.`;
 }
@@ -231,6 +234,22 @@ export function personCaption(person: Pick<AreaContact, 'office' | 'officeTitle'
  */
 export function officeShown(group: { readonly office: PublicOffice; readonly holders: readonly unknown[]; readonly candidates: readonly unknown[] }, electionYear: number): boolean {
   return group.office !== 'us_president' || electionYear % 4 === 0 || group.holders.length + group.candidates.length > 0;
+}
+
+/** What a seat's card says when the state's own list says it is not on this election's ballot. */
+export const notUpText = (electionYear: number): string => `No election for this seat in ${electionYear}.`;
+
+/** The credit line under an area's offices, naming each record the people come from. */
+export function recordsCredit(withHolders: boolean, stateList: boolean): string {
+  return [
+    'Candidates for Congress and President from the FEC',
+    stateList ? 'candidates on California’s ballot from its Secretary of State' : null,
+    withHolders ? 'members of Congress from the congress-legislators project' : null,
+    withHolders ? 'state legislators from Open States' : null,
+    'biographies from Wikipedia and Wikidata, by FEC and Congress ID.',
+  ]
+    .filter(Boolean)
+    .join('; ');
 }
 
 /** Offices no public record this site reads covers, with who the party's communications team adds for them. */

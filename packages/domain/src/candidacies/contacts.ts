@@ -11,17 +11,21 @@ import { districtIdProblem, DISTRICT_ID, NATION_ID, STATE_FIPS, type District, t
 /**
  * Who a member can write to about each office in their area (design §5.12): the people who hold it now and the people
  * running for it. Public records give some of them (the FEC's candidates for Congress and President, the members of
- * Congress, with a key state legislators from Open States, and with a Google key the contests on the ballot from the
- * Civic Information API); Communications Admins enter the rest, and can add an email address a public record lacks by
- * entering the same person again. Wikipedia and Wikidata add a biography and experience where they know the person.
+ * Congress, with a key state legislators from Open States, with a Google key the contests on the ballot from the Civic
+ * Information API, and in California the Secretary of State's list of who is on the ballot); Communications Admins
+ * enter the rest, and can add an email address a public record lacks by entering the same person again. Wikipedia and
+ * Wikidata add a biography and experience where they know the person.
  */
 
 /** In office now, or running for it. */
 export const CONTACT_ROLES = ['holder', 'candidate'] as const;
 export type ContactRole = (typeof CONTACT_ROLES)[number];
 
-/** The public records the api reads people from, each kept a day (the ballot as long as Google allows, at most a day). */
-export const CONTACT_FEEDS = ['fec', 'congress', 'openstates', 'civic'] as const;
+/**
+ * The public records the api reads people from, each kept a day (the ballot as long as Google allows, at most a day).
+ * `sos`: the state's own list of who is on its ballot, from its Secretary of State; California's so far.
+ */
+export const CONTACT_FEEDS = ['fec', 'congress', 'openstates', 'civic', 'sos'] as const;
 export type ContactFeed = (typeof CONTACT_FEEDS)[number];
 
 /** Where a person comes from: one of the feeds, or a Communications Admin. */
@@ -107,6 +111,20 @@ export interface BallotContest {
   readonly candidates: readonly BallotCandidate[];
 }
 
+/**
+ * A seat in the area that is not on this election's ballot, as the state's own list says (the U.S. Senate in California
+ * in 2026, or a State Senate seat elected in other years): its card says so instead of that nobody is listed.
+ */
+export interface SeatNotUp {
+  readonly office: PublicOffice;
+  readonly kind: DistrictKind;
+  readonly geoid: string;
+}
+
+/** Whether the state's list says a seat of the area is not on this election's ballot. */
+export const seatNotUp = (notUp: readonly SeatNotUp[], seat: { readonly office: PublicOffice; readonly district: Pick<District, 'kind' | 'geoid'> }): boolean =>
+  notUp.some((s) => s.office === seat.office && s.kind === seat.district.kind && s.geoid === seat.district.geoid);
+
 /** `GET /v1/candidacies/area/contacts`: everything the Your area page shows. */
 export interface AreaContactsView {
   readonly area: CandidateArea;
@@ -115,6 +133,8 @@ export interface AreaContactsView {
   readonly contacts: readonly AreaContact[];
   /** Contests on the ballot that are not in one of the area's Census districts. */
   readonly ballot: readonly BallotContest[];
+  /** The area's seats that are not on this election's ballot. */
+  readonly notUp: readonly SeatNotUp[];
   readonly feeds: Readonly<Record<ContactFeed, ContactFeedState>>;
   /** Whether Wikipedia and Wikidata answered. */
   readonly profiles: ContactFeedState;
@@ -136,6 +156,7 @@ export interface AreaCandidatesView {
   /** People in office: in the member's own area only, none for a typed ZIP code. */
   readonly holders: readonly AreaContact[];
   readonly ballot: readonly BallotContest[];
+  readonly notUp: readonly SeatNotUp[];
   readonly feeds: Readonly<Record<ContactFeed, ContactFeedState>>;
   readonly profiles: ContactFeedState;
 }
@@ -379,6 +400,26 @@ export function mergeBallot(found: readonly AreaContact[], ballot: readonly Area
   return [...merged, ...extra];
 }
 
+/**
+ * The state's own list of who is on its ballot (`sos`) over the other records, race by race: for a race the state
+ * lists, its candidates are the ones the state lists, each the FEC (or the ballot) also has keeping that record, with
+ * its link, photo and profile, and taking the party as the state's ballot words it; the others in that race (who lost the primary, withdrew or never qualified) are left
+ * out. Races the state does not list keep the other records' candidates, except the seats it says are not up, which
+ * have none. People in office are kept as they are.
+ */
+export function mergeStateList(found: readonly AreaContact[], listed: readonly AreaContact[], notUp: readonly SeatNotUp[]): AreaContact[] {
+  const race = (c: AreaContact) => `${c.office}|${c.district.kind}:${c.district.geoid}`;
+  const listedRaces = new Set(listed.map(race));
+  const kept = found.filter((c) => c.role !== 'candidate' || (!listedRaces.has(race(c)) && !seatNotUp(notUp, c)));
+  const fromState = listed.map((l) => {
+    const same = found.filter((c) => c.role === 'candidate' && race(c) === race(l));
+    const bySurname = same.filter((c) => surname(c.name) === surname(l.name));
+    const match = same.find((c) => nameKey(c.name) === nameKey(l.name)) ?? (bySurname.length === 1 ? bySurname[0] : undefined);
+    return match ? { ...match, party: l.party ?? match.party, incumbent: match.incumbent || l.incumbent, election: l.election ?? match.election } : l;
+  });
+  return [...kept, ...fromState];
+}
+
 /** One office in one district of the member's area, with who holds it and who runs for it. */
 export interface AreaOfficeGroup {
   readonly office: PublicOffice;
@@ -389,16 +430,23 @@ export interface AreaOfficeGroup {
 
 const byName = (a: AreaContact, b: AreaContact) => a.name.localeCompare(b.name);
 
-/** Every office in the member's area, nationwide first, each with its people; offices nobody is listed for too. */
+/**
+ * Every office in the member's area, nationwide first, each with its people; offices nobody is listed for too. An
+ * office with several seats (statewide, county, city) keeps its titles in the order the records first give them, so
+ * the governor's race comes before the treasurer's.
+ */
 export function groupAreaContacts(area: CandidateArea, contacts: readonly AreaContact[]): AreaOfficeGroup[] {
+  const titles = new Map<string, number>();
+  for (const c of contacts) if (!titles.has(c.officeTitle)) titles.set(c.officeTitle, titles.size);
+  const byTitle = (a: AreaContact, b: AreaContact) => titles.get(a.officeTitle)! - titles.get(b.officeTitle)!;
   return contactDistricts(area).flatMap((district) =>
     OFFICES_OF_KIND[district.kind].map((office) => {
       const here = contacts.filter((c) => c.office === office && c.district.kind === district.kind && c.district.geoid === district.geoid);
       return {
         office,
         district,
-        holders: here.filter((c) => c.role === 'holder').sort(byName),
-        candidates: here.filter((c) => c.role === 'candidate').sort((a, b) => Number(b.incumbent) - Number(a.incumbent) || byName(a, b)),
+        holders: here.filter((c) => c.role === 'holder').sort((a, b) => byTitle(a, b) || byName(a, b)),
+        candidates: here.filter((c) => c.role === 'candidate').sort((a, b) => byTitle(a, b) || Number(b.incumbent) - Number(a.incumbent) || byName(a, b)),
       };
     }),
   );

@@ -7,6 +7,7 @@ import {
   fillTemplate,
   groupAreaContacts,
   placeholderValues,
+  seatNotUp,
   templatesFor,
   type AreaContact,
   type AreaContactsView,
@@ -31,6 +32,8 @@ import {
   districtText,
   emptyOfficeText,
   feedNote,
+  notUpText,
+  recordsCredit,
   mailtoLink,
   officeShown,
   profilesNote,
@@ -223,7 +226,8 @@ async function copy() {
               :office="g.office"
               :district="g.district"
               :mappable="onMap(g.district)"
-              :empty="g.holders.length || g.candidates.length ? null : emptyOfficeText(g.office, false)"
+              :note="seatNotUp(view.notUp, g) && !g.candidates.length ? notUpText(view.electionYear) : null"
+              :empty="g.holders.length || g.candidates.length || seatNotUp(view.notUp, g) ? null : emptyOfficeText(g.office, false)"
               @map="showOnMap(g.district)"
             >
               <template v-for="part in [
@@ -244,8 +248,7 @@ async function copy() {
         </section>
         <BallotContests :contests="view.ballot" />
         <div class="text-caption text-grey-7">
-          Candidates for Congress and President from the FEC; members of Congress from the congress-legislators project;
-          biographies from Wikipedia and Wikidata, by FEC and Congress ID.
+          {{ recordsCredit(true, view.feeds.sos === 'ok') }}
           <a v-if="fromBallot" :href="CIVIC_CREDIT.url" target="_blank" rel="noopener noreferrer">{{ CIVIC_CREDIT.text }}</a>
         </div>
       </template>
