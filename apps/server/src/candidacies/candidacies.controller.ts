@@ -27,7 +27,7 @@ function districtKind(value: string): DistrictKind {
 
 /**
  * An Active member's own candidacies (design §5.8): declare one, change it and withdraw it. Every change waits for a
- * Membership Admin before the Candidates page shows it.
+ * Membership Admin before the Candidates page shows it. Any member also reads their own area, which the page opens on.
  */
 @Controller('v1/candidacies')
 export class CandidaciesController {
@@ -36,6 +36,12 @@ export class CandidaciesController {
   @Get('mine')
   mine(@Ctx() ctx: RequestContext) {
     return this.candidacies.mine(requireAccount(ctx));
+  }
+
+  /** Where the caller lives, as districts, for the Candidates page's first filter; any membership status. */
+  @Get('area')
+  area(@Ctx() ctx: RequestContext) {
+    return this.candidacies.area(requireAccount(ctx));
   }
 
   @Post()

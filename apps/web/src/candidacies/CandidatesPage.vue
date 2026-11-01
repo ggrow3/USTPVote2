@@ -1,36 +1,69 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { currentContent, type MyCandidacy, type PublicCandidacy } from 'ustp-domain';
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRoute, useRouter } from 'vue-router';
+import { currentContent, inCandidateArea, STATE_FIPS, type CandidateArea, type MyCandidacy, type PublicCandidacy } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { errorMessage } from '../api.js';
 import PageShell from '../components/PageShell.vue';
 import { attempt, dialog } from '../dialogs.js';
 import { session } from '../session.js';
-import { myCandidacies, publicCandidacies, withdrawCandidacy } from './api.js';
+import { myArea, myCandidacies, publicCandidacies, withdrawCandidacy } from './api.js';
 import CandidacyDetails from './CandidacyDetails.vue';
-import { districtText, electionText, localToday, stateName, STATUS_TEXT } from './candidacy-text.js';
+import { areaText, DISTRICT_LABELS, districtText, electionText, localToday, stateName, STATUS_TEXT } from './candidacy-text.js';
 import DistrictMap, { type MapMarker } from './DistrictMap.vue';
 
 /**
  * Members running for public office (design §5.8): public, each candidacy as a Membership Admin approved it, on a map and
- * in a list, upcoming elections first. Signed-in members also see their own candidacies here, and declare new ones.
+ * in a list, upcoming elections first. Signed-in members also see their own candidacies here, and declare new ones, and
+ * the page opens on their own area, worked out from their membership record.
  */
 usePageTitle('Candidates');
+const route = useRoute();
+const router = useRouter();
 const all = ref<PublicCandidacy[] | null>(null);
 const mine = ref<MyCandidacy[]>([]);
 const error = ref<string | null>(null);
 const mineError = ref<string | null>(null);
-const state = ref<string | null>(null);
+/** The signed-in member's own area; null for visitors, or when it could not be read (the page then opens on all states). */
+const area = ref<CandidateArea | null>(null);
+const areaPending = ref(false);
 const today = localToday();
 
 const active = computed(() => session.me?.member?.status === 'active');
-const inState = computed(() => (all.value ?? []).filter((c) => state.value === null || c.district.state === state.value || c.district.kind === 'nation'));
-const upcoming = computed(() => inState.value.filter((c) => c.electionDate >= today));
-const past = computed(() => inState.value.filter((c) => c.electionDate < today));
-const stateOptions = computed(() => {
-  const codes = [...new Set((all.value ?? []).map((c) => c.district.state).filter((s): s is string => s !== null))];
-  return [{ label: 'All states', value: null }, ...codes.map((code) => ({ label: stateName(code), value: code })).sort((a, b) => a.label.localeCompare(b.label))];
+
+/**
+ * Which candidacies the page shows: `area`, the member's own (where it opens for members), `all`, or a state's code.
+ * Kept in the address (`?state=`), so coming back from a candidacy keeps the choice.
+ */
+const where = computed<string>({
+  get() {
+    const asked = route.query.state;
+    if (asked === 'all' || (typeof asked === 'string' && STATE_FIPS[asked] !== undefined)) return asked;
+    return area.value ? 'area' : 'all';
+  },
+  set(value) {
+    void router.replace({ query: { ...route.query, state: value === (area.value ? 'area' : 'all') ? undefined : value } });
+  },
 });
+const whereText = computed(() => (where.value === 'area' ? ' in your area' : where.value === 'all' ? '' : ` in ${stateName(where.value)}`));
+const shown = computed(() =>
+  (all.value ?? []).filter((c) => {
+    if (where.value === 'area') return area.value !== null && inCandidateArea(c.district, area.value);
+    return where.value === 'all' || c.district.state === where.value || c.district.kind === 'nation';
+  }),
+);
+const upcoming = computed(() => shown.value.filter((c) => c.electionDate >= today));
+const past = computed(() => shown.value.filter((c) => c.electionDate < today));
+const stateOptions = computed(() => {
+  const codes = new Set((all.value ?? []).map((c) => c.district.state).filter((s): s is string => s !== null));
+  if (area.value) codes.add(area.value.state);
+  return [
+    ...(area.value ? [{ label: 'Your area', value: 'area' }] : []),
+    { label: 'All states', value: 'all' },
+    ...[...codes].map((code) => ({ label: stateName(code), value: code })).sort((a, b) => a.label.localeCompare(b.label)),
+  ];
+});
+const areaNote = computed(() => (area.value ? areaText(area.value) : null));
 
 const markers = computed<MapMarker[]>(() =>
   upcoming.value.flatMap((c) =>
@@ -43,6 +76,21 @@ const markers = computed<MapMarker[]>(() =>
 async function loadMine() {
   mine.value = session.user ? await myCandidacies() : [];
 }
+
+// Read again whenever the member changes: signing in or out, or acting as a test persona.
+watch(
+  () => session.me?.member?.accountId ?? null,
+  async (accountId) => {
+    area.value = null;
+    areaPending.value = accountId !== null;
+    if (accountId === null) return;
+    const found = await myArea().catch(() => null);
+    if ((session.me?.member?.accountId ?? null) !== accountId) return;
+    area.value = found;
+    areaPending.value = false;
+  },
+  { immediate: true },
+);
 
 onMounted(() => {
   publicCandidacies().then(
@@ -113,23 +161,47 @@ function withdraw(c: MyCandidacy) {
       </q-card>
 
       <q-banner v-if="error" class="bg-orange-1 text-black" rounded>{{ error }}</q-banner>
-      <div v-else-if="!all" class="text-grey-7">Loading…</div>
+      <div v-else-if="!all || areaPending" class="text-grey-7">Loading…</div>
       <template v-else>
         <div class="row items-center q-gutter-sm">
           <q-select
-            v-model="state"
+            v-model="where"
             :options="stateOptions"
             emit-value
             map-options
             outlined
             dense
-            label="State"
+            label="Where"
             class="candidates-state"
           />
-          <span class="text-grey-7">{{ upcoming.length }} upcoming {{ upcoming.length === 1 ? 'candidacy' : 'candidacies' }}</span>
+          <span class="text-grey-7">{{ upcoming.length }} upcoming {{ upcoming.length === 1 ? 'candidacy' : 'candidacies' }}{{ whereText }}</span>
+        </div>
+        <div v-if="where === 'area' && area && areaNote">
+          <div class="text-grey-7">
+            {{ areaNote.text }}
+            <router-link v-if="areaNote.link" to="/account">{{ areaNote.link }}</router-link>
+          </div>
+          <div v-if="area.districts.length" class="row q-gutter-xs q-mt-xs" role="list" aria-label="Your districts">
+            <q-chip
+              v-for="d in area.districts"
+              :key="`${d.kind}:${d.geoid}`"
+              role="listitem"
+              dense
+              square
+              outline
+              color="primary"
+              icon="place"
+              :title="DISTRICT_LABELS[d.kind]"
+            >
+              {{ d.name }}
+            </q-chip>
+          </div>
         </div>
         <DistrictMap :markers="markers" label="Map of members’ candidacies for upcoming elections" />
-        <div v-if="!upcoming.length" class="text-grey-7">No candidacies for upcoming elections{{ state ? ` in ${stateName(state)}` : '' }} yet.</div>
+        <div v-if="!upcoming.length" class="text-grey-7">
+          No candidacies for upcoming elections{{ whereText }} yet.
+          <q-btn v-if="where !== 'all'" flat dense no-caps color="primary" label="Show all states" @click="where = 'all'" />
+        </div>
         <q-list v-else bordered separator class="rounded-borders">
           <q-item v-for="c in upcoming" :key="c.candidacyId" clickable :to="`/candidates/${c.candidacyId}`">
             <q-item-section>

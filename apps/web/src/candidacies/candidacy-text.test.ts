@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { OFFICE_DISTRICTS, PUBLIC_OFFICES, type District } from 'ustp-domain';
-import { districtText, localToday, OFFICE_CHOICES, stateName, websiteText } from './candidacy-text.js';
+import { areaText, districtText, localToday, OFFICE_CHOICES, stateName, websiteText } from './candidacy-text.js';
 
 const district = (over: Partial<District>): Pick<{ district: District }, 'district'> => ({
   district: { kind: 'congressional', geoid: '0612', state: 'CA', name: 'Congressional District 12', point: null, vintage: null, ...over },
@@ -22,5 +22,15 @@ describe('candidacy wording', () => {
   it('shows a website without its scheme, and today in the reader’s calendar', () => {
     expect(websiteText('https://ada.example/')).toBe('ada.example');
     expect(localToday(new Date(2026, 10, 3, 23, 30))).toBe('2026-11-03');
+  });
+
+  it('says where the member’s area comes from, and when changing the ZIP code would help', () => {
+    expect(areaText({ state: 'CA', basis: 'zip' })).toMatchObject({
+      text: expect.stringMatching(/^Nationwide and California offices, and these districts, which the ZIP code/),
+      link: expect.stringMatching(/^Moved\?/),
+    });
+    expect(areaText({ state: 'TX', basis: 'no_zip' }).text).toBe('Nationwide offices and all of Texas: your membership record has no ZIP code.');
+    expect(areaText({ state: 'TX', basis: 'unplaced' }).text).toMatch(/no area for the ZIP code on your membership record in Texas/);
+    expect(areaText({ state: 'TX', basis: 'unavailable' })).toMatchObject({ text: expect.stringMatching(/not answering/), link: null });
   });
 });

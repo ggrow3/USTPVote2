@@ -42,6 +42,8 @@ export {
   districtLookupId,
 } from './districts.js';
 export type { DistrictKind, MapPoint, District } from './districts.js';
+export { AREA_BASES, inCandidateArea } from './area.js';
+export type { AreaBasis, CandidateArea } from './area.js';
 export {
   candidacyStage,
   awaitingReview,
