@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Header, HttpCode, NotFoundException, Param, Post, Put, Query, Req, Res, type PipeTransform } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import {
+  courseBoardSchema,
   courseMapSchema,
   courseMessagingSchema,
   courseMetadataSchema,
@@ -10,6 +11,7 @@ import {
   saveFuturistProfileSchema,
   sendCourseMessageSchema,
   submitCourseQuizSchema,
+  type CourseBoardInput,
   type CourseMapInput,
   type CourseMessagingInput,
   type CourseMetadataInput,
@@ -160,6 +162,16 @@ export class CourseController {
   @Roles('course_admin')
   place(@Ctx() ctx: RequestContext, @Param('courseId', CourseIdPipe) courseId: string, @Body(new ZodPipe(courseMapSchema)) input: CourseMapInput) {
     return this.courses.placeCourse(courseId, input, requireAccount(ctx));
+  }
+
+  /**
+   * The Course tab's board saved at once: where each listed course now sits and which courses come before it (409 for
+   * a loop or a shared square). Not under `admin/courses/`, where a course could be called `map`.
+   */
+  @Put('admin/course-map')
+  @Roles('course_admin')
+  placeAll(@Ctx() ctx: RequestContext, @Body(new ZodPipe(courseBoardSchema)) input: CourseBoardInput) {
+    return this.courses.placeCourses(input, requireAccount(ctx));
   }
 
   /** The course as one `ustp.course` JSON file: `version` is `draft` (the default) or a published version's number. */
