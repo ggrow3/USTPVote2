@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import {
   Collections,
+  courseBoardProblem,
   courseIdFromTitle,
   coursePlacementProblem,
   courseThreadId,
@@ -16,6 +17,7 @@ import {
   portraitProblem,
   publishedCoursePackage,
   uuidv7,
+  withBoardChanges,
   type CertificateVerification,
   type CourseLink,
   type CourseMap,
@@ -25,6 +27,7 @@ import {
   type CoursePackage,
   type CourseAttemptRecord,
   type CourseCatalog,
+  type CourseBoardInput,
   type CourseCertificateRecord,
   type CourseLesson,
   type CourseMetadataInput,
@@ -240,6 +243,31 @@ export class CourseService {
         placedBy: accountId,
       });
       return { ...course, prerequisites: input.prerequisites, position: input.position };
+    });
+  }
+
+  /**
+   * Saves the Course tab's board: each listed course's square and prerequisites, together, so cards can swap squares
+   * and the map be rearranged as an org chart in one go (409, in words, for anything `courseBoardProblem` finds).
+   * Courses not listed keep their place. Every course, in map order, as the board then shows it.
+   */
+  async placeCourses(input: CourseBoardInput, accountId: string): Promise<CourseRecord[]> {
+    await this.ensureSeeded();
+    const db = this.firebase.db;
+    return db.runTransaction(async (tx) => {
+      const courses = (await tx.get(db.collection(Collections.courses))).docs.map((doc) => withPlacement(doc.data() as CourseRecord));
+      const problem = courseBoardProblem(courses, input.courses);
+      if (problem) throw new ConflictException(problem);
+      const placedAt = new Date().toISOString();
+      for (const change of input.courses) {
+        tx.update(db.collection(Collections.courses).doc(change.courseId), {
+          prerequisites: change.prerequisites,
+          position: change.position,
+          placedAt,
+          placedBy: accountId,
+        });
+      }
+      return withBoardChanges(courses, input.courses).sort(mapOrder);
     });
   }
 
