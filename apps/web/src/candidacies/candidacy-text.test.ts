@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { OFFICE_DISTRICTS, PUBLIC_OFFICES, templateProblem, type District } from 'ustp-domain';
 import {
   areaText,
+  ballotLabelText,
   BLANK_EMAIL,
   districtPeopleText,
   districtText,
@@ -14,10 +15,12 @@ import {
   mailtoLink,
   notUpText,
   OFFICE_CHOICES,
+  officesText,
   officeShown,
   personCaption,
   profilesNote,
   recordsCredit,
+  runningGapsText,
   runningText,
   showMoreText,
   stateName,
@@ -81,17 +84,44 @@ describe('candidacy wording', () => {
     expect(templateProblem(BLANK_EMAIL.body)).toBeNull();
   });
 
-  it('says on a district’s pin who is in office there and who is running', () => {
-    const cd49 = { kind: 'congressional', geoid: '0649', state: 'CA', name: 'Congressional District 49' } as const;
-    const people = [
-      { role: 'holder', name: 'Mike Levin', district: cd49 },
-      { role: 'candidate', name: 'Mike Levin', district: cd49 },
-      { role: 'candidate', name: 'Armen Kurdian', district: cd49 },
-      { role: 'candidate', name: 'Mike Levin', district: cd49 },
-      { role: 'holder', name: 'Alex Padilla', district: { kind: 'state', geoid: '06', state: 'CA', name: 'CA' } },
-    ] as const;
-    expect(districtPeopleText(people, cd49)).toBe('In office: Mike Levin · Running: Mike Levin, Armen Kurdian');
+  it('says on a district’s pin who is the party’s candidate there, who represents the member and who else runs', () => {
+    const cd49 = { kind: 'congressional', geoid: '0649' } as const;
+    const ca = { kind: 'state', geoid: '06' } as const;
+    const people = {
+      party: [{ name: 'Ada Brooks', district: cd49 }],
+      holders: [
+        { name: 'Mike Levin', district: cd49 },
+        { name: 'Alex Padilla', district: ca },
+        { name: 'Adam Schiff', district: ca },
+      ],
+      others: [
+        { name: 'Mike Levin', district: cd49 },
+        { name: 'Armen Kurdian', district: cd49 },
+        { name: 'Mike Levin', district: cd49 },
+      ],
+    };
+    expect(districtPeopleText(people, cd49)).toBe('Transhumanist Party: Ada Brooks · Your representative: Mike Levin · Others running: Mike Levin, Armen Kurdian');
+    expect(districtPeopleText(people, ca)).toBe('Your representatives: Alex Padilla, Adam Schiff');
     expect(districtPeopleText(people, { kind: 'county', geoid: '06073' })).toBe('No one is listed here yet.');
+  });
+
+  it('says a party candidate’s ballot label only when it is not the party’s', () => {
+    expect(ballotLabelText('Independent')).toBe('on the ballot as Independent');
+    expect(ballotLabelText('Transhumanist')).toBeNull();
+    expect(ballotLabelText('U.S. Transhumanist Party')).toBeNull();
+    expect(ballotLabelText(null)).toBeNull();
+  });
+
+  it('names the offices nobody else runs for, and the seats not up, in a line each', () => {
+    const president = { office: 'us_president', district: { kind: 'nation', name: 'United States' } } as const;
+    const sd39 = { office: 'state_upper', district: { kind: 'state_upper', name: 'State Senate District 39' } } as const;
+    const senate = { office: 'us_senate', district: { kind: 'state', name: 'CA' } } as const;
+    expect(officesText([president, sd39])).toBe('President; State Senate (State Senate District 39)');
+    expect(runningGapsText([senate], [president, sd39], 2026)).toEqual([
+      'No election in 2026 for: U.S. Senate.',
+      'No one else is listed as running for: President; State Senate (State Senate District 39).',
+    ]);
+    expect(runningGapsText([], [], 2026)).toEqual([]);
   });
 
   it('puts a person on one line: their title only where the office’s heading does not say it, party, source and election', () => {
@@ -99,7 +129,7 @@ describe('candidacy wording', () => {
     expect(personCaption(levin)).toBe('Democratic Party · Filed with the FEC · Running in 2026');
     expect(personCaption({ ...levin, officeTitle: 'Delegate to the U.S. House', party: null })).toBe('Delegate to the U.S. House · Filed with the FEC · Running in 2026');
     expect(personCaption({ ...levin, office: 'statewide', officeTitle: 'Governor', source: 'admin', election: '2026-11-03' })).toBe(
-      `Governor · Democratic Party · Added by the party · Election ${electionDay('2026-11-03')}`,
+      `Governor · Democratic Party · Added by the communications team · Election ${electionDay('2026-11-03')}`,
     );
     expect(personCaption({ ...levin, office: 'us_senate', officeTitle: 'U.S. Senator', source: 'congress', role: 'holder', election: null })).toBe(
       'Democratic Party · Member of Congress',

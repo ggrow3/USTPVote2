@@ -12,6 +12,7 @@ import {
   type DistrictKind,
   type ElectionStage,
   type EmailTemplate,
+  type PersonMarks,
   type PublicOffice,
   type TemplateAudience,
 } from 'ustp-domain';
@@ -146,15 +147,37 @@ export const OFFICE_HEADINGS: Readonly<Record<PublicOffice, string>> = {
   local: 'City or town offices',
 };
 
-/** Where a person on the Your area page comes from. */
+/**
+ * Where a person on the Your area page comes from. An admin's entry says who entered it, not "the party", so that it is
+ * never taken for one of the party's own candidates.
+ */
 export const CONTACT_SOURCE_TEXT: Readonly<Record<ContactSource, string>> = {
   fec: 'Filed with the FEC',
   congress: 'Member of Congress',
   openstates: 'From Open States',
   civic: 'On the ballot',
   sos: 'On the state’s ballot',
-  admin: 'Added by the party',
+  admin: 'Added by the communications team',
 };
+
+/** The badges that say what a person is to the member (design §5.8), and what each means in full. */
+export const MARK_TEXT: Readonly<Record<keyof PersonMarks, { readonly label: string; readonly meaning: string }>> = {
+  party: {
+    label: 'Transhumanist',
+    meaning: 'A Transhumanist Party candidate: a member of the party running for office, whose candidacy a Membership Admin reviewed.',
+  },
+  representative: { label: 'Your representative', meaning: 'One of your representatives: in office for your area now.' },
+};
+
+/** What a party candidate's line adds about the label next to their name on the ballot, when it is not the party's. */
+export const ballotLabelText = (label: string | null): string | null => (label && !/transhumanis/i.test(label) ? `on the ballot as ${label}` : null);
+
+/** Offices in a line, each district office with its district: "President; State Senate (State Senate District 39)". */
+export function officesText(groups: readonly { readonly office: PublicOffice; readonly district: Pick<District, 'kind' | 'name'> }[]): string {
+  const named = (g: (typeof groups)[number]) =>
+    g.district.kind === 'nation' || g.district.kind === 'state' ? OFFICE_HEADINGS[g.office] : `${OFFICE_HEADINGS[g.office]} (${g.district.name})`;
+  return groups.map(named).join('; ');
+}
 
 /**
  * What a page says when a public record is missing; nothing when it answered. A record that is off (the ballot where
@@ -202,11 +225,24 @@ export function mailtoLink(to: string, subject: string, body: string): string {
   return `mailto:${encodeURIComponent(to).replace(/%40/g, '@')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }
 
-/** A district's pin on the Your area map: who is in office there and who is running, by name. */
-export function districtPeopleText(contacts: readonly Pick<AreaContact, 'role' | 'name' | 'district'>[], district: Pick<District, 'kind' | 'geoid'>): string {
-  const here = contacts.filter((c) => c.district.kind === district.kind && c.district.geoid === district.geoid);
-  const names = (role: AreaContact['role']) => [...new Set(here.filter((c) => c.role === role).map((c) => c.name))].join(', ');
-  const parts = [names('holder') && `In office: ${names('holder')}`, names('candidate') && `Running: ${names('candidate')}`].filter(Boolean);
+/** People of one group, with where each is listed. */
+type Placed = readonly { readonly name: string; readonly district: Pick<District, 'kind' | 'geoid'> }[];
+
+/**
+ * A district's pin or ring on the area pages' maps: the party's candidates there, the member's representatives there and
+ * who else runs there, by name, in the pages' order.
+ */
+export function districtPeopleText(
+  people: { readonly party: Placed; readonly holders: Placed; readonly others: Placed },
+  district: Pick<District, 'kind' | 'geoid'>,
+): string {
+  const names = (list: Placed) => [...new Set(list.filter((c) => c.district.kind === district.kind && c.district.geoid === district.geoid).map((c) => c.name))];
+  const holders = names(people.holders);
+  const parts = [
+    names(people.party).length ? `Transhumanist Party: ${names(people.party).join(', ')}` : null,
+    holders.length ? `${holders.length === 1 ? 'Your representative' : 'Your representatives'}: ${holders.join(', ')}` : null,
+    names(people.others).length ? `Others running: ${names(people.others).join(', ')}` : null,
+  ].filter(Boolean);
   return parts.join(' · ') || 'No one is listed here yet.';
 }
 
@@ -247,6 +283,21 @@ export const firstShown = <T>(people: readonly T[], open: boolean): readonly T[]
 
 /** What the button under an office's list says: how many more it shows, or, opened, that it shows fewer. */
 export const showMoreText = (count: number, open: boolean): string => (open ? 'Show fewer' : `Show ${count - FIRST_SHOWN} more`);
+
+/**
+ * The lines under the others running in the member's own area, which list only the offices someone else runs for:
+ * the seats not on this election's ballot, then the offices nobody else is listed as running for.
+ */
+export function runningGapsText(
+  notUp: readonly { readonly office: PublicOffice; readonly district: Pick<District, 'kind' | 'name'> }[],
+  nobody: readonly { readonly office: PublicOffice; readonly district: Pick<District, 'kind' | 'name'> }[],
+  electionYear: number,
+): string[] {
+  return [
+    notUp.length ? `No election in ${electionYear} for: ${officesText(notUp)}.` : null,
+    nobody.length ? `No one else is listed as running for: ${officesText(nobody)}.` : null,
+  ].filter((t): t is string => t !== null);
+}
 
 /** The credit line under an area's offices, naming each record the people come from. */
 export function recordsCredit(withHolders: boolean, stateList: boolean): string {

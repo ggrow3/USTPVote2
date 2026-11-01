@@ -1,23 +1,27 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { AreaContact } from 'ustp-domain';
+import type { AreaContact, PersonMarks } from 'ustp-domain';
 import { personCaption } from './candidacy-text.js';
+import PersonBadges from './PersonBadges.vue';
 import PersonDialog, { type PersonLink } from './PersonDialog.vue';
 import PersonProfile from './PersonProfile.vue';
 
 /**
  * One person on the Candidates or Your area page (design §5.12), kept to two lines so a whole area fits on a screen:
- * a small photo where the records have one, their name, then party, source and election, with their links as small
- * icons, each named in full on hover and for screen readers: their site, email address, contact form, public record
- * and who to credit for the photo. *About* unfolds their biography and experience; their photo or name opens them
- * larger, with the area they represent (or would) drawn. The default slot takes the item's side, such as the Your area
- * page's Write button.
+ * a small photo where the records have one, their name and what they are to the member (the party's candidate, their
+ * representative), then party, source and election, with their links as small icons, each named in full on hover and
+ * for screen readers: their site, email address, contact form, public record and who to credit for the photo. *About*
+ * unfolds their biography and experience; their photo or name opens them larger, with the area they represent (or
+ * would) drawn. The default slot takes the item's side, such as the Your area page's Write button.
  */
 const props = defineProps<{
   person: AreaContact;
   /** Link the person's email address too (the Your area page writes to it instead). */
   showEmail?: boolean;
+  /** What they are to the member; nothing is said without. */
+  marks?: PersonMarks;
 }>();
+const NO_MARKS: PersonMarks = { representative: false, party: false };
 
 /** A photo that does not load (a campaign's link can break) is left out, with its credit. */
 const broken = ref(false);
@@ -64,7 +68,7 @@ const aboutId = computed(() => `about-${props.person.contactId.replace(/[^A-Za-z
     <q-item-section>
       <q-item-label class="area-person__name">
         <button type="button" class="area-person__open text-weight-medium" @click="shown = true">{{ person.name }}</button>
-        <q-badge v-if="person.incumbent" outline color="primary" class="q-ml-xs">Incumbent</q-badge>
+        <PersonBadges :marks="marks ?? NO_MARKS" :incumbent="person.incumbent" />
       </q-item-label>
       <q-item-label caption class="area-person__line">
         <span>{{ caption }}</span>
@@ -102,7 +106,7 @@ const aboutId = computed(() => `about-${props.person.contactId.replace(/[^A-Za-z
       <PersonProfile v-if="about && person.profile" :id="aboutId" :person="{ name: person.name, photo, profile: person.profile }" />
     </q-item-section>
     <slot />
-    <PersonDialog v-model="shown" :person="person" :photo="photo" :initials="initials" :links="links" />
+    <PersonDialog v-model="shown" :person="person" :marks="marks ?? NO_MARKS" :photo="photo" :initials="initials" :links="links" />
   </q-item>
 </template>
 

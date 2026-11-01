@@ -2,17 +2,18 @@
 import { computed, onMounted, ref } from 'vue';
 import {
   CONTACT_FEEDS,
+  areaSections,
   candidateName,
   contactDistricts,
   fillTemplate,
-  groupAreaContacts,
+  personMarks,
   placeholderValues,
-  seatNotUp,
   templatesFor,
   type AreaContact,
   type AreaContactsView,
   type ContactDistrict,
   type EmailTemplate,
+  type PublicCandidacy,
 } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { errorMessage } from '../api.js';
@@ -20,7 +21,7 @@ import PageShell from '../components/PageShell.vue';
 import { confirmAction } from '../communications/admin-forms.js';
 import { attempt } from '../dialogs.js';
 import { session } from '../session.js';
-import { areaContacts } from './api.js';
+import { areaContacts, publicCandidacies } from './api.js';
 import BallotContests from './BallotContests.vue';
 import {
   areaText,
@@ -29,37 +30,46 @@ import {
   DISTRICT_LABELS,
   districtPeopleText,
   districtText,
-  emptyOfficeText,
   feedNote,
-  notUpText,
+  localToday,
   recordsCredit,
   mailtoLink,
-  officeShown,
   profilesNote,
 } from './candidacy-text.js';
 import DistrictMap, { type MapMarker } from './DistrictMap.vue';
 import { mapsRefused } from './maps.js';
-import OfficeCard from './OfficeCard.vue';
-import OfficePeople from './OfficePeople.vue';
+import OfficeGrid from './OfficeGrid.vue';
+import PartyCandidates from './PartyCandidates.vue';
 
 /**
- * Your area (design §5.12): for a signed-in member, who holds each office where they live and who is running for it,
- * from public records and from the party's communications team, each with an email the member can edit and send from
- * their own email app: they pick one of the templates that suit the person, which the page fills in. The site sends
- * nothing and keeps no copy. Each office has the outline of its district; where the map is set up, it shows a pin in
- * each of their districts, with who is in office and running there, and the outline of the one they choose (or their
- * state). People Wikidata knows have their biography and experience; the ballot's other contests are listed at the end.
+ * Your area (design §5.12): for a signed-in member, the people where they live in three groups (§5.8): the Transhumanist
+ * Party's candidates there; their representatives, who holds each office now; and everyone else running, from public
+ * records and from the party's communications team. Each representative and other candidate has an email the member
+ * can edit and send from their own email app: they pick one of the templates that suit the person, which the page fills
+ * in. The site sends nothing and keeps no copy. Each office has the outline of its district; where the map is set up,
+ * it shows a pin in each of their districts, with the people of each group there, and the outline of the one they
+ * choose (or their state). People Wikidata knows have their biography and experience; the ballot's other contests are
+ * listed at the end.
  */
 usePageTitle('Your area');
 const view = ref<AreaContactsView | null>(null);
 const error = ref<string | null>(null);
+/** Members' approved candidacies, of which the area's are the party's candidates there. */
+const candidacies = ref<PublicCandidacy[] | null>(null);
+const candidaciesError = ref<string | null>(null);
+const today = localToday();
 
 onMounted(async () => {
+  const listed = publicCandidacies().then(
+    (list) => (candidacies.value = list),
+    (e) => (candidaciesError.value = errorMessage(e)),
+  );
   try {
     view.value = await areaContacts();
   } catch (e) {
     error.value = errorMessage(e);
   }
+  await listed;
 });
 
 const note = computed(() => (view.value ? areaText(view.value.area) : null));
@@ -71,8 +81,9 @@ const feedNotes = computed(() =>
 /** Google's wording, wherever the ballot added someone. */
 const fromBallot = computed(() => !!view.value && (view.value.contacts.some((c) => c.source === 'civic') || view.value.ballot.length > 0));
 
-/** Every office of the area (the nation, the state, then each district), each with its people. */
-const offices = computed(() => (view.value ? groupAreaContacts(view.value.area, view.value.contacts).filter((g) => officeShown(g, view.value!.electionYear)) : []));
+/** The party's candidates, the member's representatives and the others running, each office with its people. */
+const sections = computed(() => (view.value ? areaSections(view.value.area, view.value.contacts, candidacies.value ?? [], today) : null));
+const marks = (p: AreaContact) => personMarks(p, sections.value?.holders ?? [], sections.value?.party ?? []);
 
 // The map: a pin per district with a point, and the chosen district's outline (the first, until one is chosen); an
 // office of the whole state outlines the state.
@@ -91,9 +102,12 @@ const shown = computed<ContactDistrict | null>(
     mapped.value[0] ??
     null,
 );
-const markers = computed<MapMarker[]>(() =>
-  mapped.value.map((d) => ({ id: districtKey(d), point: d.point!, title: d.name, caption: districtPeopleText(view.value!.contacts, d) })),
-);
+const markers = computed<MapMarker[]>(() => {
+  const s = sections.value;
+  if (!s) return [];
+  const people = { party: s.party, holders: s.holders, others: s.running.flatMap((g) => g.candidates) };
+  return mapped.value.map((d) => ({ id: districtKey(d), point: d.point!, title: d.name, caption: districtPeopleText(people, d) }));
+});
 const outline = computed(() => (shown.value ? { kind: shown.value.kind, geoid: shown.value.geoid } : null));
 const onMap = (d: Pick<ContactDistrict, 'kind' | 'geoid'>) => mapReady.value && (d.kind === 'state' || mapped.value.some((m) => districtKey(m) === districtKey(d)));
 
@@ -167,8 +181,9 @@ async function copy() {
       <div>
         <h1 class="text-h5 q-mb-xs">Your area</h1>
         <div class="text-grey-7">
-          Who holds each office where you live, and who is running for it. Write to any of them: the email is filled in for
-          you to change as you like, and goes from your own email app. This site does not send it or keep a copy.
+          The Transhumanist Party’s candidates where you live, your representatives, and everyone else running there. Write
+          to any of your representatives or the other candidates: the email is filled in for you to change as you like,
+          and goes from your own email app. This site does not send it or keep a copy.
         </div>
       </div>
 
@@ -213,30 +228,62 @@ async function copy() {
           />
         </div>
         <q-banner v-for="n in feedNotes" :key="n" dense rounded class="bg-grey-3 text-black">{{ n }}</q-banner>
-        <div>
-          <q-btn flat no-caps color="primary" icon="campaign" label="Party members running in your area" to="/candidates" />
-        </div>
-
-        <section aria-labelledby="area-offices-heading">
-          <h2 id="area-offices-heading" class="text-h6 q-my-sm">Each office where you vote</h2>
-          <div class="area-offices">
-            <OfficeCard
-              v-for="g in offices"
-              :key="`${g.office}:${districtKey(g.district)}`"
-              :office="g.office"
-              :district="g.district"
-              :mappable="onMap(g.district)"
-              :note="seatNotUp(view.notUp, g) && !g.candidates.length ? notUpText(view.electionYear) : null"
-              :empty="g.holders.length || g.candidates.length || seatNotUp(view.notUp, g) ? null : emptyOfficeText(g.office, false)"
-              @map="showOnMap(g.district)"
-            >
-              <OfficePeople v-slot="{ person: c }" :holders="g.holders" :candidates="g.candidates" labelled>
-                <q-item-section side top>
-                  <q-btn outline dense no-caps size="sm" color="primary" icon="mail" label="Write" :aria-label="`Write to ${c.name}`" @click="write(c)" />
-                </q-item-section>
-              </OfficePeople>
-            </OfficeCard>
+        <section v-if="sections" aria-labelledby="area-party-heading">
+          <h2 id="area-party-heading" class="text-h6 q-my-sm">Transhumanist Party candidates in your area</h2>
+          <div class="text-grey-7 q-mb-sm">
+            Members of the party running for office here, in their own words. A Membership Admin reviews each candidacy
+            before it appears; being listed is not an endorsement.
           </div>
+          <q-banner v-if="candidaciesError" class="bg-orange-1 text-black" rounded>{{ candidaciesError }}</q-banner>
+          <div v-else-if="!candidacies" class="text-grey-7">Loading…</div>
+          <PartyCandidates v-else-if="sections.party.length" :candidacies="sections.party" :holders="sections.holders" />
+          <div v-else class="text-grey-7">No Transhumanist Party candidates in your area yet.</div>
+          <q-btn flat no-caps color="primary" icon="campaign" label="All of the party’s candidates" to="/candidates" class="q-mt-xs" />
+        </section>
+
+        <section v-if="sections" aria-labelledby="area-representatives-heading">
+          <h2 id="area-representatives-heading" class="text-h6 q-my-sm">Your representatives</h2>
+          <div class="text-grey-7 q-mb-sm">Who holds each office where you vote, now.</div>
+          <OfficeGrid
+            :groups="sections.representatives"
+            part="holders"
+            every
+            :election-year="view.electionYear"
+            :not-up="view.notUp"
+            :marks="marks"
+            :mappable="onMap"
+            @map="showOnMap"
+          >
+            <template #person="{ person }">
+              <q-item-section side top>
+                <q-btn outline dense no-caps size="sm" color="primary" icon="mail" label="Write" :aria-label="`Write to ${person.name}`" @click="write(person)" />
+              </q-item-section>
+            </template>
+          </OfficeGrid>
+        </section>
+
+        <section v-if="sections" aria-labelledby="area-running-heading">
+          <h2 id="area-running-heading" class="text-h6 q-my-sm">Others running in your area</h2>
+          <div class="text-grey-7 q-mb-sm">
+            Everyone else running for these offices, from public records and the party’s communications team. None of
+            them has been reviewed or endorsed by the party.
+          </div>
+          <OfficeGrid
+            :groups="sections.running"
+            part="candidates"
+            :every="false"
+            :election-year="view.electionYear"
+            :not-up="view.notUp"
+            :marks="marks"
+            :mappable="onMap"
+            @map="showOnMap"
+          >
+            <template #person="{ person }">
+              <q-item-section side top>
+                <q-btn outline dense no-caps size="sm" color="primary" icon="mail" label="Write" :aria-label="`Write to ${person.name}`" @click="write(person)" />
+              </q-item-section>
+            </template>
+          </OfficeGrid>
         </section>
         <BallotContests :contests="view.ballot" />
         <div class="text-caption text-grey-7">
@@ -303,12 +350,6 @@ async function copy() {
 </template>
 
 <style scoped>
-.area-offices {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
-  gap: 12px;
-  align-items: start;
-}
 .area-email {
   width: 640px;
   max-width: 100%;
