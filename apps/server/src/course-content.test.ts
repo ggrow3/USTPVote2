@@ -1,6 +1,6 @@
 import { coursePackageSchema, coursePlacementProblem, draftCoursePackage, placementOf, type CourseRecord } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
-import { contentCourses } from './course/content-seed.js';
+import { CONTENT_SEEDS, partyCourses } from './course/content-seed.js';
 import { mapCourses } from './course/course-map-seed.js';
 import { transhumanismCourse } from './course/transhumanism-seed.js';
 
@@ -10,6 +10,9 @@ const record = (courseId: string, title: string, summary: string): CourseRecord 
   title,
   summary,
 });
+
+/** Every written course, the curriculum's and those from the party's own sources. */
+const contentCourses = CONTENT_SEEDS.flatMap((batch) => batch.courses);
 
 describe("The party's curriculum as courses (design §10.8)", () => {
   it('passes the rules a Course Administrator saving each lesson would meet, as a ustp.course package', () => {
@@ -59,5 +62,23 @@ describe("The party's curriculum as courses (design §10.8)", () => {
       'introduction-to-left-transhumanism',
       'historical-applied-projects',
     ]);
+  });
+
+  it('writes every course on the map once, so no draft is left without lessons', () => {
+    const ids = contentCourses.map((seed) => seed.courseId);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(mapCourses.map((course) => course.courseId).filter((id) => !ids.includes(id))).toEqual([]);
+  });
+
+  it("ends each lesson written from the party's own sources with the sources it rests on, as addresses", () => {
+    for (const seed of partyCourses) {
+      for (const lesson of seed.lessons) {
+        const paragraphs = lesson.body.split('\n\n');
+        const sources = paragraphs.slice(paragraphs.lastIndexOf('Sources') + 1);
+        expect(paragraphs.lastIndexOf('Sources'), lesson.lessonId).toBeGreaterThan(0);
+        expect(sources.length, lesson.lessonId).toBeGreaterThan(0);
+        for (const source of sources) expect(source, lesson.lessonId).toMatch(/: https:\/\/\S+$/);
+      }
+    }
   });
 });

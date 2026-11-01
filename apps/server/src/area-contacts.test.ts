@@ -42,8 +42,9 @@ function fakeRecords(seen: Seen[], down: string[] = []): typeof globalThis.fetch
       ]);
     }
     if (host === 'v3.openstates.org') {
-      const person = (id: string, name: string, org: string, title: string, classification = 'state') => ({
+      const person = (id: string, name: string, org: string, title: string, classification = 'state', image?: string) => ({
         id,
+        image,
         name,
         party: 'Democratic',
         email: `${id}@legislature.example`,
@@ -54,8 +55,8 @@ function fakeRecords(seen: Seen[], down: string[] = []): typeof globalThis.fetch
       });
       return json({
         results: [
-          person('s38', 'Catherine Blakespear', 'upper', 'Senator'),
-          person('a76', 'Darshana Patel', 'lower', 'Assemblymember'),
+          person('s38', 'Catherine Blakespear', 'upper', 'Senator', 'state', 'https://senate.example/blakespear.jpg'),
+          person('a76', 'Darshana Patel', 'lower', 'Assemblymember', 'state', 'http://assembly.example/patel.jpg'),
           person('us', 'Mike Levin', 'lower', 'Representative', 'country'),
         ],
       });
@@ -81,8 +82,14 @@ describe('the public records for a member’s area', () => {
     expect(contacts[0]).toMatchObject({ party: 'Democratic Party', incumbent: true, election: '2026', sourceUrl: 'https://www.fec.gov/data/candidate/H8CA49058/' });
     expect(contacts[2]).toMatchObject({ officeTitle: 'U.S. Senator', contactUrl: 'https://www.padilla.senate.gov/contact/', email: null });
     expect(contacts[3]).toMatchObject({ officeTitle: 'U.S. Representative', website: 'https://levin.house.gov', contactUrl: null });
-    expect(contacts[4]).toMatchObject({ officeTitle: 'State Senator', email: 's38@legislature.example', website: null });
-    expect(contacts[5]).toMatchObject({ officeTitle: 'Assemblymember' });
+    expect(contacts[4]).toMatchObject({
+      officeTitle: 'State Senator',
+      email: 's38@legislature.example',
+      website: null,
+      photo: { url: 'https://senate.example/blakespear.jpg', credit: 'Official portrait, from Open States', creditUrl: 'https://openstates.org/person/s38/' },
+    });
+    // Only https photos are passed on.
+    expect(contacts[5]).toMatchObject({ officeTitle: 'Assemblymember', photo: null });
     // No presidential race in 2026; the House race by its two-digit district; Open States by the district's point, key in a header.
     const fec = seen.filter((r) => r.url.startsWith('https://api.open.fec.gov')).map((r) => new URL(r.url).searchParams);
     expect(fec.map((q) => q.get('office'))).toEqual(['S', 'H']);

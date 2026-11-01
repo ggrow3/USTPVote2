@@ -45,7 +45,7 @@ import {
 } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 import { VideosService } from '../videos/videos.js';
-import { CONTENT_SEED, contentCourses, SEED_SOURCE, SEEDED_AT } from './content-seed.js';
+import { CONTENT_SEEDS, SEED_SOURCE, SEEDED_AT, type SeededCourse } from './content-seed.js';
 import { DRAFT_SUMMARY, FIRST_COURSE_POSITION, MAP_SEED, mapCourses } from './course-map-seed.js';
 import { normalizePortrait } from './portrait.js';
 import { transhumanismCourse, transhumanismLessons, transhumanismProfiles } from './transhumanism-seed.js';
@@ -610,31 +610,31 @@ export class CourseService {
   }
 
   /**
-   * Seeds the first course if it is missing, and the map's courses and then the curriculum's lessons once each.
+   * Seeds the first course if it is missing, and the map's courses and then each batch of written lessons once each.
    * Checked each time, not remembered: the database can be emptied under a running server (the emulators between
    * tests), and a seed that failed is simply tried again.
    */
   private async ensureSeeded(): Promise<void> {
     const db = this.firebase.db;
-    const [first, map, content] = await db.getAll(
+    const [first, map, ...content] = await db.getAll(
       db.collection(Collections.courses).doc(COURSE_ID),
       db.collection(Collections.courseSeeds).doc(MAP_SEED),
-      db.collection(Collections.courseSeeds).doc(CONTENT_SEED),
+      ...CONTENT_SEEDS.map(({ seed }) => db.collection(Collections.courseSeeds).doc(seed)),
     );
     if (!first!.exists) await this.seedTranshumanism();
     if (!map!.exists) await this.seedMap();
-    if (!content!.exists) await this.seedContent();
+    for (const [index, { seed, courses }] of CONTENT_SEEDS.entries()) if (!content[index]!.exists) await this.seedContent(seed, courses);
   }
 
   /**
-   * Writes the curriculum's lessons into its courses, as drafts: a map course gets them only while it was never
+   * Writes a batch of lessons into their courses, as drafts: a map course gets them only while it was never
    * published and has no lessons, and its summary only while it is still the placeholder, so a course a Course
    * Administrator has written or deleted is left as it is. A new course is added where it is missing, on its square
    * if that is free, after those of its prerequisites that are courses.
    */
-  private async seedContent(): Promise<void> {
+  private async seedContent(seedId: string, contentCourses: readonly SeededCourse[]): Promise<void> {
     const db = this.firebase.db;
-    const markerRef = db.collection(Collections.courseSeeds).doc(CONTENT_SEED);
+    const markerRef = db.collection(Collections.courseSeeds).doc(seedId);
     await db.runTransaction(async (tx) => {
       const [marker, all, ...written] = await Promise.all([
         tx.get(markerRef),
@@ -672,7 +672,7 @@ export class CourseService {
         } else return;
         for (const lesson of seed.lessons) tx.create(db.collection(Collections.courseLessons).doc(`${seed.courseId}_${lesson.lessonId}`), lesson);
       });
-      tx.create(markerRef, { seed: CONTENT_SEED, seededAt: new Date().toISOString() });
+      tx.create(markerRef, { seed: seedId, seededAt: new Date().toISOString() });
     });
   }
 

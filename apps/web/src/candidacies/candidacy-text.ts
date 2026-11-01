@@ -232,3 +232,20 @@ export function personCaption(person: Pick<AreaContact, 'office' | 'officeTitle'
 export function officeShown(group: { readonly office: PublicOffice; readonly holders: readonly unknown[]; readonly candidates: readonly unknown[] }, electionYear: number): boolean {
   return group.office !== 'us_president' || electionYear % 4 === 0 || group.holders.length + group.candidates.length > 0;
 }
+
+/** Offices no public record this site reads covers, with who the party's communications team adds for them. */
+const ADDED_BY_HAND: Partial<Readonly<Record<PublicOffice, string>>> = {
+  statewide: 'governors and other statewide officials',
+  county: 'county officials, such as supervisors and the sheriff',
+  local: 'city and town officials, such as the mayor and council members',
+};
+
+/**
+ * What an office's card says when nobody is listed for it: for an office no public record covers, also that the
+ * party's communications team adds its people by hand. `running` for a list of people running only.
+ */
+export function emptyOfficeText(office: PublicOffice, running: boolean): string {
+  const nobody = running ? 'Nobody running is listed yet.' : 'No one is listed for this office yet.';
+  const who = ADDED_BY_HAND[office];
+  return who ? `${nobody} No public record this site reads lists ${who}: the party’s communications team adds them.` : nobody;
+}

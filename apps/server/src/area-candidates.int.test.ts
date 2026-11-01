@@ -33,20 +33,20 @@ beforeEach(async () => {
 const names = (v: AreaCandidatesView) => v.candidates.map((c) => `${c.source} ${c.office}@${c.district.geoid} ${c.name}`);
 const lookUp = (zip: unknown, headers: Record<string, string> = {}) => api.call('POST', '/v1/public/candidates/area', undefined, { zip }, headers);
 
-describe('the Candidates page’s people running in an area', () => {
-  it('for a member, in their own area: public records and admins’ candidates, with the ballot and profiles, and never their ZIP code', async () => {
+describe('the Candidates page’s people in an area', () => {
+  it('for a member, in their own area: who holds and runs for each office, from public records and admins, with the ballot and profiles, and never their ZIP code', async () => {
     const enter = (body: Record<string, unknown>) =>
       api.call('POST', '/v1/admin/area-contacts', comms, { role: 'candidate', office: 'county', officeTitle: 'County Supervisor', state: 'CA', ...body });
     await enter({ districtId: '06001', name: 'Cora County', electionDate: '2030-11-05' });
-    // Not in Ada's area, past its election, or in office: none of these is listed.
+    await enter({ role: 'holder', districtId: '06001', name: 'Hope Holder' });
+    // Not in Ada's area, or past its election: neither is listed.
     await enter({ districtId: '06003', name: 'Sam Second', electionDate: '2030-11-05' });
     await enter({ districtId: '06001', name: 'Pat Past', electionDate: '2020-11-03' });
-    await enter({ role: 'holder', districtId: '06001', name: 'Hope Holder' });
     const res = await api.call('GET', '/v1/candidacies/area/candidates', ada);
     expect(res.status).toBe(200);
     const v = res.body as AreaCandidatesView;
     expect(v.area).toMatchObject({ state: 'CA', basis: 'zip' });
-    expect(v.feeds).toEqual({ fec: 'ok', congress: 'off', openstates: 'off', civic: 'ok' });
+    expect(v.feeds).toEqual({ fec: 'ok', congress: 'ok', openstates: 'ok', civic: 'ok' });
     expect(v.profiles).toBe('ok');
     expect(names(v)).toEqual([
       'fec us_senate@06 Sid Hopeful',
@@ -59,6 +59,15 @@ describe('the Candidates page’s people running in an area', () => {
       'admin county@06001 Cora County',
     ]);
     expect(v.candidates.every((c) => c.role === 'candidate')).toBe(true);
+    expect(v.holders.map((c) => `${c.source} ${c.office}@${c.district.geoid} ${c.name}`)).toEqual([
+      'congress us_senate@06 Sam Senator',
+      'congress us_senate@06 Sky Senator',
+      'congress us_house@0601 Hal House',
+      'congress us_house@0602 Hal House',
+      'openstates state_upper@06001 Uma Upper',
+      'openstates state_lower@06001 Lou Lower',
+      'admin county@06001 Hope Holder',
+    ]);
     expect(v.candidates[1]).toMatchObject({ incumbent: true, profile: { summary: expect.stringContaining('made-up') } });
     expect(v.candidates[6]).toMatchObject({ email: 'bea@campaign.example', website: 'https://bea.example', photo: { url: 'https://bea.example/photo.jpg' } });
     expect(v.ballot).toMatchObject([{ office: 'Governing Board Member', candidates: [{ name: 'Sal School' }] }]);
@@ -90,6 +99,8 @@ describe('the Candidates page’s people running in an area', () => {
     ]);
     expect(names(v)).toContain('fec us_house@3602 Cass Challenger');
     expect(v.candidates.some((c) => c.source === 'admin')).toBe(false);
+    expect(v.holders).toEqual([]);
+    expect(v.feeds).toMatchObject({ congress: 'off', openstates: 'off' });
     expect(v.ballot).toHaveLength(1);
     expect(JSON.stringify(v)).not.toContain('10005');
     expect((await api.firebase.db.listCollections()).map((c) => c.id)).not.toContain('area_lookups');

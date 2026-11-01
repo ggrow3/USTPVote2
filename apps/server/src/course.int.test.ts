@@ -1,6 +1,7 @@
 import sharp from 'sharp';
 import { Collections, coursePackageSchema } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { CONTENT_SEED, partyCourses } from './course/content-seed.js';
 import { DRAFT_SUMMARY, MAP_SEED, mapCourses } from './course/course-map-seed.js';
 import { resetEmulators, TestApi } from './testing/emulator.js';
 
@@ -455,8 +456,12 @@ describe("The party's curriculum on its course map", () => {
     expect((await content('the-coalition', editor)).lessons.map((lesson) => lesson.lessonId)).toEqual(['uspp']);
     expect((await content('historical-applied-projects', editor)).lessons).toHaveLength(5);
     expect((await content('introduction-to-left-transhumanism', editor)).lessons.map((lesson) => lesson.lessonId).at(-1)).toBe('ustp-left');
-    // The courses the curriculum has nothing for stay as the map seed left them.
-    expect(await content('allies', editor)).toMatchObject({ course: { summary: DRAFT_SUMMARY }, lessons: [] });
+    // The courses the curriculum has nothing for are written from the party's own sources.
+    for (const seed of partyCourses) {
+      const written = await content(seed.courseId, editor);
+      expect(written.course).toMatchObject({ summary: seed.summary, status: 'draft', publishedVersion: null });
+      expect(written.lessons.map((lesson) => lesson.lessonId)).toEqual(seed.lessons.map((lesson) => lesson.lessonId));
+    }
     const placed = await placement(editor);
     expect(placed['introduction-to-left-transhumanism']).toEqual({ prerequisites: ['fundamental-questions'], position: { row: 1, column: 4 } });
     expect(placed['historical-applied-projects']).toEqual({ prerequisites: ['figures-of-transhumanism'], position: { row: 3, column: 1 } });
@@ -476,7 +481,7 @@ describe("The party's curriculum on its course map", () => {
     await passCourse('fundamental-questions', learner, editor);
     expect((await api.call('GET', '/v1/courses/fundamental-questions', learner)).body.certificate).not.toBeNull();
     expect((await api.call('POST', '/v1/courses/introduction-to-left-transhumanism/lessons/left-101/attempts', learner, { answers: [1, 2, 0, 3, 1] })).body.attempt.passed).toBe(true);
-    // The Figures come after An Introduction into the Transhumanist Party, which has no lessons yet.
+    // The Figures come after An Introduction into the Transhumanist Party, which is not published yet.
     expect((await api.call('GET', '/v1/courses/figures-of-transhumanism', learner)).body.missingPrerequisites).toEqual([
       { courseId: 'transhumanist-party', title: 'An Introduction into the Transhumanist Party' },
     ]);
@@ -508,5 +513,26 @@ describe("The party's curriculum on its course map", () => {
 
     expect((await api.call('DELETE', '/v1/admin/courses/figures-of-transhumanism/lessons/figures-101', editor)).status).toBe(204);
     expect((await content('figures-of-transhumanism', editor)).lessons).toHaveLength(4);
+  });
+
+  it("writes the party's own courses where the curriculum was added before them, and leaves the curriculum's alone", async () => {
+    const db = api.firebase.db;
+    // As dev stands once the curriculum's seed has run: the map's drafts, and the curriculum's marker.
+    await db.collection(Collections.courseSeeds).doc(MAP_SEED).create({ seed: MAP_SEED, seededAt: '2026-10-31T00:00:00.000Z' });
+    await db.collection(Collections.courseSeeds).doc(CONTENT_SEED).create({ seed: CONTENT_SEED, seededAt: '2026-11-01T00:00:00.000Z' });
+    for (const course of mapCourses) await db.collection(Collections.courses).doc(course.courseId).create(course);
+
+    const editor = await courseAdmin('party-courses@example.test');
+    expect(await content('fundamental-questions', editor)).toMatchObject({ course: { summary: DRAFT_SUMMARY }, lessons: [] });
+    const allies = await content('allies', editor);
+    expect(allies.course.summary).toMatch(/^Who the United States Transhumanist Party works with/);
+    expect(allies.lessons.map((lesson) => lesson.lessonId)).toEqual(['allies-states', 'allies-organizations', 'allies-coalition']);
+    expect((await content('why-the-new-york-transhumanist-party', editor)).lessons).toHaveLength(2);
+
+    // Published, a course of the party's own reads like any other, its sources at the end of each lesson.
+    expect((await api.call('POST', '/v1/admin/courses/transhumanist-party/publish', editor)).body.version).toBe(1);
+    const intro = await api.call('GET', '/v1/public/courses/transhumanist-party');
+    expect(intro.body.lessons).toHaveLength(4);
+    expect(intro.body.lessons[0].body).toContain('\n\nSources\n\nUnited States Transhumanist Party, Constitution: https://transhumanist-party.org/constitution/');
   });
 });

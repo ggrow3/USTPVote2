@@ -2,6 +2,7 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
+  CONTACT_FEEDS,
   currentContent,
   groupAreaContacts,
   inCandidateArea,
@@ -27,6 +28,7 @@ import {
   districtPeopleText,
   districtText,
   electionText,
+  emptyOfficeText,
   feedNote,
   localToday,
   officeShown,
@@ -118,20 +120,26 @@ const areaNote = computed(() => {
   return where.value === 'area' && area.value ? areaText(area.value) : null;
 });
 
-/** Everyone running in the area the page is narrowed to, from public records; none for a state or all states. */
+/**
+ * The people of the area the page is narrowed to: in the member's own area who holds and who runs for each office, for
+ * a typed ZIP code who runs; none for a state or all states.
+ */
 const running = computed<AreaCandidatesView | null>(() => (where.value === 'zip' ? typed.value!.view : where.value === 'area' ? ownRunning.value : null));
-/** Every office of the area, nationwide first, each with who runs for it; offices nobody is listed for too. */
+const people = computed(() => (running.value ? [...running.value.holders, ...running.value.candidates] : []));
+/** Every office of the area, nationwide first, each with its people; offices nobody is listed for too. */
 const runningOffices = computed(() => {
   const v = running.value;
-  return v ? groupAreaContacts(v.area, v.candidates).filter((g) => officeShown(g, v.electionYear)) : [];
+  return v ? groupAreaContacts(v.area, people.value).filter((g) => officeShown(g, v.electionYear)) : [];
 });
+/** Who holds the offices is listed too: in the member's own area. */
+const withHolders = computed(() => where.value === 'area');
 /** Whether the party's communications team listed anyone here: only in the member's own area. */
-const fromParty = computed(() => !!running.value?.candidates.some((c) => c.source === 'admin'));
+const fromParty = computed(() => people.value.some((c) => c.source === 'admin'));
 const runningNotes = computed(() => {
   const v = running.value;
-  return v ? [feedNote('fec', v.feeds.fec), feedNote('civic', v.feeds.civic), profilesNote(v.profiles)].filter((n): n is string => n !== null) : [];
+  return v ? [...CONTACT_FEEDS.map((f) => feedNote(f, v.feeds[f])), profilesNote(v.profiles)].filter((n): n is string => n !== null) : [];
 });
-const fromBallot = computed(() => !!running.value && (running.value.candidates.some((c) => c.source === 'civic') || running.value.ballot.length > 0));
+const fromBallot = computed(() => !!running.value && (people.value.some((c) => c.source === 'civic') || running.value.ballot.length > 0));
 
 const markers = computed<MapMarker[]>(() => [
   ...upcoming.value.flatMap((c) =>
@@ -139,9 +147,9 @@ const markers = computed<MapMarker[]>(() => [
       ? [{ id: c.candidacyId, point: c.district.point, title: c.name, caption: `${c.officeTitle} · ${districtText(c)}`, to: `/candidates/${c.candidacyId}` }]
       : [],
   ),
-  // A ring at each of the area's districts, saying who runs there.
+  // A ring at each of the area's districts, saying who holds and who runs for its offices.
   ...(running.value?.area.districts ?? []).flatMap((d) =>
-    d.point ? [{ id: `district:${d.kind}:${d.geoid}`, point: d.point, title: d.name, caption: districtPeopleText(running.value!.candidates, d), hollow: true }] : [],
+    d.point ? [{ id: `district:${d.kind}:${d.geoid}`, point: d.point, title: d.name, caption: districtPeopleText(people.value, d), hollow: true }] : [],
   ),
 ]);
 
@@ -384,10 +392,14 @@ function withdraw(c: MyCandidacy) {
         </q-expansion-item>
 
         <section v-if="where === 'area' || where === 'zip'" class="candidates-running" aria-labelledby="candidates-running-heading">
-          <h2 id="candidates-running-heading" class="text-h6 q-mb-xs">Everyone running{{ whereText }}</h2>
+          <h2 id="candidates-running-heading" class="text-h6 q-mb-xs">
+            {{ withHolders ? `Every office${whereText}: who holds it and who is running` : `Everyone running${whereText}` }}
+          </h2>
           <div class="text-grey-7 q-mb-sm">
-            Every office{{ whereText }}, with the area each is elected from. From public records: candidates for Congress
-            and President who have filed with the FEC, and the contests on the ballot while Google has an election loaded,
+            Every office{{ whereText }}, with the area each is elected from. Choose a person’s photo or name to see them
+            with that area on the map. From public records: candidates for Congress and President who have filed with the
+            FEC, and the contests on the ballot while Google has an election loaded,
+            <template v-if="withHolders">members of Congress, and state legislators from Open States,</template>
             with biographies from Wikipedia and Wikidata where they have one.
             <template v-if="fromParty">
               Those marked “Added by the party” were listed by its communications team. Being listed here is not an
@@ -407,17 +419,25 @@ function withdraw(c: MyCandidacy) {
                 :office="g.office"
                 :district="g.district"
                 :mappable="mapReady && g.district.kind !== 'nation'"
+                :empty="g.holders.length || g.candidates.length ? null : emptyOfficeText(g.office, !withHolders)"
                 @map="showOnMap(g.district)"
               >
-                <q-list v-if="g.candidates.length" separator>
-                  <AreaPerson v-for="c in g.candidates" :key="c.contactId" :person="c" show-email />
-                </q-list>
-                <div v-else class="text-caption text-grey-7 q-px-md q-pb-sm">Nobody running is listed yet.</div>
+                <template v-for="part in [
+                  { title: 'In office', people: g.holders },
+                  { title: 'Running', people: g.candidates },
+                ]" :key="part.title">
+                  <q-list v-if="part.people.length" dense separator>
+                    <q-item-label v-if="withHolders" header class="area-offices__part">{{ part.title }}</q-item-label>
+                    <AreaPerson v-for="c in part.people" :key="c.contactId" :person="c" show-email />
+                  </q-list>
+                </template>
               </OfficeCard>
             </div>
             <BallotContests :contests="running.ballot" class="q-mb-md" />
             <div class="text-caption text-grey-7">
-              Candidates for Congress and President from the FEC; biographies from Wikipedia and Wikidata, by FEC ID.
+              Candidates for Congress and President from the FEC;
+              <template v-if="withHolders">members of Congress from the congress-legislators project; state legislators from Open States;</template>
+              biographies from Wikipedia and Wikidata, by FEC and Congress ID.
               <a v-if="fromBallot" :href="CIVIC_CREDIT.url" target="_blank" rel="noopener noreferrer">{{ CIVIC_CREDIT.text }}</a>
             </div>
           </template>
@@ -442,5 +462,9 @@ function withdraw(c: MyCandidacy) {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
   gap: 12px;
   align-items: start;
+}
+.area-offices__part {
+  padding: 4px 16px 0;
+  min-height: 0;
 }
 </style>
