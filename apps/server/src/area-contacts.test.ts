@@ -1,10 +1,14 @@
-import type { District } from 'ustp-domain';
+import type { AreaContact, District } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
-import { houseDistrictNumber, LocalContactSource, PublicContactSource } from './candidacies/contact-source.js';
+import { civicDistrict, houseDistrictNumber, LocalContactSource, PublicContactSource } from './candidacies/contact-source.js';
+import { officialId, plainText, WikipediaProfileSource } from './candidacies/profile-source.js';
 
 const CA49: District = { kind: 'congressional', geoid: '0649', state: 'CA', name: 'Congressional District 49', point: { lat: 33.1, lng: -117.2 }, vintage: null };
 const SD38: District = { kind: 'state_upper', geoid: '06038', state: 'CA', name: 'State Senate District 38', point: { lat: 33, lng: -117.1 }, vintage: null };
 const AD76: District = { kind: 'state_lower', geoid: '06076', state: 'CA', name: 'Assembly District 76', point: { lat: 33, lng: -117.1 }, vintage: null };
+const COUNTY: District = { kind: 'county', geoid: '06073', state: 'CA', name: 'San Diego County', point: { lat: 33, lng: -116.7 }, vintage: null };
+const CITY: District = { kind: 'place', geoid: '0666000', state: 'CA', name: 'San Diego city', point: { lat: 32.8, lng: -117.1 }, vintage: null };
+const HOLDERS = { zip: null, holders: true } as const;
 
 type Seen = { url: string; headers: Record<string, string> };
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -63,9 +67,9 @@ function fakeRecords(seen: Seen[], down: string[] = []): typeof globalThis.fetch
 describe('the public records for a member’s area', () => {
   it('lists the FEC’s candidates, the members of Congress and, with a key, the state legislators', async () => {
     const seen: Seen[] = [];
-    const source = new PublicContactSource({ fec: 'fec-key', openStates: 'os-key' }, fakeRecords(seen));
-    const { contacts, feeds } = await source.forArea('CA', [CA49, SD38, AD76], 2026);
-    expect(feeds).toEqual({ fec: 'ok', congress: 'ok', openstates: 'ok' });
+    const source = new PublicContactSource({ fec: 'fec-key', openStates: 'os-key', civic: null }, fakeRecords(seen));
+    const { contacts, feeds } = await source.forArea('CA', [CA49, SD38, AD76], 2026, HOLDERS);
+    expect(feeds).toEqual({ fec: 'ok', congress: 'ok', openstates: 'ok', civic: 'off' });
     expect(contacts.map((c) => `${c.source} ${c.role} ${c.office}@${c.district.geoid} ${c.name}`)).toEqual([
       'fec candidate us_house@0649 Mike Levin',
       'fec candidate us_house@0649 Armen Kurdian',
@@ -91,21 +95,21 @@ describe('the public records for a member’s area', () => {
     expect(os[0]!.headers['X-API-KEY']).toBe('os-key');
     // Kept a day: asking again sends nothing.
     const asked = seen.length;
-    await source.forArea('CA', [CA49, SD38, AD76], 2026);
+    await source.forArea('CA', [CA49, SD38, AD76], 2026, HOLDERS);
     expect(seen).toHaveLength(asked);
   });
 
   it('asks for President in a presidential year, and leaves state legislators out without a key', async () => {
     const seen: Seen[] = [];
-    const { contacts, feeds } = await new PublicContactSource({ fec: 'DEMO_KEY', openStates: null }, fakeRecords(seen)).forArea('CA', [SD38], 2028);
+    const { contacts, feeds } = await new PublicContactSource({ fec: 'DEMO_KEY', openStates: null, civic: null }, fakeRecords(seen)).forArea('CA', [SD38], 2028, HOLDERS);
     expect(feeds.openstates).toBe('off');
     expect(contacts.filter((c) => c.office === 'us_president').map((c) => [c.name, c.district.geoid, c.party])).toEqual([['Jane Doe', 'US', null]]);
     expect(seen.some((r) => r.url.includes('openstates'))).toBe(false);
   });
 
   it('says which record did not answer, and keeps the others', async () => {
-    const { contacts, feeds } = await new PublicContactSource({ fec: 'k', openStates: 'k' }, fakeRecords([], ['api.open.fec.gov'])).forArea('CA', [CA49], 2026);
-    expect(feeds).toEqual({ fec: 'unavailable', congress: 'ok', openstates: 'ok' });
+    const { contacts, feeds } = await new PublicContactSource({ fec: 'k', openStates: 'k', civic: null }, fakeRecords([], ['api.open.fec.gov'])).forArea('CA', [CA49], 2026, HOLDERS);
+    expect(feeds).toEqual({ fec: 'unavailable', congress: 'ok', openstates: 'ok', civic: 'off' });
     expect(contacts.map((c) => c.source)).toEqual(['congress', 'congress']);
   });
 
@@ -116,7 +120,7 @@ describe('the public records for a member’s area', () => {
   });
 
   it('the local stand-in: senators, a House race and legislators with email addresses', async () => {
-    const { contacts } = await new LocalContactSource().forArea('CA', [CA49, SD38], 2026);
+    const { contacts } = await new LocalContactSource().forArea('CA', [CA49, SD38], 2026, HOLDERS);
     expect(contacts.map((c) => `${c.role} ${c.office} ${c.name}`)).toEqual([
       'holder us_senate Sam Senator',
       'holder us_senate Sky Senator',
@@ -126,5 +130,306 @@ describe('the public records for a member’s area', () => {
       'candidate us_house Cass Challenger',
       'holder state_upper Uma Upper',
     ]);
+  });
+});
+
+/** The Civic Information API's answer for ZIP code 92130, the way it shapes contests. */
+const VOTER_INFO = {
+  election: { id: '9100', name: 'General Election', electionDay: '2026-11-03' },
+  contests: [
+    {
+      type: 'General',
+      office: 'U.S. Representative',
+      level: ['country'],
+      roles: ['legislatorLowerBody'],
+      district: { name: "California's 49th congressional district", scope: 'congressional', id: 'ocd-division/country:us/state:ca/cd:49' },
+      candidates: [
+        { name: 'Mike Levin', party: 'Democratic Party', candidateUrl: 'https://mikelevin.example', email: 'team@mikelevin.example', photoUrl: 'https://mikelevin.example/me.jpg' },
+        { name: 'Armen A. Kurdian', party: 'Republican Party', candidateUrl: 'http://kurdian.example' },
+      ],
+    },
+    {
+      office: 'Governor',
+      level: ['administrativeArea1'],
+      roles: ['headOfGovernment'],
+      district: { name: 'California', scope: 'statewide', id: 'ocd-division/country:us/state:ca' },
+      candidates: [{ name: 'Gail Governor', party: 'Democratic Party' }],
+    },
+    {
+      office: 'State Senator',
+      level: ['administrativeArea1'],
+      district: { name: 'State Senate District 38', scope: 'stateUpper', id: 'ocd-division/country:us/state:ca/sldu:38' },
+      candidates: [{ name: 'Catherine Blakespear', party: 'Democratic Party', email: 'not an address' }],
+    },
+    {
+      office: 'Board of Supervisors',
+      level: ['administrativeArea2'],
+      district: { name: 'Supervisorial District 3', scope: 'countyCouncil', id: 'ocd-division/country:us/state:ca/county:san_diego/council_district:3' },
+      candidates: [{ name: 'Terra Lawson-Remer', party: 'Nonpartisan' }],
+    },
+    {
+      office: 'Governing Board Member',
+      district: { name: 'San Dieguito Union High School District, Trustee Area 5', scope: 'schoolBoard' },
+      candidates: [{ name: 'Sam Schools' }, { name: ' ' }],
+    },
+    { type: 'Referendum', referendumTitle: 'Proposition 1', district: { scope: 'statewide' } },
+  ],
+};
+
+/** Google as it answers voterinfo: each call takes the next of `answers` (status, body, cache header); the rest as `fakeRecords`. */
+function fakeCivic(seen: Seen[], answers: { status?: number; body?: unknown; cache?: string }[]): typeof globalThis.fetch {
+  const others = fakeRecords([]);
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    seen.push({ url, headers: (init?.headers ?? {}) as Record<string, string> });
+    if (new URL(url).host !== 'www.googleapis.com') return others(input, init);
+    const a = answers.shift() ?? {};
+    return new Response(JSON.stringify(a.body ?? VOTER_INFO), {
+      status: a.status ?? 200,
+      headers: { 'content-type': 'application/json', ...(a.cache ? { 'cache-control': a.cache } : {}) },
+    });
+  }) as typeof globalThis.fetch;
+}
+
+const line = (c: AreaContact) => `${c.source} ${c.office}@${c.district.geoid} ${c.officeTitle}: ${c.name}`;
+const civicCalls = (seen: Seen[]) => seen.filter((r) => r.url.startsWith('https://www.googleapis.com'));
+
+describe('the ballot, from the Civic Information API', () => {
+  it('places each contest in the area’s Census district, merges Congress with the FEC, and lists the rest apart', async () => {
+    const seen: Seen[] = [];
+    const source = new PublicContactSource({ fec: 'k', openStates: null, civic: 'civic-key' }, fakeCivic(seen, [{ cache: 'public, max-age=600' }]));
+    const { contacts, ballot, feeds } = await source.forArea('CA', [CA49, SD38, COUNTY, CITY], 2026, { zip: '92130', holders: false });
+    expect(feeds).toEqual({ fec: 'ok', congress: 'off', openstates: 'off', civic: 'ok' });
+    expect(contacts.map(line)).toEqual([
+      'fec us_house@0649 U.S. Representative: Mike Levin',
+      'fec us_house@0649 U.S. Representative: Armen Kurdian',
+      'civic statewide@06 Governor: Gail Governor',
+      'civic state_upper@06038 State Senator: Catherine Blakespear',
+      'civic county@06073 Board of Supervisors, Supervisorial District 3: Terra Lawson-Remer',
+    ]);
+    // Levin keeps the FEC's record and gains the ballot's website, email and photo; an http:// site is dropped.
+    expect(contacts[0]).toMatchObject({
+      sourceUrl: 'https://www.fec.gov/data/candidate/H8CA49058/',
+      website: 'https://mikelevin.example',
+      email: 'team@mikelevin.example',
+      election: '2026-11-03',
+      photo: { url: 'https://mikelevin.example/me.jpg', creditUrl: null },
+    });
+    expect(contacts[1]).toMatchObject({ website: null, photo: null });
+    expect(contacts[3]).toMatchObject({ email: null, election: '2026-11-03', contactId: 'civic:9100:state_upper:06038:state-senator:catherine-blakespear' });
+    expect(ballot).toEqual([
+      {
+        office: 'Governing Board Member',
+        district: 'San Dieguito Union High School District, Trustee Area 5',
+        election: '2026-11-03',
+        candidates: [{ name: 'Sam Schools', party: null, website: null, email: null, photo: null }],
+      },
+    ]);
+    // By the ZIP code alone, with the key in a header; kept as long as Google says.
+    expect(civicCalls(seen)).toHaveLength(1);
+    expect(new URL(civicCalls(seen)[0]!.url).searchParams.get('address')).toBe('92130');
+    expect(civicCalls(seen)[0]!.url).not.toContain('civic-key');
+    expect(civicCalls(seen)[0]!.headers['x-goog-api-key']).toBe('civic-key');
+    await source.forArea('CA', [CA49], 2026, { zip: '92130', holders: false });
+    expect(civicCalls(seen)).toHaveLength(1);
+  });
+
+  it('is no ballot where Google has no election, missing when it refuses the key, and off without a key or ZIP code', async () => {
+    const seen: Seen[] = [];
+    const none = { status: 400, body: { error: { code: 400, message: 'Election unknown' } }, cache: 'no-cache' };
+    const source = new PublicContactSource({ fec: 'k', openStates: null, civic: 'civic-key' }, fakeCivic(seen, [none, none]));
+    const first = await source.forArea('CA', [CA49], 2026, { zip: '92130', holders: false });
+    expect([first.feeds.civic, first.ballot, first.contacts.map((c) => c.source)]).toEqual(['ok', [], ['fec', 'fec']]);
+    // "no-cache": asked again next time.
+    await source.forArea('CA', [CA49], 2026, { zip: '92130', holders: false });
+    expect(civicCalls(seen)).toHaveLength(2);
+
+    const refused = new PublicContactSource(
+      { fec: 'k', openStates: null, civic: 'bad' },
+      fakeCivic([], [{ status: 400, body: { error: { code: 400, message: 'API key not valid. Please pass a valid API key.' } } }]),
+    );
+    expect((await refused.forArea('CA', [CA49], 2026, { zip: '92130', holders: false })).feeds.civic).toBe('unavailable');
+
+    const asked: Seen[] = [];
+    const noKey = await new PublicContactSource({ fec: 'k', openStates: null, civic: null }, fakeCivic(asked, [])).forArea('CA', [CA49], 2026, { zip: '92130', holders: false });
+    const noZip = await new PublicContactSource({ fec: 'k', openStates: null, civic: 'k' }, fakeCivic(asked, [])).forArea('CA', [CA49], 2026, HOLDERS);
+    expect([noKey.feeds.civic, noZip.feeds.civic]).toEqual(['off', 'off']);
+    expect(civicCalls(asked)).toHaveLength(0);
+  });
+
+  it('finds a contest’s district by its OCD division ID, else the area’s only one of that kind', () => {
+    const area = [CA49, SD38, AD76, COUNTY, CITY];
+    expect(civicDistrict('congressional', 'ocd-division/country:us/state:ca/cd:49', 'CA', area)?.geoid).toBe('0649');
+    expect(civicDistrict('congressional', 'ocd-division/country:us/state:ca/cd:50', 'CA', area)).toBeNull();
+    expect(civicDistrict('state_lower', 'ocd-division/country:us/state:ca/sldl:76', 'CA', area)?.geoid).toBe('06076');
+    expect(civicDistrict('place', 'ocd-division/country:us/state:ca/place:san_diego', 'CA', area)?.geoid).toBe('0666000');
+    expect(civicDistrict('county', 'ocd-division/country:us/state:ca/county:orange', 'CA', area)).toBeNull();
+    expect(civicDistrict('state_upper', '', 'CA', area)?.geoid).toBe('06038');
+    expect(civicDistrict('congressional', '', 'CA', [CA49, { ...CA49, geoid: '0650' }])).toBeNull();
+    expect(civicDistrict('state', '', 'CA', [])).toMatchObject({ kind: 'state', geoid: '06' });
+  });
+
+  it('the local stand-in: the challenger’s website, a State Senate race, and a school board contest apart', async () => {
+    const { contacts, ballot, feeds } = await new LocalContactSource().forArea('CA', [CA49, { ...SD38, geoid: '06001' }], 2026, { zip: '94615', holders: false });
+    expect(feeds).toEqual({ fec: 'ok', congress: 'off', openstates: 'off', civic: 'ok' });
+    expect(contacts.map((c) => `${c.source} ${c.office} ${c.name} ${c.website ?? '-'}`)).toEqual([
+      'fec us_senate Sid Hopeful -',
+      'fec us_house Hal House -',
+      'fec us_house Cass Challenger https://cass.example',
+      'civic state_upper Uma Upper -',
+      'civic state_upper Bea Ballot https://bea.example',
+    ]);
+    expect(ballot.map((b) => [b.office, b.candidates.map((c) => c.name)])).toEqual([['Governing Board Member', ['Sal School']]]);
+  });
+});
+
+const fecPerson = (id: string, name: string): AreaContact => ({
+  contactId: `fec:${id}`,
+  source: 'fec',
+  role: 'candidate',
+  office: 'us_house',
+  officeTitle: 'U.S. Representative',
+  district: { kind: 'congressional', geoid: '0649', state: 'CA', name: 'Congressional District 49' },
+  name,
+  party: null,
+  email: null,
+  contactUrl: null,
+  website: null,
+  sourceUrl: null,
+  election: '2026',
+  incumbent: false,
+  photo: null,
+  profile: null,
+});
+
+const uri = (v: string) => ({ type: 'uri', value: v });
+const lit = (v: string) => ({ type: 'literal', value: v });
+const LEVIN = 'http://www.wikidata.org/entity/Q55424854';
+
+/** Wikidata, Wikipedia and Commons as they answer for Mike Levin; Kurdian has no Wikidata item. `down` lists hosts that fail. */
+function fakeWiki(seen: Seen[], down: string[] = []): typeof globalThis.fetch {
+  return (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = new URL(String(input));
+    seen.push({ url: url.toString(), headers: (init?.headers ?? {}) as Record<string, string> });
+    if (down.includes(url.host)) return json({}, 503);
+    if (url.host === 'query.wikidata.org') {
+      const query = url.searchParams.get('query') ?? '';
+      expect(query).toContain('"H8CA49058"');
+      // Levin is found by his FEC ID, each fact a row; the label service gives the bare ID where it has no English label.
+      const levin = { property: lit('P1839'), id: lit('H8CA49058'), item: uri(LEVIN) };
+      const position = (title: string, start: string, end?: string) => ({
+        ...levin,
+        kind: lit('position'),
+        value: uri('http://www.wikidata.org/entity/Q13218630'),
+        valueLabel: lit(title),
+        start: lit(`${start}-01-03T00:00:00Z`),
+        ...(end ? { end: lit(`${end}-01-03T00:00:00Z`) } : {}),
+        placeLabel: lit("California's 49th congressional district"),
+      });
+      const fact = (kind: string, value: string) => ({ ...levin, kind: lit(kind), value: uri(`http://www.wikidata.org/entity/${value}`), valueLabel: lit(value) });
+      return json({
+        results: {
+          bindings: [
+            { ...levin, kind: lit('article'), value: uri('https://en.wikipedia.org/wiki/Mike_Levin') },
+            { ...levin, kind: lit('image'), value: uri('http://commons.wikimedia.org/wiki/Special:FilePath/Mike%20Levin%20official%20photo.jpg') },
+            position('member of the United States House of Representatives', '2019', '2021'),
+            position('member of the United States House of Representatives', '2021'),
+            position('member of the United States House of Representatives', '2021'),
+            { ...position('House of Representatives', '2019'), start: undefined },
+            fact('education', 'Stanford University'),
+            fact('education', 'Duke University School of Law'),
+            fact('occupation', 'lawyer'),
+            fact('occupation', 'Q999999'),
+          ],
+        },
+      });
+    }
+    if (url.host === 'en.wikipedia.org') {
+      expect(url.pathname).toBe('/api/rest_v1/page/summary/Mike_Levin');
+      return json({
+        type: 'standard',
+        extract: 'Michael Ted Levin is an American lawyer and politician.  He has served since 2019.',
+        content_urls: { desktop: { page: 'https://en.wikipedia.org/wiki/Mike_Levin' } },
+      });
+    }
+    if (url.host === 'commons.wikimedia.org') {
+      expect(url.searchParams.get('titles')).toBe('File:Mike Levin official photo.jpg');
+      return json({
+        query: {
+          pages: [
+            {
+              title: 'File:Mike Levin official photo.jpg',
+              imageinfo: [
+                {
+                  thumburl: 'https://upload.wikimedia.org/thumb/levin.jpg',
+                  descriptionurl: 'https://commons.wikimedia.org/wiki/File:Mike_Levin_official_photo.jpg',
+                  extmetadata: { Artist: { value: '<a href="//x">U.S. House Office of Photography</a>' }, LicenseShortName: { value: 'Public domain' } },
+                },
+              ],
+            },
+          ],
+        },
+      });
+    }
+    throw new Error(`unexpected ${url}`);
+  }) as typeof globalThis.fetch;
+}
+
+describe('biographies and experience, from Wikidata and Wikipedia', () => {
+  const people = [fecPerson('H8CA49058', 'Mike Levin'), fecPerson('H6CA49169', 'Armen Kurdian'), { ...fecPerson('X', 'Nobody'), contactId: 'civic:1:x' }];
+
+  it('matches people by their FEC ID only, and gives each the start of their article, offices held, study, work and photo', async () => {
+    const seen: Seen[] = [];
+    const source = new WikipediaProfileSource(fakeWiki(seen));
+    const { people: out, state } = await source.withProfiles(people);
+    expect(state).toBe('ok');
+    expect(out[0]!.profile).toEqual({
+      summary: 'Michael Ted Levin is an American lawyer and politician. He has served since 2019.',
+      articleUrl: 'https://en.wikipedia.org/wiki/Mike_Levin',
+      wikidataUrl: 'https://www.wikidata.org/wiki/Q55424854',
+      positions: [{ title: 'member of the United States House of Representatives', place: "California's 49th congressional district", start: '2019', end: null }],
+      education: ['Stanford University', 'Duke University School of Law'],
+      occupations: ['lawyer'],
+    });
+    expect(out[0]!.photo).toEqual({
+      url: 'https://upload.wikimedia.org/thumb/levin.jpg',
+      credit: 'Photo: U.S. House Office of Photography, Public domain',
+      creditUrl: 'https://commons.wikimedia.org/wiki/File:Mike_Levin_official_photo.jpg',
+    });
+    expect([out[1]!.profile, out[1]!.photo, out[2]]).toEqual([null, null, people[2]]);
+    expect(seen.every((r) => r.headers['user-agent']?.startsWith('USTPVote2/'))).toBe(true);
+    expect(new URL(seen[0]!.url).searchParams.get('query')).toContain('VALUES ?id { "H8CA49058" "H6CA49169" }');
+    expect(seen.filter((r) => r.url.startsWith('https://query.wikidata.org'))).toHaveLength(1);
+    // Each answer, and that there is none, is kept a day.
+    const asked = seen.length;
+    await source.withProfiles(people);
+    expect(seen).toHaveLength(asked);
+  });
+
+  it('says Wikidata did not answer, leaves the people as they were, and asks again next time', async () => {
+    const seen: Seen[] = [];
+    const source = new WikipediaProfileSource(fakeWiki(seen, ['query.wikidata.org']));
+    const { people: out, state } = await source.withProfiles(people);
+    expect(state).toBe('unavailable');
+    expect(out).toEqual(people);
+    await source.withProfiles(people);
+    expect(seen).toHaveLength(2);
+  });
+
+  it('keeps a profile without its article when Wikipedia fails, and asks for it again', async () => {
+    const seen: Seen[] = [];
+    const source = new WikipediaProfileSource(fakeWiki(seen, ['en.wikipedia.org']));
+    const first = await source.withProfiles(people.slice(0, 1));
+    expect([first.state, first.people[0]!.profile?.summary, first.people[0]!.profile?.positions.length]).toEqual(['unavailable', null, 1]);
+    const asked = seen.length;
+    await source.withProfiles(people.slice(0, 1));
+    expect(seen.length).toBeGreaterThan(asked);
+  });
+
+  it('knows FEC and Bioguide IDs, and reads Commons’ credits as text', () => {
+    expect(officialId('fec:H8CA49058')).toEqual({ property: 'P1839', id: 'H8CA49058' });
+    expect(officialId('congress:L000593')).toEqual({ property: 'P1157', id: 'L000593' });
+    expect([officialId('fec:H0601'), officialId('fec:"} ?x'), officialId('openstates:ocd-person/1'), officialId('admin:1')]).toEqual([null, null, null, null]);
+    expect(plainText('<span>Jane &amp; <b>John</b>&nbsp;Doe</span>')).toBe('Jane & John Doe');
   });
 });

@@ -1,5 +1,6 @@
 import type {
   AdminCandidacy,
+  AreaCandidatesView,
   AreaContactInput,
   AreaContactRecord,
   AreaContactsView,
@@ -41,7 +42,17 @@ export function myArea(): Promise<CandidateArea> {
   return api<CandidateArea>('GET', '/v1/candidacies/area');
 }
 
-/** The Your area page: who holds and who runs for each office in the member's area, and each office's email. */
+/** Who runs in the signed-in member's own area, from public records, for the Candidates page. */
+export function myAreaCandidates(): Promise<AreaCandidatesView> {
+  return api<AreaCandidatesView>('GET', '/v1/candidacies/area/candidates');
+}
+
+/** Who runs where a ZIP code is, from public records: for anyone. The ZIP code goes in the body, out of request logs. */
+export function zipCandidates(zip: string): Promise<AreaCandidatesView> {
+  return api<AreaCandidatesView>('POST', '/v1/public/candidates/area', { zip });
+}
+
+/** The Your area page: who holds and who runs for each office in the member's area, and the email templates that suit them. */
 export function areaContacts(): Promise<AreaContactsView> {
   return api<AreaContactsView>('GET', '/v1/candidacies/area/contacts');
 }

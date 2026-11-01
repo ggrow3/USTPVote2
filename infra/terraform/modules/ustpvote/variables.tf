@@ -284,6 +284,12 @@ variable "openstates_api_key" {
   default     = ""
 }
 
+variable "civic_enabled" {
+  description = "List the contests on the ballot from Google's Civic Information API on the Candidates and Your area pages (design §5.12): enables the API and creates a server key restricted to it, kept in Secret Manager for the api only (civic.tf). Free; Google has data only while an election is loaded."
+  type        = bool
+  default     = true
+}
+
 # --- Election notices (design §6.8) -----------------------------------------------------------------------------------
 
 variable "web_origin" {

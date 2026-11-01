@@ -47,7 +47,8 @@ describe('the Your area page', () => {
   it('lists who holds and who runs for each office the ZIP code reaches, with every office’s email', async () => {
     const v = await view(ada);
     expect(v.area).toMatchObject({ state: 'CA', basis: 'zip' });
-    expect(v.feeds).toEqual({ fec: 'ok', congress: 'ok', openstates: 'ok' });
+    expect(v.feeds).toEqual({ fec: 'ok', congress: 'ok', openstates: 'ok', civic: 'ok' });
+    expect(v.profiles).toBe('ok');
     expect(v.electionYear % 2).toBe(0);
     expect(names(v)).toEqual([
       'congress holder us_senate@06 Sam Senator',
@@ -61,6 +62,19 @@ describe('the Your area page', () => {
       'fec candidate us_house@0602 Cass Challenger',
       'openstates holder state_upper@06001 Uma Upper',
       'openstates holder state_lower@06001 Lou Lower',
+      'civic candidate state_upper@06001 Uma Upper',
+      'civic candidate state_upper@06001 Bea Ballot',
+    ]);
+    // The ballot adds the challenger's website and a State Senate race; a school board is listed apart.
+    expect(v.contacts.find((c) => c.contactId === 'fec:C0601')).toMatchObject({ website: 'https://cass.example', election: expect.stringMatching(/-11-03$/) });
+    expect(v.ballot.map((b) => [b.office, b.district, b.candidates.map((c) => c.name)])).toEqual([
+      ['Governing Board Member', 'Example Unified School District, Trustee Area 2', ['Sal School']],
+    ]);
+    // Wikidata's stand-in knows the representative, in office and running.
+    const hal = v.contacts.filter((c) => c.name === 'Hal House' && c.district.geoid === '0601');
+    expect(hal.map((c) => [c.role, c.profile?.positions.length, c.photo?.credit])).toEqual([
+      ['holder', 2, 'Photo: Example Photographer, CC BY-SA 4.0'],
+      ['candidate', 2, 'Photo: Example Photographer, CC BY-SA 4.0'],
     ]);
     expect(v.templates.map((t) => [t.templateId, t.version])).toEqual([
       ['starting-stance', 0],

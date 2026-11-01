@@ -4,28 +4,33 @@ import type { LedgerEvent } from '../ledger-events.js';
 import { isCalendarDate } from '../membership/registration.js';
 import type { CandidateArea } from './area.js';
 import type { EmailTemplate } from './email-templates.js';
+import type { ContactPhoto, ContactProfile } from './profiles.js';
 import { OFFICE_DISTRICTS, PUBLIC_OFFICES, websiteProblem, type PublicOffice } from './candidacy.js';
 import { districtIdProblem, DISTRICT_ID, NATION_ID, STATE_FIPS, type District, type DistrictKind } from './districts.js';
 
 /**
  * Who a member can write to about each office in their area (design §5.12): the people who hold it now and the people
  * running for it. Public records give some of them (the FEC's candidates for Congress and President, the members of
- * Congress, and, with a key, state legislators from Open States); Communications Admins enter the rest, and can add an
- * email address a public record lacks by entering the same person again.
+ * Congress, with a key state legislators from Open States, and with a Google key the contests on the ballot from the
+ * Civic Information API); Communications Admins enter the rest, and can add an email address a public record lacks by
+ * entering the same person again. Wikipedia and Wikidata add a biography and experience where they know the person.
  */
 
 /** In office now, or running for it. */
 export const CONTACT_ROLES = ['holder', 'candidate'] as const;
 export type ContactRole = (typeof CONTACT_ROLES)[number];
 
-/** The public records the api reads, each kept a day. */
-export const CONTACT_FEEDS = ['fec', 'congress', 'openstates'] as const;
+/** The public records the api reads people from, each kept a day (the ballot as long as Google allows, at most a day). */
+export const CONTACT_FEEDS = ['fec', 'congress', 'openstates', 'civic'] as const;
 export type ContactFeed = (typeof CONTACT_FEEDS)[number];
 
 /** Where a person comes from: one of the feeds, or a Communications Admin. */
 export type ContactSource = ContactFeed | 'admin';
 
-/** Whether a feed answered: `off` when it is not set up here (Open States needs a key), `unavailable` when it failed. */
+/**
+ * Whether a feed answered: `off` when it is not set up here (Open States and the ballot need a key), `unavailable` when
+ * it failed. Wikipedia's profiles have a state too.
+ */
 export type ContactFeedState = 'ok' | 'off' | 'unavailable';
 
 export const CONTACT_LIMITS = { name: 120, party: 60, officeTitle: 120, email: 254, url: 500 } as const;
@@ -74,6 +79,32 @@ export interface AreaContact {
   readonly election: string | null;
   /** A candidate who holds the office now. */
   readonly incumbent: boolean;
+  readonly photo: ContactPhoto | null;
+  /** Biography and experience, for people Wikidata knows by their FEC or Bioguide ID. */
+  readonly profile: ContactProfile | null;
+}
+
+/** Someone on the ballot for a contest the api cannot place in one of the area's Census districts. */
+export interface BallotCandidate {
+  readonly name: string;
+  readonly party: string | null;
+  readonly website: string | null;
+  readonly email: string | null;
+  readonly photo: ContactPhoto | null;
+}
+
+/**
+ * A contest on the ballot near the area's ZIP code (from the Civic Information API) whose district is not one of the
+ * Census districts the page lists, such as a school board, a judge or a water district: listed, but not on the map.
+ */
+export interface BallotContest {
+  /** The office, as the ballot names it. */
+  readonly office: string;
+  /** The district, as the ballot names it. */
+  readonly district: string | null;
+  /** The election day, `YYYY-MM-DD`. */
+  readonly election: string | null;
+  readonly candidates: readonly BallotCandidate[];
 }
 
 /** `GET /v1/candidacies/area/contacts`: everything the Your area page shows. */
@@ -82,9 +113,28 @@ export interface AreaContactsView {
   /** The federal general election the FEC's lists are for. */
   readonly electionYear: number;
   readonly contacts: readonly AreaContact[];
+  /** Contests on the ballot that are not in one of the area's Census districts. */
+  readonly ballot: readonly BallotContest[];
   readonly feeds: Readonly<Record<ContactFeed, ContactFeedState>>;
+  /** Whether Wikipedia and Wikidata answered. */
+  readonly profiles: ContactFeedState;
   /** The email templates, in the list's order, for the page to offer those that suit each person and fill them in. */
   readonly templates: readonly EmailTemplate[];
+}
+
+/**
+ * `GET /v1/candidacies/area/candidates` (the member's own area) and `POST /v1/public/candidates/area` (a ZIP code
+ * anyone types): the candidates the Candidates page lists from public records, beside members' own candidacies. Admins'
+ * entries stay on the Your area page.
+ */
+export interface AreaCandidatesView {
+  readonly area: CandidateArea;
+  readonly electionYear: number;
+  /** Only people running, and only from public records. */
+  readonly candidates: readonly AreaContact[];
+  readonly ballot: readonly BallotContest[];
+  readonly feeds: Readonly<Record<ContactFeed, ContactFeedState>>;
+  readonly profiles: ContactFeedState;
 }
 
 const optionalText = (max: number) =>
@@ -227,6 +277,8 @@ export function areaContactView(record: AreaContactRecord): AreaContact {
     sourceUrl: null,
     election: record.electionDate,
     incumbent: false,
+    photo: null,
+    profile: null,
   };
 }
 
@@ -265,7 +317,7 @@ export function nameKey(name: string): string {
 /**
  * The feeds' people and the admins' entries together. An entry for the same person (role, office, district and name)
  * takes the place of the feed's, so an admin can add the email address a public record lacks; what the entry leaves
- * empty (party, contact form, website) and the record's link and incumbency are kept from the record.
+ * empty (party, contact form, website) and the record's link, incumbency, photo and profile are kept from the record.
  */
 export function mergeContacts(found: readonly AreaContact[], entered: readonly AreaContact[]): AreaContact[] {
   const key = (c: AreaContact) => `${c.role}|${c.office}|${c.district.kind}:${c.district.geoid}|${nameKey(c.name)}`;
@@ -284,9 +336,44 @@ export function mergeContacts(found: readonly AreaContact[], entered: readonly A
         website: c.website ?? record.website,
         sourceUrl: record.sourceUrl,
         incumbent: c.incumbent || record.incumbent,
+        photo: record.photo,
+        profile: record.profile,
       };
     }),
   ];
+}
+
+const FEDERAL: readonly PublicOffice[] = ['us_president', 'us_senate', 'us_house'];
+const surname = (name: string) => nameKey(name).split(' ').at(-1) ?? '';
+
+/**
+ * The ballot's candidates (`civic`) added to the other records'. For Congress and President the FEC already lists who
+ * has filed: a ballot candidate in the same race with the same name, or the only one there with the same surname, is
+ * that FEC candidate, who gains the ballot's website, email address and photo where the FEC has none; anyone else on
+ * the ballot is listed as well.
+ */
+export function mergeBallot(found: readonly AreaContact[], ballot: readonly AreaContact[]): AreaContact[] {
+  const race = (c: AreaContact) => `${c.office}|${c.district.kind}:${c.district.geoid}`;
+  const merged = [...found];
+  const extra: AreaContact[] = [];
+  for (const b of ballot) {
+    const same = FEDERAL.includes(b.office) ? merged.filter((c) => c.source === 'fec' && race(c) === race(b)) : [];
+    const bySurname = same.filter((c) => surname(c.name) === surname(b.name));
+    const match = same.find((c) => nameKey(c.name) === nameKey(b.name)) ?? (bySurname.length === 1 ? bySurname[0] : undefined);
+    if (!match) {
+      extra.push(b);
+      continue;
+    }
+    merged[merged.indexOf(match)] = {
+      ...match,
+      party: match.party ?? b.party,
+      email: match.email ?? b.email,
+      website: match.website ?? b.website,
+      photo: match.photo ?? b.photo,
+      election: b.election ?? match.election,
+    };
+  }
+  return [...merged, ...extra];
 }
 
 /** One office in one district of the member's area, with who holds it and who runs for it. */

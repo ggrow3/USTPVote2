@@ -10,6 +10,7 @@ import {
   groupAreaContacts,
   inContactArea,
   isPublicLedgerEvent,
+  mergeBallot,
   mergeContacts,
   nextFederalElectionYear,
   OFFICES_OF_KIND,
@@ -49,6 +50,8 @@ const person = (over: Partial<AreaContact>): AreaContact => ({
   sourceUrl: null,
   election: '2026',
   incumbent: false,
+  photo: null,
+  profile: null,
   ...over,
 });
 
@@ -128,6 +131,32 @@ describe('the Your area page', () => {
       incumbent: true,
     });
     expect(mergeContacts([fec], [{ ...entered, role: 'holder' }]).map((c) => c.contactId)).toEqual(['fec:1', 'admin-1']);
+    // The record's photo and profile stay with the person.
+    const photo = { url: 'https://upload.wikimedia.org/x.jpg', credit: 'Photo: X, CC0', creditUrl: null };
+    const profile = { summary: 'A lawyer.', articleUrl: null, wikidataUrl: 'https://www.wikidata.org/wiki/Q1', positions: [], education: [], occupations: [] };
+    expect(mergeContacts([{ ...fec, photo, profile }], [entered])[0]).toMatchObject({ contactId: 'admin-1', photo, profile });
+  });
+
+  it('adds the ballot’s candidates, merging those for Congress into the FEC’s by name or the only same surname', () => {
+    const levin = person({ contactId: 'fec:H8CA49058', name: 'Mike Levin', sourceUrl: 'https://www.fec.gov/data/candidate/H8CA49058/' });
+    const kurdian = person({ contactId: 'fec:H6CA49169', name: 'Armen Kurdian', party: 'Republican Party' });
+    const ballot = (over: Partial<AreaContact>) =>
+      person({ source: 'civic', party: null, election: '2026-11-03', website: 'https://campaign.example', email: 'team@campaign.example', ...over });
+    const merged = mergeBallot(
+      [levin, kurdian],
+      [
+        ballot({ contactId: 'civic:levin', name: 'MIKE LEVIN', website: null }),
+        ballot({ contactId: 'civic:kurdian', name: 'Armen A. Kurdian', party: 'Republican' }),
+        ballot({ contactId: 'civic:write-in', name: 'Wren Write' }),
+        ballot({ contactId: 'civic:senate', office: 'state_upper', name: 'Mike Levin' }),
+      ],
+    );
+    expect(merged.map((c) => c.contactId)).toEqual(['fec:H8CA49058', 'fec:H6CA49169', 'civic:write-in', 'civic:senate']);
+    expect(merged[0]).toMatchObject({ source: 'fec', email: 'team@campaign.example', website: null, election: '2026-11-03', sourceUrl: levin.sourceUrl });
+    expect(merged[1]).toMatchObject({ party: 'Republican Party', website: 'https://campaign.example' });
+    // Two FEC candidates with one surname: the ballot cannot say which, so it adds its own.
+    const twins = mergeBallot([kurdian, { ...kurdian, contactId: 'fec:2', name: 'Ara Kurdian' }], [ballot({ contactId: 'civic:k', name: 'A. Kurdian' })]);
+    expect(twins.map((c) => c.contactId)).toEqual(['fec:H6CA49169', 'fec:2', 'civic:k']);
   });
 
   it('knows the next federal general election', () => {

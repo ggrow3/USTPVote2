@@ -102,10 +102,20 @@ export const websiteText = (url: string): string => url.replace(/^https:\/\//, '
 /**
  * What the Candidates page says about the member's area: which races it holds and where it comes from, and what the
  * link to the Account page, where the ZIP code is changed, says (none when changing it would not help). Never the ZIP
- * code itself.
+ * code on the record; `typed`, the ZIP code someone typed on the page, is theirs to see.
  */
-export function areaText(area: Pick<CandidateArea, 'state' | 'basis'>): { readonly text: string; readonly link: string | null } {
+export function areaText(area: Pick<CandidateArea, 'state' | 'basis'>, typed: string | null = null): { readonly text: string; readonly link: string | null } {
   const state = stateName(area.state);
+  if (typed !== null) {
+    if (area.basis === 'zip') {
+      return {
+        text: `Nationwide and ${state} offices, and the districts ZIP code ${typed} reaches into. It can reach into more than one district of a kind, so some races here may not be on every ballot there.`,
+        link: null,
+      };
+    }
+    const why = area.basis === 'unavailable' ? 'the Census Bureau’s district lookup is not answering. Try again later.' : `the Census draws no area for ZIP code ${typed}.`;
+    return { text: `Nationwide offices and all of ${state}: ${why}`, link: null };
+  }
   const whole: Readonly<Record<Exclude<AreaBasis, 'zip'>, { readonly why: string; readonly link: string | null }>> = {
     no_zip: { why: 'your membership record has no ZIP code.', link: 'Add it on your Account page to see only your own districts.' },
     unplaced: {
@@ -140,17 +150,22 @@ export const CONTACT_SOURCE_TEXT: Readonly<Record<ContactSource, string>> = {
   fec: 'Filed with the FEC',
   congress: 'Member of Congress',
   openstates: 'From Open States',
+  civic: 'On the ballot',
   admin: 'Added by the party',
 };
 
-/** What the Your area page says when a public record is missing; nothing when it answered. */
+/**
+ * What a page says when a public record is missing; nothing when it answered. The ballot is off where this site has
+ * no key for it, and between elections it simply has nothing: neither is worth a note.
+ */
 export function feedNote(feed: ContactFeed, state: ContactFeedState): string | null {
-  if (state === 'ok') return null;
+  if (state === 'ok' || (feed === 'civic' && state === 'off')) return null;
   if (feed === 'openstates' && state === 'off') return 'State legislators are not listed yet: this site is not connected to Open States.';
   const what: Readonly<Record<ContactFeed, string>> = {
     fec: 'The FEC’s candidate lists',
     congress: 'The list of members of Congress',
     openstates: 'Open States, which lists state legislators,',
+    civic: 'Google’s ballot data, which lists state and local contests,',
   };
   return `${what[feed]} did not answer, so some people are missing here. Try again later.`;
 }
@@ -170,6 +185,13 @@ export function templateSuitsText(template: Pick<EmailTemplate, 'offices' | 'aud
 
 /** What the Write dialog starts from without a template: the greeting and the member's name. */
 export const BLANK_EMAIL = { subject: '', body: 'Dear {name},\n\n\n\n{myName}' } as const;
+
+/** What a page says when Wikipedia and Wikidata did not answer. */
+export const profilesNote = (state: ContactFeedState): string | null =>
+  state === 'unavailable' ? 'Wikipedia and Wikidata did not answer, so some biographies are missing here. Try again later.' : null;
+
+/** Google's own wording for crediting the Civic Information API, where the ballot is shown. */
+export const CIVIC_CREDIT = { text: 'Ballot data: Powered by the Civic Information API', url: 'https://developers.google.com/civic-information' } as const;
 
 /** A link that opens the member's own email app with the email filled in. */
 export function mailtoLink(to: string, subject: string, body: string): string {

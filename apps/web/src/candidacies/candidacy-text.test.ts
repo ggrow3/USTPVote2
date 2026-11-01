@@ -9,6 +9,7 @@ import {
   localToday,
   mailtoLink,
   OFFICE_CHOICES,
+  profilesNote,
   stateName,
   templateSuitsText,
   websiteText,
@@ -46,6 +47,11 @@ describe('candidacy wording', () => {
     expect(areaText({ state: 'TX', basis: 'unavailable' })).toMatchObject({ text: expect.stringMatching(/not answering/), link: null });
   });
 
+  it('names a ZIP code someone typed, with no link to an account', () => {
+    expect(areaText({ state: 'CA', basis: 'zip' }, '92130')).toMatchObject({ text: expect.stringMatching(/the districts ZIP code 92130 reaches into/), link: null });
+    expect(areaText({ state: 'CA', basis: 'unplaced' }, '92130').text).toBe('Nationwide offices and all of California: the Census draws no area for ZIP code 92130.');
+  });
+
   it('opens the member’s email app with the email filled in, and says which public record is missing', () => {
     expect(mailtoLink('ana@senate.example', 'Hi & bye', 'Line one\nLine two?')).toBe(
       'mailto:ana@senate.example?subject=Hi%20%26%20bye&body=Line%20one%0ALine%20two%3F',
@@ -53,6 +59,8 @@ describe('candidacy wording', () => {
     expect(feedNote('fec', 'ok')).toBeNull();
     expect(feedNote('openstates', 'off')).toMatch(/not connected to Open States/);
     expect(feedNote('congress', 'unavailable')).toMatch(/^The list of members of Congress did not answer/);
+    expect([feedNote('civic', 'off'), feedNote('civic', 'unavailable')]).toEqual([null, expect.stringMatching(/^Google’s ballot data, which lists state and local contests, did not/)]);
+    expect([profilesNote('ok'), profilesNote('unavailable')]).toEqual([null, expect.stringMatching(/^Wikipedia and Wikidata did not answer/)]);
   });
 
   it('says whom each email template suits; the blank email has only placeholders the page fills in', () => {

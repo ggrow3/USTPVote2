@@ -20,17 +20,19 @@ import { confirmAction } from '../communications/admin-forms.js';
 import { attempt } from '../dialogs.js';
 import { session } from '../session.js';
 import { areaContacts } from './api.js';
+import AreaPerson from './AreaPerson.vue';
+import BallotContests from './BallotContests.vue';
 import {
   areaText,
   BLANK_EMAIL,
-  CONTACT_SOURCE_TEXT,
+  CIVIC_CREDIT,
   DISTRICT_LABELS,
   districtPeopleText,
   districtText,
-  electionDay,
   feedNote,
   mailtoLink,
   OFFICE_HEADINGS,
+  profilesNote,
 } from './candidacy-text.js';
 import DistrictMap, { type MapMarker } from './DistrictMap.vue';
 import { mapsRefused } from './maps.js';
@@ -40,7 +42,8 @@ import { mapsRefused } from './maps.js';
  * from public records and from the party's communications team, each with an email the member can edit and send from
  * their own email app: they pick one of the templates that suit the person, which the page fills in. The site sends
  * nothing and keeps no copy. Where the map is set up, it shows a pin in each of their districts, with who is in office
- * and running there, and the outline of the one they choose.
+ * and running there, and the outline of the one they choose. People Wikidata knows have their biography and experience;
+ * the ballot's other contests are listed at the end.
  */
 usePageTitle('Your area');
 const view = ref<AreaContactsView | null>(null);
@@ -55,7 +58,13 @@ onMounted(async () => {
 });
 
 const note = computed(() => (view.value ? areaText(view.value.area) : null));
-const feedNotes = computed(() => (view.value ? CONTACT_FEEDS.map((f) => feedNote(f, view.value!.feeds[f])).filter((n): n is string => n !== null) : []));
+const feedNotes = computed(() =>
+  view.value
+    ? [...CONTACT_FEEDS.map((f) => feedNote(f, view.value!.feeds[f])), profilesNote(view.value.profiles)].filter((n): n is string => n !== null)
+    : [],
+);
+/** Google's wording, wherever the ballot added someone. */
+const fromBallot = computed(() => !!view.value && (view.value.contacts.some((c) => c.source === 'civic') || view.value.ballot.length > 0));
 
 /** A heading per district (the nation, the state, then each district), each with its offices. */
 const sections = computed(() => {
@@ -85,9 +94,6 @@ function showOnMap(d: Pick<ContactDistrict, 'kind' | 'geoid'>) {
   chosen.value = districtKey(d);
   document.getElementById('area-map')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
-
-const running = (c: AreaContact) => (c.election && /^\d{4}-\d{2}-\d{2}$/.test(c.election) ? `Election ${electionDay(c.election)}` : `Running in ${c.election ?? 'the next election'}`);
-const caption = (c: AreaContact) => [c.officeTitle, c.party, CONTACT_SOURCE_TEXT[c.source]].filter(Boolean).join(' · ');
 
 /** The template list's choice that starts from a blank email: no template ID is empty. */
 const BLANK = '';
@@ -230,28 +236,21 @@ async function copy() {
             ]" :key="part.title">
               <q-list v-if="part.people.length" separator>
                 <q-item-label header class="q-py-sm">{{ part.title }}</q-item-label>
-                <q-item v-for="c in part.people" :key="c.contactId" class="area-person">
-                  <q-item-section>
-                    <q-item-label class="text-weight-medium">
-                      {{ c.name }}
-                      <q-badge v-if="c.incumbent" outline color="primary" class="q-ml-xs">Incumbent</q-badge>
-                    </q-item-label>
-                    <q-item-label caption>{{ caption(c) }}</q-item-label>
-                    <q-item-label v-if="c.role === 'candidate'" caption>{{ running(c) }}</q-item-label>
-                    <q-item-label caption class="area-links">
-                      <a v-if="c.website" :href="c.website" target="_blank" rel="noopener noreferrer">Website</a>
-                      <a v-if="c.contactUrl" :href="c.contactUrl" target="_blank" rel="noopener noreferrer">Contact form</a>
-                      <a v-if="c.sourceUrl" :href="c.sourceUrl" target="_blank" rel="noopener noreferrer">Public record</a>
-                    </q-item-label>
-                  </q-item-section>
-                  <q-item-section side>
+                <AreaPerson v-for="c in part.people" :key="c.contactId" :person="c">
+                  <q-item-section side top>
                     <q-btn unelevated no-caps color="primary" icon="mail" label="Write" :aria-label="`Write to ${c.name}`" @click="write(c)" />
                   </q-item-section>
-                </q-item>
+                </AreaPerson>
               </q-list>
             </template>
           </q-card>
         </section>
+        <BallotContests :contests="view.ballot" />
+        <div class="text-caption text-grey-7">
+          Candidates for Congress and President from the FEC; members of Congress from the congress-legislators project;
+          biographies from Wikipedia and Wikidata, by FEC and Congress ID.
+          <a v-if="fromBallot" :href="CIVIC_CREDIT.url" target="_blank" rel="noopener noreferrer">{{ CIVIC_CREDIT.text }}</a>
+        </div>
       </template>
     </div>
 
@@ -312,15 +311,6 @@ async function copy() {
 </template>
 
 <style scoped>
-.area-person {
-  align-items: flex-start;
-}
-.area-links a {
-  white-space: nowrap;
-}
-.area-links a + a {
-  margin-left: 12px;
-}
 .area-email {
   width: 640px;
   max-width: 100%;
