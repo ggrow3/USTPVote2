@@ -105,8 +105,11 @@ export const ROOM_LIMITS = {
   questionsPerDay: 50,
   /** Questions waiting for the assistant at once, across the room. */
   pending: 10,
-  /** A question not answered in this long fails, with a notice in the room. */
-  jobMinutes: 10,
+  /**
+   * A question not answered in this long fails, with a notice in the room: long enough for the model on Vertex AI to
+   * start from zero (several minutes) while the question waits in the queue.
+   */
+  jobMinutes: 20,
   /** Results of a memory search. */
   search: 50,
 } as const;

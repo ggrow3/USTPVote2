@@ -26,6 +26,7 @@ import {
   newMessage,
   nextJoke,
   reactToMessage,
+  roomModelCostView,
   roomSettingsView,
   roomStatus,
   ROOM_LIMITS,
@@ -440,11 +441,18 @@ export class RoomService {
 
   /** The admins' switches, the door's words and how the room is doing (Admin › Members' room). */
   async settings(caller: RoomCaller): Promise<RoomSettingsView> {
-    const [feed, door, roles] = await Promise.all([this.repo.findFeed(), this.repo.findDoor(), this.directory.activeRoles(caller.accountId)]);
+    const vertex = this.model.kind === 'self-hosted' ? this.config.room.vertex : null;
+    const [feed, door, roles, meter] = await Promise.all([
+      this.repo.findFeed(),
+      this.repo.findDoor(),
+      this.directory.activeRoles(caller.accountId),
+      vertex ? this.repo.findModelMeter() : null,
+    ]);
     const people = await this.people(door.terms.version);
     const changers = [feed.openChangedBy, feed.serverChangedBy, door.introChangedBy, door.termsChangedBy].filter((x): x is string => !!x);
     const ctx = await this.adminsNamed(caller, [...new Set(changers)]);
-    return roomSettingsView(feed, door, this.model.kind, people.length, roles.includes('system_admin'), ctx);
+    const cost = vertex ? roomModelCostView(meter, new Date().toISOString(), vertex) : null;
+    return roomSettingsView(feed, door, this.model.kind, people.length, roles.includes('system_admin'), ctx, cost);
   }
 
   /**
@@ -487,7 +495,8 @@ export class RoomService {
       this.notice(tx, caller.accountId, said, null, feed.seq + 1, at);
       return { result: undefined, feed: call.length ? { ...changed, voiceSeq: feed.seq + 1 } : changed };
     });
-    if (setting === 'server' && on && this.model.kind !== 'off') {
+    // On Vertex AI the worker's tick deploys the model when the server is switched on, which starts it anyway.
+    if (setting === 'server' && on && this.model.kind !== 'off' && !this.config.room.vertex) {
       await this.dispatch.warm().catch((e: unknown) => this.logger.warn(`room model warm-up not queued: ${e instanceof Error ? e.message : e}`));
     }
     return this.settings(caller);

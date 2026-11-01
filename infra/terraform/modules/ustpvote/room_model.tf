@@ -1,8 +1,10 @@
 # The members' room's model (design §5.10): a self-hosted Ollama server with Gemma for the assistant's answers and
-# EmbeddingGemma for its search, on a Cloud Run service with one NVIDIA L4 GPU in this project, so nothing said in the
-# room goes to an AI company (the room's terms promise it). Only the worker's account may call it. It scales to zero
-# after it idles; the first question after a quiet spell waits a minute or two while it starts and loads the models,
-# which live in a bucket of their own (fetched once by the room-model-pull job, README "Members' room model").
+# EmbeddingGemma for its search, on one NVIDIA L4 GPU in this project, so nothing said in the room goes to an AI company
+# (the room's terms promise it). Only the worker's account may call it. It runs on a Cloud Run service (here) or, where
+# the project has no Cloud Run GPU quota, on a Vertex AI endpoint (room_model_host = "vertex", room_model_vertex.tf).
+# Either way it scales to zero after it idles, and the first question after a quiet spell waits while it starts and
+# loads the models, which live in a bucket of their own (fetched once by the room-model-pull job, README "Members' room
+# model").
 #
 # The api queues each question as a Cloud Task on the worker queue (scheduling.tf), since an answer can take longer than
 # a request through Hosting may wait; the worker calls the model and posts the answer in the room.
@@ -10,28 +12,31 @@
 # Off unless room_model_enabled: ROOM_MODEL is then "off", /ask answers 503, and the room's chat and memory still work.
 
 locals {
-  room_model_enabled = local.deploy && var.room_model_enabled
+  room_model_enabled      = local.deploy && var.room_model_enabled
+  room_model_on_cloud_run = local.room_model_enabled && var.room_model_host == "cloud-run"
+  room_model_on_vertex    = local.room_model_enabled && var.room_model_host == "vertex"
 
   # Ollama's image through the project's own Docker Hub proxy (below), pinned to a release.
   room_model_image = "${var.region}-docker.pkg.dev/${var.project_id}/dockerhub/ollama/ollama:${var.room_model_ollama_version}"
 
-  room_model_url = local.room_model_enabled ? google_cloud_run_v2_service.room_model[0].uri : null
+  room_model_url = local.room_model_on_cloud_run ? google_cloud_run_v2_service.room_model[0].uri : local.room_vertex_url
 
-  # The api builds the model's settings too (it reports which model the room runs) and queues questions for the worker.
-  room_api_env = local.room_model_enabled ? {
+  # The api builds the model's settings too (it reports which model the room runs, and on Vertex AI what it has cost
+  # this month) and queues questions for the worker.
+  room_api_env = local.room_model_enabled ? merge({
     ROOM_MODEL     = "ollama"
     ROOM_MODEL_URL = local.room_model_url
     TASKS_QUEUE    = google_cloud_tasks_queue.worker.id
     WORKER_URL     = google_cloud_run_v2_service.worker[0].uri
     TASKS_INVOKER  = google_service_account.invoker.email
-  } : { ROOM_MODEL = "off" }
+  }, local.room_vertex_env) : { ROOM_MODEL = "off" }
 
-  room_worker_env = local.room_model_enabled ? {
+  room_worker_env = local.room_model_enabled ? merge({
     ROOM_MODEL       = "ollama"
     ROOM_MODEL_URL   = local.room_model_url
     ROOM_CHAT_MODEL  = var.room_chat_model
     ROOM_EMBED_MODEL = var.room_embed_model
-  } : { ROOM_MODEL = "off" }
+  }, local.room_vertex_env) : { ROOM_MODEL = "off" }
 
   # What the server and the pull job give Ollama: the models from the bucket, kept loaded while the instance lives, a
   # context that fits the L4's 24 GB beside the 16 GB model, and one request at a time.
@@ -52,8 +57,8 @@ resource "google_service_account" "room_model" {
   description  = "Runs the room's self-hosted model (design §5.10). Reads and fetches the model files; nothing else."
 }
 
-# The model files (about 17 GB): written by the pull job, read by the service (which mounts it writable too, since
-# Ollama makes its folders when it starts, before the pull job has filled the bucket).
+# The model files (about 17 GB): written by the pull job, read by the model (Cloud Run mounts it, writable too, since
+# Ollama makes its folders when it starts, before the pull job has filled the bucket; on Vertex AI it is copied in).
 resource "google_storage_bucket" "room_models" {
   count = var.room_model_enabled ? 1 : 0
 
@@ -99,7 +104,7 @@ resource "google_artifact_registry_repository" "dockerhub" {
 }
 
 resource "google_cloud_run_v2_service" "room_model" {
-  count = local.room_model_enabled ? 1 : 0
+  count = local.room_model_on_cloud_run ? 1 : 0
 
   # The worker calls it at its run.app address with an ID token; nobody else holds run.invoker, so its open ingress
   # admits no one else. It runs a third-party image pinned to a release rather than one the release pipeline attests
@@ -183,7 +188,7 @@ resource "google_cloud_run_v2_service" "room_model" {
 }
 
 resource "google_cloud_run_v2_service_iam_member" "room_model_worker" {
-  count = local.room_model_enabled ? 1 : 0
+  count = local.room_model_on_cloud_run ? 1 : 0
 
   project  = var.project_id
   location = var.region

@@ -188,9 +188,66 @@ variable "task_enqueuers" {
 # --- The members' room (design §5.10) --------------------------------------------------------------------------------
 
 variable "room_model_enabled" {
-  description = "Run the members' room's self-hosted model (room_model.tf): a Cloud Run service with one NVIDIA L4 GPU (about $1.05 an hour while warm, scaling to zero), its models bucket and pull job, and the api queueing questions for the worker. Off: the room's chat and memory work, and /ask answers 503."
+  description = "Run the members' room's self-hosted model (room_model.tf): on one NVIDIA L4 GPU, scaling to zero, with its models bucket and pull job, and the api queueing questions for the worker. Off: the room's chat and memory work, and /ask answers 503."
   type        = bool
   default     = false
+}
+
+variable "room_model_host" {
+  description = "Where the room's model runs: \"cloud-run\", a Cloud Run service with a GPU (about $1.05 an hour while warm; needs Cloud Run L4 quota), or \"vertex\", a Vertex AI endpoint the worker deploys it to (room_model_vertex.tf; $0.98 an hour while up, within room_model_monthly_budget_usd; uses Vertex AI's own L4 quota)."
+  type        = string
+  default     = "cloud-run"
+
+  validation {
+    condition     = contains(["cloud-run", "vertex"], var.room_model_host)
+    error_message = "room_model_host must be \"cloud-run\" or \"vertex\"."
+  }
+}
+
+variable "room_model_image" {
+  description = "With room_model_host = \"vertex\": the room model's image (infra/room-model: Ollama and a copier for the models bucket), built with Cloud Build and pinned by digest (README \"Members' room model\")."
+  type        = string
+  default     = null
+}
+
+variable "room_model_idle_minutes" {
+  description = "With room_model_host = \"vertex\": how long the model stays up after its last question before it scales to zero (5 to 480). Longer means fewer waits for it to start; shorter means it costs less."
+  type        = number
+  default     = 30
+
+  validation {
+    condition     = var.room_model_idle_minutes >= 5 && var.room_model_idle_minutes <= 480 && floor(var.room_model_idle_minutes) == var.room_model_idle_minutes
+    error_message = "room_model_idle_minutes must be a whole number from 5 to 480."
+  }
+}
+
+variable "room_model_monthly_budget_usd" {
+  description = "With room_model_host = \"vertex\": the most the room's model may cost a month, in US dollars. The worker estimates each wake-up before it starts one and refuses any that would pass this; with billing_account set, Google Cloud's budget for it stops the model once the real bill reaches it. 0 stops it."
+  type        = number
+  default     = 15
+
+  validation {
+    condition     = var.room_model_monthly_budget_usd >= 0
+    error_message = "room_model_monthly_budget_usd must be 0 or more."
+  }
+}
+
+variable "room_model_hourly_usd" {
+  description = "Vertex AI's price an hour of the room model's machine (g2-standard-8 with one L4; $0.98 in us-central1, November 2026), which the worker's estimate uses. Update it if the price or region changes."
+  type        = number
+  default     = 0.98
+}
+
+variable "room_model_spot" {
+  description = "With room_model_host = \"vertex\": run the model on a spot machine, much cheaper but one Google may take back at any moment (an answer then fails and is asked again). The estimate still uses room_model_hourly_usd."
+  type        = bool
+  default     = false
+}
+
+variable "billing_account" {
+  description = "The project's billing account ID (XXXXXX-XXXXXX-XXXXXX), for Google Cloud's budget on the room's model on Vertex AI; null leaves the cap to the worker's own estimate. Applying it needs billing.budgets.create on the account."
+  type        = string
+  default     = null
 }
 
 variable "room_chat_model" {

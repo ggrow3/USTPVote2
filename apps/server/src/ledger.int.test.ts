@@ -68,6 +68,7 @@ describe('ledger blocks and anchors', () => {
       bouncesRecorded: 0,
       suggestionsDeleted: 0,
       roomExpired: 0,
+      roomModel: 'not-vertex',
       blocksSealed: 0,
       rollsSigned: 0,
       anchored: 0,

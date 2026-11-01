@@ -99,7 +99,8 @@ Set in each root's `terraform.tfvars` (or with `-var`):
 | `maps_enabled` | true | true | true | The Candidates page's Google map: the Maps JavaScript API and a browser key restricted to it and to the web app's origins; see [Candidates map](#candidates-map) |
 | `fec_api_key`, `openstates_api_key` | "" | "" | "" | Free keys for the Your area page's public records: the FEC's candidate lists (empty: the shared `DEMO_KEY`) and Open States' state legislators (empty: left out); see [Your area records](#your-area-records) |
 | `civic_enabled` | true | true | true | The ballot's contests from Google's Civic Information API on the Candidates and Your area pages, with a server key Terraform creates and keeps in Secret Manager; see [Your area records](#your-area-records) |
-| `room_model_enabled` | false | false | false | The members' room's self-hosted model on one L4 GPU (about $1.05 an hour while warm), and the api queueing questions for the worker; see [Members' room model](#members-room-model) |
+| `room_model_enabled` | false | false | false | The members' room's self-hosted model on one L4 GPU (about $1 an hour while up), and the api queueing questions for the worker; see [Members' room model](#members-room-model) |
+| `room_model_host` | `"vertex"` | `"cloud-run"` | `"cloud-run"` | Where the model runs: a Cloud Run service, or a Vertex AI endpoint (for a project without Cloud Run GPU quota) with `room_model_image`, `room_model_idle_minutes` (30), `room_model_monthly_budget_usd` (15), `room_model_spot` and `billing_account`; see [On Vertex AI](#on-vertex-ai) |
 | `project_id`, `region` | | | | Default to the environment's project and `us-central1` |
 
 Fixed per root: Binary Authorization is a dry run in dev and enforced elsewhere. The module has further knobs with
@@ -529,8 +530,52 @@ apply: off, nothing reaches it, so it scales to zero and bills nothing; on, the 
 Cloud Task) so the next question need not wait.
 
 With `room_model_enabled = false` (the default) `ROOM_MODEL` is `off`: the room's chat, decisions and action items work,
-and `/ask` answers 503. Not yet tried against a real project: the GPU service, the bucket mount and the pull job, nor
-that Docker Hub has `ollama/ollama` at the pinned tag (the release the developer machine ran in October 2026).
+and `/ask` answers 503. The Cloud Run service has not run in a real project: Google refused dev's Cloud Run GPU quota
+(2026-10-30 and 10-31), so dev runs the model on Vertex AI instead.
+
+#### On Vertex AI
+
+With `room_model_host = "vertex"` (dev's default) the model runs on a Vertex AI endpoint in the project, on one
+g2-standard-8 machine with an L4 ($0.98 an hour while up), using Vertex AI's own GPU quota (2 L4s in us-central1 for a
+new project) rather than Cloud Run's. `room_model_vertex.tf` creates the endpoint (`1000`, dedicated, since scaling to
+zero needs one), a custom role that lets the worker upload, deploy, take away and call the model and nothing else, and
+the right to deploy it as `ustp-room-model`, which only reads the models bucket. Terraform has no resource for a custom
+model's deployment, so **the worker's tick deploys it** from the description in `ROOM_MODEL_VERTEX` (the image, Ollama's
+settings, the machine, the idle time), takes away an older one after a change, and takes it off while a System Admin has
+the model server switched off or the month's budget is spent. An upload takes about 6 minutes and a deployment longer;
+the tick's result (`roomModel`) and the worker's log say which step it is at.
+
+1. Fill the bucket with the pull job, as above (the bucket and job come with `room_model_enabled`).
+2. Build the image (Ollama, plus rclone to copy the models from the bucket when a machine starts) into the project's
+   `ustpvote` repository, once per Ollama version or change to `infra/room-model` (tags are immutable, so bump `-r1`):
+
+   ```
+   gcloud builds submit infra/room-model --project <project> --region us-central1 \
+     --tag us-central1-docker.pkg.dev/<project>/ustpvote/room-model:ollama-0.40.5-r1
+   ```
+
+3. Set `room_model_image` to the pushed image by digest (`…/room-model@sha256:…`, from the build's output), and
+   apply.
+
+The machine scales to zero after `room_model_idle_minutes` without a question (30; 5 is the least Vertex AI allows, and
+it keeps a machine up at least 5 minutes). While it is at zero, a question starts one, which takes several minutes:
+Vertex AI answers 429 meanwhile, and the worker puts the question back in the queue until the model answers. Scaling
+to zero is a Vertex AI preview; a model left at zero for 30 days is taken off by Vertex AI, and the tick deploys it
+again.
+
+**The monthly budget.** `room_model_monthly_budget_usd` (15) caps what the model may cost a month. The worker charges
+each call to an estimate in Firestore (`room_state/model`), costing each wake-up generously at `room_model_hourly_usd`
+($0.98: Vertex AI's price of the machine in us-central1, November 2026; update it if that changes): 10 minutes to
+start, its use, and its whole idle tail. It refuses any call that would take the month past the budget, and the
+question is answered with when the assistant starts again. Admin › Members' room shows the month's estimate. With
+`billing_account` set (applying needs `billing.budgets.create` on the account), Google Cloud's budget for Vertex AI in
+the project also emails the billing account's admins at 50, 90 and 100%, and pushes its updates through Pub/Sub to the
+worker, which stops the model for the rest of the month once the real bill reaches the budget. Its figures can lag by
+hours, so the worker's estimate is the guard and the budget the backstop. To change the budget or the idle time, change
+the variable and apply: the worker deploys the change (a new idle time redeploys without a new upload).
+
+`room_model_spot = true` runs the model on a spot machine, much cheaper but liable to be taken back mid-answer (the
+question then fails and is asked again); dev has spot quota for one L4.
 Locally the emulators use a stand-in (`ROOM_MODEL=local`); to try the real models, run Ollama on your machine, pull both
 models, and start the api with `ROOM_MODEL=ollama ROOM_MODEL_URL=http://localhost:11434`.
 

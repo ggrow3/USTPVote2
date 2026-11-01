@@ -149,7 +149,43 @@ variable "ses_events_queue_url" {
 }
 
 variable "room_model_enabled" {
-  description = "Run the members' room's self-hosted model on one NVIDIA L4 GPU, about $1.05 an hour while warm (design §5.10; README \"Members' room model\"). Off: /ask answers 503; the room's chat and memory work."
+  description = "Run the members' room's self-hosted model on one NVIDIA L4 GPU, about $1 an hour while up (design §5.10; README \"Members' room model\"). Off: /ask answers 503; the room's chat and memory work."
   type        = bool
   default     = false
+}
+
+variable "room_model_host" {
+  description = "\"vertex\" (a Vertex AI endpoint the worker deploys the model to; dev has no Cloud Run GPU quota) or \"cloud-run\"."
+  type        = string
+  default     = "vertex"
+}
+
+variable "room_model_image" {
+  description = "The room model's image for Vertex AI, built from infra/room-model with Cloud Build, pinned by digest (README \"Members' room model\")."
+  type        = string
+  default     = null
+}
+
+variable "room_model_idle_minutes" {
+  description = "Minutes the model stays up after its last question before it scales to zero (5 to 480)."
+  type        = number
+  default     = 30
+}
+
+variable "room_model_monthly_budget_usd" {
+  description = "The most the room's model may cost a month, in US dollars; the worker stops starting it before this."
+  type        = number
+  default     = 15
+}
+
+variable "room_model_spot" {
+  description = "Run the model on a spot machine: much cheaper, but Google may take it back mid-answer."
+  type        = bool
+  default     = false
+}
+
+variable "billing_account" {
+  description = "dev's billing account ID, for Google Cloud's budget on the room's model; null leaves only the worker's estimate."
+  type        = string
+  default     = null
 }

@@ -13,7 +13,7 @@ import {
 } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 import { MemberDirectory } from '../membership/member-directory.js';
-import { ROOM_MODEL, type AskSource, type RoomModel } from './room-model.js';
+import { ROOM_MODEL, RoomModelBudgetSpent, RoomModelWaking, type AskSource, type RoomModel } from './room-model.js';
 import { RoomRepository } from './room.repository.js';
 
 /** Sources a question is answered from, at most: the nearest by meaning first, then the latest decisions and open tasks. */
@@ -52,8 +52,11 @@ export class RoomAssistant {
     private readonly members: MemberDirectory,
   ) {}
 
-  /** Answers the job's question once; a job already taken, finished or cancelled is skipped. */
-  async run(jobId: string): Promise<'answered' | 'failed' | 'skipped'> {
+  /**
+   * Answers the job's question once; a job already taken, finished or cancelled is skipped. If the model on Vertex AI is
+   * still waking up, the job goes back in the queue (`waking`) for its task to be tried again.
+   */
+  async run(jobId: string): Promise<'answered' | 'failed' | 'skipped' | 'waking'> {
     const job = await this.claim(jobId);
     if (!job) return 'skipped';
     const until = Date.now() + RUN_MS;
@@ -74,18 +77,30 @@ export class RoomAssistant {
       await this.finish(job, text || 'The room’s memory does not say.', cited.map((i) => candidates[i - 1]!.source));
       return 'answered';
     } catch (e) {
+      if (e instanceof RoomModelWaking && (await this.requeue(jobId))) return 'waking';
       const reason = e instanceof Error ? e.message : 'something went wrong';
       this.logger.warn(`room question ${jobId} failed: ${reason}`);
-      await this.fail(jobId, reason);
+      await this.fail(jobId, reason, !(e instanceof RoomModelBudgetSpent));
       return 'failed';
     }
   }
 
+  /** Puts a running job back in the queue, for its task's next try; false if it is no longer running. */
+  private requeue(jobId: string): Promise<boolean> {
+    return this.firebase.db.runTransaction(async (tx) => {
+      const job = await this.repo.getJob(tx, jobId);
+      if (job?.state !== 'running') return false;
+      this.repo.setJob(tx, { ...job, state: 'queued', startedAt: null });
+      return true;
+    });
+  }
+
   /**
-   * Gives up on a question with a reply saying why: the model failed, the question could not be queued, or it waited
-   * past `ROOM_LIMITS.jobMinutes`. Nothing happens to one already finished or cancelled.
+   * Gives up on a question with a reply saying why: the model failed, the question could not be queued, it waited past
+   * `ROOM_LIMITS.jobMinutes`, or the model's monthly budget is spent (then without "ask again in a minute"). Nothing
+   * happens to one already finished or cancelled.
    */
-  async fail(jobId: string, reason: string): Promise<boolean> {
+  async fail(jobId: string, reason: string, askAgain = true): Promise<boolean> {
     return this.firebase.db.runTransaction(async (tx) => {
       const job = await this.repo.getJob(tx, jobId);
       if (!job || (job.state !== 'queued' && job.state !== 'running')) return false;
@@ -93,7 +108,7 @@ export class RoomAssistant {
       const at = new Date().toISOString();
       const seq = feed.seq + 1;
       const reply = newMessage(
-        { messageId: uuidv7(), kind: 'assistant', authorId: null, body: `I could not answer this: ${reason}. Ask again in a minute.`, createdAt: at, replyTo: job.questionId },
+        { messageId: uuidv7(), kind: 'assistant', authorId: null, body: `I could not answer this: ${reason}.${askAgain ? ' Ask again in a minute.' : ''}`, createdAt: at, replyTo: job.questionId },
         seq,
       );
       this.repo.createMessage(tx, reply);

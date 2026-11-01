@@ -112,6 +112,20 @@ export type {
   RoomVoiceRecord,
   RoomSignalRecord,
 } from './voice.js';
+export {
+  ROOM_MODEL_STARTUP_MINUTES,
+  ROOM_MODEL_MIN_UP_MINUTES,
+  EMPTY_METER,
+  meterMonth,
+  sessionCostUsd,
+  meterEstimateUsd,
+  chargeMeter,
+  stopModel,
+  modelStopped,
+  nextMonthStart,
+  roomModelCostView,
+} from './model-meter.js';
+export type { RoomModelRates, RoomModelSession, RoomModelMeterRecord, MeterCharge, RoomModelCostView } from './model-meter.js';
 export { ROOM_COMMANDS, ROOM_COMMAND_HELP, parseRoomInput } from './commands.js';
 export type { RoomCommand, ParsedRoomInput } from './commands.js';
 export { messageView, memoryView, memoryLists, assistantView, voiceView, signalView, roomStatus, roomSettingsView } from './views.js';

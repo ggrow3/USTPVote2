@@ -8,6 +8,7 @@ import {
   NotImplementedException,
   Param,
   Post,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import type { BylawsRunResult, ConsistencyRunResult, ElectionRunResult, TickResult } from 'ustp-domain';
 import { BylawsCheckRunner } from '../bylaws-check/bylaws-check-runner.js';
@@ -16,6 +17,7 @@ import { ConsistencyCheckRunner } from '../consistency-check/consistency-check-r
 import { ElectionCheckRunner } from '../election-check/election-check-runner.js';
 import { NoticeSender } from '../notifications/notice-sender.js';
 import { RoomAssistant } from '../room/room-assistant.js';
+import { RoomModelDeployment } from '../room/room-model-deployment.js';
 import { RoomRetention } from '../room/room-retention.js';
 import { BallotSealer } from './ballot-sealer.js';
 import { ElectionClock } from './election-clock.js';
@@ -26,7 +28,16 @@ import { Tallier } from './tallier.js';
  * Worker task endpoints (design §13), invoked by Cloud Scheduler and Cloud Tasks. The worker's Cloud Run service only
  * admits their OIDC tokens (IAM invoker), so these routes have no sign-in of their own.
  */
-export const WORKER_TASKS = ['tick', 'bylaws-checks', 'consistency-checks', 'election-checks', 'room-assistant', 'room-warm', 'email'] as const;
+export const WORKER_TASKS = [
+  'tick',
+  'bylaws-checks',
+  'consistency-checks',
+  'election-checks',
+  'room-assistant',
+  'room-warm',
+  'room-model-budget',
+  'email',
+] as const;
 export type WorkerTask = (typeof WORKER_TASKS)[number];
 
 @Controller('tasks')
@@ -45,14 +56,16 @@ export class TasksController {
     private readonly suggestions: SuggestionsService,
     private readonly roomRetention: RoomRetention,
     private readonly roomAssistant: RoomAssistant,
+    private readonly roomModel: RoomModelDeployment,
   ) {}
 
   /**
    * Every minute: prepare ballot-pool keys, open and close elections on time, seal ballots, tally elections that are
    * now fully sealed, destroy the pool keys of certified and cancelled elections, send election notices (for at most
    * 20 seconds) and the test emails Election Admins asked for, and record their bounces, delete suggestions a year old
-   * (design §10.9) and the members' room's records past their time (§5.10), then seal new ledger entries (including those) into a signed block, sign approved rolls and anchor
-   * new blocks. Each step runs even if an earlier one failed.
+   * (design §10.9) and the members' room's records past their time (§5.10), keep the room's model deployed on Vertex
+   * AI as its switch and budget say, then seal new ledger entries (including those) into a signed block, sign approved
+   * rolls and anchor new blocks. Each step runs even if an earlier one failed.
    */
   @Post('tick')
   @HttpCode(200)
@@ -80,6 +93,7 @@ export class TasksController {
       bouncesRecorded: await step('record bounces', () => this.notices.recordBounces(), 0),
       suggestionsDeleted: await step('delete old suggestions', () => this.suggestions.deleteExpired(), 0),
       roomExpired: await step('expire room records', () => this.roomRetention.run(), 0),
+      roomModel: await step('deploy the room model', () => this.roomModel.reconcile(), 'failed'),
       blocksSealed: (await step('seal blocks', () => this.sealer.sealBlocks(), [])).length,
       rollsSigned: await step('sign rolls', () => this.sealer.signRolls(), 0),
       anchored: await step('anchor blocks', () => this.sealer.anchorBlocks(), 0),
@@ -115,14 +129,32 @@ export class TasksController {
   /**
    * A Cloud Task the api queued for a question in the members' room (design §5.10): the assistant answers it, which may
    * take minutes while the room's model starts. The answer, or why there is none, is posted in the room, so the task
-   * itself never fails and Cloud Tasks does not retry it; a retry would find the question taken anyway.
+   * itself does not fail and Cloud Tasks does not retry it; a retry would find the question taken anyway. The exception
+   * is a model on Vertex AI still waking up: the question goes back in the queue and the task answers 503, so Cloud
+   * Tasks tries it again shortly.
    */
   @Post('room-assistant')
   @HttpCode(200)
   async answerRoomQuestion(@Body() body: unknown): Promise<{ outcome: string }> {
     const jobId = typeof body === 'object' && body && typeof (body as { jobId?: unknown }).jobId === 'string' ? (body as { jobId: string }).jobId : null;
     if (!jobId) throw new NotFoundException('no jobId');
-    return { outcome: await this.roomAssistant.run(jobId) };
+    const outcome = await this.roomAssistant.run(jobId);
+    if (outcome === 'waking') throw new ServiceUnavailableException('the room model is still starting; the question waits');
+    return { outcome };
+  }
+
+  /**
+   * Google Cloud's budget for the room's model, pushed by Pub/Sub several times a day (design §5.10): once the month's
+   * real bill reaches it, the model is stopped until the month ends. Always 204, so Pub/Sub does not push it again.
+   */
+  @Post('room-model-budget')
+  @HttpCode(204)
+  async roomModelBudget(@Body() body: unknown): Promise<void> {
+    try {
+      await this.roomModel.budgetNotice(body);
+    } catch (e) {
+      this.logger.error(`room model budget notice failed: ${e instanceof Error ? e.message : e}`);
+    }
   }
 
   /**

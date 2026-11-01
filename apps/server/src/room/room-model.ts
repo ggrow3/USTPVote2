@@ -1,5 +1,5 @@
 import { searchWords, type RoomModelKind } from 'ustp-domain';
-import { idToken } from '../infra/google-identity.js';
+import { accessToken, idToken } from '../infra/google-identity.js';
 
 /**
  * The members' room's model (design §5.10): it embeds text for the assistant's search and answers questions from the
@@ -22,6 +22,19 @@ export interface RoomModel {
 }
 
 export const ROOM_MODEL = Symbol('RoomModel');
+
+/**
+ * The model is starting on Vertex AI (it had scaled to zero) and was not ready by the run's deadline: the question waits
+ * for the next try rather than failing. The call that found it asleep woke it.
+ */
+export class RoomModelWaking extends Error {
+  constructor() {
+    super('the model is still starting');
+  }
+}
+
+/** The month's cap on what the model may cost is reached (design §5.10): nothing more goes to it until the month ends. */
+export class RoomModelBudgetSpent extends Error {}
 
 export interface AskQuestion {
   readonly text: string;
@@ -142,8 +155,11 @@ function hash(word: string): number {
 
 /**
  * The self-hosted model: an Ollama server's OpenAI-compatible API, at the private `room-model` Cloud Run service (called
- * with the account's ID token) or, for a developer, a local one over http. The first call after the service scaled to
- * zero waits while it starts and loads the models, a minute or two, so calls may take up to `timeoutMs`.
+ * with the account's ID token), behind the Vertex AI endpoint the worker deploys it to (called with an access token), or,
+ * for a developer, a local one over http. The first call after Cloud Run scaled it to zero waits while it starts and
+ * loads the models, a minute or two, so calls may take up to `timeoutMs`. Vertex AI instead answers 429 until a machine
+ * is up, several minutes: a call tries again every `wakeRetryMs` for at most `wakeWaitMs` (or until the deadline), then
+ * throws `RoomModelWaking`, so the run can put its question back in the queue with time to spare.
  */
 export class OllamaRoomModel implements RoomModel {
   readonly kind = 'self-hosted' as const;
@@ -156,7 +172,10 @@ export class OllamaRoomModel implements RoomModel {
     private readonly url: string,
     private readonly chatModel: string,
     private readonly embedModel: string,
+    private readonly auth: 'id-token' | 'access-token' = 'id-token',
     private readonly timeoutMs = 270_000,
+    private readonly wakeRetryMs = 15_000,
+    private readonly wakeWaitMs = 120_000,
   ) {}
 
   async embed(texts: readonly string[], as: 'query' | 'document', until?: number): Promise<number[][]> {
@@ -192,15 +211,34 @@ export class OllamaRoomModel implements RoomModel {
   }
 
   private async post(path: string, payload: unknown, until?: number): Promise<unknown> {
+    const deadline = until ?? Date.now() + this.timeoutMs;
+    const wakeBy = Math.min(deadline, Date.now() + this.wakeWaitMs);
+    for (;;) {
+      const res = await this.send(path, payload, deadline);
+      // Vertex AI's answer while the model scales up from zero: that call woke it, and the next may find it ready.
+      if (res.status === 429 && this.auth === 'access-token') {
+        if (Date.now() + this.wakeRetryMs >= wakeBy) throw new RoomModelWaking();
+        await new Promise((resolve) => setTimeout(resolve, this.wakeRetryMs));
+        continue;
+      }
+      return this.read(res);
+    }
+  }
+
+  private async send(path: string, payload: unknown, deadline: number): Promise<Response> {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
-    if (this.url.startsWith('https://')) headers.authorization = `Bearer ${await idToken(this.url)}`;
-    const timeout = Math.max(1000, Math.min(this.timeoutMs, (until ?? Infinity) - Date.now()));
-    let res: Response;
+    if (this.url.startsWith('https://')) {
+      headers.authorization = `Bearer ${this.auth === 'access-token' ? await accessToken() : await idToken(this.url)}`;
+    }
+    const timeout = Math.max(1000, Math.min(this.timeoutMs, deadline - Date.now()));
     try {
-      res = await fetch(`${this.url}${path}`, { method: 'POST', headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(timeout) });
+      return await fetch(`${this.url}${path}`, { method: 'POST', headers, body: JSON.stringify(payload), signal: AbortSignal.timeout(timeout) });
     } catch (e) {
       throw new Error(e instanceof Error && e.name === 'TimeoutError' ? 'the model took too long to start or answer' : 'the model could not be reached');
     }
+  }
+
+  private async read(res: Response): Promise<unknown> {
     // Never the body, in an error or a log: the model's server could echo what it was sent.
     if (!res.ok) throw new Error(`the model answered ${res.status}`);
     try {

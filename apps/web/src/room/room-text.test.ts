@@ -70,9 +70,22 @@ describe('room wording', () => {
   it('describes the admins’ switches', () => {
     expect(changedLine(null, null)).toBe('');
     expect(changedLine({ accountId: 'a', name: 'Ada' }, local(2026, 10, 29, 9), NOW)).toMatch(/^by Ada, \d{1,2}:\d{2} AM$/);
-    expect(serverLine({ on: true, changedAt: null, changedBy: null, model: 'off' })).toMatchObject({ title: 'No model server yet', running: false });
-    expect(serverLine({ on: false, changedAt: null, changedBy: null, model: 'self-hosted' })).toMatchObject({ title: 'The model server is off', running: false });
-    expect(serverLine({ on: true, changedAt: null, changedBy: null, model: 'self-hosted' })).toMatchObject({ running: true, caption: expect.stringContaining('$1.05') });
+    expect(serverLine({ on: true, changedAt: null, changedBy: null, model: 'off', cost: null })).toMatchObject({ title: 'No model server yet', running: false });
+    expect(serverLine({ on: false, changedAt: null, changedBy: null, model: 'self-hosted', cost: null })).toMatchObject({ title: 'The model server is off', running: false });
+    expect(serverLine({ on: true, changedAt: null, changedBy: null, model: 'self-hosted', cost: null })).toMatchObject({ running: true, caption: expect.stringContaining('$1.05'), cost: null });
+  });
+
+  it('shows what the model on Vertex AI has cost this month against its cap', () => {
+    const cost = { month: '2026-11', estimateUsd: 3.4, budgetUsd: 15, hourlyUsd: 0.98, idleMinutes: 30, wakeUps: 5, stopped: false, resetsOn: '2026-12-01' };
+    const on = serverLine({ on: true, changedAt: null, changedBy: null, model: 'self-hosted', cost });
+    expect(on.caption).toContain('30 quiet minutes');
+    expect(on.cost).toBe('This month: about $3.40 of the $15 budget, 5 wake-ups.');
+    expect(serverLine({ on: true, changedAt: null, changedBy: null, model: 'self-hosted', cost: { ...cost, estimateUsd: 14.6 } }).cost).toMatch(
+      /Too little is left to start it again before December 1\.$/,
+    );
+    expect(serverLine({ on: false, changedAt: null, changedBy: null, model: 'self-hosted', cost: { ...cost, stopped: true } }).cost).toBe(
+      'Google Cloud’s budget for the model is spent this month; it starts again on December 1.',
+    );
   });
 
   it('puts an emoji where the caret is, replacing what is selected, within the message limit', () => {

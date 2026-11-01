@@ -1,3 +1,5 @@
+import type { RoomModelRates } from 'ustp-domain';
+
 export interface ServerConfig {
   /** GCP project; Firebase Admin falls back to GOOGLE_CLOUD_PROJECT / GCLOUD_PROJECT when unset. */
   readonly projectId: string | undefined;
@@ -98,8 +100,13 @@ export interface ServerConfig {
    */
   readonly roomModel: 'ollama' | 'local' | 'off';
   readonly room: {
-    /** The Ollama server: the private `room-model` Cloud Run service (called with an ID token), or a local one. */
+    /**
+     * The Ollama server: the private `room-model` Cloud Run service (called with an ID token), the Vertex AI endpoint's
+     * route to it (`…/endpoints/{id}/invoke`, called with an access token), or a local one.
+     */
     readonly modelUrl: string | null;
+    /** When the model runs on Vertex AI: what the worker deploys there, and the monthly cap on what it costs. */
+    readonly vertex: RoomVertexConfig | null;
     readonly chatModel: string;
     readonly embedModel: string;
     /**
@@ -133,6 +140,20 @@ export interface ServerConfig {
     /** Messages a second at most, within the account's SES sending quota. */
     readonly maxSendRate: number;
   };
+}
+
+/**
+ * The room's model on Vertex AI (`ROOM_MODEL_VERTEX`, JSON written by Terraform; design §5.10): the endpoint the worker
+ * deploys it to, the model to upload and how to deploy it (in the Vertex AI API's own shapes, passed through as they
+ * are), and what it may cost. Nothing in it is secret.
+ */
+export interface RoomVertexConfig extends RoomModelRates {
+  /** `projects/{project}/locations/{region}/endpoints/{id}`. */
+  readonly endpoint: string;
+  /** The `Model` to upload (`models.upload`), without its display name and labels, which the worker adds. */
+  readonly model: Readonly<Record<string, unknown>>;
+  /** The `DeployedModel` to deploy it as (`endpoints.deployModel`), without the model, display name and labels. */
+  readonly deployedModel: Readonly<Record<string, unknown>>;
 }
 
 /** Gemma 4 26B A4B, quantization-aware 4-bit (16 GB, to fit one L4 with its context); `ROOM_CHAT_MODEL` overrides it. */
@@ -207,6 +228,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   if (roomModel === 'local' && !usingEmulators) throw new Error('ROOM_MODEL=local is only allowed with the Firebase emulators');
   const roomModelUrl = env.ROOM_MODEL_URL ? env.ROOM_MODEL_URL.replace(/\/+$/, '') : null;
   if (roomModel === 'ollama' && !roomModelUrl) throw new Error('ROOM_MODEL=ollama needs ROOM_MODEL_URL');
+  const roomVertex = env.ROOM_MODEL_VERTEX ? roomVertexConfig(env.ROOM_MODEL_VERTEX) : null;
+  if (roomVertex && roomModel !== 'ollama') throw new Error('ROOM_MODEL_VERTEX needs ROOM_MODEL=ollama');
   const roomDispatch = (env.ROOM_DISPATCH ?? (usingEmulators ? 'inline' : 'cloud-tasks')) as ServerConfig['room']['dispatch'];
   if (roomDispatch !== 'cloud-tasks' && roomDispatch !== 'inline') throw new Error('ROOM_DISPATCH must be "cloud-tasks" or "inline"');
   if (roomDispatch === 'inline' && !usingEmulators) throw new Error('ROOM_DISPATCH=inline is only allowed with the Firebase emulators');
@@ -253,6 +276,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     roomModel,
     room: {
       modelUrl: roomModelUrl,
+      vertex: roomVertex,
       chatModel: env.ROOM_CHAT_MODEL || DEFAULT_ROOM_CHAT_MODEL,
       embedModel: env.ROOM_EMBED_MODEL || DEFAULT_ROOM_EMBED_MODEL,
       dispatch: roomDispatch,
@@ -292,6 +316,28 @@ function positiveNumber(value: string | undefined, name: string): number | null 
   const n = Number(value);
   if (!Number.isFinite(n) || n <= 0) throw new Error(`${name} must be a positive number`);
   return n;
+}
+
+/** `ROOM_MODEL_VERTEX`: checked here, so a deployment with a broken one fails to start rather than at the first question. */
+function roomVertexConfig(value: string): RoomVertexConfig {
+  let v: Record<string, unknown>;
+  try {
+    v = JSON.parse(value) as Record<string, unknown>;
+  } catch {
+    throw new Error('ROOM_MODEL_VERTEX must be JSON');
+  }
+  const isObject = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
+  const { endpoint, model, deployedModel, hourlyUsd, idleMinutes, monthlyBudgetUsd } = isObject(v) ? v : {};
+  if (typeof endpoint !== 'string' || !/^projects\/[^/]+\/locations\/[a-z0-9-]+\/endpoints\/\d+$/.test(endpoint)) {
+    throw new Error('ROOM_MODEL_VERTEX.endpoint must be projects/{project}/locations/{region}/endpoints/{id}');
+  }
+  if (!isObject(model) || !isObject(deployedModel)) throw new Error('ROOM_MODEL_VERTEX needs model and deployedModel objects');
+  if (typeof hourlyUsd !== 'number' || !(hourlyUsd > 0)) throw new Error('ROOM_MODEL_VERTEX.hourlyUsd must be above 0');
+  if (typeof idleMinutes !== 'number' || !Number.isInteger(idleMinutes) || idleMinutes < 5 || idleMinutes > 480) {
+    throw new Error('ROOM_MODEL_VERTEX.idleMinutes must be a whole number from 5 to 480');
+  }
+  if (typeof monthlyBudgetUsd !== 'number' || !(monthlyBudgetUsd >= 0)) throw new Error('ROOM_MODEL_VERTEX.monthlyBudgetUsd must be 0 or more');
+  return { endpoint, model, deployedModel, hourlyUsd, idleMinutes, monthlyBudgetUsd };
 }
 
 /** `ROOM_VOICE_STUN`: `stun:` URLs, comma-separated; `off` for none (calls then work only on one network). */

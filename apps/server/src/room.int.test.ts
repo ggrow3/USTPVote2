@@ -533,7 +533,7 @@ describe('retention', () => {
     expect(bodies).not.toContain('Old news');
     expect(bodies).toContain('Fresh news');
     expect((await api.firebase.db.collection('room_reactions').get()).docs.map((d) => d.get('messageId'))).toEqual([fresh.messageId]);
-    expect(bodies.at(-1)).toBe(`I could not answer this: it took longer than 10 minutes. Ask again in a minute.`);
+    expect(bodies.at(-1)).toBe(`I could not answer this: it took longer than 20 minutes. Ask again in a minute.`);
     expect((await memory(ada)).actions).toEqual([]);
     expect((await api.firebase.db.collection('room_jobs').doc('stale').get()).data()).toMatchObject({ state: 'failed' });
   });
