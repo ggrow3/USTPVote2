@@ -11,6 +11,7 @@ import {
   publishNews,
   rssFeed,
   updateNews,
+  uploadedVideoIds,
   uuidv7,
   withdrawNews,
   type CreateNewsInput,
@@ -28,6 +29,7 @@ import { accepted } from '../common/validation.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { VideosService } from '../videos/videos.js';
 import { CommunicationsRepository } from './communications.repository.js';
 
 /** The public list and feeds are read by every visitor and every bot, so each api instance keeps them for this long. */
@@ -46,6 +48,7 @@ export class NewsService {
     private readonly repo: CommunicationsRepository,
     private readonly ledger: LedgerService,
     private readonly hub: HubService,
+    private readonly videos: VideosService,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
@@ -105,6 +108,7 @@ export class NewsService {
     const postId = uuidv7();
     await this.firebase.db.runTransaction(async (tx) => {
       const taken = !!(await this.repo.newsBySlug(input.slug, tx));
+      await this.videos.requireReady(uploadedVideoIds([input.video]), tx);
       this.repo.setNews(tx, accepted(createNews(input, postId, taken, actor, new Date().toISOString())));
     });
     return this.detail(postId);
@@ -114,6 +118,7 @@ export class NewsService {
     const { basedOn, ...content } = input;
     return this.change(postId, async (tx, post) => {
       const other = content.slug === post?.slug ? null : await this.repo.newsBySlug(content.slug, tx);
+      await this.videos.requireReady(uploadedVideoIds([content.video]), tx);
       return updateNews(post, content, basedOn, !!other && other.postId !== postId, actor, new Date().toISOString());
     });
   }

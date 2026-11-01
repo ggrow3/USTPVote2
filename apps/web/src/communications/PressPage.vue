@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useQuasar } from 'quasar';
-import type { PublicBot, PublicNewsSummary, PublicPressKit } from 'ustp-domain';
+import { videoDownloadSrc, type PublicBot, type PublicNewsSummary, type PublicPressKit } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { errorMessage } from '../api.js';
 import PageShell from '../components/PageShell.vue';
+import VideoPlayer from '../components/VideoPlayer.vue';
 import NewsBody from './NewsBody.vue';
 import { newsList, pressAssetUrl, pressPage } from './api.js';
 import CommsNav from './CommsNav.vue';
@@ -23,7 +24,9 @@ const error = ref<string | null>(null);
 
 const contact = computed(() => kit.value?.contact);
 const hasContact = computed(() => !!contact.value && Object.values(contact.value).some(Boolean));
-const empty = computed(() => !!kit.value && !kit.value.about && !hasContact.value && !kit.value.facts.length && !kit.value.assets.length);
+const empty = computed(
+  () => !!kit.value && !kit.value.about && !hasContact.value && !kit.value.facts.length && !kit.value.assets.length && !kit.value.videos?.length,
+);
 
 async function copyAbout() {
   if (!kit.value) return;
@@ -110,6 +113,20 @@ onMounted(async () => {
           </q-card-section>
         </q-card>
 
+        <q-card v-if="kit.videos?.length" flat bordered>
+          <q-card-section>
+            <h2 class="text-subtitle1">Videos</h2>
+            <div v-for="v in kit.videos" :key="v.videoId" class="press-video">
+              <VideoPlayer :video="{ kind: 'upload', videoId: v.videoId }" :title="v.title" />
+              <div class="text-weight-medium">{{ v.title }}</div>
+              <div v-if="v.description" class="text-caption">{{ v.description }}</div>
+              <a :href="videoDownloadSrc(v.videoId)" :download="v.fileName" class="text-caption">
+                Download {{ v.contentType === 'video/webm' ? 'WebM' : 'MP4' }}, {{ fileSize(v.bytes) }}
+              </a>
+            </div>
+          </q-card-section>
+        </q-card>
+
         <q-card v-if="latest.length" flat bordered>
           <q-card-section>
             <h2 class="text-subtitle1">Latest releases and statements</h2>
@@ -152,6 +169,15 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+.press-video {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 20px;
+}
+.press-video :deep(.video-player) {
+  margin-bottom: 4px;
+}
 .press-assets {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));

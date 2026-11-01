@@ -34,9 +34,9 @@ output "photos_bucket" {
   value       = google_storage_bucket.photos.name
 }
 
-output "course_videos_bucket" {
-  description = "COURSE_VIDEOS_BUCKET (api)."
-  value       = google_storage_bucket.course_videos.name
+output "videos_bucket" {
+  description = "VIDEOS_BUCKET (api)."
+  value       = google_storage_bucket.videos.name
 }
 
 output "api_env" {

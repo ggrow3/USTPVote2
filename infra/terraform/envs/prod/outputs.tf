@@ -18,9 +18,9 @@ output "photos_bucket" {
   value       = module.ustpvote.photos_bucket
 }
 
-output "course_videos_bucket" {
-  description = "COURSE_VIDEOS_BUCKET (api)."
-  value       = module.ustpvote.course_videos_bucket
+output "videos_bucket" {
+  description = "VIDEOS_BUCKET (api)."
+  value       = module.ustpvote.videos_bucket
 }
 
 output "api_env" {

@@ -160,6 +160,21 @@ describe('news posts', () => {
     expect(publicNewsPost(again)).not.toHaveProperty('createdBy');
   });
 
+  it('may carry a video, shown once published; changing it is a recorded edit, and posts from before have none', () => {
+    const video = { kind: 'youtube', youtubeId: 'dQw4w9WgXcQ', start: 0 } as const;
+    expect(draft().video).toBeNull();
+    const published = ok(publishNews(draft({ video }), 1, ADMIN, AT)).post;
+    expect(publicNewsPost(published)).toMatchObject({ status: 'published', video });
+    const { slug, kind, title, summary, body, dateline, hashtags } = published;
+    const same = { slug, kind, title, summary, body, dateline, hashtags };
+    const changed = ok(updateNews(published, { ...same, video: { kind: 'upload', videoId: POST_ID } }, 2, false, ADMIN, LATER));
+    expect(changed.event?.payload).toMatchObject({ fields: ['video'] });
+    const older = { ...published, video: undefined } as unknown as NewsPostRecord;
+    expect(publicNewsPost(older)).toMatchObject({ video: null });
+    expect(ok(updateNews(older, { ...same, video: null }, 2, false, ADMIN, LATER)).event).toBeNull();
+    expect(createNewsSchema.safeParse({ ...same, video: 'https://youtu.be/dQw4w9WgXcQ' }).success).toBe(false);
+  });
+
   it('are listed newest first, published only', () => {
     const first = ok(publishNews(draft(), 1, ADMIN, AT)).post;
     const second = ok(publishNews({ ...draft(), postId: 'b', slug: 'second' }, 1, ADMIN, LATER)).post;
@@ -388,6 +403,35 @@ describe('the press kit', () => {
     const file = { id: ID, contentType: 'image/png' as const, bytes: 10, width: 100, height: 50, fileName: 'logo.png', uploadedAt: AT, uploadedBy: ADMIN };
     expect(publicPressKit(kit, new Map([[ID, file]])).assets).toEqual([{ id: ID, title: 'Logo', description: '', contentType: 'image/png', bytes: 10, width: 100, height: 50, fileName: 'logo.png' }]);
     expect(publicPressKit(kit, new Map()).assets).toEqual([]);
+  });
+
+  it('lists videos uploaded here, each once, with their type, size and name, and records those added and removed', () => {
+    const VIDEO = '01900000-0000-7000-8000-0000000000bb';
+    const withVideo = pressKitSchema.parse({ ...input, videos: [{ videoId: VIDEO, title: 'Convention speech' }] });
+    expect(input.videos).toEqual([]);
+    expect(pressKitSchema.safeParse({ ...withVideo, videos: [withVideo.videos[0], withVideo.videos[0]] }).success).toBe(false);
+    expect(pressKitSchema.safeParse({ ...withVideo, videos: [{ videoId: '../x', title: 'Bad' }] }).success).toBe(false);
+    const { kit, event } = ok(savePressKit(EMPTY_PRESS_KIT, withVideo, ADMIN, AT));
+    expect(event?.payload).toMatchObject({ fields: ['about', 'contact', 'facts', 'assets', 'videos'], videosAdded: [VIDEO], videosRemoved: [] });
+    const record = {
+      videoId: VIDEO,
+      area: 'communications' as const,
+      courseId: null,
+      contentType: 'video/mp4' as const,
+      size: 1234,
+      parts: 1,
+      received: 1,
+      ready: true,
+      fileName: 'speech.mp4',
+      uploadedAt: AT,
+      uploadedBy: ADMIN,
+    };
+    expect(publicPressKit(kit, new Map(), new Map([[VIDEO, record]])).videos).toEqual([
+      { videoId: VIDEO, title: 'Convention speech', description: '', contentType: 'video/mp4', bytes: 1234, fileName: 'speech.mp4' },
+    ]);
+    expect(publicPressKit(kit, new Map()).videos).toEqual([]);
+    const removed = ok(savePressKit(kit, { ...withVideo, videos: [], basedOn: 1 }, ADMIN, AT));
+    expect(removed.event?.payload).toMatchObject({ fields: ['videos'], videosRemoved: [VIDEO] });
   });
 
   it('refuses a bad email or phone, and a file listed twice', () => {

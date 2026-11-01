@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blankQuestion, lessonProblems, lessonVideoPayload, move, profileProblems, questionsPayload, removeChoice, type QuestionDraft } from './course-editor.js';
+import { blankQuestion, lessonProblems, move, profileProblems, questionsPayload, removeChoice, type QuestionDraft } from './course-editor.js';
 
 const question = (over: Partial<QuestionDraft> = {}): QuestionDraft => ({
   ...blankQuestion(),
@@ -70,12 +70,6 @@ describe('the quiz editor', () => {
 
 describe('the lesson video', () => {
   const upload = '0190a000-0000-7000-8000-000000000000';
-
-  it('is the upload, else the YouTube link, else none', () => {
-    expect(lessonVideoPayload(upload, 'https://youtu.be/dQw4w9WgXcQ')).toEqual({ kind: 'upload', videoId: upload });
-    expect(lessonVideoPayload(null, ' https://youtu.be/dQw4w9WgXcQ?t=1m ')).toEqual({ kind: 'youtube', youtubeId: 'dQw4w9WgXcQ', start: 60 });
-    expect(lessonVideoPayload(null, '  ')).toBeNull();
-  });
 
   it('needs a link to be one YouTube video', () => {
     const watch = { ...lesson([question()]), videoUpload: null };

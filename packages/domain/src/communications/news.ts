@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { refuse, type Outcome } from '../check.js';
 import type { LedgerEvent } from '../ledger-events.js';
+import { videoSchema, type Video } from '../video.js';
 import { basedOnSchema, changedFields, communicationsEvent, hashtagsSchema, oneLine, slugSchema, stale, text } from './common.js';
 
 /**
@@ -30,6 +31,8 @@ const contentShape = {
   /** Where it is from, as press releases open ("Washington, D.C."); empty for none. */
   dateline: oneLine(NEWS_LIMITS.dateline).default(''),
   hashtags: hashtagsSchema,
+  /** Shown under the title (design §10.10); none on posts saved before videos. */
+  video: videoSchema.nullable().default(null),
 };
 
 export const newsContentSchema = z.strictObject(contentShape);
@@ -138,8 +141,9 @@ export function updateNews(
     if (post.publishedAt) return refuse('conflict', 'a post keeps its address once it has been published, so links to it keep working');
     if (slugTaken) return refuse('conflict', `another post already uses the address /news/${input.slug}`);
   }
-  const next = { ...post, ...input };
-  const fields = changedFields(FIELDS, post, next);
+  const before = { ...post, video: post.video ?? null };
+  const next = { ...before, ...input };
+  const fields = changedFields(FIELDS, before, next);
   if (!fields.length) return { ok: true, value: { post, event: null } };
   if (post.status === 'published') {
     const problem = publishProblem(next);
@@ -207,7 +211,7 @@ export interface PublicNewsSummary {
 
 /** `GET /v1/news/{slug}`: a published post in full, or the notice that it was withdrawn. */
 export type PublicNewsPost =
-  | (PublicNewsSummary & { readonly status: 'published'; readonly body: string })
+  | (PublicNewsSummary & { readonly status: 'published'; readonly body: string; readonly video: Video | null })
   | { readonly status: 'withdrawn'; readonly slug: string; readonly title: string; readonly withdrawnAt: string };
 
 export function newsSummary(post: NewsPostRecord): PublicNewsSummary {
@@ -225,7 +229,7 @@ export function newsSummary(post: NewsPostRecord): PublicNewsSummary {
 
 /** What `GET /v1/news/{slug}` shows of a post, or null when the public may not see it (a draft). */
 export function publicNewsPost(post: NewsPostRecord): PublicNewsPost | null {
-  if (post.status === 'published') return { ...newsSummary(post), status: 'published', body: post.body };
+  if (post.status === 'published') return { ...newsSummary(post), status: 'published', body: post.body, video: post.video ?? null };
   if (post.status === 'withdrawn') return { status: 'withdrawn', slug: post.slug, title: post.title, withdrawnAt: post.withdrawnAt ?? post.updatedAt };
   return null;
 }

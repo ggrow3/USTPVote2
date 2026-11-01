@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from './config.js';
-import { byteRange, videoTypeOf } from './course/course-videos.js';
+import { byteRange, videoTypeOf } from './videos/videos.js';
 
 /** The first bytes of real files: an MP4's `ftyp` box, and WebM and Matroska EBML headers. */
 const mp4 = Buffer.concat([Buffer.from([0, 0, 0, 0x18]), Buffer.from('ftypmp42\0\0\0\0mp42isom', 'latin1')]);
@@ -48,14 +48,14 @@ describe('byteRange', () => {
   });
 });
 
-describe('course videos bucket', () => {
-  it('is unset outside the emulators until COURSE_VIDEOS_BUCKET is given', () => {
-    expect(loadConfig({}).courseVideosBucket).toBeNull();
-    expect(loadConfig({ COURSE_VIDEOS_BUCKET: 'p-course-videos' }).courseVideosBucket).toBe('p-course-videos');
+describe('videos bucket', () => {
+  it('is unset outside the emulators until VIDEOS_BUCKET is given', () => {
+    expect(loadConfig({}).videosBucket).toBeNull();
+    expect(loadConfig({ VIDEOS_BUCKET: 'p-videos' }).videosBucket).toBe('p-videos');
   });
 
   it('defaults to a project bucket with the emulators', () => {
     const emulators = { FIRESTORE_EMULATOR_HOST: '127.0.0.1:8085', FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099', GOOGLE_CLOUD_PROJECT: 'demo-p' };
-    expect(loadConfig(emulators).courseVideosBucket).toBe('demo-p-course-videos');
+    expect(loadConfig(emulators).videosBucket).toBe('demo-p-videos');
   });
 });

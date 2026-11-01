@@ -1,8 +1,8 @@
 # Infrastructure (Terraform)
 
 Everything USTPVote2 needs in one GCP project per environment (design §15): APIs, the `api`, `worker` and invoker
-service accounts with least-privilege IAM (§14), the Cloud KMS keys (§7.3, §8.3), the anchors, photos and course
-videos buckets (§5.3, §8.4, §10.8), Firestore, both Cloud Run services, the Cloud Scheduler tick and a Cloud Tasks
+service accounts with least-privilege IAM (§14), the Cloud KMS keys (§7.3, §8.3), the anchors, photos and videos
+buckets (§5.3, §8.4, §10.10), Firestore, both Cloud Run services, the Cloud Scheduler tick and a Cloud Tasks
 queue (§13), Binary Authorization (§14), the release workflow's identity, KMS audit logs and a break-glass alert.
 Design open question Q13 (Terraform) and Q16 (`us-central1`) are assumed.
 
@@ -43,7 +43,7 @@ API-side limits are only checked by Google on the first apply.
 | | `secretVersionManager` on `anthropic-api-key` only: add, list and destroy versions, never read one | Keeps the key a System Admin adds under Admin › Claude (§5.6); it cannot read it back |
 | | `publicKeyViewer` on `ballot-pool` | Encrypts ballots locally to an election's public key; cannot decrypt (§7.3) |
 | | Read, write, delete objects in the photos bucket | Profile photos (§5.3) |
-| | Create and read objects in the course videos bucket; never delete | Lesson videos, stored a part at a time and played back by byte range (§10.8) |
+| | Create and read objects in the videos bucket; never delete | Uploaded videos for lessons, news, the press kit and the hub, stored a part at a time and played back by byte range (§10.10) |
 | | Read objects in the anchors bucket | Auditor verification downloads every anchor (`GET /v1/admin/audit/verify`) |
 | | Cloud Vision | Needs no IAM role; the API only has to be enabled |
 | `ustp-worker` | Firestore (`datastore.user`) | Clock, sealing, ledger (§13) |
@@ -126,7 +126,7 @@ for running the server locally against a real project. Variable names are those 
 | `BALLOT_POOL_KEY` | `ballot_pool_key` (`…/cryptoKeys/ballot-pool`) | ● | ● |
 | `ANCHORS_BUCKET` | `anchors_bucket` (`<project>-anchors`) | ● | ● |
 | `PHOTOS_BUCKET` | `photos_bucket` (`<project>-profile-photos`) | ● | |
-| `COURSE_VIDEOS_BUCKET` | `course_videos_bucket` (`<project>-course-videos`) | ● | |
+| `VIDEOS_BUCKET` | `videos_bucket` (`<project>-videos`) | ● | |
 | `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` | from the variable, not output | ● | |
 | `GOOGLE_MAPS_BROWSER_KEY` | not output: the `maps-browser` API key's value, when `maps_enabled`; the api gives it to browsers for the Candidates map (design §5.8) | ● | |
 | `FEC_API_KEY`, `OPENSTATES_API_KEY` | not output: `fec_api_key` and `openstates_api_key`, when set; the api's keys for the Your area page's public records (design §5.12) | ● | |

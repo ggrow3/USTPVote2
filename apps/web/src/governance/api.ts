@@ -41,6 +41,9 @@ export function discordLive(): Promise<DiscordLive> {
 }
 
 /** Where an uploaded logo, cover banner or background photo is served; its ID never changes, so browsers keep it. */
+/** Where System and Communications Admins upload a hub link's video, a part at a time (design §10.10). */
+export const HUB_VIDEO_UPLOADS = '/v1/admin/hub/videos';
+
 export function hubImageUrl(kind: HubImageKind, id: string): string {
   return `/v1/hub/${kind}/${id}`;
 }

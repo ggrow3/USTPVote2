@@ -1,4 +1,4 @@
-# Buckets (design §5.3, §8.4, §10.8) and the image repository. Bucket names follow the emulator defaults in config.ts.
+# Buckets (design §5.3, §8.4, §10.10) and the image repository. Bucket names follow the emulator defaults in config.ts.
 
 # --- Ledger anchors (design §8.4) ------------------------------------------------------------------------------------
 
@@ -89,13 +89,13 @@ resource "google_storage_bucket_iam_member" "photos_api" {
   member = google_service_account.api.member
 }
 
-# --- Lesson videos (design §10.8) -------------------------------------------------------------------------------------
+# --- Uploaded videos (design §10.10) ----------------------------------------------------------------------------------
 
-# The videos Course Administrators upload for lessons, kept a part at a time as sent and played back through the api,
-# never read from the bucket by a browser.
-resource "google_storage_bucket" "course_videos" {
+# The videos admins upload for lessons, news posts, the press kit and the hub, kept a part at a time as sent and played
+# back through the api, never read from the bucket by a browser.
+resource "google_storage_bucket" "videos" {
   project                     = var.project_id
-  name                        = "${var.project_id}-course-videos"
+  name                        = "${var.project_id}-videos"
   location                    = var.region
   storage_class               = "STANDARD"
   uniform_bucket_level_access = true
@@ -107,10 +107,10 @@ resource "google_storage_bucket" "course_videos" {
 }
 
 # The api stores each part once and reads parts back to play them; it neither overwrites nor deletes them.
-resource "google_storage_bucket_iam_member" "course_videos_api" {
+resource "google_storage_bucket_iam_member" "videos_api" {
   for_each = toset(["roles/storage.objectCreator", "roles/storage.objectViewer"])
 
-  bucket = google_storage_bucket.course_videos.name
+  bucket = google_storage_bucket.videos.name
   role   = each.value
   member = google_service_account.api.member
 }

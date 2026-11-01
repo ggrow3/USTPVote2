@@ -42,16 +42,21 @@ export type {
   SubmitCourseQuizInput,
 } from './course.js';
 export {
-  COURSE_VIDEO,
-  courseVideoParts,
-  courseVideoSrc,
-  lessonVideoSchema,
-  startCourseVideoSchema,
+  VIDEO_AREAS,
+  VIDEO_UPLOAD,
+  startVideoSchema,
+  uploadedVideoIds,
+  uploadedVideoIdSchema,
+  videoDownloadSrc,
+  videoFileName,
+  videoParts,
+  videoSchema,
+  videoSrc,
   youtubeEmbedSrc,
   youtubeVideo,
   youtubeWatchUrl,
-} from './course-video.js';
-export type { CourseVideoRecord, CourseVideoType, CourseVideoUpload, LessonVideo, StartCourseVideoInput, UploadedVideo, YouTubeVideo } from './course-video.js';
+} from './video.js';
+export type { StartVideoInput, UploadedVideo, Video, VideoArea, VideoRecord, VideoType, VideoUpload, YouTubeVideo } from './video.js';
 export {
   COURSE_MAP,
   COURSE_CONVERSATION_LIMIT,

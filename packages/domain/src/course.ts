@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import type { CourseLink, CoursePosition } from './course-map.js';
-import { lessonVideoSchema, type LessonVideo } from './course-video.js';
+import { videoSchema, type Video } from './video.js';
 
 /** The first-party course catalogue is intentionally independent of party membership and voting. */
 export const COURSE_STATUSES = ['draft', 'published'] as const;
@@ -72,8 +72,8 @@ export interface CourseLesson {
   readonly summary: string;
   /** Plain paragraphs separated by blank lines; the web app renders it without accepting HTML. */
   readonly body: string;
-  /** Shown above the text (course-video.ts); lessons saved before videos have none. */
-  readonly video?: LessonVideo | null;
+  /** Shown above the text (video.ts); lessons saved before videos have none. */
+  readonly video?: Video | null;
   readonly estimatedMinutes: number;
   readonly questions: readonly CourseQuestion[];
   readonly updatedAt: string;
@@ -254,7 +254,7 @@ export const saveCourseLessonSchema = z
     summary: text(1000),
     body: text(50_000),
     // Optional, so course packages exported before videos still read; a lesson saved without one has none.
-    video: lessonVideoSchema.nullable().default(null),
+    video: videoSchema.nullable().default(null),
     estimatedMinutes: z.number().int().min(1).max(240),
     questions: z.array(courseQuestionSchema).min(QUIZ_LIMITS.minQuestions).max(QUIZ_LIMITS.maxQuestions),
   })

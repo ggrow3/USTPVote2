@@ -1,5 +1,6 @@
-import { COURSE_VIDEO, uuidv7 } from 'ustp-domain';
+import { DEFAULT_HUB, VIDEO_UPLOAD, uuidv7, type Hub, type HubLink } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { HubService } from './administration/hub.js';
 import { resetEmulators, TestApi } from './testing/emulator.js';
 
 let api: TestApi;
@@ -7,9 +8,14 @@ beforeAll(async () => {
   api = await TestApi.start();
 });
 afterAll(() => api.close());
-beforeEach(async () => resetEmulators());
+/** A System Admin, made afresh for each test. */
+let sa: Awaited<ReturnType<TestApi['systemAdmins']>>[number];
+beforeEach(async () => {
+  await resetEmulators();
+  [sa] = await api.systemAdmins();
+});
 
-const PART = COURSE_VIDEO.partBytes;
+const PART = VIDEO_UPLOAD.partBytes;
 const SIZE = PART + 1000;
 
 /** An "MP4" of SIZE bytes: a real `ftyp` box, then a pattern that shows which bytes came back. */
@@ -24,7 +30,6 @@ function mp4(size = SIZE): Buffer {
 /** A member made Course Administrator, after the courses have been seeded. */
 async function courseAdmin(email: string) {
   await api.call('GET', '/v1/public/courses/transhumanism');
-  const [sa] = await api.systemAdmins();
   const editor = await api.member(email);
   await api.grant(editor.accountId, 'course_admin', sa);
   return editor;
@@ -34,19 +39,19 @@ type Editor = Awaited<ReturnType<typeof courseAdmin>>;
 const videos = '/v1/admin/courses/transhumanism/videos';
 const part = (videoId: string, index: number) => `${videos}/${videoId}/parts/${index}`;
 
-/** Uploads the file whole, a part at a time, and gives its ID. */
-async function upload(editor: Editor, file: Buffer, contentType = 'video/mp4'): Promise<string> {
-  const started = await api.call('POST', videos, editor, { contentType, size: file.length });
+/** Uploads the file whole, a part at a time, where `base` takes uploads, and gives its ID. */
+async function upload(editor: Editor, file: Buffer, contentType = 'video/mp4', base = videos, fileName = ''): Promise<string> {
+  const started = await api.call('POST', base, editor, { contentType, size: file.length, fileName });
   expect(started.status).toBe(201);
   const { videoId, parts } = started.body as { videoId: string; parts: number };
   for (let index = 0; index < parts; index++) {
-    expect((await api.upload(part(videoId, index), editor, file.subarray(index * PART, (index + 1) * PART), contentType)).status).toBe(200);
+    expect((await api.upload(`${base}/${videoId}/parts/${index}`, editor, file.subarray(index * PART, (index + 1) * PART), contentType)).status).toBe(200);
   }
   return videoId;
 }
 
 const play = (videoId: string, range?: string) =>
-  api.app.inject({ method: 'GET', url: `/v1/public/course-videos/${videoId}`, headers: range ? { range } : {} });
+  api.app.inject({ method: 'GET', url: `/v1/public/videos/${videoId}`, headers: range ? { range } : {} });
 
 const lesson = {
   order: 50,
@@ -63,7 +68,7 @@ describe('Lesson video uploads', () => {
     const learner = await api.member('video-learner@example.test');
     expect((await api.call('POST', videos, learner, { contentType: 'video/mp4', size: SIZE })).status).toBe(403);
     expect((await api.call('POST', videos, editor, { contentType: 'video/quicktime', size: SIZE })).status).toBe(400);
-    expect((await api.call('POST', videos, editor, { contentType: 'video/mp4', size: COURSE_VIDEO.maxBytes + 1 })).status).toBe(400);
+    expect((await api.call('POST', videos, editor, { contentType: 'video/mp4', size: VIDEO_UPLOAD.maxBytes + 1 })).status).toBe(400);
     expect((await api.call('POST', '/v1/admin/courses/no-such-course/videos', editor, { contentType: 'video/mp4', size: SIZE })).status).toBe(404);
 
     const started = await api.call('POST', videos, editor, { contentType: 'video/mp4', size: SIZE });
@@ -179,5 +184,87 @@ describe('Lessons with videos', () => {
 
     const pkg = (await api.call('GET', '/v1/admin/courses/transhumanism/package?version=draft', editor)).body;
     expect(pkg.lessons.find((l: { lessonId: string }) => l.lessonId === watched.body.lessonId).video).toEqual(youtube);
+  });
+});
+
+/** A Communications Admin, who uploads for news and the press kit, and may edit the hub. */
+async function communicationsAdmin(email: string) {
+  const comms = await api.member(email);
+  await api.grant(comms.accountId, 'communications_admin', sa);
+  return comms;
+}
+
+const commsVideos = '/v1/admin/communications/videos';
+const hubVideos = '/v1/admin/hub/videos';
+const youtube = { kind: 'youtube', youtubeId: 'dQw4w9WgXcQ', start: 0 } as const;
+const NEWS = {
+  kind: 'news',
+  title: 'The convention, on video',
+  summary: 'Watch the opening speech.',
+  body: 'The opening speech is above.',
+  slug: 'convention-video',
+};
+
+describe('Videos for news, the press kit and the hub', () => {
+  it('are uploaded by each area’s own admins, and a part goes only where its upload began', async () => {
+    const comms = await communicationsAdmin('video-comms@example.test');
+    const editor = await courseAdmin('video-course@example.test');
+    const start = (base: string, by: Editor) => api.call('POST', base, by, { contentType: 'video/mp4', size: 1000 });
+    expect((await start(commsVideos, editor)).status).toBe(403);
+    expect((await start(videos, comms)).status).toBe(403);
+    expect((await start(hubVideos, editor)).status).toBe(403);
+    expect((await start(hubVideos, sa)).status).toBe(201);
+    const { videoId } = (await start(commsVideos, comms)).body as { videoId: string };
+    expect((await api.upload(`${hubVideos}/${videoId}/parts/0`, comms, mp4(1000), 'video/mp4')).status).toBe(404);
+    expect((await api.upload(`${commsVideos}/${videoId}/parts/0`, comms, mp4(1000), 'video/mp4')).body).toMatchObject({ ready: true });
+  });
+
+  it('go on a news post, as a YouTube video or a finished upload, and show once it is published', async () => {
+    const comms = await communicationsAdmin('video-news@example.test');
+    const news = (body: object) => api.call('POST', '/v1/admin/communications/news', comms, { ...NEWS, ...body });
+    expect((await news({ video: { kind: 'upload', videoId: uuidv7() } })).body.detail).toMatch(/not one uploaded here/);
+    const videoId = await upload(comms, mp4(1000), 'video/mp4', commsVideos);
+    const post = await news({ video: { kind: 'upload', videoId } });
+    expect(post.status).toBe(201);
+    expect(post.body.video).toEqual({ kind: 'upload', videoId });
+    const { postId, version, slug, kind, title, summary, body, dateline, hashtags } = post.body;
+    const edited = await api.call('PUT', `/v1/admin/communications/news/${postId}`, comms, { slug, kind, title, summary, body, dateline, hashtags, video: youtube, basedOn: version });
+    expect(edited.body.video).toEqual(youtube);
+    expect((await api.call('POST', `/v1/admin/communications/news/${postId}/publish`, comms, { basedOn: edited.body.version })).status).toBe(201);
+    expect((await api.call('GET', `/v1/news/${slug}`)).body).toMatchObject({ status: 'published', video: youtube });
+  });
+
+  it('are listed in the press kit, to play or download under their own name', async () => {
+    const comms = await communicationsAdmin('video-press@example.test');
+    const kit = { basedOn: 0, about: 'The USTP.', contact: {}, facts: [], assets: [] };
+    const save = (videos: object[]) => api.call('PUT', '/v1/admin/communications/press-kit', comms, { ...kit, videos });
+    expect((await save([{ videoId: uuidv7(), title: 'Missing' }])).body.detail).toMatch(/not one uploaded here/);
+    const file = mp4(1000);
+    const videoId = await upload(comms, file, 'video/mp4', commsVideos, 'Convention speech (2026).mp4');
+    expect((await save([{ videoId, title: 'Convention speech', description: 'The opening, in full.' }])).status).toBe(200);
+    const press = (await api.call('GET', '/v1/press')).body;
+    expect(press.kit.videos).toEqual([
+      { videoId, title: 'Convention speech', description: 'The opening, in full.', contentType: 'video/mp4', bytes: 1000, fileName: 'Convention-speech-2026.mp4' },
+    ]);
+    const download = await api.app.inject({ method: 'GET', url: `/v1/public/videos/${videoId}?download=1` });
+    expect(download.statusCode).toBe(200);
+    expect(download.headers['content-disposition']).toBe('attachment; filename="Convention-speech-2026.mp4"');
+    expect(download.rawPayload.equals(file)).toBe(true);
+    expect((await play(videoId, 'bytes=0-')).headers['content-disposition']).toBeUndefined();
+  });
+
+  it('play from a hub link, which then needs no address, once the upload is finished', async () => {
+    api.app.get(HubService).invalidate();
+    const link = (video: object | null, url = ''): HubLink =>
+      ({ id: 'opening', title: 'Watch the opening', subtitle: '', url, video, icon: 'video', shown: true, iconRow: false, featured: true }) as HubLink;
+    const put = (links: HubLink[]) =>
+      api.call('PUT', '/v1/admin/hub', sa, { basedOn: 0, ...DEFAULT_HUB, sections: [{ id: 'watch', title: 'Watch', shown: true, links }] } satisfies Hub & { basedOn: number });
+    expect((await put([link(null)])).body.detail).toMatch(/needs an address or a video/);
+    const started = await api.call('POST', hubVideos, sa, { contentType: 'video/mp4', size: 1000 });
+    expect((await put([link({ kind: 'upload', videoId: started.body.videoId })])).body.detail).toMatch(/not finished uploading/);
+    const videoId = await upload(sa, mp4(1000), 'video/mp4', hubVideos);
+    expect((await put([link({ kind: 'upload', videoId })])).status).toBe(200);
+    const hub = (await api.call('GET', '/v1/hub')).body;
+    expect(hub.sections[0].links[0]).toMatchObject({ id: 'opening', url: '', video: { kind: 'upload', videoId } });
   });
 });

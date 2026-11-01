@@ -91,8 +91,6 @@ export const Collections = {
   courseCertificates: 'course_certificates',
   /** `course_images/{sha256}`: portraits uploaded by Course Administrators, as stored after re-encoding. */
   courseImages: 'course_images',
-  /** `course_videos/{videoId}`: videos uploaded by Course Administrators; their bytes are in the course videos bucket. */
-  courseVideos: 'course_videos',
   /** `course_seeds/{seed}`: which starter courses have been added, so a course deleted later is not added again. */
   courseSeeds: 'course_seeds',
   /** `course_threads/{courseId}_{accountId}`: a learner's conversation with the course's instructors, and its switch. */
@@ -132,6 +130,8 @@ export const Collections = {
   pressKit: 'press_kit',
   /** `press_assets/{sha256}`: files uploaded for the press kit, as stored. */
   pressAssets: 'press_assets',
+  /** `videos/{videoId}`: videos uploaded for lessons, news, the press kit and the hub; their bytes are in the videos bucket. */
+  videos: 'videos',
   /** `share_posts/{shareId}`: the share kit's ready-made posts for members. */
   sharePosts: 'share_posts',
   /** `share_counts/{item}`: how often each share button was pressed; nothing about who. */

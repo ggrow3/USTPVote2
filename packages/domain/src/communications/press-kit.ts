@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { deny, OK, refuse, type Check, type Outcome } from '../check.js';
 import type { LedgerEvent } from '../ledger-events.js';
+import { uploadedVideoIdSchema, type VideoRecord, type VideoType } from '../video.js';
 import { changedFields, communicationsEvent, oneLine, stale, text } from './common.js';
 
 /**
@@ -23,6 +24,7 @@ export const PRESS_KIT_LIMITS = {
   assetDescription: 200,
   fileName: 100,
   assets: 20,
+  videos: 10,
 } as const;
 
 /** Files the kit offers: images (re-encoded, so stripped of their metadata) and PDFs (kept as sent). */
@@ -76,6 +78,14 @@ export const pressAssetSchema = z.strictObject({
 });
 export type PressAsset = Readonly<z.output<typeof pressAssetSchema>>;
 
+/** A video for journalists to play or download (design §10.10): an upload, kept apart from the files above. */
+export const pressVideoSchema = z.strictObject({
+  videoId: uploadedVideoIdSchema,
+  title: oneLine(PRESS_KIT_LIMITS.assetTitle).pipe(z.string().min(1, 'a video needs a title')),
+  description: oneLine(PRESS_KIT_LIMITS.assetDescription).default(''),
+});
+export type PressVideo = Readonly<z.output<typeof pressVideoSchema>>;
+
 const kitShape = {
   /** The party's own description of itself, for journalists to quote ("boilerplate"). */
   about: text(PRESS_KIT_LIMITS.about),
@@ -86,6 +96,11 @@ const kitShape = {
     .max(PRESS_KIT_LIMITS.assets)
     .default([])
     .refine((a) => new Set(a.map((x) => x.id)).size === a.length, 'a file is listed twice'),
+  videos: z
+    .array(pressVideoSchema)
+    .max(PRESS_KIT_LIMITS.videos)
+    .default([])
+    .refine((v) => new Set(v.map((x) => x.videoId)).size === v.length, 'a video is listed twice'),
 };
 
 export const pressKitContentSchema = z.strictObject(kitShape);
@@ -107,6 +122,7 @@ export const EMPTY_PRESS_KIT: PressKitRecord = {
   contact: { name: '', role: '', email: '', phone: '', note: '' },
   facts: [],
   assets: [],
+  videos: [],
   version: 0,
   updatedAt: null,
   updatedBy: null,
@@ -140,12 +156,14 @@ export function pressFileName(uploaded: string, type: PressAssetType): string {
 
 const FIELDS = Object.keys(kitShape) as (keyof PressKit)[];
 
-/** `press_kit.changed`: the kit's new version and which parts changed, with the files added and removed. */
+/** `press_kit.changed`: the kit's new version and which parts changed, with the files and videos added and removed. */
 export interface PressKitChangedPayload {
   readonly version: number;
   readonly fields: readonly (keyof PressKit)[];
   readonly assetsAdded: readonly string[];
   readonly assetsRemoved: readonly string[];
+  readonly videosAdded: readonly string[];
+  readonly videosRemoved: readonly string[];
 }
 
 /** Whether every file the kit lists was uploaded here. */
@@ -166,13 +184,16 @@ export function savePressKit(
   const fields = changedFields(FIELDS, current, { ...current, ...content });
   if (!fields.length) return { ok: true, value: { kit: current, event: null } };
   const kit: PressKitRecord = { ...content, version: current.version + 1, updatedAt: at, updatedBy: actor };
-  const before = new Set(current.assets.map((a) => a.id));
-  const after = new Set(kit.assets.map((a) => a.id));
+  const added = (was: readonly string[], now: readonly string[]) => now.filter((id) => !was.includes(id));
+  const files = [current.assets.map((a) => a.id), kit.assets.map((a) => a.id)] as const;
+  const videos = [current.videos.map((v) => v.videoId), kit.videos.map((v) => v.videoId)] as const;
   const payload: PressKitChangedPayload = {
     version: kit.version,
     fields,
-    assetsAdded: [...after].filter((id) => !before.has(id)),
-    assetsRemoved: [...before].filter((id) => !after.has(id)),
+    assetsAdded: added(...files),
+    assetsRemoved: added(files[1], files[0]),
+    videosAdded: added(...videos),
+    videosRemoved: added(videos[1], videos[0]),
   };
   return { ok: true, value: { kit, event: communicationsEvent('press_kit.changed', actor, null, payload) } };
 }
@@ -186,6 +207,13 @@ export interface PublicPressAsset extends PressAsset {
   readonly fileName: string;
 }
 
+/** A video as the Press page lists it, to play there or download. */
+export interface PublicPressVideo extends PressVideo {
+  readonly contentType: VideoType;
+  readonly bytes: number;
+  readonly fileName: string;
+}
+
 /** `GET /v1/press`: the kit as the Press page shows it (without who changed it), with the party's public bots. */
 export interface PublicPressKit {
   readonly version: number;
@@ -193,10 +221,15 @@ export interface PublicPressKit {
   readonly contact: PressContact;
   readonly facts: readonly PressFact[];
   readonly assets: readonly PublicPressAsset[];
+  readonly videos: readonly PublicPressVideo[];
   readonly updatedAt: string | null;
 }
 
-export function publicPressKit(kit: PressKitRecord, files: ReadonlyMap<string, PressAssetRecord>): PublicPressKit {
+export function publicPressKit(
+  kit: PressKitRecord,
+  files: ReadonlyMap<string, PressAssetRecord>,
+  videos: ReadonlyMap<string, VideoRecord> = new Map(),
+): PublicPressKit {
   return {
     version: kit.version,
     about: kit.about,
@@ -205,6 +238,10 @@ export function publicPressKit(kit: PressKitRecord, files: ReadonlyMap<string, P
     assets: kit.assets.flatMap((a) => {
       const file = files.get(a.id);
       return file ? [{ ...a, contentType: file.contentType, bytes: file.bytes, width: file.width, height: file.height, fileName: file.fileName }] : [];
+    }),
+    videos: kit.videos.flatMap((v) => {
+      const video = videos.get(v.videoId);
+      return video ? [{ ...v, contentType: video.contentType, bytes: video.size, fileName: video.fileName }] : [];
     }),
     updatedAt: kit.updatedAt,
   };

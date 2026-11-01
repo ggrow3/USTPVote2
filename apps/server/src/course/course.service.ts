@@ -16,6 +16,7 @@ import {
   placementOf,
   portraitProblem,
   publishedCoursePackage,
+  uploadedVideoIds,
   uuidv7,
   withBoardChanges,
   type CertificateVerification,
@@ -35,7 +36,6 @@ import {
   type CourseQuizFeedback,
   type CourseRecord,
   type CourseVersionRecord,
-  type CourseVideoRecord,
   type FuturistProfile,
   type LearnerCourseView,
   type PublicCourseLesson,
@@ -44,6 +44,7 @@ import {
   type SubmitCourseQuizInput,
 } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
+import { VideosService } from '../videos/videos.js';
 import { FIRST_COURSE_POSITION, MAP_SEED, mapCourses } from './course-map-seed.js';
 import { normalizePortrait } from './portrait.js';
 import { transhumanismCourse, transhumanismLessons, transhumanismProfiles } from './transhumanism-seed.js';
@@ -74,6 +75,7 @@ export interface UploadedCourseImage {
 export class CourseService {
   constructor(
     private readonly firebase: Firebase,
+    private readonly videos: VideosService,
   ) {}
 
   async catalog(courseId: string): Promise<CourseCatalog> {
@@ -374,10 +376,7 @@ export class CourseService {
     return db.runTransaction(async (tx) => {
       if (!(await tx.get(courseRef)).exists) throw new NotFoundException('course not found');
       const now = new Date().toISOString();
-      if (input.video?.kind === 'upload') {
-        const video = (await tx.get(db.collection(Collections.courseVideos).doc(input.video.videoId))).data() as CourseVideoRecord | undefined;
-        if (!video?.ready) throw new BadRequestException('that video is not one uploaded here, or has not finished uploading; upload it again');
-      }
+      await this.videos.requireReady(uploadedVideoIds([input.video]), tx);
       const questions = input.questions.map((question) => ({ ...question, questionId: question.questionId ?? uuidv7() }));
       const record: CourseLesson = { courseId, lessonId, ...input, questions, updatedAt: now, updatedBy: accountId };
       tx.set(ref, record);

@@ -2,7 +2,8 @@
 import { computed, ref, watch } from 'vue';
 import { useQuasar } from 'quasar';
 import { RouterLink } from 'vue-router';
-import { brightAccent, effectiveAccent, HUB_IMAGE_SIZES, hubInitials, linkTarget, type ClickTarget, type PublicHub } from 'ustp-domain';
+import { brightAccent, effectiveAccent, HUB_IMAGE_SIZES, hubInitials, linkTarget, type ClickTarget, type PublicHub, type Video } from 'ustp-domain';
+import VideoPlayer from '../components/VideoPlayer.vue';
 import { toggleTheme } from '../theme.js';
 import { countHubClick, discordLive, hubImageUrl } from './api.js';
 import { hubIcon } from './hub-icons.js';
@@ -11,7 +12,8 @@ import './hub-fonts.css';
 
 /**
  * The home page hub (design §10.6): share and theme buttons, the party's profile under its cover banner if it has one,
- * its icon row, the Discord card and the sections of link cards, in one column. Every link counts its clicks.
+ * its icon row, the Discord card and the sections of link cards, in one column. Every link counts its clicks. A link with
+ * a video plays it in a dialog on the hub (§10.10) instead of opening an address.
  */
 const props = defineProps<{ hub: PublicHub }>();
 const COVER = HUB_IMAGE_SIZES.cover;
@@ -36,10 +38,21 @@ watch(
   { immediate: true },
 );
 
+type Linked = { readonly id: string; readonly title: string; readonly url: string; readonly video: Video | null };
 const isPage = (url: string) => url.startsWith('/');
-/** A page of this app goes through the router; anything else is a plain link. */
-const tag = (url: string) => (isPage(url) ? RouterLink : 'a');
-const where = (url: string) => (isPage(url) ? { to: url } : { href: url });
+/** A video plays here, from a button; a page of this app goes through the router; anything else is a plain link. */
+const tag = (l: Linked) => (l.video ? 'button' : isPage(l.url) ? RouterLink : 'a');
+const where = (l: Linked) => (l.video ? { type: 'button' } : isPage(l.url) ? { to: l.url } : { href: l.url });
+
+/** The video a link is playing, in the dialog; it stays set while the dialog closes, so the dialog keeps its content. */
+const playing = ref<{ title: string; video: Video } | null>(null);
+const playerOpen = ref(false);
+function choose(l: Linked) {
+  count(linkTarget(l.id));
+  if (!l.video) return;
+  playing.value = { title: l.title, video: l.video };
+  playerOpen.value = true;
+}
 
 const count = (target: ClickTarget) => countHubClick(target);
 /** A middle click opens the link in a new tab without a click event. */
@@ -96,12 +109,12 @@ async function share() {
         <ul>
           <li v-for="i in hub.icons" :key="i.id">
             <component
-              :is="tag(i.url)"
-              v-bind="where(i.url)"
+              :is="tag(i)"
+              v-bind="where(i)"
               class="hub__icon"
-              :aria-label="i.title"
+              :aria-label="i.video ? `Play ${i.title}` : i.title"
               :title="i.title"
-              @click="count(linkTarget(i.id))"
+              @click="choose(i)"
               @auxclick="countAux($event, linkTarget(i.id))"
             >
               <q-icon :name="hubIcon(i.icon)" size="22px" />
@@ -129,11 +142,11 @@ async function share() {
         <ul class="hub__links">
           <li v-for="l in s.links" :key="l.id">
             <component
-              :is="tag(l.url)"
-              v-bind="where(l.url)"
+              :is="tag(l)"
+              v-bind="where(l)"
               class="hub__card hub__link"
               :class="{ 'hub__link--featured': l.featured }"
-              @click="count(linkTarget(l.id))"
+              @click="choose(l)"
               @auxclick="countAux($event, linkTarget(l.id))"
             >
               <span class="hub__tile" aria-hidden="true"><q-icon :name="hubIcon(l.icon)" size="22px" /></span>
@@ -141,12 +154,24 @@ async function share() {
                 <span class="hub__link-title">{{ l.title }}</span>
                 <span v-if="l.subtitle" class="hub__link-subtitle">{{ l.subtitle }}</span>
               </span>
-              <q-icon :name="isPage(l.url) ? 'arrow_forward' : 'north_east'" size="18px" class="hub__arrow" aria-hidden="true" />
+              <q-icon :name="l.video ? 'play_circle' : isPage(l.url) ? 'arrow_forward' : 'north_east'" size="18px" class="hub__arrow" aria-hidden="true" />
             </component>
           </li>
         </ul>
       </section>
     </div>
+
+    <q-dialog v-model="playerOpen" aria-labelledby="hub-player-title">
+      <q-card v-if="playing" class="hub__player">
+        <q-card-section class="row items-center no-wrap q-pb-sm">
+          <h2 id="hub-player-title" class="text-h6 q-my-none col">{{ playing.title }}</h2>
+          <q-btn v-close-popup flat round dense icon="close" aria-label="Close the video" />
+        </q-card-section>
+        <q-card-section class="q-pt-none">
+          <VideoPlayer :video="playing.video" :title="playing.title" autoplay />
+        </q-card-section>
+      </q-card>
+    </q-dialog>
   </div>
 </template>
 
@@ -324,6 +349,20 @@ async function share() {
   border-radius: var(--signal-radius);
   background: var(--hub-card);
   color: var(--hub-text);
+}
+/* A link that plays a video is a button, drawn as the cards and icons are. */
+button.hub__link,
+button.hub__icon {
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+button.hub__link {
+  width: 100%;
+}
+.hub__player {
+  width: min(960px, calc(100vw - 32px));
+  max-width: none;
 }
 /* Over app.css's link colour for page content: cards and icons keep the text colour, so brand marks stay monochrome. */
 .hub :is(a.hub__card, a.hub__icon) {

@@ -11,11 +11,13 @@ import {
   type NewsPostRecord,
 } from 'ustp-domain';
 import { focusFirstInvalid } from '../a11y.js';
+import VideoField from '../components/VideoField.vue';
 import { attempt } from '../dialogs.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../forms.js';
 import { confirmAction } from './admin-forms.js';
-import { adminNews, createNews, deleteNews, publishNews, saveNews, withdrawNews } from './api.js';
+import { adminNews, createNews, deleteNews, publishNews, saveNews, VIDEO_UPLOADS, withdrawNews } from './api.js';
 import { formatHashtags, longDate, NEWS_KIND_NAMES, NEWS_STATUS_COLORS, NEWS_STATUS_LABELS, parseHashtags } from './comms-text.js';
+import { videoDraft, videoDraftProblem, videoFromDraft } from '../video-fields.js';
 import NewsBody from './NewsBody.vue';
 
 /**
@@ -32,16 +34,21 @@ interface Form {
   body: string;
   dateline: string;
   hashtags: string;
+  /** The video (design §10.10): an upload's ID, or the YouTube link as typed. */
+  videoUpload: string | null;
+  videoLink: string;
 }
 /** The editor: whether it is open, the post it edits (null for a new one), and the form. */
 const editing = ref(false);
 const current = ref<NewsPostRecord | null>(null);
-const blank = (): Form => ({ kind: 'press_release', title: '', slug: '', summary: '', body: '', dateline: '', hashtags: '' });
+const blank = (): Form => ({ kind: 'press_release', title: '', slug: '', summary: '', body: '', dateline: '', hashtags: '', videoUpload: null, videoLink: '' });
 const form = ref<Form>(blank());
 const slugTouched = ref(false);
 const errors = ref<FieldErrors>({});
 const preview = ref(false);
 const busy = ref(false);
+/** While a video uploads, the post waits for it before it can be saved. */
+const videoBusy = ref(false);
 
 const kinds = NEWS_KINDS.map((value) => ({ value, label: NEWS_KIND_NAMES[value] }));
 
@@ -59,6 +66,8 @@ const toForm = (p: NewsPostRecord): Form => ({
   body: p.body,
   dateline: p.dateline,
   hashtags: formatHashtags(p.hashtags),
+  videoUpload: videoDraft(p.video).upload,
+  videoLink: videoDraft(p.video).link,
 });
 
 function startNew() {
@@ -94,7 +103,13 @@ const notReady = computed(() => (editing.value ? publishProblem(form.value) : nu
 async function save(): Promise<NewsPostRecord | null> {
   if (!editing.value) return null;
   const post = current.value;
-  const body = { ...form.value, hashtags: parseHashtags(form.value.hashtags) };
+  const { videoUpload, videoLink, ...fields } = form.value;
+  const videoProblem = videoDraftProblem({ upload: videoUpload, link: videoLink });
+  if (videoProblem) {
+    errors.value = { video: videoProblem };
+    return null;
+  }
+  const body = { ...fields, hashtags: parseHashtags(form.value.hashtags), video: videoFromDraft({ upload: videoUpload, link: videoLink }) };
   const checked = post ? validate(updateNewsSchema, { ...body, basedOn: post.version }) : validate(createNewsSchema, body);
   if (!checked.ok) {
     errors.value = checked.errors;
@@ -272,6 +287,18 @@ onMounted(load);
               <div v-else class="text-grey-7">Nothing written yet.</div>
             </q-card>
           </div>
+          <div>
+            <div class="text-body2 text-weight-medium">Video (optional)</div>
+            <div class="text-caption text-grey-7">Shown under the title: a YouTube video, or one uploaded to this site.</div>
+          </div>
+          <VideoField
+            v-model:upload="form.videoUpload"
+            v-model:link="form.videoLink"
+            :upload-path="VIDEO_UPLOADS"
+            :title="form.title || 'this post'"
+            @busy="(b) => (videoBusy = b)"
+          />
+          <q-banner v-if="errors.video" class="bg-red-1 text-black" rounded role="alert">{{ errors.video }}</q-banner>
           <q-input
             v-model="form.hashtags"
             outlined
@@ -283,7 +310,7 @@ onMounted(load);
             :error-message="errors.hashtags ?? Object.entries(errors).find(([k]) => k.startsWith('hashtags.'))?.[1]"
           />
           <div class="ustp-actions">
-            <q-btn type="submit" unelevated no-caps color="primary" :label="current ? 'Save changes' : 'Save draft'" :disable="!dirty" :loading="busy" />
+            <q-btn type="submit" unelevated no-caps color="primary" :label="current ? 'Save changes' : 'Save draft'" :disable="!dirty || videoBusy" :loading="busy" />
             <q-btn
               v-if="current?.status !== 'published'"
               outline

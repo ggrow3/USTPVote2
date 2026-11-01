@@ -29,6 +29,7 @@ const link = (id: string, change: Partial<HubLink> = {}): HubLink => ({
   title: id,
   subtitle: '',
   url: `https://example.org/${id}`,
+  video: null,
   icon: 'link',
   shown: true,
   iconRow: false,
@@ -133,8 +134,9 @@ describe('checking', () => {
     expect(reason(profile({ background: 'A'.repeat(64) }))).toBe('that background photo is not one uploaded here');
   });
 
-  it('needs a title and address for a link that is shown, and lets hidden ones wait', () => {
-    expect(reason(hub({ sections: [section('a', [link('l', { url: '' })])] }))).toBe('l needs an address before it can be shown');
+  it('needs a title and an address or a video for a link that is shown, and lets hidden ones wait', () => {
+    expect(reason(hub({ sections: [section('a', [link('l', { url: '' })])] }))).toBe('l needs an address or a video before it can be shown');
+    expect(reason(hub({ sections: [section('a', [link('l', { url: '', video: { kind: 'youtube', youtubeId: 'dQw4w9WgXcQ', start: 0 } })])] }))).toBeNull();
     expect(reason(hub({ sections: [section('a', [link('l', { title: '' })])] }))).toBe('a link in a needs a title before it can be shown');
     expect(reason(hub({ sections: [section('a', [link('l', { url: '', title: '', shown: false })])] }))).toBeNull();
   });
@@ -194,7 +196,7 @@ describe('what visitors see', () => {
     );
     expect(shown.version).toBe(7);
     expect(shown.sections).toEqual([
-      { id: 'a', title: 'a', links: [{ id: 'one', title: 'one', subtitle: '', url: 'https://example.org/one', icon: 'link', featured: true }] },
+      { id: 'a', title: 'a', links: [{ id: 'one', title: 'one', subtitle: '', url: 'https://example.org/one', video: null, icon: 'link', featured: true }] },
     ]);
   });
 
@@ -259,6 +261,29 @@ describe('clicks', () => {
 
   it('are kept per UTC day', () => {
     expect(clickDay(new Date('2026-10-27T23:30:00-05:00'))).toBe('2026-10-28');
+  });
+});
+
+describe('links with videos', () => {
+  const youtube = { kind: 'youtube', youtubeId: 'dQw4w9WgXcQ', start: 30 } as const;
+  const upload = { kind: 'upload', videoId: '0190a000-0000-7000-8000-000000000000' } as const;
+
+  it('keep a valid video and drop anything else when read back', () => {
+    const stored = (video: unknown) => resolveHub({ sections: [{ id: 'a', title: 'a', shown: true, links: [{ id: 'l', title: 'l', video }] }] }).sections[0]!.links[0]!.video;
+    expect(stored(youtube)).toEqual(youtube);
+    expect(stored(upload)).toEqual(upload);
+    expect(stored(undefined)).toBeNull();
+    expect(stored({ kind: 'upload', videoId: '../secret' })).toBeNull();
+    expect(stored('https://youtu.be/dQw4w9WgXcQ')).toBeNull();
+  });
+
+  it('are shown to visitors with the video, in the icon row too, and their video changes are recorded', () => {
+    const before = hub({ sections: [section('a', [link('l', { url: '', iconRow: true, video: youtube })])] });
+    const shown = publicHub(before, 1);
+    expect(shown.sections[0]!.links[0]).toMatchObject({ id: 'l', url: '', video: youtube });
+    expect(shown.icons).toEqual([{ id: 'l', title: 'l', url: '', video: youtube, icon: 'link' }]);
+    const after = hub({ sections: [section('a', [link('l', { url: '', iconRow: true, video: upload })])] });
+    expect(hubChanges(before, after)).toEqual([{ part: 'link', id: 'l', title: 'l', section: 'a', change: 'edited', fields: ['video'] }]);
   });
 });
 

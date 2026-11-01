@@ -1,12 +1,5 @@
-import {
-  portraitProblem,
-  QUIZ_LIMITS,
-  youtubeVideo,
-  type CourseQuestion,
-  type LessonVideo,
-  type SaveCourseLessonInput,
-  type SaveFuturistProfileInput,
-} from 'ustp-domain';
+import { portraitProblem, QUIZ_LIMITS, type CourseQuestion, type SaveCourseLessonInput, type SaveFuturistProfileInput } from 'ustp-domain';
+import { videoDraftProblem } from '../video-fields.js';
 
 /** A question as the Course tab edits it: `key` keeps its card while questions move; a new one has no questionId yet. */
 export interface QuestionDraft {
@@ -53,12 +46,6 @@ export function questionsPayload(drafts: readonly QuestionDraft[]): SaveCourseLe
   }));
 }
 
-/** The lesson's video as the api takes it: the upload, else the YouTube video the link points to, else none. */
-export function lessonVideoPayload(upload: string | null, link: string): LessonVideo | null {
-  if (upload) return { kind: 'upload', videoId: upload };
-  return link.trim() ? youtubeVideo(link) : null;
-}
-
 const blank = (value: string) => !value.trim();
 const whole = (value: number, min: number, max: number) => Number.isInteger(value) && value >= min && value <= max;
 
@@ -79,9 +66,8 @@ export function lessonProblems(lesson: {
   if (blank(lesson.title)) problems.push('The lesson needs a title.');
   if (blank(lesson.summary)) problems.push('The lesson needs a summary.');
   if (blank(lesson.body)) problems.push('The lesson needs its text.');
-  if (!lesson.videoUpload && lesson.videoLink?.trim() && !youtubeVideo(lesson.videoLink)) {
-    problems.push('The video link must be the address of one YouTube video, or leave it empty.');
-  }
+  const video = videoDraftProblem({ upload: lesson.videoUpload ?? null, link: lesson.videoLink ?? '' });
+  if (video) problems.push(video);
   const { minQuestions, maxQuestions, minChoices, maxChoices } = QUIZ_LIMITS;
   if (lesson.questions.length < minQuestions || lesson.questions.length > maxQuestions) {
     problems.push(`The quiz needs ${minQuestions} to ${maxQuestions} questions.`);

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { deny, OK, type Check } from '../check.js';
 import { contrast, DEFAULT_ACCENT, isHexColour, TEXT_CONTRAST } from './accent.js';
+import { videoSchema, type Video } from '../video.js';
 import { HUB_IMAGE_NAMES, isHubImageId } from './hub-images.js';
 
 /**
@@ -101,8 +102,13 @@ export interface HubLink {
   readonly id: string;
   readonly title: string;
   readonly subtitle: string;
-  /** A page of this app (`/ballot`), an `https://` address, or `mailto:`. */
+  /** A page of this app (`/ballot`), an `https://` address, or `mailto:`; may be empty for a link with a video. */
   readonly url: string;
+  /**
+   * A video the hub plays when the link is chosen, instead of opening its address (design §10.10): a YouTube video or an
+   * upload. Null for an ordinary link; links saved before videos have none.
+   */
+  readonly video: Video | null;
   readonly icon: HubIcon;
   readonly shown: boolean;
   /** Its icon is also in the row under the profile (networks first, in their order). */
@@ -141,7 +147,7 @@ export interface PublicHub {
   readonly version: number;
   readonly profile: HubProfile;
   /** The icon row: shown links marked for it, networks first in their order, then the rest in page order. */
-  readonly icons: readonly Pick<HubLink, 'id' | 'title' | 'url' | 'icon'>[];
+  readonly icons: readonly Pick<HubLink, 'id' | 'title' | 'url' | 'video' | 'icon'>[];
   /** Null without an invite. `live`: the card shows the online count from `GET /v1/hub/discord`. */
   readonly discord: { readonly invite: string; readonly live: boolean } | null;
   readonly sections: readonly { readonly id: string; readonly title: string; readonly links: readonly PublicHubLink[] }[];
@@ -159,6 +165,7 @@ const link = (id: string, icon: HubIcon, title: string, subtitle: string, url = 
   title,
   subtitle,
   url,
+  video: null,
   icon,
   shown: url !== '',
   iconRow: options.iconRow ?? false,
@@ -294,6 +301,7 @@ function resolveLink(stored: Record<string, unknown>): HubLink {
     title: text(stored.title),
     subtitle: text(stored.subtitle),
     url: text(stored.url),
+    video: videoSchema.safeParse(stored.video).data ?? null,
     icon: isIn(HUB_ICONS, stored.icon) ? stored.icon : 'link',
     shown: flag(stored.shown, false),
     iconRow: flag(stored.iconRow, false),
@@ -355,10 +363,10 @@ export function guildIdProblem(guildId: string): string | null {
   return guildId && !GUILD_ID.test(guildId) ? 'a Discord server ID is 17 to 20 digits (Server Settings › Widget)' : null;
 }
 
-/** Why a link cannot be shown as it is, if it cannot: it needs its title and address. */
-export function linkProblem(l: Pick<HubLink, 'title' | 'url'>): string | null {
+/** Why a link cannot be shown as it is, if it cannot: it needs its title, and an address or a video. */
+export function linkProblem(l: Pick<HubLink, 'title' | 'url'> & { readonly video?: Video | null }): string | null {
   if (!l.title) return 'needs a title before it can be shown';
-  if (!l.url) return 'needs an address before it can be shown';
+  if (!l.url && !l.video) return 'needs an address or a video before it can be shown';
   return null;
 }
 
@@ -439,7 +447,7 @@ export function publicHub(hub: Hub, version: number): PublicHub {
       .filter((l) => ready(l) && l.iconRow)
       .map((l, i) => ({ l, i }))
       .sort((a, b) => rowOrder(a.l.icon) - rowOrder(b.l.icon) || a.i - b.i)
-      .map(({ l }) => ({ id: l.id, title: l.title, url: l.url, icon: l.icon })),
+      .map(({ l }) => ({ id: l.id, title: l.title, url: l.url, video: l.video, icon: l.icon })),
     discord: hub.discord.invite ? { invite: hub.discord.invite, live: hub.discord.widget && !!hub.discord.guildId } : null,
     sections: hub.sections
       .filter((s) => s.shown && s.title)
@@ -537,7 +545,7 @@ export type HubChange =
       readonly title: string;
       readonly section: string;
       readonly change: 'edited';
-      readonly fields: readonly ('title' | 'subtitle' | 'url' | 'icon')[];
+      readonly fields: readonly ('title' | 'subtitle' | 'url' | 'video' | 'icon')[];
     }
   | { readonly part: 'link_order'; readonly section: string; readonly to: readonly string[] };
 
@@ -593,7 +601,7 @@ export function hubChanges(before: Hub, after: Hub): HubChange[] {
         continue;
       }
       if (old.section !== section.id) changes.push({ ...base, change: 'moved' });
-      const fields = (['title', 'subtitle', 'url', 'icon'] as const).filter((f) => old.link[f] !== l[f]);
+      const fields = (['title', 'subtitle', 'url', 'video', 'icon'] as const).filter((f) => JSON.stringify(old.link[f]) !== JSON.stringify(l[f]));
       if (fields.length) changes.push({ ...base, change: 'edited', fields });
       if (old.link.shown !== l.shown) changes.push({ ...base, change: l.shown ? 'shown' : 'hidden' });
       if (old.link.featured !== l.featured) changes.push({ ...base, change: l.featured ? 'starred' : 'unstarred' });
@@ -616,6 +624,7 @@ const linkSchema = z.strictObject({
   title: part,
   subtitle: part,
   url: part,
+  video: videoSchema.nullable().default(null),
   icon: z.enum(HUB_ICONS),
   shown: z.boolean(),
   iconRow: z.boolean(),
