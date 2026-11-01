@@ -40,8 +40,15 @@ module "ustpvote" {
   openstates_api_key = var.openstates_api_key
   civic_enabled      = var.civic_enabled
 
-  # The members' room's self-hosted model, one L4 GPU (design §5.10; README "Members' room model").
-  room_model_enabled = var.room_model_enabled
+  # The members' room's self-hosted model, one L4 GPU (design §5.10; README "Members' room model"): on Vertex AI on dev,
+  # which has no Cloud Run GPU quota, within a monthly budget.
+  room_model_enabled            = var.room_model_enabled
+  room_model_host               = var.room_model_host
+  room_model_image              = var.room_model_image
+  room_model_idle_minutes       = var.room_model_idle_minutes
+  room_model_monthly_budget_usd = var.room_model_monthly_budget_usd
+  room_model_spot               = var.room_model_spot
+  billing_account               = var.billing_account
 
   # Election notices (design §6.8; README "Election notices").
   web_origin           = var.web_origin

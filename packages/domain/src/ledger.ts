@@ -129,4 +129,9 @@ export interface TickResult {
   readonly suggestionsDeleted: number;
   /** The room's messages, done action items and finished questions past their time, and questions given up on (design §5.10). */
   readonly roomExpired: number;
+  /**
+   * What the tick found or did with the room's model on Vertex AI (design §5.10): `not-vertex`, `off`, `ready`, or a
+   * step of uploading, deploying or taking it away; `budget` when the month's cap leaves too little to start it.
+   */
+  readonly roomModel: string;
 }

@@ -162,6 +162,7 @@ function toggle(setting: RoomSetting, on: boolean) {
           <div class="col">
             <h2 class="text-subtitle1 q-my-none">{{ server!.title }}</h2>
             <div class="text-caption text-grey-7">{{ server!.caption }}</div>
+            <div v-if="server!.cost" class="text-caption text-grey-7">{{ server!.cost }}</div>
             <div v-if="changedLine(settings.server.changedBy, settings.server.changedAt)" class="text-caption text-grey-7">
               Switched {{ settings.server.on ? 'on' : 'off' }} {{ changedLine(settings.server.changedBy, settings.server.changedAt) }}
             </div>

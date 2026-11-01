@@ -1,6 +1,7 @@
 import {
   ROOM_COMMAND_HELP,
   ROOM_COMMANDS,
+  sessionCostUsd,
   type RoomAssistantView,
   type RoomCommand,
   type RoomMessageView,
@@ -127,25 +128,47 @@ export function changedLine(by: RoomPerson | null, at: string | null, now: Date 
 }
 
 /** The model server's card in Admin › Members' room. */
-export function serverLine(server: RoomSettingsView['server']): { readonly title: string; readonly caption: string; readonly running: boolean } {
+export function serverLine(server: RoomSettingsView['server']): {
+  readonly title: string;
+  readonly caption: string;
+  readonly running: boolean;
+  /** On Vertex AI: what this month has cost so far against the cap. */
+  readonly cost: string | null;
+} {
+  const cost = server.cost ? costLine(server.cost) : null;
   if (server.model === 'off') {
     return {
       title: 'No model server yet',
       caption: 'Terraform creates it once (room_model_enabled); until then the assistant does not answer and this switch does nothing.',
       running: false,
+      cost: null,
     };
   }
   if (!server.on) {
-    return { title: 'The model server is off', caption: 'Nothing goes to the model, so its GPU costs nothing. The chat and memory work.', running: false };
+    return { title: 'The model server is off', caption: 'Nothing goes to the model, so its GPU costs nothing. The chat and memory work.', running: false, cost };
   }
   return {
     title: 'The model server is on',
     caption:
       server.model === 'stand-in'
         ? 'A stand-in for testing answers here; a real deployment starts its GPU for each question.'
-        : 'It starts for a question and stops after about 15 quiet minutes; about $1.05 an hour while it runs.',
+        : server.cost
+          ? `It starts for a question, which waits a few minutes, and stops after ${server.cost.idleMinutes} quiet minutes; about $${server.cost.hourlyUsd.toFixed(2)} an hour while it runs.`
+          : 'It starts for a question and stops after about 15 quiet minutes; about $1.05 an hour while it runs.',
     running: true,
+    cost,
   };
+}
+
+/** "This month: about $3.40 of the $15 budget, 5 wake-ups." or why the model is stopped until the month ends. */
+function costLine(cost: NonNullable<RoomSettingsView['server']['cost']>): string {
+  const resets = new Date(`${cost.resetsOn}T12:00:00Z`).toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+  if (cost.stopped) return `Google Cloud’s budget for the model is spent this month; it starts again on ${resets}.`;
+  const used = `This month: about $${cost.estimateUsd.toFixed(2)} of the $${cost.budgetUsd} budget, ${cost.wakeUps} ${cost.wakeUps === 1 ? 'wake-up' : 'wake-ups'}.`;
+  // A new wake-up costs at least its start-up and idle time: with less than that left, nothing more starts this month.
+  const now = new Date().toISOString();
+  const leastWake = sessionCostUsd({ startedAt: now, lastAt: now }, { ...cost, monthlyBudgetUsd: cost.budgetUsd });
+  return cost.budgetUsd - cost.estimateUsd < leastWake ? `${used} Too little is left to start it again before ${resets}.` : used;
 }
 
 /**

@@ -45,3 +45,13 @@ civic_enabled = true
 # notice_contact       = "elections@example.org"
 # ses_region           = "us-east-1"
 # ses_events_queue_url = "https://sqs.us-east-1.amazonaws.com/123456789012/ustp-notice-events"
+
+# The members' room's model on Vertex AI (design §5.10; README "Members' room model"): build infra/room-model, fill the
+# bucket with the room-model-pull job, then set the image. It scales to zero after room_model_idle_minutes without a
+# question and never costs more than room_model_monthly_budget_usd a month by the worker's estimate; billing_account
+# adds Google Cloud's own budget on the real bill.
+# room_model_enabled            = true
+# room_model_image              = "us-central1-docker.pkg.dev/<project>/ustpvote/room-model@sha256:..."
+# room_model_idle_minutes       = 30
+# room_model_monthly_budget_usd = 15
+# billing_account               = "XXXXXX-XXXXXX-XXXXXX"

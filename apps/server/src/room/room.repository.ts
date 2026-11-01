@@ -4,6 +4,7 @@ import {
   Collections,
   DEFAULT_DOOR,
   EMPTY_FEED,
+  EMPTY_METER,
   NO_REACTIONS,
   roomReactionId,
   voiceLive,
@@ -13,6 +14,7 @@ import {
   type RoomJobRecord,
   type RoomMemoryRecord,
   type RoomMessageRecord,
+  type RoomModelMeterRecord,
   type RoomReactionRecord,
   type RoomSignalRecord,
   type RoomVoiceRecord,
@@ -27,9 +29,10 @@ export interface Nearest<T> {
 
 /**
  * Storage of the members' room (design §5.10, §11): `room_consents`, `room_messages`, `room_reactions`, `room_memory`,
- * `room_jobs`, `room_voice`, `room_signals`, `room_state/feed` and `room_state/door`. Only the room context uses it. Members' messages and memory items carry an `embedding` (a
- * Firestore vector, top-level so the emulator finds it too) and `embedModel`, the model that made it, null until the
- * assistant embeds them; the vector search needs the vector indexes in `firestore.indexes.json`.
+ * `room_jobs`, `room_voice`, `room_signals`, `room_state/feed`, `room_state/door` and `room_state/model`. Only the room
+ * context uses it. Members' messages and memory items carry an `embedding` (a Firestore vector, top-level so the
+ * emulator finds it too) and `embedModel`, the model that made it, null until the assistant embeds them; the vector
+ * search needs the vector indexes in `firestore.indexes.json`.
  */
 @Injectable()
 export class RoomRepository {
@@ -61,6 +64,10 @@ export class RoomRepository {
 
   private doorDoc() {
     return this.firebase.db.collection(Collections.roomState).doc('door');
+  }
+
+  private modelDoc() {
+    return this.firebase.db.collection(Collections.roomState).doc('model');
   }
 
   private voice() {
@@ -104,6 +111,20 @@ export class RoomRepository {
 
   setDoor(tx: Transaction, door: RoomDoorRecord): void {
     tx.set(this.doorDoc(), door);
+  }
+
+  // --- the model on Vertex AI: what it cost this month, and its deployment ------------------------------------------
+
+  async findModelMeter(): Promise<RoomModelMeterRecord> {
+    return { ...EMPTY_METER, ...((await this.modelDoc().get()).data() as RoomModelMeterRecord | undefined) };
+  }
+
+  async getModelMeter(tx: Transaction): Promise<RoomModelMeterRecord> {
+    return { ...EMPTY_METER, ...((await tx.get(this.modelDoc())).data() as RoomModelMeterRecord | undefined) };
+  }
+
+  setModelMeter(tx: Transaction, meter: RoomModelMeterRecord): void {
+    tx.set(this.modelDoc(), meter);
   }
 
   // --- the feed --------------------------------------------------------------------------------------------------

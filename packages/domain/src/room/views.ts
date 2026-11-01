@@ -10,6 +10,7 @@ import {
   type RoomSource,
   type RoomTerms,
 } from './room.js';
+import type { RoomModelCostView } from './model-meter.js';
 import { checkReactable, type RoomReaction, type RoomReactionRecord } from './reactions.js';
 import type { VoteValue } from '../votes.js';
 import { voiceLive, type RoomSignalKind, type RoomSignalRecord, type RoomVoiceRecord } from './voice.js';
@@ -210,6 +211,8 @@ export interface RoomSettingsView {
     readonly changedBy: RoomPerson | null;
     /** How this deployment runs the model; `off` until Terraform creates the server (room_model_enabled). */
     readonly model: RoomModelKind;
+    /** On Vertex AI: this month's estimated cost against its monthly cap; null elsewhere. */
+    readonly cost: RoomModelCostView | null;
   };
   /** The Membership Admins' kill switch in the room itself. */
   readonly assistantOn: boolean;
@@ -237,6 +240,7 @@ export function roomSettingsView(
   people: number,
   canSwitchServer: boolean,
   ctx: RoomViewContext,
+  cost: RoomModelCostView | null = null,
 ): RoomSettingsView {
   return {
     open: feed.open,
@@ -247,6 +251,7 @@ export function roomSettingsView(
       changedAt: feed.serverChangedAt,
       changedBy: feed.serverChangedBy ? person(ctx, feed.serverChangedBy) : null,
       model,
+      cost,
     },
     assistantOn: feed.assistantOn,
     people,
