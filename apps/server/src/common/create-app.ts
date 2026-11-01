@@ -6,6 +6,9 @@ import { ACCEPTED_TYPES, MAX_PHOTO_BYTES } from '../photos/image.js';
 import { loggerOptions } from './logging.js';
 import { ProblemDetailsFilter } from './problem.filter.js';
 
+/** The public routes any site may read from a browser: the course list, published courses and their portraits. */
+const OPEN_TO_EVERY_ORIGIN = ['/v1/public/courses', '/v1/public/course-images/'];
+
 export interface CreateAppOptions {
   /** Disable request logging (tests). */
   readonly quiet?: boolean;
@@ -40,6 +43,18 @@ export async function createFastifyApp(
     .getInstance()
     .addHook('onRequest', (_req, reply, done) => {
       reply.header('X-Robots-Tag', 'noindex');
+      done();
+    });
+  // The public course api is for other sites too (design §10.8): a page anywhere may read the course list, a published
+  // course and its file, and its portraits from the browser. Nothing there needs credentials, and browsers send none
+  // to `*`. Errors carry it as well, so another site sees the api's 404 rather than a CORS failure.
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .addHook('onRequest', (req, reply, done) => {
+      if ((req.method === 'GET' || req.method === 'HEAD') && OPEN_TO_EVERY_ORIGIN.some((path) => req.url.startsWith(path))) {
+        reply.header('Access-Control-Allow-Origin', '*');
+      }
       done();
     });
   // Profile photo uploads arrive as the raw image body (design §5.3); anything else image-typed gets 415.

@@ -5,10 +5,18 @@ import { connect, report, serve, SITE, texts, withResults } from './testing/worl
 const entryRequests = (paths: readonly string[]) => paths.filter((p) => p.startsWith('/v1/public/ledger/entries/')).length;
 
 describe('the MCP tools', () => {
-  it('offers five tools, every one read-only, and says what the server is for', async () => {
+  it('offers seven tools, every one read-only, and says what the server is for', async () => {
     const { client } = await connect(serve(await buildWorld()).fetchFn);
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name)).toEqual(['list_elections', 'get_election_status', 'get_turnout', 'get_results', 'get_audit_report']);
+    expect(tools.map((t) => t.name)).toEqual([
+      'list_elections',
+      'get_election_status',
+      'get_turnout',
+      'get_results',
+      'get_audit_report',
+      'list_courses',
+      'get_course',
+    ]);
     for (const tool of tools) {
       expect(tool.annotations).toMatchObject({ readOnlyHint: true, destructiveHint: false, idempotentHint: true });
     }

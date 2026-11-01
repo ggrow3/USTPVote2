@@ -58,3 +58,9 @@ Only test voter personas cast these ballots, through the ordinary ballot endpoin
 `google-sheets/` is something else: an Apps Script for a Google Sheet that reads the reporting MCP server (design §3.4)
 into tabs, builds an election's results with charts and a plain-language summary, and saves a PDF report. Its README
 says how to set it up.
+
+## Course site
+
+`course-site/` is another site built from the public course api (design §10.8): one HTML file that lists an election
+site's courses and shows each published course from its `ustp.course` file, quizzes graded in the page. Its README
+says what it reads.

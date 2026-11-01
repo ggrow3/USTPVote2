@@ -31,6 +31,7 @@ import { CourseService } from './course.service.js';
 
 const revokeSchema = z.strictObject({ reason: z.string().trim().min(1).max(2000) });
 const packageVersionSchema = z.union([z.literal('draft'), z.coerce.number().int().min(1)]).default('draft');
+const publishedVersionSchema = z.coerce.number().int().min(1).optional();
 
 /** A learner's account ID from the address, which is always a UUIDv7. */
 class LearnerIdPipe implements PipeTransform<string, string> {
@@ -58,6 +59,16 @@ export class CourseController {
   @Get('public/courses/:courseId')
   catalog(@Param('courseId', CourseIdPipe) courseId: string) {
     return this.courses.catalog(courseId);
+  }
+
+  /**
+   * A published course as one `ustp.course` file, quiz answers included, for anyone to read or build another site from
+   * (design §10.8): the version learners take now, or `?version=N` for an earlier one. Never the draft.
+   */
+  @Public()
+  @Get('public/courses/:courseId/package')
+  publicPackage(@Param('courseId', CourseIdPipe) courseId: string, @Query('version') version?: string) {
+    return this.courses.publishedPackage(courseId, parseQuery(publishedVersionSchema, version, 'version'));
   }
 
   /** An uploaded portrait's ID is the hash of its bytes, so it never changes and browsers may keep it. */

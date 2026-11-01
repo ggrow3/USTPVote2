@@ -13,10 +13,10 @@ import {
 
 /**
  * Course packages (`ustp.course` v1): a course's content as one JSON file, for a Course Administrator to keep, review
- * or move elsewhere. It holds the title and summary, every lesson with its quiz (the correct answers and explanations
- * included, so it is not for learners) and every futurist profile, from the draft being edited or from a published
- * version. Who edited what (account IDs) stays out. Each lesson and profile is in the shape the course admin's save
- * routes take, with its ID.
+ * or move elsewhere, and for anyone to build another site from. It holds the title and summary, every lesson with its
+ * quiz (the correct answers and explanations included) and every futurist profile, from the draft being edited or from
+ * a published version; a published version's file is public (coursePackageSrc), a draft's is not. Who edited what
+ * (account IDs) stays out. Each lesson and profile is in the shape the course admin's save routes take, with its ID.
  */
 
 export const COURSE_PACKAGE_FORMAT = 'ustp.course';
@@ -93,6 +93,14 @@ export function publishedCoursePackage(version: CourseVersionRecord, exportedAt:
     course: { courseId: version.courseId, title: version.title, summary: version.summary },
     ...contentOf(version.lessons, version.profiles),
   };
+}
+
+/**
+ * Where anyone reads a published course as this file (design §10.8): the version learners take now, or an earlier
+ * one. Drafts are only for Course Administrators, at `/v1/admin/courses/{courseId}/package`.
+ */
+export function coursePackageSrc(courseId: string, version?: number): string {
+  return `/v1/public/courses/${courseId}/package${version ? `?version=${version}` : ''}`;
 }
 
 /** `ustp-course-transhumanism-draft-2026-10-29.course.json`, `ustp-course-transhumanism-v3-2026-10-29.course.json`. */

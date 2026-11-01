@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CourseLesson, CourseRecord, CourseVersionRecord, FuturistProfile } from './course.js';
-import { coursePackageFileName, coursePackageSchema, draftCoursePackage, publishedCoursePackage } from './course-package.js';
+import { coursePackageFileName, coursePackageSchema, coursePackageSrc, draftCoursePackage, publishedCoursePackage } from './course-package.js';
 
 const AT = '2026-10-29T12:00:00.000Z';
 const course: CourseRecord = {
@@ -108,5 +108,10 @@ describe('course packages', () => {
     expect(coursePackageFileName({ course, exportedAt: AT, source: { content: 'published', courseVersion: 3, publishedAt: AT } })).toBe(
       'ustp-course-transhumanism-v3-2026-10-29.course.json',
     );
+  });
+
+  it('of a published version are public, the current one or an earlier one', () => {
+    expect(coursePackageSrc('transhumanism')).toBe('/v1/public/courses/transhumanism/package');
+    expect(coursePackageSrc('transhumanism', 2)).toBe('/v1/public/courses/transhumanism/package?version=2');
   });
 });
