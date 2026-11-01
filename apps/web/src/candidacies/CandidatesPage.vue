@@ -2,13 +2,13 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
-  contactDistricts,
   currentContent,
   groupAreaContacts,
   inCandidateArea,
   STATE_FIPS,
   type AreaCandidatesView,
   type CandidateArea,
+  type ContactDistrict,
   type MyCandidacy,
   type PublicCandidacy,
 } from 'ustp-domain';
@@ -29,19 +29,23 @@ import {
   electionText,
   feedNote,
   localToday,
-  OFFICE_HEADINGS,
+  officeShown,
   profilesNote,
   stateName,
   STATUS_TEXT,
 } from './candidacy-text.js';
 import DistrictMap, { type MapMarker } from './DistrictMap.vue';
+import { mapsRefused } from './maps.js';
+import OfficeCard from './OfficeCard.vue';
 
 /**
  * Members running for public office (design §5.8): public, each candidacy as a Membership Admin approved it, on a map and
  * in a list, upcoming elections first. Signed-in members also see their own candidacies here, and declare new ones, and
  * the page opens on their own area, worked out from their membership record. Anyone can type a ZIP code instead. For
- * an area, the page also lists everyone running there from public records (design §5.12), apart from the members'
- * candidacies and never reviewed by the party, with a ring on the map at each district.
+ * an area, the page also lists everyone running there (design §5.12), apart from the members' candidacies: every
+ * office of the area, each with its district's outline and its candidates from public records (in the member's own
+ * area, the party's communications team's too), with a ring on the map at each district and the outline of the one
+ * chosen.
  */
 usePageTitle('Candidates');
 const route = useRoute();
@@ -116,15 +120,13 @@ const areaNote = computed(() => {
 
 /** Everyone running in the area the page is narrowed to, from public records; none for a state or all states. */
 const running = computed<AreaCandidatesView | null>(() => (where.value === 'zip' ? typed.value!.view : where.value === 'area' ? ownRunning.value : null));
-/** A heading per district with someone running, each with its offices. */
-const runningSections = computed(() => {
+/** Every office of the area, nationwide first, each with who runs for it; offices nobody is listed for too. */
+const runningOffices = computed(() => {
   const v = running.value;
-  if (!v) return [];
-  const groups = groupAreaContacts(v.area, v.candidates).filter((g) => g.candidates.length);
-  return contactDistricts(v.area)
-    .map((district) => ({ district, groups: groups.filter((g) => g.district.kind === district.kind && g.district.geoid === district.geoid) }))
-    .filter((s) => s.groups.length);
+  return v ? groupAreaContacts(v.area, v.candidates).filter((g) => officeShown(g, v.electionYear)) : [];
 });
+/** Whether the party's communications team listed anyone here: only in the member's own area. */
+const fromParty = computed(() => !!running.value?.candidates.some((c) => c.source === 'admin'));
 const runningNotes = computed(() => {
   const v = running.value;
   return v ? [feedNote('fec', v.feeds.fec), feedNote('civic', v.feeds.civic), profilesNote(v.profiles)].filter((n): n is string => n !== null) : [];
@@ -142,8 +144,40 @@ const markers = computed<MapMarker[]>(() => [
     d.point ? [{ id: `district:${d.kind}:${d.geoid}`, point: d.point, title: d.name, caption: districtPeopleText(running.value!.candidates, d), hollow: true }] : [],
   ),
 ]);
+
+// The outline of one of the area's districts, or its state: the first district (the state, when the area is all of
+// it) until another is chosen.
+const districtKey = (d: Pick<ContactDistrict, 'kind' | 'geoid'>) => `${d.kind}:${d.geoid}`;
+const mapLoaded = ref(false);
+/** Google can refuse the key after the map has loaded; then nothing offers to show a district on it. */
+const mapReady = computed(() => mapLoaded.value && !mapsRefused.value);
+const chosen = ref<ContactDistrict | null>(null);
+const outlined = computed<ContactDistrict | null>(() => {
+  const v = running.value;
+  if (!v) return null;
+  const c = chosen.value;
+  if (c && (c.kind === 'state' ? c.state === v.area.state : v.area.districts.some((d) => districtKey(d) === districtKey(c)))) return c;
+  return v.area.districts[0] ?? { kind: 'state', geoid: STATE_FIPS[v.area.state] ?? v.area.state, state: v.area.state, name: v.area.state };
+});
+const outline = computed(() => (outlined.value ? { kind: outlined.value.kind, geoid: outlined.value.geoid } : null));
+
+/** Outlines a district on the map, and brings the map into view. */
+function showOnMap(d: ContactDistrict) {
+  chosen.value = d;
+  document.getElementById('candidates-map')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+/** A ring was clicked: its district is outlined. */
+function selectMarker(id: string) {
+  const [kind, geoid] = id.startsWith('district:') ? id.slice('district:'.length).split(':') : [];
+  const d = running.value?.area.districts.find((x) => x.kind === kind && x.geoid === geoid);
+  if (d) chosen.value = d;
+}
+
 const mapLabel = computed(() =>
-  running.value ? `Map of members’ candidacies and of the districts${whereText.value}, with who runs in each` : 'Map of members’ candidacies for upcoming elections',
+  running.value
+    ? `Map of members’ candidacies and of the districts${whereText.value}, with who runs in each${outlined.value ? `, outlining ${districtText({ district: outlined.value })}` : ''}`
+    : 'Map of members’ candidacies for upcoming elections',
 );
 
 /** Looks up who runs where the typed ZIP code is, and narrows the page to it. */
@@ -318,7 +352,12 @@ function withdraw(c: MyCandidacy) {
             class="q-mt-xs"
           />
         </div>
-        <DistrictMap :markers="markers" :label="mapLabel" />
+        <div id="candidates-map">
+          <DistrictMap :markers="markers" :outline="outline" :label="mapLabel" @ready="mapLoaded = true" @select="selectMarker" />
+          <div v-if="mapReady && outlined" class="text-caption text-grey-7 q-mt-xs">
+            Outlined: {{ districtText({ district: outlined }) }}. Choose an office’s <strong>Map</strong>, or a ring, to outline its district.
+          </div>
+        </div>
         <div v-if="!upcoming.length" class="text-grey-7">
           No candidacies for upcoming elections{{ whereText }} yet.
           <q-btn v-if="where !== 'all'" flat dense no-caps color="primary" label="Show all states" @click="where = 'all'" />
@@ -347,25 +386,34 @@ function withdraw(c: MyCandidacy) {
         <section v-if="where === 'area' || where === 'zip'" class="candidates-running" aria-labelledby="candidates-running-heading">
           <h2 id="candidates-running-heading" class="text-h6 q-mb-xs">Everyone running{{ whereText }}</h2>
           <div class="text-grey-7 q-mb-sm">
-            From public records: candidates for Congress and President who have filed with the FEC, and the contests on
-            the ballot while Google has an election loaded, with biographies from Wikipedia and Wikidata where they have
-            one. These are not the party’s: nobody here has been reviewed, and members’ own candidacies are listed above.
+            Every office{{ whereText }}, with the area each is elected from. From public records: candidates for Congress
+            and President who have filed with the FEC, and the contests on the ballot while Google has an election loaded,
+            with biographies from Wikipedia and Wikidata where they have one.
+            <template v-if="fromParty">
+              Those marked “Added by the party” were listed by its communications team. Being listed here is not an
+              endorsement,
+            </template>
+            <template v-else>Nobody here has been reviewed or endorsed by the party,</template>
+            and members’ own candidacies are listed above.
           </div>
           <q-banner v-if="ownRunningError" class="bg-orange-1 text-black" rounded>{{ ownRunningError }}</q-banner>
           <div v-else-if="!running" class="text-grey-7">Loading…</div>
           <template v-else>
             <q-banner v-for="n in runningNotes" :key="n" dense rounded class="bg-grey-3 text-black q-mb-sm">{{ n }}</q-banner>
-            <div v-if="!runningSections.length && !running.ballot.length" class="text-grey-7">Nobody is listed{{ whereText }} yet.</div>
-            <div v-for="s in runningSections" :key="`${s.district.kind}:${s.district.geoid}`" class="q-mb-md">
-              <h3 class="text-subtitle1 text-weight-medium q-my-sm">{{ districtText(s) }}</h3>
-              <q-card v-for="g in s.groups" :key="g.office" flat bordered class="q-mb-sm">
-                <q-card-section class="q-pb-none">
-                  <h4 class="text-body1 text-weight-medium q-my-none">{{ OFFICE_HEADINGS[g.office] }}</h4>
-                </q-card-section>
-                <q-list separator>
+            <div class="area-offices q-mb-md">
+              <OfficeCard
+                v-for="g in runningOffices"
+                :key="`${g.office}:${districtKey(g.district)}`"
+                :office="g.office"
+                :district="g.district"
+                :mappable="mapReady && g.district.kind !== 'nation'"
+                @map="showOnMap(g.district)"
+              >
+                <q-list v-if="g.candidates.length" separator>
                   <AreaPerson v-for="c in g.candidates" :key="c.contactId" :person="c" show-email />
                 </q-list>
-              </q-card>
+                <div v-else class="text-caption text-grey-7 q-px-md q-pb-sm">Nobody running is listed yet.</div>
+              </OfficeCard>
             </div>
             <BallotContests :contests="running.ballot" class="q-mb-md" />
             <div class="text-caption text-grey-7">
@@ -388,5 +436,11 @@ function withdraw(c: MyCandidacy) {
 }
 .candidates-mine {
   align-items: flex-start;
+}
+.area-offices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 12px;
+  align-items: start;
 }
 </style>

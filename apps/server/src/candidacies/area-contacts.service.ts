@@ -15,6 +15,7 @@ import {
   removeEmailTemplate,
   uuidv7,
   type AreaCandidatesView,
+  type AreaContact,
   type AreaContactInput,
   type AreaContactRecord,
   type AreaContactsView,
@@ -40,7 +41,8 @@ const electionYearNow = () => nextFederalElectionYear(new Date().toISOString().s
  * The Your area page (design §5.12): for a signed-in member, who holds each office in their area and who runs for it,
  * from public records and from what Communications Admins enter, with the email templates Membership Admins and
  * Communications Admins keep. Admins' entries and templates are ledgered in the transaction that saves them. Also the
- * Candidates page's people running in an area, from public records only: the member's own area, or a ZIP code anyone types.
+ * Candidates page's people running in an area: in the member's own area, from public records and admins' entries; for
+ * a ZIP code anyone types, from public records only.
  */
 @Injectable()
 export class AreaContactsService {
@@ -56,21 +58,17 @@ export class AreaContactsService {
   /** The caller's area and its people. Admins' candidates are shown until the day after their election. */
   async view(accountId: string): Promise<AreaContactsView> {
     const { area, zip } = await this.candidacies.placed(accountId);
-    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
     const electionYear = electionYearNow();
     const [found, entered, saved] = await Promise.all([
       this.source.forArea(area.state, area.basis === 'zip' ? area.districts : [], electionYear, { zip, holders: true }),
-      this.repo.all(),
+      this.entered(area),
       this.repo.templateList(),
     ]);
     const profiled = await this.profiles.withProfiles(found.contacts);
-    const mine = entered
-      .filter((r) => inContactArea(r.district, area) && (r.role === 'holder' || (r.electionDate ?? '') >= yesterday))
-      .map(areaContactView);
     return {
       area,
       electionYear,
-      contacts: mergeContacts(profiled.people, mine),
+      contacts: mergeContacts(profiled.people, entered),
       ballot: found.ballot,
       feeds: found.feeds,
       profiles: profiled.state,
@@ -78,13 +76,17 @@ export class AreaContactsService {
     };
   }
 
-  /** The Candidates page's people running in the caller's own area, from public records. */
+  /**
+   * The Candidates page's people running in the caller's own area: from public records, and the candidates admins
+   * entered there, which the member sees on the Your area page too.
+   */
   async myCandidates(accountId: string): Promise<AreaCandidatesView> {
     const { area, zip } = await this.candidacies.placed(accountId);
-    return this.candidates(area, zip);
+    const [view, entered] = await Promise.all([this.candidates(area, zip), this.entered(area)]);
+    return { ...view, candidates: mergeContacts(view.candidates, entered.filter((c) => c.role === 'candidate')) };
   }
 
-  /** The Candidates page's people running where a ZIP code is, for anyone; the ZIP code is not kept. */
+  /** The Candidates page's people running where a ZIP code is, for anyone, from public records; the ZIP code is not kept. */
   async zipCandidates(zip: string): Promise<AreaCandidatesView> {
     return this.candidates(await this.candidacies.zipArea(zip), zip);
   }
@@ -94,6 +96,14 @@ export class AreaContactsService {
     const found = await this.source.forArea(area.state, area.basis === 'zip' ? area.districts : [], electionYear, { zip, holders: false });
     const profiled = await this.profiles.withProfiles(found.contacts.filter((c) => c.role === 'candidate'));
     return { area, electionYear, candidates: profiled.people, ballot: found.ballot, feeds: found.feeds, profiles: profiled.state };
+  }
+
+  /** Admins' entries in an area: people in office, and candidates until the day after their election. */
+  private async entered(area: CandidateArea): Promise<AreaContact[]> {
+    const yesterday = new Date(Date.now() - 86_400_000).toISOString().slice(0, 10);
+    return (await this.repo.all())
+      .filter((r) => inContactArea(r.district, area) && (r.role === 'holder' || (r.electionDate ?? '') >= yesterday))
+      .map(areaContactView);
   }
 
   /** Every entry, for Communications Admins: by state (nationwide first), office and name. */
