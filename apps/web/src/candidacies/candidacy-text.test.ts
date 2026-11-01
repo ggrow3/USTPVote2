@@ -9,6 +9,8 @@ import {
   electionDay,
   emptyOfficeText,
   feedNote,
+  FIRST_SHOWN,
+  firstShown,
   localToday,
   mailtoLink,
   notUpText,
@@ -20,6 +22,7 @@ import {
   recordsCredit,
   runningGapsText,
   runningText,
+  showMoreText,
   stateName,
   templateSuitsText,
   websiteText,
@@ -154,5 +157,14 @@ describe('candidacy wording', () => {
     expect(recordsCredit(true, true)).toBe(
       'Candidates for Congress and President from the FEC; candidates on California’s ballot from its Secretary of State; members of Congress from the congress-legislators project; state legislators from Open States; biographies from Wikipedia and Wikidata, by FEC and Congress ID.',
     );
+  });
+
+  it('lists an office’s first four people, and the rest behind Show more', () => {
+    const sixteen = Array.from({ length: 16 }, (_, i) => i);
+    expect(FIRST_SHOWN).toBe(4);
+    expect(firstShown(sixteen, false)).toEqual([0, 1, 2, 3]);
+    expect(firstShown(sixteen, true)).toBe(sixteen);
+    expect(firstShown([0, 1], false)).toEqual([0, 1]);
+    expect([showMoreText(16, false), showMoreText(16, true), showMoreText(5, false)]).toEqual(['Show 12 more', 'Show fewer', 'Show 1 more']);
   });
 });
