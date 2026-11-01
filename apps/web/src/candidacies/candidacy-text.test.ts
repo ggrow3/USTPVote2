@@ -3,6 +3,7 @@ import { OFFICE_DISTRICTS, PUBLIC_OFFICES, templateProblem, type District } from
 import {
   areaText,
   BLANK_EMAIL,
+  districtPeopleText,
   districtText,
   feedNote,
   localToday,
@@ -58,5 +59,18 @@ describe('candidacy wording', () => {
     expect(templateSuitsText({ offices: [], audience: 'anyone' })).toBe('Every office · Anyone listed');
     expect(templateSuitsText({ offices: ['county', 'local'], audience: 'candidate' })).toBe('County offices, City or town offices · People running');
     expect(templateProblem(BLANK_EMAIL.body)).toBeNull();
+  });
+
+  it('says on a district’s pin who is in office there and who is running', () => {
+    const cd49 = { kind: 'congressional', geoid: '0649', state: 'CA', name: 'Congressional District 49' } as const;
+    const people = [
+      { role: 'holder', name: 'Mike Levin', district: cd49 },
+      { role: 'candidate', name: 'Mike Levin', district: cd49 },
+      { role: 'candidate', name: 'Armen Kurdian', district: cd49 },
+      { role: 'candidate', name: 'Mike Levin', district: cd49 },
+      { role: 'holder', name: 'Alex Padilla', district: { kind: 'state', geoid: '06', state: 'CA', name: 'CA' } },
+    ] as const;
+    expect(districtPeopleText(people, cd49)).toBe('In office: Mike Levin · Running: Mike Levin, Armen Kurdian');
+    expect(districtPeopleText(people, { kind: 'county', geoid: '06073' })).toBe('No one is listed here yet.');
   });
 });
