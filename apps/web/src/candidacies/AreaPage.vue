@@ -29,6 +29,7 @@ import {
   DISTRICT_LABELS,
   districtPeopleText,
   districtText,
+  emptyOfficeText,
   feedNote,
   mailtoLink,
   officeShown,
@@ -222,9 +223,9 @@ async function copy() {
               :office="g.office"
               :district="g.district"
               :mappable="onMap(g.district)"
+              :empty="g.holders.length || g.candidates.length ? null : emptyOfficeText(g.office, false)"
               @map="showOnMap(g.district)"
             >
-              <div v-if="!g.holders.length && !g.candidates.length" class="text-caption text-grey-7 q-px-md q-pb-sm">No one is listed for this office yet.</div>
               <template v-for="part in [
                 { title: 'In office', people: g.holders },
                 { title: 'Running', people: g.candidates },

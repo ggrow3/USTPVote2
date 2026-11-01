@@ -6,6 +6,7 @@ import {
   districtPeopleText,
   districtText,
   electionDay,
+  emptyOfficeText,
   feedNote,
   localToday,
   mailtoLink,
@@ -105,5 +106,11 @@ describe('candidacy wording', () => {
     expect(officeShown({ office: 'us_president', ...empty }, 2026)).toBe(false);
     expect(officeShown({ office: 'us_president', ...empty }, 2028)).toBe(true);
     expect(officeShown({ office: 'us_president', holders: [], candidates: [{}] }, 2026)).toBe(true);
+  });
+
+  it('says when nobody is listed for an office, and who adds the people no public record lists', () => {
+    expect(emptyOfficeText('state_upper', false)).toBe('No one is listed for this office yet.');
+    expect(emptyOfficeText('us_house', true)).toBe('Nobody running is listed yet.');
+    expect(emptyOfficeText('local', true)).toMatch(/^Nobody running is listed yet\. No public record this site reads lists city and town officials, such as the mayor and council members: the party’s communications team adds them\.$/);
   });
 });
