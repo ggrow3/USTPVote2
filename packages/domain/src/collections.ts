@@ -21,6 +21,10 @@ export const Collections = {
   photoChecks: 'photo_checks',
   /** `candidacies/{candidacyId}`: members running for public office, reviewed before they are public (design §5.8). */
   candidacies: 'candidacies',
+  /** `area_contacts/{contactId}`: office holders and candidates Communications Admins enter (design §5.12). */
+  areaContacts: 'area_contacts',
+  /** `email_templates/{office}`: the emails members send from the Your area page, one per kind of office (design §5.12). */
+  emailTemplates: 'email_templates',
   positions: 'positions',
   positionTerms: 'position_terms',
   /** `teams/{teamId}`: working groups members join (design §5.7). */

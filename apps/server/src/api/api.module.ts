@@ -21,6 +21,7 @@ import { AuthGuard } from '../auth/auth.guard.js';
 import { MfaPolicyController } from '../auth/mfa-policy.js';
 import { BylawsChecksController } from '../bylaws-check/bylaws-checks.controller.js';
 import {
+  AreaContactsAdminController,
   CandidaciesAdminController,
   CandidaciesController,
   PublicCandidaciesController,
@@ -122,6 +123,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     CandidaciesAdminController,
     PublicCandidaciesController,
     PublicDistrictsController,
+    AreaContactsAdminController,
     TeamsController,
     TeamsAdminController,
     ForumController,

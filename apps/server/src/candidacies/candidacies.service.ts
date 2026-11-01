@@ -36,6 +36,7 @@ import {
   type MemberRecord,
   type MyCandidacy,
   type PublicCandidacy,
+  type PublicOffice,
 } from 'ustp-domain';
 import type { Transaction } from 'firebase-admin/firestore';
 import { CONFIG, type ServerConfig } from '../config.js';
@@ -198,10 +199,18 @@ export class CandidaciesService {
   }
 
   /** The district the member chose, as the source names it; refused unless the source lists it for that state. */
-  private async district(input: CandidacyInput): Promise<CandidacyContent['district']> {
-    const kind = OFFICE_DISTRICTS[input.office];
-    const geoid = districtLookupId(kind, input.state, input.districtId);
-    const found = (await this.districts.list(kind, input.state)).find((d) => d.geoid === geoid);
+  private district(input: CandidacyInput): Promise<CandidacyContent['district']> {
+    return this.lookUpDistrict(input.office, input.state, input.districtId);
+  }
+
+  /**
+   * The district an office is elected from, as the source names it, for a candidacy or a person a Communications Admin
+   * enters (design §5.12); a 400 on `state` or `districtId` unless the source lists it for that state.
+   */
+  async lookUpDistrict(office: PublicOffice, state: string | null, districtId: string | null): Promise<District> {
+    const kind = OFFICE_DISTRICTS[office];
+    const geoid = districtLookupId(kind, state, districtId);
+    const found = (await this.districts.list(kind, state)).find((d) => d.geoid === geoid);
     if (!found) {
       throw new BadRequestException({
         message: 'invalid request',

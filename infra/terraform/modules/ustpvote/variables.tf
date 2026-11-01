@@ -272,6 +272,18 @@ variable "maps_enabled" {
   default     = true
 }
 
+variable "fec_api_key" {
+  description = "An api.data.gov key for the FEC's candidate lists on the Your area page (design §5.12). Free from api.data.gov; empty uses the FEC's shared DEMO_KEY, which allows only a few requests an hour. Not secret, but kept out of the api_env output."
+  type        = string
+  default     = ""
+}
+
+variable "openstates_api_key" {
+  description = "An Open States API key, which lists state legislators on the Your area page (design §5.12). Free from open.pluralpolicy.com; empty leaves state legislators out. Not secret, but kept out of the api_env output."
+  type        = string
+  default     = ""
+}
+
 # --- Election notices (design §6.8) -----------------------------------------------------------------------------------
 
 variable "web_origin" {

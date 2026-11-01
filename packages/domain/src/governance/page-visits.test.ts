@@ -18,6 +18,7 @@ describe('trackedPage (design §10.7)', () => {
     ['/results/0193a0c4-0000-7000-8000-000000000000', 'results'],
     ['/candidates', 'candidates'],
     ['/candidates/declare', 'candidacy-declare'],
+    ['/candidates/area', 'candidates-area'],
     ['/candidates/c1/edit', 'candidacy-edit'],
     ['/candidates/c1', 'candidate'],
     ['/forum/p1', 'forum-post'],

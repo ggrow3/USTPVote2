@@ -1,20 +1,29 @@
-import { BadRequestException, Body, Controller, Get, Header, Param, Post, Put, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, Param, Post, Put, Query } from '@nestjs/common';
 import {
+  areaContactChangeSchema,
+  areaContactInputSchema,
   candidacyChangeSchema,
   candidacyDecisionSchema,
   candidacyInputSchema,
   candidacyRemovalSchema,
   DISTRICT_KINDS,
+  emailTemplateSchema,
+  PUBLIC_OFFICES,
   STATE_FIPS,
+  type AreaContactChangeInput,
+  type AreaContactInput,
   type CandidacyChangeInput,
   type CandidacyDecisionInput,
   type CandidacyInput,
   type CandidacyRemovalInput,
   type DistrictKind,
+  type EmailTemplateInput,
+  type PublicOffice,
 } from 'ustp-domain';
 import { Ctx, Public, requireAccount, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { ZodPipe } from '../common/validation.js';
+import { AreaContactsService } from './area-contacts.service.js';
 import { CandidaciesService } from './candidacies.service.js';
 
 /** Census lists and outlines change once a year: browsers keep them an hour, Hosting's CDN a day. */
@@ -25,13 +34,21 @@ function districtKind(value: string): DistrictKind {
   return value as DistrictKind;
 }
 
+function publicOffice(value: string): PublicOffice {
+  if (!(PUBLIC_OFFICES as readonly string[]).includes(value)) throw new BadRequestException('invalid office');
+  return value as PublicOffice;
+}
+
 /**
  * An Active member's own candidacies (design §5.8): declare one, change it and withdraw it. Every change waits for a
  * Membership Admin before the Candidates page shows it. Any member also reads their own area, which the page opens on.
  */
 @Controller('v1/candidacies')
 export class CandidaciesController {
-  constructor(private readonly candidacies: CandidaciesService) {}
+  constructor(
+    private readonly candidacies: CandidaciesService,
+    private readonly contacts: AreaContactsService,
+  ) {}
 
   @Get('mine')
   mine(@Ctx() ctx: RequestContext) {
@@ -42,6 +59,12 @@ export class CandidaciesController {
   @Get('area')
   area(@Ctx() ctx: RequestContext) {
     return this.candidacies.area(requireAccount(ctx));
+  }
+
+  /** The Your area page: who holds and who runs for each office in the caller's area, and the emails (design §5.12). */
+  @Get('area/contacts')
+  areaContacts(@Ctx() ctx: RequestContext) {
+    return this.contacts.view(requireAccount(ctx));
   }
 
   @Post()
@@ -79,6 +102,47 @@ export class CandidaciesAdminController {
   @Post(':candidacyId/remove')
   remove(@Ctx() ctx: RequestContext, @Param('candidacyId') candidacyId: string, @Body(new ZodPipe(candidacyRemovalSchema)) body: CandidacyRemovalInput) {
     return this.candidacies.remove(requireAccount(ctx), candidacyId, body.reason);
+  }
+}
+
+/**
+ * What the Your area page lists besides public records (design §5.12), for Communications Admins: the office holders
+ * and candidates they enter, and each kind of office's email template.
+ */
+@Controller('v1/admin')
+@Roles('communications_admin')
+export class AreaContactsAdminController {
+  constructor(private readonly contacts: AreaContactsService) {}
+
+  @Get('area-contacts')
+  list() {
+    return this.contacts.list();
+  }
+
+  @Post('area-contacts')
+  add(@Ctx() ctx: RequestContext, @Body(new ZodPipe(areaContactInputSchema)) body: AreaContactInput) {
+    return this.contacts.add(requireAccount(ctx), body);
+  }
+
+  @Put('area-contacts/:contactId')
+  change(@Ctx() ctx: RequestContext, @Param('contactId') contactId: string, @Body(new ZodPipe(areaContactChangeSchema)) body: AreaContactChangeInput) {
+    return this.contacts.change(requireAccount(ctx), contactId, body.contact, body.basedOn);
+  }
+
+  @Delete('area-contacts/:contactId')
+  @HttpCode(204)
+  async remove(@Ctx() ctx: RequestContext, @Param('contactId') contactId: string) {
+    await this.contacts.remove(requireAccount(ctx), contactId);
+  }
+
+  @Get('email-templates')
+  templates() {
+    return this.contacts.templates();
+  }
+
+  @Put('email-templates/:office')
+  saveTemplate(@Ctx() ctx: RequestContext, @Param('office') office: string, @Body(new ZodPipe(emailTemplateSchema)) body: EmailTemplateInput) {
+    return this.contacts.saveTemplate(requireAccount(ctx), publicOffice(office), body);
   }
 }
 

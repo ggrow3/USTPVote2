@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { OFFICE_DISTRICTS, PUBLIC_OFFICES, type District } from 'ustp-domain';
-import { areaText, districtText, localToday, OFFICE_CHOICES, stateName, websiteText } from './candidacy-text.js';
+import { areaText, districtText, feedNote, localToday, mailtoLink, OFFICE_CHOICES, stateName, websiteText } from './candidacy-text.js';
 
 const district = (over: Partial<District>): Pick<{ district: District }, 'district'> => ({
   district: { kind: 'congressional', geoid: '0612', state: 'CA', name: 'Congressional District 12', point: null, vintage: null, ...over },
@@ -26,11 +26,20 @@ describe('candidacy wording', () => {
 
   it('says where the member’s area comes from, and when changing the ZIP code would help', () => {
     expect(areaText({ state: 'CA', basis: 'zip' })).toMatchObject({
-      text: expect.stringMatching(/^Nationwide and California offices, and these districts, which the ZIP code/),
+      text: expect.stringMatching(/^Nationwide and California offices, and the districts the ZIP code on your/),
       link: expect.stringMatching(/^Moved\?/),
     });
     expect(areaText({ state: 'TX', basis: 'no_zip' }).text).toBe('Nationwide offices and all of Texas: your membership record has no ZIP code.');
     expect(areaText({ state: 'TX', basis: 'unplaced' }).text).toMatch(/no area for the ZIP code on your membership record in Texas/);
     expect(areaText({ state: 'TX', basis: 'unavailable' })).toMatchObject({ text: expect.stringMatching(/not answering/), link: null });
+  });
+
+  it('opens the member’s email app with the email filled in, and says which public record is missing', () => {
+    expect(mailtoLink('ana@senate.example', 'Hi & bye', 'Line one\nLine two?')).toBe(
+      'mailto:ana@senate.example?subject=Hi%20%26%20bye&body=Line%20one%0ALine%20two%3F',
+    );
+    expect(feedNote('fec', 'ok')).toBeNull();
+    expect(feedNote('openstates', 'off')).toMatch(/not connected to Open States/);
+    expect(feedNote('congress', 'unavailable')).toMatch(/^The list of members of Congress did not answer/);
   });
 });
