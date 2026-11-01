@@ -2,6 +2,7 @@ import sharp from 'sharp';
 import { Collections, coursePackageSchema } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { CONTENT_SEED, partyCourses } from './course/content-seed.js';
+import { COMBINE_SEED, combinedCourses } from './course/course-combine-seed.js';
 import { DRAFT_SUMMARY, MAP_SEED, mapCourses } from './course/course-map-seed.js';
 import { resetEmulators, TestApi } from './testing/emulator.js';
 
@@ -23,6 +24,9 @@ async function courseAdmin(email: string) {
   await api.grant(editor.accountId, 'course_admin', sa);
   return editor;
 }
+
+/** Marks the courses as combined already, for a test of the map as it was seeded before (design §10.8). */
+const skipCombining = () => api.firebase.db.collection(Collections.courseSeeds).doc(COMBINE_SEED).create({ seed: COMBINE_SEED, seededAt: '2026-11-01T00:00:00.000Z' });
 
 const draftProfile = {
   order: 100,
@@ -253,28 +257,27 @@ describe('Course map, students and instructor messages', () => {
     expect(map.status).toBe(200);
     expect(map.body.status).toBeUndefined();
     const courses = map.body.courses as { courseId: string; prerequisites: string[] }[];
+    // The Coalition, Why the New York Transhumanist Party? and Introduction to Left Transhumanism are combined into
+    // others, and gone, as never published.
     expect(courses.map((course) => course.courseId)).toEqual([
       'transhumanism',
       'fundamental-questions',
-      'the-coalition',
       'allies',
       'transhumanist-party',
       'new-york-transhumanist-party',
-      'introduction-to-left-transhumanism',
       'figures-of-transhumanism',
       'why-the-transhumanist-party',
-      'why-the-new-york-transhumanist-party',
       'historical-applied-projects',
     ]);
     expect(courses[0]).toMatchObject({ title: FIRST_TITLE, published: true, lessonCount: 6, prerequisites: [], position: { row: 0, column: 0 } });
-    expect(courses.find((course) => course.courseId === 'the-coalition')).toMatchObject({
-      title: 'The Coalition',
+    expect(courses.find((course) => course.courseId === 'allies')).toMatchObject({
+      title: 'Allies of the Transhumanist Party',
       summary: null,
       published: false,
-      prerequisites: ['allies'],
-      position: { row: 1, column: 0 },
+      prerequisites: ['fundamental-questions'],
+      position: { row: 1, column: 1 },
     });
-    expect(courses.find((course) => course.courseId === 'why-the-new-york-transhumanist-party')!.prerequisites).toEqual(['new-york-transhumanist-party']);
+    expect(courses.find((course) => course.courseId === 'figures-of-transhumanism')!.prerequisites).toEqual(['transhumanist-party']);
     expect((await api.call('GET', '/v1/public/courses/allies')).status).toBe(404);
 
     const learner = await api.member('map-learner@example.test');
@@ -315,6 +318,7 @@ describe('Course map, students and instructor messages', () => {
   });
 
   it("saves the Course tab's board at once: swaps, new lines and a whole org chart, refusing loops and shared squares", async () => {
+    await skipCombining();
     const editor = await courseAdmin('board-editor@example.test');
     const learner = await api.member('board-learner@example.test');
     const save = (by: typeof editor, courses: unknown[]) => api.call('PUT', '/v1/admin/course-map', by, { courses });
@@ -485,6 +489,8 @@ describe('Course map, students and instructor messages', () => {
 });
 
 describe("The party's curriculum on its course map", () => {
+  // As seeded, before the courses were combined (below).
+  beforeEach(skipCombining);
   type AdminCourse = { course: { summary: string; status: string; publishedVersion: number | null }; lessons: { lessonId: string; questions: unknown[] }[] };
   const content = async (courseId: string, editor: Learner) => (await api.call('GET', `/v1/admin/courses/${courseId}`, editor)).body as AdminCourse;
   const placement = async (editor: Learner) =>
@@ -584,5 +590,79 @@ describe("The party's curriculum on its course map", () => {
     const intro = await api.call('GET', '/v1/public/courses/transhumanist-party');
     expect(intro.body.lessons).toHaveLength(4);
     expect(intro.body.lessons[0].body).toContain('\n\nSources\n\nUnited States Transhumanist Party, Constitution: https://transhumanist-party.org/constitution/');
+  });
+});
+
+describe('Courses combined into one (design §10.8)', () => {
+  type AdminCourse = {
+    course: { title: string; summary: string; status: string; publishedVersion: number | null; hidden: boolean; position: unknown; prerequisites: string[] };
+    lessons: { lessonId: string; order: number }[];
+  };
+  const content = async (courseId: string, editor: Learner) => (await api.call('GET', `/v1/admin/courses/${courseId}`, editor)).body as AdminCourse;
+  const ALLIES = ['allies-states', 'allies-organizations', 'allies-coalition', 'uspp'];
+  const NEW_YORK = ['nytp-what', 'nytp-reformed', 'nytp-constitution', 'nytp-aims', 'ny-election-law', 'left-101', 'left-201', 'left-301', 'left-401', 'left-501', 'ustp-left'];
+
+  it('adds The Coalition to Allies, and Why New York and Left Transhumanism to the New York introduction, as drafts', async () => {
+    const editor = await courseAdmin('combine-editor@example.test');
+    const allies = await content('allies', editor);
+    expect(allies.course).toMatchObject({ title: 'Allies of the Transhumanist Party', summary: combinedCourses[0]!.summary, status: 'draft', publishedVersion: null });
+    expect(allies.lessons.map((lesson) => lesson.lessonId)).toEqual(ALLIES);
+    expect(allies.lessons.map((lesson) => lesson.order)).toEqual([1, 2, 3, 4]);
+    const newYork = await content('new-york-transhumanist-party', editor);
+    expect(newYork.course).toMatchObject({ title: 'Introduction to the New York Transhumanist Party', summary: combinedCourses[1]!.summary, status: 'draft' });
+    expect(newYork.course.prerequisites).toEqual(['fundamental-questions']);
+    expect(newYork.lessons.map((lesson) => lesson.lessonId)).toEqual(NEW_YORK);
+    expect(newYork.lessons.map((lesson) => lesson.order)).toEqual(NEW_YORK.map((_, i) => i + 1));
+
+    // Never published, the courses combined away are deleted with their lessons.
+    for (const gone of ['the-coalition', 'why-the-new-york-transhumanist-party', 'introduction-to-left-transhumanism']) {
+      expect((await api.call('GET', `/v1/admin/courses/${gone}`, editor)).status).toBe(404);
+      expect((await api.firebase.db.collection(Collections.courseLessons).where('courseId', '==', gone).get()).empty).toBe(true);
+    }
+
+    // Published, the New York course has all eleven lessons and quizzes.
+    expect((await api.call('POST', '/v1/admin/courses/new-york-transhumanist-party/publish', editor)).body.version).toBe(1);
+    const published = await api.call('GET', '/v1/public/courses/new-york-transhumanist-party');
+    expect(published.body.lessons.map((lesson: { lessonId: string }) => lesson.lessonId)).toEqual(NEW_YORK);
+    expect(published.body.lessons.at(-1).questions).toHaveLength(5);
+  });
+
+  it('as dev stands: hides a published course combined away, keeping its certificates, and moves the courses after it', async () => {
+    const db = api.firebase.db;
+    await skipCombining();
+    const editor = await courseAdmin('combine-dev@example.test');
+    // Allies and The Coalition published, a learner holding The Coalition's certificate, a course of the admins' own
+    // after The Coalition, and the New York introduction's summary rewritten.
+    await api.call('PUT', '/v1/admin/courses/the-coalition/map', editor, { prerequisites: [], position: { row: 1, column: 0 } });
+    for (const courseId of ['allies', 'the-coalition']) expect((await api.call('POST', `/v1/admin/courses/${courseId}/publish`, editor)).body.version).toBe(1);
+    const learner = await api.member('combine-learner@example.test');
+    await passCourse('the-coalition', learner, editor);
+    const certificate = (await api.call('GET', '/v1/courses/the-coalition', learner)).body.certificate as { certificateId: string };
+    expect(certificate).not.toBeNull();
+    await api.call('POST', '/v1/admin/courses', editor, { title: 'Futures Lab', summary: 'Hands-on.' });
+    await api.call('PUT', '/v1/admin/courses/futures-lab/map', editor, { prerequisites: ['the-coalition', 'allies'], position: { row: 5, column: 5 } });
+    await api.call('PUT', '/v1/admin/courses/new-york-transhumanist-party', editor, { title: 'Introduction to the New York Transhumanist Party', summary: 'Our own summary.' });
+
+    // The release comes: the next request combines them.
+    await db.collection(Collections.courseSeeds).doc(COMBINE_SEED).delete();
+    const allies = await content('allies', editor);
+    expect(allies.course).toMatchObject({ status: 'draft', publishedVersion: 1, summary: combinedCourses[0]!.summary });
+    expect(allies.lessons.map((lesson) => lesson.lessonId)).toEqual(ALLIES);
+    const coalition = await content('the-coalition', editor);
+    expect(coalition.course).toMatchObject({ hidden: true, publishedVersion: 1, position: null });
+    expect(coalition.lessons).toHaveLength(1);
+    const listed = ((await api.call('GET', '/v1/public/courses')).body.courses as { courseId: string }[]).map((course) => course.courseId);
+    expect(listed).not.toContain('the-coalition');
+    expect(listed).toContain('futures-lab');
+    expect((await api.call('GET', '/v1/public/courses/the-coalition')).status).toBe(200);
+    expect((await api.call('GET', `/v1/public/certificates/${certificate.certificateId}`)).body).toMatchObject({ valid: true, courseTitle: 'The Coalition' });
+    expect((await content('futures-lab', editor)).course.prerequisites).toEqual(['allies']);
+    const newYork = await content('new-york-transhumanist-party', editor);
+    expect(newYork.course.summary).toBe('Our own summary.');
+    expect(newYork.lessons.map((lesson) => lesson.lessonId)).toEqual(NEW_YORK);
+
+    // Once only: a lesson deleted afterwards stays deleted.
+    expect((await api.call('DELETE', '/v1/admin/courses/allies/lessons/uspp', editor)).status).toBe(204);
+    expect((await content('allies', editor)).lessons.map((lesson) => lesson.lessonId)).toEqual(ALLIES.slice(0, 3));
   });
 });
