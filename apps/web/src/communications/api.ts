@@ -49,7 +49,9 @@ export const FEEDS = { rss: '/v1/news/feed.xml', json: '/v1/news/feed.json' } as
 export const pressPage = () => api<{ kit: PublicPressKit; bots: PublicBot[] }>('GET', '/v1/press');
 export const pressAssetUrl = (assetId: string) => `/v1/press/assets/${id(assetId)}`;
 
-export const sendSuggestion = (input: Partial<SuggestionInput>) => api<{ received: true }>('POST', '/v1/suggestions', input);
+/** The route is public but App Checked (design §10.9), so the form gets a token even when nobody is signed in. */
+export const sendSuggestion = (input: Partial<SuggestionInput>) =>
+  api<{ received: true }>('POST', '/v1/suggestions', input, { appCheck: true });
 
 export const shareKit = () => api<MemberSharePost[]>('GET', '/v1/share');
 
