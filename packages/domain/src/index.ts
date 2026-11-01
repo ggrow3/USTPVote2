@@ -47,10 +47,15 @@ export {
   COURSE_MESSAGE_SENDERS,
   LEARNER_COURSE_STATES,
   isCourseId,
+  COURSE_BOARD_MAX,
+  courseBoardProblem,
+  courseBoardSchema,
   courseIdFromTitle,
   courseIdSchema,
   courseMapSchema,
   coursePlacementProblem,
+  orgChartPositions,
+  withBoardChanges,
   courseMessagingSchema,
   courseThreadId,
   learnerCourseState,
@@ -59,6 +64,7 @@ export {
   sendCourseMessageSchema,
 } from './course-map.js';
 export type {
+  CourseBoardInput,
   CourseConversation,
   CourseLearnerLesson,
   CourseLearnerRow,
