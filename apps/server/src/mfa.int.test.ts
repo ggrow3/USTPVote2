@@ -112,6 +112,8 @@ describe('the two-step requirement for members (design §4)', () => {
     expect(await useSite(member)).toMatchObject(MEMBER_REFUSAL);
     expect((await api.call('GET', '/v1/me', member)).body.mfa).toEqual({ required: true, everywhere: true, signedInWithMfa: false });
     expect((await api.call('POST', '/v1/accounts', member)).status).toBe(200);
+    // Pages they open meanwhile still count (design §10.7): the visit records only their own.
+    expect((await api.call('POST', '/v1/page-visits', member, { path: '/account' })).status).toBe(204);
     expect((await useSite(secured)).status).toBe(200);
     expect(await useSite(sa2)).toMatchObject(MEMBER_REFUSAL);
     // Someone signing up creates their account, then sets up a second factor before anything else.

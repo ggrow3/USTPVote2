@@ -1,7 +1,8 @@
-import type { Router } from 'vue-router';
-import { analyticsAllowed, MEASUREMENT_ID_PATTERN } from 'ustp-domain';
-import { publicSiteAnalytics } from './security/api.js';
+import { START_LOCATION, type Router } from 'vue-router';
+import { analyticsAllowed, MEASUREMENT_ID_PATTERN, trackedPage } from 'ustp-domain';
+import { publicSiteAnalytics, sendPageVisit } from './security/api.js';
 import { pageView } from './security/sign-ins.js';
+import { session } from './session.js';
 
 /**
  * Google Analytics 4 on the public pages (design §10.7), only once a System Admin has set a measurement ID. It is
@@ -56,5 +57,18 @@ export function startAnalytics(router: Router): void {
     load(measurementId);
     // After the page's title is set (usePageTitle runs as the page mounts).
     setTimeout(() => window.gtag?.('event', 'page_view', pageView(to.path, window.location.origin, document.title)));
+  });
+}
+
+/**
+ * Page visits (design §10.7), first-party and apart from Google Analytics: each page opened is sent to the api, which
+ * counts it, and records it with the account of someone signed in. The ballot and the receipt check are never sent,
+ * nor a query string or fragment, and a change of query alone (an admin tab) is not a new visit.
+ */
+export function startPageVisits(router: Router): void {
+  router.afterEach((to, from, failure) => {
+    if (failure || (from !== START_LOCATION && to.path === from.path)) return;
+    const tracked = trackedPage(to.path);
+    if (tracked) sendPageVisit(tracked.path, !!session.user).catch(() => undefined);
   });
 }

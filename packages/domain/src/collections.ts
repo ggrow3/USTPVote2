@@ -115,6 +115,10 @@ export const Collections = {
   signIns: 'sign_ins',
   /** `site_analytics/current`: the site's Google Analytics measurement ID, if any (design §10.7). */
   siteAnalytics: 'site_analytics',
+  /** `page_hits/{page}`: hits on each page of the web app, per UTC day; nothing about who (design §10.7). */
+  pageHits: 'page_hits',
+  /** `page_visits/{visitId}`: a signed-in person's visit to a page, naming their account; expires (design §10.7). */
+  pageVisits: 'page_visits',
   // communications (design §10.9)
   /** `news_posts/{postId}`: news, statements and press releases, drafts too. */
   newsPosts: 'news_posts',
