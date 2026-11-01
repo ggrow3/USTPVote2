@@ -6,6 +6,7 @@ import { CandidaciesService } from './candidacies.service.js';
 import { CandidacyRepository } from './candidacy.repository.js';
 import { CONTACT_SOURCE, LocalContactSource, PublicContactSource } from './contact-source.js';
 import { CensusDistrictSource, DISTRICT_SOURCE, LocalDistrictSource } from './district-source.js';
+import { LocalProfileSource, PROFILE_SOURCE, WikipediaProfileSource } from './profile-source.js';
 
 /** Everything the candidacies context provides, for the API module to register (design §3.3, §5.8). */
 export const CANDIDACIES_PROVIDERS: Provider[] = [
@@ -17,7 +18,14 @@ export const CANDIDACIES_PROVIDERS: Provider[] = [
     provide: CONTACT_SOURCE,
     inject: [CONFIG],
     useFactory: (config: ServerConfig) =>
-      config.districtSource === 'local' ? new LocalContactSource() : new PublicContactSource({ fec: config.fecApiKey, openStates: config.openStatesApiKey }),
+      config.districtSource === 'local'
+        ? new LocalContactSource()
+        : new PublicContactSource({ fec: config.fecApiKey, openStates: config.openStatesApiKey, civic: config.civicApiKey }),
+  },
+  {
+    provide: PROFILE_SOURCE,
+    inject: [CONFIG],
+    useFactory: (config: ServerConfig) => (config.districtSource === 'local' ? new LocalProfileSource() : new WikipediaProfileSource()),
   },
   {
     provide: DISTRICT_SOURCE,

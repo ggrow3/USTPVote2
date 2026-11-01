@@ -112,6 +112,12 @@ variable "openstates_api_key" {
   default     = ""
 }
 
+variable "civic_enabled" {
+  description = "List the ballot's contests from Google's Civic Information API on the Candidates and Your area pages, with a server key kept in Secret Manager (design §5.12; README \"Your area records\")."
+  type        = bool
+  default     = true
+}
+
 variable "web_origin" {
   description = "Where the web app is served, which election notices link to; empty for https://<project>.web.app (design §6.8)."
   type        = string

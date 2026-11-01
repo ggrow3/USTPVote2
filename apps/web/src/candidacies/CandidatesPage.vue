@@ -1,21 +1,47 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { currentContent, inCandidateArea, STATE_FIPS, type CandidateArea, type MyCandidacy, type PublicCandidacy } from 'ustp-domain';
+import {
+  contactDistricts,
+  currentContent,
+  groupAreaContacts,
+  inCandidateArea,
+  STATE_FIPS,
+  type AreaCandidatesView,
+  type CandidateArea,
+  type MyCandidacy,
+  type PublicCandidacy,
+} from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { errorMessage } from '../api.js';
 import PageShell from '../components/PageShell.vue';
 import { attempt, dialog } from '../dialogs.js';
 import { session } from '../session.js';
-import { myArea, myCandidacies, publicCandidacies, withdrawCandidacy } from './api.js';
+import { myArea, myAreaCandidates, myCandidacies, publicCandidacies, withdrawCandidacy, zipCandidates } from './api.js';
+import AreaPerson from './AreaPerson.vue';
+import BallotContests from './BallotContests.vue';
 import CandidacyDetails from './CandidacyDetails.vue';
-import { areaText, districtText, electionText, localToday, stateName, STATUS_TEXT } from './candidacy-text.js';
+import {
+  areaText,
+  CIVIC_CREDIT,
+  districtPeopleText,
+  districtText,
+  electionText,
+  feedNote,
+  localToday,
+  OFFICE_HEADINGS,
+  profilesNote,
+  stateName,
+  STATUS_TEXT,
+} from './candidacy-text.js';
 import DistrictMap, { type MapMarker } from './DistrictMap.vue';
 
 /**
  * Members running for public office (design §5.8): public, each candidacy as a Membership Admin approved it, on a map and
  * in a list, upcoming elections first. Signed-in members also see their own candidacies here, and declare new ones, and
- * the page opens on their own area, worked out from their membership record.
+ * the page opens on their own area, worked out from their membership record. Anyone can type a ZIP code instead. For
+ * an area, the page also lists everyone running there from public records (design §5.12), apart from the members'
+ * candidacies and never reviewed by the party, with a ring on the map at each district.
  */
 usePageTitle('Candidates');
 const route = useRoute();
@@ -29,26 +55,45 @@ const area = ref<CandidateArea | null>(null);
 const areaPending = ref(false);
 const today = localToday();
 
+/** A ZIP code someone typed, and who runs there. Kept in the page only: never in the address or the browser's storage. */
+const zipInput = ref('');
+const typed = ref<{ readonly zip: string; readonly view: AreaCandidatesView } | null>(null);
+const zipError = ref<string | null>(null);
+const zipPending = ref(false);
+const useZip = ref(false);
+/** Who runs in the member's own area, from public records, read once the page shows that area. */
+const ownRunning = ref<AreaCandidatesView | null>(null);
+const ownRunningError = ref<string | null>(null);
+
 const active = computed(() => session.me?.member?.status === 'active');
 
 /**
- * Which candidacies the page shows: `area`, the member's own (where it opens for members), `all`, or a state's code.
- * Kept in the address (`?state=`), so coming back from a candidacy keeps the choice.
+ * Which candidacies the page shows: `area`, the member's own (where it opens for members), `zip`, a typed ZIP code's,
+ * `all`, or a state's code. Kept in the address (`?state=`), except a typed ZIP code, so coming back from a candidacy
+ * keeps the choice.
  */
 const where = computed<string>({
   get() {
+    if (useZip.value && typed.value) return 'zip';
     const asked = route.query.state;
     if (asked === 'all' || (typeof asked === 'string' && STATE_FIPS[asked] !== undefined)) return asked;
     return area.value ? 'area' : 'all';
   },
   set(value) {
+    useZip.value = value === 'zip';
+    if (value === 'zip') return;
     void router.replace({ query: { ...route.query, state: value === (area.value ? 'area' : 'all') ? undefined : value } });
   },
 });
-const whereText = computed(() => (where.value === 'area' ? ' in your area' : where.value === 'all' ? '' : ` in ${stateName(where.value)}`));
+const whereText = computed(() => {
+  if (where.value === 'zip') return ` in ZIP code ${typed.value!.zip}`;
+  return where.value === 'area' ? ' in your area' : where.value === 'all' ? '' : ` in ${stateName(where.value)}`;
+});
+/** The area the page is narrowed to: the member's own or a typed ZIP code's; null for a state or all states. */
+const shownArea = computed<CandidateArea | null>(() => (where.value === 'zip' ? typed.value!.view.area : where.value === 'area' ? area.value : null));
 const shown = computed(() =>
   (all.value ?? []).filter((c) => {
-    if (where.value === 'area') return area.value !== null && inCandidateArea(c.district, area.value);
+    if (where.value === 'area' || where.value === 'zip') return shownArea.value !== null && inCandidateArea(c.district, shownArea.value);
     return where.value === 'all' || c.district.state === where.value || c.district.kind === 'nation';
   }),
 );
@@ -58,20 +103,67 @@ const stateOptions = computed(() => {
   const codes = new Set((all.value ?? []).map((c) => c.district.state).filter((s): s is string => s !== null));
   if (area.value) codes.add(area.value.state);
   return [
+    ...(typed.value ? [{ label: `ZIP code ${typed.value.zip}`, value: 'zip' }] : []),
     ...(area.value ? [{ label: 'Your area', value: 'area' }] : []),
     { label: 'All states', value: 'all' },
     ...[...codes].map((code) => ({ label: stateName(code), value: code })).sort((a, b) => a.label.localeCompare(b.label)),
   ];
 });
-const areaNote = computed(() => (area.value ? areaText(area.value) : null));
+const areaNote = computed(() => {
+  if (where.value === 'zip') return areaText(typed.value!.view.area, typed.value!.zip);
+  return where.value === 'area' && area.value ? areaText(area.value) : null;
+});
 
-const markers = computed<MapMarker[]>(() =>
-  upcoming.value.flatMap((c) =>
+/** Everyone running in the area the page is narrowed to, from public records; none for a state or all states. */
+const running = computed<AreaCandidatesView | null>(() => (where.value === 'zip' ? typed.value!.view : where.value === 'area' ? ownRunning.value : null));
+/** A heading per district with someone running, each with its offices. */
+const runningSections = computed(() => {
+  const v = running.value;
+  if (!v) return [];
+  const groups = groupAreaContacts(v.area, v.candidates).filter((g) => g.candidates.length);
+  return contactDistricts(v.area)
+    .map((district) => ({ district, groups: groups.filter((g) => g.district.kind === district.kind && g.district.geoid === district.geoid) }))
+    .filter((s) => s.groups.length);
+});
+const runningNotes = computed(() => {
+  const v = running.value;
+  return v ? [feedNote('fec', v.feeds.fec), feedNote('civic', v.feeds.civic), profilesNote(v.profiles)].filter((n): n is string => n !== null) : [];
+});
+const fromBallot = computed(() => !!running.value && (running.value.candidates.some((c) => c.source === 'civic') || running.value.ballot.length > 0));
+
+const markers = computed<MapMarker[]>(() => [
+  ...upcoming.value.flatMap((c) =>
     c.district.point
       ? [{ id: c.candidacyId, point: c.district.point, title: c.name, caption: `${c.officeTitle} · ${districtText(c)}`, to: `/candidates/${c.candidacyId}` }]
       : [],
   ),
+  // A ring at each of the area's districts, saying who runs there.
+  ...(running.value?.area.districts ?? []).flatMap((d) =>
+    d.point ? [{ id: `district:${d.kind}:${d.geoid}`, point: d.point, title: d.name, caption: districtPeopleText(running.value!.candidates, d), hollow: true }] : [],
+  ),
+]);
+const mapLabel = computed(() =>
+  running.value ? `Map of members’ candidacies and of the districts${whereText.value}, with who runs in each` : 'Map of members’ candidacies for upcoming elections',
 );
+
+/** Looks up who runs where the typed ZIP code is, and narrows the page to it. */
+async function lookUp() {
+  const zip = zipInput.value.trim();
+  if (!/^[0-9]{5}$/.test(zip)) {
+    zipError.value = 'Enter a five-digit ZIP code.';
+    return;
+  }
+  zipError.value = null;
+  zipPending.value = true;
+  try {
+    typed.value = { zip, view: await zipCandidates(zip) };
+    where.value = 'zip';
+  } catch (e) {
+    zipError.value = errorMessage(e);
+  } finally {
+    zipPending.value = false;
+  }
+}
 
 async function loadMine() {
   mine.value = session.user ? await myCandidacies() : [];
@@ -82,12 +174,29 @@ watch(
   () => session.me?.member?.accountId ?? null,
   async (accountId) => {
     area.value = null;
+    ownRunning.value = null;
     areaPending.value = accountId !== null;
     if (accountId === null) return;
     const found = await myArea().catch(() => null);
     if ((session.me?.member?.accountId ?? null) !== accountId) return;
     area.value = found;
     areaPending.value = false;
+  },
+  { immediate: true },
+);
+
+// Who runs in the member's own area, once the page shows it.
+watch(
+  () => (where.value === 'area' && area.value ? (session.me?.member?.accountId ?? null) : null),
+  async (accountId) => {
+    if (accountId === null || ownRunning.value) return;
+    ownRunningError.value = null;
+    try {
+      const found = await myAreaCandidates();
+      if ((session.me?.member?.accountId ?? null) === accountId) ownRunning.value = found;
+    } catch (e) {
+      ownRunningError.value = errorMessage(e);
+    }
   },
   { immediate: true },
 );
@@ -122,7 +231,8 @@ function withdraw(c: MyCandidacy) {
         <h1 class="text-h5 q-mb-xs">Candidates</h1>
         <div class="text-grey-7">
           Members of the party running for public office, in their own words. A Membership Admin reviews each candidacy
-          before it appears here; being listed is not an endorsement.
+          before it appears here; being listed is not an endorsement. Choose your area, or type a ZIP code, to see
+          everyone else running there too, from public records.
         </div>
       </div>
 
@@ -174,14 +284,31 @@ function withdraw(c: MyCandidacy) {
             label="Where"
             class="candidates-state"
           />
-          <span class="text-grey-7">{{ upcoming.length }} upcoming {{ upcoming.length === 1 ? 'candidacy' : 'candidacies' }}{{ whereText }}</span>
+          <form class="row items-start no-wrap q-gutter-x-sm candidates-zip" @submit.prevent="lookUp">
+            <q-input
+              v-model="zipInput"
+              outlined
+              dense
+              label="ZIP code"
+              inputmode="numeric"
+              autocomplete="postal-code"
+              maxlength="5"
+              :error="zipError !== null"
+              :error-message="zipError ?? undefined"
+              hide-bottom-space
+              class="candidates-zip__input"
+            />
+            <q-btn type="submit" outline no-caps color="primary" label="Who runs there" :loading="zipPending" />
+          </form>
         </div>
-        <div v-if="where === 'area' && area && areaNote">
+        <div class="text-grey-7">{{ upcoming.length }} upcoming {{ upcoming.length === 1 ? 'candidacy' : 'candidacies' }} of members{{ whereText }}</div>
+        <div v-if="areaNote">
           <div class="text-grey-7">
             {{ areaNote.text }}
             <router-link v-if="areaNote.link" to="/account">{{ areaNote.link }}</router-link>
           </div>
           <q-btn
+            v-if="where === 'area'"
             flat
             no-caps
             color="primary"
@@ -191,7 +318,7 @@ function withdraw(c: MyCandidacy) {
             class="q-mt-xs"
           />
         </div>
-        <DistrictMap :markers="markers" label="Map of members’ candidacies for upcoming elections" />
+        <DistrictMap :markers="markers" :label="mapLabel" />
         <div v-if="!upcoming.length" class="text-grey-7">
           No candidacies for upcoming elections{{ whereText }} yet.
           <q-btn v-if="where !== 'all'" flat dense no-caps color="primary" label="Show all states" @click="where = 'all'" />
@@ -216,6 +343,37 @@ function withdraw(c: MyCandidacy) {
             </q-item>
           </q-list>
         </q-expansion-item>
+
+        <section v-if="where === 'area' || where === 'zip'" class="candidates-running" aria-labelledby="candidates-running-heading">
+          <h2 id="candidates-running-heading" class="text-h6 q-mb-xs">Everyone running{{ whereText }}</h2>
+          <div class="text-grey-7 q-mb-sm">
+            From public records: candidates for Congress and President who have filed with the FEC, and the contests on
+            the ballot while Google has an election loaded, with biographies from Wikipedia and Wikidata where they have
+            one. These are not the party’s: nobody here has been reviewed, and members’ own candidacies are listed above.
+          </div>
+          <q-banner v-if="ownRunningError" class="bg-orange-1 text-black" rounded>{{ ownRunningError }}</q-banner>
+          <div v-else-if="!running" class="text-grey-7">Loading…</div>
+          <template v-else>
+            <q-banner v-for="n in runningNotes" :key="n" dense rounded class="bg-grey-3 text-black q-mb-sm">{{ n }}</q-banner>
+            <div v-if="!runningSections.length && !running.ballot.length" class="text-grey-7">Nobody is listed{{ whereText }} yet.</div>
+            <div v-for="s in runningSections" :key="`${s.district.kind}:${s.district.geoid}`" class="q-mb-md">
+              <h3 class="text-subtitle1 text-weight-medium q-my-sm">{{ districtText(s) }}</h3>
+              <q-card v-for="g in s.groups" :key="g.office" flat bordered class="q-mb-sm">
+                <q-card-section class="q-pb-none">
+                  <h4 class="text-body1 text-weight-medium q-my-none">{{ OFFICE_HEADINGS[g.office] }}</h4>
+                </q-card-section>
+                <q-list separator>
+                  <AreaPerson v-for="c in g.candidates" :key="c.contactId" :person="c" show-email />
+                </q-list>
+              </q-card>
+            </div>
+            <BallotContests :contests="running.ballot" class="q-mb-md" />
+            <div class="text-caption text-grey-7">
+              Candidates for Congress and President from the FEC; biographies from Wikipedia and Wikidata, by FEC ID.
+              <a v-if="fromBallot" :href="CIVIC_CREDIT.url" target="_blank" rel="noopener noreferrer">{{ CIVIC_CREDIT.text }}</a>
+            </div>
+          </template>
+        </section>
       </template>
     </div>
   </PageShell>
@@ -224,6 +382,9 @@ function withdraw(c: MyCandidacy) {
 <style scoped>
 .candidates-state {
   min-width: 200px;
+}
+.candidates-zip__input {
+  width: 120px;
 }
 .candidates-mine {
   align-items: flex-start;

@@ -42,7 +42,7 @@ export {
   districtLookupId,
 } from './districts.js';
 export type { DistrictKind, MapPoint, District } from './districts.js';
-export { AREA_BASES, inCandidateArea } from './area.js';
+export { AREA_BASES, inCandidateArea, areaLookupSchema } from './area.js';
 export {
   CONTACT_ROLES,
   CONTACT_FEEDS,
@@ -60,6 +60,7 @@ export {
   contactDistricts,
   nameKey,
   mergeContacts,
+  mergeBallot,
   groupAreaContacts,
   generalElectionDay,
   nextFederalElectionYear,
@@ -73,6 +74,9 @@ export type {
   ContactDistrict,
   AreaContact,
   AreaContactsView,
+  AreaCandidatesView,
+  BallotCandidate,
+  BallotContest,
   AreaContactInput,
   AreaContactChangeInput,
   AreaContactContent,
@@ -92,7 +96,9 @@ export {
   placeholderValues,
 } from './email-templates.js';
 export type { EmailPlaceholder, EmailTemplateInput, EmailTemplateRecord, EmailTemplate, EmailTemplateChangedPayload } from './email-templates.js';
-export type { AreaBasis, CandidateArea } from './area.js';
+export type { AreaBasis, CandidateArea, AreaLookupInput } from './area.js';
+export { WIKIPEDIA_LICENCE, PROFILE_LIMITS, yearSpan, positionText, shortened, orderPositions } from './profiles.js';
+export type { ProfilePosition, ContactProfile, ContactPhoto } from './profiles.js';
 export {
   candidacyStage,
   awaitingReview,

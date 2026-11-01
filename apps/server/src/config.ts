@@ -80,6 +80,11 @@ export interface ServerConfig {
   readonly fecApiKey: string;
   readonly openStatesApiKey: string | null;
   /**
+   * The ballot's contests on the Candidates and Your area pages (design §5.12): a server key for Google's Civic
+   * Information API, from Secret Manager (civic.tf). None leaves the ballot out.
+   */
+  readonly civicApiKey: string | null;
+  /**
    * How many entries the proxies in front of the api append to X-Forwarded-For after the client's address (design
    * §10.7): the sign-in log takes the entry just before theirs. 1 unless set; checked on each deployment.
    */
@@ -240,6 +245,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     googleMapsKey: env.GOOGLE_MAPS_BROWSER_KEY?.trim() || null,
     fecApiKey: env.FEC_API_KEY?.trim() || 'DEMO_KEY',
     openStatesApiKey: env.OPENSTATES_API_KEY?.trim() || null,
+    civicApiKey: env.GOOGLE_CIVIC_API_KEY?.trim() || null,
     trustedProxyHops: wholeNumber(env.TRUSTED_PROXY_HOPS, 'TRUSTED_PROXY_HOPS') ?? DEFAULT_TRUSTED_PROXY_HOPS,
     roomModel,
     room: {

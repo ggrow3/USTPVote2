@@ -1,6 +1,9 @@
-import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, Param, Post, Put, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Header, HttpCode, HttpException, HttpStatus, Inject, Param, Post, Put, Query, Req } from '@nestjs/common';
+import type { FastifyRequest } from 'fastify';
 import {
   areaContactChangeSchema,
+  areaLookupSchema,
+  clientAddress,
   areaContactInputSchema,
   candidacyChangeSchema,
   candidacyDecisionSchema,
@@ -10,6 +13,7 @@ import {
   emailTemplateSchema,
   PUBLIC_OFFICES,
   STATE_FIPS,
+  type AreaLookupInput,
   type AreaContactChangeInput,
   type AreaContactInput,
   type CandidacyChangeInput,
@@ -23,6 +27,8 @@ import {
 import { Ctx, Public, requireAccount, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { ZodPipe } from '../common/validation.js';
+import { CONFIG, type ServerConfig } from '../config.js';
+import { VisitRateLimiter } from '../security/page-visits.js';
 import { AreaContactsService } from './area-contacts.service.js';
 import { CandidaciesService } from './candidacies.service.js';
 
@@ -65,6 +71,12 @@ export class CandidaciesController {
   @Get('area/contacts')
   areaContacts(@Ctx() ctx: RequestContext) {
     return this.contacts.view(requireAccount(ctx));
+  }
+
+  /** The Candidates page: who runs in the caller's area, from public records (design §5.12). */
+  @Get('area/candidates')
+  areaCandidates(@Ctx() ctx: RequestContext) {
+    return this.contacts.myCandidates(requireAccount(ctx));
   }
 
   @Post()
@@ -160,6 +172,37 @@ export class PublicCandidaciesController {
   @Get(':candidacyId')
   detail(@Param('candidacyId') candidacyId: string) {
     return this.candidacies.publicDetail(candidacyId);
+  }
+}
+
+/** Lookups of a typed ZIP code each address may make a minute, on one api instance: each may ask several records. */
+export const AREA_LOOKUP_RATE = { visits: 20, windowMs: 60_000 } as const;
+
+/**
+ * Who runs where a ZIP code is, for anyone on the Candidates page (design §5.12): public records only. Like the page
+ * visits it needs no App Check token; the caller's address limits how often, and neither it nor the ZIP code is kept.
+ */
+@Controller('v1/public/candidates')
+@Public()
+export class PublicAreaCandidatesController {
+  private readonly limiter = new VisitRateLimiter(AREA_LOOKUP_RATE);
+
+  constructor(
+    private readonly contacts: AreaContactsService,
+    @Inject(CONFIG) private readonly config: ServerConfig,
+  ) {}
+
+  @Post('area')
+  @HttpCode(200)
+  area(@Body(new ZodPipe(areaLookupSchema)) body: AreaLookupInput, @Req() request: FastifyRequest) {
+    const { ip } = clientAddress(request.headers['x-forwarded-for'], request.socket?.remoteAddress, this.config.trustedProxyHops);
+    if (!this.limiter.take(`address:${ip ?? 'unknown'}`)) throw new HttpException('too many lookups; try again in a minute', HttpStatus.TOO_MANY_REQUESTS);
+    return this.contacts.zipCandidates(body.zip);
+  }
+
+  /** Forgets this instance's lookup counts (tests). */
+  forget(): void {
+    this.limiter.forget();
   }
 }
 

@@ -34,6 +34,7 @@ module "ustpvote" {
   # The Your area page's public records (design §5.12; README "Your area records").
   fec_api_key        = var.fec_api_key
   openstates_api_key = var.openstates_api_key
+  civic_enabled      = var.civic_enabled
 
   # The members' room's self-hosted model, one L4 GPU (design §5.10; README "Members' room model").
   room_model_enabled = var.room_model_enabled
