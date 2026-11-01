@@ -1,0 +1,435 @@
+/*
+ * The Courses page (design §10.8): the search box beside the title, the featured courses, the panels of course rows
+ * and every course as a list. Colours come from each course's artwork (`course-catalog.ts`) and the site's theme, in
+ * light and dark. The map keeps its own look (`course-map.css`).
+ */
+
+/* A course's artwork: its gradient, a ring and two soft circles behind its icon. */
+.course-art {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: #fff;
+  background:
+    radial-gradient(circle at 80% 16%, rgba(255, 255, 255, 0.3) 0 12%, transparent 13%),
+    radial-gradient(circle at 10% 95%, rgba(255, 255, 255, 0.16) 0 24%, transparent 25%),
+    linear-gradient(135deg, var(--art-from), var(--art-to));
+}
+.course-art::before {
+  content: '';
+  position: absolute;
+  width: 130%;
+  aspect-ratio: 1;
+  left: 35%;
+  top: -55%;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+}
+.course-art__icon {
+  position: relative;
+  font-size: 32px;
+}
+
+/* The title and the search box: side by side where there is room, the box under the title on a phone. */
+.course-catalog__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 32px;
+  margin-bottom: 24px;
+}
+.course-catalog__intro {
+  flex: 1 1 440px;
+  max-width: 680px;
+}
+.course-catalog__search {
+  flex: 0 1 380px;
+  min-width: min(100%, 280px);
+}
+.course-catalog__section {
+  margin-top: 40px;
+}
+
+/* The featured courses: a row of large cards that scrolls sideways and stops at each card. */
+.course-hero {
+  position: relative;
+}
+.course-hero__track {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: calc(50% - 8px);
+  gap: 16px;
+  position: relative;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  /* Room for a focused button's ring. */
+  padding: 4px 0;
+}
+.course-hero__track::-webkit-scrollbar {
+  display: none;
+}
+.course-hero__card {
+  scroll-snap-align: start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 20px;
+  min-height: 300px;
+  padding: clamp(20px, 3vw, 32px);
+  border-radius: 20px;
+  overflow: hidden;
+}
+.course-hero__text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+.course-hero__eyebrow {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+.course-hero__title {
+  margin: 0;
+  font-size: clamp(1.35rem, 1.1rem + 0.8vw, 1.85rem);
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.01em;
+}
+.course-hero__pitch {
+  margin: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.course-hero__progress {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+.course-hero__action {
+  margin-top: 6px;
+  padding: 4px 14px;
+  border-radius: 8px;
+  font-weight: 600;
+}
+.course-hero__art {
+  width: 168px;
+  height: 168px;
+  border-radius: 24px;
+  transform: rotate(4deg);
+  box-shadow: 0 14px 30px rgba(0, 0, 0, 0.35);
+}
+.course-hero__art .course-art__icon {
+  font-size: 76px;
+}
+
+/* Dark cards: near black, lit from the corner by the course's colours; white text on the dark side. */
+.course-hero__card--dark {
+  color: #fff;
+  background:
+    radial-gradient(120% 130% at 100% 0%, color-mix(in srgb, var(--art-to) 75%, transparent) 0%, transparent 58%),
+    linear-gradient(115deg, #0f0c16 45%, var(--art-from) 150%);
+}
+.course-hero__card--dark .course-hero__eyebrow {
+  background: rgba(255, 255, 255, 0.16);
+}
+.course-hero__card--dark .course-hero__pitch {
+  color: rgba(255, 255, 255, 0.9);
+}
+.course-hero__card--dark .course-hero__action {
+  background: #fff;
+  color: #14101d;
+}
+/* Light cards: white, tinted towards the course's colour behind its artwork. */
+.course-hero__card--light {
+  color: #1a1a1a;
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  background:
+    radial-gradient(90% 120% at 100% 50%, color-mix(in srgb, var(--art-to) 30%, transparent) 0%, transparent 65%),
+    linear-gradient(115deg, #fff 45%, color-mix(in srgb, var(--art-to) 14%, #fff));
+}
+.course-hero__card--light .course-hero__eyebrow {
+  background: color-mix(in srgb, var(--art-from) 14%, #fff);
+  color: var(--art-from);
+}
+.course-hero__card--light .course-hero__pitch {
+  color: #3c4043;
+}
+.course-hero__card--light .course-hero__action {
+  background: var(--q-primary);
+  color: #fff;
+}
+.body--dark .course-hero__card--light {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.1);
+  background:
+    radial-gradient(90% 120% at 100% 50%, color-mix(in srgb, var(--art-to) 40%, transparent) 0%, transparent 65%),
+    linear-gradient(115deg, #2b2830 45%, color-mix(in srgb, var(--art-from) 40%, #2b2830));
+}
+.body--dark .course-hero__card--light .course-hero__eyebrow {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+.body--dark .course-hero__card--light .course-hero__pitch {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+/* The arrows sit on the row's edges, half over the page's margin so they cover no text; the dots below say where the
+   row has stopped. */
+.course-hero__arrow {
+  position: absolute;
+  top: calc(50% - 34px);
+  background: #fff;
+  color: #1a1a1a;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+}
+.course-hero__arrow--prev {
+  left: -20px;
+}
+.course-hero__arrow--next {
+  right: -20px;
+}
+.course-hero__dots {
+  display: flex;
+  margin-top: 6px;
+  margin-left: -8px;
+}
+/* 24px to tap, a small pill to see. */
+.course-hero__dot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.course-hero__dot::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.32);
+  transition: width 0.2s;
+}
+.course-hero__dot--current {
+  width: 36px;
+}
+.course-hero__dot--current::before {
+  width: 26px;
+  background: #33415c;
+}
+.body--dark .course-hero__dot::before {
+  background: rgba(255, 255, 255, 0.35);
+}
+.body--dark .course-hero__dot--current::before {
+  background: #fff;
+}
+
+/* The panels: tinted boxes side by side, each a column of course rows. */
+.course-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.course-panel {
+  padding: 16px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--q-primary) 7%, #fff);
+}
+.body--dark .course-panel {
+  background: rgba(255, 255, 255, 0.06);
+}
+.course-panel__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.course-panel__count {
+  margin-left: auto;
+  min-width: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+  font-size: 0.8125rem;
+  text-align: center;
+}
+.body--dark .course-panel__count {
+  background: rgba(255, 255, 255, 0.12);
+}
+.course-panel__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Every course, or the search's results: rows in as many columns as fit. */
+.course-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
+  gap: 12px;
+}
+
+/* A course row: artwork, title, short line and status. Scoped under the page to win over the page's link colour. */
+.q-page .course-catalog .course-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 10px;
+  background: #fff;
+  color: inherit;
+  text-decoration: none;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  transition: box-shadow 0.15s;
+}
+.q-page .course-catalog a.course-row:hover {
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.16);
+}
+.course-grid .course-row.course-row {
+  border: 1px solid rgba(0, 0, 0, 0.12);
+  box-shadow: none;
+}
+.q-page .course-catalog .course-row--coming-soon {
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px dashed rgba(0, 0, 0, 0.35);
+  box-shadow: none;
+}
+.body--dark .q-page .course-catalog .course-row {
+  background: #2a2a2a;
+}
+.body--dark .course-grid .course-row.course-row {
+  border-color: rgba(255, 255, 255, 0.14);
+}
+.body--dark .q-page .course-catalog .course-row--coming-soon {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px dashed rgba(255, 255, 255, 0.3);
+}
+.course-row__art {
+  flex: none;
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+}
+.course-row__art .course-art__icon {
+  font-size: 30px;
+}
+.course-row--coming-soon .course-row__art {
+  opacity: 0.75;
+}
+.course-row__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+.course-row__title {
+  font-weight: 600;
+  line-height: 1.3;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.course-row__line {
+  font-size: 0.875rem;
+  line-height: 1.4;
+  color: #5f6368;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.course-row__status {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: #5f6368;
+}
+.course-row--passed .course-row__status {
+  color: #2e7d32;
+  font-weight: 600;
+}
+.course-row--in-progress .course-row__status {
+  color: #a34400;
+  font-weight: 600;
+}
+.course-row--locked .course-row__status {
+  color: #3c4a66;
+}
+.course-row__status .q-icon {
+  flex: none;
+  margin-top: 1px;
+}
+.course-row__progress {
+  margin-top: 4px;
+}
+.body--dark .course-row__line,
+.body--dark .course-row__status {
+  color: #b8b8b8;
+}
+.body--dark .course-row--passed .course-row__status {
+  color: #81c784;
+}
+.body--dark .course-row--in-progress .course-row__status {
+  color: var(--q-accent);
+}
+.body--dark .course-row--locked .course-row__status {
+  color: #b0bdd6;
+}
+
+/* Phones: one card at a time with the next peeking in, its artwork small above the text. */
+@media (max-width: 899px) {
+  .course-hero__track {
+    grid-auto-columns: 88%;
+  }
+}
+@media (max-width: 599px) {
+  .course-hero__card {
+    grid-template-columns: minmax(0, 1fr);
+    align-content: start;
+    min-height: 0;
+  }
+  .course-hero__art {
+    order: -1;
+    width: 64px;
+    height: 64px;
+    border-radius: 14px;
+    transform: none;
+    box-shadow: 0 6px 14px rgba(0, 0, 0, 0.3);
+  }
+  .course-hero__art .course-art__icon {
+    font-size: 34px;
+  }
+  .course-hero__arrow {
+    display: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .course-hero__dot::before,
+  .q-page .course-catalog .course-row {
+    transition: none;
+  }
+}

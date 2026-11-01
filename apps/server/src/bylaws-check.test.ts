@@ -130,7 +130,7 @@ describe('the Claude checker', () => {
 
   it('refuses to run until a System Admin adds an API key', async () => {
     const checker = new ClaudeBylawsChecker({ read: async () => null }, 'claude-opus-5-5', { load: async () => references });
-    await expect(checker.check({ title: 'B', text: 'A', focusLines: null, amends: null, removed: [] })).rejects.toThrow(/no Anthropic API key has been added .*Admin › Claude/);
+    await expect(checker.check({ title: 'B', text: 'A', focusLines: null, amends: null, removed: [] })).rejects.toThrow(/no Anthropic API key has been added .*Admin › API keys/);
   });
 });
 
