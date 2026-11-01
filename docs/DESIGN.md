@@ -3597,14 +3597,31 @@ students and messages were added 2026-10-31; before, there was the one course at
   and portrait the curriculum does not give; its USPP section fills The Coalition. Two series fit no course, so two
   courses join the map: **Introduction to Left Transhumanism** (`introduction-to-left-transhumanism`, row 2, column 5,
   after The Fundamental Questions), with the USTP-Left as a sixth lesson, and **Historical Applied Projects**
-  (`historical-applied-projects`, row 4, column 2, after The Figures). The curriculum has nothing yet for Allies, An
-  Introduction into the Transhumanist Party, Why the Transhumanist Party? and the two New York courses, which stay
-  coming soon; until An Introduction and Allies are published, the quizzes of The Figures, Historical Applied Projects
-  and The Coalition stay locked, though their lessons can be read once published. Everything is added as a draft, for a
+  (`historical-applied-projects`, row 4, column 2, after The Figures). The curriculum has nothing for Allies, An
+  Introduction into the Transhumanist Party, Why the Transhumanist Party? and the two New York courses, which are
+  written from the party's own sources (below); until An Introduction and Allies are published, the quizzes of The
+  Figures, Historical Applied Projects and The Coalition stay locked, though their lessons can be read once
+  published. Everything is added as a draft, for a
   Course Administrator to read and publish, once (`course_seeds/course-content-2026-11`): a map course gets its lessons
   only while it was never published and has none, and its summary only while it is still the placeholder; a new course
   is added only where it is missing, on its square if free, after those of its prerequisites that exist. So a course
   written, published or deleted by a Course Administrator, or a lesson deleted later, is left as it is.
+- **The party's own courses** (`partyCourses` in `content-seed.ts`) *(added 2026-11-01; the user asked to "generate
+  the rest" and chose the party's public sources, as drafts)*. The five map courses the curriculum has nothing for are
+  written from what the United States Transhumanist Party and the New York Transhumanist Party have published, read on
+  2026-11-01 (their Constitutions, platform, values, answers to common questions, leadership, states and allies, and
+  announcements of votes and endorsements), New York's Election Law, and, where marked, Wikipedia: **Allies of the
+  Transhumanist Party** (the state parties, the Allied Organizations, the All Hands for a Free Future coalition with
+  the U.S. Pirate Party; 3 lessons), **An Introduction into the Transhumanist Party** (its founding and chairmen, the
+  two mergers, the Constitution and officers, members, votes and documents; 4), **Why the Transhumanist Party?** (the
+  Core Ideals, the platform, joining and candidates, the presidential primaries; 4), **Introduction to the New York
+  Transhumanist Party** (what it is, its re-formation in 2022, its constitution and officers; 3) and **Why the New
+  York Transhumanist Party?** (its aims, and New York's rules for parties, independent bodies and petitions; 2). Each
+  lesson has a five-question quiz answered from its text and ends with a Sources heading listing the pages it rests
+  on, one a paragraph; nothing the sources did not say is stated as fact. They are a batch of their own, seeded once
+  under `course_seeds/course-party-2026-11` by the same rules as the curriculum, so they are added where the
+  curriculum's seed has already run. The sources show the facts as of 2026-11-01 (officers, endorsements, counts),
+  which a Course Administrator should check before publishing and keep current.
 - **Prerequisites lock the quizzes, not the lessons.** Anyone may read every lesson of a published course. A signed-in
   learner takes a course's quizzes, and so earns its certificate, only while they hold an unrevoked certificate of each
   of its prerequisites; until then the course page says which to pass first, with links, and a quiz is refused (409).
