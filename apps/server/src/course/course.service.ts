@@ -35,6 +35,7 @@ import {
   type CourseQuizFeedback,
   type CourseRecord,
   type CourseVersionRecord,
+  type CourseVideoRecord,
   type FuturistProfile,
   type LearnerCourseView,
   type PublicCourseLesson,
@@ -333,7 +334,7 @@ export class CourseService {
     if (!course.exists) throw new NotFoundException('course not found');
     return {
       course: course.data() as CourseRecord,
-      lessons: lessons.docs.map((d) => d.data() as CourseLesson),
+      lessons: lessons.docs.map((d) => withVideo(d.data() as CourseLesson)),
       profiles: profiles.docs.map((d) => withPortraitImage(d.data() as FuturistProfile)),
     };
   }
@@ -373,6 +374,10 @@ export class CourseService {
     return db.runTransaction(async (tx) => {
       if (!(await tx.get(courseRef)).exists) throw new NotFoundException('course not found');
       const now = new Date().toISOString();
+      if (input.video?.kind === 'upload') {
+        const video = (await tx.get(db.collection(Collections.courseVideos).doc(input.video.videoId))).data() as CourseVideoRecord | undefined;
+        if (!video?.ready) throw new BadRequestException('that video is not one uploaded here, or has not finished uploading; upload it again');
+      }
       const questions = input.questions.map((question) => ({ ...question, questionId: question.questionId ?? uuidv7() }));
       const record: CourseLesson = { courseId, lessonId, ...input, questions, updatedAt: now, updatedBy: accountId };
       tx.set(ref, record);
@@ -661,6 +666,7 @@ const progressId = (courseId: string, accountId: string) => `${courseId}_${accou
 const versionId = (courseId: string, version: number) => `${courseId}_${String(version).padStart(6, '0')}`;
 const publicLesson = (lesson: CourseLesson): PublicCourseLesson => ({
   ...lesson,
+  video: lesson.video ?? null,
   questions: lesson.questions.map(({ questionId, prompt, choices }) => ({ questionId, prompt, choices })),
 });
 /** Courses saved before the map have no prerequisites or position. */
@@ -671,6 +677,8 @@ const mapOrder = (a: CourseRecord, b: CourseRecord) =>
   (a.position?.row ?? 0) - (b.position?.row ?? 0) ||
   (a.position?.column ?? 0) - (b.position?.column ?? 0) ||
   a.title.localeCompare(b.title);
+/** Lessons saved, or published, before videos have none. */
+const withVideo = (lesson: CourseLesson): CourseLesson => ({ ...lesson, video: lesson.video ?? null });
 /** Profiles saved, or published, before portraits could be uploaded have no portraitImage. */
 const withPortraitImage = (profile: FuturistProfile): FuturistProfile => ({ ...profile, portraitImage: profile.portraitImage ?? null });
 const pickCertificate = (certificate: CourseCertificateRecord) => ({

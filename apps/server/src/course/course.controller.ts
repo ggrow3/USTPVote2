@@ -31,7 +31,7 @@ const revokeSchema = z.strictObject({ reason: z.string().trim().min(1).max(2000)
 const packageVersionSchema = z.union([z.literal('draft'), z.coerce.number().int().min(1)]).default('draft');
 
 /** A course ID from the address; anything else names no course, and never reaches the database as a path. */
-class CourseIdPipe implements PipeTransform<string, string> {
+export class CourseIdPipe implements PipeTransform<string, string> {
   transform(value: string): string {
     if (!isCourseId(value)) throw new NotFoundException('course not found');
     return value;

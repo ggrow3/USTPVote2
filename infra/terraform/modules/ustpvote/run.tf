@@ -12,10 +12,10 @@
 locals {
   # api: Secret Manager (creating tie-break seeds, and keeping the Anthropic API key a System Admin adds, which it tries
   # with Anthropic first), encrypting ballots to an election's pool key, Auditor verification of anchors, profile
-  # photos, bootstrap System Admins, testing mode, which the api also refuses in prod, how election notices go out
-  # (notices.tf), the Candidates page's Google Maps browser key (maps.tf), the Your area page's keys for public records
-  # (FEC, Open States; the Civic Information API's comes from Secret Manager, civic.tf), and the site's own address,
-  # the only one robots.txt opens to search engines (in prod).
+  # photos, lesson videos, bootstrap System Admins, testing mode, which the api also refuses in prod, how election
+  # notices go out (notices.tf), the Candidates page's Google Maps browser key (maps.tf), the Your area page's keys for
+  # public records (FEC, Open States; the Civic Information API's comes from Secret Manager, civic.tf), and the site's
+  # own address, the only one robots.txt opens to search engines (in prod).
   api_env = merge(
     {
       GOOGLE_CLOUD_PROJECT          = var.project_id
@@ -24,6 +24,7 @@ locals {
       BALLOT_POOL_KEY               = google_kms_crypto_key.ballot_pool.id
       ANCHORS_BUCKET                = google_storage_bucket.anchors.name
       PHOTOS_BUCKET                 = google_storage_bucket.photos.name
+      COURSE_VIDEOS_BUCKET          = google_storage_bucket.course_videos.name
       BOOTSTRAP_SYSTEM_ADMIN_EMAILS = join(",", var.bootstrap_system_admin_emails)
       BYLAWS_CHECKER                = local.bylaws_checker
       CONSISTENCY_CHECKER           = local.consistency_checker

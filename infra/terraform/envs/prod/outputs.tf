@@ -18,6 +18,11 @@ output "photos_bucket" {
   value       = module.ustpvote.photos_bucket
 }
 
+output "course_videos_bucket" {
+  description = "COURSE_VIDEOS_BUCKET (api)."
+  value       = module.ustpvote.course_videos_bucket
+}
+
 output "api_env" {
   description = "Environment of the api service, except BOOTSTRAP_SYSTEM_ADMIN_EMAILS."
   value       = module.ustpvote.api_env

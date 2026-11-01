@@ -11,6 +11,8 @@ export interface ServerConfig {
   readonly bootstrapSystemAdmins: readonly string[];
   /** Private bucket for profile photos (design §5.3); photo endpoints answer 503 until it is set. */
   readonly photosBucket: string | null;
+  /** Private bucket for videos Course Administrators upload (design §10.8); upload endpoints answer 503 until it is set. */
+  readonly courseVideosBucket: string | null;
   /** `vision`: Cloud Vision. `local`: the emulator-only stand-in (no face detection). */
   readonly photoChecker: 'vision' | 'local';
   /** Where tie-break seeds are kept: Secret Manager, or the emulator-only Firestore stand-in. */
@@ -221,6 +223,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
       .map((e) => e.trim().toLowerCase())
       .filter(Boolean),
     photosBucket: env.PHOTOS_BUCKET || (usingEmulators && projectId ? `${projectId}-profile-photos` : null),
+    courseVideosBucket: env.COURSE_VIDEOS_BUCKET || (usingEmulators && projectId ? `${projectId}-course-videos` : null),
     photoChecker,
     secretStore,
     auditSigner,

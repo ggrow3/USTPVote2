@@ -91,6 +91,8 @@ export const Collections = {
   courseCertificates: 'course_certificates',
   /** `course_images/{sha256}`: portraits uploaded by Course Administrators, as stored after re-encoding. */
   courseImages: 'course_images',
+  /** `course_videos/{videoId}`: videos uploaded by Course Administrators; their bytes are in the course videos bucket. */
+  courseVideos: 'course_videos',
   /** `course_seeds/{seed}`: which starter courses have been added, so a course deleted later is not added again. */
   courseSeeds: 'course_seeds',
   /** `course_threads/{courseId}_{accountId}`: a learner's conversation with the course's instructors, and its switch. */

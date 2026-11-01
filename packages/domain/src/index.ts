@@ -42,6 +42,17 @@ export type {
   SubmitCourseQuizInput,
 } from './course.js';
 export {
+  COURSE_VIDEO,
+  courseVideoParts,
+  courseVideoSrc,
+  lessonVideoSchema,
+  startCourseVideoSchema,
+  youtubeEmbedSrc,
+  youtubeVideo,
+  youtubeWatchUrl,
+} from './course-video.js';
+export type { CourseVideoRecord, CourseVideoType, CourseVideoUpload, LessonVideo, StartCourseVideoInput, UploadedVideo, YouTubeVideo } from './course-video.js';
+export {
   COURSE_MAP,
   COURSE_CONVERSATION_LIMIT,
   COURSE_MESSAGE_SENDERS,

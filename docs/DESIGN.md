@@ -3449,7 +3449,7 @@ members, and how many people visit the public pages.
   (§10.6) stay as they are, without cookies; Google Analytics, where switched on, sets its cookies on the public
   pages.
 
-### 10.8 Courses: the map, quizzes, portraits, students and messages *(added)*
+### 10.8 Courses: the map, quizzes, portraits, videos, students and messages *(added)*
 
 Courses are open to everyone: `/courses` has the course map and a list of every course, and each course has its page
 at `/course/{courseId}`, where signed-in learners take its quizzes and earn its certificate. Courses are kept apart
@@ -3538,10 +3538,36 @@ students and messages were added 2026-10-31; before, there was the one course at
   and publishing needs a complete portrait on every profile. The source page is optional, since an uploaded photo may
   have none. The Course tab shows each profile's thumbnail and says which pictures fail to load in the browser, so
   dead links (13 of the 18 seeded Wikimedia Commons links on 2026-10-28) can be replaced.
+- **Videos** *(added 2026-11-01; the user asked for uploads and for linked YouTube videos to play in the page)*. A
+  lesson may have one video, shown above its text: a YouTube video or a file a Course Administrator uploaded, never
+  both, and none on lessons saved before videos. The editor takes a YouTube address in any of the forms YouTube gives
+  out (`watch?v=`, `youtu.be/`, `/shorts/`, `/live/`, `/embed/`, with a start time from `t=` or `start=`); the api keeps
+  only the 11-character video ID and the start second (`youtubeVideo` in `ustp-domain`) and refuses anything else. On
+  the course page a YouTube video is a box with a play button and the words "It plays from YouTube once you press
+  play": only when the learner presses it does the page load YouTube's privacy-enhanced player
+  (`youtube-nocookie.com/embed/…`), so no visitor's browser contacts YouTube before they choose to; "Watch on YouTube"
+  under it opens the video there. **Uploads** are MP4 or WebM, at most 1 GB. The browser sends them in parts of 8 MiB,
+  since Cloud Run takes at most 32 MiB in a request: `POST /v1/admin/courses/{courseId}/videos` with the type and size
+  starts one (`course_videos/{videoId}`, a UUIDv7), then each part goes in order as the raw body, with the video's
+  type. A part already stored is not stored again, so one whose answer was lost can be resent; one further on is
+  refused (409), and a part's size must be exactly right (400). The first part must begin as the type said: an MP4's
+  `ftyp` box or a WebM's EBML header (a Matroska file, which not every browser plays, is refused). A dropped connection
+  or a server error sends a part again, up to three times; closing the editor or Cancel stops after the part being
+  sent. Each part is an object in the private course videos bucket (`COURSE_VIDEOS_BUCKET`, `<project>-course-videos`
+  from Terraform), and the upload is ready once the last arrives. Anyone may play a ready upload at
+  `GET /v1/public/course-videos/{videoId}`, as anyone may read a lesson: a byte range is answered with at most the rest
+  of the part it starts in (206; the player asks again for the rest), no range with the whole file a part at a time
+  (chunked, since Cloud Run sends an HTTP/1 answer over 32 MiB only that way), and a range past the end with 416. Answers are cached by browsers for good (an upload never changes) but not by
+  shared caches (`private`), which could answer one range with another. Unlike photos, a video is kept exactly as sent,
+  not re-encoded, so the editor says that anything the camera stored in it, such as where it was filmed, stays in it
+  unless it is exported from a video editor first. An upload shows only once a lesson is saved with it (400 if it is
+  not one uploaded here or is not finished) and the course is published. Until the bucket is configured, uploads and
+  their playback answer 503; YouTube videos need nothing. Uploads no lesson uses are not deleted yet, as for portraits.
 - **Checks before sending.** The lesson and profile editors list what still stops a save, in words ("Question 2:
   choice 3 is empty"), instead of sending it and getting the api's bare "invalid request"; the api checks it all again.
 - **Exports.** A course's `ustp.course` file (Export JSON in the Course tab) holds its content, the draft or a published
-  version; where it sits on the map and its prerequisites are not part of it.
+  version; where it sits on the map and its prerequisites are not part of it. A lesson's video is in it as saved: a
+  YouTube video's ID and start, or an upload's ID, which names a file on this site, not the file itself.
 
 ### 10.9 Communications: news, press, social media *(added)*
 
@@ -3725,6 +3751,7 @@ Physically, registration collections are top-level and election data lives under
 | `hub_backgrounds/{sha256}` | hash of the stored image | immutable | an uploaded page background as a WebP at most 2560px wide, uploadedAt, uploadedBy (§10.6) *(added)* |
 | `hub_clicks/{target}` | `link-{id}` or `discord` | counters only | total, and a count per UTC day; nothing about who clicked (§10.6) *(added)* |
 | `course_images/{sha256}` | hash of the stored image | immutable | a portrait uploaded by a Course Administrator as a WebP of at most 800px, its size, courseId, uploadedAt, uploadedBy (§10.8) *(added)* |
+| `course_videos/{videoId}` | UUIDv7 | received and ready change as parts arrive, then immutable | a lesson video uploaded by a Course Administrator: courseId, type (MP4 or WebM), size, parts, how many are stored, ready, uploadedAt, uploadedBy; the bytes are in the course videos bucket, a part per object (§10.8) *(added)* |
 | `courses/{courseId}` | made from the title when added | the draft's title and summary, status and versions change with editing and publishing; deleted only if never published | courseId, title, summary, status, version, publishedVersion, prerequisites (course IDs), position (row and column, or null for off the map), placedAt, placedBy, createdAt, updatedAt, updatedBy; records from before the map have no prerequisites or position (read as none and off it) (§10.8) *(added)* |
 | `course_seeds/{seed}` | `course-map-2026-10` | created once | that the party's map courses were added, and when (§10.8) *(added)* |
 | `course_threads/{courseId}_{accountId}` | course and learner | switched by Course Admins; read times updated on reading | messaging on or off, switchedAt, switchedBy, when each side last wrote and last read (§10.8) *(added)* |
@@ -3776,6 +3803,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /page-visits` · `POST /public/page-visits` | M · P | a page opened (`path`): counted, and signed in to an account also recorded with it; 204, 404 for the ballot, the receipt check or a path the app has no page for, 429 past 60 a minute from one account or address (§10.7) |
 | `GET /public/courses` · `GET /courses` | P · M | the course map and list: every published course and every draft on the map (title only); signed in, also how the learner stands in each (§10.8) |
 | `GET /public/courses/{courseId}` · `GET /public/course-images/{sha256}` | P | the published course without quiz answers, with its prerequisites; an uploaded portrait, cached for good (§10.8) |
+| `GET /public/course-videos/{videoId}` | P | an uploaded lesson video once all its parts are in (404 before): by byte range, at most one part per answer (206), whole without a range, 416 past the end; cached by browsers only (§10.8) |
 | `GET /courses/{courseId}` | M | the course as the learner takes it: their version, progress, certificate, the prerequisites they still need, and whether they may message the instructors (§10.8) |
 | `POST /courses/{courseId}/lessons/{lessonId}/attempts` | M | submit a quiz, one answer per question in order (400 otherwise; 409 until the prerequisites are passed); the score, progress, any certificate, and for each question whether it was right and its explanation (§10.8) |
 | `GET\|POST /courses/{courseId}/messages` | M | the learner's conversation with the instructors (reading marks their answers read); write to them, 403 while a Course Admin has not turned messaging on (§10.8) |
@@ -3869,7 +3897,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET\|PUT /admin/site-analytics` | System Admin | the Google Analytics setting with who saved it; save a measurement ID or null from the version it was edited from (400 not a GA4 ID, 409 if someone saved since), ledgered (§10.7) |
 | `GET\|PUT /admin/home-quote` | System Admin | the voting home's quote with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if shown without its words or who said them, or a part over its limit), ledgered (§10.5) |
 | `GET\|PUT /admin/hub` · `PUT /admin/hub/logo` · `PUT /admin/hub/cover` · `PUT /admin/hub/background` · `GET /admin/hub/clicks` | System Admin, Communications Admin | the link hub with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if something shown is unfinished, an address, the accent, or the logo, cover banner or page background cannot be used), ledgered; upload a logo, cover banner or page background (the image as the body, giving its ID; shown once saved); each link's clicks in the last 30 days and in all (§10.6) |
-| `GET\|PUT /admin/courses/{courseId}` · `POST /admin/courses/{courseId}/lessons\|profiles` · `PUT /admin/courses/{courseId}/images` · `POST /admin/courses/{courseId}/publish` | Course Admin | the course draft; save a lesson with its quiz or a profile with its portrait (400 if a portrait is half done or names no upload); upload a portrait (the image as the body; shown once saved and published); publish a new version (409 while a profile lacks a complete portrait) (§10.8) |
+| `GET\|PUT /admin/courses/{courseId}` · `POST /admin/courses/{courseId}/lessons\|profiles` · `PUT /admin/courses/{courseId}/images` · `POST /admin/courses/{courseId}/publish` | Course Admin | the course draft; save a lesson with its quiz and any video, or a profile with its portrait (400 if a portrait is half done or names no upload, or a video names no finished upload); upload a portrait (the image as the body; shown once saved and published); publish a new version (409 while a profile lacks a complete portrait) (§10.8) |
+| `POST /admin/courses/{courseId}/videos` · `PUT /admin/courses/{courseId}/videos/{videoId}/parts/{index}` | Course Admin | start uploading a lesson video (type and size; MP4 or WebM, at most 1 GB), then send its 8 MiB parts in order as raw bodies with its type; 409 for a part sent too soon, 400 for a wrong size or a first part that is not that kind of video, 503 until `COURSE_VIDEOS_BUCKET` is set (§10.8) |
 | `GET\|POST /admin/courses` · `DELETE /admin/courses/{courseId}` · `PUT /admin/courses/{courseId}/map` · `PUT /admin/course-map` | Course Admin | every course, drafts included; add a draft course (its ID from its title); delete one never published (409 if published or another course comes after it); set where it sits on the map and its prerequisites, at once (409 for a loop, an unknown course or a taken square); save the board: the squares and prerequisites of up to 100 courses together, checked as one map, all or nothing (same 409s) (§10.8) |
 | `GET /admin/courses/{courseId}/learners` · `PUT /admin/courses/{courseId}/learners/{accountId}/messaging` · `GET\|POST /admin/courses/{courseId}/learners/{accountId}/messages` | Course Admin | the course's students and how they stand, without emails; turn a student's messaging on or off; read their conversation (marking it read) and answer as an instructor (409 while it is off) (§10.8) |
 | `GET\|POST /testing/personas` · header `X-Act-As` on any signed-in route | System Admin, testing mode only (404 otherwise) | test personas and acting as them (§10.4) |

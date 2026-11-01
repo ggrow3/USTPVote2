@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { Notify } from 'quasar';
 import {
   COURSE_IMAGE,
+  COURSE_VIDEO,
   coursePackageFileName,
   coursePortraitSrc,
   FUTURIST_CATEGORIES,
   PASS_PERCENT,
   portraitProblem,
   QUIZ_LIMITS,
+  youtubeWatchUrl,
   type CourseLesson,
   type CoursePackage,
   type CourseRecord,
@@ -22,6 +25,7 @@ import { photoFileProblem } from '../../photos.js';
 import {
   blankQuestion,
   lessonProblems,
+  lessonVideoPayload,
   move,
   profileProblems,
   questionDrafts,
@@ -29,6 +33,8 @@ import {
   removeChoice,
   type QuestionDraft,
 } from '../../academy/course-editor.js';
+import { fileSize, uploadCourseVideo, videoFileProblem } from '../../academy/course-video.js';
+import LessonVideo from '../../academy/LessonVideo.vue';
 import CourseLearnersCard from './CourseLearnersCard.vue';
 import CourseMapCard from './CourseMapCard.vue';
 
@@ -54,6 +60,9 @@ const lesson = reactive({
   title: '',
   summary: '',
   body: '',
+  /** The uploaded video's ID; while there is one, the YouTube link is not used. */
+  videoUpload: null as string | null,
+  videoLink: '',
   estimatedMinutes: 10,
   questions: [] as QuestionDraft[],
 });
@@ -125,9 +134,12 @@ async function deleteCourse() {
 }
 
 function editLesson(value?: CourseLesson) {
+  const video = value?.video ?? null;
   Object.assign(lesson, value
     ? { lessonId: value.lessonId, order: value.order, title: value.title, summary: value.summary, body: value.body, estimatedMinutes: value.estimatedMinutes, questions: questionDrafts(value.questions) }
     : { lessonId: undefined, order: lessons.value.length + 1, title: '', summary: '', body: '', estimatedMinutes: 10, questions: [blankQuestion()] });
+  Object.assign(lesson, { videoUpload: video?.kind === 'upload' ? video.videoId : null, videoLink: video?.kind === 'youtube' ? youtubeWatchUrl(video) : '' });
+  videoName.value = null;
   lessonErrors.value = [];
   lessonOpen.value = true;
 }
@@ -165,6 +177,7 @@ async function saveLesson() {
     title: lesson.title,
     summary: lesson.summary,
     body: lesson.body,
+    video: lessonVideoPayload(lesson.videoUpload, lesson.videoLink),
     estimatedMinutes: draft.estimatedMinutes,
     questions: questionsPayload(lesson.questions),
   };
@@ -176,6 +189,53 @@ async function saveLesson() {
 
 function addQuestion() {
   lesson.questions.push(blankQuestion());
+}
+
+/** What the lesson will show, as the editor stands: the upload, the linked YouTube video, or nothing yet. */
+const previewVideo = computed(() => lessonVideoPayload(lesson.videoUpload, lesson.videoLink));
+const videoInput = ref<HTMLInputElement | null>(null);
+const videoUploading = ref(false);
+const videoProgress = ref(0);
+/** The name of the file just uploaded, while the editor stays open. */
+const videoName = ref<string | null>(null);
+let videoCancelled = false;
+// Closing the editor stops an upload, so its video never lands in the next lesson opened.
+watch(lessonOpen, (open) => {
+  if (!open) videoCancelled = true;
+});
+
+/** Uploads the chosen video a part at a time; it replaces any YouTube link, and shows once the lesson is saved and published. */
+async function uploadVideo(event: Event) {
+  const file = (event.target as HTMLInputElement).files?.[0];
+  (event.target as HTMLInputElement).value = '';
+  if (!file) return;
+  const problem = videoFileProblem(file);
+  if (problem) {
+    lessonErrors.value = [problem];
+    return;
+  }
+  videoUploading.value = true;
+  videoProgress.value = 0;
+  videoCancelled = false;
+  let videoId: string | null = null;
+  await attempt(async () => {
+    videoId = await uploadCourseVideo(courseId.value, file, (sent) => (videoProgress.value = sent), () => videoCancelled);
+  });
+  videoUploading.value = false;
+  if (!videoId || videoCancelled) return;
+  Object.assign(lesson, { videoUpload: videoId, videoLink: '' });
+  videoName.value = file.name;
+  lessonErrors.value = [];
+  Notify.create({ type: 'positive', message: 'Video uploaded. Save the lesson, then publish, to show it.' });
+}
+
+function cancelVideo() {
+  videoCancelled = true;
+}
+
+function removeVideo() {
+  Object.assign(lesson, { videoUpload: null, videoLink: '' });
+  videoName.value = null;
 }
 
 async function saveProfile() {
@@ -356,6 +416,40 @@ void loadCourses().catch((e: unknown) => console.error(errorMessage(e)));
         <q-card-section class="course-form">
           <div class="row q-col-gutter-md"><q-input v-model.number="lesson.order" type="number" outlined class="col-12 col-sm-3" label="Order" /><q-input v-model.number="lesson.estimatedMinutes" type="number" outlined class="col-12 col-sm-3" label="Minutes" /><q-input v-model="lesson.title" outlined class="col-12 col-sm-6" label="Title" /></div>
           <q-input v-model="lesson.summary" outlined type="textarea" autogrow label="Summary" />
+          <div>
+            <h3 class="text-h6 q-my-none">Video</h3>
+            <p class="text-grey-7 q-mt-xs q-mb-none">
+              Optional, shown above the lesson text. Link a YouTube video, or upload a video to keep it on this site.
+            </p>
+          </div>
+          <LessonVideo v-if="previewVideo" :video="previewVideo" :title="lesson.title || 'this lesson'" />
+          <div v-if="lesson.videoUpload">
+            <div class="text-body2 text-weight-medium">Uploaded video{{ videoName ? ` · ${videoName}` : '' }}</div>
+            <div class="text-caption text-grey-7">Kept on this site, so learners play it from here.</div>
+          </div>
+          <q-input
+            v-else
+            v-model="lesson.videoLink"
+            outlined
+            dense
+            label="YouTube link"
+            hint="Such as https://youtu.be/… or a youtube.com/watch address; add ?t=90 to start 90 seconds in. Or upload a video instead."
+          />
+          <div v-if="videoUploading" role="status" class="row items-center q-gutter-sm">
+            <q-linear-progress :value="videoProgress" size="10px" rounded class="col" color="primary" />
+            <span class="text-caption">Uploading, {{ Math.round(videoProgress * 100) }}%</span>
+            <q-btn flat dense no-caps label="Cancel" @click="cancelVideo" />
+          </div>
+          <div class="row q-gutter-sm">
+            <q-btn outline no-caps icon="upload" :label="lesson.videoUpload ? 'Upload another video' : 'Upload a video'" :loading="videoUploading" @click="videoInput?.click()" />
+            <q-btn v-if="lesson.videoUpload || lesson.videoLink" flat no-caps label="Remove the video" :disable="videoUploading" @click="removeVideo" />
+          </div>
+          <div class="text-caption text-grey-7">
+            An MP4 or WebM file up to {{ fileSize(COURSE_VIDEO.maxBytes) }}. It is kept exactly as sent, with anything the camera stored in
+            it, such as where it was filmed; export it from a video editor first to leave that out.
+          </div>
+          <input ref="videoInput" type="file" accept="video/mp4,video/webm,.mp4,.m4v,.webm" class="sr-only" tabindex="-1" aria-hidden="true" @change="uploadVideo" />
+          <q-separator />
           <q-input v-model="lesson.body" outlined type="textarea" autogrow label="Lesson text (separate paragraphs with a blank line)" />
           <div>
             <h3 class="text-h6 q-my-none">Quiz</h3>
@@ -389,7 +483,7 @@ void loadCourses().catch((e: unknown) => console.error(errorMessage(e)));
             <ul class="q-my-xs q-pl-md"><li v-for="problem in lessonErrors" :key="problem">{{ problem }}</li></ul>
           </q-banner>
         </q-card-section>
-        <q-card-actions align="right" class="q-pa-md"><q-btn v-close-popup flat no-caps label="Cancel" /><q-btn color="primary" no-caps label="Save lesson" @click="saveLesson" /></q-card-actions>
+        <q-card-actions align="right" class="q-pa-md"><q-btn v-close-popup flat no-caps label="Cancel" /><q-btn color="primary" no-caps label="Save lesson" :disable="videoUploading" @click="saveLesson" /></q-card-actions>
       </q-card>
     </q-dialog>
 

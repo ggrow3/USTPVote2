@@ -1,4 +1,4 @@
-# Buckets (design §5.3, §8.4) and the image repository. Bucket names follow the emulator defaults in config.ts.
+# Buckets (design §5.3, §8.4, §10.8) and the image repository. Bucket names follow the emulator defaults in config.ts.
 
 # --- Ledger anchors (design §8.4) ------------------------------------------------------------------------------------
 
@@ -86,6 +86,32 @@ resource "google_storage_bucket" "photos" {
 resource "google_storage_bucket_iam_member" "photos_api" {
   bucket = google_storage_bucket.photos.name
   role   = "roles/storage.objectUser"
+  member = google_service_account.api.member
+}
+
+# --- Lesson videos (design §10.8) -------------------------------------------------------------------------------------
+
+# The videos Course Administrators upload for lessons, kept a part at a time as sent and played back through the api,
+# never read from the bucket by a browser.
+resource "google_storage_bucket" "course_videos" {
+  project                     = var.project_id
+  name                        = "${var.project_id}-course-videos"
+  location                    = var.region
+  storage_class               = "STANDARD"
+  uniform_bucket_level_access = true
+  public_access_prevention    = "enforced"
+  force_destroy               = false
+  labels                      = local.labels
+
+  depends_on = [google_project_service.this]
+}
+
+# The api stores each part once and reads parts back to play them; it neither overwrites nor deletes them.
+resource "google_storage_bucket_iam_member" "course_videos_api" {
+  for_each = toset(["roles/storage.objectCreator", "roles/storage.objectViewer"])
+
+  bucket = google_storage_bucket.course_videos.name
+  role   = each.value
   member = google_service_account.api.member
 }
 

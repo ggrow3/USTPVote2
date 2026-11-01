@@ -34,6 +34,11 @@ output "photos_bucket" {
   value       = google_storage_bucket.photos.name
 }
 
+output "course_videos_bucket" {
+  description = "COURSE_VIDEOS_BUCKET (api)."
+  value       = google_storage_bucket.course_videos.name
+}
+
 output "api_env" {
   description = "Environment of the api service, except BOOTSTRAP_SYSTEM_ADMIN_EMAILS and the Your area page's keys."
   value       = { for name, value in local.api_env : name => value if !contains(["BOOTSTRAP_SYSTEM_ADMIN_EMAILS", "FEC_API_KEY", "OPENSTATES_API_KEY"], name) }
