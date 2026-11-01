@@ -1,4 +1,4 @@
-import type { AdminCandidacy, District, LedgerEntry, MyCandidacy, PublicCandidacy } from 'ustp-domain';
+import type { AdminCandidacy, CandidateArea, District, LedgerEntry, MyCandidacy, PublicCandidacy } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { resetEmulators, TestApi, type User } from './testing/emulator.js';
 
@@ -81,6 +81,41 @@ describe('districts', () => {
 
   it('says whether the map has a key', async () => {
     expect((await api.call('GET', '/v1/public/maps')).body).toEqual({ googleMapsKey: null });
+  });
+});
+
+describe('a member’s own area', () => {
+  const area = async (by?: User) => api.call('GET', '/v1/candidacies/area', by);
+  const zip = (user: Member, postalCode: string) =>
+    api.firebase.db.collection('members').doc(user.accountId).update({ contact: { city: 'Oakland', postalCode, phone: null } });
+
+  it('is worked out from the ZIP code on the record, which it never sends back', async () => {
+    await zip(ada, '94615-1234');
+    const res = await area(ada);
+    expect(res.status).toBe(200);
+    const body = res.body as CandidateArea;
+    expect(body).toMatchObject({ state: 'CA', basis: 'zip' });
+    expect(body.districts.map((d) => `${d.kind}:${d.geoid}`)).toEqual([
+      'congressional:0601',
+      'congressional:0602',
+      'state_upper:06001',
+      'state_lower:06001',
+      'county:06001',
+      'place:0600100',
+    ]);
+    expect(body.districts[0]).toMatchObject({ name: 'Congressional District 1', state: 'CA', vintage: 'Local test districts' });
+    expect(JSON.stringify(body)).not.toMatch(/94615|1234|Oakland/);
+  });
+
+  it('is the whole state without a ZIP code, or with one the Census draws no area for; any status', async () => {
+    expect((await area(bo)).body).toEqual({ state: 'CA', districts: [], basis: 'no_zip' });
+    await zip(bo, '00000');
+    expect((await area(bo)).body).toEqual({ state: 'CA', districts: [], basis: 'unplaced' });
+  });
+
+  it('needs a sign-in and a membership record', async () => {
+    expect((await area()).status).toBe(401);
+    expect((await area(await api.member('nobody@example.test'))).status).toBe(404);
   });
 });
 
