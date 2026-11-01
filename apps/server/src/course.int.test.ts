@@ -310,6 +310,49 @@ describe('Course map, students and instructor messages', () => {
     expect((await api.call('GET', '/v1/admin/courses/futures-lab-2', editor)).status).toBe(404);
   });
 
+  it("saves the Course tab's board at once: swaps, new lines and a whole org chart, refusing loops and shared squares", async () => {
+    const editor = await courseAdmin('board-editor@example.test');
+    const learner = await api.member('board-learner@example.test');
+    const save = (by: typeof editor, courses: unknown[]) => api.call('PUT', '/v1/admin/course-map', by, { courses });
+    const placement = async () =>
+      Object.fromEntries(
+        ((await api.call('GET', '/v1/admin/courses', editor)).body as { courseId: string; prerequisites: string[]; position: unknown }[]).map(
+          (course) => [course.courseId, { prerequisites: course.prerequisites, position: course.position }],
+        ),
+      );
+    expect((await save(learner, [{ courseId: 'allies', prerequisites: [], position: null }])).status).toBe(403);
+
+    // The Coalition and Allies swap squares in one save, and The Coalition comes after The Figures of Transhumanism too.
+    const swapped = await save(editor, [
+      { courseId: 'the-coalition', prerequisites: ['allies', 'figures-of-transhumanism'], position: { row: 1, column: 1 } },
+      { courseId: 'allies', prerequisites: ['fundamental-questions'], position: { row: 1, column: 0 } },
+    ]);
+    expect(swapped.status).toBe(200);
+    expect((swapped.body as { courseId: string }[]).map((course) => course.courseId)[0]).toBe('transhumanism');
+    const after = await placement();
+    expect(after['the-coalition']).toEqual({ prerequisites: ['allies', 'figures-of-transhumanism'], position: { row: 1, column: 1 } });
+    expect(after.allies).toEqual({ prerequisites: ['fundamental-questions'], position: { row: 1, column: 0 } });
+    expect(after['fundamental-questions']).toEqual({ prerequisites: [], position: { row: 0, column: 2 } });
+
+    // Nothing is saved when any part is refused.
+    const loop = await save(editor, [
+      { courseId: 'allies', prerequisites: [], position: { row: 5, column: 5 } },
+      { courseId: 'fundamental-questions', prerequisites: ['the-coalition'], position: { row: 0, column: 2 } },
+    ]);
+    expect(loop.status).toBe(409);
+    expect(loop.body.detail).toMatch(/^that makes a loop nobody could finish: The Fundamental Questions of Transhumanism → /);
+    const shared = await save(editor, [{ courseId: 'allies', prerequisites: ['fundamental-questions'], position: { row: 0, column: 0 } }]);
+    expect(shared.status).toBe(409);
+    expect(shared.body.detail).toBe(`${FIRST_TITLE} is already on the map at row 1, column 1`);
+    expect((await save(editor, [{ courseId: 'nowhere', prerequisites: [], position: null }])).body.detail).toBe('there is no course "nowhere"');
+    expect((await save(editor, [{ courseId: 'allies', prerequisites: [], position: { row: 8, column: 0 } }])).status).toBe(400);
+    expect(await placement()).toEqual(after);
+
+    // Learners see the saved map at once.
+    const map = (await api.call('GET', '/v1/public/courses')).body.courses as { courseId: string; position: unknown }[];
+    expect(map.find((course) => course.courseId === 'allies')!.position).toEqual({ row: 1, column: 0 });
+  });
+
   it('opens quizzes only once the prerequisites are passed, while the lessons stay readable', async () => {
     const editor = await courseAdmin('lock-editor@example.test');
     await api.call('POST', '/v1/admin/courses', editor, { title: 'Futures Lab', summary: 'Hands-on.' });

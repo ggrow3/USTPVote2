@@ -114,6 +114,115 @@ function loopThrough(byId: ReadonlyMap<string, Placed>, courseId: string, prereq
   return walk([courseId]);
 }
 
+/** The most courses one save of the Course tab's board may change. */
+export const COURSE_BOARD_MAX = 100;
+
+/**
+ * `PUT /v1/admin/courses/map`: where each course moved on the Course tab's board and which courses now come before it,
+ * saved together, so cards can swap squares and the whole map can be rearranged at once. Courses not listed keep
+ * their place.
+ */
+export const courseBoardSchema = z.strictObject({
+  courses: z
+    .array(z.strictObject({ courseId: courseIdSchema, ...courseMapSchema.shape }))
+    .min(1)
+    .max(COURSE_BOARD_MAX)
+    .refine((changes) => new Set(changes.map((change) => change.courseId)).size === changes.length, 'a course is listed twice'),
+});
+export type CourseBoardInput = z.infer<typeof courseBoardSchema>;
+
+/** The map with a board's changes applied: each listed course's new placement, every other course as it was. */
+export function withBoardChanges<C extends Placed>(courses: readonly C[], changes: readonly (CoursePlacement & { readonly courseId: string })[]): C[] {
+  const changed = new Map(changes.map((change) => [change.courseId, change]));
+  return courses.map((course) => {
+    const change = changed.get(course.courseId);
+    return change ? { ...course, prerequisites: change.prerequisites, position: change.position } : course;
+  });
+}
+
+/**
+ * What stops a board's changes being saved together, in words, or null: a listed course that is not a course, or
+ * whatever `coursePlacementProblem` finds for any changed course on the map as it would be. A new loop or a shared
+ * square has to involve a changed course, so checking those is enough.
+ */
+export function courseBoardProblem(courses: readonly Placed[], changes: readonly (CoursePlacement & { readonly courseId: string })[]): string | null {
+  const ids = new Set(courses.map((course) => course.courseId));
+  const unknown = changes.find((change) => !ids.has(change.courseId));
+  if (unknown) return `there is no course "${unknown.courseId}"`;
+  const after = withBoardChanges(courses, changes);
+  for (const change of changes) {
+    const problem = coursePlacementProblem(after, change.courseId, change);
+    if (problem) return problem;
+  }
+  return null;
+}
+
+/**
+ * The squares that lay the courses on the map out as an org chart (design §10.8): each course a row below the
+ * courses before it (its longest chain of prerequisites on the map), under the one just above it that it names first,
+ * and centred over the courses after it, with courses that stand alone and the tops of separate charts side by side.
+ * Siblings keep the order they had, left to right. Courses off the map stay off it, and links to them are ignored.
+ * When the chart is wider than the map, each row is squeezed in order; it fails, in words, when one row would need
+ * more than the map's columns, or the chart more than its rows.
+ */
+export function orgChartPositions(
+  courses: readonly Placed[],
+): { readonly positions: ReadonlyMap<string, CoursePosition> } | { readonly problem: string } {
+  const onMap = courses.filter((course): course is Placed & { position: CoursePosition } => course.position !== null);
+  const byId = new Map(onMap.map((course) => [course.courseId, course]));
+  const before = (course: Placed) => course.prerequisites.filter((id) => byId.has(id));
+
+  const levels = new Map<string, number>();
+  const levelOf = (course: Placed, walking: ReadonlySet<string> = new Set()): number => {
+    const known = levels.get(course.courseId);
+    if (known !== undefined) return known;
+    // A saved map has no loops; one here (from a record edited by hand) is cut where it closes.
+    const next = new Set([...walking, course.courseId]);
+    const level = 1 + Math.max(-1, ...before(course).filter((id) => !walking.has(id)).map((id) => levelOf(byId.get(id)!, next)));
+    levels.set(course.courseId, level);
+    return level;
+  };
+  onMap.forEach((course) => levelOf(course));
+  const depth = Math.max(0, ...levels.values()) + 1;
+  if (depth > COURSE_MAP.rows) return { problem: `the chart would be ${depth} courses deep, more than the map's ${COURSE_MAP.rows} rows` };
+
+  const order = (a: Placed & { position: CoursePosition }, b: Placed & { position: CoursePosition }) =>
+    a.position.column - b.position.column || a.position.row - b.position.row || a.title.localeCompare(b.title);
+  const children = new Map<string | null, (Placed & { position: CoursePosition })[]>();
+  for (const course of [...onMap].sort(order)) {
+    const level = levels.get(course.courseId)!;
+    const parent = before(course).find((id) => levels.get(id) === level - 1) ?? null;
+    children.set(parent, [...(children.get(parent) ?? []), course]);
+  }
+
+  // Each course without courses after it takes the next slot; a course sits over the middle of those after it.
+  const slots = new Map<string, number>();
+  let next = 0;
+  const place = (course: Placed): number => {
+    const after = (children.get(course.courseId) ?? []).map(place);
+    const slot = after.length ? Math.floor((after[0]! + after[after.length - 1]!) / 2) : next++;
+    slots.set(course.courseId, slot);
+    return slot;
+  };
+  (children.get(null) ?? []).forEach(place);
+
+  const positions = new Map<string, CoursePosition>();
+  for (let row = 0; row < depth; row++) {
+    const inRow = onMap.filter((course) => levels.get(course.courseId) === row).sort((a, b) => slots.get(a.courseId)! - slots.get(b.courseId)!);
+    if (inRow.length > COURSE_MAP.columns) {
+      return { problem: `${inRow.length} courses would sit side by side, more than the map's ${COURSE_MAP.columns} columns` };
+    }
+    const scale = next > COURSE_MAP.columns ? (COURSE_MAP.columns - 1) / (next - 1) : 1;
+    const columns = inRow.map((course) => Math.round(slots.get(course.courseId)! * scale));
+    for (let i = 0; i < columns.length; i++) columns[i] = Math.max(columns[i]!, i ? columns[i - 1]! + 1 : 0);
+    for (let i = columns.length - 1; i >= 0; i--) {
+      columns[i] = Math.min(columns[i]!, i < columns.length - 1 ? columns[i + 1]! - 1 : COURSE_MAP.columns - 1);
+    }
+    inRow.forEach((course, i) => positions.set(course.courseId, { row, column: columns[i]! }));
+  }
+  return { positions };
+}
+
 /** The prerequisites a learner has still to pass, in the order the course lists them. */
 export function missingPrerequisites(prerequisites: readonly string[], passed: ReadonlySet<string>): string[] {
   return prerequisites.filter((id) => !passed.has(id));
