@@ -4,7 +4,7 @@ import './app.css';
 import './layout.css';
 import { Dialog, Notify, Quasar } from 'quasar';
 import { createApp } from 'vue';
-import { startAnalytics } from './analytics.js';
+import { startAnalytics, startPageVisits } from './analytics.js';
 import App from './App.vue';
 import { setUpPwa } from './pwa.js';
 import { router } from './router.js';
@@ -26,5 +26,6 @@ const app = createApp(App).use(Quasar, {
 restoreTheme();
 app.use(router).mount('#app');
 startAnalytics(router);
+startPageVisits(router);
 
 setUpPwa();

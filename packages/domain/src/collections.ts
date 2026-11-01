@@ -5,6 +5,8 @@ export const Collections = {
   accountIdentities: 'account_identities',
   accountFactors: 'account_factors',
   signInMethods: 'sign_in_methods',
+  /** `mfa_policy/current`: whether members without an admin role must sign in with a second factor (design §4). */
+  mfaPolicy: 'mfa_policy',
   members: 'members',
   memberStatusHistory: 'member_status_history',
   applications: 'applications',
@@ -19,6 +21,10 @@ export const Collections = {
   photoChecks: 'photo_checks',
   /** `candidacies/{candidacyId}`: members running for public office, reviewed before they are public (design §5.8). */
   candidacies: 'candidacies',
+  /** `area_contacts/{contactId}`: office holders and candidates Communications Admins enter (design §5.12). */
+  areaContacts: 'area_contacts',
+  /** `email_templates/{office}`: the emails members send from the Your area page, one per kind of office (design §5.12). */
+  emailTemplates: 'email_templates',
   positions: 'positions',
   positionTerms: 'position_terms',
   /** `teams/{teamId}`: working groups members join (design §5.7). */
@@ -113,6 +119,10 @@ export const Collections = {
   signIns: 'sign_ins',
   /** `site_analytics/current`: the site's Google Analytics measurement ID, if any (design §10.7). */
   siteAnalytics: 'site_analytics',
+  /** `page_hits/{page}`: hits on each page of the web app, per UTC day; nothing about who (design §10.7). */
+  pageHits: 'page_hits',
+  /** `page_visits/{visitId}`: a signed-in person's visit to a page, naming their account; expires (design §10.7). */
+  pageVisits: 'page_visits',
   // communications (design §10.9)
   /** `news_posts/{postId}`: news, statements and press releases, drafts too. */
   newsPosts: 'news_posts',

@@ -15,7 +15,7 @@ import { enrolledFactors, removeFactor } from '../mfa.js';
 import { resign as resignMembership } from '../membership/api.js';
 import { classOf, memberClassText } from '../membership/class-text.js';
 import MyDetailsCard from '../membership/MyDetailsCard.vue';
-import { refreshMe, session } from '../session.js';
+import { refreshMe, secondFactorMissing, session } from '../session.js';
 import { PROVIDER_LABELS, signInWithPassword, signInWithProvider, type FederatedProvider } from '../sign-in.js';
 
 const $q = useQuasar();
@@ -27,6 +27,20 @@ const settingUp = ref(false);
 const mfa = computed(() => session.me?.mfa);
 
 const me = computed(() => session.me);
+/** The site needs a second factor before anything else (design §4), so the rest of the page waits until they use one. */
+const locked = computed(() => secondFactorMissing());
+/** Why this person needs two-step verification, and what to do next. */
+const mfaNotice = computed(() => {
+  if (!mfa.value?.required || (factors.value.length && mfa.value.signedInWithMfa)) return null;
+  const why = !mfa.value.everywhere
+    ? 'Your admin role requires two-step verification for the admin tools.'
+    : me.value?.roles.includes('system_admin')
+      ? 'System Admins must use two-step verification on every page.'
+      : 'This site requires two-step verification of everyone.';
+  return factors.value.length
+    ? `${why} Enter a code from your authenticator app to continue.`
+    : `${why} Set up an authenticator app here first.`;
+});
 const identities = computed<readonly IdentityRecord[]>(() => me.value?.identities ?? []);
 const linkable = computed(() =>
   (['google.com', 'microsoft.com', 'apple.com'] as const).filter(
@@ -105,11 +119,23 @@ async function onEnrolled() {
   $q.notify({ type: 'positive', message: 'Two-step verification is on. You will be asked for a code when you sign in.' });
 }
 
+/** Signs in again with a code from the authenticator app, so this session counts as two-step from now on. */
+async function signInWithCode() {
+  if (!(await confirmIdentity())) return;
+  await refreshMe().catch(() => undefined);
+  if (mfa.value?.signedInWithMfa) $q.notify({ type: 'positive', message: 'Signed in with two-step verification' });
+}
+
 function removeDevice(factor: MultiFactorInfo) {
-  const losesAdmin = mfa.value?.required && factors.value.length === 1;
+  const lastNeeded = mfa.value?.required && factors.value.length === 1;
+  const consequence = !lastNeeded
+    ? ''
+    : mfa.value?.everywhere
+      ? ' You need two-step verification to use the site, so you will have to set it up again.'
+      : ' Your admin role requires two-step verification, so you will lose access to the admin tools.';
   dialog({
     title: 'Remove two-step device',
-    message: `Remove "${factor.displayName ?? 'authenticator app'}"?${losesAdmin ? ' Your admin role requires two-step verification, so you will lose access to the admin tools.' : ''}`,
+    message: `Remove "${factor.displayName ?? 'authenticator app'}"?${consequence}`,
     cancel: true,
     focus: 'cancel',
   }).onOk(() =>
@@ -167,30 +193,34 @@ function copyId() {
             </template>
             <div v-else>Not a member yet. <router-link to="/register">Apply for membership</router-link>.</div>
           </q-card-section>
-          <q-card-section v-if="canResign" class="ustp-actions">
+          <q-card-section v-if="canResign && !locked" class="ustp-actions">
             <q-btn flat color="negative" label="Resign" :disable="busy" @click="resign" />
           </q-card-section>
         </q-card>
 
-        <MyDetailsCard />
+        <!-- Saving any of these needs the second factor the site requires (design §4), so they wait for it. -->
+        <template v-if="!locked">
+          <MyDetailsCard />
 
-        <ProfilePhotoCard v-if="me.member" />
+          <ProfilePhotoCard v-if="me.member" />
 
-        <DailyQuoteSettings />
+          <DailyQuoteSettings />
+        </template>
 
         <q-card flat bordered>
           <q-card-section>
             <h2 class="text-subtitle1">Two-step verification</h2>
             <div class="text-caption text-grey-7">
-              A code from an authenticator app, asked for each time you sign in. Required for admin roles.
+              A code from an authenticator app, asked for each time you sign in. Required for admin roles, and of
+              everyone when the site says so.
             </div>
           </q-card-section>
-          <q-card-section v-if="mfa?.required && (!factors.length || !mfa.signedInWithMfa)">
-            <q-banner v-if="!factors.length" class="bg-orange-2 text-black" rounded>
-              Your admin role requires two-step verification. Set it up to use the admin tools.
-            </q-banner>
-            <q-banner v-else class="bg-orange-2 text-black" rounded>
-              Sign out and sign back in with your authenticator code to use the admin tools.
+          <q-card-section v-if="mfaNotice">
+            <q-banner class="bg-orange-2 text-black" rounded>
+              {{ mfaNotice }}
+              <template v-if="factors.length" #action>
+                <q-btn flat no-caps color="black" label="Enter a code" :disable="busy" @click="signInWithCode" />
+              </template>
             </q-banner>
           </q-card-section>
           <q-list v-if="factors.length" separator>
@@ -212,7 +242,11 @@ function copyId() {
         </q-card>
         <AuthenticatorSetupDialog v-model="settingUp" @enrolled="onEnrolled" />
 
-        <q-card flat bordered>
+        <p v-if="locked" class="text-grey-7">
+          Your details, photo, daily quote and login methods appear here once you have signed in with two-step
+          verification.
+        </p>
+        <q-card v-else flat bordered>
           <q-card-section>
             <h2 class="text-subtitle1">Login methods</h2>
             <div class="text-caption text-grey-7">

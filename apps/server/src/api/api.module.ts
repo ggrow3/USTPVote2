@@ -14,11 +14,14 @@ import { DiscordLiveService, HubAdminController, HubService, PublicHubController
 import { NavigationAdminController, NavigationService, PublicNavigationController } from '../administration/navigation.js';
 import { RoleChanges } from '../administration/role-changes.js';
 import { SearchEnginesController } from '../administration/search-engines.js';
+import { PageVisitsAdminController, PageVisitsController, PageVisitsService, PublicPageVisitsController } from '../security/page-visits.js';
 import { SecurityController, SignInLogService } from '../security/sign-in-log.js';
 import { PublicSiteAnalyticsController, SiteAnalyticsAdminController, SiteAnalyticsService } from '../security/site-analytics.js';
 import { AuthGuard } from '../auth/auth.guard.js';
+import { MfaPolicyController } from '../auth/mfa-policy.js';
 import { BylawsChecksController } from '../bylaws-check/bylaws-checks.controller.js';
 import {
+  AreaContactsAdminController,
   CandidaciesAdminController,
   CandidaciesController,
   PublicCandidaciesController,
@@ -120,6 +123,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     CandidaciesAdminController,
     PublicCandidaciesController,
     PublicDistrictsController,
+    AreaContactsAdminController,
     TeamsController,
     TeamsAdminController,
     ForumController,
@@ -130,6 +134,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     AccountsAdminController,
     PublicSignInMethodsController,
     SignInMethodsController,
+    MfaPolicyController,
     AnthropicKeyController,
     PublicNavigationController,
     NavigationAdminController,
@@ -146,6 +151,9 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     SecurityController,
     PublicSiteAnalyticsController,
     SiteAnalyticsAdminController,
+    PageVisitsController,
+    PublicPageVisitsController,
+    PageVisitsAdminController,
     AuditController,
     PublicLedgerController,
     PersonasController,
@@ -184,6 +192,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     DiscordLiveService,
     SignInLogService,
     SiteAnalyticsService,
+    PageVisitsService,
     PersonasService,
     DemoElectionsService,
     CourseService,

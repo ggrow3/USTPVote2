@@ -46,12 +46,12 @@ What is not domain-centred:
 
 | Context | DESIGN.md | Owns (Firestore) | Kind |
 |---|---|---|---|
-| **Accounts & identity** | §4 | `accounts`, `account_identities`, `sign_in_methods` | supporting |
+| **Accounts & identity** | §4 | `accounts`, `account_identities`, `sign_in_methods`, `mfa_policy` | supporting |
 | **Membership** | §5.1–5.3 | `members`, `member_status_history`, `applications`, `registration_form`, `registration_form_versions`, `profile_photos`, `photo_checks` | core |
 | **Bylaws** | §5.2, §5.4, §6.6 | `bylaws_versions`, `bylaws_checks`, `bylaws_check_references` | core |
 | **Elections** (setup, roll, voting, sealing, results) | §5.5, §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results`, `consistency_checks`, `consistency_documents` | core |
 | **Offices** | §6.4 | `positions`, `position_terms` | supporting |
-| **Candidacies** (members running for public office) | §5.8 | `candidacies` | supporting |
+| **Candidacies** (members running for public office; the Your area page of office holders, candidates and emails) | §5.8, §5.12 | `candidacies`, `area_contacts`, `email_templates` | supporting |
 | **Governance** (roles, two-person rule, testing mode, who sees which link, the voting home's quote, the home page hub, the Anthropic API key) | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `home_quote`, `hub`, `hub_logos`, `hub_covers`, `hub_backgrounds`, `hub_clicks`, `anthropic_key` | core rule, generic mechanism |
 | **Audit ledger** | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` | shared kernel |
 | **Notifications** (election notices by email) | §6.8 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests` | supporting |
@@ -108,12 +108,14 @@ commit. What changes is that only the owner touches its documents.
 | Offices | **Office** (position) | defined or changed at once with a reason; running terms untouched |
 | Offices | **Term** | created by certification, or by an appointment two persons approve (an Active member, a free seat, starting no later than approved, no longer than the office's term; the appointee neither requests nor approves); marked elected or appointed (`basis`); active → ended by two persons; holder neither requests nor approves |
 | Candidacies | **Candidacy** (`candidacies/{candidacyId}`) | declared and changed only by its Active member, withdrawn by them at any time; at most five open with elections to come, one per race; the district one the Census lists for that state, stored as the Census names it; only a version a Membership Admin approved is public, never their own, and only while the member is Active; a decision is on the version seen; a change waits while the approved version stays up; withdrawn or taken down (with a reason) is final; decisions, public withdrawals and removals ledgered as `candidacy.changed` |
+| Candidacies | **AreaContact** (`area_contacts/{contactId}`) and **EmailTemplate** (`email_templates/{office}`) | entered and changed only by Communications Admins; a person's district one the Census lists, an election day only for someone running; an entry for the same person takes a public record's place; a template uses only the page's placeholders and is saved from the version edited; both ledgered (`area_contact.changed`, `email_template.changed`) |
 | Governance | **ApprovalRequest** | one pending per action and subject; approver ≠ requester ≠ subject; approver's role, MFA, sign-in ≤ 15 min; 7-day expiry; executes exactly the approved payload hash |
 | Governance | **RoleAssignment** | one System Admin, not on their own account; Auditor holds no other role; at most two roles per person |
 | Governance | **NavigationSettings** (`navigation/current`) | shows, never permits; no section for a role the API refuses it to, and none for membership alone; People and Navigation always shown to System Admins; a role's Admin link follows its sections; every start page one its audience is shown; saved whole from the version it was edited from, each changed cell ledgered as `navigation.changed` |
 | Governance | **HomeQuote** (`home_quote/current`) | shown needs its words and who said them; each part within its limit once tidied; saved whole from the version it was edited from, each changed part ledgered as `home_quote.changed` |
 | Governance | **Hub** (`hub/current`) | shown sections need a title and shown links a title and address (a page of the app, https or mailto); the accent takes white text at 4.5:1; the logo is one uploaded here; the live widget needs the server ID; IDs unique; saved whole from the version it was edited from, each change ledgered as `hub.changed`. Its click counters (`hub_clicks`) count only what it shows, and hold no personal data (DESIGN §10.6) |
 | Governance | **SignIn** (`sign_ins/{uid}_{authTime}`) | one per login and `auth_time`, created once by the api, never changed; read by System Admins and Auditors only; never ledgered; deleted 180 days after it was seen (DESIGN §10.7) |
+| Governance | **PageVisit** (`page_visits/{visitId}`, with the counters `page_hits/{page}`) | only pages in `TRACKED_PAGES`, never the ballot or the receipt check; the counters hold no personal data and are kept; a visit is recorded only for someone signed in to an account, created once by the api, never changed, read by System Admins and Auditors only, never ledgered, deleted 180 days after it (DESIGN §10.7) |
 | Governance | **SiteAnalytics** (`site_analytics/current`) | a Google Analytics 4 measurement ID or none; saved from the version it was edited from, each change ledgered as `analytics.changed` (DESIGN §10.7) |
 | Governance | **AnthropicKey** (`anthropic_key/current`, the `anthropic-api-key` secret) | System Admins only; the key's shape checked before it is sent anywhere, and tried with Anthropic before it is kept; one live version, older ones destroyed; never returned, recorded or ledgered (only its last four characters and who added it); each add or removal ledgered as `anthropic_key.changed` |
 | Ledger | **Ledger** (head → entries) | append-only, gap-free, hash-chained; blocks signed only by the worker |
@@ -246,7 +248,8 @@ apps/web/src/
   bylaws/        bylaws pages, editor panel, bylaws check, Word files
   elections/     ballot list, vote, results, editor, contests, receipts, Word export
   offices/       offices panel
-  candidacies/   the Candidates pages and map, the declaration form, the Candidacies panel
+  candidacies/   the Candidates pages and map, the declaration form, the Candidacies panel, the Your area page and its
+                 Communications tabs (officials and candidates, email templates)
   governance/    approvals, people and role changes, testing personas and bar
   ledger/        audit panel; the public ledger client (blocks, keys, anchors, entries)
   verification/  the /verify page

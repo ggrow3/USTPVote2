@@ -5,7 +5,7 @@ import { hubReady } from './governance/hub.js';
 import { navigationReady, startPath } from './governance/navigation.js';
 import MainLayout from './layouts/MainLayout.vue';
 import { applyRouteSeo } from './seo.js';
-import { hasRole, session, sessionReady } from './session.js';
+import { hasRole, secondFactorMissing, session, sessionReady } from './session.js';
 
 declare module 'vue-router' {
   interface RouteMeta {
@@ -47,6 +47,7 @@ export const router = createRouter({
         // Members running for public office, for everyone; declaring and editing need a sign-in (design §5.8).
         { path: 'candidates', component: () => import('./candidacies/CandidatesPage.vue') },
         { path: 'candidates/declare', component: () => import('./candidacies/CandidacyFormPage.vue'), meta: { requiresAuth: true } },
+        { path: 'candidates/area', component: () => import('./candidacies/AreaPage.vue'), meta: { requiresAuth: true } },
         {
           path: 'candidates/:candidacyId/edit',
           component: () => import('./candidacies/CandidacyFormPage.vue'),
@@ -133,6 +134,8 @@ router.beforeEach(async (to, from) => {
     if (start !== VOTING_HOME) return start;
   }
   if ((to.meta.requiresAuth || to.meta.roles) && !session.user) return { path: '/signin', query: { redirect: to.fullPath } };
+  // Without the second factor the site requires of them (design §4), the account page, where it is set up, comes first.
+  if ((to.meta.requiresAuth || to.meta.roles) && to.path !== '/account' && secondFactorMissing()) return { path: '/account' };
   // The admin console shows each person their own tools, or says who it is for (it has no roles of its own, so no loop).
   if (to.meta.roles && !hasRole(...to.meta.roles)) return { path: '/admin' };
   return true;

@@ -126,8 +126,16 @@ export interface MeResponse {
   readonly member: MemberRecord | null;
   readonly roles: readonly Role[];
   readonly mfa: {
-    /** This caller's admin routes need a multi-factor sign-in (they hold a role and the policy is on). */
+    /**
+     * This caller needs a multi-factor sign-in for something: they hold a role, or the member requirement is on
+     * (design §4). False everywhere when the deployment switches MFA off (emulators only).
+     */
     readonly required: boolean;
+    /**
+     * They need it for every signed-in route but this one and creating their account: System Admins always, everyone
+     * while the member requirement is on (`secondFactorScope` is `everywhere`).
+     */
+    readonly everywhere: boolean;
     /** The current ID token was issued after a second factor. */
     readonly signedInWithMfa: boolean;
   };

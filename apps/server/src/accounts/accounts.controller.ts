@@ -2,7 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, Res }
 import type { FastifyReply } from 'fastify';
 import { accountPreferencesSchema, linkIdentitySchema, ROLES, type AccountPreferencesInput, type LinkIdentityInput } from 'ustp-domain';
 import { z } from 'zod';
-import { Ctx, Roles } from '../auth/decorators.js';
+import { Ctx, MfaExempt, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { parseQuery, ZodPipe } from '../common/validation.js';
 import { AccountsService } from './accounts.service.js';
@@ -20,12 +20,15 @@ const emailPrefix = z
 export class AccountsController {
   constructor(private readonly accounts: AccountsService) {}
 
+  /** Says whether the caller still needs a second factor, so it answers without one (design §4). */
   @Get('me')
+  @MfaExempt()
   me(@Ctx() ctx: RequestContext) {
     return this.accounts.me(ctx);
   }
 
   @Post('accounts')
+  @MfaExempt()
   async create(@Ctx() ctx: RequestContext, @Res({ passthrough: true }) reply: FastifyReply) {
     const result = await this.accounts.create(ctx);
     void reply.status(result.created ? 201 : 200);

@@ -1,4 +1,16 @@
-import type { AreaBasis, CandidacyContent, CandidacyStage, CandidateArea, DistrictKind, ElectionStage, PublicOffice } from 'ustp-domain';
+import type {
+  AreaBasis,
+  CandidacyContent,
+  CandidacyStage,
+  CandidateArea,
+  ContactFeed,
+  ContactFeedState,
+  ContactSource,
+  District,
+  DistrictKind,
+  ElectionStage,
+  PublicOffice,
+} from 'ustp-domain';
 import { STATES } from '../states.js';
 
 /** Wording for candidacies (design §5.8), shared by the Candidates pages, the declaration form and the admin tab. */
@@ -71,7 +83,7 @@ export function localToday(now = new Date()): string {
 }
 
 /** "Congressional District 12, California"; "California" for a statewide office; "United States" for the nation. */
-export function districtText(content: Pick<CandidacyContent, 'district'>): string {
+export function districtText(content: { readonly district: Pick<District, 'kind' | 'state' | 'name'> }): string {
   const { district } = content;
   if (district.kind === 'nation' || district.kind === 'state') return stateName(district.state);
   return `${district.name}, ${stateName(district.state)}`;
@@ -102,8 +114,45 @@ export function areaText(area: Pick<CandidateArea, 'state' | 'basis'>): { readon
   if (area.basis !== 'zip') return { text: `Nationwide offices and all of ${state}: ${whole[area.basis].why}`, link: whole[area.basis].link };
   return {
     text:
-      `Nationwide and ${state} offices, and these districts, which the ZIP code on your membership record reaches into. ` +
+      `Nationwide and ${state} offices, and the districts the ZIP code on your membership record reaches into. ` +
       'A ZIP code can reach into more than one district of a kind, so some races here may not be on your own ballot.',
     link: 'Moved? Change your ZIP code on your Account page.',
   };
+}
+
+/** Each office's heading on the Your area page. */
+export const OFFICE_HEADINGS: Readonly<Record<PublicOffice, string>> = {
+  us_president: 'President',
+  us_senate: 'U.S. Senate',
+  us_house: 'U.S. House of Representatives',
+  statewide: 'Statewide offices',
+  state_upper: 'State Senate',
+  state_lower: 'State House or Assembly',
+  county: 'County offices',
+  local: 'City or town offices',
+};
+
+/** Where a person on the Your area page comes from. */
+export const CONTACT_SOURCE_TEXT: Readonly<Record<ContactSource, string>> = {
+  fec: 'Filed with the FEC',
+  congress: 'Member of Congress',
+  openstates: 'From Open States',
+  admin: 'Added by the party',
+};
+
+/** What the Your area page says when a public record is missing; nothing when it answered. */
+export function feedNote(feed: ContactFeed, state: ContactFeedState): string | null {
+  if (state === 'ok') return null;
+  if (feed === 'openstates' && state === 'off') return 'State legislators are not listed yet: this site is not connected to Open States.';
+  const what: Readonly<Record<ContactFeed, string>> = {
+    fec: 'The FEC’s candidate lists',
+    congress: 'The list of members of Congress',
+    openstates: 'Open States, which lists state legislators,',
+  };
+  return `${what[feed]} did not answer, so some people are missing here. Try again later.`;
+}
+
+/** A link that opens the member's own email app with the email filled in. */
+export function mailtoLink(to: string, subject: string, body: string): string {
+  return `mailto:${encodeURIComponent(to).replace(/%40/g, '@')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 }

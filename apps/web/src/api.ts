@@ -32,18 +32,24 @@ export interface ApiOptions {
   readonly actAs?: string | null;
   /** The request outlives the page (leaving the room's call as the tab closes). */
   readonly keepalive?: boolean;
+  /**
+   * Send an App Check token even when nobody is signed in: for the public routes the api still App Checks
+   * (`@AppChecked`, the suggestions form, design §10.9).
+   */
+  readonly appCheck?: boolean;
 }
 
 /** The current ID token and App Check token, and the test persona the request acts as, if any. */
-async function authHeaders({ actAs = acting.persona?.accountId ?? null }: ApiOptions = {}): Promise<Record<string, string>> {
+async function authHeaders({ actAs = acting.persona?.accountId ?? null, appCheck = false }: ApiOptions = {}): Promise<Record<string, string>> {
   const headers: Record<string, string> = actAs ? { [ACT_AS_HEADER]: actAs } : {};
   const user = auth.currentUser;
-  if (!user) return headers;
-  headers.authorization = `Bearer ${await user.getIdToken()}`;
-  // The api checks App Check only with a sign-in: its public routes need neither. So signed-out visitors, search
-  // engines included (design §15), never wait for reCAPTCHA, nor see public pages fail where it cannot give a token.
-  const appCheck = await appCheckToken();
-  if (appCheck) headers['x-firebase-appcheck'] = appCheck;
+  if (user) headers.authorization = `Bearer ${await user.getIdToken()}`;
+  // The api checks App Check only with a sign-in, or on a public route marked `@AppChecked`: its other public routes
+  // need neither. So signed-out visitors, search engines included (design §15), never wait for reCAPTCHA, nor see
+  // public pages fail where it cannot give a token.
+  if (!user && !appCheck) return headers;
+  const token = await appCheckToken();
+  if (token) headers['x-firebase-appcheck'] = token;
   return headers;
 }
 

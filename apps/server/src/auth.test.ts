@@ -1,11 +1,12 @@
-import { ForbiddenException, type ExecutionContext, type HttpException } from '@nestjs/common';
+import { ForbiddenException, UnauthorizedException, type ExecutionContext, type HttpException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { DecodedIdToken } from 'firebase-admin/auth';
-import { PROBLEM_TYPES, type Check } from 'ustp-domain';
+import { PROBLEM_TYPES, type Check, type Role } from 'ustp-domain';
 import { describe, expect, it, vi } from 'vitest';
 import { AuthGuard } from './auth/auth.guard.js';
-import { CheckRevoked } from './auth/decorators.js';
+import { AppChecked, CheckRevoked, MfaExempt, Public, Roles } from './auth/decorators.js';
 import type { DirectoryService } from './auth/directory.service.js';
+import type { MfaPolicyService } from './auth/mfa-policy.js';
 import { actorOf, principalFromToken } from './auth/principal.js';
 import type { SignInMethodsService } from './auth/sign-in-methods.service.js';
 import type { Firebase } from './infra/firebase.js';
@@ -13,6 +14,10 @@ import { assertCheck } from './common/validation.js';
 import { loadConfig } from './config.js';
 
 const emulators = { FIRESTORE_EMULATOR_HOST: '127.0.0.1:8085', FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099' };
+
+/** The member two-step requirement (design §4), on or off. */
+const policy = (membersRequired: boolean) =>
+  ({ current: async () => ({ membersRequired, version: 0, updatedAt: null, updatedBy: null }) }) as unknown as MfaPolicyService;
 
 describe('loadConfig', () => {
   it('allows testing mode only against the emulators or on a dev or staging deployment', () => {
@@ -114,6 +119,7 @@ describe('AuthGuard', () => {
       loadConfig({ ...emulators, APP_CHECK_ENFORCED: 'false', ADMIN_MFA_REQUIRED: 'false' }),
       { isEnabled: async () => true } as unknown as SignInMethodsService,
       { accountIdForUid: async () => 'a1', activeRoles: async () => [] } as unknown as DirectoryService,
+      policy(false),
     );
     const context = {
       getHandler: () => Routes.prototype[handler],
@@ -127,6 +133,51 @@ describe('AuthGuard', () => {
   it('checks token revocation on routes marked @CheckRevoked (casting) only', async () => {
     expect(await verifiedWith('cast')).toBe(true);
     expect(await verifiedWith('read')).toBe(false);
+  });
+});
+
+describe('AuthGuard on public routes where App Check is enforced', () => {
+  class Routes {
+    @Public()
+    read() {}
+    @Public()
+    @AppChecked()
+    suggest() {}
+  }
+
+  async function call(handler: 'read' | 'suggest', headers: Record<string, string> = {}) {
+    const verifyToken = vi.fn(async (token: string) => {
+      if (token !== 'valid') throw new Error('invalid');
+      return {};
+    });
+    const guard = new AuthGuard(
+      new Reflector(),
+      { appCheck: { verifyToken } } as unknown as Firebase,
+      loadConfig(emulators),
+      {} as unknown as SignInMethodsService,
+      {} as unknown as DirectoryService,
+      policy(false),
+    );
+    const context = {
+      getHandler: () => Routes.prototype[handler],
+      getClass: () => Routes,
+      switchToHttp: () => ({ getRequest: () => ({ headers }) }),
+    } as unknown as ExecutionContext;
+    return { allowed: await guard.canActivate(context), verifyToken };
+  }
+
+  it('lets anyone through on a plain public route, with no App Check token asked for', async () => {
+    const { allowed, verifyToken } = await call('read');
+    expect(allowed).toBe(true);
+    expect(verifyToken).not.toHaveBeenCalled();
+  });
+
+  // The suggestions form (design §10.9): signed out, the web app must still send a token.
+  it('needs a valid App Check token, and no sign-in, on a route marked @AppChecked', async () => {
+    await expect(call('suggest')).rejects.toThrow(UnauthorizedException);
+    await expect(call('suggest')).rejects.toThrow(/App Check token required/);
+    await expect(call('suggest', { 'x-firebase-appcheck': 'forged' })).rejects.toThrow(/invalid App Check token/);
+    expect((await call('suggest', { 'x-firebase-appcheck': 'valid' })).allowed).toBe(true);
   });
 });
 
@@ -154,6 +205,7 @@ describe('AuthGuard acting as a test persona', () => {
         activeRoles: async (id: string) => (id === 'admin' ? roles : ['auditor']),
         isPersona: async () => isPersona,
       } as unknown as DirectoryService,
+      policy(false),
     );
     const request: { headers: Record<string, unknown>; method: string; url: string; ctx?: unknown } = {
       headers: { authorization: 'Bearer t', 'x-act-as': persona },
@@ -181,5 +233,82 @@ describe('AuthGuard acting as a test persona', () => {
     await expect(actAs(PERSONA, { roles: ['membership_admin'] })).rejects.toThrow(/only System Admins/);
     await expect(actAs(PERSONA, { isPersona: false })).rejects.toThrow(/not a test persona/);
     await expect(actAs('../accounts/x')).rejects.toThrow(/must be a test persona/);
+  });
+});
+
+describe('AuthGuard two-step requirement', () => {
+  class Routes {
+    read() {}
+    @MfaExempt()
+    me() {}
+    @Roles('election_admin')
+    admin() {}
+  }
+
+  /** What the guard does with a sign-in: true, or the refusal's body. */
+  async function admit(
+    handler: 'read' | 'me' | 'admin',
+    { roles = [] as Role[], mfa = false, membersRequired = false, mfaSwitch = true, accountId = 'a1' as string | null } = {},
+  ): Promise<unknown> {
+    const token = { uid: 'u1', firebase: { sign_in_provider: 'password', ...(mfa && { sign_in_second_factor: 'totp' }) } };
+    const activeRoles = vi.fn(async () => roles);
+    const guard = new AuthGuard(
+      new Reflector(),
+      { auth: { verifyIdToken: async () => token as unknown as DecodedIdToken } } as unknown as Firebase,
+      loadConfig({ ...emulators, APP_CHECK_ENFORCED: 'false', ADMIN_MFA_REQUIRED: String(mfaSwitch) }),
+      { isEnabled: async () => true } as unknown as SignInMethodsService,
+      { accountIdForUid: async () => accountId, activeRoles } as unknown as DirectoryService,
+      policy(membersRequired),
+    );
+    const context = {
+      getHandler: () => Routes.prototype[handler],
+      getClass: () => Routes,
+      switchToHttp: () => ({ getRequest: () => ({ headers: { authorization: 'Bearer t' } }) }),
+    } as unknown as ExecutionContext;
+    try {
+      return await guard.canActivate(context);
+    } catch (e) {
+      return (e as HttpException).getResponse();
+    }
+  }
+  const refused = { type: PROBLEM_TYPES.mfaRequired };
+
+  it('lets members without a role in with one factor while the requirement is off', async () => {
+    expect(await admit('read')).toBe(true);
+    expect(await admit('read', { accountId: null })).toBe(true);
+  });
+
+  it('keeps System Admins to a second factor on every route while the requirement is off', async () => {
+    expect(await admit('read', { roles: ['system_admin'] })).toMatchObject({
+      ...refused,
+      message: 'System Admins must sign in with two-step verification',
+    });
+    expect(await admit('read', { roles: ['system_admin'], mfa: true })).toBe(true);
+    // They can still see where they stand and set one up.
+    expect(await admit('me', { roles: ['system_admin'] })).toBe(true);
+  });
+
+  it('keeps every other admin role to a second factor on admin routes only while the requirement is off', async () => {
+    expect(await admit('read', { roles: ['election_admin'] })).toBe(true);
+    expect(await admit('admin', { roles: ['election_admin'] })).toMatchObject(refused);
+    expect(await admit('admin', { roles: ['election_admin'], mfa: true })).toBe(true);
+  });
+
+  it('requires a second factor of everyone while the requirement is on, except to see their own account', async () => {
+    for (const roles of [[], ['election_admin'], ['system_admin']] as Role[][]) {
+      expect(await admit('read', { roles, membersRequired: true })).toMatchObject({
+        ...refused,
+        message: 'this site requires two-step verification; set it up on your account page',
+      });
+      expect(await admit('read', { roles, membersRequired: true, mfa: true })).toBe(true);
+      expect(await admit('me', { roles, membersRequired: true })).toBe(true);
+    }
+    // A login with no account yet too: it creates one (exempt) and sets up its second factor first.
+    expect(await admit('read', { accountId: null, membersRequired: true })).toMatchObject(refused);
+  });
+
+  it('asks nobody for a second factor where the deployment switches MFA off (emulators only)', async () => {
+    expect(await admit('read', { roles: ['system_admin'], mfaSwitch: false })).toBe(true);
+    expect(await admit('read', { membersRequired: true, mfaSwitch: false })).toBe(true);
   });
 });

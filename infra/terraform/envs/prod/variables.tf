@@ -100,6 +100,18 @@ variable "maps_enabled" {
   default     = true
 }
 
+variable "fec_api_key" {
+  description = "An api.data.gov key for the Your area page's FEC candidate lists; empty uses the shared DEMO_KEY (design §5.12; README \"Your area records\")."
+  type        = string
+  default     = ""
+}
+
+variable "openstates_api_key" {
+  description = "An Open States API key for the Your area page's state legislators; empty leaves them out (design §5.12; README \"Your area records\")."
+  type        = string
+  default     = ""
+}
+
 variable "web_origin" {
   description = "Where the web app is served, which election notices link to; empty for https://<project>.web.app (design §6.8)."
   type        = string

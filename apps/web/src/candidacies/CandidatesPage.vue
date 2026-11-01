@@ -9,7 +9,7 @@ import { attempt, dialog } from '../dialogs.js';
 import { session } from '../session.js';
 import { myArea, myCandidacies, publicCandidacies, withdrawCandidacy } from './api.js';
 import CandidacyDetails from './CandidacyDetails.vue';
-import { areaText, DISTRICT_LABELS, districtText, electionText, localToday, stateName, STATUS_TEXT } from './candidacy-text.js';
+import { areaText, districtText, electionText, localToday, stateName, STATUS_TEXT } from './candidacy-text.js';
 import DistrictMap, { type MapMarker } from './DistrictMap.vue';
 
 /**
@@ -181,21 +181,15 @@ function withdraw(c: MyCandidacy) {
             {{ areaNote.text }}
             <router-link v-if="areaNote.link" to="/account">{{ areaNote.link }}</router-link>
           </div>
-          <div v-if="area.districts.length" class="row q-gutter-xs q-mt-xs" role="list" aria-label="Your districts">
-            <q-chip
-              v-for="d in area.districts"
-              :key="`${d.kind}:${d.geoid}`"
-              role="listitem"
-              dense
-              square
-              outline
-              color="primary"
-              icon="place"
-              :title="DISTRICT_LABELS[d.kind]"
-            >
-              {{ d.name }}
-            </q-chip>
-          </div>
+          <q-btn
+            flat
+            no-caps
+            color="primary"
+            icon="how_to_vote"
+            label="Your districts, who holds each office and who is running, and emails to them"
+            to="/candidates/area"
+            class="q-mt-xs"
+          />
         </div>
         <DistrictMap :markers="markers" label="Map of members’ candidacies for upcoming elections" />
         <div v-if="!upcoming.length" class="text-grey-7">

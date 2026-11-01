@@ -5,6 +5,7 @@ import {
   Collections,
   DEFAULT_ACCOUNT_PREFERENCES,
   isSignInProvider,
+  secondFactorScope,
   uuidv7,
   type AccountPreferences,
   type AccountPreferencesInput,
@@ -17,6 +18,7 @@ import {
 } from 'ustp-domain';
 import { requireAccount, requireOwnAccount } from '../auth/decorators.js';
 import { DirectoryService, roleAssignmentId } from '../auth/directory.service.js';
+import { MfaPolicyService } from '../auth/mfa-policy.js';
 import { principalFromToken, type Principal, type RequestContext } from '../auth/principal.js';
 import { SignInMethodsService } from '../auth/sign-in-methods.service.js';
 import { CONFIG, type ServerConfig } from '../config.js';
@@ -48,6 +50,7 @@ export class AccountsService {
     private readonly directory: DirectoryService,
     private readonly signInMethods: SignInMethodsService,
     private readonly members: MemberDirectory,
+    private readonly mfaPolicy: MfaPolicyService,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
@@ -55,9 +58,13 @@ export class AccountsService {
     const accountId = ctx.accountId;
     const signedInWithMfa = ctx.principal.mfa;
     const testing = { enabled: this.config.testingMode, operator: ctx.operator };
-    if (!accountId) {
-      return { account: null, identities: [], member: null, roles: [], mfa: { required: false, signedInWithMfa }, testing };
-    }
+    const policy = await this.mfaPolicy.current();
+    /** Where this caller needs a second factor (design §4); nowhere when the deployment switches MFA off (emulators only). */
+    const mfa = (roles: readonly Role[]): MeResponse['mfa'] => {
+      const scope = this.config.adminMfaRequired ? secondFactorScope(roles, policy) : 'none';
+      return { required: scope !== 'none', everywhere: scope === 'everywhere', signedInWithMfa };
+    };
+    if (!accountId) return { account: null, identities: [], member: null, roles: [], mfa: mfa([]), testing };
     const db = this.firebase.db;
     const [account, identities, member, roles] = await Promise.all([
       db.collection(Collections.accounts).doc(accountId).get(),
@@ -70,7 +77,7 @@ export class AccountsService {
       identities: identities.docs.map((d) => d.data() as IdentityRecord),
       member,
       roles,
-      mfa: { required: this.config.adminMfaRequired && roles.length > 0, signedInWithMfa },
+      mfa: mfa(roles),
       testing,
     };
   }

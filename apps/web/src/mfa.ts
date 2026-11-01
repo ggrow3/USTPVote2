@@ -13,8 +13,9 @@ import QRCode from 'qrcode';
 import { APP_NAME } from './app-name.js';
 
 /**
- * Two-step verification with an authenticator app (TOTP), required for admin roles (design §4). SMS is not offered:
- * NIST SP 800-63B-4 restricts it, and Identity Platform bills per message.
+ * Two-step verification with an authenticator app (TOTP), required for admin roles, on every page for System Admins,
+ * and of everyone while the member requirement is on (design §4). SMS is not offered: NIST SP 800-63B-4 restricts it,
+ * and Identity Platform bills per message.
  */
 
 export const ISSUER = APP_NAME;

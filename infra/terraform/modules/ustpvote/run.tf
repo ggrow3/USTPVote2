@@ -13,8 +13,8 @@ locals {
   # api: Secret Manager (creating tie-break seeds, and keeping the Anthropic API key a System Admin adds, which it tries
   # with Anthropic first), encrypting ballots to an election's pool key, Auditor verification of anchors, profile
   # photos, bootstrap System Admins, testing mode, which the api also refuses in prod, how election notices go out
-  # (notices.tf), the Candidates page's Google Maps browser key (maps.tf), and the site's own address, the only one
-  # robots.txt opens to search engines (in prod).
+  # (notices.tf), the Candidates page's Google Maps browser key (maps.tf), the Your area page's keys for public records
+  # (FEC, Open States), and the site's own address, the only one robots.txt opens to search engines (in prod).
   api_env = merge(
     {
       GOOGLE_CLOUD_PROJECT          = var.project_id
@@ -33,6 +33,9 @@ locals {
     # The provider marks every key string sensitive, but this one is public by nature (maps.tf), and a sensitive value
     # here would make the api_env output refuse to plan.
     var.maps_enabled ? { GOOGLE_MAPS_BROWSER_KEY = nonsensitive(google_apikeys_key.maps_browser[0].key_string) } : {},
+    # The Your area page's public records (design §5.12): free keys, set only when given, kept out of the api_env output.
+    var.fec_api_key != "" ? { FEC_API_KEY = var.fec_api_key } : {},
+    var.openstates_api_key != "" ? { OPENSTATES_API_KEY = var.openstates_api_key } : {},
     # The members' room: which model it runs, and the queue its questions go to (room_model.tf).
     local.room_api_env,
   )
