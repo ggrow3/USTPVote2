@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, type Component } from 'vue';
 import type { AdminSection } from 'ustp-domain';
-import ClaudeKeyPanel from '../claude-key/ClaudeKeyPanel.vue';
+import ApiKeysPanel from '../claude-key/ApiKeysPanel.vue';
 import ApprovalsPanel from '../components/admin/ApprovalsPanel.vue';
 import AuditPanel from '../components/admin/AuditPanel.vue';
 import CoursePanel from '../components/admin/CoursePanel.vue';
@@ -49,7 +49,7 @@ const PANELS: Record<AdminSection, Component> = {
   approvals: ApprovalsPanel,
   people: PeoplePanel,
   signin: SignInMethodsPanel,
-  claude: ClaudeKeyPanel,
+  claude: ApiKeysPanel,
   email: NoticeSettingsPanel,
   audit: AuditPanel,
   security: SecurityPanel,

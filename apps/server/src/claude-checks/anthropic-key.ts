@@ -13,7 +13,7 @@ const PERMISSION_DENIED = 7;
 const grpcCode = (e: unknown) => (e as { code?: number }).code ?? -1;
 
 /** What a request for a check is told when a System Admin has not added the key yet. */
-export const NO_KEY_REASON = 'no Anthropic API key has been added (a System Admin adds one under Admin › Claude)';
+export const NO_KEY_REASON = 'no Anthropic API key has been added (a System Admin adds one under Admin › API keys)';
 
 /**
  * The Anthropic API key the Claude checks use (design §5.6), kept as the newest version of the `anthropic-api-key`

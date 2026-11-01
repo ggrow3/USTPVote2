@@ -12,7 +12,7 @@ const status = (fields: Partial<AnthropicKeyStatus>): AnthropicKeyStatus => ({
   ...fields,
 });
 
-describe('Admin › Claude wording', () => {
+describe('Admin › API keys wording: the Anthropic key', () => {
   it('says whether a key is set, which, and who added it, never more of it', () => {
     expect(keyStatusText(status({}), 'en-US')).toBe('A key is set. It ends in AAAA and was added on Oct 27, 2026 by Ada Admin.');
     expect(keyStatusText(status({ addedBy: null, hint: null }), 'en-US')).toBe(

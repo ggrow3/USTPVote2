@@ -387,6 +387,8 @@ export type {
 export { KIND_LABELS, ratioText, rulesText, thresholdText } from './election-text.js';
 export { ANTHROPIC_KEY_HINT_CHARACTERS, ANTHROPIC_KEY_SECRET, anthropicKeyHint, anthropicKeySchema, checkAnthropicKey } from './anthropic-key.js';
 export type { AnthropicKeyChangedPayload, AnthropicKeyInput, AnthropicKeyRecord, AnthropicKeyStatus, ClaudeCheckSwitch } from './anthropic-key.js';
+export { API_KEY_NAMES, API_KEY_SECRETS, apiKeyHint, apiKeyNameSchema, apiKeySchema, checkApiKey } from './api-keys.js';
+export type { ApiKeyChangedPayload, ApiKeyInput, ApiKeyName, ApiKeyRecord, ApiKeySource, ApiKeyStatus, ApiKeysStatus } from './api-keys.js';
 export type {
   ConsistencyCheckRecord,
   ConsistencyCheckResult,
