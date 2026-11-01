@@ -147,3 +147,27 @@ export type {
   SiteAnalyticsInput,
   SiteAnalyticsChangedPayload,
 } from './security.js';
+export {
+  PAGE_VISIT_RETENTION_DAYS,
+  PAGE_VISITS_UNTRACKED,
+  TRACKED_PAGES,
+  PAGE_PATH_MAX,
+  PAGE_VISIT_RATE,
+  PAGE_VISIT_PERIODS,
+  PAGE_VISIT_LOG_MAX,
+  trackedPage,
+  trackedPageById,
+  pageVisitSchema,
+  visitDay,
+  periodDays,
+  pageVisitReport,
+} from './page-visits.js';
+export type {
+  TrackedPage,
+  PageVisitInput,
+  PageHitsRecord,
+  PageVisitRecord,
+  PageHits,
+  PageVisitor,
+  PageVisitReport,
+} from './page-visits.js';
