@@ -19,7 +19,7 @@ const CONTEXTS: Readonly<Record<string, readonly string[]>> = {
   governance: ['/v1/navigation', '/v1/admin/navigation', '/v1/home-quote', '/v1/admin/home-quote', '/v1/hub', '/v1/admin/hub'],
   // Its routes end the path after an election ID; the folder's own name appears in imports.
   'consistency-check': ['}/consistency-check'],
-  'claude-key': ['/v1/admin/anthropic-key'],
+  'claude-key': ['/v1/admin/anthropic-key', '/v1/admin/api-keys'],
   // `…/bylaws-checks` (the editor) and `…/bylaws-check` (the public notes), after an election ID.
   'election-check': ['}/bylaws-check'],
   offices: ['/v1/admin/positions', '/v1/public/positions'],

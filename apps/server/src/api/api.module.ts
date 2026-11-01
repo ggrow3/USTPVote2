@@ -34,6 +34,9 @@ import { BylawsChecksService } from '../bylaws-check/bylaws-checks.service.js';
 import { AnthropicKey } from '../claude-checks/anthropic-key.js';
 import { AnthropicKeyAdminService, AnthropicKeyController } from '../claude-checks/anthropic-key-admin.js';
 import { ANTHROPIC_KEY_TESTER, ClaudeKeyTester, UntriedKeyTester } from '../claude-checks/key-tester.js';
+import { ApiKeys } from '../api-keys/api-keys.js';
+import { ApiKeysAdminService, ApiKeysController } from '../api-keys/api-keys-admin.js';
+import { API_KEY_TESTER, PublicApiKeyTester, UntriedApiKeyTester } from '../api-keys/key-tester.js';
 import { HealthController } from '../common/health.controller.js';
 import { CourseController } from '../course/course.controller.js';
 import { CourseService } from '../course/course.service.js';
@@ -140,6 +143,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     SignInMethodsController,
     MfaPolicyController,
     AnthropicKeyController,
+    ApiKeysController,
     PublicNavigationController,
     NavigationAdminController,
     PublicHomeQuoteController,
@@ -179,6 +183,8 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     ElectionCheckMaterials,
     AnthropicKey,
     AnthropicKeyAdminService,
+    ApiKeys,
+    ApiKeysAdminService,
     PublicElectionsService,
     ballotPoolKeysProvider,
     RoleChanges,
@@ -212,6 +218,11 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
       provide: ANTHROPIC_KEY_TESTER,
       inject: [CONFIG],
       useFactory: (config: ServerConfig) => (config.usingEmulators ? new UntriedKeyTester() : new ClaudeKeyTester()),
+    },
+    {
+      provide: API_KEY_TESTER,
+      inject: [CONFIG],
+      useFactory: (config: ServerConfig) => (config.usingEmulators ? new UntriedApiKeyTester() : new PublicApiKeyTester()),
     },
     { provide: APP_GUARD, useClass: AuthGuard },
   ],

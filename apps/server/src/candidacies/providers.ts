@@ -1,4 +1,5 @@
 import type { Provider } from '@nestjs/common';
+import { ApiKeys } from '../api-keys/api-keys.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { AreaContactRepository } from './area-contact.repository.js';
 import { AreaContactsService } from './area-contacts.service.js';
@@ -16,11 +17,9 @@ export const CANDIDACIES_PROVIDERS: Provider[] = [
   AreaContactsService,
   {
     provide: CONTACT_SOURCE,
-    inject: [CONFIG],
-    useFactory: (config: ServerConfig) =>
-      config.districtSource === 'local'
-        ? new LocalContactSource()
-        : new PublicContactSource({ fec: config.fecApiKey, openStates: config.openStatesApiKey, civic: config.civicApiKey }),
+    inject: [CONFIG, ApiKeys],
+    useFactory: (config: ServerConfig, keys: ApiKeys) =>
+      config.districtSource === 'local' ? new LocalContactSource() : new PublicContactSource(() => keys.contactKeys()),
   },
   {
     provide: PROFILE_SOURCE,
