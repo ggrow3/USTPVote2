@@ -3050,7 +3050,8 @@ news feeds for bots, Claude drafting each site's version and bots the app runs, 
   delete it at once (spam, or a sender who asks). **Every suggestion is deleted a year after it arrives** by the
   worker's tick, with any name and email, and none is ledgered, since the ledger cannot be erased. **Abuse:** the
   route is public but needs a valid App Check token where App Check is enforced (`@AppChecked`), as signed-in routes
-  do; a hidden field people leave empty drops what a form filler sends (answered 202 all the same); a message with
+  do, so the form asks reCAPTCHA for one on sending even when nobody is signed in (the one public request that does,
+  §14); a hidden field people leave empty drops what a form filler sends (answered 202 all the same); a message with
   more than three links is marked "Many links" for a person to judge; and each UTC day takes at most 5 from one
   sender and 300 in all (429). Senders are counted under SHA-256 of a random salt kept with that day's counts and
   their network address, and the day's record, salt included, is deleted after the next day, so no address is kept
@@ -3338,7 +3339,8 @@ every 15 seconds in place of Cloud Scheduler.
 - **Rules:** Firestore and Storage `allow read, write: if false;` (spec §7). Clients use the API and signed URLs only.
 - **App Check** enforced on every signed-in API route (reCAPTCHA Enterprise provider for web). Public routes (the
   published record, the hub, bylaws, robots.txt) need neither a sign-in nor App Check, so the web app asks for a token
-  only with a sign-in (§15, "Search engines").
+  only with a sign-in (§15, "Search engines"), or, signed out, when sending a suggestion: that public route, which
+  anyone may write to, still needs one (`@AppChecked`, §10.9).
 - **IAM:** separate service accounts for api and worker; no human has Firestore data access or KMS
   encrypt/decrypt in production; break-glass group with alerting. Only the worker's account holds
   `cloudkms.signer` and `cloudkms.publicKeyViewer` on `audit-signing`; it also writes to the anchors bucket, which
@@ -3489,11 +3491,11 @@ every 15 seconds in place of Cloud Scheduler.
   result, with when it changed. The web app (`seo.ts`) gives each page its description and a canonical link to its
   own address (no query), and marks with `noindex` every page behind sign-in, the sign-in page and a person's course
   certificate; the hub is described by its own tagline and line on what it is for (§10.6). Requests made without a
-  sign-in skip App Check (§14), so a crawler, or any visitor whose browser cannot get a token, still sees the public
-  pages, and none of them waits for reCAPTCHA first. Link previews (Open Graph, X) read `index.html` as served and
-  run no script, so every page shares its site description and the share card, the icon's mark on the brand orange
-  (`make-icons.mjs`), whose address the build makes absolute: `VITE_SITE_ORIGIN` when given, otherwise the
-  project's `https://<project>.web.app`. A production custom domain needs `web_origin` in Terraform and
+  sign-in skip App Check (§14), sending a suggestion apart, so a crawler, or any visitor whose browser cannot get a
+  token, still sees the public pages, and none of them waits for reCAPTCHA first. Link previews (Open Graph, X) read
+  `index.html` as served and run no script, so every page shares its site description and the share card, the icon's
+  mark on the brand orange (`make-icons.mjs`), whose address the build makes absolute: `VITE_SITE_ORIGIN` when given,
+  otherwise the project's `https://<project>.web.app`. A production custom domain needs `web_origin` in Terraform and
   `VITE_SITE_ORIGIN` in the release build. Pages are rendered in the browser (no prerendering): Google and Bing run
   the script; crawlers that do not see only the shared description.
 - **The site's name** ("USTP Vote") is one build setting, `VITE_APP_NAME` in the committed `apps/web/.env`: the
