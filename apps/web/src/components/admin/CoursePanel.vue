@@ -44,6 +44,7 @@ const lessons = ref<readonly CourseLesson[]>([]);
 const profiles = ref<readonly FuturistProfile[]>([]);
 const loading = ref(false);
 const publishing = ref(false);
+const hiding = ref(false);
 const lessonOpen = ref(false);
 const profileOpen = ref(false);
 const lessonErrors = ref<string[]>([]);
@@ -157,6 +158,34 @@ function editProfile(value?: FuturistProfile) {
       });
   profileErrors.value = [];
   profileOpen.value = true;
+}
+
+/** What the switch means for this course, in a line under it. */
+const hiddenHelp = computed(() => {
+  if (!course.value) return '';
+  if (!course.value.hidden) return 'Listed on the Courses page for everyone. Turn it off to hide the course there without unpublishing or deleting it.';
+  const page =
+    course.value.publishedVersion === null
+      ? 'It is a draft, so it has no page yet.'
+      : `It stays published, and its page still opens at /course/${course.value.courseId} for anyone with the link.`;
+  return `Hidden: nobody sees it in the catalogue, the search or the map. ${page}`;
+});
+
+/**
+ * Hides the course from the Courses page or shows it again, at once (409, in words, while a course shown there comes
+ * after it). Only that changes, so edits to the title and summary not saved yet stay in the form.
+ */
+async function setHidden(hidden: boolean) {
+  hiding.value = true;
+  try {
+    await attempt(async () => {
+      const updated = await api<CourseRecord>('PUT', `/v1/admin/courses/${courseId.value}/visibility`, { hidden });
+      if (course.value?.courseId === updated.courseId) course.value = { ...course.value, hidden: updated.hidden };
+      courses.value = courses.value.map((item) => (item.courseId === updated.courseId ? { ...item, hidden: updated.hidden } : item));
+    }, hidden ? 'Hidden from the Courses page' : 'Shown on the Courses page');
+  } finally {
+    hiding.value = false;
+  }
 }
 
 async function saveCourse() {
@@ -277,10 +306,21 @@ void loadCourses().catch((e: unknown) => console.error(errorMessage(e)));
         <q-card-section>
           <div class="row items-center justify-between q-gutter-sm">
             <h2 class="text-h6 q-my-none">Course settings · {{ course.title }}</h2>
-            <q-badge :color="course.status === 'published' ? 'positive' : 'orange'" :label="course.status" />
+            <div class="row items-center q-gutter-xs">
+              <q-badge v-if="course.hidden" color="grey-8"><q-icon name="visibility_off" size="14px" class="q-mr-xs" />hidden</q-badge>
+              <q-badge :color="course.status === 'published' ? 'positive' : 'orange'" :label="course.status" />
+            </div>
           </div>
           <q-input v-model="course.title" outlined class="q-mt-md" label="Course title" />
           <q-input v-model="course.summary" outlined type="textarea" autogrow class="q-mt-sm" label="Public summary" />
+          <q-toggle
+            :model-value="!course.hidden"
+            :disable="hiding"
+            class="q-mt-sm"
+            label="Show on the Courses page"
+            @update:model-value="(shown: boolean) => setHidden(!shown)"
+          />
+          <div class="text-caption text-grey-7 q-ml-sm">{{ hiddenHelp }} Applies at once.</div>
         </q-card-section>
         <q-card-actions align="right">
           <q-btn-dropdown flat no-caps icon="download" label="Export JSON">

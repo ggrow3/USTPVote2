@@ -24,6 +24,7 @@ export const transhumanismCourse: CourseRecord = {
   publishedVersion: 1,
   prerequisites: [],
   position: FIRST_COURSE_POSITION,
+  hidden: false,
   createdAt: UPDATED_AT,
   updatedAt: UPDATED_AT,
   updatedBy: SOURCE,

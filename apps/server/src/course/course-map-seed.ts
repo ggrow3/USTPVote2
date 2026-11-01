@@ -20,6 +20,7 @@ const draft = (courseId: string, title: string, prerequisites: readonly string[]
   publishedVersion: null,
   prerequisites,
   position: { row, column },
+  hidden: false,
   createdAt: SEEDED_AT,
   updatedAt: SEEDED_AT,
   updatedBy: 'course-seed',

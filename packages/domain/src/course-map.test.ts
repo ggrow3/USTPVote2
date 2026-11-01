@@ -2,9 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   courseBoardProblem,
   courseBoardSchema,
+  courseHidingProblem,
   courseIdFromTitle,
   courseMapSchema,
   coursePlacementProblem,
+  courseVisibilitySchema,
   orgChartPositions,
   withBoardChanges,
   isCourseId,
@@ -68,6 +70,35 @@ describe('placing a course on the map', () => {
 
   it('reads a course saved before the map as standing alone, off it', () => {
     expect(placementOf({})).toEqual({ prerequisites: [], position: null });
+  });
+
+  it('refuses a shown course after a hidden one, but lets a hidden course come after either', () => {
+    const map = [{ ...course('a', [], { row: 0, column: 0 }), hidden: true }, course('b'), { ...course('c'), hidden: true }];
+    expect(coursePlacementProblem(map, 'b', { prerequisites: ['a'], position: null })).toBe(
+      'A is hidden from the Courses page, so a course shown there cannot come after it: show it first',
+    );
+    expect(coursePlacementProblem(map, 'c', { prerequisites: ['a', 'b'], position: null })).toBeNull();
+    expect(coursePlacementProblem([course('a'), course('b')], 'b', { prerequisites: ['a'], position: null })).toBeNull();
+  });
+});
+
+describe('hiding a course from the Courses page (design §10.8)', () => {
+  it('refuses while a shown course comes after it, naming them, and never refuses showing one', () => {
+    const map = [course('a'), course('b', ['a']), course('c', ['a']), { ...course('d', ['b']), hidden: true }, course('e', ['a'])];
+    expect(courseHidingProblem(map, 'a', true)).toBe(
+      'B, C and E come after this course and are shown on the Courses page: hide them first, or take this course off their prerequisites',
+    );
+    expect(courseHidingProblem(map, 'b', true)).toBeNull();
+    expect(courseHidingProblem(map.slice(0, 2), 'a', true)).toBe(
+      'B comes after this course and is shown on the Courses page: hide it first, or take this course off its prerequisites',
+    );
+    expect(courseHidingProblem(map, 'a', false)).toBeNull();
+  });
+
+  it('takes a yes or no, and nothing else', () => {
+    expect(courseVisibilitySchema.parse({ hidden: true })).toEqual({ hidden: true });
+    expect(courseVisibilitySchema.safeParse({ hidden: 'yes' }).success).toBe(false);
+    expect(courseVisibilitySchema.safeParse({ hidden: false, title: 'x' }).success).toBe(false);
   });
 });
 

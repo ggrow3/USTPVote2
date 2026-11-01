@@ -357,6 +357,56 @@ describe('Course map, students and instructor messages', () => {
     expect(map.find((course) => course.courseId === 'allies')!.position).toEqual({ row: 1, column: 0 });
   });
 
+  it('hides a course from the Courses page and shows it again, its page still open, never before a shown course', async () => {
+    const editor = await courseAdmin('hide-editor@example.test');
+    const learner = await api.member('hide-learner@example.test');
+    const setHidden = (by: typeof editor, courseId: string, hidden: unknown) => api.call('PUT', `/v1/admin/courses/${courseId}/visibility`, by, { hidden });
+    const listed = async (by?: typeof learner) => ((await api.call('GET', by ? '/v1/courses' : '/v1/public/courses', by)).body.courses as { courseId: string }[]).map((course) => course.courseId);
+    const adminCourse = async (courseId: string) =>
+      ((await api.call('GET', '/v1/admin/courses', editor)).body as { courseId: string; hidden: boolean }[]).find((course) => course.courseId === courseId)!;
+    expect((await setHidden(learner, 'transhumanism', true)).status).toBe(403);
+    expect((await setHidden(editor, 'nowhere', true)).status).toBe(404);
+    expect((await setHidden(editor, 'transhumanism', 'yes')).status).toBe(400);
+    expect(await adminCourse('transhumanism')).toMatchObject({ hidden: false });
+
+    const hidden = await setHidden(editor, 'transhumanism', true);
+    expect(hidden.status).toBe(200);
+    expect(hidden.body).toMatchObject({ courseId: 'transhumanism', hidden: true, hiddenChangedBy: editor.accountId, publishedVersion: 1, position: { row: 0, column: 0 } });
+    expect(await listed()).not.toContain('transhumanism');
+    expect(await listed(learner)).not.toContain('transhumanism');
+    expect(((await api.call('GET', '/v1/courses', learner)).body.status as { courseId: string }[]).map((s) => s.courseId)).not.toContain('transhumanism');
+    expect(await adminCourse('transhumanism')).toMatchObject({ hidden: true, position: { row: 0, column: 0 } });
+    expect((await api.call('GET', '/v1/admin/courses/transhumanism', editor)).body.course).toMatchObject({ hidden: true });
+    // Still published and open at its address: its page, its quizzes.
+    expect((await api.call('GET', '/v1/public/courses/transhumanism')).status).toBe(200);
+    expect((await api.call('POST', '/v1/courses/transhumanism/lessons/foundations/attempts', learner, { answers: [0, 0, 0, 0, 0] })).status).toBe(201);
+    expect((await setHidden(editor, 'transhumanism', true)).body.hiddenChangedAt).toBe(hidden.body.hiddenChangedAt);
+
+    // A course shown on the page cannot come after a hidden one, on its own or on the board.
+    const shownAfter = `${FIRST_TITLE} is hidden from the Courses page, so a course shown there cannot come after it: show it first`;
+    const placed = await api.call('PUT', '/v1/admin/courses/allies/map', editor, { prerequisites: ['fundamental-questions', 'transhumanism'], position: null });
+    expect(placed.status).toBe(409);
+    expect(placed.body.detail).toBe(shownAfter);
+    const board = await api.call('PUT', '/v1/admin/course-map', editor, { courses: [{ courseId: 'allies', prerequisites: ['transhumanism'], position: null }] });
+    expect(board.body.detail).toBe(shownAfter);
+
+    // Hiding waits until no course shown there comes after it: the last course of a chain first.
+    const refused = await setHidden(editor, 'figures-of-transhumanism', true);
+    expect(refused.status).toBe(409);
+    expect(refused.body.detail).toBe(
+      'Historical Applied Projects comes after this course and is shown on the Courses page: hide it first, or take this course off its prerequisites',
+    );
+    expect((await setHidden(editor, 'historical-applied-projects', true)).status).toBe(200);
+    expect((await setHidden(editor, 'figures-of-transhumanism', true)).status).toBe(200);
+    expect(await listed()).not.toContain('figures-of-transhumanism');
+
+    // Shown again: back on the page, on its square.
+    expect((await setHidden(editor, 'transhumanism', false)).body).toMatchObject({ hidden: false, hiddenChangedBy: editor.accountId });
+    expect(await listed()).toContain('transhumanism');
+    expect((await api.call('GET', '/v1/public/courses')).body.courses[0]).toMatchObject({ courseId: 'transhumanism', position: { row: 0, column: 0 } });
+    expect((await api.call('PUT', '/v1/admin/courses/allies/map', editor, { prerequisites: ['transhumanism'], position: null })).status).toBe(200);
+  });
+
   it('opens quizzes only once the prerequisites are passed, while the lessons stay readable', async () => {
     const editor = await courseAdmin('lock-editor@example.test');
     await api.call('POST', '/v1/admin/courses', editor, { title: 'Futures Lab', summary: 'Hands-on.' });

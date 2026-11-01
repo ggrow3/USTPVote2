@@ -30,8 +30,21 @@ describe('the course map', () => {
     expect(layout.lines).toEqual([{ from: 'allies', to: 'coalition', path: `M ${w + gx} ${h + gy + h / 2} H ${w}` }]);
   });
 
+  it('starts at the first row and column in use when trimmed, as learners see it, leaving no margin for hidden courses', () => {
+    const courses = [course('top', 1, 2), course('after', 2, 1, ['top']), course('off', null)];
+    const trimmed = courseMapLayout(courses, { trim: true });
+    expect(trimmed.cards.map((card) => [card.course.courseId, card.x, card.y])).toEqual([
+      ['top', w + gx, 0],
+      ['after', 0, h + gy],
+    ]);
+    expect([trimmed.width, trimmed.height]).toEqual([2 * w + gx, 2 * h + gy]);
+    expect(trimmed.lines).toEqual(courseMapLayout([course('top', 0, 1), course('after', 1, 0, ['top'])]).lines);
+    expect(courseMapLayout(courses).width).toBe(3 * w + 2 * gx);
+  });
+
   it('is empty with no course on the map', () => {
     expect(courseMapLayout([course('hidden', null)])).toMatchObject({ width: 0, height: 0, cards: [], lines: [] });
+    expect(courseMapLayout([course('hidden', null)], { trim: true })).toMatchObject({ width: 0, height: 0, cards: [] });
   });
 });
 

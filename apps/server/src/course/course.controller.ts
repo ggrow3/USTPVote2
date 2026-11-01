@@ -5,6 +5,7 @@ import {
   courseMapSchema,
   courseMessagingSchema,
   courseMetadataSchema,
+  courseVisibilitySchema,
   isUuidV7,
   saveCourseLessonSchema,
   saveFuturistProfileSchema,
@@ -14,6 +15,7 @@ import {
   type CourseMapInput,
   type CourseMessagingInput,
   type CourseMetadataInput,
+  type CourseVisibilityInput,
   type SaveCourseLessonInput,
   type SaveFuturistProfileInput,
   type SendCourseMessageInput,
@@ -154,6 +156,17 @@ export class CourseController {
   @Roles('course_admin')
   place(@Ctx() ctx: RequestContext, @Param('courseId', CourseIdPipe) courseId: string, @Body(new ZodPipe(courseMapSchema)) input: CourseMapInput) {
     return this.courses.placeCourse(courseId, input, requireAccount(ctx));
+  }
+
+  /** Hides the course from the Courses page or shows it again, at once (409 while a course shown there comes after it). */
+  @Put('admin/courses/:courseId/visibility')
+  @Roles('course_admin')
+  visibility(
+    @Ctx() ctx: RequestContext,
+    @Param('courseId', CourseIdPipe) courseId: string,
+    @Body(new ZodPipe(courseVisibilitySchema)) input: CourseVisibilityInput,
+  ) {
+    return this.courses.setHidden(courseId, input, requireAccount(ctx));
   }
 
   /**

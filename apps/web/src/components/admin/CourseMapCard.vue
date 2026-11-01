@@ -49,7 +49,11 @@ const records = computed(() => new Map(props.courses.map((course) => [course.cou
 const selected = computed(() => board.value.find((course) => course.courseId === props.courseId) ?? null);
 const offMap = computed(() => board.value.filter((course) => !course.position));
 const courseOptions = computed(() =>
-  props.courses.map((course) => ({ value: course.courseId, label: course.title, caption: statusLabel(course) })),
+  props.courses.map((course) => ({
+    value: course.courseId,
+    label: course.title,
+    caption: `${statusLabel(course)}${course.hidden ? ' · hidden from the Courses page' : ''}`,
+  })),
 );
 const prerequisiteOptions = computed(() =>
   board.value.filter((course) => course.courseId !== props.courseId).map((course) => ({ value: course.courseId, label: course.title })),
@@ -391,11 +395,13 @@ async function create() {
               class="course-card course-board__card"
               :class="{
                 'course-card--soon': records.get(card.course.courseId)?.publishedVersion === null,
+                'course-card--hidden': card.course.hidden,
                 'course-card--selected': card.course.courseId === courseId,
                 'course-board__card--target': drag?.kind === 'link' && hovered && card.course.position?.row === hovered.row && card.course.position?.column === hovered.column,
               }"
               :aria-pressed="card.course.courseId === courseId"
-              :aria-label="`${card.course.title}, row ${card.course.position!.row + 1}, column ${card.course.position!.column + 1}. Arrow keys move it.`"
+              :title="card.course.hidden ? 'Hidden from the Courses page' : undefined"
+              :aria-label="`${card.course.title}, row ${card.course.position!.row + 1}, column ${card.course.position!.column + 1}${card.course.hidden ? ', hidden from the Courses page' : ''}. Arrow keys move it.`"
               @pointerdown="startMove($event, card.course.courseId)"
               @pointermove="onPointerMove"
               @pointerup="onPointerUp"
@@ -404,7 +410,10 @@ async function create() {
               @keydown="onCardKey($event, card.course.courseId)"
             >
               <span class="course-card__title">{{ card.course.title }}</span>
-              <span class="course-card__status">{{ statusLabel(records.get(card.course.courseId)) }}</span>
+              <span class="course-card__status">
+                <q-icon v-if="card.course.hidden" name="visibility_off" size="16px" />
+                {{ statusLabel(records.get(card.course.courseId)) }}
+              </span>
             </button>
             <button
               type="button"
@@ -430,6 +439,8 @@ async function create() {
           :outline="course.courseId !== courseId"
           color="primary"
           :text-color="course.courseId === courseId ? 'white' : 'primary'"
+          :icon="course.hidden ? 'visibility_off' : undefined"
+          :title="course.hidden ? 'Hidden from the Courses page' : undefined"
           class="course-board__chip"
           @pointerdown="startMove($event, course.courseId)"
           @pointermove="onPointerMove"

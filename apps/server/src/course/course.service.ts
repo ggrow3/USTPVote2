@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import {
   Collections,
   courseBoardProblem,
+  courseHidingProblem,
   courseIdFromTitle,
   coursePlacementProblem,
   courseThreadId,
@@ -36,6 +37,7 @@ import {
   type CourseQuizFeedback,
   type CourseRecord,
   type CourseVersionRecord,
+  type CourseVisibilityInput,
   type FuturistProfile,
   type LearnerCourseView,
   type PublicCourseLesson,
@@ -121,10 +123,11 @@ export class CourseService {
 
   /**
    * The course map and list (design §10.8): every published course, and every course placed on the map, a draft
-   * showing only its title as coming soon. For a signed-in learner, how they stand in each.
+   * showing only its title as coming soon, but none hidden from the Courses page. For a signed-in learner, how they
+   * stand in each.
    */
   async courseMap(accountId: string | null): Promise<CourseMap> {
-    const records = await this.records();
+    const records = (await this.records()).filter((record) => !record.hidden);
     const listings = await this.listings(records);
     const courses: CourseMapEntry[] = records
       .filter((record) => listings.has(record.courseId) || record.position)
@@ -198,6 +201,7 @@ export class CourseService {
         publishedVersion: null,
         prerequisites: [],
         position: null,
+        hidden: false,
         createdAt: now,
         updatedAt: now,
         updatedBy: accountId,
@@ -275,6 +279,27 @@ export class CourseService {
     });
   }
 
+  /**
+   * Hides a course from the Courses page, or shows it again, at once (design §10.8). Nothing else changes: a hidden
+   * course stays published, on its square and open at its address. Hiding is refused (409, in words) while a course
+   * shown there comes after it.
+   */
+  async setHidden(courseId: string, input: CourseVisibilityInput, accountId: string): Promise<CourseRecord> {
+    await this.ensureSeeded();
+    const db = this.firebase.db;
+    return db.runTransaction(async (tx) => {
+      const courses = (await tx.get(db.collection(Collections.courses))).docs.map((doc) => withPlacement(doc.data() as CourseRecord));
+      const course = courses.find((candidate) => candidate.courseId === courseId);
+      if (!course) throw new NotFoundException('course not found');
+      if (course.hidden === input.hidden) return course;
+      const problem = courseHidingProblem(courses, courseId, input.hidden);
+      if (problem) throw new ConflictException(problem);
+      const change = { hidden: input.hidden, hiddenChangedAt: new Date().toISOString(), hiddenChangedBy: accountId };
+      tx.update(db.collection(Collections.courses).doc(courseId), change);
+      return { ...course, ...change };
+    });
+  }
+
   /** A course's record, placement included (404 for an ID that is no course). */
   async record(courseId: string): Promise<CourseRecord> {
     await this.ensureSeeded();
@@ -336,7 +361,7 @@ export class CourseService {
     ]);
     if (!course.exists) throw new NotFoundException('course not found');
     return {
-      course: course.data() as CourseRecord,
+      course: withPlacement(course.data() as CourseRecord),
       lessons: lessons.docs.map((d) => withVideo(d.data() as CourseLesson)),
       profiles: profiles.docs.map((d) => withPortraitImage(d.data() as FuturistProfile)),
     };
@@ -664,6 +689,7 @@ export class CourseService {
             publishedVersion: null,
             prerequisites: seed.placement.prerequisites.filter((id) => courses.has(id)),
             position,
+            hidden: false,
             createdAt: SEEDED_AT,
             updatedAt: SEEDED_AT,
             updatedBy: SEED_SOURCE,
@@ -724,8 +750,8 @@ const publicLesson = (lesson: CourseLesson): PublicCourseLesson => ({
   video: lesson.video ?? null,
   questions: lesson.questions.map(({ questionId, prompt, choices }) => ({ questionId, prompt, choices })),
 });
-/** Courses saved before the map have no prerequisites or position. */
-const withPlacement = (course: CourseRecord): CourseRecord => ({ ...course, ...placementOf(course) });
+/** Courses saved before the map have no prerequisites or position, and those saved before the hide switch no `hidden`. */
+const withPlacement = (course: CourseRecord): CourseRecord => ({ ...course, ...placementOf(course), hidden: course.hidden === true });
 /** Map order: row by row, left to right, then the courses off the map by title. */
 const mapOrder = (a: CourseRecord, b: CourseRecord) =>
   (a.position ? 0 : 1) - (b.position ? 0 : 1) ||

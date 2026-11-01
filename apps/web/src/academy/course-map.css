@@ -37,3 +37,6 @@
 .course-map .course-map__cell .course-card--locked { background: #3c4a66; border-color: #3c4a66; }
 .course-map .course-map__cell .course-card--locked:hover { background: #33405a; }
 .course-map .course-map__cell .course-card--selected { outline: 4px solid #ffb300; outline-offset: 2px; }
+/* The Course tab's board only: a course hidden from the Courses page, drawn grey and dashed whether published or not. */
+.course-map .course-map__cell .course-card--hidden { background: #5c6670; border-color: #c3cad3; border-style: dashed; color: #fff; }
+.course-map .course-map__cell .course-card--hidden:hover { background: #4f5861; }

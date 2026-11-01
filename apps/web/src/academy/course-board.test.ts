@@ -63,6 +63,14 @@ describe('the course board (design §10.8)', () => {
     expect(setPrerequisites(many, 'x', ['p1', 'p2', 'p3', 'p4', 'p5', 'p6'])).toEqual({ problem: 'X can come after at most 5 courses' });
   });
 
+  it('refuses a line from a hidden course to one shown on the Courses page, as the api would', () => {
+    const board = boardFrom([{ ...course('h', [], at(0, 0)), hidden: true }, course('s', [], at(1, 0)), { ...course('t'), hidden: true }]);
+    expect(board[0]!.hidden).toBe(true);
+    expect(addLink(board, 'h', 's')).toEqual({ problem: 'H is hidden from the Courses page, so a course shown there cannot come after it: show it first' });
+    expect(boardOf(addLink(board, 'h', 't')).find((c) => c.courseId === 't')!.prerequisites).toEqual(['h']);
+    expect(boardOf(addLink(board, 's', 'h')).find((c) => c.courseId === 'h')!.prerequisites).toEqual(['s']);
+  });
+
   it('removes a line, and says what a line means', () => {
     expect(removeLink(SAVED, 'a', 'b').find((c) => c.courseId === 'b')!.prerequisites).toEqual([]);
     expect(linkText(SAVED, 'a', 'b')).toBe('B comes after A');
