@@ -1,0 +1,627 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Course explorer</title>
+<!--
+  Queries an election site's public course api (design §10.8) from the browser and shows what it answers three ways: as
+  a structured form, as its JSON, and as every lesson with its quiz. One file, no build, no server of its own. It also
+  opens the JSON that query.mjs writes, a ustp.course file, or a course map. See README.md.
+-->
+<style>
+  :root {
+    --ink: #1b2430; --muted: #5b6676; --line: #d9dee5; --page: #f6f7f9; --card: #fff; --field: #f9fafb;
+    --accent: #0b4f8a; --good: #1f7a3d; --bad: #a3271f;
+    --j-key: #0b4f8a; --j-string: #1f7a3d; --j-number: #8a4b0b; --j-literal: #7a1f6d;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --ink: #e8ecf1; --muted: #a3adbb; --line: #333c48; --page: #12161c; --card: #1a2029; --field: #151a22;
+      --accent: #7fb4ea; --good: #6cc68a; --bad: #f08a80;
+      --j-key: #7fb4ea; --j-string: #8fd19e; --j-number: #f0b77a; --j-literal: #e39ad6;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.55 system-ui, sans-serif; }
+  header, main { max-width: 1040px; margin: 0 auto; padding: 16px; }
+  main { padding-top: 0; }
+  h1 { margin: 0 0 12px; font-size: 1.4rem; }
+  h2 { font-size: 1.2rem; margin: 0 0 4px; }
+  h3 { font-size: 1.05rem; margin: 4px 0; }
+  a { color: var(--accent); }
+  code, pre, .path { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+  .muted { color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; margin: 12px 0; }
+  .badge { display: inline-block; font-size: 0.8rem; border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; color: var(--muted); }
+  button, select, input, textarea { font: inherit; color: inherit; }
+  button { padding: 6px 14px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--card); cursor: pointer; }
+  button.quiet { background: transparent; color: var(--accent); }
+  button:disabled { opacity: 0.6; cursor: progress; }
+  select, input[type=url], input[type=number], input[type=search] {
+    padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--card); min-width: 0;
+  }
+
+  /* The query */
+  #query { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 2fr) 7rem auto; gap: 8px 12px; align-items: end; }
+  #query label { display: grid; gap: 2px; font-size: 0.85rem; color: var(--muted); }
+  .open-file { font-size: 0.85rem; margin-top: 8px; }
+  #log ol { margin: 6px 0; padding-left: 1.4rem; font-size: 0.85rem; }
+  #log li { overflow-wrap: anywhere; }
+  .ok { color: var(--good); }
+  .error { color: var(--bad); }
+  .command { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; font-size: 0.85rem; }
+  .command code { background: var(--field); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; overflow-wrap: anywhere; }
+
+  /* Tabs and what they show */
+  .bar { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; justify-content: space-between; margin-top: 16px; }
+  [role=tablist] { display: flex; gap: 4px; border-bottom: 1px solid var(--line); }
+  [role=tab] { background: transparent; color: var(--muted); border: 0; border-bottom: 3px solid transparent; border-radius: 0; padding: 6px 14px; }
+  [role=tab][aria-selected=true] { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  .part { display: flex; gap: 8px; align-items: center; font-size: 0.85rem; color: var(--muted); }
+  .part select { max-width: 70vw; }
+  .tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 12px 0; }
+
+  /* Form */
+  details.group { border: 1px solid var(--line); border-radius: 8px; margin: 6px 0; background: var(--card); }
+  details.group > summary { cursor: pointer; padding: 6px 10px; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+  details.group > summary .name { font-weight: 600; }
+  details.group > summary .path { font-size: 0.75rem; color: var(--muted); margin-left: auto; overflow-wrap: anywhere; }
+  .rows { padding: 4px 10px 8px; }
+  .rows > details.group { background: var(--page); }
+  .rows > details.group .rows > details.group { background: var(--card); }
+  .field { display: grid; grid-template-columns: 11rem minmax(0, 1fr); gap: 4px 12px; align-items: start; padding: 4px 0; }
+  .field > label { font-size: 0.85rem; color: var(--muted); padding-top: 6px; overflow-wrap: anywhere; }
+  .control { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; min-width: 0; }
+  .control input[type=text], .control input[type=number], .control textarea {
+    flex: 1 1 16rem; min-width: 0; padding: 5px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--field);
+  }
+  .control textarea { resize: vertical; line-height: 1.45; field-sizing: content; max-height: 22em; }
+  .control input.null::placeholder { color: var(--muted); font-style: italic; }
+  .control .hint { font-size: 0.8rem; color: var(--muted); }
+  .control .right { font-size: 0.8rem; color: var(--good); font-weight: 600; }
+  .field.correct input { border-color: var(--good); }
+  .empty { margin: 4px 0; font-size: 0.9rem; }
+
+  /* JSON */
+  pre.json { margin: 0; padding: 12px; overflow: auto; max-height: 75vh; background: var(--card); border: 1px solid var(--line); border-radius: 8px; font-size: 0.82rem; line-height: 1.5; tab-size: 2; }
+  .j-key { color: var(--j-key); }
+  .j-string { color: var(--j-string); }
+  .j-number { color: var(--j-number); }
+  .j-literal { color: var(--j-literal); font-weight: 600; }
+
+  /* Lessons */
+  .toc { columns: 2 18rem; font-size: 0.9rem; margin: 0; padding-left: 1.2rem; }
+  .course { margin-top: 24px; }
+  .lesson header { padding: 0; display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; font-size: 0.85rem; color: var(--muted); }
+  .lesson .summary { color: var(--muted); margin: 0 0 8px; }
+  .lesson .body p { margin: 0 0 10px; overflow-wrap: anywhere; }
+  .quiz { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 8px; }
+  .quiz > ol { padding-left: 1.4rem; }
+  .quiz > ol > li { margin: 10px 0; }
+  .choices { margin: 4px 0; padding-left: 1.6rem; }
+  .choices li.right { color: var(--good); font-weight: 600; }
+  .choices li.right::after { content: "  ✓ correct"; font-size: 0.8rem; }
+  .explanation { margin: 2px 0 0; font-size: 0.9rem; color: var(--muted); }
+  .hide-answers .choices li.right { color: inherit; font-weight: inherit; }
+  .hide-answers .choices li.right::after, .hide-answers .explanation { display: none; }
+  video { width: 100%; border-radius: 8px; margin-bottom: 8px; }
+  [hidden] { display: none !important; }
+
+  @media (max-width: 720px) {
+    #query { grid-template-columns: minmax(0, 1fr) 6rem; }
+    #query > label:first-child, #query > label:nth-child(2) { grid-column: 1 / -1; }
+    .field { grid-template-columns: minmax(0, 1fr); gap: 0; }
+    .field > label { padding-top: 0; }
+    details.group > summary .path { margin-left: 0; flex-basis: 100%; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Course explorer</h1>
+  <form id="query" class="card">
+    <label>Site
+      <input id="site" type="url" required placeholder="https://ustpvote2-dev.web.app">
+    </label>
+    <label>Course
+      <select id="course"><option value="">Every published course</option></select>
+    </label>
+    <label>Version
+      <input id="version" type="number" min="1" step="1" placeholder="current" disabled>
+    </label>
+    <button id="run" type="submit">Run query</button>
+  </form>
+  <label class="open-file muted">Or open a JSON file that <code>query.mjs</code> saved, a <code>ustp.course</code> file or a course map:
+    <input id="file" type="file" accept=".json,application/json">
+  </label>
+  <p id="error" class="error" role="alert" hidden></p>
+  <details id="log" class="card" hidden>
+    <summary id="log-summary"></summary>
+    <ol id="log-list"></ol>
+    <div class="command" id="log-command"></div>
+  </details>
+</header>
+<main>
+  <div class="bar">
+    <div role="tablist" aria-label="Show the result as">
+      <button role="tab" id="tab-form" aria-controls="panel-form" aria-selected="true">Form</button>
+      <button role="tab" id="tab-json" aria-controls="panel-json" aria-selected="false">JSON</button>
+      <button role="tab" id="tab-lessons" aria-controls="panel-lessons" aria-selected="false">Lessons</button>
+    </div>
+    <label class="part">Showing <select id="part" disabled><option>Nothing yet</option></select></label>
+  </div>
+  <section id="panel-form" role="tabpanel" aria-labelledby="tab-form" aria-live="polite"><p class="muted">Loading…</p></section>
+  <section id="panel-json" role="tabpanel" aria-labelledby="tab-json" hidden></section>
+  <section id="panel-lessons" role="tabpanel" aria-labelledby="tab-lessons" hidden></section>
+</main>
+<script>
+'use strict';
+const DEFAULT_SITE = 'https://ustpvote2-dev.web.app';
+const TABS = ['form', 'json', 'lessons'];
+const $ = (id) => document.getElementById(id);
+const siteInput = $('site');
+const courseSelect = $('course');
+const versionInput = $('version');
+const partSelect = $('part');
+
+/** What the last query or opened file gave: the same shape query.mjs writes. */
+let result = null;
+/** Each request the last query made, as it went. */
+let log = [];
+
+/** An element with its attributes and children; text is always set as text, never as HTML. */
+function h(tag, attrs = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) if (value !== null && value !== undefined) el.setAttribute(key, value);
+  el.append(...children.flat().filter((c) => c !== null && c !== undefined && c !== false));
+  return el;
+}
+
+/** The election site whose courses this queries: its origin, or null for something that is no http(s) address. */
+function siteFrom(given) {
+  try {
+    const url = new URL(given);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+
+const kb = (bytes) => `${(bytes / 1024).toFixed(bytes < 10240 ? 1 : 0)} KB`;
+const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
+const isUrl = (v) => typeof v === 'string' && /^https?:\/\/\S+$/.test(v);
+const isTime = (v) => typeof v === 'string' && /^\d{4}-\d\d-\d\dT\d\d:\d\d/.test(v) && !Number.isNaN(Date.parse(v));
+const when = (iso) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+
+function showError(message) {
+  $('error').textContent = message ?? '';
+  $('error').hidden = !message;
+}
+
+// ── The query ────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** GETs a route of the public api as JSON, noting the request in the log. */
+async function get(site, path) {
+  const url = `${site}${path}`;
+  const entry = { url, status: null, ms: null, bytes: null, error: null };
+  log.push(entry);
+  const started = performance.now();
+  try {
+    const res = await fetch(url, { headers: { Accept: 'application/json' } });
+    const text = await res.text();
+    Object.assign(entry, { status: res.status, ms: Math.round(performance.now() - started), bytes: new Blob([text]).size });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText || 'error'} from GET ${url}`);
+    return JSON.parse(text);
+  } catch (error) {
+    entry.error = error instanceof TypeError ? `${url} could not be reached: the site is offline, or does not let this page read it.` : error.message;
+    throw new Error(entry.error);
+  }
+}
+
+/** Keeps the query and tab in the address, where the browser allows it (some refuse for a page opened as a file). */
+function setAddress(address) {
+  try {
+    history.replaceState(null, '', address);
+  } catch {
+    // The page works the same without it.
+  }
+}
+
+async function runQuery() {
+  const site = siteFrom(siteInput.value.trim());
+  if (!site) return showError(`The site must be an http(s) address, such as ${DEFAULT_SITE}.`);
+  const courseId = courseSelect.value || null;
+  const version = courseId && versionInput.value ? Number(versionInput.value) : null;
+  if (version !== null && !(Number.isInteger(version) && version >= 1)) return showError('The version must be a whole number, 1 or more.');
+  showError(null);
+  log = [];
+  $('run').disabled = true;
+  $('run').textContent = 'Querying…';
+  const started = performance.now();
+  try {
+    const courseMap = await get(site, '/v1/public/courses');
+    fillCourses(courseMap, courseId);
+    // Drafts on the map have no file to read (their package route answers 404), so "every course" means every published one.
+    const ids = courseId ? [courseId] : courseMap.courses.filter((c) => c.published).map((c) => c.courseId);
+    const suffix = version ? `?version=${version}` : '';
+    const settled = await Promise.allSettled(ids.map((id) => get(site, `/v1/public/courses/${encodeURIComponent(id)}/package${suffix}`)));
+    const packages = {};
+    settled.forEach((s, i) => { if (s.status === 'fulfilled') packages[ids[i]] = s.value; });
+    const failed = settled.filter((s) => s.status === 'rejected').map((s) => s.reason.message);
+    if (failed.length > 0) showError(failed.join(' '));
+    result = { site, queriedAt: new Date().toISOString(), query: { course: courseId, version }, courseMap, packages };
+    const params = new URLSearchParams();
+    if (site !== DEFAULT_SITE) params.set('site', site);
+    if (courseId) params.set('course', courseId);
+    if (version) params.set('version', String(version));
+    setAddress(`${params.toString() ? `?${params}` : location.pathname}${location.hash}`);
+    render(courseId ? `course:${courseId}` : null);
+  } catch (error) {
+    showError(error.message);
+    if (!result) for (const tab of TABS) $(`panel-${tab}`).replaceChildren(h('p', { class: 'muted' }, 'Nothing to show: the query failed.'));
+  } finally {
+    $('run').disabled = false;
+    $('run').textContent = 'Run query';
+    showLog(Math.round(performance.now() - started), site, courseId, version);
+  }
+}
+
+/** The course select, from the map: drafts are listed but cannot be picked, having no file to read. */
+function fillCourses(courseMap, selected) {
+  courseSelect.replaceChildren(
+    h('option', { value: '' }, 'Every published course'),
+    ...courseMap.courses.map((c) =>
+      h('option', { value: c.courseId, disabled: c.published ? null : '' }, c.published ? c.title : `${c.title} (draft)`)),
+  );
+  courseSelect.value = selected ?? '';
+  versionInput.disabled = !courseSelect.value;
+}
+
+function showLog(totalMs, site, courseId, version) {
+  const ok = log.filter((e) => e.status !== null && e.status < 400).length;
+  $('log-summary').textContent = `Query: ${log.length} request${log.length === 1 ? '' : 's'}, ${ok} answered, ${totalMs} ms`;
+  $('log-list').replaceChildren(...log.map((e) =>
+    h('li', {},
+      h('code', {}, 'GET '), h('a', { href: e.url, target: '_blank', rel: 'noopener' }, e.url), ' ',
+      e.status !== null && h('span', { class: e.status < 400 ? 'ok' : 'error' }, `${e.status}`),
+      e.ms !== null && h('span', { class: 'muted' }, ` · ${e.ms} ms · ${kb(e.bytes)}`),
+      e.error && e.status === null && h('span', { class: 'error' }, ` ${e.error}`))));
+  const args = [site !== DEFAULT_SITE && `--site ${site}`, courseId && `--course ${courseId}`, version && `--version ${version}`, '--out courses.json'];
+  const command = ['node query.mjs', ...args.filter(Boolean)].join(' ');
+  $('log-command').replaceChildren(h('span', { class: 'muted' }, 'The same from a terminal:'), h('code', {}, command), copyButton(() => command, 'Copy'));
+  $('log').hidden = false;
+}
+
+/** A file query.mjs saved (or this page downloaded), one ustp.course file, or a course map, as a result to show. */
+function resultFrom(data, name) {
+  if (isObject(data) && isObject(data.packages) && 'courseMap' in data) return data;
+  if (isObject(data) && data.format === 'ustp.course' && isObject(data.course) && Array.isArray(data.lessons)) {
+    return { site: null, queriedAt: null, query: { file: name }, courseMap: null, packages: { [data.course.courseId]: data } };
+  }
+  if (isObject(data) && Array.isArray(data.courses)) {
+    return { site: null, queriedAt: null, query: { file: name }, courseMap: data, packages: {} };
+  }
+  throw new Error(`${name} is not what query.mjs saves, a ustp.course file or a course map.`);
+}
+
+async function openFile(file) {
+  showError(null);
+  try {
+    result = resultFrom(JSON.parse(await file.text()), file.name);
+    if (result.site) siteInput.value = result.site;
+    if (result.courseMap) fillCourses(result.courseMap, result.query?.course ?? null);
+    log = [];
+    $('log-summary').textContent = `Opened ${file.name} (${kb(file.size)})${result.queriedAt ? `, queried ${when(result.queriedAt)}` : ''}`;
+    $('log-list').replaceChildren();
+    $('log-command').replaceChildren();
+    $('log').hidden = false;
+    const ids = Object.keys(result.packages);
+    render(ids.length === 1 ? `course:${ids[0]}` : null);
+  } catch (error) {
+    showError(error instanceof SyntaxError ? `${file.name} is not JSON: ${error.message}` : error.message);
+  }
+}
+
+// ── What it shows ────────────────────────────────────────────────────────────────────────────────────────────────────
+
+/** The parts of the result to show on their own: the whole of it, the map, and each course's file. */
+function partsOf(r) {
+  const parts = [];
+  if (r.courseMap) parts.push({ id: 'map', label: 'Course map', value: r.courseMap, file: 'course-map.json', packages: Object.values(r.packages) });
+  for (const [id, pkg] of Object.entries(r.packages)) {
+    parts.push({ id: `course:${id}`, label: `${pkg.course?.title ?? id} (ustp.course)`, value: pkg, file: `${id}.ustp.course.json`, packages: [pkg] });
+  }
+  if (parts.length > 1) parts.unshift({ id: 'all', label: 'Whole result: the map and every course', value: r, file: 'courses.json', packages: Object.values(r.packages) });
+  return parts;
+}
+
+function render(partId) {
+  const parts = partsOf(result);
+  partSelect.replaceChildren(...parts.map((p) => h('option', { value: p.id }, p.label)));
+  partSelect.disabled = parts.length < 2;
+  partSelect.value = parts.some((p) => p.id === partId) ? partId : parts[0]?.id;
+  showPart();
+}
+
+function showPart() {
+  const part = partsOf(result).find((p) => p.id === partSelect.value);
+  if (!part) {
+    for (const tab of TABS) $(`panel-${tab}`).replaceChildren(h('p', { class: 'muted' }, 'The query gave nothing to show.'));
+    return;
+  }
+  $('panel-form').replaceChildren(formView(part));
+  $('panel-json').replaceChildren(jsonView(part));
+  $('panel-lessons').replaceChildren(lessonsView(part.packages, result.site ?? siteFrom(siteInput.value)));
+}
+
+function copyButton(text, label = 'Copy JSON') {
+  const button = h('button', { type: 'button', class: 'quiet' }, label);
+  button.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(text());
+      button.textContent = 'Copied';
+    } catch {
+      button.textContent = 'Copy failed: select the text instead';
+    }
+    setTimeout(() => { button.textContent = label; }, 2000);
+  });
+  return button;
+}
+
+// The form: every object a group, every array a numbered group, every value a read-only field that says its type.
+
+let fieldIds = 0;
+const WORDS = { id: 'ID', url: 'URL', sha256: 'SHA-256' };
+/** `estimatedMinutes` → "Estimated minutes", `courseId` → "Course ID"; a key that is data (a course ID) stays as it is. */
+function labelFor(key) {
+  if (!/^[a-z][a-zA-Z0-9]*$/.test(key)) return key;
+  const words = key.replace(/([a-z0-9])([A-Z])/g, '$1 $2').toLowerCase().split(' ').map((w) => WORDS[w] ?? w);
+  return words.join(' ').replace(/^./, (c) => c.toUpperCase());
+}
+const nameOf = (v) => (isObject(v) ? v.title ?? v.name ?? v.prompt ?? v.course?.title ?? v.courseId ?? null : null);
+
+function formView(part) {
+  fieldIds = 0;
+  const groups = () => [...$('panel-form').querySelectorAll('details')];
+  const expand = h('button', { type: 'button', class: 'quiet' }, 'Expand all');
+  const collapse = h('button', { type: 'button', class: 'quiet' }, 'Collapse all');
+  expand.addEventListener('click', () => groups().forEach((d) => { d.open = true; }));
+  collapse.addEventListener('click', () => groups().forEach((d) => { d.open = false; }));
+  const form = h('form', { class: 'card', 'aria-label': part.label }, rows(part.value, '', 0, null));
+  form.addEventListener('submit', (event) => event.preventDefault());
+  return h('div', {},
+    h('div', { class: 'tools' }, expand, collapse, h('span', { class: 'muted' }, 'Read-only. Hover a label for its JSON path.')),
+    form);
+}
+
+/** The fields of an object, or the items of an array; `correct` marks the right choice in a quiz question's choices. */
+function rows(value, path, depth, correct) {
+  if (Array.isArray(value)) {
+    if (value.length === 0) return [h('p', { class: 'muted empty' }, 'None (an empty list)')];
+    return value.map((item, i) => row(String(i), item, `${path}[${i}]`, depth, value, i === correct));
+  }
+  if (Object.keys(value).length === 0) return [h('p', { class: 'muted empty' }, 'None (an empty object)')];
+  return Object.entries(value).map(([key, item]) => row(key, item, path ? `${path}.${key}` : key, depth, value, false));
+}
+
+function row(key, value, path, depth, parent, isCorrect) {
+  const inArray = Array.isArray(parent);
+  if (value !== null && typeof value === 'object') {
+    const name = nameOf(value);
+    const count = Array.isArray(value) ? `${value.length} item${value.length === 1 ? '' : 's'}` : null;
+    const correct = key === 'choices' && Number.isInteger(parent.correctIndex) ? parent.correctIndex : null;
+    return h('details', { class: 'group', open: depth < 1 ? '' : null },
+      h('summary', {},
+        h('span', { class: 'name' }, inArray ? `${Number(key) + 1}.` : labelFor(key)),
+        name && h('span', {}, name),
+        count && h('span', { class: 'badge' }, count),
+        h('span', { class: 'path' }, path)),
+      h('div', { class: 'rows' }, rows(value, path, depth + 1, correct)));
+  }
+  const id = `field-${++fieldIds}`;
+  return h('div', { class: `field${isCorrect ? ' correct' : ''}` },
+    h('label', { for: id, title: path }, inArray ? `[${key}]` : labelFor(key)),
+    control(id, value, isCorrect));
+}
+
+function control(id, value, isCorrect) {
+  if (typeof value === 'boolean') {
+    return h('div', { class: 'control' }, h('input', { id, type: 'checkbox', checked: value ? '' : null, disabled: '' }), h('span', { class: 'hint' }, String(value)));
+  }
+  if (value === null) return h('div', { class: 'control' }, h('input', { id, type: 'text', class: 'null', readonly: '', placeholder: 'null' }));
+  if (typeof value === 'number') return h('div', { class: 'control' }, h('input', { id, type: 'number', readonly: '', value: String(value) }));
+  const text = String(value);
+  const long = text.length > 60 || text.includes('\n');
+  const lines = text.split('\n').reduce((n, line) => n + Math.max(1, Math.ceil(line.length / 95)), 0);
+  return h('div', { class: 'control' },
+    long ? h('textarea', { id, readonly: '', rows: String(Math.min(16, Math.max(2, lines))) }, text) : h('input', { id, type: 'text', readonly: '', value: text }),
+    isUrl(text) && h('a', { href: text, target: '_blank', rel: 'noopener', class: 'hint' }, 'Open'),
+    isTime(text) && h('span', { class: 'hint' }, when(text)),
+    isCorrect && h('span', { class: 'right' }, '✓ the correct choice'));
+}
+
+// The JSON, as the api answered it, highlighted.
+
+function highlighted(text) {
+  const out = document.createDocumentFragment();
+  const token = /("(?:[^"\\]|\\.)*")(\s*:)?|\b(?:true|false|null)\b|-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?/g;
+  let at = 0;
+  for (const m of text.matchAll(token)) {
+    if (m.index > at) out.append(text.slice(at, m.index));
+    if (m[1] && m[2]) out.append(h('span', { class: 'j-key' }, m[1]), m[2]);
+    else if (m[1]) out.append(h('span', { class: 'j-string' }, m[1]));
+    else out.append(h('span', { class: /^-?\d/.test(m[0]) ? 'j-number' : 'j-literal' }, m[0]));
+    at = m.index + m[0].length;
+  }
+  out.append(text.slice(at));
+  return out;
+}
+
+function jsonView(part) {
+  const text = `${JSON.stringify(part.value, null, 2)}\n`;
+  const download = h('button', { type: 'button', class: 'quiet' }, `Download ${part.file}`);
+  download.addEventListener('click', () => {
+    const url = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+    h('a', { href: url, download: part.file }).click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  });
+  return h('div', {},
+    h('div', { class: 'tools' }, copyButton(() => text), download,
+      h('span', { class: 'muted' }, `${text.split('\n').length - 1} lines · ${kb(new Blob([text]).size)}`)),
+    h('pre', { class: 'json', tabindex: '0', 'aria-label': `${part.label} as JSON` }, h('code', {}, highlighted(text))));
+}
+
+// Every lesson: its text, its video and its quiz, answers included.
+
+/** Text with its web addresses as links; the address itself stays the link's text. */
+function linked(text) {
+  return text.split(/(https?:\/\/[^\s<>"]*[^\s<>".,;:!?)'\]’”])/g).map((piece, i) =>
+    i % 2 === 1 ? h('a', { href: piece, target: '_blank', rel: 'noopener' }, piece) : piece);
+}
+
+function paragraphs(text) {
+  return text.split(/\n{2,}/).filter((p) => p.trim()).map((p) =>
+    h('p', {}, p.split('\n').flatMap((line, i) => (i === 0 ? linked(line) : [h('br'), ...linked(line)]))));
+}
+
+function video(v, site) {
+  if (!v) return null;
+  if (v.kind === 'youtube') {
+    const at = v.start ? `&t=${v.start}s` : '';
+    return h('p', {}, h('a', { href: `https://www.youtube.com/watch?v=${encodeURIComponent(v.youtubeId)}${at}`, target: '_blank', rel: 'noopener' }, '▶ Watch the video on YouTube'));
+  }
+  if (v.kind === 'upload' && site) return h('video', { controls: '', preload: 'none', src: `${site}/v1/public/videos/${encodeURIComponent(v.videoId)}` });
+  return h('p', { class: 'muted' }, `Video ${v.videoId ?? ''} (open the site to play it)`);
+}
+
+function lessonsView(packages, site) {
+  if (packages.length === 0) {
+    return h('p', { class: 'muted' }, 'No course’s ustp.course file was read, so there are no lessons to show: the course map lists the courses, and each course’s file holds its lessons.');
+  }
+  const lessons = packages.flatMap((pkg) => pkg.lessons);
+  const questions = lessons.reduce((n, l) => n + l.questions.length, 0);
+  const minutes = lessons.reduce((n, l) => n + l.estimatedMinutes, 0);
+  const stats = h('span', { class: 'muted' });
+  const total = `${packages.length} course${packages.length === 1 ? '' : 's'} · ${lessons.length} lessons · ${questions} questions · ${minutes} minutes`;
+  stats.textContent = total;
+
+  const items = [];
+  const sections = packages.map((pkg) => {
+    const id = pkg.course.courseId;
+    const cards = pkg.lessons.map((lesson) => {
+      const card = h('article', { class: 'card lesson' },
+        h('header', {}, h('strong', {}, `Lesson ${lesson.order}`), h('span', {}, `${lesson.estimatedMinutes} min`), h('code', {}, lesson.lessonId)),
+        h('h3', {}, lesson.title),
+        lesson.summary && h('p', { class: 'summary' }, lesson.summary),
+        video(lesson.video, site),
+        h('div', { class: 'body' }, paragraphs(lesson.body)),
+        lesson.questions.length > 0 && h('div', { class: 'quiz' },
+          h('strong', {}, `Quiz: ${lesson.questions.length} question${lesson.questions.length === 1 ? '' : 's'}`),
+          h('ol', {}, lesson.questions.map((q) => h('li', {},
+            q.prompt,
+            h('ol', { class: 'choices', type: 'A' }, q.choices.map((choice, i) => h('li', { class: i === q.correctIndex ? 'right' : null }, choice))),
+            q.explanation && h('p', { class: 'explanation' }, q.explanation))))));
+      const haystack = [lesson.title, lesson.summary, lesson.body, lesson.lessonId,
+        ...lesson.questions.flatMap((q) => [q.prompt, ...q.choices, q.explanation])].join('\n').toLowerCase();
+      items.push({ card, haystack, course: id });
+      return card;
+    });
+    const s = pkg.source ?? {};
+    const published = s.content === 'published' ? `version ${s.courseVersion}, published ${when(s.publishedAt)}` : s.content ?? '';
+    return h('section', { class: 'course', id: `lessons-${id}`, 'data-course': id },
+      h('h2', {}, pkg.course.title),
+      h('p', { class: 'muted' },
+        h('code', {}, id), ` · ${published} · ${pkg.lessons.length} lessons · ${pkg.profiles.length} futurist profile${pkg.profiles.length === 1 ? '' : 's'}`,
+        site && [' · ', h('a', { href: `${site}/course/${encodeURIComponent(id)}`, target: '_blank', rel: 'noopener' }, 'Open the course')]),
+      pkg.course.summary && h('p', {}, pkg.course.summary),
+      cards);
+  });
+
+  const toc = h('ol', { class: 'toc' }, packages.map((pkg) => {
+    const link = h('a', { href: `#lessons-${pkg.course.courseId}` }, pkg.course.title);
+    link.addEventListener('click', (event) => {
+      event.preventDefault();
+      $(`lessons-${pkg.course.courseId}`).scrollIntoView({ behavior: 'smooth' });
+    });
+    return h('li', {}, link, h('span', { class: 'muted' }, ` (${pkg.lessons.length})`));
+  }));
+  const drafts = packages.length > 1 ? (result.courseMap?.courses.filter((c) => !c.published) ?? []) : [];
+
+  const search = h('input', { type: 'search', placeholder: 'Find in lessons and quizzes', 'aria-label': 'Find in lessons and quizzes' });
+  const answers = h('input', { type: 'checkbox', checked: '' });
+  const view = h('div', {},
+    h('div', { class: 'tools' }, search, h('label', {}, answers, ' Show answers'), stats),
+    packages.length > 1 && h('nav', { class: 'card', 'aria-label': 'Courses' }, toc,
+      drafts.length > 0 && h('p', { class: 'muted' }, `Drafts with no lessons yet: ${drafts.map((c) => c.title).join(', ')}.`)),
+    sections);
+  answers.addEventListener('change', () => view.classList.toggle('hide-answers', !answers.checked));
+  search.addEventListener('input', () => {
+    const words = search.value.toLowerCase().split(/\s+/).filter(Boolean);
+    let shown = 0;
+    for (const item of items) {
+      item.card.hidden = !words.every((w) => item.haystack.includes(w));
+      if (!item.card.hidden) shown++;
+    }
+    for (const section of sections) section.hidden = !items.some((i) => i.course === section.dataset.course && !i.card.hidden);
+    stats.textContent = words.length ? `${shown} of ${lessons.length} lessons match` : total;
+  });
+  return view;
+}
+
+// ── Tabs and start ───────────────────────────────────────────────────────────────────────────────────────────────────
+
+function selectTab(name) {
+  if (!TABS.includes(name)) name = 'form';
+  for (const tab of TABS) {
+    $(`tab-${tab}`).setAttribute('aria-selected', String(tab === name));
+    $(`tab-${tab}`).tabIndex = tab === name ? 0 : -1;
+    $(`panel-${tab}`).hidden = tab !== name;
+  }
+}
+for (const tab of TABS) {
+  $(`tab-${tab}`).addEventListener('click', () => {
+    setAddress(`#${tab}`);
+    selectTab(tab);
+  });
+}
+document.querySelector('[role=tablist]').addEventListener('keydown', (event) => {
+  const step = { ArrowRight: 1, ArrowLeft: -1 }[event.key];
+  if (!step) return;
+  const at = TABS.findIndex((t) => $(`tab-${t}`).getAttribute('aria-selected') === 'true');
+  const next = TABS[(at + step + TABS.length) % TABS.length];
+  $(`tab-${next}`).click();
+  $(`tab-${next}`).focus();
+});
+window.addEventListener('hashchange', () => selectTab(location.hash.slice(1)));
+
+$('query').addEventListener('submit', (event) => {
+  event.preventDefault();
+  runQuery();
+});
+courseSelect.addEventListener('change', () => {
+  versionInput.disabled = !courseSelect.value;
+  if (!courseSelect.value) versionInput.value = '';
+});
+partSelect.addEventListener('change', showPart);
+$('file').addEventListener('change', (event) => {
+  const [file] = event.target.files;
+  if (file) openFile(file);
+  event.target.value = '';
+});
+
+const params = new URLSearchParams(location.search);
+siteInput.value = siteFrom(params.get('site') ?? DEFAULT_SITE) ?? DEFAULT_SITE;
+const askedCourse = params.get('course');
+if (askedCourse) {
+  // Until the map comes back, the course asked for is the only one to pick.
+  courseSelect.append(h('option', { value: askedCourse }, askedCourse));
+  courseSelect.value = askedCourse;
+  versionInput.disabled = false;
+  versionInput.value = params.get('version') ?? '';
+}
+selectTab(location.hash.slice(1));
+runQuery();
+</script>
+</body>
+</html>

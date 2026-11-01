@@ -64,3 +64,9 @@ says how to set it up.
 `course-site/` is another site built from the public course api (design §10.8): one HTML file that lists an election
 site's courses and shows each published course from its `ustp.course` file, quizzes graded in the page. Its README
 says what it reads.
+
+## Course explorer
+
+`course-explorer/` queries the same api for the course map and every published course: `query.mjs` writes them as one
+JSON file, and `index.html` runs the query in the browser (or opens that file) and shows the answer as a structured
+form, as its JSON, and as every lesson with its quiz and answers.
