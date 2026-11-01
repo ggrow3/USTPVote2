@@ -15,7 +15,6 @@ import {
   uuidv7,
   visitDay,
   type AccountRecord,
-  type MemberRecord,
   type PageHitsRecord,
   type PageVisitInput,
   type PageVisitRecord,
@@ -26,6 +25,7 @@ import type { RequestContext } from '../auth/principal.js';
 import { ZodPipe } from '../common/validation.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
+import { MemberDirectory } from '../membership/member-directory.js';
 
 const DAY_MS = 86_400_000;
 /** Accounts read in one `getAll` when naming the report's visitors. */
@@ -70,7 +70,10 @@ export class VisitRateLimiter {
 export class PageVisitsService {
   private readonly limiter = new VisitRateLimiter();
 
-  constructor(private readonly firebase: Firebase) {}
+  constructor(
+    private readonly firebase: Firebase,
+    private readonly members: MemberDirectory,
+  ) {}
 
   /** One more visit from `key` (an account or an address) this minute, or 429. */
   limit(key: string): void {
@@ -140,11 +143,11 @@ export class PageVisitsService {
       const ids = accountIds.slice(i, i + NAMES_BATCH);
       const [accounts, members] = await Promise.all([
         db.getAll(...ids.map((id) => db.collection(Collections.accounts).doc(id))),
-        db.getAll(...ids.map((id) => db.collection(Collections.members).doc(id))),
+        this.members.findMany(ids),
       ]);
       ids.forEach((id, j) => {
         const account = accounts[j]!.data() as AccountRecord | undefined;
-        const member = members[j]!.data() as MemberRecord | undefined;
+        const member = members[j];
         const name = member?.preferredName || member?.legalName || account?.displayName || null;
         if (account || member) found.set(id, { name, email: account?.primaryEmail || null });
       });
