@@ -115,6 +115,8 @@ export type {
   EmailTemplateChangedPayload,
 } from './email-templates.js';
 export type { AreaBasis, CandidateArea, AreaLookupInput } from './area.js';
+export { samePerson, isAmong, personMarks, areaSections } from './area-sections.js';
+export type { SeatPerson, PersonMarks, AreaSections } from './area-sections.js';
 export { WIKIPEDIA_LICENCE, PROFILE_LIMITS, yearSpan, positionText, shortened, orderPositions } from './profiles.js';
 export type { ProfilePosition, ContactProfile, ContactPhoto } from './profiles.js';
 export {
