@@ -1,6 +1,7 @@
 import sharp from 'sharp';
-import { coursePackageSchema } from 'ustp-domain';
+import { Collections, coursePackageSchema } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { DRAFT_SUMMARY, MAP_SEED, mapCourses } from './course/course-map-seed.js';
 import { resetEmulators, TestApi } from './testing/emulator.js';
 
 let api: TestApi;
@@ -258,9 +259,11 @@ describe('Course map, students and instructor messages', () => {
       'allies',
       'transhumanist-party',
       'new-york-transhumanist-party',
+      'introduction-to-left-transhumanism',
       'figures-of-transhumanism',
       'why-the-transhumanist-party',
       'why-the-new-york-transhumanist-party',
+      'historical-applied-projects',
     ]);
     expect(courses[0]).toMatchObject({ title: FIRST_TITLE, published: true, lessonCount: 6, prerequisites: [], position: { row: 0, column: 0 } });
     expect(courses.find((course) => course.courseId === 'the-coalition')).toMatchObject({
@@ -427,5 +430,83 @@ describe('Course map, students and instructor messages', () => {
     expect((await api.call('POST', '/v1/courses/transhumanism/messages', learner, { body: 'One more thing' })).status).toBe(403);
     expect((await api.call('GET', '/v1/courses/transhumanism/messages', learner)).body).toMatchObject({ messaging: false, messages: [{}, {}] });
     expect((await api.call('GET', '/v1/admin/courses/transhumanism/learners', editor)).body[0].messaging).toBe(false);
+  });
+});
+
+describe("The party's curriculum on its course map", () => {
+  type AdminCourse = { course: { summary: string; status: string; publishedVersion: number | null }; lessons: { lessonId: string; questions: unknown[] }[] };
+  const content = async (courseId: string, editor: Learner) => (await api.call('GET', `/v1/admin/courses/${courseId}`, editor)).body as AdminCourse;
+  const placement = async (editor: Learner) =>
+    Object.fromEntries(
+      ((await api.call('GET', '/v1/admin/courses', editor)).body as { courseId: string; prerequisites: string[]; position: unknown }[]).map((course) => [
+        course.courseId,
+        { prerequisites: course.prerequisites, position: course.position },
+      ]),
+    );
+
+  it("fills the map's drafts and adds two courses, as drafts whose quizzes open once their prerequisites are passed", async () => {
+    const editor = await courseAdmin('curriculum-editor@example.test');
+    const fundamentals = await content('fundamental-questions', editor);
+    expect(fundamentals.course).toMatchObject({ status: 'draft', publishedVersion: null });
+    expect(fundamentals.course.summary).toMatch(/^Basics of Transhumanism 101 to 501: /);
+    expect(fundamentals.lessons.map((lesson) => lesson.lessonId)).toEqual(['basics-101', 'basics-201', 'basics-301', 'basics-401', 'basics-501']);
+    expect(fundamentals.lessons.every((lesson) => lesson.questions.length === 5)).toBe(true);
+    expect((await content('figures-of-transhumanism', editor)).lessons).toHaveLength(5);
+    expect((await content('the-coalition', editor)).lessons.map((lesson) => lesson.lessonId)).toEqual(['uspp']);
+    expect((await content('historical-applied-projects', editor)).lessons).toHaveLength(5);
+    expect((await content('introduction-to-left-transhumanism', editor)).lessons.map((lesson) => lesson.lessonId).at(-1)).toBe('ustp-left');
+    // The courses the curriculum has nothing for stay as the map seed left them.
+    expect(await content('allies', editor)).toMatchObject({ course: { summary: DRAFT_SUMMARY }, lessons: [] });
+    const placed = await placement(editor);
+    expect(placed['introduction-to-left-transhumanism']).toEqual({ prerequisites: ['fundamental-questions'], position: { row: 1, column: 4 } });
+    expect(placed['historical-applied-projects']).toEqual({ prerequisites: ['figures-of-transhumanism'], position: { row: 3, column: 1 } });
+
+    // Nothing reaches learners until a Course Administrator publishes.
+    expect((await api.call('GET', '/v1/public/courses/fundamental-questions')).status).toBe(404);
+    for (const courseId of ['fundamental-questions', 'introduction-to-left-transhumanism', 'figures-of-transhumanism']) {
+      expect((await api.call('POST', `/v1/admin/courses/${courseId}/publish`, editor)).body.version).toBe(1);
+    }
+    const left = await api.call('GET', '/v1/public/courses/introduction-to-left-transhumanism');
+    expect(left.body.lessons).toHaveLength(6);
+    expect(left.body.prerequisites).toEqual([{ courseId: 'fundamental-questions', title: 'The Fundamental Questions of Transhumanism' }]);
+
+    const learner = await api.member('curriculum-learner@example.test');
+    const refused = await api.call('POST', '/v1/courses/introduction-to-left-transhumanism/lessons/left-101/attempts', learner, { answers: [1, 2, 0, 3, 1] });
+    expect(refused.status).toBe(409);
+    await passCourse('fundamental-questions', learner, editor);
+    expect((await api.call('GET', '/v1/courses/fundamental-questions', learner)).body.certificate).not.toBeNull();
+    expect((await api.call('POST', '/v1/courses/introduction-to-left-transhumanism/lessons/left-101/attempts', learner, { answers: [1, 2, 0, 3, 1] })).body.attempt.passed).toBe(true);
+    // The Figures come after An Introduction into the Transhumanist Party, which has no lessons yet.
+    expect((await api.call('GET', '/v1/courses/figures-of-transhumanism', learner)).body.missingPrerequisites).toEqual([
+      { courseId: 'transhumanist-party', title: 'An Introduction into the Transhumanist Party' },
+    ]);
+  });
+
+  it('leaves alone a course a Course Administrator wrote or deleted before the curriculum came, and lessons deleted after', async () => {
+    const db = api.firebase.db;
+    const map = new Map(mapCourses.map((course) => [course.courseId, course]));
+    // As a database might stand: the map seeded, The Fundamental Questions written, The Coalition deleted, and
+    // another course on the square Historical Applied Projects would take.
+    await db.collection(Collections.courseSeeds).doc(MAP_SEED).create({ seed: MAP_SEED, seededAt: '2026-10-31T00:00:00.000Z' });
+    for (const course of mapCourses.filter((c) => c.courseId !== 'the-coalition')) await db.collection(Collections.courses).doc(course.courseId).create(course);
+    await db.collection(Collections.courses).doc('fundamental-questions').update({ summary: 'Our own summary.' });
+    await db
+      .collection(Collections.courseLessons)
+      .doc('fundamental-questions_ours')
+      .create({ ...oneQuestionLesson, courseId: 'fundamental-questions', lessonId: 'ours', questions: [{ ...oneQuestionLesson.questions[0], questionId: 'q' }], updatedAt: 'x', updatedBy: 'x' });
+    await db.collection(Collections.courses).doc('futures-lab').create({ ...map.get('allies')!, courseId: 'futures-lab', title: 'Futures Lab', prerequisites: [], position: { row: 3, column: 1 } });
+
+    const editor = await courseAdmin('curriculum-keeper@example.test');
+    expect(await content('fundamental-questions', editor)).toMatchObject({ course: { summary: 'Our own summary.' }, lessons: [{ lessonId: 'ours' }] });
+    expect((await api.call('GET', '/v1/admin/courses/the-coalition', editor)).status).toBe(404);
+    const figures = await content('figures-of-transhumanism', editor);
+    expect(figures.course.summary).toMatch(/^Historical Figures 101 to 501: /);
+    expect(figures.lessons).toHaveLength(5);
+    const placed = await placement(editor);
+    expect(placed['historical-applied-projects']).toEqual({ prerequisites: ['figures-of-transhumanism'], position: null });
+    expect(placed['introduction-to-left-transhumanism']).toEqual({ prerequisites: ['fundamental-questions'], position: { row: 1, column: 4 } });
+
+    expect((await api.call('DELETE', '/v1/admin/courses/figures-of-transhumanism/lessons/figures-101', editor)).status).toBe(204);
+    expect((await content('figures-of-transhumanism', editor)).lessons).toHaveLength(4);
   });
 });
