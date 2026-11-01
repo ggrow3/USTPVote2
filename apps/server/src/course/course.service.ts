@@ -7,7 +7,9 @@ import {
   courseBoardProblem,
   courseHidingProblem,
   courseIdFromTitle,
+  courseMapOrder,
   coursePlacementProblem,
+  coursesPackage,
   courseThreadId,
   draftCoursePackage,
   isCourseId,
@@ -28,6 +30,7 @@ import {
   type CourseMapInput,
   type CourseThreadRecord,
   type CoursePackage,
+  type CoursesPackage,
   type CourseAttemptRecord,
   type CourseCatalog,
   type CourseBoardInput,
@@ -277,7 +280,7 @@ export class CourseService {
           placedBy: accountId,
         });
       }
-      return withBoardChanges(courses, input.courses).sort(mapOrder);
+      return withBoardChanges(courses, input.courses).sort(courseMapOrder);
     });
   }
 
@@ -314,7 +317,7 @@ export class CourseService {
   private async records(): Promise<CourseRecord[]> {
     await this.ensureSeeded();
     const snap = await this.firebase.db.collection(Collections.courses).get();
-    return snap.docs.map((doc) => withPlacement(doc.data() as CourseRecord)).sort(mapOrder);
+    return snap.docs.map((doc) => withPlacement(doc.data() as CourseRecord)).sort(courseMapOrder);
   }
 
   /** What learners see of each published course: its title, summary and number of lessons. */
@@ -388,6 +391,33 @@ export class CourseService {
     const course = await this.record(courseId);
     if (course.publishedVersion === null) throw new NotFoundException('course is not published');
     return packageOf(await this.version(courseId, version ?? course.publishedVersion), new Date().toISOString());
+  }
+
+  /**
+   * Every course with the course map as one `ustp.courses` file (design §10.8): each course's square, prerequisites
+   * and hide switch, its draft and the version learners take now, hidden courses and those never published included.
+   */
+  async coursesPackage(): Promise<CoursesPackage> {
+    const records = await this.records();
+    const db = this.firebase.db;
+    const published = records.filter((record) => record.publishedVersion !== null);
+    const [lessons, profiles, versions] = await Promise.all([
+      db.collection(Collections.courseLessons).get(),
+      db.collection(Collections.courseProfiles).get(),
+      published.length ? db.getAll(...published.map((record) => db.collection(Collections.courseVersions).doc(versionId(record.courseId, record.publishedVersion!)))) : [],
+    ]);
+    const draftLessons = byCourse(lessons.docs.map((doc) => withVideo(doc.data() as CourseLesson)));
+    const draftProfiles = byCourse(profiles.docs.map((doc) => withPortraitImage(doc.data() as FuturistProfile)));
+    const current = new Map(
+      versions.filter((snap) => snap.exists).map((snap) => [snap.get('courseId') as string, completeVersion(snap.data() as CourseVersionRecord)]),
+    );
+    const contents = records.map((course) => ({
+      course,
+      lessons: draftLessons.get(course.courseId) ?? [],
+      profiles: draftProfiles.get(course.courseId) ?? [],
+      published: current.get(course.courseId) ?? null,
+    }));
+    return coursesPackage(contents, new Date().toISOString());
   }
 
   async updateMetadata(courseId: string, input: CourseMetadataInput, accountId: string): Promise<CourseRecord> {
@@ -832,12 +862,6 @@ const publicLesson = (lesson: CourseLesson): PublicCourseLesson => ({
 });
 /** Courses saved before the map have no prerequisites or position, and those saved before the hide switch no `hidden`. */
 const withPlacement = (course: CourseRecord): CourseRecord => ({ ...course, ...placementOf(course), hidden: course.hidden === true });
-/** Map order: row by row, left to right, then the courses off the map by title. */
-const mapOrder = (a: CourseRecord, b: CourseRecord) =>
-  (a.position ? 0 : 1) - (b.position ? 0 : 1) ||
-  (a.position?.row ?? 0) - (b.position?.row ?? 0) ||
-  (a.position?.column ?? 0) - (b.position?.column ?? 0) ||
-  a.title.localeCompare(b.title);
 /** Lessons and profiles in the order a course shows them. */
 const byOrder = (a: DocumentData, b: DocumentData) => (a.order as number) - (b.order as number);
 
@@ -859,9 +883,20 @@ function appended(own: readonly DocumentData[], added: readonly DocumentData[], 
 const withVideo = (lesson: CourseLesson): CourseLesson => ({ ...lesson, video: lesson.video ?? null });
 /** Profiles saved, or published, before portraits could be uploaded have no portraitImage. */
 const withPortraitImage = (profile: FuturistProfile): FuturistProfile => ({ ...profile, portraitImage: profile.portraitImage ?? null });
-/** A published version as its file, every lesson with its video and every profile with its portraitImage. */
-const packageOf = (version: CourseVersionRecord, exportedAt: string): CoursePackage =>
-  publishedCoursePackage({ ...version, lessons: version.lessons.map(withVideo), profiles: version.profiles.map(withPortraitImage) }, exportedAt);
+/** A published version with every lesson's video and every profile's portraitImage, those from before either included. */
+const completeVersion = (version: CourseVersionRecord): CourseVersionRecord => ({
+  ...version,
+  lessons: version.lessons.map(withVideo),
+  profiles: version.profiles.map(withPortraitImage),
+});
+/** A published version as its file. */
+const packageOf = (version: CourseVersionRecord, exportedAt: string): CoursePackage => publishedCoursePackage(completeVersion(version), exportedAt);
+/** Draft lessons or profiles by the course they belong to. */
+function byCourse<T extends { readonly courseId: string }>(items: readonly T[]): Map<string, T[]> {
+  const courses = new Map<string, T[]>();
+  for (const item of items) courses.set(item.courseId, [...(courses.get(item.courseId) ?? []), item]);
+  return courses;
+}
 const pickCertificate = (certificate: CourseCertificateRecord) => ({
   certificateId: certificate.certificateId,
   issuedAt: certificate.issuedAt,

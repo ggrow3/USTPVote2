@@ -69,6 +69,7 @@ export {
   courseIdFromTitle,
   courseIdSchema,
   courseHidingProblem,
+  courseMapOrder,
   courseMapSchema,
   coursePlacementProblem,
   courseVisibilitySchema,
@@ -104,13 +105,25 @@ export type {
 } from './course-map.js';
 export {
   COURSE_PACKAGE_FORMAT,
+  COURSES_PACKAGE_FORMAT,
   coursePackageFileName,
   coursePackageSrc,
   coursePackageSchema,
+  coursesPackage,
+  coursesPackageFileName,
+  coursesPackageSchema,
   draftCoursePackage,
   publishedCoursePackage,
 } from './course-package.js';
-export type { CoursePackage, CoursePackageSource, PackagedLesson, PackagedProfile } from './course-package.js';
+export type {
+  CourseContent,
+  CoursePackage,
+  CoursePackageSource,
+  CoursesPackage,
+  PackagedCourse,
+  PackagedLesson,
+  PackagedProfile,
+} from './course-package.js';
 export * from './membership/index.js';
 export * from './teams/index.js';
 export { voteSchema, NO_VOTES, changeVote } from './votes.js';
