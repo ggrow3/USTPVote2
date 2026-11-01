@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
-import { COURSE_MAP, type CoursePosition, type CourseRecord } from 'ustp-domain';
+import { COURSE_MAP, type CoursePosition, type CourseRecord, type CoursesPackage } from 'ustp-domain';
 import { Notify } from 'quasar';
 import { api } from '../../api.js';
 import { attempt } from '../../dialogs.js';
@@ -21,6 +21,7 @@ import {
   type BoardCourse,
   type BoardEdit,
 } from '../../academy/course-board.js';
+import { coursesExportedText, saveCoursesPackage } from '../../academy/course-files.js';
 import { courseMapLayout, MAP_GEOMETRY } from '../../academy/course-map.js';
 import '../../academy/course-map.css';
 
@@ -28,7 +29,8 @@ import '../../academy/course-map.css';
  * The Course tab's board of every course, drafts included (design §10.8): drag a card to another square (a card there
  * swaps with it) or off the map, drag from a card's handle to the course after it to draw a line, pick a line to
  * remove it, or arrange the whole map as an org chart. Nothing reaches learners until Save map. Picking a card, or a
- * course in the list, chooses the course edited below; its form does the same with menus and the arrow keys.
+ * course in the list, chooses the course edited below; its form does the same with menus and the arrow keys. Export
+ * all saves every course with the map, as last saved, in one `ustp.courses` file.
  */
 const props = defineProps<{
   courses: readonly CourseRecord[];
@@ -300,6 +302,18 @@ async function save() {
   saving.value = false;
 }
 
+/** Every course and the map as saved, in one `ustp.courses` file: quiz answers and drafts included. */
+const exporting = ref(false);
+async function exportAll() {
+  exporting.value = true;
+  await attempt(async () => {
+    const pkg = await api<CoursesPackage>('GET', '/v1/admin/course-map/package');
+    saveCoursesPackage(pkg);
+    Notify.create({ type: 'positive', message: coursesExportedText(pkg, changes.value.length) });
+  });
+  exporting.value = false;
+}
+
 function discard() {
   board.value = boardFrom(props.courses);
   selectedLink.value = null;
@@ -329,7 +343,15 @@ async function create() {
   <q-card flat bordered class="q-mb-lg">
     <q-card-section class="row items-center justify-between q-gutter-sm">
       <h2 class="text-h6 q-my-none">Courses and the course map</h2>
-      <q-btn color="primary" flat no-caps icon="add" label="New course" @click="createOpen = true" />
+      <div class="row q-gutter-sm">
+        <q-btn flat no-caps icon="download" label="Export all (JSON)" :loading="exporting" @click="exportAll">
+          <q-tooltip max-width="320px">
+            One file with every course, hidden ones and drafts included: each one's draft and the version learners take now,
+            quiz answers included, and where it sits on the map and which courses come before it.
+          </q-tooltip>
+        </q-btn>
+        <q-btn color="primary" flat no-caps icon="add" label="New course" @click="createOpen = true" />
+      </div>
     </q-card-section>
     <q-card-section class="q-pt-none">
       <p class="text-grey-7 q-mb-sm">

@@ -3,7 +3,6 @@ import { computed, reactive, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import {
   COURSE_IMAGE,
-  coursePackageFileName,
   coursePortraitSrc,
   FUTURIST_CATEGORIES,
   PASS_PERCENT,
@@ -16,7 +15,6 @@ import {
   type FuturistProfile,
 } from 'ustp-domain';
 import { api, apiUpload, errorMessage } from '../../api.js';
-import { saveFile } from '../../bylaws-files.js';
 import { attempt } from '../../dialogs.js';
 import { photoFileProblem } from '../../photos.js';
 import {
@@ -29,6 +27,7 @@ import {
   removeChoice,
   type QuestionDraft,
 } from '../../academy/course-editor.js';
+import { saveCoursePackage } from '../../academy/course-files.js';
 import { videoDraft, videoFromDraft } from '../../video-fields.js';
 import VideoField from '../VideoField.vue';
 import CourseLearnersCard from './CourseLearnersCard.vue';
@@ -277,8 +276,7 @@ async function remove(kind: 'lessons' | 'profiles', id: string) {
 /** Saves the course as a `ustp.course` JSON file: the draft as saved (not unsaved edits here), or a published version. */
 async function exportCourse(version: number | 'draft') {
   await attempt(async () => {
-    const pkg = await api<CoursePackage>('GET', `/v1/admin/courses/${courseId.value}/package?version=${version}`);
-    saveFile(new Blob([`${JSON.stringify(pkg, null, 2)}\n`], { type: 'application/json' }), coursePackageFileName(pkg));
+    saveCoursePackage(await api<CoursePackage>('GET', `/v1/admin/courses/${courseId.value}/package?version=${version}`));
   }, 'Course exported');
 }
 
