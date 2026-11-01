@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Courses</title>
+<!--
+  Another site built from the USTP Vote public course api (design §10.8): one file, no build, no server of its own.
+  It reads <site>/v1/public/courses and each published course's ustp.course file from the browser, and grades the
+  quizzes here. Open it with ?site=https://your-election-site to read another site's courses. See README.md.
+-->
+<style>
+  :root { --ink: #1b2430; --muted: #5b6676; --line: #d9dee5; --page: #f6f7f9; --card: #fff; --accent: #0b4f8a; --good: #1f7a3d; --bad: #a3271f; }
+  @media (prefers-color-scheme: dark) {
+    :root { --ink: #e8ecf1; --muted: #a3adbb; --line: #333c48; --page: #12161c; --card: #1a2029; --accent: #7fb4ea; --good: #6cc68a; --bad: #f08a80; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--page); color: var(--ink); font: 16px/1.55 system-ui, sans-serif; }
+  header, main, footer { max-width: 860px; margin: 0 auto; padding: 16px; }
+  header { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+  header h1 { margin: 0; font-size: 1.4rem; }
+  a { color: var(--accent); }
+  .muted { color: var(--muted); }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin: 12px 0; }
+  .course-list { list-style: none; padding: 0; margin: 0; }
+  .course-list a { font-weight: 600; text-decoration: none; }
+  .badge { display: inline-block; font-size: 0.8rem; border: 1px solid var(--line); border-radius: 999px; padding: 0 8px; margin-left: 6px; }
+  .question { margin: 12px 0; }
+  .question label { display: block; margin: 4px 0; }
+  .right { color: var(--good); }
+  .wrong { color: var(--bad); }
+  .profiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+  .profiles img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; background: var(--line); }
+  figure { margin: 0; }
+  figcaption { font-size: 0.8rem; }
+  video { width: 100%; border-radius: 8px; }
+  button { font: inherit; padding: 6px 14px; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--card); cursor: pointer; }
+</style>
+</head>
+<body>
+<header>
+  <h1><a href="#" id="home">Courses</a></h1>
+  <span class="muted">from <a id="source"></a></span>
+</header>
+<main id="main" aria-live="polite"><p class="muted">Loading…</p></main>
+<footer class="muted">Built from the public <code>ustp.course</code> files. Certificates are earned on the course’s own site.</footer>
+<script>
+'use strict';
+const PASS_PERCENT = 80;
+const params = new URLSearchParams(location.search);
+/** The election site whose courses this shows: its origin, or null for something that is no http(s) address. */
+function siteFrom(given) {
+  try {
+    const url = new URL(given);
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
+const site = siteFrom(params.get('site') ?? 'https://ustpvote2-dev.web.app');
+const main = document.getElementById('main');
+const source = document.getElementById('source');
+if (site) {
+  source.href = `${site}/courses`;
+  source.textContent = new URL(site).host;
+}
+document.getElementById('home').href = `?${params}`;
+
+/** An element with its attributes and children; text is always set as text, never as HTML. */
+function h(tag, attrs = {}, ...children) {
+  const el = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) if (value !== null && value !== undefined) el.setAttribute(key, value);
+  el.append(...children.flat().filter((c) => c !== null && c !== undefined && c !== false));
+  return el;
+}
+/** Puts these in the page, in place of what was there. */
+const show = (...children) => main.replaceChildren(h('div', {}, ...children));
+const absolute = (src) => (src.startsWith('/') ? `${site}${src}` : src);
+
+async function json(path) {
+  const res = await fetch(`${site}${path}`);
+  if (!res.ok) throw new Error(`${res.status} from ${path}`);
+  return res.json();
+}
+
+async function showList() {
+  const { courses } = await json('/v1/public/courses');
+  const titles = new Map(courses.map((c) => [c.courseId, c.title]));
+  show(
+    h('ul', { class: 'course-list' }, courses.map((c) =>
+      h('li', { class: 'card' },
+        c.published ? h('a', { href: `#/course/${c.courseId}` }, c.title) : h('strong', {}, c.title),
+        c.published ? h('span', { class: 'badge' }, `${c.lessonCount} lessons`) : h('span', { class: 'badge' }, 'coming soon'),
+        c.summary && h('p', {}, c.summary),
+        c.prerequisites.length > 0 && h('p', { class: 'muted' }, `After ${c.prerequisites.map((id) => titles.get(id) ?? id).join(', ')}`),
+      ))),
+  );
+  document.title = 'Courses';
+}
+
+function video(v) {
+  if (!v) return null;
+  if (v.kind === 'youtube') {
+    const at = v.start ? `&t=${v.start}s` : '';
+    return h('p', {}, h('a', { href: `https://www.youtube.com/watch?v=${encodeURIComponent(v.youtubeId)}${at}`, rel: 'noopener' }, '▶ Watch the video on YouTube'));
+  }
+  return h('video', { controls: '', preload: 'none', src: `${site}/v1/public/videos/${encodeURIComponent(v.videoId)}` });
+}
+
+function quiz(lesson) {
+  const result = h('p', { role: 'status' });
+  const questions = lesson.questions.map((q, n) => {
+    const feedback = h('p', { class: 'muted' });
+    const box = h('fieldset', { class: 'question' },
+      h('legend', {}, `${n + 1}. ${q.prompt}`),
+      q.choices.map((choice, i) => h('label', {}, h('input', { type: 'radio', name: `${lesson.lessonId}-${q.questionId}`, value: String(i) }), ' ', choice)),
+      feedback);
+    return { q, box, feedback };
+  });
+  const form = h('form', {}, questions.map((x) => x.box), h('button', { type: 'submit' }, 'Check my answers'), result);
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    let right = 0;
+    for (const { q, box, feedback } of questions) {
+      const picked = box.querySelector('input:checked');
+      const correct = picked !== null && Number(picked.value) === q.correctIndex;
+      if (correct) right++;
+      feedback.className = correct ? 'right' : 'wrong';
+      feedback.textContent = `${correct ? 'Right.' : picked ? 'Not quite.' : 'No answer.'} ${q.explanation}`;
+    }
+    const score = Math.round((100 * right) / questions.length);
+    result.textContent = `${right} of ${questions.length} right (${score}%): ${score >= PASS_PERCENT ? 'passed' : `${PASS_PERCENT}% passes`}.`;
+  });
+  return form;
+}
+
+function profile(p) {
+  const src = p.portraitImage ? `/v1/public/course-images/${p.portraitImage}` : p.portraitUrl;
+  return h('article', { class: 'card' },
+    src && h('figure', {},
+      h('img', { src: absolute(src), alt: p.portraitAlt, loading: 'lazy' }),
+      h('figcaption', { class: 'muted' }, [p.portraitCredit, p.portraitLicense].filter(Boolean).join(' · '))),
+    h('h3', {}, p.name),
+    h('p', {}, p.biography),
+    h('ul', {}, p.ideas.map((idea) => h('li', {}, idea))),
+    h('blockquote', {}, `${p.quote} `, h('a', { href: p.quoteUrl, rel: 'noopener' }, p.quoteSource)),
+    h('p', {}, h('a', { href: p.furtherReadingUrl, rel: 'noopener' }, 'Further reading')));
+}
+
+async function showCourse(courseId) {
+  const pkg = await json(`/v1/public/courses/${encodeURIComponent(courseId)}/package`);
+  document.title = pkg.course.title;
+  show(
+    h('h2', {}, pkg.course.title),
+    h('p', {}, pkg.course.summary),
+    h('p', { class: 'muted' }, `Version ${pkg.source.courseVersion}, published ${pkg.source.publishedAt.slice(0, 10)} · `,
+      h('a', { href: `${site}/course/${pkg.course.courseId}` }, 'Take it for a certificate')),
+    pkg.lessons.map((lesson, n) => h('section', { class: 'card' },
+      h('h3', {}, `Lesson ${n + 1}: ${lesson.title}`),
+      h('p', { class: 'muted' }, `${lesson.summary} · ${lesson.estimatedMinutes} minutes`),
+      video(lesson.video),
+      lesson.body.split('\n\n').map((paragraph) => h('p', {}, paragraph)),
+      h('h4', {}, 'Quiz'),
+      quiz(lesson))),
+    pkg.profiles.length > 0 && h('h3', {}, 'Futurists'),
+    h('div', { class: 'profiles' }, pkg.profiles.map(profile)),
+  );
+}
+
+async function route() {
+  const course = /^#\/course\/([a-z0-9-]+)$/.exec(location.hash)?.[1];
+  if (!site) {
+    show(h('p', { class: 'wrong' }, 'Give the site as ?site=https://… (an election site’s address).'));
+    return;
+  }
+  try {
+    await (course ? showCourse(course) : showList());
+    scrollTo(0, 0);
+  } catch (e) {
+    show(h('p', { class: 'wrong' }, `Could not read the courses: ${e.message}`));
+  }
+}
+addEventListener('hashchange', route);
+route();
+</script>
+</body>
+</html>

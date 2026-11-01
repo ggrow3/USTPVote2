@@ -114,6 +114,48 @@ describe('Transhumanism course', () => {
     expect((await api.call('GET', '/v1/admin/courses/nope/package', editor)).status).toBe(404);
   });
 
+  it('gives anyone a published course as its ustp.course file, which any site may read from a browser', async () => {
+    const editor = await courseAdmin('public-file@example.test');
+    const url = '/v1/public/courses/transhumanism/package';
+    const fromElsewhere = (path: string) => api.app.inject({ method: 'GET', url: path, headers: { origin: 'https://another-site.example' } });
+
+    const current = await fromElsewhere(url);
+    expect(current.statusCode).toBe(200);
+    expect(current.headers['access-control-allow-origin']).toBe('*');
+    const pkg = current.json();
+    expect(pkg).toMatchObject({ format: 'ustp.course', version: 1, source: { content: 'published', courseVersion: 1 } });
+    expect(pkg.lessons[0].questions[0]).toHaveProperty('correctIndex');
+    expect(pkg.lessons[0].video).toBeNull();
+    expect(coursePackageSchema.safeParse(pkg).error?.issues ?? []).toEqual([]);
+    // The file a Course Administrator exports of that version.
+    const exported = (await api.call('GET', '/v1/admin/courses/transhumanism/package?version=1', editor)).body;
+    expect({ ...pkg, exportedAt: null }).toEqual({ ...exported, exportedAt: null });
+
+    // An edit stays in the draft until it is published; then the file is the new version, and the old one stays.
+    const [first] = pkg.lessons;
+    expect((await api.call('POST', '/v1/admin/courses/transhumanism/lessons', editor, { ...first, title: 'Edited title' })).status).toBe(201);
+    expect((await api.call('GET', url)).body.lessons[0].title).toBe(first.title);
+    expect((await api.call('POST', '/v1/admin/courses/transhumanism/publish', editor)).status).toBe(201);
+    const republished = (await api.call('GET', url)).body;
+    expect(republished.source.courseVersion).toBe(2);
+    expect(republished.lessons[0].title).toBe('Edited title');
+    expect((await api.call('GET', `${url}?version=1`)).body.lessons[0].title).toBe(first.title);
+    expect((await api.call('GET', `${url}?version=3`)).status).toBe(404);
+    expect((await api.call('GET', `${url}?version=draft`)).status).toBe(400);
+
+    // A course never published has no file; its 404 can be read from another site too.
+    await api.call('POST', '/v1/admin/courses', editor, { title: 'Futures Lab', summary: 'Hands-on.' });
+    const draft = await fromElsewhere('/v1/public/courses/futures-lab/package');
+    expect(draft.statusCode).toBe(404);
+    expect(draft.headers['access-control-allow-origin']).toBe('*');
+    expect((await fromElsewhere('/v1/public/courses')).headers['access-control-allow-origin']).toBe('*');
+    expect((await fromElsewhere('/v1/public/courses/transhumanism')).headers['access-control-allow-origin']).toBe('*');
+    // Nothing else is open to other sites.
+    for (const other of ['/v1/courses', '/v1/public/positions', '/v1/admin/courses/transhumanism/package']) {
+      expect((await fromElsewhere(other)).headers['access-control-allow-origin']).toBeUndefined();
+    }
+  });
+
   it('rejects publishing a profile without complete portrait attribution', async () => {
     const editor = await courseAdmin('draft-editor@example.test');
     expect((await api.call('POST', '/v1/admin/courses/transhumanism/profiles', editor, draftProfile)).status).toBe(201);

@@ -105,6 +105,7 @@ export type {
 export {
   COURSE_PACKAGE_FORMAT,
   coursePackageFileName,
+  coursePackageSrc,
   coursePackageSchema,
   draftCoursePackage,
   publishedCoursePackage,

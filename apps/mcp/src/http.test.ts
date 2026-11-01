@@ -27,7 +27,7 @@ describe('Streamable HTTP', () => {
       const client = new Client({ name: 'test', version: '1.0.0' });
       await client.connect(new StreamableHTTPClientTransport(new URL(`${base}/mcp`)));
       const { tools } = await client.listTools();
-      expect(tools).toHaveLength(5);
+      expect(tools).toHaveLength(7);
       const listed = report((await client.callTool({ name: 'list_elections', arguments: {} })) as CallToolResult);
       expect(listed.elections.map((e: { electionId: string }) => e.electionId)).toEqual([ELECTION_ID]);
       await client.close();

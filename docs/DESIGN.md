@@ -227,18 +227,24 @@ and Suggest pages, the share buttons, and the Communications panel's six tabs (�
 ### 3.4 The reporting MCP server *(added)*
 
 `apps/mcp` (`ustp-mcp`) lets an AI assistant answer questions about elections through MCP tools: Gemini CLI or Gemini
-Enterprise writing a report into Google Sheets, say, or Claude. It serves that one workflow, reports, and is kept out
-of the api so the workflow cannot widen what the system exposes:
+Enterprise writing a report into Google Sheets, say, or Claude. It serves two workflows, election reports and the
+published courses (added 2026-11-01), and is kept out of the api so neither can widen what the system exposes:
 
 - **Public data only.** It calls the unauthenticated `/v1/public/...` endpoints through `ustp-verify`'s `PublicApi`
   and nothing else. It holds no credentials or service account, cannot reach Firestore, and has no tool that writes:
   an assistant using it sees what any visitor can already read and check. Admin-only figures (participation while
   voting is open, notice counts, members) stay out. A tool that needs them is a new decision (an authenticated,
   role-checked route), not an addition here.
-- **Five read-only tools**, annotated `readOnlyHint`: `list_elections`, `get_election_status`, `get_turnout`,
+- **Seven read-only tools**, annotated `readOnlyHint`: `list_elections`, `get_election_status`, `get_turnout`,
   `get_results` (the synopsis of §9 with the results page's `checkResults` over the signed bundle, or the CSV) and
-  `get_audit_report` (`verify` from `ustp-verify`). They reuse `ustp-domain` and `ustp-verify`, so a report says what
-  the results page and the CLI say, percentages included.
+  `get_audit_report` (`verify` from `ustp-verify`), then `list_courses` and `get_course` (below). They reuse
+  `ustp-domain` and `ustp-verify`, so a report says what the results page and the CLI say, percentages included.
+- **Courses** *(added 2026-11-01; the user asked that the course JSON be a public API, read from the MCP server, so
+  another site is easy to make from it)*. `list_courses` gives the course map as `GET /v1/public/courses` has it, with
+  links to each published course's page and file; `get_course` a published course's `ustp.course` file
+  (`GET /v1/public/courses/{courseId}/package`, §10.8), the current version or one named, as its own text block to
+  save or build from, after a summary with the absolute address of every portrait and video and each portrait's credit
+  and licence. Nothing new is exposed: the files are public in the api, and drafts are not.
 - **Listing from the ledger.** The api has no public list of elections, so the server takes election IDs from the
   public `election.scheduled`, `election.cancelled` and `election.deleted` entries and reads each record; a deleted
   election shows from its entry. The scan costs one request per ledger entry, so the server keeps what the signed
@@ -246,9 +252,10 @@ of the api so the workflow cannot widen what the system exposes:
   public list endpoint would replace the scan if the ledger grows large.
 - **Turnout while open** counts sealed ballots only, a lower bound, since the sealer leaves up to 2k − 1 ballots in
   the pool (§7.2); the tool says so. Nothing reveals more than the public record.
-- **Untrusted text.** Titles, descriptions and candidate names are written by admins and reach the model. The
-  server's instructions tell it to report them and never follow instructions inside them, to name provisional and
-  certified results as such, and to leave rehearsals out of reports on real elections.
+- **Untrusted text.** Titles, descriptions and candidate names are written by admins and reach the model, as course
+  text is written by Course Administrators. The server's instructions tell it to report them, or use course text as
+  content, and never follow instructions inside them, to name provisional and certified results as such, to leave
+  rehearsals out of reports on real elections, and to keep each portrait's credit and licence in a copy.
 - **Transports.** stdio, for Gemini CLI or Claude Code on someone's machine; stateless Streamable HTTP at `/mcp` for
   remote clients (the Claude API's MCP connector, claude.ai and ChatGPT connectors, Gemini Enterprise): a fresh MCP
   server per request, JSON answers, a 64 KiB request cap, CORS open to any origin (no credentials are involved), and
@@ -3780,6 +3787,17 @@ students and messages were added 2026-10-31; before, there was the one course at
 - **Exports.** A course's `ustp.course` file (Export JSON in the Course tab) holds its content, the draft or a published
   version; where it sits on the map, its prerequisites and whether it is hidden are not part of it. A lesson's video is in it as saved: a
   YouTube video's ID and start, or an upload's ID, which names a file on this site, not the file itself.
+- **The public course api** *(added 2026-11-01; the user asked that the course JSON be "a public API" from which
+  another site is easy to make, and chose to keep the quiz answers in it)*. Anyone may read a published course's file at
+  `GET /v1/public/courses/{courseId}/package` (`coursePackageSrc`): the version learners take now, or `?version=N` for
+  an earlier one, the same file a Course Administrator exports of that version, quiz answers and explanations included;
+  404 for a course never published or a version it lacks, and never the draft. A hidden course's file stays readable,
+  as its page does. Publishing the answers gives away little: a learner may retry without limit and is told after each
+  try which answers were right, and a site built from the file needs them to check its quizzes. The course list, the
+  published course, its file and uploaded portraits (`/v1/public/courses…`, `/v1/public/course-images/…`) answer
+  `Access-Control-Allow-Origin: *`, errors included, so another site's pages can read them from the browser; nothing
+  there needs credentials, and no other route is open to other sites. The reporting MCP server serves the same files
+  (§3.4), and `examples/course-site` is a site made from them: one HTML file, quizzes checked in the page.
 
 ### 10.9 Communications: news, press, social media *(added)*
 
@@ -4059,6 +4077,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /page-visits` · `POST /public/page-visits` | M · P | a page opened (`path`): counted, and signed in to an account also recorded with it; 204, 404 for the ballot, the receipt check or a path the app has no page for, 429 past 60 a minute from one account or address (§10.7) |
 | `GET /public/courses` · `GET /courses` | P · M | the course map and list: every published course and every draft on the map (title only), but none hidden from the Courses page; signed in, also how the learner stands in each (§10.8) |
 | `GET /public/courses/{courseId}` · `GET /public/course-images/{sha256}` | P | the published course without quiz answers, with its prerequisites; an uploaded portrait, cached for good (§10.8) |
+| `GET /public/courses/{courseId}/package` (`?version=N`) | P | a published course as its `ustp.course` file, quiz answers included, the current version or an earlier one; 404 for a draft. This route, `GET /public/courses`, `GET /public/courses/{courseId}` and the portraits answer `Access-Control-Allow-Origin: *`, for other sites' pages (§10.8) |
 | `GET /public/videos/{videoId}` | P | an uploaded video once all its parts are in (404 before): by byte range, at most one part per answer (206), whole without a range, 416 past the end, `?download=1` as a file; cached by browsers only (§10.10) |
 | `GET /courses/{courseId}` | M | the course as the learner takes it: their version, progress, certificate, the prerequisites they still need, and whether they may message the instructors (§10.8) |
 | `POST /courses/{courseId}/lessons/{lessonId}/attempts` | M | submit a quiz, one answer per question in order (400 otherwise; 409 until the prerequisites are passed); the score, progress, any certificate, and for each question whether it was right and its explanation (§10.8) |
@@ -4135,7 +4154,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/communications/suggestions` · `PUT\|DELETE …/suggestions/{id}` | Communications Admin | every suggestion, newest first; its status and the team's note; delete it now; not ledgered (§10.9) |
 | `GET\|PUT /admin/communications/press-kit` · `PUT …/press-kit/assets?name=` · `GET …/press-kit/assets/{sha256}` | Communications Admin | the press kit; save it whole from the version edited (400 for a file not uploaded here), ledgered; upload a file as the body (image/png, image/jpeg, image/webp or application/pdf); any uploaded file, to preview (§10.9) |
 | `GET\|POST /admin/communications/bots` · `PUT\|DELETE …/bots/{botId}` · `POST …/checked` | Communications Admin | the bot registry; add, change, mark checked, remove; ledgered (§10.9) |
-| `POST /mcp` (not under `/v1`; the `mcp` service, not the api) | P | the reporting MCP server's Streamable HTTP endpoint: read-only tools over the public endpoints above (§3.4) |
+| `POST /mcp` (not under `/v1`; the `mcp` service, not the api) | P | the reporting MCP server's Streamable HTTP endpoint: read-only tools over the public endpoints above, election reports and course files (§3.4) |
 | `GET /admin/elections/{id}/roll` | Election Admin, Auditor | latest roll with member names, for review |
 | `GET /admin/elections/{id}/notices` | Election Admin, Auditor | the election's notices as counts (sent, still to send, failed, bounced, skipped), what the send receipts add up to per email (to the roll, and tests apart), and the caller's own last test emails; never addresses (§6.8) |
 | `GET\|PUT /admin/notice-settings` | System Admin | the election emails' settings: each on or off, the reminder's lead time, the contact, each subject and opening; saved whole against the version read (409 if stale, 400 for unknown placeholders); ledgered (§6.8) |

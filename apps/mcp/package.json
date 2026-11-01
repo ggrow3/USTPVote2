@@ -1,7 +1,7 @@
 {
   "name": "ustp-mcp",
   "version": "0.1.0",
-  "description": "Read-only MCP server for AI-assisted election reports (Gemini, Claude): election status, turnout, public results and audit reports from the public api only",
+  "description": "Read-only MCP server for AI assistants (Gemini, Claude): election status, turnout, public results and audit reports, and the published courses as ustp.course files, from the public api only",
   "private": true,
   "type": "module",
   "bin": {

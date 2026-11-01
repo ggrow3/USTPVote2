@@ -377,8 +377,17 @@ export class CourseService {
       return draftCoursePackage(course, lessons, profiles, exportedAt);
     }
     await this.ensureSeeded();
-    const published = await this.version(courseId, version);
-    return publishedCoursePackage({ ...published, profiles: published.profiles.map(withPortraitImage) }, exportedAt);
+    return packageOf(await this.version(courseId, version), exportedAt);
+  }
+
+  /**
+   * A published course as a `ustp.course` file, for anyone (design §10.8): the version learners take now, or an earlier
+   * one. 404 for a course never published, or a version it does not have; never the draft.
+   */
+  async publishedPackage(courseId: string, version?: number): Promise<CoursePackage> {
+    const course = await this.record(courseId);
+    if (course.publishedVersion === null) throw new NotFoundException('course is not published');
+    return packageOf(await this.version(courseId, version ?? course.publishedVersion), new Date().toISOString());
   }
 
   async updateMetadata(courseId: string, input: CourseMetadataInput, accountId: string): Promise<CourseRecord> {
@@ -850,6 +859,9 @@ function appended(own: readonly DocumentData[], added: readonly DocumentData[], 
 const withVideo = (lesson: CourseLesson): CourseLesson => ({ ...lesson, video: lesson.video ?? null });
 /** Profiles saved, or published, before portraits could be uploaded have no portraitImage. */
 const withPortraitImage = (profile: FuturistProfile): FuturistProfile => ({ ...profile, portraitImage: profile.portraitImage ?? null });
+/** A published version as its file, every lesson with its video and every profile with its portraitImage. */
+const packageOf = (version: CourseVersionRecord, exportedAt: string): CoursePackage =>
+  publishedCoursePackage({ ...version, lessons: version.lessons.map(withVideo), profiles: version.profiles.map(withPortraitImage) }, exportedAt);
 const pickCertificate = (certificate: CourseCertificateRecord) => ({
   certificateId: certificate.certificateId,
   issuedAt: certificate.issuedAt,
