@@ -2,14 +2,16 @@
 import { computed, ref } from 'vue';
 import type { AreaContact } from 'ustp-domain';
 import { personCaption } from './candidacy-text.js';
+import PersonDialog, { type PersonLink } from './PersonDialog.vue';
 import PersonProfile from './PersonProfile.vue';
 
 /**
  * One person on the Candidates or Your area page (design §5.12), kept to two lines so a whole area fits on a screen:
  * a small photo where the records have one, their name, then party, source and election, with their links as small
  * icons, each named in full on hover and for screen readers: their site, email address, contact form, public record
- * and who to credit for the photo. *About* unfolds their biography and experience. The default slot takes the item's
- * side, such as the Your area page's Write button.
+ * and who to credit for the photo. *About* unfolds their biography and experience; their photo or name opens them
+ * larger, with the area they represent (or would) drawn. The default slot takes the item's side, such as the Your area
+ * page's Write button.
  */
 const props = defineProps<{
   person: AreaContact;
@@ -30,14 +32,7 @@ const initials = computed(() =>
     .join(''),
 );
 
-interface Link {
-  readonly icon: string;
-  readonly label: string;
-  readonly href: string | null;
-  /** Opens in a new tab: every link but email. */
-  readonly away: boolean;
-}
-const links = computed<Link[]>(() => {
+const links = computed<PersonLink[]>(() => {
   const p = props.person;
   return [
     p.website ? { icon: 'language', label: `Website: ${p.website.replace(/^https:\/\//, '').replace(/\/$/, '')}`, href: p.website, away: true } : null,
@@ -45,8 +40,11 @@ const links = computed<Link[]>(() => {
     p.contactUrl ? { icon: 'contact_mail', label: 'Contact form', href: p.contactUrl, away: true } : null,
     p.sourceUrl ? { icon: 'fact_check', label: 'Public record', href: p.sourceUrl, away: true } : null,
     photo.value ? { icon: 'photo_camera', label: photo.value.credit, href: photo.value.creditUrl, away: true } : null,
-  ].filter((l): l is Link => l !== null);
+  ].filter((l): l is PersonLink => l !== null);
 });
+
+/** The person opened larger, with their district. */
+const shown = ref(false);
 
 const about = ref(false);
 const aboutId = computed(() => `about-${props.person.contactId.replace(/[^A-Za-z0-9_-]/g, '-')}`);
@@ -55,14 +53,17 @@ const aboutId = computed(() => `about-${props.person.contactId.replace(/[^A-Za-z
 <template>
   <q-item dense class="area-person">
     <q-item-section avatar top class="area-person__photo">
-      <q-avatar size="40px" rounded class="area-person__avatar">
-        <img v-if="photo" :src="photo.url" :alt="`Photo of ${person.name}`" referrerpolicy="no-referrer" loading="lazy" @error="broken = true" />
-        <span v-else aria-hidden="true">{{ initials }}</span>
-      </q-avatar>
+      <button type="button" class="area-person__open" :aria-label="`${person.name}: photo and the area they represent`" @click="shown = true">
+        <q-avatar size="40px" rounded class="area-person__avatar">
+          <img v-if="photo" :src="photo.url" alt="" referrerpolicy="no-referrer" loading="lazy" @error="broken = true" />
+          <span v-else aria-hidden="true">{{ initials }}</span>
+        </q-avatar>
+        <q-tooltip>{{ person.name }} and their district</q-tooltip>
+      </button>
     </q-item-section>
     <q-item-section>
       <q-item-label class="area-person__name">
-        <span class="text-weight-medium">{{ person.name }}</span>
+        <button type="button" class="area-person__open text-weight-medium" @click="shown = true">{{ person.name }}</button>
         <q-badge v-if="person.incumbent" outline color="primary" class="q-ml-xs">Incumbent</q-badge>
       </q-item-label>
       <q-item-label caption class="area-person__line">
@@ -101,6 +102,7 @@ const aboutId = computed(() => `about-${props.person.contactId.replace(/[^A-Za-z
       <PersonProfile v-if="about && person.profile" :id="aboutId" :person="{ name: person.name, photo, profile: person.profile }" />
     </q-item-section>
     <slot />
+    <PersonDialog v-model="shown" :person="person" :photo="photo" :initials="initials" :links="links" />
   </q-item>
 </template>
 
@@ -155,5 +157,18 @@ const aboutId = computed(() => `about-${props.person.contactId.replace(/[^A-Za-z
 .area-person__link:hover,
 .area-person__about:hover {
   background: rgba(127, 127, 127, 0.15);
+}
+.area-person__open {
+  border: 0;
+  background: none;
+  padding: 0;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+}
+button.area-person__open:hover:not(:has(.q-avatar)) {
+  text-decoration: underline;
 }
 </style>

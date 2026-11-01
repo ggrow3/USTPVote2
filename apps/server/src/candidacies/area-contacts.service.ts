@@ -41,8 +41,8 @@ const electionYearNow = () => nextFederalElectionYear(new Date().toISOString().s
  * The Your area page (design §5.12): for a signed-in member, who holds each office in their area and who runs for it,
  * from public records and from what Communications Admins enter, with the email templates Membership Admins and
  * Communications Admins keep. Admins' entries and templates are ledgered in the transaction that saves them. Also the
- * Candidates page's people running in an area: in the member's own area, from public records and admins' entries; for
- * a ZIP code anyone types, from public records only.
+ * Candidates page's people in an area: in the member's own area, who holds and who runs for each office, from public
+ * records and admins' entries, as on the Your area page; for a ZIP code anyone types, who runs, from public records only.
  */
 @Injectable()
 export class AreaContactsService {
@@ -57,33 +57,29 @@ export class AreaContactsService {
 
   /** The caller's area and its people. Admins' candidates are shown until the day after their election. */
   async view(accountId: string): Promise<AreaContactsView> {
-    const { area, zip } = await this.candidacies.placed(accountId);
-    const electionYear = electionYearNow();
-    const [found, entered, saved] = await Promise.all([
-      this.source.forArea(area.state, area.basis === 'zip' ? area.districts : [], electionYear, { zip, holders: true }),
-      this.entered(area),
-      this.repo.templateList(),
-    ]);
-    const profiled = await this.profiles.withProfiles(found.contacts);
-    return {
-      area,
-      electionYear,
-      contacts: mergeContacts(profiled.people, entered),
-      ballot: found.ballot,
-      feeds: found.feeds,
-      profiles: profiled.state,
-      templates: emailTemplateList(saved),
-    };
+    const [everyone, saved] = await Promise.all([this.everyone(accountId), this.repo.templateList()]);
+    return { ...everyone, templates: emailTemplateList(saved) };
   }
 
   /**
-   * The Candidates page's people running in the caller's own area: from public records, and the candidates admins
-   * entered there, which the member sees on the Your area page too.
+   * The Candidates page's people in the caller's own area: who holds and who runs for each office there, as on the Your
+   * area page (the member sees the admins' entries there too).
    */
   async myCandidates(accountId: string): Promise<AreaCandidatesView> {
+    const { contacts, ...rest } = await this.everyone(accountId);
+    return { ...rest, candidates: contacts.filter((c) => c.role === 'candidate'), holders: contacts.filter((c) => c.role === 'holder') };
+  }
+
+  /** Everyone in the caller's area, from public records and admins' entries. */
+  private async everyone(accountId: string): Promise<Omit<AreaContactsView, 'templates'>> {
     const { area, zip } = await this.candidacies.placed(accountId);
-    const [view, entered] = await Promise.all([this.candidates(area, zip), this.entered(area)]);
-    return { ...view, candidates: mergeContacts(view.candidates, entered.filter((c) => c.role === 'candidate')) };
+    const electionYear = electionYearNow();
+    const [found, entered] = await Promise.all([
+      this.source.forArea(area.state, area.basis === 'zip' ? area.districts : [], electionYear, { zip, holders: true }),
+      this.entered(area),
+    ]);
+    const profiled = await this.profiles.withProfiles(found.contacts);
+    return { area, electionYear, contacts: mergeContacts(profiled.people, entered), ballot: found.ballot, feeds: found.feeds, profiles: profiled.state };
   }
 
   /** The Candidates page's people running where a ZIP code is, for anyone, from public records; the ZIP code is not kept. */
@@ -95,7 +91,7 @@ export class AreaContactsService {
     const electionYear = electionYearNow();
     const found = await this.source.forArea(area.state, area.basis === 'zip' ? area.districts : [], electionYear, { zip, holders: false });
     const profiled = await this.profiles.withProfiles(found.contacts.filter((c) => c.role === 'candidate'));
-    return { area, electionYear, candidates: profiled.people, ballot: found.ballot, feeds: found.feeds, profiles: profiled.state };
+    return { area, electionYear, candidates: profiled.people, holders: [], ballot: found.ballot, feeds: found.feeds, profiles: profiled.state };
   }
 
   /** Admins' entries in an area: people in office, and candidates until the day after their election. */

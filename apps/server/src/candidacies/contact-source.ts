@@ -97,6 +97,8 @@ interface OpenStatesPerson {
   readonly party?: string;
   readonly email?: string;
   readonly openstates_url?: string;
+  /** Their official portrait, usually on the legislature's own site. */
+  readonly image?: string;
   readonly jurisdiction?: { readonly classification?: string };
   readonly current_role?: { readonly title?: string; readonly org_classification?: string };
   readonly links?: readonly { readonly url?: string }[];
@@ -349,6 +351,7 @@ export class PublicContactSource implements ContactSource {
         .filter((p) => p.jurisdiction?.classification === 'state' && chambers.includes(p.current_role?.org_classification ?? ''))
         .map((p): AreaContact => {
           const title = p.current_role?.title?.trim() || DEFAULT_OFFICE_TITLES[office];
+          const image = https(p.image);
           return {
             contactId: `openstates:${p.id}`,
             source: 'openstates',
@@ -364,7 +367,8 @@ export class PublicContactSource implements ContactSource {
             sourceUrl: https(p.openstates_url),
             election: null,
             incumbent: false,
-            ...NO_PROFILE,
+            photo: image ? { url: image, credit: OPEN_STATES_PHOTO_CREDIT, creditUrl: https(p.openstates_url) } : null,
+            profile: null,
           };
         });
     });
@@ -431,6 +435,7 @@ export class PublicContactSource implements ContactSource {
 }
 
 const BALLOT_PHOTO_CREDIT = 'Photo from the ballot data (Google Civic Information API)';
+const OPEN_STATES_PHOTO_CREDIT = 'Official portrait, from Open States';
 
 /**
  * The ballot's candidates, as people of the area where their contest is in one of its Census districts, and the other

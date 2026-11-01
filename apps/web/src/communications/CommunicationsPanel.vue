@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import AreaContactsAdmin from '../candidacies/AreaContactsAdmin.vue';
 import EmailTemplatesAdmin from '../candidacies/EmailTemplatesAdmin.vue';
 import BotsAdmin from './BotsAdmin.vue';
@@ -17,7 +18,6 @@ import { suggestions } from './api.js';
  * with the party's social accounts, is its own section beside this one.
  */
 type View = 'news' | 'share' | 'calendar' | 'suggestions' | 'press' | 'bots' | 'people' | 'templates';
-const view = ref<View>('news');
 const unread = ref(0);
 const TABS: readonly { name: View; label: string; icon: string }[] = [
   { name: 'news', label: 'News', icon: 'article' },
@@ -29,6 +29,9 @@ const TABS: readonly { name: View; label: string; icon: string }[] = [
   { name: 'people', label: 'Officials & candidates', icon: 'how_to_vote' },
   { name: 'templates', label: 'Email templates', icon: 'mail' },
 ];
+/** The tab opened: News, or the one a link names (`?tab=communications&view=people`, from the Your area pages). */
+const asked = useRoute().query.view;
+const view = ref<View>(TABS.find((t) => t.name === asked)?.name ?? 'news');
 
 // How many suggestions wait unread, shown on the tab before it is opened; it keeps the count once it is.
 onMounted(async () => {
