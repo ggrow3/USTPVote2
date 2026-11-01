@@ -73,6 +73,13 @@ export interface ServerConfig {
    */
   readonly googleMapsKey: string | null;
   /**
+   * The Your area page's public records (design §5.12): an api.data.gov key for the FEC's candidate lists (its shared
+   * `DEMO_KEY`, limited to a few requests an hour, when none is set), and an Open States key for state legislators
+   * (none leaves them out).
+   */
+  readonly fecApiKey: string;
+  readonly openStatesApiKey: string | null;
+  /**
    * How many entries the proxies in front of the api append to X-Forwarded-For after the client's address (design
    * §10.7): the sign-in log takes the entry just before theirs. 1 unless set; checked on each deployment.
    */
@@ -231,6 +238,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     webOrigin,
     districtSource,
     googleMapsKey: env.GOOGLE_MAPS_BROWSER_KEY?.trim() || null,
+    fecApiKey: env.FEC_API_KEY?.trim() || 'DEMO_KEY',
+    openStatesApiKey: env.OPENSTATES_API_KEY?.trim() || null,
     trustedProxyHops: wholeNumber(env.TRUSTED_PROXY_HOPS, 'TRUSTED_PROXY_HOPS') ?? DEFAULT_TRUSTED_PROXY_HOPS,
     roomModel,
     room: {

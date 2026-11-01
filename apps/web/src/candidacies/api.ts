@@ -1,14 +1,20 @@
 import type {
   AdminCandidacy,
+  AreaContactInput,
+  AreaContactRecord,
+  AreaContactsView,
   CandidateArea,
   CandidacyDecisionInput,
   CandidacyInput,
   DistrictBoundary,
   DistrictKind,
   DistrictOption,
+  EmailTemplate,
+  EmailTemplateInput,
   MapsConfig,
   MyCandidacy,
   PublicCandidacy,
+  PublicOffice,
 } from 'ustp-domain';
 import { api } from '../api.js';
 
@@ -34,6 +40,11 @@ export function myCandidacies(): Promise<MyCandidacy[]> {
 /** The signed-in member's own area, worked out from their membership record, which the Candidates page opens on. */
 export function myArea(): Promise<CandidateArea> {
   return api<CandidateArea>('GET', '/v1/candidacies/area');
+}
+
+/** The Your area page: who holds and who runs for each office in the member's area, and each office's email. */
+export function areaContacts(): Promise<AreaContactsView> {
+  return api<AreaContactsView>('GET', '/v1/candidacies/area/contacts');
 }
 
 export function declareCandidacy(input: CandidacyInput): Promise<MyCandidacy> {
@@ -73,4 +84,30 @@ export function districtBoundary(kind: DistrictKind, geoid: string): Promise<Dis
 
 export function mapsConfig(): Promise<MapsConfig> {
   return api<MapsConfig>('GET', '/v1/public/maps');
+}
+
+/** The office holders and candidates Communications Admins have entered. */
+export function adminAreaContacts(): Promise<AreaContactRecord[]> {
+  return api<AreaContactRecord[]>('GET', '/v1/admin/area-contacts');
+}
+
+export function addAreaContact(input: AreaContactInput): Promise<AreaContactRecord> {
+  return api<AreaContactRecord>('POST', '/v1/admin/area-contacts', input);
+}
+
+export function changeAreaContact(contactId: string, contact: AreaContactInput, basedOn: number): Promise<AreaContactRecord> {
+  return api<AreaContactRecord>('PUT', `/v1/admin/area-contacts/${encodeURIComponent(contactId)}`, { contact, basedOn });
+}
+
+export function removeAreaContact(contactId: string): Promise<void> {
+  return api<void>('DELETE', `/v1/admin/area-contacts/${encodeURIComponent(contactId)}`);
+}
+
+/** Every kind of office's email template, saved or the starting text. */
+export function emailTemplates(): Promise<EmailTemplate[]> {
+  return api<EmailTemplate[]>('GET', '/v1/admin/email-templates');
+}
+
+export function saveEmailTemplate(office: PublicOffice, input: EmailTemplateInput): Promise<EmailTemplate> {
+  return api<EmailTemplate>('PUT', `/v1/admin/email-templates/${encodeURIComponent(office)}`, input);
 }

@@ -30,6 +30,11 @@ election_check_enabled = false
 # bills map loads beyond its monthly free usage.
 maps_enabled = true
 
+# The Your area page's public records (design §5.12; README "Your area records"): free keys only a person can sign up
+# for. Empty uses the FEC's shared DEMO_KEY (a few requests an hour) and leaves state legislators out.
+# fec_api_key        = "..."
+# openstates_api_key = "..."
+
 # Election notices by Amazon SES (design §6.8): set SES up and add the aws-ses-* secret versions first (README
 # "Election notices"). The From address is the module default, USTP Elections <noreply@transhumanist-party.org>.
 # web_origin           = "https://vote.example.org"  # empty: https://<project>.web.app

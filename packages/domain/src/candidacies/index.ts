@@ -43,6 +43,55 @@ export {
 } from './districts.js';
 export type { DistrictKind, MapPoint, District } from './districts.js';
 export { AREA_BASES, inCandidateArea } from './area.js';
+export {
+  CONTACT_ROLES,
+  CONTACT_FEEDS,
+  CONTACT_LIMITS,
+  DEFAULT_OFFICE_TITLES,
+  OFFICES_OF_KIND,
+  areaContactInputSchema,
+  areaContactChangeSchema,
+  areaContactContent,
+  addAreaContact,
+  changeAreaContact,
+  removeAreaContact,
+  areaContactView,
+  inContactArea,
+  contactDistricts,
+  nameKey,
+  mergeContacts,
+  groupAreaContacts,
+  generalElectionDay,
+  nextFederalElectionYear,
+  fecDisplayName,
+} from './contacts.js';
+export type {
+  ContactRole,
+  ContactFeed,
+  ContactSource,
+  ContactFeedState,
+  ContactDistrict,
+  AreaContact,
+  AreaContactsView,
+  AreaContactInput,
+  AreaContactChangeInput,
+  AreaContactContent,
+  AreaContactRecord,
+  AreaContactChangedPayload,
+  AreaOfficeGroup,
+} from './contacts.js';
+export {
+  EMAIL_PLACEHOLDERS,
+  EMAIL_TEMPLATE_LIMITS,
+  templateProblem,
+  emailTemplateSchema,
+  DEFAULT_EMAIL_TEMPLATES,
+  emailTemplates,
+  saveEmailTemplate,
+  fillTemplate,
+  placeholderValues,
+} from './email-templates.js';
+export type { EmailPlaceholder, EmailTemplateInput, EmailTemplateRecord, EmailTemplate, EmailTemplateChangedPayload } from './email-templates.js';
 export type { AreaBasis, CandidateArea } from './area.js';
 export {
   candidacyStage,
