@@ -9,8 +9,12 @@ import { publicCandidacy } from './api.js';
 import CandidacyDetails from './CandidacyDetails.vue';
 import { day, districtText } from './candidacy-text.js';
 import DistrictMap, { type MapMarker } from './DistrictMap.vue';
+import PersonBadges from './PersonBadges.vue';
 
-/** One member's candidacy, as approved (design §5.8): who, for what, where and when, the platform, and the district's map. */
+/**
+ * One member's candidacy, as approved (design §5.8): who, marked as the Transhumanist Party's candidate, for what, where
+ * and when, the platform, and the district's map.
+ */
 const route = useRoute();
 const candidacy = ref<PublicCandidacy | null>(null);
 const error = ref<string | null>(null);
@@ -44,7 +48,10 @@ watch(
       <q-banner v-if="error" class="bg-orange-1 text-black" rounded>{{ error }}</q-banner>
       <div v-else-if="!candidacy" class="text-grey-7">Loading…</div>
       <template v-else>
-        <h1 class="text-h5 q-mb-none">{{ candidacy.name }}</h1>
+        <h1 class="text-h5 q-mb-none">
+          {{ candidacy.name }}
+          <PersonBadges :marks="{ party: true, representative: false }" />
+        </h1>
         <DistrictMap :markers="markers" :outline="outline" :label="`Map of ${districtText(candidacy)}`" height="320px" />
         <q-card flat bordered>
           <q-card-section>
