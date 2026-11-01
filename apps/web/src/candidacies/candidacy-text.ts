@@ -1,4 +1,4 @@
-import type { CandidacyContent, CandidacyStage, DistrictKind, ElectionStage, PublicOffice } from 'ustp-domain';
+import type { AreaBasis, CandidacyContent, CandidacyStage, CandidateArea, DistrictKind, ElectionStage, PublicOffice } from 'ustp-domain';
 import { STATES } from '../states.js';
 
 /** Wording for candidacies (design §5.8), shared by the Candidates pages, the declaration form and the admin tab. */
@@ -83,3 +83,27 @@ export const electionText = (content: Pick<CandidacyContent, 'election' | 'elect
 
 /** A campaign website without its `https://` and trailing slash, for display. */
 export const websiteText = (url: string): string => url.replace(/^https:\/\//, '').replace(/\/$/, '');
+
+/**
+ * What the Candidates page says about the member's area: which races it holds and where it comes from, and what the
+ * link to the Account page, where the ZIP code is changed, says (none when changing it would not help). Never the ZIP
+ * code itself.
+ */
+export function areaText(area: Pick<CandidateArea, 'state' | 'basis'>): { readonly text: string; readonly link: string | null } {
+  const state = stateName(area.state);
+  const whole: Readonly<Record<Exclude<AreaBasis, 'zip'>, { readonly why: string; readonly link: string | null }>> = {
+    no_zip: { why: 'your membership record has no ZIP code.', link: 'Add it on your Account page to see only your own districts.' },
+    unplaced: {
+      why: `the Census draws no area for the ZIP code on your membership record in ${state} (a PO box’s ZIP code has none).`,
+      link: 'Check it on your Account page.',
+    },
+    unavailable: { why: 'the Census Bureau’s district lookup is not answering, so your districts could not be worked out. Try again later.', link: null },
+  };
+  if (area.basis !== 'zip') return { text: `Nationwide offices and all of ${state}: ${whole[area.basis].why}`, link: whole[area.basis].link };
+  return {
+    text:
+      `Nationwide and ${state} offices, and these districts, which the ZIP code on your membership record reaches into. ` +
+      'A ZIP code can reach into more than one district of a kind, so some races here may not be on your own ballot.',
+    link: 'Moved? Change your ZIP code on your Account page.',
+  };
+}
