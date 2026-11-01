@@ -1,10 +1,10 @@
-import { ForbiddenException, type ExecutionContext, type HttpException } from '@nestjs/common';
+import { ForbiddenException, UnauthorizedException, type ExecutionContext, type HttpException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { PROBLEM_TYPES, type Check } from 'ustp-domain';
 import { describe, expect, it, vi } from 'vitest';
 import { AuthGuard } from './auth/auth.guard.js';
-import { CheckRevoked } from './auth/decorators.js';
+import { AppChecked, CheckRevoked, Public } from './auth/decorators.js';
 import type { DirectoryService } from './auth/directory.service.js';
 import { actorOf, principalFromToken } from './auth/principal.js';
 import type { SignInMethodsService } from './auth/sign-in-methods.service.js';
@@ -127,6 +127,50 @@ describe('AuthGuard', () => {
   it('checks token revocation on routes marked @CheckRevoked (casting) only', async () => {
     expect(await verifiedWith('cast')).toBe(true);
     expect(await verifiedWith('read')).toBe(false);
+  });
+});
+
+describe('AuthGuard on public routes where App Check is enforced', () => {
+  class Routes {
+    @Public()
+    read() {}
+    @Public()
+    @AppChecked()
+    suggest() {}
+  }
+
+  async function call(handler: 'read' | 'suggest', headers: Record<string, string> = {}) {
+    const verifyToken = vi.fn(async (token: string) => {
+      if (token !== 'valid') throw new Error('invalid');
+      return {};
+    });
+    const guard = new AuthGuard(
+      new Reflector(),
+      { appCheck: { verifyToken } } as unknown as Firebase,
+      loadConfig(emulators),
+      {} as unknown as SignInMethodsService,
+      {} as unknown as DirectoryService,
+    );
+    const context = {
+      getHandler: () => Routes.prototype[handler],
+      getClass: () => Routes,
+      switchToHttp: () => ({ getRequest: () => ({ headers }) }),
+    } as unknown as ExecutionContext;
+    return { allowed: await guard.canActivate(context), verifyToken };
+  }
+
+  it('lets anyone through on a plain public route, with no App Check token asked for', async () => {
+    const { allowed, verifyToken } = await call('read');
+    expect(allowed).toBe(true);
+    expect(verifyToken).not.toHaveBeenCalled();
+  });
+
+  // The suggestions form (design §10.9): signed out, the web app must still send a token.
+  it('needs a valid App Check token, and no sign-in, on a route marked @AppChecked', async () => {
+    await expect(call('suggest')).rejects.toThrow(UnauthorizedException);
+    await expect(call('suggest')).rejects.toThrow(/App Check token required/);
+    await expect(call('suggest', { 'x-firebase-appcheck': 'forged' })).rejects.toThrow(/invalid App Check token/);
+    expect((await call('suggest', { 'x-firebase-appcheck': 'valid' })).allowed).toBe(true);
   });
 });
 
