@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { OFFICE_DISTRICTS, PUBLIC_OFFICES, type District } from 'ustp-domain';
-import { areaText, districtPeopleText, districtText, feedNote, localToday, mailtoLink, OFFICE_CHOICES, profilesNote, stateName, websiteText } from './candidacy-text.js';
+import { OFFICE_DISTRICTS, PUBLIC_OFFICES, templateProblem, type District } from 'ustp-domain';
+import {
+  areaText,
+  BLANK_EMAIL,
+  districtPeopleText,
+  districtText,
+  feedNote,
+  localToday,
+  mailtoLink,
+  OFFICE_CHOICES,
+  profilesNote,
+  stateName,
+  templateSuitsText,
+  websiteText,
+} from './candidacy-text.js';
 
 const district = (over: Partial<District>): Pick<{ district: District }, 'district'> => ({
   district: { kind: 'congressional', geoid: '0612', state: 'CA', name: 'Congressional District 12', point: null, vintage: null, ...over },
@@ -48,6 +61,12 @@ describe('candidacy wording', () => {
     expect(feedNote('congress', 'unavailable')).toMatch(/^The list of members of Congress did not answer/);
     expect([feedNote('civic', 'off'), feedNote('civic', 'unavailable')]).toEqual([null, expect.stringMatching(/^Google’s ballot data, which lists state and local contests, did not/)]);
     expect([profilesNote('ok'), profilesNote('unavailable')]).toEqual([null, expect.stringMatching(/^Wikipedia and Wikidata did not answer/)]);
+  });
+
+  it('says whom each email template suits; the blank email has only placeholders the page fills in', () => {
+    expect(templateSuitsText({ offices: [], audience: 'anyone' })).toBe('Every office · Anyone listed');
+    expect(templateSuitsText({ offices: ['county', 'local'], audience: 'candidate' })).toBe('County offices, City or town offices · People running');
+    expect(templateProblem(BLANK_EMAIL.body)).toBeNull();
   });
 
   it('says on a district’s pin who is in office there and who is running', () => {

@@ -118,8 +118,8 @@ export interface AreaContactsView {
   readonly feeds: Readonly<Record<ContactFeed, ContactFeedState>>;
   /** Whether Wikipedia and Wikidata answered. */
   readonly profiles: ContactFeedState;
-  /** Each kind of office's email, for the page to fill in. */
-  readonly templates: Readonly<Record<PublicOffice, EmailTemplate>>;
+  /** The email templates, in the list's order, for the page to offer those that suit each person and fill them in. */
+  readonly templates: readonly EmailTemplate[];
 }
 
 /**
