@@ -1,5 +1,6 @@
 import type {
   AreaBasis,
+  AreaContact,
   CandidacyContent,
   CandidacyStage,
   CandidateArea,
@@ -155,4 +156,12 @@ export function feedNote(feed: ContactFeed, state: ContactFeedState): string | n
 /** A link that opens the member's own email app with the email filled in. */
 export function mailtoLink(to: string, subject: string, body: string): string {
   return `mailto:${encodeURIComponent(to).replace(/%40/g, '@')}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+/** A district's pin on the Your area map: who is in office there and who is running, by name. */
+export function districtPeopleText(contacts: readonly Pick<AreaContact, 'role' | 'name' | 'district'>[], district: Pick<District, 'kind' | 'geoid'>): string {
+  const here = contacts.filter((c) => c.district.kind === district.kind && c.district.geoid === district.geoid);
+  const names = (role: AreaContact['role']) => [...new Set(here.filter((c) => c.role === role).map((c) => c.name))].join(', ');
+  const parts = [names('holder') && `In office: ${names('holder')}`, names('candidate') && `Running: ${names('candidate')}`].filter(Boolean);
+  return parts.join(' · ') || 'No one is listed here yet.';
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { OFFICE_DISTRICTS, PUBLIC_OFFICES, type District } from 'ustp-domain';
-import { areaText, districtText, feedNote, localToday, mailtoLink, OFFICE_CHOICES, stateName, websiteText } from './candidacy-text.js';
+import { areaText, districtPeopleText, districtText, feedNote, localToday, mailtoLink, OFFICE_CHOICES, stateName, websiteText } from './candidacy-text.js';
 
 const district = (over: Partial<District>): Pick<{ district: District }, 'district'> => ({
   district: { kind: 'congressional', geoid: '0612', state: 'CA', name: 'Congressional District 12', point: null, vintage: null, ...over },
@@ -41,5 +41,18 @@ describe('candidacy wording', () => {
     expect(feedNote('fec', 'ok')).toBeNull();
     expect(feedNote('openstates', 'off')).toMatch(/not connected to Open States/);
     expect(feedNote('congress', 'unavailable')).toMatch(/^The list of members of Congress did not answer/);
+  });
+
+  it('says on a district’s pin who is in office there and who is running', () => {
+    const cd49 = { kind: 'congressional', geoid: '0649', state: 'CA', name: 'Congressional District 49' } as const;
+    const people = [
+      { role: 'holder', name: 'Mike Levin', district: cd49 },
+      { role: 'candidate', name: 'Mike Levin', district: cd49 },
+      { role: 'candidate', name: 'Armen Kurdian', district: cd49 },
+      { role: 'candidate', name: 'Mike Levin', district: cd49 },
+      { role: 'holder', name: 'Alex Padilla', district: { kind: 'state', geoid: '06', state: 'CA', name: 'CA' } },
+    ] as const;
+    expect(districtPeopleText(people, cd49)).toBe('In office: Mike Levin · Running: Mike Levin, Armen Kurdian');
+    expect(districtPeopleText(people, { kind: 'county', geoid: '06073' })).toBe('No one is listed here yet.');
   });
 });

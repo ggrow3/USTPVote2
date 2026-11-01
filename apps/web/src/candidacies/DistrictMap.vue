@@ -27,9 +27,13 @@ const props = withDefaults(
     /** The map's accessible name, e.g. "Map of Congressional District 12, California". */
     label: string;
     height?: string;
+    /** Show nothing at all where the map is not set up or cannot load, instead of saying so. */
+    optional?: boolean;
   }>(),
-  { markers: () => [], outline: null, height: '360px' },
+  { markers: () => [], outline: null, height: '360px', optional: false },
 );
+/** `select`: a pin was clicked, with its marker's ID; `ready`: the map is showing. */
+const emit = defineEmits<{ select: [id: string]; ready: [] }>();
 
 const router = useRouter();
 const el = ref<HTMLElement | null>(null);
@@ -132,12 +136,14 @@ onMounted(async () => {
     gmap.data.addListener('click', (event: google.maps.Data.MouseEvent) => {
       const marker = props.markers.find((m) => m.id === event.feature.getId());
       if (!marker) return;
+      emit('select', marker.id);
       info!.setContent(popup(marker));
       info!.setPosition(marker.point);
       info!.open({ map: gmap });
     });
     map.value = gmap;
     state.value = 'ready';
+    emit('ready');
     await draw();
   } catch {
     state.value = 'failed';
@@ -153,7 +159,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="district-map">
+  <div v-if="!(optional && (state === 'off' || state === 'failed' || mapsRefused))" class="district-map">
     <div
       v-show="(state === 'ready' || state === 'loading') && !mapsRefused"
       ref="el"
