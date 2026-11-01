@@ -5,6 +5,7 @@ import {
   DEFAULT_OFFICE_TITLES,
   fecDisplayName,
   mergeBallot,
+  mergeStateList,
   nameKey,
   NATION_ID,
   STATE_FIPS,
@@ -18,6 +19,7 @@ import {
   type District,
   type DistrictKind,
   type PublicOffice,
+  type SeatNotUp,
 } from 'ustp-domain';
 import type { ContactKeys } from '../api-keys/api-keys.js';
 
@@ -25,6 +27,8 @@ import type { ContactKeys } from '../api-keys/api-keys.js';
 export interface AreaRecords {
   readonly contacts: AreaContact[];
   readonly ballot: BallotContest[];
+  /** The area's seats the state's own list says are not on this election's ballot. */
+  readonly notUp: SeatNotUp[];
   readonly feeds: Record<ContactFeed, ContactFeedState>;
 }
 
@@ -130,6 +134,59 @@ interface Ballot {
 }
 
 const NO_BALLOT: Ballot = { electionId: '', electionDay: null, contests: [] };
+
+/**
+ * California's Secretary of State's results service, which lists each race's candidates (with no votes yet) from the
+ * day the ballot is certified: no key. A race not on this election's ballot answers 500.
+ */
+const CA_SOS = 'https://api.sos.ca.gov/returns/';
+/** Where people read about the election on the Secretary of State's own site. */
+const CA_SOS_PAGE = 'https://www.sos.ca.gov/elections/upcoming-elections';
+/** A race the list says is not on the ballot is kept an hour only, in case the service failed. */
+const NOT_UP_MS = 60 * 60 * 1000;
+
+/** California's statewide offices, by the list's name for each race, in the ballot's order. */
+const CA_STATEWIDE: readonly (readonly [race: string, title: string])[] = [
+  ['governor', 'Governor'],
+  ['lieutenant-governor', 'Lieutenant Governor'],
+  ['secretary-of-state', 'Secretary of State'],
+  ['controller', 'Controller'],
+  ['treasurer', 'Treasurer'],
+  ['attorney-general', 'Attorney General'],
+  ['insurance-commissioner', 'Insurance Commissioner'],
+  ['superintendent-of-public-instruction', 'Superintendent of Public Instruction'],
+];
+
+/** The list's party labels; a nonpartisan office's candidates have none. */
+const CA_PARTIES: Readonly<Record<string, string | null>> = {
+  Dem: 'Democratic',
+  Rep: 'Republican',
+  Grn: 'Green',
+  Lib: 'Libertarian',
+  PF: 'Peace and Freedom',
+  AI: 'American Independent',
+  NPP: 'No party preference',
+  Non: null,
+};
+
+interface SosRace {
+  readonly raceTitle?: string;
+  /** "October 31, 2026, 1:12 p.m.": when the list was last published, which says which election it is. */
+  readonly ReportingTime?: string;
+  readonly candidates?: readonly { readonly Name?: string; readonly Party?: string; readonly incumbent?: boolean }[];
+}
+
+/** One race as the list answers it: its candidates and the year it was published, or not on the ballot. */
+type SosAnswer = { readonly up: true; readonly year: number | null; readonly race: SosRace } | { readonly up: false };
+
+/** What a state's list gives an area: its candidates and the seats not up; `current` false when it is another election's. */
+interface StateList {
+  readonly contacts: AreaContact[];
+  readonly notUp: SeatNotUp[];
+  readonly current: boolean;
+}
+
+const NO_LIST: StateList = { contacts: [], notUp: [], current: false };
 
 /** Only `https://` addresses are passed on, since the page links to them. */
 const https = (url: string | undefined | null) => (url && /^https:\/\//.test(url) && url.length <= CONTACT_LIMITS.url ? url : null);
@@ -238,6 +295,7 @@ export class PublicContactSource implements ContactSource {
       congress: options.holders ? 'ok' : 'off',
       openstates: options.holders && keys.openStates ? 'ok' : 'off',
       civic: keys.civic && options.zip ? 'ok' : 'off',
+      sos: state === 'CA' ? 'ok' : 'off',
     };
     const ask = async <T>(feed: ContactFeed, found: () => Promise<T>, none: T): Promise<T> => {
       try {
@@ -250,7 +308,7 @@ export class PublicContactSource implements ContactSource {
     };
     const house = districts.filter((d) => d.kind === 'congressional');
     const legislature = districts.filter((d) => (d.kind === 'state_upper' || d.kind === 'state_lower') && d.point);
-    const [lists, ballot] = await Promise.all([
+    const [lists, ballot, list] = await Promise.all([
       Promise.all([
         ...(electionYear % 4 === 0 ? [ask('fec', () => this.fec(keys.fec, 'us_president', NATION, { office: 'P' }, electionYear), [])] : []),
         ask('fec', () => this.fec(keys.fec, 'us_senate', stateDistrict(state), { office: 'S', state }, electionYear), []),
@@ -265,9 +323,100 @@ export class PublicContactSource implements ContactSource {
         ...(feeds.openstates === 'ok' ? legislature.map((d) => ask('openstates', () => this.openStates(keys.openStates!, d), [])) : []),
       ]),
       feeds.civic === 'ok' ? ask('civic', () => this.civic(keys.civic!, options.zip!), NO_BALLOT) : Promise.resolve(NO_BALLOT),
+      feeds.sos === 'ok' ? ask('sos', () => this.california(districts, electionYear), NO_LIST) : Promise.resolve(NO_LIST),
     ]);
+    // A list from another election (before this one's ballot is certified, or after its day) is not used.
+    if (feeds.sos === 'ok' && !list.current) feeds.sos = 'off';
     const placed = ballotContacts(ballot, state, districts);
-    return { contacts: mergeBallot(lists.flat(), placed.contacts), ballot: placed.unplaced, feeds };
+    return { contacts: mergeStateList(mergeBallot(lists.flat(), placed.contacts), list.contacts, list.notUp), ballot: placed.unplaced, notUp: list.notUp, feeds };
+  }
+
+  /**
+   * California's own list of who is on the ballot, for the area's races: the statewide offices, the U.S. Senate (and
+   * President in a presidential year), and its House, State Senate and Assembly districts. A seat the list does not
+   * have is not on the ballot, when the list answered for the area's other races of this election; when none of them
+   * answered, the list failed.
+   */
+  private async california(districts: readonly District[], electionYear: number): Promise<StateList> {
+    const ca = stateDistrict('CA');
+    const seat = (d: District) => Number(d.geoid.slice(2));
+    type Race = { readonly race: string; readonly office: PublicOffice; readonly title: string; readonly district: ContactDistrict };
+    const ofDistrict = (d: District): Race[] => {
+      const district = contactDistrict(d);
+      if (d.kind === 'congressional') return [{ race: `us-rep/district/${houseDistrictNumber(d.geoid)}`, office: 'us_house', title: houseTitle('CA'), district }];
+      if (d.kind === 'state_upper') return [{ race: `state-senate/district/${seat(d)}`, office: 'state_upper', title: DEFAULT_OFFICE_TITLES.state_upper, district }];
+      if (d.kind === 'state_lower') return [{ race: `state-assembly/district/${seat(d)}`, office: 'state_lower', title: 'Assemblymember', district }];
+      return [];
+    };
+    const races: Race[] = [
+      ...CA_STATEWIDE.map(([race, title]): Race => ({ race, office: 'statewide', title, district: ca })),
+      { race: 'us-senate', office: 'us_senate', title: DEFAULT_OFFICE_TITLES.us_senate, district: ca },
+      ...(electionYear % 4 === 0 ? [{ race: 'president', office: 'us_president', title: DEFAULT_OFFICE_TITLES.us_president, district: NATION } satisfies Race] : []),
+      ...districts.flatMap(ofDistrict),
+    ];
+    const answers = await Promise.all(races.map((r) => this.caRace(r.race)));
+    const thisElection = (a: SosAnswer) => a.up && a.year === electionYear;
+    if (!answers.some(thisElection)) {
+      if (answers.some((a) => a.up)) return NO_LIST;
+      throw new Error('no race answered');
+    }
+    const contacts: AreaContact[] = [];
+    const notUp: SeatNotUp[] = [];
+    races.forEach((r, i) => {
+      const a = answers[i]!;
+      if (!a.up) {
+        // The statewide offices share one card, so one of them not being elected this year says nothing about it.
+        if (r.office !== 'statewide') notUp.push({ office: r.office, kind: r.district.kind, geoid: r.district.geoid });
+        return;
+      }
+      if (a.year !== electionYear) return;
+      for (const c of a.race.candidates ?? []) {
+        const name = text(c.Name, CONTACT_LIMITS.name);
+        if (!name) continue;
+        const party = c.Party && c.Party in CA_PARTIES ? CA_PARTIES[c.Party]! : text(c.Party, CONTACT_LIMITS.party);
+        contacts.push({
+          contactId: `sos:CA:${r.race}:${slug(name)}`,
+          source: 'sos',
+          role: 'candidate',
+          office: r.office,
+          officeTitle: r.title,
+          district: r.district,
+          name,
+          party,
+          email: null,
+          contactUrl: null,
+          website: null,
+          sourceUrl: CA_SOS_PAGE,
+          election: String(electionYear),
+          incumbent: c.incumbent === true,
+          ...NO_PROFILE,
+        });
+      }
+    });
+    return { contacts, notUp, current: true };
+  }
+
+  /** One race of California's list, kept a day; a race not on the ballot an hour; a failure not at all. */
+  private caRace(race: string): Promise<SosAnswer> {
+    const key = `sos:CA:${race}`;
+    const hit = this.cache.get(key);
+    if (hit && Date.now() < hit.until) return hit.value as Promise<SosAnswer>;
+    const value = (async (): Promise<SosAnswer> => {
+      const res = await this.fetchFn(`${CA_SOS}${race}`, { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { accept: 'application/json' } });
+      if (res.status === 500) return { up: false };
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const body = (await res.json()) as SosRace;
+      const year = body.ReportingTime?.match(/\b(20\d{2})\b/)?.[1];
+      return { up: true, year: year ? Number(year) : null, race: body };
+    })();
+    this.remember(key, value, DAY_MS);
+    value.then(
+      (a) => {
+        if (!a.up) this.remember(key, value, NOT_UP_MS);
+      },
+      () => this.cache.delete(key),
+    );
+    return value;
   }
 
   /** The FEC's candidates for one race. */
@@ -562,6 +711,25 @@ export class LocalContactSource implements ContactSource {
     const feeds = Object.fromEntries(CONTACT_FEEDS.map((f) => [f, 'ok'])) as Record<ContactFeed, ContactFeedState>;
     if (!options.holders) feeds.congress = feeds.openstates = 'off';
     if (!options.zip) feeds.civic = 'off';
-    return { contacts: mergeBallot(kept, placed.contacts), ballot: placed.unplaced, feeds };
+    // California's own list: a governor's race, and the State House race of the first district, whose member runs again.
+    const listed: AreaContact[] = [];
+    if (state === 'CA') {
+      const race = { ...base, source: 'sos', role: 'candidate', sourceUrl: CA_SOS_PAGE, election: String(electionYear) } as const;
+      listed.push(
+        { ...race, contactId: 'sos:CA:governor:gil-governor', office: 'statewide', officeTitle: 'Governor', district: s, name: 'Gil Governor', party: 'Democratic' },
+        { ...race, contactId: 'sos:CA:governor:rita-rival', office: 'statewide', officeTitle: 'Governor', district: s, name: 'Rita Rival', party: 'Republican' },
+      );
+      const lower = districts.find((d) => d.kind === 'state_lower');
+      if (lower) {
+        const district = contactDistrict(lower);
+        listed.push(
+          { ...race, contactId: `sos:CA:lower:${lower.geoid}:lou`, office: 'state_lower', officeTitle: 'Assemblymember', district, name: 'Lou Lower', party: 'Democratic', incumbent: true },
+          { ...race, contactId: `sos:CA:lower:${lower.geoid}:ana`, office: 'state_lower', officeTitle: 'Assemblymember', district, name: 'Ana Assembly', party: 'Green' },
+        );
+      }
+    } else {
+      feeds.sos = 'off';
+    }
+    return { contacts: mergeStateList(mergeBallot(kept, placed.contacts), listed, []), ballot: placed.unplaced, notUp: [], feeds };
   }
 }

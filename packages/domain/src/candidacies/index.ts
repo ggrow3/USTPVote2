@@ -46,6 +46,8 @@ export { AREA_BASES, inCandidateArea, areaLookupSchema } from './area.js';
 export {
   CONTACT_ROLES,
   CONTACT_FEEDS,
+  mergeStateList,
+  seatNotUp,
   CONTACT_LIMITS,
   DEFAULT_OFFICE_TITLES,
   OFFICES_OF_KIND,
@@ -69,6 +71,7 @@ export {
 export type {
   ContactRole,
   ContactFeed,
+  SeatNotUp,
   ContactSource,
   ContactFeedState,
   ContactDistrict,

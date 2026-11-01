@@ -46,7 +46,8 @@ describe('the Candidates page’s people in an area', () => {
     expect(res.status).toBe(200);
     const v = res.body as AreaCandidatesView;
     expect(v.area).toMatchObject({ state: 'CA', basis: 'zip' });
-    expect(v.feeds).toEqual({ fec: 'ok', congress: 'ok', openstates: 'ok', civic: 'ok' });
+    expect(v.feeds).toEqual({ fec: 'ok', congress: 'ok', openstates: 'ok', civic: 'ok', sos: 'ok' });
+    expect(v.notUp).toEqual([]);
     expect(v.profiles).toBe('ok');
     expect(names(v)).toEqual([
       'fec us_senate@06 Sid Hopeful',
@@ -56,6 +57,10 @@ describe('the Candidates page’s people in an area', () => {
       'fec us_house@0602 Cass Challenger',
       'civic state_upper@06001 Uma Upper',
       'civic state_upper@06001 Bea Ballot',
+      'sos statewide@06 Gil Governor',
+      'sos statewide@06 Rita Rival',
+      'sos state_lower@06001 Lou Lower',
+      'sos state_lower@06001 Ana Assembly',
       'admin county@06001 Cora County',
     ]);
     expect(v.candidates.every((c) => c.role === 'candidate')).toBe(true);
@@ -100,7 +105,8 @@ describe('the Candidates page’s people in an area', () => {
     expect(names(v)).toContain('fec us_house@3602 Cass Challenger');
     expect(v.candidates.some((c) => c.source === 'admin')).toBe(false);
     expect(v.holders).toEqual([]);
-    expect(v.feeds).toMatchObject({ congress: 'off', openstates: 'off' });
+    // California's own list is California's only.
+    expect(v.feeds).toMatchObject({ congress: 'off', openstates: 'off', sos: 'off' });
     expect(v.ballot).toHaveLength(1);
     expect(JSON.stringify(v)).not.toContain('10005');
     expect((await api.firebase.db.listCollections()).map((c) => c.id)).not.toContain('area_lookups');

@@ -79,7 +79,15 @@ export class AreaContactsService {
       this.entered(area),
     ]);
     const profiled = await this.profiles.withProfiles(found.contacts);
-    return { area, electionYear, contacts: mergeContacts(profiled.people, entered), ballot: found.ballot, feeds: found.feeds, profiles: profiled.state };
+    return {
+      area,
+      electionYear,
+      contacts: mergeContacts(profiled.people, entered),
+      ballot: found.ballot,
+      notUp: found.notUp,
+      feeds: found.feeds,
+      profiles: profiled.state,
+    };
   }
 
   /** The Candidates page's people running where a ZIP code is, for anyone, from public records; the ZIP code is not kept. */
@@ -91,7 +99,7 @@ export class AreaContactsService {
     const electionYear = electionYearNow();
     const found = await this.source.forArea(area.state, area.basis === 'zip' ? area.districts : [], electionYear, { zip, holders: false });
     const profiled = await this.profiles.withProfiles(found.contacts.filter((c) => c.role === 'candidate'));
-    return { area, electionYear, candidates: profiled.people, holders: [], ballot: found.ballot, feeds: found.feeds, profiles: profiled.state };
+    return { area, electionYear, candidates: profiled.people, holders: [], ballot: found.ballot, notUp: found.notUp, feeds: found.feeds, profiles: profiled.state };
   }
 
   /** Admins' entries in an area: people in office, and candidates until the day after their election. */

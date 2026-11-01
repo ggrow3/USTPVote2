@@ -10,10 +10,12 @@ import {
   feedNote,
   localToday,
   mailtoLink,
+  notUpText,
   OFFICE_CHOICES,
   officeShown,
   personCaption,
   profilesNote,
+  recordsCredit,
   runningText,
   stateName,
   templateSuitsText,
@@ -65,6 +67,8 @@ describe('candidacy wording', () => {
     expect(feedNote('openstates', 'off')).toMatch(/not connected to Open States/);
     expect(feedNote('congress', 'unavailable')).toMatch(/^The list of members of Congress did not answer/);
     expect([feedNote('civic', 'off'), feedNote('civic', 'unavailable')]).toEqual([null, expect.stringMatching(/^Google’s ballot data, which lists state and local contests, did not/)]);
+    expect([feedNote('sos', 'off'), feedNote('sos', 'unavailable')]).toEqual([null, expect.stringMatching(/^The Secretary of State’s list of who is on the ballot did not answer/)]);
+    expect(feedNote('congress', 'off')).toBeNull();
     expect([profilesNote('ok'), profilesNote('unavailable')]).toEqual([null, expect.stringMatching(/^Wikipedia and Wikidata did not answer/)]);
   });
 
@@ -112,5 +116,13 @@ describe('candidacy wording', () => {
     expect(emptyOfficeText('state_upper', false)).toBe('No one is listed for this office yet.');
     expect(emptyOfficeText('us_house', true)).toBe('Nobody running is listed yet.');
     expect(emptyOfficeText('local', true)).toMatch(/^Nobody running is listed yet\. No public record this site reads lists city and town officials, such as the mayor and council members: the party’s communications team adds them\.$/);
+  });
+
+  it('says when a seat is not up this year, and credits each record the people come from', () => {
+    expect(notUpText(2026)).toBe('No election for this seat in 2026.');
+    expect(recordsCredit(false, false)).toBe('Candidates for Congress and President from the FEC; biographies from Wikipedia and Wikidata, by FEC and Congress ID.');
+    expect(recordsCredit(true, true)).toBe(
+      'Candidates for Congress and President from the FEC; candidates on California’s ballot from its Secretary of State; members of Congress from the congress-legislators project; state legislators from Open States; biographies from Wikipedia and Wikidata, by FEC and Congress ID.',
+    );
   });
 });
