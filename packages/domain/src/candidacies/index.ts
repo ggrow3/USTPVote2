@@ -87,15 +87,30 @@ export type {
 export {
   EMAIL_PLACEHOLDERS,
   EMAIL_TEMPLATE_LIMITS,
+  TEMPLATE_AUDIENCES,
   templateProblem,
-  emailTemplateSchema,
-  DEFAULT_EMAIL_TEMPLATES,
-  emailTemplates,
-  saveEmailTemplate,
+  emailTemplateInputSchema,
+  emailTemplateChangeSchema,
+  STARTING_EMAIL_TEMPLATES,
+  emailTemplateList,
+  suitsContact,
+  templatesFor,
+  emailTemplateHash,
+  addEmailTemplate,
+  changeEmailTemplate,
+  removeEmailTemplate,
   fillTemplate,
   placeholderValues,
 } from './email-templates.js';
-export type { EmailPlaceholder, EmailTemplateInput, EmailTemplateRecord, EmailTemplate, EmailTemplateChangedPayload } from './email-templates.js';
+export type {
+  EmailPlaceholder,
+  TemplateAudience,
+  EmailTemplateInput,
+  EmailTemplateChangeInput,
+  EmailTemplate,
+  EmailTemplateListRecord,
+  EmailTemplateChangedPayload,
+} from './email-templates.js';
 export type { AreaBasis, CandidateArea, AreaLookupInput } from './area.js';
 export { WIKIPEDIA_LICENCE, PROFILE_LIMITS, yearSpan, positionText, shortened, orderPositions } from './profiles.js';
 export type { ProfilePosition, ContactProfile, ContactPhoto } from './profiles.js';

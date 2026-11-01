@@ -10,8 +10,8 @@ import {
   candidacyInputSchema,
   candidacyRemovalSchema,
   DISTRICT_KINDS,
-  emailTemplateSchema,
-  PUBLIC_OFFICES,
+  emailTemplateChangeSchema,
+  emailTemplateInputSchema,
   STATE_FIPS,
   type AreaLookupInput,
   type AreaContactChangeInput,
@@ -21,8 +21,8 @@ import {
   type CandidacyInput,
   type CandidacyRemovalInput,
   type DistrictKind,
+  type EmailTemplateChangeInput,
   type EmailTemplateInput,
-  type PublicOffice,
 } from 'ustp-domain';
 import { Ctx, Public, requireAccount, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
@@ -38,11 +38,6 @@ const DISTRICT_CACHE = 'public, max-age=3600, s-maxage=86400';
 function districtKind(value: string): DistrictKind {
   if (!(DISTRICT_KINDS as readonly string[]).includes(value)) throw new BadRequestException('invalid district kind');
   return value as DistrictKind;
-}
-
-function publicOffice(value: string): PublicOffice {
-  if (!(PUBLIC_OFFICES as readonly string[]).includes(value)) throw new BadRequestException('invalid office');
-  return value as PublicOffice;
 }
 
 /**
@@ -117,10 +112,7 @@ export class CandidaciesAdminController {
   }
 }
 
-/**
- * What the Your area page lists besides public records (design §5.12), for Communications Admins: the office holders
- * and candidates they enter, and each kind of office's email template.
- */
+/** What the Your area page lists besides public records (design §5.12), for Communications Admins: the office holders and candidates they enter. */
 @Controller('v1/admin')
 @Roles('communications_admin')
 export class AreaContactsAdminController {
@@ -146,15 +138,33 @@ export class AreaContactsAdminController {
   async remove(@Ctx() ctx: RequestContext, @Param('contactId') contactId: string) {
     await this.contacts.remove(requireAccount(ctx), contactId);
   }
+}
 
-  @Get('email-templates')
-  templates() {
+/** The Your area page's email templates (design §5.12), which Membership Admins and Communications Admins both keep. */
+@Controller('v1/admin/email-templates')
+@Roles('membership_admin', 'communications_admin')
+export class EmailTemplatesAdminController {
+  constructor(private readonly contacts: AreaContactsService) {}
+
+  @Get()
+  list() {
     return this.contacts.templates();
   }
 
-  @Put('email-templates/:office')
-  saveTemplate(@Ctx() ctx: RequestContext, @Param('office') office: string, @Body(new ZodPipe(emailTemplateSchema)) body: EmailTemplateInput) {
-    return this.contacts.saveTemplate(requireAccount(ctx), publicOffice(office), body);
+  @Post()
+  add(@Ctx() ctx: RequestContext, @Body(new ZodPipe(emailTemplateInputSchema)) body: EmailTemplateInput) {
+    return this.contacts.addTemplate(requireAccount(ctx), body);
+  }
+
+  @Put(':templateId')
+  change(@Ctx() ctx: RequestContext, @Param('templateId') templateId: string, @Body(new ZodPipe(emailTemplateChangeSchema)) body: EmailTemplateChangeInput) {
+    return this.contacts.changeTemplate(requireAccount(ctx), templateId, body.template, body.basedOn);
+  }
+
+  @Delete(':templateId')
+  @HttpCode(204)
+  async remove(@Ctx() ctx: RequestContext, @Param('templateId') templateId: string) {
+    await this.contacts.removeTemplate(requireAccount(ctx), templateId);
   }
 }
 

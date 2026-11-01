@@ -15,7 +15,6 @@ import type {
   MapsConfig,
   MyCandidacy,
   PublicCandidacy,
-  PublicOffice,
 } from 'ustp-domain';
 import { api } from '../api.js';
 
@@ -53,7 +52,7 @@ export function zipCandidates(zip: string): Promise<AreaCandidatesView> {
   return api<AreaCandidatesView>('POST', '/v1/public/candidates/area', { zip });
 }
 
-/** The Your area page: who holds and who runs for each office in the member's area, and each office's email. */
+/** The Your area page: who holds and who runs for each office in the member's area, and the email templates that suit them. */
 export function areaContacts(): Promise<AreaContactsView> {
   return api<AreaContactsView>('GET', '/v1/candidacies/area/contacts');
 }
@@ -114,11 +113,19 @@ export function removeAreaContact(contactId: string): Promise<void> {
   return api<void>('DELETE', `/v1/admin/area-contacts/${encodeURIComponent(contactId)}`);
 }
 
-/** Every kind of office's email template, saved or the starting text. */
+/** The Your area page's email templates, in the order members are offered them: for Membership and Communications Admins. */
 export function emailTemplates(): Promise<EmailTemplate[]> {
   return api<EmailTemplate[]>('GET', '/v1/admin/email-templates');
 }
 
-export function saveEmailTemplate(office: PublicOffice, input: EmailTemplateInput): Promise<EmailTemplate> {
-  return api<EmailTemplate>('PUT', `/v1/admin/email-templates/${encodeURIComponent(office)}`, input);
+export function addEmailTemplate(input: EmailTemplateInput): Promise<EmailTemplate> {
+  return api<EmailTemplate>('POST', '/v1/admin/email-templates', input);
+}
+
+export function changeEmailTemplate(templateId: string, template: EmailTemplateInput, basedOn: number): Promise<EmailTemplate> {
+  return api<EmailTemplate>('PUT', `/v1/admin/email-templates/${encodeURIComponent(templateId)}`, { template, basedOn });
+}
+
+export function removeEmailTemplate(templateId: string): Promise<void> {
+  return api<void>('DELETE', `/v1/admin/email-templates/${encodeURIComponent(templateId)}`);
 }
