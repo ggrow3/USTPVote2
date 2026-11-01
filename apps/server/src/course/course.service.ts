@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
+import type { DocumentData } from 'firebase-admin/firestore';
 import {
   Collections,
   courseBoardProblem,
@@ -48,6 +49,7 @@ import {
 import { Firebase } from '../infra/firebase.js';
 import { VideosService } from '../videos/videos.js';
 import { CONTENT_SEEDS, SEED_SOURCE, SEEDED_AT, type SeededCourse } from './content-seed.js';
+import { COMBINE_SEED, COMBINE_SOURCE, combinedCourses } from './course-combine-seed.js';
 import { DRAFT_SUMMARY, FIRST_COURSE_POSITION, MAP_SEED, mapCourses } from './course-map-seed.js';
 import { normalizePortrait } from './portrait.js';
 import { transhumanismCourse, transhumanismLessons, transhumanismProfiles } from './transhumanism-seed.js';
@@ -635,20 +637,89 @@ export class CourseService {
   }
 
   /**
-   * Seeds the first course if it is missing, and the map's courses and then each batch of written lessons once each.
-   * Checked each time, not remembered: the database can be emptied under a running server (the emulators between
-   * tests), and a seed that failed is simply tried again.
+   * Seeds the first course if it is missing, and the map's courses and then each batch of written lessons once each,
+   * then combines the courses the user asked to have as one, once. Checked each time, not remembered: the database can
+   * be emptied under a running server (the emulators between tests), and a seed that failed is simply tried again.
    */
   private async ensureSeeded(): Promise<void> {
     const db = this.firebase.db;
-    const [first, map, ...content] = await db.getAll(
+    const [first, map, combined, ...content] = await db.getAll(
       db.collection(Collections.courses).doc(COURSE_ID),
       db.collection(Collections.courseSeeds).doc(MAP_SEED),
+      db.collection(Collections.courseSeeds).doc(COMBINE_SEED),
       ...CONTENT_SEEDS.map(({ seed }) => db.collection(Collections.courseSeeds).doc(seed)),
     );
     if (!first!.exists) await this.seedTranshumanism();
     if (!map!.exists) await this.seedMap();
     for (const [index, { seed, courses }] of CONTENT_SEEDS.entries()) if (!content[index]!.exists) await this.seedContent(seed, courses);
+    if (!combined!.exists) await this.combineCourses();
+  }
+
+  /**
+   * Combines the courses `combinedCourses` names, once (design §10.8). Each one's draft lessons and profiles are added,
+   * numbered on, after those of the course it goes into, which becomes a draft. A course combined away is deleted if it
+   * was never published, and otherwise hidden and taken off the map, so its page and certificates stay. A course that
+   * came after one combined away comes after the course it went into instead. A course already deleted is skipped.
+   */
+  private async combineCourses(): Promise<void> {
+    const db = this.firebase.db;
+    const markerRef = db.collection(Collections.courseSeeds).doc(COMBINE_SEED);
+    const ids = [...new Set(combinedCourses.flatMap(({ into, from }) => [into, ...from]))];
+    await db.runTransaction(async (tx) => {
+      const [marker, all, ...content] = await Promise.all([
+        tx.get(markerRef),
+        tx.get(db.collection(Collections.courses)),
+        ...ids.flatMap((id) => [
+          tx.get(db.collection(Collections.courseLessons).where('courseId', '==', id)),
+          tx.get(db.collection(Collections.courseProfiles).where('courseId', '==', id)),
+        ]),
+      ]);
+      if (marker.exists) return;
+      const courses = new Map(all.docs.map((doc) => [doc.id, withPlacement(doc.data() as CourseRecord)]));
+      const lessons = new Map(ids.map((id, i) => [id, content[2 * i]!.docs]));
+      const profiles = new Map(ids.map((id, i) => [id, content[2 * i + 1]!.docs]));
+      const now = new Date().toISOString();
+      const changes = new Map<string, Partial<CourseRecord>>();
+      const change = (courseId: string, fields: Partial<CourseRecord>) => changes.set(courseId, { ...changes.get(courseId), ...fields });
+      const movedTo = new Map<string, string>();
+      const deleted = new Set<string>();
+
+      for (const { into, from, seeded, summary } of combinedCourses) {
+        const target = courses.get(into);
+        const sources = from.filter((id) => courses.has(id));
+        if (!target || !sources.length) continue;
+        const copies = [
+          [Collections.courseLessons, lessons, 'lessonId'],
+          [Collections.courseProfiles, profiles, 'profileId'],
+        ] as const;
+        for (const [collection, of, key] of copies) {
+          const own = of.get(into)!.map((doc) => doc.data());
+          const added = sources.flatMap((id) => of.get(id)!.map((doc) => doc.data()).sort(byOrder));
+          for (const { item, id, order } of appended(own, added, key)) {
+            tx.create(db.collection(collection).doc(`${into}_${id}`), { ...item, courseId: into, [key]: id, order, updatedAt: now, updatedBy: COMBINE_SOURCE });
+          }
+        }
+        change(into, { status: 'draft', updatedAt: now, updatedBy: COMBINE_SOURCE, ...(target.summary === seeded && { summary }) });
+        for (const id of sources) {
+          movedTo.set(id, into);
+          if (courses.get(id)!.publishedVersion !== null) {
+            change(id, { hidden: true, hiddenChangedAt: now, hiddenChangedBy: COMBINE_SOURCE, position: null, placedAt: now, placedBy: COMBINE_SOURCE });
+            continue;
+          }
+          deleted.add(id);
+          for (const doc of [...lessons.get(id)!, ...profiles.get(id)!]) tx.delete(doc.ref);
+          tx.delete(db.collection(Collections.courses).doc(id));
+        }
+      }
+
+      for (const course of courses.values()) {
+        if (deleted.has(course.courseId) || !course.prerequisites.some((id) => movedTo.has(id))) continue;
+        const prerequisites = [...new Set(course.prerequisites.map((id) => movedTo.get(id) ?? id))].filter((id) => id !== course.courseId);
+        change(course.courseId, { prerequisites, placedAt: now, placedBy: COMBINE_SOURCE });
+      }
+      for (const [courseId, fields] of changes) tx.update(db.collection(Collections.courses).doc(courseId), fields);
+      tx.create(markerRef, { seed: COMBINE_SEED, seededAt: now });
+    });
   }
 
   /**
@@ -758,6 +829,23 @@ const mapOrder = (a: CourseRecord, b: CourseRecord) =>
   (a.position?.row ?? 0) - (b.position?.row ?? 0) ||
   (a.position?.column ?? 0) - (b.position?.column ?? 0) ||
   a.title.localeCompare(b.title);
+/** Lessons and profiles in the order a course shows them. */
+const byOrder = (a: DocumentData, b: DocumentData) => (a.order as number) - (b.order as number);
+
+/**
+ * Lessons or profiles of courses combined into another, numbered on after its own, each keeping its ID (its `key`)
+ * unless the course has one by that ID already, when it gets a new one.
+ */
+function appended(own: readonly DocumentData[], added: readonly DocumentData[], key: string): { item: DocumentData; id: string; order: number }[] {
+  const taken = new Set(own.map((item) => item[key] as string));
+  let order = Math.max(0, ...own.map((item) => item.order as number));
+  return added.map((item) => {
+    const id = taken.has(item[key] as string) ? uuidv7() : (item[key] as string);
+    taken.add(id);
+    return { item, id, order: ++order };
+  });
+}
+
 /** Lessons saved, or published, before videos have none. */
 const withVideo = (lesson: CourseLesson): CourseLesson => ({ ...lesson, video: lesson.video ?? null });
 /** Profiles saved, or published, before portraits could be uploaded have no portraitImage. */

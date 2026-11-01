@@ -1,6 +1,7 @@
 import { coursePackageSchema, coursePlacementProblem, draftCoursePackage, placementOf, type CourseRecord } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
 import { CONTENT_SEEDS, partyCourses } from './course/content-seed.js';
+import { combinedCourses } from './course/course-combine-seed.js';
 import { mapCourses } from './course/course-map-seed.js';
 import { transhumanismCourse } from './course/transhumanism-seed.js';
 
@@ -79,6 +80,18 @@ describe("The party's curriculum as courses (design §10.8)", () => {
         expect(sources.length, lesson.lessonId).toBeGreaterThan(0);
         for (const source of sources) expect(source, lesson.lessonId).toMatch(/: https:\/\/\S+$/);
       }
+    }
+  });
+
+  it('combines written courses only, each once, into courses that keep them in order with no two lessons alike', () => {
+    const seeds = new Map(contentCourses.map((seed) => [seed.courseId, seed]));
+    const combined = combinedCourses.flatMap(({ into, from }) => [into, ...from]);
+    expect(new Set(combined).size).toBe(combined.length);
+    for (const { into, from, seeded, summary } of combinedCourses) {
+      expect(seeds.get(into)?.summary).toBe(seeded);
+      const lessonIds = [into, ...from].flatMap((id) => seeds.get(id)!.lessons.map((lesson) => lesson.lessonId));
+      expect(new Set(lessonIds).size).toBe(lessonIds.length);
+      expect(summary.length).toBeLessThanOrEqual(2000);
     }
   });
 });
