@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { AreaContact, ContactPhoto } from 'ustp-domain';
-import { CONTACT_SOURCE_TEXT, districtText, runningText } from './candidacy-text.js';
+import type { AreaContact, ContactPhoto, PersonMarks } from 'ustp-domain';
+import { CONTACT_SOURCE_TEXT, districtText, MARK_TEXT, runningText } from './candidacy-text.js';
 import DistrictMap from './DistrictMap.vue';
 import DistrictOutline from './DistrictOutline.vue';
 import { mapsRefused } from './maps.js';
+import PersonBadges from './PersonBadges.vue';
 
 /** One of a person's links, as their row on the page shows it. */
 export interface PersonLink {
@@ -16,12 +17,13 @@ export interface PersonLink {
 }
 
 /**
- * A person on the Candidates or Your area page, opened from their photo or name (design §5.12): a larger photo, their
- * office, party and district, their links named in full, and the area they represent, or would, on the map where it is
- * set up and drawn from its outline where it is not.
+ * A person on the Candidates or Your area page, opened from their photo or name (design §5.12): a larger photo, what
+ * they are to the member in full (§5.8), their office, party and district, their links named in full, and the area
+ * they represent, or would, on the map where it is set up and drawn from its outline where it is not.
  */
 const props = defineProps<{
   person: AreaContact;
+  marks: PersonMarks;
   /** Their photo, or null when there is none or it did not load. */
   photo: ContactPhoto | null;
   initials: string;
@@ -30,6 +32,8 @@ const props = defineProps<{
 const open = defineModel<boolean>({ required: true });
 
 const where = computed(() => districtText(props.person));
+/** What each of their badges means, said in full. */
+const meanings = computed(() => (['party', 'representative'] as const).filter((m) => props.marks[m]).map((m) => MARK_TEXT[m].meaning));
 const caption = computed(() =>
   [props.person.party, CONTACT_SOURCE_TEXT[props.person.source], props.person.role === 'candidate' ? runningText(props.person.election) : null].filter(Boolean).join(' · '),
 );
@@ -50,8 +54,11 @@ const mapShown = ref(false);
         <div class="person-dialog__who">
           <h2 class="text-h6 q-my-none">
             {{ person.name }}
-            <q-badge v-if="person.incumbent" outline color="primary" class="q-ml-xs">Incumbent</q-badge>
+            <PersonBadges :marks="marks" :incumbent="person.incumbent" />
           </h2>
+          <div v-if="meanings.length" class="q-my-xs">
+            <div v-for="m in meanings" :key="m" class="text-caption">{{ m }}</div>
+          </div>
           <div>{{ person.role === 'holder' ? person.officeTitle : `Running for ${person.officeTitle}` }}</div>
           <div class="text-grey-7">{{ caption }}</div>
           <div class="text-grey-7">{{ where }}</div>
