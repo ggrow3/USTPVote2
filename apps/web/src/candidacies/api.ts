@@ -1,5 +1,6 @@
 import type {
   AdminCandidacy,
+  CandidateArea,
   CandidacyDecisionInput,
   CandidacyInput,
   DistrictBoundary,
@@ -28,6 +29,11 @@ export function publicCandidacy(candidacyId: string): Promise<PublicCandidacy> {
 /** The signed-in member's own candidacies, newest first. */
 export function myCandidacies(): Promise<MyCandidacy[]> {
   return api<MyCandidacy[]>('GET', '/v1/candidacies/mine');
+}
+
+/** The signed-in member's own area, worked out from their membership record, which the Candidates page opens on. */
+export function myArea(): Promise<CandidateArea> {
+  return api<CandidateArea>('GET', '/v1/candidacies/area');
 }
 
 export function declareCandidacy(input: CandidacyInput): Promise<MyCandidacy> {

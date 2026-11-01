@@ -1,4 +1,12 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import {
   adminCandidacy,
   candidacyContent,
@@ -19,6 +27,7 @@ import {
   type CandidacyDecisionInput,
   type CandidacyInput,
   type CandidacyRecord,
+  type CandidateArea,
   type District,
   type DistrictBoundary,
   type DistrictKind,
@@ -75,6 +84,26 @@ export class CandidaciesService {
   /** The caller's own candidacies, newest first, with where each stands. */
   async mine(accountId: string): Promise<MyCandidacy[]> {
     return (await this.candidacies.of(accountId)).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(myCandidacy);
+  }
+
+  /**
+   * The caller's own area, which the Candidates page opens on: the state on their membership record and the districts
+   * its ZIP code reaches into, or the whole state when that cannot be worked out. Nothing is stored, and the ZIP code
+   * is not sent back.
+   */
+  async area(accountId: string): Promise<CandidateArea> {
+    const member = await this.members.find(accountId);
+    if (!member) throw new NotFoundException('no membership record');
+    const { state } = member;
+    const postalCode = member.contact?.postalCode ?? null;
+    if (postalCode === null) return { state, districts: [], basis: 'no_zip' };
+    try {
+      const districts = await this.districts.area(postalCode, state);
+      return districts ? { state, districts, basis: 'zip' } : { state, districts: [], basis: 'unplaced' };
+    } catch (e) {
+      if (e instanceof ServiceUnavailableException) return { state, districts: [], basis: 'unavailable' };
+      throw e;
+    }
   }
 
   /** A new declaration, waiting for a Membership Admin. */

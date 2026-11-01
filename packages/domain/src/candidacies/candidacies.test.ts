@@ -12,11 +12,13 @@ import {
   decideCandidacy,
   declareCandidacy,
   districtIdProblem,
+  inCandidateArea,
   publicCandidacy,
   removeCandidacy,
   stateOfDistrict,
   withdrawCandidacy,
   type CandidacyContent,
+  type CandidateArea,
   type CandidacyRecord,
   type District,
   type PublicCandidacy,
@@ -251,5 +253,29 @@ describe('views', () => {
     const waiting = { ...adminCandidacy(declared(), member), candidacyId: 'waiting' };
     expect([live, waiting].sort(compareAdminCandidacies).map((c) => c.candidacyId)).toEqual(['waiting', 'live']);
     expect(adminCandidacy(declared(), null)).toMatchObject({ name: 'Unknown member', memberStatus: null, stage: 'waiting' });
+  });
+});
+
+describe('a member’s area', () => {
+  const district = (kind: District['kind'], geoid: string, state: string | null = 'CA') => ({ kind, geoid, state });
+  const area: CandidateArea = { state: 'CA', districts: [CA12, { ...CA12, kind: 'county', geoid: '06001', name: 'Alameda County' }], basis: 'zip' };
+
+  it('holds nationwide offices, the state’s own and the districts the ZIP code reaches into', () => {
+    expect(inCandidateArea(district('nation', 'US', null), area)).toBe(true);
+    expect(inCandidateArea(district('state', '06'), area)).toBe(true);
+    expect(inCandidateArea(district('congressional', '0612'), area)).toBe(true);
+    expect(inCandidateArea(district('county', '06001'), area)).toBe(true);
+    expect(inCandidateArea(district('congressional', '0611'), area)).toBe(false);
+    expect(inCandidateArea(district('state_lower', '0612'), area)).toBe(false);
+    expect(inCandidateArea(district('state', '41', 'OR'), area)).toBe(false);
+  });
+
+  it('is the whole state when the ZIP code could not be placed', () => {
+    for (const basis of ['no_zip', 'unplaced', 'unavailable'] as const) {
+      const statewide: CandidateArea = { state: 'CA', districts: [], basis };
+      expect(inCandidateArea(district('congressional', '0611'), statewide)).toBe(true);
+      expect(inCandidateArea(district('place', '0644000'), statewide)).toBe(true);
+      expect(inCandidateArea(district('county', '41051', 'OR'), statewide)).toBe(false);
+    }
   });
 });

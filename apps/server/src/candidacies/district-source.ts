@@ -1,6 +1,7 @@
 import { Logger, ServiceUnavailableException } from '@nestjs/common';
 import {
   DISTRICT_ID,
+  LISTED_DISTRICT_KINDS,
   NATION_ID,
   STATE_FIPS,
   stateOfDistrict,
@@ -8,6 +9,7 @@ import {
   type DistrictBoundary,
   type DistrictKind,
 } from 'ustp-domain';
+import { pointsInside } from './zip-points.js';
 
 /**
  * Where candidacies' districts come from (design §5.8): the districts of a kind in a state, for the declaration form,
@@ -19,6 +21,11 @@ export interface DistrictSource {
   list(kind: DistrictKind, state: string | null): Promise<District[]>;
   /** The district's outline, simplified for a map; null for the nation, or a GEOID the source does not know. */
   boundary(kind: DistrictKind, geoid: string): Promise<DistrictBoundary | null>;
+  /**
+   * The districts of the listed kinds in the state that a ZIP code's area reaches into, in kind and name order; null
+   * when the source has no area for that ZIP code in the state. Only the five-digit ZIP code leaves the api.
+   */
+  area(postalCode: string, state: string): Promise<District[] | null>;
 }
 
 export const DISTRICT_SOURCE = Symbol('DistrictSource');
@@ -38,10 +45,18 @@ const LAYERS: Readonly<Record<Exclude<DistrictKind, 'nation'>, number>> = {
   county: 82,
   place: 28,
 };
+/** The 2020 Census ZIP Code Tabulation Areas: what the Census draws for a ZIP code (a PO box's has none). */
+const ZCTA_LAYER = 2;
 const TIMEOUT_MS = 15_000;
 /** Lists change once a year, when the Census publishes new lines. */
 const LIST_TTL_MS = 24 * 60 * 60 * 1000;
 const MAX_BOUNDARIES = 200;
+const MAX_AREAS = 1000;
+/** Points sampled across a ZIP code's area, at most `AREA_GRID`²: a district holding less of it than a cell may be missed. */
+const AREA_GRID = 20;
+
+/** Degrees to simplify an outline by: about `across` points over the width of an area of `m2` square metres. */
+const simplification = (m2: number, across: number, max: number) => Math.min(max, Math.max(0.00002, Math.sqrt(m2) / 111_000 / across));
 
 interface Listed {
   readonly at: number;
@@ -71,6 +86,9 @@ export class CensusDistrictSource implements DistrictSource {
   private readonly lists = new Map<string, Listed>();
   private readonly boundaries = new Map<string, DistrictBoundary | null>();
   private readonly vintages = new Map<number, Promise<string>>();
+  private readonly areas = new Map<string, { readonly at: number; readonly districts: District[] | null }>();
+
+  constructor(private readonly fetchFn: typeof globalThis.fetch = (input, init) => globalThis.fetch(input, init)) {}
 
   async list(kind: DistrictKind, state: string | null): Promise<District[]> {
     return (await this.listed(kind, state)).districts;
@@ -84,7 +102,7 @@ export class CensusDistrictSource implements DistrictSource {
     const area = listed.areas.get(geoid);
     if (area === undefined) return null;
     // About 500 points across the district's width: a city block in a city, a few kilometres in Alaska.
-    const offset = Math.min(0.02, Math.max(0.00005, Math.sqrt(area) / 111_000 / 500));
+    const offset = Math.max(0.00005, simplification(area, 500, 0.02));
     const geojson = await this.query<DistrictBoundary>(LAYERS[kind], {
       where: `GEOID='${geoid}'`,
       outFields: 'GEOID,NAME',
@@ -100,6 +118,70 @@ export class CensusDistrictSource implements DistrictSource {
     if (this.boundaries.size >= MAX_BOUNDARIES) this.boundaries.delete(this.boundaries.keys().next().value!);
     this.boundaries.set(key, boundary);
     return boundary;
+  }
+
+  async area(postalCode: string, state: string): Promise<District[] | null> {
+    const zip = postalCode.slice(0, 5);
+    const fips = fipsOf(state);
+    if (!/^[0-9]{5}$/.test(zip) || fips === undefined) return null;
+    const key = `${zip}:${state}`;
+    const cached = this.areas.get(key);
+    if (cached && Date.now() - cached.at < LIST_TTL_MS) return cached.districts;
+    const points = await this.zipPoints(zip);
+    const found = points && (await Promise.all(LISTED_DISTRICT_KINDS.map((kind) => this.holding(kind, state, fips, points)))).flat();
+    const districts = found?.length ? found : null;
+    this.areas.delete(key);
+    if (this.areas.size >= MAX_AREAS) this.areas.delete(this.areas.keys().next().value!);
+    this.areas.set(key, { at: Date.now(), districts });
+    return districts;
+  }
+
+  /** Points well inside the ZIP Code Tabulation Area, its Census internal point first; null when there is none. */
+  private async zipPoints(zip: string): Promise<[number, number][] | null> {
+    const where = `GEOID='${zip}'`;
+    const found = await this.post<{ features?: { attributes: TigerAttributes }[] }>(ZCTA_LAYER, {
+      where,
+      outFields: 'GEOID,INTPTLAT,INTPTLON,AREALAND,AREAWATER',
+      returnGeometry: 'false',
+      f: 'json',
+    });
+    const zcta = found.features?.[0]?.attributes;
+    if (!zcta) return null;
+    // A finer outline than a district's, since a ZIP code is small: about 1,000 points across.
+    const offset = simplification((zcta.AREALAND ?? 0) + (zcta.AREAWATER ?? 0), 1000, 0.005);
+    const outline = await this.post<DistrictBoundary>(ZCTA_LAYER, {
+      where,
+      outFields: 'GEOID',
+      returnGeometry: 'true',
+      maxAllowableOffset: offset.toFixed(6),
+      geometryPrecision: '6',
+      outSR: '4326',
+      f: 'geojson',
+    });
+    const lat = Number(zcta.INTPTLAT);
+    const lng = Number(zcta.INTPTLON);
+    const centre: [number, number][] = Number.isFinite(lat) && Number.isFinite(lng) ? [[lng, lat]] : [];
+    return [...centre, ...(outline.features ?? []).flatMap((f) => pointsInside(f.geometry, AREA_GRID, 2 * offset))];
+  }
+
+  /** The districts of a kind in the state holding any of the points, as the state's list names them. */
+  private async holding(kind: DistrictKind, state: string, fips: string, points: readonly [number, number][]): Promise<District[]> {
+    if (kind === 'nation' || !points.length) return [];
+    const [result, listed] = await Promise.all([
+      this.post<{ features?: { attributes: Pick<TigerAttributes, 'GEOID'> }[] }>(LAYERS[kind], {
+        where: `STATE='${fips}'`,
+        geometry: JSON.stringify({ points, spatialReference: { wkid: 4326 } }),
+        geometryType: 'esriGeometryMultipoint',
+        inSR: '4326',
+        spatialRel: 'esriSpatialRelIntersects',
+        outFields: 'GEOID',
+        returnGeometry: 'false',
+        f: 'json',
+      }),
+      this.listed(kind, state),
+    ]);
+    const geoids = new Set((result.features ?? []).map((f) => f.attributes.GEOID));
+    return listed.districts.filter((d) => geoids.has(d.geoid));
   }
 
   private async listed(kind: DistrictKind, state: string | null): Promise<Listed> {
@@ -158,9 +240,18 @@ export class CensusDistrictSource implements DistrictSource {
     return this.fetchJson<T>(`${TIGERWEB}/${layer}/query?${new URLSearchParams(params)}`);
   }
 
-  private async fetchJson<T>(url: string): Promise<T> {
+  /** A query sent as a form: a sampled geometry is long, and a ZIP code is then never in a URL. */
+  private post<T>(layer: number, params: Record<string, string>): Promise<T> {
+    return this.fetchJson<T>(`${TIGERWEB}/${layer}/query`, new URLSearchParams(params));
+  }
+
+  private async fetchJson<T>(url: string, form?: URLSearchParams): Promise<T> {
     try {
-      const res = await fetch(url, { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { accept: 'application/json' } });
+      const res = await this.fetchFn(url, {
+        signal: AbortSignal.timeout(TIMEOUT_MS),
+        headers: { accept: 'application/json' },
+        ...(form && { method: 'POST', body: form }),
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const body = (await res.json()) as T & { error?: { message?: string } };
       if (body.error) throw new Error(body.error.message ?? 'error');
@@ -201,6 +292,16 @@ export class LocalDistrictSource implements DistrictSource {
       case 'place':
         return [district(`${fips}00100`, 'Example city'), district(`${fips}00200`, 'Sample town', 0.5)];
     }
+  }
+
+  /**
+   * A ZIP code reaches into the first district of each kind in the state, and one ending in 5 into the second
+   * congressional district too, as a ZIP code across a line does; `00000` has no area.
+   */
+  async area(postalCode: string, state: string): Promise<District[] | null> {
+    if (postalCode.startsWith('00000') || fipsOf(state) === undefined) return null;
+    const lists = await Promise.all(LISTED_DISTRICT_KINDS.map((kind) => this.list(kind, state)));
+    return lists.flatMap((list) => (list[0]?.kind === 'congressional' && postalCode[4] === '5' ? list : list.slice(0, 1)));
   }
 
   async boundary(kind: DistrictKind, geoid: string): Promise<DistrictBoundary | null> {
