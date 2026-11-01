@@ -5,6 +5,7 @@ import { api } from '../../api.js';
 import { attempt } from '../../dialogs.js';
 import { auth } from '../../firebase.js';
 import { PROVIDER_LABELS } from '../../sign-in.js';
+import MfaPolicyCard from './MfaPolicyCard.vue';
 
 type Switches = Record<SignInProvider, boolean>;
 
@@ -60,5 +61,6 @@ onMounted(load);
         <q-btn color="primary" label="Save" :disable="!Object.keys(changes).length" @click="save" />
       </q-card-section>
     </q-card>
+    <MfaPolicyCard />
   </div>
 </template>

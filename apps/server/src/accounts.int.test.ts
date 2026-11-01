@@ -31,7 +31,7 @@ describe('accounts', () => {
       identities: [],
       member: null,
       roles: [],
-      mfa: { required: false, signedInWithMfa: false },
+      mfa: { required: false, everywhere: false, signedInWithMfa: false },
       testing: { enabled: false, operator: null },
     });
 

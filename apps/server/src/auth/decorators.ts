@@ -13,6 +13,7 @@ export const PUBLIC_KEY = 'ustp:public';
 export const ROLES_KEY = 'ustp:roles';
 export const CHECK_REVOKED_KEY = 'ustp:check-revoked';
 export const APP_CHECKED_KEY = 'ustp:app-checked';
+export const MFA_EXEMPT_KEY = 'ustp:mfa-exempt';
 
 /** No sign-in required. */
 export const Public = () => SetMetadata(PUBLIC_KEY, true);
@@ -28,6 +29,12 @@ export const AppChecked = () => SetMetadata(APP_CHECKED_KEY, true);
  * the ID token (design §4).
  */
 export const Roles = (...roles: Role[]) => SetMetadata(ROLES_KEY, roles);
+
+/**
+ * Open to a sign-in without a second factor even where one is required (design §4): seeing and creating your own
+ * account, which is what someone needs to learn where they stand and set one up.
+ */
+export const MfaExempt = () => SetMetadata(MFA_EXEMPT_KEY, true);
 
 /** Also check that the ID token has not been revoked, as admin routes do (casting a ballot, design §7.1). */
 export const CheckRevoked = () => SetMetadata(CHECK_REVOKED_KEY, true);

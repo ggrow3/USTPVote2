@@ -126,3 +126,11 @@ export async function signOut(): Promise<void> {
 export function hasRole(...roles: Role[]): boolean {
   return roles.some((r) => state.me?.roles.includes(r));
 }
+
+/**
+ * Signed in without a second factor where the site needs one for everything (design §4): a System Admin always, everyone
+ * while the member requirement is on. Until they use one, only the account page, where it is set up, works.
+ */
+export function secondFactorMissing(): boolean {
+  return !!state.me?.mfa.everywhere && !state.me.mfa.signedInWithMfa;
+}

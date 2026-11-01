@@ -7,6 +7,7 @@ import { AccountsAdminController } from './accounts/accounts.controller.js';
 import { compareAccounts, pageOf } from './accounts/accounts.service.js';
 import { AuthGuard } from './auth/auth.guard.js';
 import type { DirectoryService } from './auth/directory.service.js';
+import type { MfaPolicyService } from './auth/mfa-policy.js';
 import type { SignInMethodsService } from './auth/sign-in-methods.service.js';
 import { loadConfig } from './config.js';
 import type { Firebase } from './infra/firebase.js';
@@ -23,6 +24,7 @@ describe('People list route (GET /v1/admin/accounts)', () => {
       loadConfig({ ...emulators, APP_CHECK_ENFORCED: 'false', ADMIN_MFA_REQUIRED: 'true' }),
       { isEnabled: async () => true } as unknown as SignInMethodsService,
       { accountIdForUid: async () => 'a1', activeRoles: async () => roles } as unknown as DirectoryService,
+      { current: async () => ({ membersRequired: false }) } as unknown as MfaPolicyService,
     );
     const context = {
       getHandler: () => AccountsAdminController.prototype.list,

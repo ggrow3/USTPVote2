@@ -11,18 +11,20 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
-import { ACT_AS_HEADER, isUuidV7, PROBLEM_TYPES, type Role } from 'ustp-domain';
+import { ACT_AS_HEADER, isUuidV7, PROBLEM_TYPES, secondFactorScope, type Role } from 'ustp-domain';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { SignInLogService } from '../security/sign-in-log.js';
-import { APP_CHECKED_KEY, CHECK_REVOKED_KEY, PUBLIC_KEY, ROLES_KEY } from './decorators.js';
+import { APP_CHECKED_KEY, CHECK_REVOKED_KEY, MFA_EXEMPT_KEY, PUBLIC_KEY, ROLES_KEY } from './decorators.js';
 import { DirectoryService } from './directory.service.js';
+import { MfaPolicyService } from './mfa-policy.js';
 import { principalFromToken, type Principal, type RequestContext } from './principal.js';
 import { SignInMethodsService } from './sign-in-methods.service.js';
 
 /**
- * Applied to every API route (design §4): App Check, a verified ID token from an enabled provider, and for
- * admin routes a role plus multi-factor sign-in. Routes marked @Public() skip it.
+ * Applied to every API route (design §4): App Check, a verified ID token from an enabled provider, for admin routes a
+ * role plus multi-factor sign-in, and multi-factor sign-in on every route for System Admins, and for everyone while the
+ * member requirement is on. Routes marked @Public() skip it.
  */
 @Injectable()
 export class AuthGuard implements CanActivate {
@@ -34,6 +36,7 @@ export class AuthGuard implements CanActivate {
     @Inject(CONFIG) private readonly config: ServerConfig,
     private readonly signInMethods: SignInMethodsService,
     private readonly directory: DirectoryService,
+    private readonly mfaPolicy: MfaPolicyService,
     @Optional() private readonly signInLog?: SignInLogService,
   ) {}
 
@@ -81,6 +84,8 @@ export class AuthGuard implements CanActivate {
       }
       roles = await this.directory.activeRoles(accountId);
       if (!required.some((r) => roles.includes(r))) throw new ForbiddenException(`requires role ${required.join(' or ')}`);
+    } else if (this.config.adminMfaRequired && !principal.mfa && !this.reflector.getAllAndOverride<boolean>(MFA_EXEMPT_KEY, targets)) {
+      await this.requireSecondFactorWhereDue(ownAccountId);
     }
 
     const ctx: RequestContext = { principal, accountId, roles, operator };
@@ -89,9 +94,21 @@ export class AuthGuard implements CanActivate {
   }
 
   /**
-   * Checks a request to act as a test persona (design §10.4): testing mode is on, the caller is a System Admin signed
-   * in with MFA, and the target is a persona. Returns the caller's own accountId, the operator.
+   * A sign-in without a second factor, on a route that is neither an admin route nor exempt: refused for a System Admin
+   * always, and for everyone while the member requirement is on (design §4). The roles are read fresh, and only when the
+   * requirement is off, so a new System Admin is held to it at once. Someone acting as a test persona already signed in
+   * with a second factor (operatorFor), so the login's own account is the one that counts.
    */
+  private async requireSecondFactorWhereDue(ownAccountId: string | null): Promise<void> {
+    const policy = await this.mfaPolicy.current();
+    const roles = policy.membersRequired || !ownAccountId ? [] : await this.directory.activeRoles(ownAccountId);
+    if (secondFactorScope(roles, policy) !== 'everywhere') return;
+    const message = roles.includes('system_admin')
+      ? 'System Admins must sign in with two-step verification'
+      : 'this site requires two-step verification; set it up on your account page';
+    throw new ForbiddenException({ message, type: PROBLEM_TYPES.mfaRequired });
+  }
+
   /** Where App Check is enforced, the request carries a valid App Check token. */
   private async verifyAppCheck(request: FastifyRequest): Promise<void> {
     if (!this.config.appCheckEnforced) return;
@@ -104,6 +121,10 @@ export class AuthGuard implements CanActivate {
     }
   }
 
+  /**
+   * Checks a request to act as a test persona (design §10.4): testing mode is on, the caller is a System Admin signed
+   * in with MFA, and the target is a persona. Returns the caller's own accountId, the operator.
+   */
   private async operatorFor(
     request: FastifyRequest,
     principal: Principal,

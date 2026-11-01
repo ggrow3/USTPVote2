@@ -20,7 +20,7 @@ import {
   type PageVisitRecord,
   type PageVisitReport,
 } from 'ustp-domain';
-import { Ctx, Public, Roles } from '../auth/decorators.js';
+import { Ctx, MfaExempt, Public, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { ZodPipe } from '../common/validation.js';
 import { CONFIG, type ServerConfig } from '../config.js';
@@ -164,6 +164,8 @@ export class PageVisitsService {
 /**
  * A signed-in person opened a page: counted, and recorded with their account (design §10.7). A System Admin acting as
  * a test persona is recorded as themself. A login with no account yet (the first step of Register) is only counted.
+ * It records only the caller's own visit and answers nothing, so it needs no second factor where one is required
+ * (design §4): visits while someone sets one up still count.
  */
 @Controller('v1/page-visits')
 export class PageVisitsController {
@@ -171,6 +173,7 @@ export class PageVisitsController {
 
   @Post()
   @HttpCode(204)
+  @MfaExempt()
   async visit(@Ctx() ctx: RequestContext, @Body(new ZodPipe(pageVisitSchema)) body: PageVisitInput): Promise<void> {
     const accountId = ctx.operator ?? ctx.accountId;
     this.visits.limit(accountId ? `account:${accountId}` : `login:${ctx.principal.uid}`);

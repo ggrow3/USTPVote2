@@ -143,8 +143,15 @@ export {
 export type { TwoPersonAction, Actor, PendingApproval } from './approvals.js';
 export { Collections, ElectionCollections, NOTICE_RECIPIENTS, electionDocPath, sequenceId } from './collections.js';
 export type { ElectionCollection } from './collections.js';
-export { SIGN_IN_PROVIDERS, isSignInProvider } from './identity.js';
-export type { SignInProvider } from './identity.js';
+export { SIGN_IN_PROVIDERS, DEFAULT_MFA_POLICY, isSignInProvider, mfaPolicySchema, secondFactorScope } from './identity.js';
+export type {
+  SignInProvider,
+  MfaPolicy,
+  MfaPolicyRecord,
+  MfaPolicyInput,
+  MfaPolicyChangedPayload,
+  SecondFactorScope,
+} from './identity.js';
 export { LEDGER_EVENT_TYPES } from './ledger-events.js';
 export type { LedgerEventType, LedgerEvent, LedgerEntry } from './ledger-events.js';
 export { PUBLIC_LEDGER_EVENT_TYPES, isPublicLedgerEvent, signingKeyId } from './ledger.js';
