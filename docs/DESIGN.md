@@ -3788,7 +3788,7 @@ students and messages were added 2026-10-31; before, there was the one course at
   version; where it sits on the map, its prerequisites and whether it is hidden are not part of it. A lesson's video is in it as saved: a
   YouTube video's ID and start, or an upload's ID, which names a file on this site, not the file itself.
 - **The public course api** *(added 2026-11-01; the user asked that the course JSON be "a public API" from which
-  another site is easy to make)*. Anyone may read a published course's file at
+  another site is easy to make, and chose to keep the quiz answers in it)*. Anyone may read a published course's file at
   `GET /v1/public/courses/{courseId}/package` (`coursePackageSrc`): the version learners take now, or `?version=N` for
   an earlier one, the same file a Course Administrator exports of that version, quiz answers and explanations included;
   404 for a course never published or a version it lacks, and never the draft. A hidden course's file stays readable,
