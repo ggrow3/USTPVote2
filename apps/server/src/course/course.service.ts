@@ -45,7 +45,8 @@ import {
 } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 import { VideosService } from '../videos/videos.js';
-import { FIRST_COURSE_POSITION, MAP_SEED, mapCourses } from './course-map-seed.js';
+import { CONTENT_SEED, contentCourses, SEED_SOURCE, SEEDED_AT } from './content-seed.js';
+import { DRAFT_SUMMARY, FIRST_COURSE_POSITION, MAP_SEED, mapCourses } from './course-map-seed.js';
 import { normalizePortrait } from './portrait.js';
 import { transhumanismCourse, transhumanismLessons, transhumanismProfiles } from './transhumanism-seed.js';
 
@@ -609,15 +610,70 @@ export class CourseService {
   }
 
   /**
-   * Seeds the first course if it is missing, and the map's courses once. Checked each time, not remembered: the
-   * database can be emptied under a running server (the emulators between tests), and a seed that failed is simply
-   * tried again.
+   * Seeds the first course if it is missing, and the map's courses and then the curriculum's lessons once each.
+   * Checked each time, not remembered: the database can be emptied under a running server (the emulators between
+   * tests), and a seed that failed is simply tried again.
    */
   private async ensureSeeded(): Promise<void> {
     const db = this.firebase.db;
-    const [first, map] = await db.getAll(db.collection(Collections.courses).doc(COURSE_ID), db.collection(Collections.courseSeeds).doc(MAP_SEED));
+    const [first, map, content] = await db.getAll(
+      db.collection(Collections.courses).doc(COURSE_ID),
+      db.collection(Collections.courseSeeds).doc(MAP_SEED),
+      db.collection(Collections.courseSeeds).doc(CONTENT_SEED),
+    );
     if (!first!.exists) await this.seedTranshumanism();
     if (!map!.exists) await this.seedMap();
+    if (!content!.exists) await this.seedContent();
+  }
+
+  /**
+   * Writes the curriculum's lessons into its courses, as drafts: a map course gets them only while it was never
+   * published and has no lessons, and its summary only while it is still the placeholder, so a course a Course
+   * Administrator has written or deleted is left as it is. A new course is added where it is missing, on its square
+   * if that is free, after those of its prerequisites that are courses.
+   */
+  private async seedContent(): Promise<void> {
+    const db = this.firebase.db;
+    const markerRef = db.collection(Collections.courseSeeds).doc(CONTENT_SEED);
+    await db.runTransaction(async (tx) => {
+      const [marker, all, ...written] = await Promise.all([
+        tx.get(markerRef),
+        tx.get(db.collection(Collections.courses)),
+        ...contentCourses.map((seed) => tx.get(db.collection(Collections.courseLessons).where('courseId', '==', seed.courseId).limit(1))),
+      ]);
+      if (marker.exists) return;
+      const courses = new Map(all.docs.map((doc) => [doc.id, withPlacement(doc.data() as CourseRecord)]));
+      const taken = new Set([...courses.values()].flatMap((course) => (course.position ? [`${course.position.row},${course.position.column}`] : [])));
+      contentCourses.forEach((seed, index) => {
+        if (!written[index]!.empty) return;
+        const ref = db.collection(Collections.courses).doc(seed.courseId);
+        const existing = courses.get(seed.courseId);
+        if (existing) {
+          if (existing.publishedVersion !== null) return;
+          tx.update(ref, { ...(existing.summary === DRAFT_SUMMARY && { summary: seed.summary }), updatedAt: SEEDED_AT, updatedBy: SEED_SOURCE });
+        } else if (seed.placement) {
+          const square = seed.placement.position && `${seed.placement.position.row},${seed.placement.position.column}`;
+          const position = square && !taken.has(square) ? seed.placement.position : null;
+          if (square && position) taken.add(square);
+          const record: CourseRecord = {
+            courseId: seed.courseId,
+            title: seed.title,
+            summary: seed.summary,
+            status: 'draft',
+            version: 0,
+            publishedVersion: null,
+            prerequisites: seed.placement.prerequisites.filter((id) => courses.has(id)),
+            position,
+            createdAt: SEEDED_AT,
+            updatedAt: SEEDED_AT,
+            updatedBy: SEED_SOURCE,
+          };
+          tx.create(ref, record);
+        } else return;
+        for (const lesson of seed.lessons) tx.create(db.collection(Collections.courseLessons).doc(`${seed.courseId}_${lesson.lessonId}`), lesson);
+      });
+      tx.create(markerRef, { seed: CONTENT_SEED, seededAt: new Date().toISOString() });
+    });
   }
 
   /** Adds the map's draft courses that are missing, and puts the first course on the map if it is not on it yet. */

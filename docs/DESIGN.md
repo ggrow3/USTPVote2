@@ -3573,6 +3573,23 @@ students and messages were added 2026-10-31; before, there was the one course at
   `course_seeds/course-map-2026-10` records that they were, so a course deleted later is not added again. The first
   course, Transhumanism: Human Flourishing and Democratic Futures, keeps its address, versions, progress and
   certificates, and sits on its own in the top left corner with no lines.
+- **The party's curriculum** (`content-seed.ts`, `course/content/`) *(added 2026-11-01 from the party's
+  "Considerations" curriculum; the user approved the mapping and chose drafts, the map kept as drawn, and the
+  USTP-Left's conduct rules left out)*. Its five series of five levels (101 to 501) become one lesson a level, the
+  level's topics as headed paragraphs in the curriculum's own words (spelling and broken sentences mended), each with a
+  quiz of five questions answered from the text. Basics of Transhumanism fills The Fundamental Questions of
+  Transhumanism; Historical Figures fills The Figures of Transhumanism, as lessons, since a profile needs a sourced quote
+  and portrait the curriculum does not give; its USPP section fills The Coalition. Two series fit no course, so two
+  courses join the map: **Introduction to Left Transhumanism** (`introduction-to-left-transhumanism`, row 2, column 5,
+  after The Fundamental Questions), with the USTP-Left as a sixth lesson, and **Historical Applied Projects**
+  (`historical-applied-projects`, row 4, column 2, after The Figures). The curriculum has nothing yet for Allies, An
+  Introduction into the Transhumanist Party, Why the Transhumanist Party? and the two New York courses, which stay
+  coming soon; until An Introduction and Allies are published, the quizzes of The Figures, Historical Applied Projects
+  and The Coalition stay locked, though their lessons can be read once published. Everything is added as a draft, for a
+  Course Administrator to read and publish, once (`course_seeds/course-content-2026-11`): a map course gets its lessons
+  only while it was never published and has none, and its summary only while it is still the placeholder; a new course
+  is added only where it is missing, on its square if free, after those of its prerequisites that exist. So a course
+  written, published or deleted by a Course Administrator, or a lesson deleted later, is left as it is.
 - **Prerequisites lock the quizzes, not the lessons.** Anyone may read every lesson of a published course. A signed-in
   learner takes a course's quizzes, and so earns its certificate, only while they hold an unrevoked certificate of each
   of its prerequisites; until then the course page says which to pass first, with links, and a quiz is refused (409).
