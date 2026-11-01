@@ -96,6 +96,7 @@ Set in each root's `terraform.tfvars` (or with `-var`):
 | `election_check_enabled` | false | false | false | The election setup check with Claude, once per version of an election, which sends its rules, offices and proposal texts with the bylaws to Anthropic, and whose notes every user sees; see [Election setup check](#election-setup-check) |
 | `maps_enabled` | true | true | true | The Candidates page's Google map: the Maps JavaScript API and a browser key restricted to it and to the web app's origins; see [Candidates map](#candidates-map) |
 | `fec_api_key`, `openstates_api_key` | "" | "" | "" | Free keys for the Your area page's public records: the FEC's candidate lists (empty: the shared `DEMO_KEY`) and Open States' state legislators (empty: left out); see [Your area records](#your-area-records) |
+| `civic_enabled` | true | true | true | The ballot's contests from Google's Civic Information API on the Candidates and Your area pages, with a server key Terraform creates and keeps in Secret Manager; see [Your area records](#your-area-records) |
 | `room_model_enabled` | false | false | false | The members' room's self-hosted model on one L4 GPU (about $1.05 an hour while warm), and the api queueing questions for the worker; see [Members' room model](#members-room-model) |
 | `project_id`, `region` | | | | Default to the environment's project and `us-central1` |
 
@@ -127,6 +128,7 @@ for running the server locally against a real project. Variable names are those 
 | `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` | from the variable, not output | ● | |
 | `GOOGLE_MAPS_BROWSER_KEY` | not output: the `maps-browser` API key's value, when `maps_enabled`; the api gives it to browsers for the Candidates map (design §5.8) | ● | |
 | `FEC_API_KEY`, `OPENSTATES_API_KEY` | not output: `fec_api_key` and `openstates_api_key`, when set; the api's keys for the Your area page's public records (design §5.12) | ● | |
+| `GOOGLE_CIVIC_API_KEY` | not output: the `google-civic-api-key` secret's latest version (the `civic-server` API key), when `civic_enabled`; the api's key for the ballot's contests (design §5.12) | ● | |
 | `BYLAWS_CHECKER` | in `api_env` / `worker_env`: `claude` when `bylaws_check_enabled`, else `off` | ● | ● |
 | `CONSISTENCY_CHECKER` | in `api_env` / `worker_env`: `claude` when `consistency_check_enabled`, else `off` | ● | ● |
 | `ELECTION_CHECKER` | in `api_env` / `worker_env`: `claude` when `election_check_enabled`, else `off` | ● | ● |
@@ -466,9 +468,22 @@ Both keys are free, and only a person can sign up for them (with an email addres
 
 Put them in the environment's real `terraform.tfvars` as `fec_api_key` and `openstates_api_key` and apply; Terraform
 passes them to the api as `FEC_API_KEY` and `OPENSTATES_API_KEY`. They are not secrets (they only meter use of public
-data), but they are kept out of the `api_env` output. Statewide, county and city offices, and state and local
-candidates, have no free record: Communications Admins enter them under Admin › Communications. With the emulators
-(`DISTRICTS=local`) the api uses made-up people instead of these records.
+data), but they are kept out of the `api_env` output.
+
+Two more sources need nothing from a person:
+
+- **The ballot** (`civic_enabled`, on by default; `civic.tf`): Google's Civic Information API lists the contests and
+  candidates on the ballot for the area's ZIP code, state and local ones too, but only while an election is loaded and
+  never after its day. Terraform enables the API, creates the `civic-server` key (restricted to it) and keeps it in the
+  `google-civic-api-key` secret, which only the api's service account can read; the api gets it as
+  `GOOGLE_CIVIC_API_KEY`. Google allows contests to be kept at most a day (less when its answer says so), and asks
+  for no attribution beyond its own wording, which the pages use.
+- **Biographies and experience**: Wikidata (CC0) and Wikipedia (CC BY-SA 4.0, credited on the page) need no key; the
+  api asks them by the FEC candidate ID or Congress Bioguide ID, never by name.
+
+Statewide, county and city offices, and state and local candidates outside an election, have no free record:
+Communications Admins enter them under Admin › Communications. With the emulators (`DISTRICTS=local`) the api uses
+made-up people, ballot and biographies instead of these records.
 
 ### Members' room model
 

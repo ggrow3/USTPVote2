@@ -24,6 +24,7 @@ import {
   AreaContactsAdminController,
   CandidaciesAdminController,
   CandidaciesController,
+  PublicAreaCandidatesController,
   PublicCandidaciesController,
   PublicDistrictsController,
 } from '../candidacies/candidacies.controller.js';
@@ -122,6 +123,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     CandidaciesController,
     CandidaciesAdminController,
     PublicCandidaciesController,
+    PublicAreaCandidatesController,
     PublicDistrictsController,
     AreaContactsAdminController,
     TeamsController,

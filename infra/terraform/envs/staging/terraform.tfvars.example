@@ -33,6 +33,9 @@ maps_enabled = true
 # fec_api_key        = "..."
 # openstates_api_key = "..."
 
+# The ballot's contests from Google's Civic Information API (design §5.12): Terraform creates the key itself.
+civic_enabled = true
+
 # Election notices by Amazon SES (design §6.8): set SES up and add the aws-ses-* secret versions first (README
 # "Election notices"). The From address is the module default, USTP Elections <noreply@transhumanist-party.org>.
 # web_origin           = "https://vote.example.org"  # empty: https://<project>.web.app

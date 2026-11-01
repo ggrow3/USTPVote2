@@ -13,6 +13,8 @@ export interface MapMarker {
   readonly caption: string;
   /** Where its link in the pop-up goes. */
   readonly to?: string;
+  /** A district rather than a candidacy (the Candidates page's people running there): drawn as a ring. */
+  readonly hollow?: boolean;
 }
 
 /**
@@ -80,7 +82,7 @@ async function draw(): Promise<void> {
   info?.close();
   const bounds = new google.maps.LatLngBounds();
   for (const m of props.markers) {
-    gmap.data.add({ geometry: new google.maps.Data.Point(m.point), id: m.id, properties: { marker: true } });
+    gmap.data.add({ geometry: new google.maps.Data.Point(m.point), id: m.id, properties: { marker: true, hollow: m.hollow === true } });
     bounds.extend(m.point);
   }
   let outlined = false;
@@ -126,7 +128,9 @@ onMounted(async () => {
     gmap.data.setStyle((feature) =>
       feature.getProperty('marker')
         ? {
-            icon: { path: maps.SymbolPath.CIRCLE, scale: 8, fillColor: color, fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 },
+            icon: feature.getProperty('hollow')
+              ? { path: maps.SymbolPath.CIRCLE, scale: 8, fillColor: '#ffffff', fillOpacity: 1, strokeColor: color, strokeWeight: 3 }
+              : { path: maps.SymbolPath.CIRCLE, scale: 8, fillColor: color, fillOpacity: 1, strokeColor: '#ffffff', strokeWeight: 2 },
             title: props.markers.find((m) => m.id === feature.getId())?.title ?? '',
             cursor: 'pointer',
           }

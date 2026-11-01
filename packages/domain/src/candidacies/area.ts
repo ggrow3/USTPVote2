@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { District } from './districts.js';
 
 /**
@@ -34,3 +35,10 @@ export function inCandidateArea(district: Pick<District, 'kind' | 'geoid' | 'sta
   if (district.kind === 'state' || area.basis !== 'zip') return true;
   return area.districts.some((d) => d.kind === district.kind && d.geoid === district.geoid);
 }
+
+/**
+ * `POST /v1/public/candidates/area`: a ZIP code anyone types on the Candidates page, to see who runs there. It goes in
+ * the body, not the address, so it stays out of request logs; the api works the area out and keeps nothing.
+ */
+export const areaLookupSchema = z.strictObject({ zip: z.string().trim().regex(/^[0-9]{5}$/, 'enter a five-digit ZIP code') });
+export type AreaLookupInput = z.infer<typeof areaLookupSchema>;

@@ -93,11 +93,33 @@ export class CandidaciesService {
    * is not sent back.
    */
   async area(accountId: string): Promise<CandidateArea> {
+    return (await this.placed(accountId)).area;
+  }
+
+  /**
+   * The caller's own area and the five-digit ZIP code it comes from, for the api's own use: the ballot (design
+   * §5.12) is asked for by it. The ZIP code is never sent back.
+   */
+  async placed(accountId: string): Promise<{ area: CandidateArea; zip: string | null }> {
     const member = await this.members.find(accountId);
     if (!member) throw new NotFoundException('no membership record');
     const { state } = member;
     const postalCode = member.contact?.postalCode ?? null;
-    if (postalCode === null) return { state, districts: [], basis: 'no_zip' };
+    if (postalCode === null) return { area: { state, districts: [], basis: 'no_zip' }, zip: null };
+    return { area: await this.areaOf(postalCode, state), zip: postalCode.slice(0, 5) };
+  }
+
+  /**
+   * The area of a ZIP code someone typed on the Candidates page (design §5.12): the state holding it and the
+   * districts it reaches into. 404 when the Census has no area for it. Nothing is stored.
+   */
+  async zipArea(zip: string): Promise<CandidateArea> {
+    const state = await this.districts.stateOfZip(zip);
+    if (!state) throw new NotFoundException('the Census has no area for that ZIP code: check it, or choose a state instead');
+    return this.areaOf(zip, state);
+  }
+
+  private async areaOf(postalCode: string, state: string): Promise<CandidateArea> {
     try {
       const districts = await this.districts.area(postalCode, state);
       return districts ? { state, districts, basis: 'zip' } : { state, districts: [], basis: 'unplaced' };

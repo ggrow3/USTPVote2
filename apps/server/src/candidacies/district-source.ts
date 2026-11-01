@@ -26,6 +26,11 @@ export interface DistrictSource {
    * when the source has no area for that ZIP code in the state. Only the five-digit ZIP code leaves the api.
    */
   area(postalCode: string, state: string): Promise<District[] | null>;
+  /**
+   * The state a ZIP code is in, for a ZIP code someone types (design §5.12): the one holding the Census internal
+   * point of its area; null when the source has no area for it (a PO box's ZIP code has none).
+   */
+  stateOfZip(postalCode: string): Promise<string | null>;
 }
 
 export const DISTRICT_SOURCE = Symbol('DistrictSource');
@@ -34,6 +39,8 @@ const NATION: District = { kind: 'nation', geoid: NATION_ID, state: null, name: 
 
 /** `06` for `CA`; the GEOID of a state's own boundary. */
 const fipsOf = (state: string | null) => (state === null ? undefined : STATE_FIPS[state]);
+/** `CA` for `06`. */
+const stateOfFips = (fips: string | undefined) => Object.keys(STATE_FIPS).find((s) => STATE_FIPS[s] === fips) ?? null;
 
 /** The Census Bureau's TIGERweb service of the current boundaries; each layer below is one kind of district. */
 const TIGERWEB = 'https://tigerweb.geo.census.gov/arcgis/rest/services/TIGERweb/tigerWMS_Current/MapServer';
@@ -87,6 +94,7 @@ export class CensusDistrictSource implements DistrictSource {
   private readonly boundaries = new Map<string, DistrictBoundary | null>();
   private readonly vintages = new Map<number, Promise<string>>();
   private readonly areas = new Map<string, { readonly at: number; readonly districts: District[] | null }>();
+  private readonly zipStates = new Map<string, { readonly at: number; readonly state: string | null }>();
 
   constructor(private readonly fetchFn: typeof globalThis.fetch = (input, init) => globalThis.fetch(input, init)) {}
 
@@ -134,6 +142,39 @@ export class CensusDistrictSource implements DistrictSource {
     if (this.areas.size >= MAX_AREAS) this.areas.delete(this.areas.keys().next().value!);
     this.areas.set(key, { at: Date.now(), districts });
     return districts;
+  }
+
+  async stateOfZip(postalCode: string): Promise<string | null> {
+    const zip = postalCode.slice(0, 5);
+    if (!/^[0-9]{5}$/.test(zip)) return null;
+    const cached = this.zipStates.get(zip);
+    if (cached && Date.now() - cached.at < LIST_TTL_MS) return cached.state;
+    const found = await this.post<{ features?: { attributes: TigerAttributes }[] }>(ZCTA_LAYER, {
+      where: `GEOID='${zip}'`,
+      outFields: 'GEOID,INTPTLAT,INTPTLON',
+      returnGeometry: 'false',
+      f: 'json',
+    });
+    const zcta = found.features?.[0]?.attributes;
+    const lat = Number(zcta?.INTPTLAT);
+    const lng = Number(zcta?.INTPTLON);
+    let state: string | null = null;
+    if (zcta && Number.isFinite(lat) && Number.isFinite(lng)) {
+      const holding = await this.post<{ features?: { attributes: Pick<TigerAttributes, 'GEOID'> }[] }>(LAYERS.state, {
+        geometry: JSON.stringify({ x: lng, y: lat, spatialReference: { wkid: 4326 } }),
+        geometryType: 'esriGeometryPoint',
+        inSR: '4326',
+        spatialRel: 'esriSpatialRelIntersects',
+        outFields: 'GEOID',
+        returnGeometry: 'false',
+        f: 'json',
+      });
+      state = stateOfFips(holding.features?.[0]?.attributes.GEOID);
+    }
+    this.zipStates.delete(zip);
+    if (this.zipStates.size >= MAX_AREAS) this.zipStates.delete(this.zipStates.keys().next().value!);
+    this.zipStates.set(zip, { at: Date.now(), state });
+    return state;
   }
 
   /** Points well inside the ZIP Code Tabulation Area, its Census internal point first; null when there is none. */
@@ -302,6 +343,12 @@ export class LocalDistrictSource implements DistrictSource {
     if (postalCode.startsWith('00000') || fipsOf(state) === undefined) return null;
     const lists = await Promise.all(LISTED_DISTRICT_KINDS.map((kind) => this.list(kind, state)));
     return lists.flatMap((list) => (list[0]?.kind === 'congressional' && postalCode[4] === '5' ? list : list.slice(0, 1)));
+  }
+
+  /** `00000` is nowhere; a ZIP code starting with 9 is in California, with 1 in New York, and any other in Texas. */
+  async stateOfZip(postalCode: string): Promise<string | null> {
+    if (!/^[0-9]{5}/.test(postalCode) || postalCode.startsWith('00000')) return null;
+    return postalCode.startsWith('9') ? 'CA' : postalCode.startsWith('1') ? 'NY' : 'TX';
   }
 
   async boundary(kind: DistrictKind, geoid: string): Promise<DistrictBoundary | null> {

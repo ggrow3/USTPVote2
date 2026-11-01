@@ -14,7 +14,8 @@ locals {
   # with Anthropic first), encrypting ballots to an election's pool key, Auditor verification of anchors, profile
   # photos, bootstrap System Admins, testing mode, which the api also refuses in prod, how election notices go out
   # (notices.tf), the Candidates page's Google Maps browser key (maps.tf), the Your area page's keys for public records
-  # (FEC, Open States), and the site's own address, the only one robots.txt opens to search engines (in prod).
+  # (FEC, Open States; the Civic Information API's comes from Secret Manager, civic.tf), and the site's own address,
+  # the only one robots.txt opens to search engines (in prod).
   api_env = merge(
     {
       GOOGLE_CLOUD_PROJECT          = var.project_id
@@ -128,6 +129,20 @@ resource "google_cloud_run_v2_service" "api" {
         }
       }
 
+      # The Civic Information API's server key (civic.tf), read when an instance starts.
+      dynamic "env" {
+        for_each = local.civic_api_secrets
+        content {
+          name = env.key
+          value_source {
+            secret_key_ref {
+              secret  = env.value
+              version = "latest"
+            }
+          }
+        }
+      }
+
       startup_probe {
         http_get {
           path = "/healthz"
@@ -139,7 +154,12 @@ resource "google_cloud_run_v2_service" "api" {
     }
   }
 
-  depends_on = [google_binary_authorization_policy.this, google_firestore_database.default]
+  depends_on = [
+    google_binary_authorization_policy.this,
+    google_firestore_database.default,
+    google_secret_manager_secret_version.civic_api_key,
+    google_secret_manager_secret_iam_member.api_civic_key,
+  ]
 
   lifecycle {
     ignore_changes = [client, client_version, template[0].containers[0].image]
