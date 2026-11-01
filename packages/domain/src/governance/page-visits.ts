@@ -36,6 +36,7 @@ export const TRACKED_PAGES: readonly TrackedPage[] = [
   { id: 'offices', pattern: '/offices', label: 'Offices' },
   { id: 'candidates', pattern: '/candidates', label: 'Candidates' },
   { id: 'candidacy-declare', pattern: '/candidates/declare', label: 'Declare a candidacy' },
+  { id: 'candidates-area', pattern: '/candidates/area', label: 'Your area' },
   { id: 'candidacy-edit', pattern: '/candidates/:candidacyId/edit', label: 'Edit a candidacy' },
   { id: 'candidate', pattern: '/candidates/:id', label: 'A candidate' },
   { id: 'teams', pattern: '/teams', label: 'Teams' },

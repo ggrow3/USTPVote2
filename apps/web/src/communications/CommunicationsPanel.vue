@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import AreaContactsAdmin from '../candidacies/AreaContactsAdmin.vue';
+import EmailTemplatesAdmin from '../candidacies/EmailTemplatesAdmin.vue';
 import BotsAdmin from './BotsAdmin.vue';
 import CalendarAdmin from './CalendarAdmin.vue';
 import NewsAdmin from './NewsAdmin.vue';
@@ -10,10 +12,11 @@ import { suggestions } from './api.js';
 
 /**
  * Communications, for Communications Admins (design §10.9): news and press releases, the share kit for members, the
- * social media calendar, suggestions from the public, the press kit and the party's bots. The home page's Link hub,
+ * social media calendar, suggestions from the public, the press kit, the party's bots, and the office holders,
+ * candidates and email templates of members' Your area page (design §5.12). The home page's Link hub,
  * with the party's social accounts, is its own section beside this one.
  */
-type View = 'news' | 'share' | 'calendar' | 'suggestions' | 'press' | 'bots';
+type View = 'news' | 'share' | 'calendar' | 'suggestions' | 'press' | 'bots' | 'people' | 'templates';
 const view = ref<View>('news');
 const unread = ref(0);
 const TABS: readonly { name: View; label: string; icon: string }[] = [
@@ -23,6 +26,8 @@ const TABS: readonly { name: View; label: string; icon: string }[] = [
   { name: 'suggestions', label: 'Suggestions', icon: 'lightbulb' },
   { name: 'press', label: 'Press kit', icon: 'mic' },
   { name: 'bots', label: 'Bots', icon: 'smart_toy' },
+  { name: 'people', label: 'Officials & candidates', icon: 'how_to_vote' },
+  { name: 'templates', label: 'Email templates', icon: 'mail' },
 ];
 
 // How many suggestions wait unread, shown on the tab before it is opened; it keeps the count once it is.
@@ -52,6 +57,8 @@ onMounted(async () => {
       </q-tab-panel>
       <q-tab-panel id="comms-panel-press" name="press" aria-labelledby="comms-tab-press" class="q-px-none"><PressKitAdmin /></q-tab-panel>
       <q-tab-panel id="comms-panel-bots" name="bots" aria-labelledby="comms-tab-bots" class="q-px-none"><BotsAdmin /></q-tab-panel>
+      <q-tab-panel id="comms-panel-people" name="people" aria-labelledby="comms-tab-people" class="q-px-none"><AreaContactsAdmin /></q-tab-panel>
+      <q-tab-panel id="comms-panel-templates" name="templates" aria-labelledby="comms-tab-templates" class="q-px-none"><EmailTemplatesAdmin /></q-tab-panel>
     </q-tab-panels>
   </div>
 </template>

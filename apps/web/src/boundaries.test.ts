@@ -23,7 +23,15 @@ const CONTEXTS: Readonly<Record<string, readonly string[]>> = {
   // `…/bylaws-checks` (the editor) and `…/bylaws-check` (the public notes), after an election ID.
   'election-check': ['}/bylaws-check'],
   offices: ['/v1/admin/positions', '/v1/public/positions'],
-  candidacies: ['/v1/candidacies', '/v1/admin/candidacies', '/v1/public/candidacies', '/v1/public/districts', '/v1/public/maps'],
+  candidacies: [
+    '/v1/candidacies',
+    '/v1/admin/candidacies',
+    '/v1/admin/area-contacts',
+    '/v1/admin/email-templates',
+    '/v1/public/candidacies',
+    '/v1/public/districts',
+    '/v1/public/maps',
+  ],
   teams: ['/v1/teams', '/v1/admin/teams'],
   forum: ['/v1/forum', '/v1/admin/forum'],
   room: ['/v1/room', '/v1/admin/room', 'room/messages', 'room/actions', 'room/memory'],
