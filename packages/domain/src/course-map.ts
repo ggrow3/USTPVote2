@@ -139,6 +139,16 @@ export function courseHidingProblem(courses: readonly Placed[], courseId: string
   );
 }
 
+/** Map order: row by row, left to right, then the courses off the map by title. */
+export function courseMapOrder(a: Placed, b: Placed): number {
+  return (
+    (a.position ? 0 : 1) - (b.position ? 0 : 1) ||
+    (a.position?.row ?? 0) - (b.position?.row ?? 0) ||
+    (a.position?.column ?? 0) - (b.position?.column ?? 0) ||
+    a.title.localeCompare(b.title)
+  );
+}
+
 /** The most courses one save of the Course tab's board may change. */
 export const COURSE_BOARD_MAX = 100;
 

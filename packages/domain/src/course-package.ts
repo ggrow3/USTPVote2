@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { COURSE_MAP, courseIdSchema, courseMapOrder, courseMapSchema, coursePlacementProblem, placementOf, type CoursePosition } from './course-map.js';
 import {
   COURSE_STATUSES,
   courseMetadataSchema,
@@ -144,4 +145,128 @@ export const coursePackageSchema = z
         else seen.add(id);
       });
     }
+  });
+
+/**
+ * Every course at once (`ustp.courses` v1, design §10.8): one file a Course Administrator exports from the Course tab,
+ * with the course map and every course on it or off it, hidden ones and those never published included. Each course
+ * has its square, the courses before it (the map draws a line from each of them to it) and whether it is hidden from
+ * the Courses page, and its content as whole `ustp.course` files: the draft, and the version learners take now, if
+ * any. Earlier published versions are left out; each is in that course's own file. Never public, for the drafts.
+ */
+
+export const COURSES_PACKAGE_FORMAT = 'ustp.courses';
+
+/** One course in a `ustp.courses` file. */
+export interface PackagedCourse {
+  readonly courseId: string;
+  /** Left off the Courses page, though it stays published and open at its address. */
+  readonly hidden: boolean;
+  /** The courses to pass before this one's quizzes open, in the order it lists them. */
+  readonly prerequisites: readonly string[];
+  /** Its square on the map, or null for off it. */
+  readonly position: CoursePosition | null;
+  /** The draft as a Course Administrator is editing it. */
+  readonly draft: CoursePackage;
+  /** The version learners take now; null for a course never published. */
+  readonly published: CoursePackage | null;
+}
+
+export interface CoursesPackage {
+  readonly format: typeof COURSES_PACKAGE_FORMAT;
+  readonly version: 1;
+  readonly exportedAt: string;
+  /** The map's grid, which every square is on. */
+  readonly map: { readonly rows: number; readonly columns: number };
+  /** In map order: row by row, left to right, then the courses off the map by title. */
+  readonly courses: readonly PackagedCourse[];
+}
+
+/** A course as it is kept: its record, its draft lessons and profiles, and the version learners take now, if any. */
+export interface CourseContent {
+  readonly course: CourseRecord;
+  readonly lessons: readonly CourseLesson[];
+  readonly profiles: readonly FuturistProfile[];
+  readonly published: CourseVersionRecord | null;
+}
+
+/** Every course with the map; records saved before the map or the hide switch read as off it and shown. */
+export function coursesPackage(courses: readonly CourseContent[], exportedAt: string): CoursesPackage {
+  return {
+    format: COURSES_PACKAGE_FORMAT,
+    version: 1,
+    exportedAt,
+    map: { rows: COURSE_MAP.rows, columns: COURSE_MAP.columns },
+    courses: courses
+      .map((content) => ({ ...content, course: { ...content.course, ...placementOf(content.course), hidden: content.course.hidden === true } }))
+      .sort((a, b) => courseMapOrder(a.course, b.course))
+      .map(({ course, lessons, profiles, published }) => ({
+        courseId: course.courseId,
+        hidden: course.hidden,
+        prerequisites: course.prerequisites,
+        position: course.position,
+        draft: draftCoursePackage(course, lessons, profiles, exportedAt),
+        published: published && publishedCoursePackage(published, exportedAt),
+      })),
+  };
+}
+
+/** `ustp-courses-2026-11-01.courses.json`. */
+export function coursesPackageFileName(pkg: Pick<CoursesPackage, 'exportedAt'>): string {
+  return `ustp-courses-${pkg.exportedAt.slice(0, 10)}.courses.json`;
+}
+
+const gridSide = z.number().int().min(1).max(100);
+
+/**
+ * A `ustp.courses` file as this format defines it: each course once, its draft and published version whole course
+ * packages of that course, the published one the version its draft says learners take, and a map Course
+ * Administrators could have saved (every square on the grid and taken once, every prerequisite a course in the file,
+ * no loops, no hidden course before one shown).
+ */
+export const coursesPackageSchema = z
+  .strictObject({
+    format: z.literal(COURSES_PACKAGE_FORMAT),
+    version: z.literal(1),
+    exportedAt: z.string().max(64),
+    map: z.strictObject({ rows: gridSide, columns: gridSide }),
+    courses: z
+      .array(
+        z.strictObject({
+          courseId: courseIdSchema,
+          hidden: z.boolean(),
+          prerequisites: courseMapSchema.shape.prerequisites,
+          position: z.strictObject({ row: z.number().int().min(0), column: z.number().int().min(0) }).nullable(),
+          draft: coursePackageSchema,
+          published: coursePackageSchema.nullable(),
+        }),
+      )
+      .max(1000),
+  })
+  .superRefine((pkg, ctx) => {
+    const seen = new Set<string>();
+    pkg.courses.forEach((course, i) => {
+      const issue = (path: readonly (string | number)[], message: string) => ctx.addIssue({ code: 'custom', path: ['courses', i, ...path], message });
+      if (seen.has(course.courseId)) issue(['courseId'], `${course.courseId} is used twice`);
+      seen.add(course.courseId);
+      const { draft, published } = course;
+      if (draft.source.content !== 'draft') issue(['draft', 'source', 'content'], 'the draft is a published version');
+      if (published && published.source.content !== 'published') issue(['published', 'source', 'content'], 'the published version is a draft');
+      for (const [key, of] of [['draft', draft], ['published', published]] as const) {
+        if (of && of.course.courseId !== course.courseId) issue([key, 'course', 'courseId'], `this is ${of.course.courseId}, not ${course.courseId}`);
+      }
+      const taken = draft.source.content === 'draft' ? draft.source.publishedVersion : null;
+      const given = published?.source.content === 'published' ? published.source.courseVersion : null;
+      if (taken !== given) {
+        issue(['published'], taken === null ? 'a course never published has no published version' : `learners take version ${taken}${given ? `, not ${given}` : ''}`);
+      }
+      if (course.position && (course.position.row >= pkg.map.rows || course.position.column >= pkg.map.columns)) {
+        issue(['position'], `row ${course.position.row + 1}, column ${course.position.column + 1} is off the map`);
+      }
+    });
+    const placed = pkg.courses.map((course) => ({ ...course, title: course.draft.course.title }));
+    pkg.courses.forEach((course, i) => {
+      const problem = coursePlacementProblem(placed, course.courseId, course);
+      if (problem) ctx.addIssue({ code: 'custom', path: ['courses', i], message: problem });
+    });
   });

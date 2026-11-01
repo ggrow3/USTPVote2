@@ -1,5 +1,5 @@
 import sharp from 'sharp';
-import { Collections, coursePackageSchema } from 'ustp-domain';
+import { Collections, coursePackageSchema, coursesPackageSchema } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { CONTENT_SEED, partyCourses } from './course/content-seed.js';
 import { COMBINE_SEED, combinedCourses } from './course/course-combine-seed.js';
@@ -112,6 +112,44 @@ describe('Transhumanism course', () => {
     expect((await api.call('GET', url('7'), editor)).status).toBe(404);
     expect((await api.call('GET', url('latest'), editor)).status).toBe(400);
     expect((await api.call('GET', '/v1/admin/courses/nope/package', editor)).status).toBe(404);
+  });
+
+  it('exports every course with the map as one ustp.courses JSON file, for Course Administrators only', async () => {
+    const editor = await courseAdmin('export-all@example.test');
+    const learner = await api.member('export-all-learner@example.test');
+    const url = '/v1/admin/course-map/package';
+    await api.call('POST', '/v1/admin/courses', editor, { title: 'Futures Lab', summary: 'Hands-on.' });
+    expect((await api.call('PUT', '/v1/admin/courses/futures-lab/visibility', editor, { hidden: true })).status).toBe(200);
+    const [first] = (await api.call('GET', '/v1/admin/courses/transhumanism/package?version=1', editor)).body.lessons;
+    expect((await api.call('POST', '/v1/admin/courses/transhumanism/lessons', editor, { ...first, title: 'Edited title' })).status).toBe(201);
+
+    const exported = await api.call('GET', url, editor);
+    expect(exported.status).toBe(200);
+    const pkg = exported.body;
+    expect(pkg).toMatchObject({ format: 'ustp.courses', version: 1, map: { rows: 8, columns: 6 } });
+    expect(coursesPackageSchema.safeParse(pkg).error?.issues ?? []).toEqual([]);
+    // Every course, hidden ones and drafts included, in the Course tab's map order, each where it sits.
+    const courses = (await api.call('GET', '/v1/admin/courses', editor)).body as { courseId: string; hidden: boolean; prerequisites: string[]; position: unknown }[];
+    expect(pkg.courses.map((course: { courseId: string }) => course.courseId)).toEqual(courses.map((course) => course.courseId));
+    for (const [i, course] of courses.entries()) {
+      expect(pkg.courses[i]).toMatchObject({ hidden: course.hidden, prerequisites: course.prerequisites, position: course.position });
+    }
+    const byId = new Map(pkg.courses.map((course: { courseId: string }) => [course.courseId, course]));
+    expect(byId.get('futures-lab')).toMatchObject({ hidden: true, position: null, published: null, draft: { source: { content: 'draft', publishedVersion: null } } });
+
+    // Each course's draft and current version are the files Export JSON gives for that course.
+    const transhumanism = byId.get('transhumanism') as { draft: { lessons: { title: string }[] }; published: { lessons: { title: string }[] } };
+    expect(transhumanism.draft.lessons[0]!.title).toBe('Edited title');
+    expect(transhumanism.published.lessons[0]!.title).toBe(first.title);
+    const single = async (version: string) => ({ ...(await api.call('GET', `/v1/admin/courses/transhumanism/package?version=${version}`, editor)).body, exportedAt: pkg.exportedAt });
+    expect(transhumanism.draft).toEqual(await single('draft'));
+    expect(transhumanism.published).toEqual(await single('1'));
+    expect(JSON.stringify(pkg)).not.toContain(editor.accountId);
+
+    expect((await api.call('GET', url, learner)).status).toBe(403);
+    expect((await api.call('GET', url)).status).toBe(401);
+    const fromElsewhere = await api.app.inject({ method: 'GET', url, headers: { origin: 'https://another-site.example' } });
+    expect(fromElsewhere.headers['access-control-allow-origin']).toBeUndefined();
   });
 
   it('gives anyone a published course as its ustp.course file, which any site may read from a browser', async () => {

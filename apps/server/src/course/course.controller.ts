@@ -190,6 +190,16 @@ export class CourseController {
     return this.courses.placeCourses(input, requireAccount(ctx));
   }
 
+  /**
+   * Every course with the map as one `ustp.courses` JSON file: each course's square, prerequisites and hide switch,
+   * its draft and the version learners take now, quiz answers included. Hidden and never-published courses too.
+   */
+  @Get('admin/course-map/package')
+  @Roles('course_admin')
+  coursesPackage() {
+    return this.courses.coursesPackage();
+  }
+
   /** The course as one `ustp.course` JSON file: `version` is `draft` (the default) or a published version's number. */
   @Get('admin/courses/:courseId/package')
   @Roles('course_admin')

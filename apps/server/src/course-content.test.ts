@@ -1,9 +1,18 @@
-import { coursePackageSchema, coursePlacementProblem, draftCoursePackage, placementOf, type CourseRecord } from 'ustp-domain';
+import {
+  coursePackageSchema,
+  coursePlacementProblem,
+  coursesPackage,
+  coursesPackageSchema,
+  draftCoursePackage,
+  placementOf,
+  type CourseRecord,
+  type CourseVersionRecord,
+} from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
 import { CONTENT_SEEDS, partyCourses } from './course/content-seed.js';
 import { combinedCourses } from './course/course-combine-seed.js';
 import { mapCourses } from './course/course-map-seed.js';
-import { transhumanismCourse } from './course/transhumanism-seed.js';
+import { transhumanismCourse, transhumanismLessons, transhumanismProfiles } from './course/transhumanism-seed.js';
 
 const record = (courseId: string, title: string, summary: string): CourseRecord => ({
   ...mapCourses[0]!,
@@ -81,6 +90,30 @@ describe("The party's curriculum as courses (design §10.8)", () => {
         for (const source of sources) expect(source, lesson.lessonId).toMatch(/: https:\/\/\S+$/);
       }
     }
+  });
+
+  it('makes, as first seeded, one ustp.courses file of every course and the map, before any is combined', () => {
+    const published: CourseVersionRecord = {
+      ...transhumanismCourse,
+      version: 1,
+      lessons: transhumanismLessons,
+      profiles: transhumanismProfiles,
+      publishedAt: transhumanismCourse.createdAt,
+      publishedBy: 'course-seed',
+    };
+    const seeds = new Map(contentCourses.map((seed) => [seed.courseId, seed]));
+    const placed = contentCourses.filter((seed) => seed.placement).map((seed) => ({ ...record(seed.courseId, seed.title, seed.summary), ...seed.placement! }));
+    const pkg = coursesPackage(
+      [
+        { course: transhumanismCourse, lessons: transhumanismLessons, profiles: transhumanismProfiles, published },
+        ...[...mapCourses, ...placed].map((course) => ({ course, lessons: seeds.get(course.courseId)?.lessons ?? [], profiles: [], published: null })),
+      ],
+      '2026-11-01T00:00:00.000Z',
+    );
+    expect(coursesPackageSchema.safeParse(pkg).error?.issues ?? []).toEqual([]);
+    expect(pkg.courses[0]).toMatchObject({ courseId: 'transhumanism', position: { row: 0, column: 0 }, published: { source: { courseVersion: 1 } } });
+    expect(pkg.courses.filter((course) => course.published)).toHaveLength(1);
+    expect(pkg.courses.every((course) => course.draft.lessons.length > 0)).toBe(true);
   });
 
   it('combines written courses only, each once, into courses that keep them in order with no two lessons alike', () => {
