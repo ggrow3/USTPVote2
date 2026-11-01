@@ -140,7 +140,7 @@ describe('the Claude election checker', () => {
 
   it('refuses to run until a System Admin adds an API key', async () => {
     const checker = new ClaudeElectionChecker({ read: async () => null }, 'claude-opus-5-5');
-    await expect(checker.check(input)).rejects.toThrow(/no Anthropic API key has been added .*Admin › Claude/);
+    await expect(checker.check(input)).rejects.toThrow(/no Anthropic API key has been added .*Admin › API keys/);
   });
 
   it('asks for neutrality and treats the material as material', () => {

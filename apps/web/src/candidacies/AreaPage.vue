@@ -31,19 +31,20 @@ import {
   districtText,
   feedNote,
   mailtoLink,
-  OFFICE_HEADINGS,
+  officeShown,
   profilesNote,
 } from './candidacy-text.js';
 import DistrictMap, { type MapMarker } from './DistrictMap.vue';
 import { mapsRefused } from './maps.js';
+import OfficeCard from './OfficeCard.vue';
 
 /**
  * Your area (design §5.12): for a signed-in member, who holds each office where they live and who is running for it,
  * from public records and from the party's communications team, each with an email the member can edit and send from
  * their own email app: they pick one of the templates that suit the person, which the page fills in. The site sends
- * nothing and keeps no copy. Where the map is set up, it shows a pin in each of their districts, with who is in office
- * and running there, and the outline of the one they choose. People Wikidata knows have their biography and experience;
- * the ballot's other contests are listed at the end.
+ * nothing and keeps no copy. Each office has the outline of its district; where the map is set up, it shows a pin in
+ * each of their districts, with who is in office and running there, and the outline of the one they choose (or their
+ * state). People Wikidata knows have their biography and experience; the ballot's other contests are listed at the end.
  */
 usePageTitle('Your area');
 const view = ref<AreaContactsView | null>(null);
@@ -66,29 +67,31 @@ const feedNotes = computed(() =>
 /** Google's wording, wherever the ballot added someone. */
 const fromBallot = computed(() => !!view.value && (view.value.contacts.some((c) => c.source === 'civic') || view.value.ballot.length > 0));
 
-/** A heading per district (the nation, the state, then each district), each with its offices. */
-const sections = computed(() => {
-  if (!view.value) return [];
-  const groups = groupAreaContacts(view.value.area, view.value.contacts);
-  return contactDistricts(view.value.area).map((district) => ({
-    district,
-    groups: groups.filter((g) => g.district.kind === district.kind && g.district.geoid === district.geoid),
-  }));
-});
+/** Every office of the area (the nation, the state, then each district), each with its people. */
+const offices = computed(() => (view.value ? groupAreaContacts(view.value.area, view.value.contacts).filter((g) => officeShown(g, view.value!.electionYear)) : []));
 
-// The map: a pin per district with a point, and the chosen district's outline (the first, until one is chosen).
+// The map: a pin per district with a point, and the chosen district's outline (the first, until one is chosen); an
+// office of the whole state outlines the state.
 const districtKey = (d: Pick<ContactDistrict, 'kind' | 'geoid'>) => `${d.kind}:${d.geoid}`;
 const mapLoaded = ref(false);
 /** Google can refuse the key after the map has loaded; then the page shows no map. */
 const mapReady = computed(() => mapLoaded.value && !mapsRefused.value);
 const chosen = ref<string | null>(null);
 const mapped = computed(() => (view.value?.area.districts ?? []).filter((d) => d.point));
-const shown = computed(() => mapped.value.find((d) => districtKey(d) === chosen.value) ?? mapped.value[0] ?? null);
+/** The member's state, as its offices' cards name it. */
+const stateDistrict = computed(() => (view.value ? (contactDistricts(view.value.area).find((d) => d.kind === 'state') ?? null) : null));
+const shown = computed<ContactDistrict | null>(
+  () =>
+    mapped.value.find((d) => districtKey(d) === chosen.value) ??
+    (stateDistrict.value && districtKey(stateDistrict.value) === chosen.value ? stateDistrict.value : null) ??
+    mapped.value[0] ??
+    null,
+);
 const markers = computed<MapMarker[]>(() =>
   mapped.value.map((d) => ({ id: districtKey(d), point: d.point!, title: d.name, caption: districtPeopleText(view.value!.contacts, d) })),
 );
 const outline = computed(() => (shown.value ? { kind: shown.value.kind, geoid: shown.value.geoid } : null));
-const onMap = (d: Pick<ContactDistrict, 'kind' | 'geoid'>) => mapReady.value && mapped.value.some((m) => districtKey(m) === districtKey(d));
+const onMap = (d: Pick<ContactDistrict, 'kind' | 'geoid'>) => mapReady.value && (d.kind === 'state' || mapped.value.some((m) => districtKey(m) === districtKey(d)));
 
 function showOnMap(d: Pick<ContactDistrict, 'kind' | 'geoid'>) {
   chosen.value = districtKey(d);
@@ -199,7 +202,7 @@ async function copy() {
             optional
             :markers="markers"
             :outline="outline"
-            :label="`Map of your districts, showing ${shown?.name ?? 'your area'}`"
+            :label="`Map of your districts, showing ${shown ? districtText({ district: shown }) : 'your area'}`"
             height="320px"
             @ready="mapLoaded = true"
             @select="chosen = $event"
@@ -210,40 +213,33 @@ async function copy() {
           <q-btn flat no-caps color="primary" icon="campaign" label="Party members running in your area" to="/candidates" />
         </div>
 
-        <section v-for="s in sections" :key="`${s.district.kind}:${s.district.geoid}`" class="area-section">
-          <h2 class="text-h6 q-my-sm">{{ districtText(s) }}</h2>
-          <q-card v-for="g in s.groups" :key="g.office" flat bordered class="q-mb-md">
-            <q-card-section class="q-pb-xs row items-center no-wrap">
-              <h3 class="text-subtitle1 text-weight-medium q-my-none col">{{ OFFICE_HEADINGS[g.office] }}</h3>
-              <q-btn
-                v-if="onMap(g.district)"
-                flat
-                dense
-                no-caps
-                color="primary"
-                icon="map"
-                label="On the map"
-                :aria-label="`Show ${g.district.name} on the map`"
-                @click="showOnMap(g.district)"
-              />
-            </q-card-section>
-            <q-card-section v-if="!g.holders.length && !g.candidates.length" class="text-grey-7 q-pt-none">
-              No one is listed for this office yet.
-            </q-card-section>
-            <template v-for="part in [
-              { title: 'In office', people: g.holders },
-              { title: 'Running', people: g.candidates },
-            ]" :key="part.title">
-              <q-list v-if="part.people.length" separator>
-                <q-item-label header class="q-py-sm">{{ part.title }}</q-item-label>
-                <AreaPerson v-for="c in part.people" :key="c.contactId" :person="c">
-                  <q-item-section side top>
-                    <q-btn unelevated no-caps color="primary" icon="mail" label="Write" :aria-label="`Write to ${c.name}`" @click="write(c)" />
-                  </q-item-section>
-                </AreaPerson>
-              </q-list>
-            </template>
-          </q-card>
+        <section aria-labelledby="area-offices-heading">
+          <h2 id="area-offices-heading" class="text-h6 q-my-sm">Each office where you vote</h2>
+          <div class="area-offices">
+            <OfficeCard
+              v-for="g in offices"
+              :key="`${g.office}:${districtKey(g.district)}`"
+              :office="g.office"
+              :district="g.district"
+              :mappable="onMap(g.district)"
+              @map="showOnMap(g.district)"
+            >
+              <div v-if="!g.holders.length && !g.candidates.length" class="text-caption text-grey-7 q-px-md q-pb-sm">No one is listed for this office yet.</div>
+              <template v-for="part in [
+                { title: 'In office', people: g.holders },
+                { title: 'Running', people: g.candidates },
+              ]" :key="part.title">
+                <q-list v-if="part.people.length" dense separator>
+                  <q-item-label header class="area-offices__part">{{ part.title }}</q-item-label>
+                  <AreaPerson v-for="c in part.people" :key="c.contactId" :person="c">
+                    <q-item-section side top>
+                      <q-btn outline dense no-caps size="sm" color="primary" icon="mail" label="Write" :aria-label="`Write to ${c.name}`" @click="write(c)" />
+                    </q-item-section>
+                  </AreaPerson>
+                </q-list>
+              </template>
+            </OfficeCard>
+          </div>
         </section>
         <BallotContests :contests="view.ballot" />
         <div class="text-caption text-grey-7">
@@ -311,6 +307,16 @@ async function copy() {
 </template>
 
 <style scoped>
+.area-offices {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  gap: 12px;
+  align-items: start;
+}
+.area-offices__part {
+  padding: 4px 16px 0;
+  min-height: 0;
+}
 .area-email {
   width: 640px;
   max-width: 100%;

@@ -5,11 +5,15 @@ import {
   BLANK_EMAIL,
   districtPeopleText,
   districtText,
+  electionDay,
   feedNote,
   localToday,
   mailtoLink,
   OFFICE_CHOICES,
+  officeShown,
+  personCaption,
   profilesNote,
+  runningText,
   stateName,
   templateSuitsText,
   websiteText,
@@ -80,5 +84,26 @@ describe('candidacy wording', () => {
     ] as const;
     expect(districtPeopleText(people, cd49)).toBe('In office: Mike Levin · Running: Mike Levin, Armen Kurdian');
     expect(districtPeopleText(people, { kind: 'county', geoid: '06073' })).toBe('No one is listed here yet.');
+  });
+
+  it('puts a person on one line: their title only where the office’s heading does not say it, party, source and election', () => {
+    const levin = { office: 'us_house', officeTitle: 'U.S. Representative', party: 'Democratic Party', source: 'fec', role: 'candidate', election: '2026' } as const;
+    expect(personCaption(levin)).toBe('Democratic Party · Filed with the FEC · Running in 2026');
+    expect(personCaption({ ...levin, officeTitle: 'Delegate to the U.S. House', party: null })).toBe('Delegate to the U.S. House · Filed with the FEC · Running in 2026');
+    expect(personCaption({ ...levin, office: 'statewide', officeTitle: 'Governor', source: 'admin', election: '2026-11-03' })).toBe(
+      `Governor · Democratic Party · Added by the party · Election ${electionDay('2026-11-03')}`,
+    );
+    expect(personCaption({ ...levin, office: 'us_senate', officeTitle: 'U.S. Senator', source: 'congress', role: 'holder', election: null })).toBe(
+      'Democratic Party · Member of Congress',
+    );
+    expect(runningText(null)).toBe('Running in the next election');
+  });
+
+  it('lists every office of an area, but the presidency with nobody listed only in a presidential year', () => {
+    const empty = { holders: [], candidates: [] };
+    expect(officeShown({ office: 'state_lower', ...empty }, 2026)).toBe(true);
+    expect(officeShown({ office: 'us_president', ...empty }, 2026)).toBe(false);
+    expect(officeShown({ office: 'us_president', ...empty }, 2028)).toBe(true);
+    expect(officeShown({ office: 'us_president', holders: [], candidates: [{}] }, 2026)).toBe(true);
   });
 });

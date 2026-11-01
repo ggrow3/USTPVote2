@@ -19,6 +19,7 @@ import {
   type DistrictKind,
   type PublicOffice,
 } from 'ustp-domain';
+import type { ContactKeys } from '../api-keys/api-keys.js';
 
 /** What the records answer for an area: its people, the ballot's contests the api could not place, and each record's state. */
 export interface AreaRecords {
@@ -223,16 +224,18 @@ export class PublicContactSource implements ContactSource {
   private readonly cache = new Map<string, { readonly until: number; readonly value: Promise<unknown> }>();
 
   constructor(
-    private readonly keys: { readonly fec: string; readonly openStates: string | null; readonly civic: string | null },
+    /** The keys, or where to ask for them each time (`ApiKeys`, which a System Admin's change reaches within a minute). */
+    private readonly keys: ContactKeys | (() => Promise<ContactKeys>),
     private readonly fetchFn: typeof globalThis.fetch = (input, init) => globalThis.fetch(input, init),
   ) {}
 
   async forArea(state: string, districts: readonly District[], electionYear: number, options: { readonly zip: string | null; readonly holders: boolean }): Promise<AreaRecords> {
+    const keys = typeof this.keys === 'function' ? await this.keys() : this.keys;
     const feeds: Record<ContactFeed, ContactFeedState> = {
       fec: 'ok',
       congress: options.holders ? 'ok' : 'off',
-      openstates: options.holders && this.keys.openStates ? 'ok' : 'off',
-      civic: this.keys.civic && options.zip ? 'ok' : 'off',
+      openstates: options.holders && keys.openStates ? 'ok' : 'off',
+      civic: keys.civic && options.zip ? 'ok' : 'off',
     };
     const ask = async <T>(feed: ContactFeed, found: () => Promise<T>, none: T): Promise<T> => {
       try {
@@ -247,25 +250,29 @@ export class PublicContactSource implements ContactSource {
     const legislature = districts.filter((d) => (d.kind === 'state_upper' || d.kind === 'state_lower') && d.point);
     const [lists, ballot] = await Promise.all([
       Promise.all([
-        ...(electionYear % 4 === 0 ? [ask('fec', () => this.fec('us_president', NATION, { office: 'P' }, electionYear), [])] : []),
-        ask('fec', () => this.fec('us_senate', stateDistrict(state), { office: 'S', state }, electionYear), []),
+        ...(electionYear % 4 === 0 ? [ask('fec', () => this.fec(keys.fec, 'us_president', NATION, { office: 'P' }, electionYear), [])] : []),
+        ask('fec', () => this.fec(keys.fec, 'us_senate', stateDistrict(state), { office: 'S', state }, electionYear), []),
         ...house.map((d) =>
-          ask('fec', () => this.fec('us_house', contactDistrict(d), { office: 'H', state, district: String(houseDistrictNumber(d.geoid)).padStart(2, '0') }, electionYear), []),
+          ask(
+            'fec',
+            () => this.fec(keys.fec, 'us_house', contactDistrict(d), { office: 'H', state, district: String(houseDistrictNumber(d.geoid)).padStart(2, '0') }, electionYear),
+            [],
+          ),
         ),
         ...(options.holders ? [ask('congress', async () => (await this.congress(state, house)).flat(), [])] : []),
-        ...(feeds.openstates === 'ok' ? legislature.map((d) => ask('openstates', () => this.openStates(d), [])) : []),
+        ...(feeds.openstates === 'ok' ? legislature.map((d) => ask('openstates', () => this.openStates(keys.openStates!, d), [])) : []),
       ]),
-      feeds.civic === 'ok' ? ask('civic', () => this.civic(options.zip!), NO_BALLOT) : Promise.resolve(NO_BALLOT),
+      feeds.civic === 'ok' ? ask('civic', () => this.civic(keys.civic!, options.zip!), NO_BALLOT) : Promise.resolve(NO_BALLOT),
     ]);
     const placed = ballotContacts(ballot, state, districts);
     return { contacts: mergeBallot(lists.flat(), placed.contacts), ballot: placed.unplaced, feeds };
   }
 
   /** The FEC's candidates for one race. */
-  private fec(office: PublicOffice, district: ContactDistrict, race: Record<string, string>, year: number): Promise<AreaContact[]> {
+  private fec(apiKey: string, office: PublicOffice, district: ContactDistrict, race: Record<string, string>, year: number): Promise<AreaContact[]> {
     const params = new URLSearchParams({
       ...race,
-      api_key: this.keys.fec,
+      api_key: apiKey,
       election_year: String(year),
       candidate_status: 'C',
       is_active_candidate: 'true',
@@ -330,13 +337,13 @@ export class PublicContactSource implements ContactSource {
   }
 
   /** The state legislators whose districts hold the district's Census internal point, of its chamber. */
-  private openStates(district: District): Promise<AreaContact[]> {
+  private openStates(apiKey: string, district: District): Promise<AreaContact[]> {
     const office: PublicOffice = district.kind === 'state_upper' ? 'state_upper' : 'state_lower';
     const chambers = office === 'state_upper' ? ['upper', 'legislature'] : ['lower'];
     const { lat, lng } = district.point!;
     return this.kept(`openstates:${district.kind}:${district.geoid}`, async () => {
       const body = await this.json<{ results?: OpenStatesPerson[] }>(`${OPEN_STATES}?${new URLSearchParams({ lat: String(lat), lng: String(lng) })}&include=links`, {
-        'X-API-KEY': this.keys.openStates!,
+        'X-API-KEY': apiKey,
       });
       return (body.results ?? [])
         .filter((p) => p.jurisdiction?.classification === 'state' && chambers.includes(p.current_role?.org_classification ?? ''))
@@ -367,7 +374,7 @@ export class PublicContactSource implements ContactSource {
    * The ballot for a ZIP code. Google answers 400 or 404 when it has no election for the address, which is no ballot,
    * not a failure; a refused key is a failure. The key goes in a header, so it is in no address.
    */
-  private civic(zip: string): Promise<Ballot> {
+  private civic(apiKey: string, zip: string): Promise<Ballot> {
     const key = `civic:${zip}`;
     const hit = this.cache.get(key);
     if (hit && Date.now() < hit.until) return hit.value as Promise<Ballot>;
@@ -375,7 +382,7 @@ export class PublicContactSource implements ContactSource {
       const params = new URLSearchParams({ address: zip, returnAllAvailableData: 'true' });
       const res = await this.fetchFn(`${CIVIC}?${params}`, {
         signal: AbortSignal.timeout(TIMEOUT_MS),
-        headers: { accept: 'application/json', 'x-goog-api-key': this.keys.civic! },
+        headers: { accept: 'application/json', 'x-goog-api-key': apiKey },
       });
       const keep = keepFor(res.headers.get('cache-control'));
       if (res.status === 400 || res.status === 404) {

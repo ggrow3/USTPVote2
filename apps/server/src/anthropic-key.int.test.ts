@@ -79,7 +79,7 @@ describe('the Anthropic API key (design §5.6)', () => {
     const { voter, election } = await ballot();
     expect((await api.call('GET', `${election.url}/consistency-check`, voter)).body).toMatchObject({ enabled: false, check: null });
     const asked = await api.call('POST', `${election.url}/consistency-check`, voter);
-    expect(asked).toMatchObject({ status: 503, body: { detail: expect.stringMatching(/no Anthropic API key has been added .*Admin › Claude/) } });
+    expect(asked).toMatchObject({ status: 503, body: { detail: expect.stringMatching(/no Anthropic API key has been added .*Admin › API keys/) } });
 
     const admin = await api.member('membership@example.test');
     await api.grant(admin.accountId, 'membership_admin', sa1);

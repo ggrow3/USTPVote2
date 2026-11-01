@@ -40,7 +40,8 @@ API-side limits are only checked by Google on the first apply.
 | `ustp-api` | Firestore (`datastore.user`) | All client-facing reads and writes (§11) |
 | | Read Identity Platform users (`firebaseauth.viewer`) | `verifyIdToken(…, checkRevoked)` on admin routes and casting (§4) |
 | | Create secrets; add versions to `tiebreak-seed-*` secrets only (IAM condition) | Tie-break seed per scheduling attempt (§6.1); it never reads a seed back |
-| | `secretVersionManager` on `anthropic-api-key` only: add, list and destroy versions, never read one | Keeps the key a System Admin adds under Admin › Claude (§5.6); it cannot read it back |
+| | `secretVersionManager` on `anthropic-api-key` only: add, list and destroy versions, never read one | Keeps the key a System Admin adds under Admin › API keys (§5.6); it cannot read it back |
+| | `secretVersionManager` and `secretAccessor` on `app-fec-api-key`, `app-openstates-api-key` and `app-civic-api-key` only | Keeps the public-records keys a System Admin adds under Admin › API keys (§5.6), and reads them to ask those services |
 | | `publicKeyViewer` on `ballot-pool` | Encrypts ballots locally to an election's public key; cannot decrypt (§7.3) |
 | | Read, write, delete objects in the photos bucket | Profile photos (§5.3) |
 | | Create and read objects in the videos bucket; never delete | Uploaded videos for lessons, news, the press kit and the hub, stored a part at a time and played back by byte range (§10.10) |
@@ -388,7 +389,7 @@ Terraform or its state.
 
 1. Create an API key for USTP's Anthropic organization (Console → API keys), ideally in a workspace of its own with a
    monthly spend limit.
-2. A System Admin adds it in the app, under **Admin › Claude** (design §5.6). The api tries it with Anthropic, keeps it
+2. A System Admin adds it in the app, under **Admin › API keys** (design §5.6). The api tries it with Anthropic, keeps it
    as the secret's only live version and ledgers who added it; nobody can read it back through the app. (Adding it as a
    version with `gcloud secrets versions add anthropic-api-key --project <project> --data-file=-` works too; the panel
    then shows it as added outside the app.)
@@ -397,7 +398,7 @@ Terraform or its state.
    minute. Steps 2 and 3 can come in either order: until there is a key, asking for a check answers that none has been
    added.
 
-The worker reads the key each time it runs checks, so replacing it under Admin › Claude takes effect from the next run,
+The worker reads the key each time it runs checks, so replacing it under Admin › API keys takes effect from the next run,
 with no release or restart; the older versions are destroyed. Removing it there stops every Claude check. To switch the
 check off, set the variable back to `false` and apply; the secret and past checks stay.
 
@@ -468,9 +469,12 @@ Both keys are free, and only a person can sign up for them (with an email addres
 2. Open States: create an account at https://open.pluralpolicy.com/accounts/signup/ and copy the API key from its
    profile page. Without one the page leaves state legislators out and says so.
 
-Put them in the environment's real `terraform.tfvars` as `fec_api_key` and `openstates_api_key` and apply; Terraform
-passes them to the api as `FEC_API_KEY` and `OPENSTATES_API_KEY`. They are not secrets (they only meter use of public
-data), but they are kept out of the `api_env` output.
+A System Admin can add them in the app, under **Admin › API keys** (design §5.6): the api tries each with its
+service, keeps it as the only live version of `app-fec-api-key` or `app-openstates-api-key` (`api_keys.tf`, which
+Terraform creates empty) and uses it within a minute, with no apply or release. Or put them in the environment's real
+`terraform.tfvars` as `fec_api_key` and `openstates_api_key` and apply; Terraform passes them to the api as
+`FEC_API_KEY` and `OPENSTATES_API_KEY`. A key added in the app comes first; removing it there goes back to the
+deployment's. They are not secrets (they only meter use of public data), but they are kept out of the `api_env` output.
 
 Two more sources need nothing from a person:
 
@@ -478,7 +482,8 @@ Two more sources need nothing from a person:
   candidates on the ballot for the area's ZIP code, state and local ones too, but only while an election is loaded and
   never after its day. Terraform enables the API, creates the `civic-server` key (restricted to it) and keeps it in the
   `google-civic-api-key` secret, which only the api's service account can read; the api gets it as
-  `GOOGLE_CIVIC_API_KEY`. Google allows contests to be kept at most a day (less when its answer says so), and asks
+  `GOOGLE_CIVIC_API_KEY`. A System Admin can put another key in its place under Admin › API keys (`app-civic-api-key`),
+from a Google Cloud project of USTP's own, say. Google allows contests to be kept at most a day (less when its answer says so), and asks
   for no attribution beyond its own wording, which the pages use.
 - **Biographies and experience**: Wikidata (CC0) and Wikipedia (CC BY-SA 4.0, credited on the page) need no key; the
   api asks them by the FEC candidate ID or Congress Bioguide ID, never by name.

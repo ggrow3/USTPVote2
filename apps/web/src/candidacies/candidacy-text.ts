@@ -1,18 +1,19 @@
-import type {
-  AreaBasis,
-  AreaContact,
-  CandidacyContent,
-  CandidacyStage,
-  CandidateArea,
-  ContactFeed,
-  ContactFeedState,
-  ContactSource,
-  District,
-  DistrictKind,
-  ElectionStage,
-  EmailTemplate,
-  PublicOffice,
-  TemplateAudience,
+import {
+  DEFAULT_OFFICE_TITLES,
+  type AreaBasis,
+  type AreaContact,
+  type CandidacyContent,
+  type CandidacyStage,
+  type CandidateArea,
+  type ContactFeed,
+  type ContactFeedState,
+  type ContactSource,
+  type District,
+  type DistrictKind,
+  type ElectionStage,
+  type EmailTemplate,
+  type PublicOffice,
+  type TemplateAudience,
 } from 'ustp-domain';
 import { STATES } from '../states.js';
 
@@ -204,4 +205,30 @@ export function districtPeopleText(contacts: readonly Pick<AreaContact, 'role' |
   const names = (role: AreaContact['role']) => [...new Set(here.filter((c) => c.role === role).map((c) => c.name))].join(', ');
   const parts = [names('holder') && `In office: ${names('holder')}`, names('candidate') && `Running: ${names('candidate')}`].filter(Boolean);
   return parts.join(' · ') || 'No one is listed here yet.';
+}
+
+/** "Election Nov 3, 2026" for an election day, "Running in 2026" for the FEC's year. */
+export function runningText(election: string | null): string {
+  return election && /^\d{4}-\d{2}-\d{2}$/.test(election) ? `Election ${electionDay(election)}` : `Running in ${election ?? 'the next election'}`;
+}
+
+/** Offices whose heading on the page names the seat itself: a person's usual title there says nothing more. */
+const ONE_SEAT: ReadonlySet<PublicOffice> = new Set<PublicOffice>(['us_president', 'us_senate', 'us_house', 'state_upper', 'state_lower']);
+
+/**
+ * The one line under a person's name on the Candidates and Your area pages: their title where the office's heading
+ * does not already say it (a governor, a county sheriff, a delegate), party, where they come from and, for someone
+ * running, their election.
+ */
+export function personCaption(person: Pick<AreaContact, 'office' | 'officeTitle' | 'party' | 'source' | 'role' | 'election'>): string {
+  const title = ONE_SEAT.has(person.office) && person.officeTitle === DEFAULT_OFFICE_TITLES[person.office] ? null : person.officeTitle;
+  return [title, person.party, CONTACT_SOURCE_TEXT[person.source], person.role === 'candidate' ? runningText(person.election) : null].filter(Boolean).join(' · ');
+}
+
+/**
+ * Whether a page lists an office of the area: every one, so the member sees each seat they vote for, except the
+ * presidency with nobody listed outside a presidential election year.
+ */
+export function officeShown(group: { readonly office: PublicOffice; readonly holders: readonly unknown[]; readonly candidates: readonly unknown[] }, electionYear: number): boolean {
+  return group.office !== 'us_president' || electionYear % 4 === 0 || group.holders.length + group.candidates.length > 0;
 }

@@ -249,7 +249,7 @@ variable "alert_emails" {
 }
 
 variable "bylaws_check_enabled" {
-  description = "Run the advisory bylaws check, which sends bylaws drafts to Anthropic's API (design §5.2). It waits for a System Admin to add the API key in the app (Admin › Claude, design §5.6)."
+  description = "Run the advisory bylaws check, which sends bylaws drafts to Anthropic's API (design §5.2). It waits for a System Admin to add the API key in the app (Admin › API keys, design §5.6)."
   type        = bool
   default     = false
 }

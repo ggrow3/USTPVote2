@@ -3,7 +3,7 @@
 # "Bylaws check").
 
 # Holds the Anthropic API key, for this check and the platform consistency check (consistency_check.tf). Terraform
-# creates the secret but never its value: a System Admin adds the key in the app (Admin › Claude, design §5.6), which
+# creates the secret but never its value: a System Admin adds the key in the app (Admin › API keys, design §5.6), which
 # keeps it as the only live version, so the key stays out of Terraform state. The api may add and destroy versions but
 # never read one (api_anthropic_key_versions); the worker reads the newest (worker_secret_accessor) each time it runs
 # checks, so a key added or removed counts from the next run without a restart.

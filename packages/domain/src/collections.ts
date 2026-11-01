@@ -101,6 +101,8 @@ export const Collections = {
   courseLtiOutcomes: 'course_lti_outcomes',
   /** `anthropic_key/current`: who added the Anthropic API key in the app, never the key (design §5.6). */
   anthropicKey: 'anthropic_key',
+  /** `api_keys/{name}`: who added a public-records service's key in the app, never the key (design §5.6). */
+  apiKeys: 'api_keys',
   /** `navigation/current`: what the web app shows each membership state and role (design §10.5). */
   navigation: 'navigation',
   /** `home_quote/current`: the quote on the home page (design §10.5). */
