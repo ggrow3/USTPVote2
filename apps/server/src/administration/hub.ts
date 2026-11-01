@@ -18,6 +18,7 @@ import { FieldValue } from 'firebase-admin/firestore';
 import sharp, { type ResizeOptions } from 'sharp';
 import {
   checkHub,
+  uploadedVideoIds,
   clickCount,
   clickDay,
   clickTargets,
@@ -46,6 +47,7 @@ import type { RequestContext } from '../auth/principal.js';
 import { assertCheck, ZodPipe } from '../common/validation.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { VideosService } from '../videos/videos.js';
 
 const CACHE_MS = 60_000;
 const DOC_ID = 'current';
@@ -121,6 +123,7 @@ export class HubService {
   constructor(
     private readonly firebase: Firebase,
     private readonly ledger: LedgerService,
+    private readonly videos: VideosService,
   ) {}
 
   private get doc() {
@@ -146,8 +149,8 @@ export class HubService {
 
   /**
    * Saves the hub, tidied, if nobody saved since `basedOn`, ledgering every change. Refused (400) when something shown
-   * is unfinished, an address or the accent cannot be used, or a new logo, cover banner or background photo is not one
-   * uploaded here.
+   * is unfinished, an address or the accent cannot be used, a new logo, cover banner or background photo is not one
+   * uploaded here, or a link's video is not a finished upload.
    */
   async update(ctx: RequestContext, input: HubInput): Promise<HubRecord> {
     const actor = requireAccount(ctx);
@@ -167,6 +170,7 @@ export class HubService {
           throw new BadRequestException(`that ${HUB_IMAGE_NAMES[kind]} is not one uploaded here; upload it again`);
         }
       }
+      await this.videos.requireReady(uploadedVideoIds(after.sections.flatMap((s) => s.links.map((l) => l.video))), tx);
       const next: HubRecord = { ...after, version: before.version + 1, updatedAt: new Date().toISOString(), updatedBy: actor };
       const payload: HubChangedPayload = { version: next.version, changes };
       await this.ledger.record(tx, [{ type: 'hub.changed', actor, subject: null, payload: { ...payload } }]);

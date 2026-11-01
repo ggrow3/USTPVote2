@@ -16,6 +16,7 @@ import { api, apiBlob, errorMessage } from '../api.js';
 import { attempt } from '../dialogs.js';
 import { session } from '../session.js';
 import CourseConversation from './CourseConversation.vue';
+import VideoPlayer from '../components/VideoPlayer.vue';
 
 const route = useRoute();
 const courseId = computed(() => String(route.params.courseId));
@@ -216,6 +217,7 @@ watch(
             <q-card-section>
               <div class="text-overline">Lesson {{ current.order }}</div>
               <h2 class="text-h4 q-mt-xs">{{ current.title }}</h2>
+              <VideoPlayer v-if="current.video" :video="current.video" :title="current.title" />
               <p v-for="paragraph in current.body.split('\n\n')" :key="paragraph" class="text-body1">{{ paragraph }}</p>
             </q-card-section>
             <q-separator />

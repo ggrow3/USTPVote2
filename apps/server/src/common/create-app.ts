@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory, type IEntryNestModule } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import { BUILD_COMMIT_HEADER, buildCommit, PRESS_ASSET_MAX_BYTES } from 'ustp-domain';
+import { BUILD_COMMIT_HEADER, buildCommit, PRESS_ASSET_MAX_BYTES, VIDEO_UPLOAD } from 'ustp-domain';
 import { ACCEPTED_TYPES, MAX_PHOTO_BYTES } from '../photos/image.js';
 import { loggerOptions } from './logging.js';
 import { ProblemDetailsFilter } from './problem.filter.js';
@@ -54,6 +54,11 @@ export async function createFastifyApp(
     .getHttpAdapter()
     .getInstance()
     .addContentTypeParser('application/pdf', { parseAs: 'buffer', bodyLimit: PRESS_ASSET_MAX_BYTES }, (_req, body, done) => done(null, body));
+  // An uploaded video arrives a part at a time, each part's raw bytes with the video's type (design §10.10).
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .addContentTypeParser([...VIDEO_UPLOAD.types], { parseAs: 'buffer', bodyLimit: VIDEO_UPLOAD.partBytes }, (_req, body, done) => done(null, body));
   return app;
 }
 

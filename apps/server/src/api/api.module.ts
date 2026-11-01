@@ -41,6 +41,7 @@ import { HealthController } from '../common/health.controller.js';
 import { CourseController } from '../course/course.controller.js';
 import { CourseService } from '../course/course.service.js';
 import { CourseLearnersService } from '../course/course-learners.service.js';
+import { VideosController, VideosService } from '../videos/videos.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { AdminConsistencyChecksController, ConsistencyChecksController } from '../consistency-check/consistency-checks.controller.js';
 import { ConsistencyChecksService } from '../consistency-check/consistency-checks.service.js';
@@ -167,6 +168,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     PersonasController,
     DemoElectionsController,
     CourseController,
+    VideosController,
   ],
   providers: [
     AccountsService,
@@ -206,6 +208,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     PersonasService,
     DemoElectionsService,
     CourseService,
+    VideosService,
     CourseLearnersService,
     secretStoreProvider,
     {

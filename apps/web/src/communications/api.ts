@@ -46,6 +46,9 @@ export const newsPost = (slug: string) => api<PublicNewsPost>('GET', `/v1/news/$
 /** The feeds' addresses, for links (feed readers and bots fetch them; the page does not). */
 export const FEEDS = { rss: '/v1/news/feed.xml', json: '/v1/news/feed.json' } as const;
 
+/** Where Communications Admins upload videos for news posts and the press kit, a part at a time (design §10.10). */
+export const VIDEO_UPLOADS = '/v1/admin/communications/videos';
+
 export const pressPage = () => api<{ kit: PublicPressKit; bots: PublicBot[] }>('GET', '/v1/press');
 export const pressAssetUrl = (assetId: string) => `/v1/press/assets/${id(assetId)}`;
 

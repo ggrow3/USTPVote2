@@ -3348,7 +3348,8 @@ Communications Admins (§10.9) manage it under Admin → Link hub.
   the device's share sheet where there is one and otherwise copies the address of `/` (or, where the browser refuses the
   clipboard, shows it). The page waits for the hub before it shows, as the voting home waits for its quote, so nothing
   moves; if the hub cannot be loaded, the default's profile and its pages in this app stand in, never the default's
-  outside addresses, which System Admins may have taken down since.
+  outside addresses, which System Admins may have taken down since. A link may instead play a video on the hub
+  (§10.10).
 - **Content** (`governance/hub.ts` in `ustp-domain`): a profile (name, tagline, bio, logo, cover banner, accent, default
   theme, page background), the Discord card (invite, server ID, live widget on or off), and sections in order, each with
   a title, shown or hidden, and its links in order. A link has a title, a subtitle, an address (a page of this app like
@@ -3513,7 +3514,7 @@ members, and how many people visit the public pages.
   (§10.6) stay as they are, without cookies; Google Analytics, where switched on, sets its cookies on the public
   pages.
 
-### 10.8 Courses: the map, quizzes, portraits, students and messages *(added)*
+### 10.8 Courses: the map, quizzes, portraits, videos, students and messages *(added)*
 
 Courses are open to everyone: `/courses` is a catalogue of every course with the course map, and each course has its page
 at `/course/{courseId}`, where signed-in learners take its quizzes and earn its certificate. Courses are kept apart
@@ -3661,10 +3662,14 @@ students and messages were added 2026-10-31; before, there was the one course at
   and publishing needs a complete portrait on every profile. The source page is optional, since an uploaded photo may
   have none. The Course tab shows each profile's thumbnail and says which pictures fail to load in the browser, so
   dead links (13 of the 18 seeded Wikimedia Commons links on 2026-10-28) can be replaced.
+- **Videos** *(added 2026-11-01)*. A lesson may have one video, shown above its text: a YouTube video or a file a
+  Course Administrator uploaded (§10.10), none on lessons saved before videos. An upload shows once a lesson is saved
+  with it and the course is published.
 - **Checks before sending.** The lesson and profile editors list what still stops a save, in words ("Question 2:
   choice 3 is empty"), instead of sending it and getting the api's bare "invalid request"; the api checks it all again.
 - **Exports.** A course's `ustp.course` file (Export JSON in the Course tab) holds its content, the draft or a published
-  version; where it sits on the map and its prerequisites are not part of it.
+  version; where it sits on the map and its prerequisites are not part of it. A lesson's video is in it as saved: a
+  YouTube video's ID and start, or an upload's ID, which names a file on this site, not the file itself.
 
 ### 10.9 Communications: news, press, social media *(added)*
 
@@ -3684,7 +3689,8 @@ news feeds for bots, Claude drafting each site's version and bots the app runs, 
   like Course Admins it may read Offices and Approvals but has nothing to do there, so they are hidden by default.
 - **News and press releases** (`news_posts`). Three kinds: press release, statement, news. A post has a title (140),
   a summary (300; the list's text, the page's description and what share buttons and the feeds carry), a plain-text
-  body (20,000), an optional dateline ("Washington, D.C.") and up to five hashtags. The body is never HTML: blank
+  body (20,000), an optional dateline ("Washington, D.C."), up to five hashtags and an optional video shown under the
+  summary (a YouTube video or an upload, §10.10; changing it is a ledgered edit too). The body is never HTML: blank
   lines separate blocks, `## ` starts a heading, `- ` a list item, `> ` a quotation, and `https://` addresses become
   links (`news-body.ts`, shared by the page and the feeds, so nothing typed becomes markup). Drafts are private; the
   address (`/news/{slug}`, from the title) may change until the post is first published and is fixed after, so links
@@ -3739,14 +3745,15 @@ news feeds for bots, Claude drafting each site's version and bots the app runs, 
   sender can vary, so App Check and the daily total are the real limit.
 - **Press kit** (`press_kit/current`, `press_assets`): the public `/press` page for journalists: a media contact
   (name, office, email, phone, a note), the party's own description of itself to quote, up to 20 facts, up to 20
-  files to download, the five latest releases and statements, and the party's public bots. Files are images (PNG,
+  files to download, up to 10 videos to play or download (uploads, §10.10, each with a title and description), the
+  five latest releases and statements, and the party's public bots. Files are images (PNG,
   JPEG or WebP uploads, decoded and re-encoded without metadata: PNG where there is transparency, else JPEG, at most
   3,000 pixels a side) or PDFs kept as sent (checked to start `%PDF-`), each at most 900 KB stored in Firestore under
   the SHA-256 of its bytes, as the hub's images are, so no bucket is needed. A file is offered only once the kit is
   saved listing it, and `GET /v1/press/assets/{id}` serves only listed files (404 otherwise), with a safe file name, a
   PDF as an attachment and every file under `Content-Security-Policy: sandbox`, so the site cannot be used to hand out
   files or to run one as a page. The kit is saved whole from the version edited and ledgered (`press_kit.changed`)
-  with the parts that changed and the files added and removed.
+  with the parts that changed and the files and videos added and removed.
 - **Bot registry** (`bots`): every automated account the party runs, on any site: its name, site, handle and
   profile, what it does, who looks after it, what it runs on, status (active, paused, retired), whether it is listed
   in public, notes for the team, and when someone last checked it still does what it says (due after 30 days). Public
@@ -3762,6 +3769,47 @@ news feeds for bots, Claude drafting each site's version and bots the app runs, 
   accounts, with each site's token in Secret Manager as the Anthropic key is (written by the api, read only by the
   worker), every post ledgered; this needs Terraform for the secrets and the worker's access. Also: email to members
   when something joins the share kit, a newsletter, and images in posts.
+
+### 10.10 Videos: YouTube links and uploads *(added)*
+
+*(Added 2026-11-01. The user asked to "upload linked video", chose course lessons, then all four places: course
+lessons, news posts, the press kit and the Link hub; and asked that linked YouTube videos play embedded too.)* A
+course lesson (§10.8), a news post (§10.9) and a hub link (§10.6) may each have one video, a YouTube video or an
+upload, never both; the press kit (§10.9) lists uploads only, as files to play or download. The domain's `Video` is
+`{kind: 'youtube', youtubeId, start}` or `{kind: 'upload', videoId}`.
+
+- **YouTube.** The editors take a YouTube address in any of the forms YouTube gives out (`watch?v=`, `youtu.be/`,
+  `/shorts/`, `/live/`, `/embed/`, with a start time from `t=` or `start=`); the api keeps only the 11-character video
+  ID and the start second (`youtubeVideo` in `ustp-domain`) and refuses anything else, in words before sending. On a
+  page a YouTube video is a box with a play button and the words "It plays from YouTube once you press play": only
+  when the viewer presses it does the page load YouTube's privacy-enhanced player (`youtube-nocookie.com/embed/…`),
+  so no visitor's browser contacts YouTube before they choose to; "Watch on YouTube" under it opens the video there.
+- **Who uploads.** Each place's own admins, at its own address: Course Administrators at
+  `/v1/admin/courses/{courseId}/videos`, Communications Admins at `/v1/admin/communications/videos` (news and the
+  press kit), System and Communications Admins at `/v1/admin/hub/videos`. An upload records its place (`videos/{id}`:
+  `course`, `communications` or `hub`), and a part is taken only at the address its upload began (404 elsewhere).
+- **Uploads.** MP4 or WebM, at most 1 GB. The browser sends them in parts of 8 MiB, since Cloud Run takes at most
+  32 MiB in a request: a `POST` with the type, size and file name starts one (a UUIDv7), then each part goes in order
+  to `…/videos/{videoId}/parts/{index}` as the raw body, with the video's type. A part already stored is not stored
+  again, so one whose answer was lost can be resent; one further on is refused (409), and a part's size must be
+  exactly right (400). The first part must begin as the type said: an MP4's `ftyp` box or a WebM's EBML header (a
+  Matroska file, which not every browser plays, is refused). A dropped connection or a server error sends a part
+  again, up to three times; closing the editor or Cancel stops after the part being sent. Each part is an object in
+  the private videos bucket (`VIDEOS_BUCKET`, `<project>-videos` from Terraform; the api may create and read objects,
+  never delete them), and the upload is ready once the last arrives. Unlike photos, a video is kept exactly as sent,
+  not re-encoded, so the editors say that anything the camera stored in it, such as where it was filmed, stays in it
+  unless it is exported from a video editor first.
+- **Playing.** Anyone may play a ready upload at `GET /v1/public/videos/{videoId}`, as anyone may read what it is on:
+  a byte range is answered with at most the rest of the part it starts in (206; the player asks again for the rest),
+  no range with the whole file a part at a time (chunked, since Cloud Run sends an HTTP/1 answer over 32 MiB only that
+  way), and a range past the end with 416. `?download=1` sends it as a file under the name it was uploaded with, made
+  safe (`videoFileName`). Answers are cached by browsers for good (an upload never changes) but not by shared caches
+  (`private`), which could answer one range with another.
+- **Saving.** Something saved with an upload must name a finished one uploaded here (400 otherwise): a lesson, a
+  post, a hub link or the kit's list. A hub link with a video needs no address; choosing it, as a card or in the icon
+  row, counts the click and plays the video in a dialog on the hub, from its start. Until the bucket is configured,
+  uploads and their playback answer 503; YouTube videos need nothing. Uploads nothing uses are not deleted yet, as for
+  portraits, and there are no captions yet: the text around a video should carry what it says.
 
 ## 11. Data model (Firestore `(default)` database)
 
@@ -3849,6 +3897,7 @@ Physically, registration collections are top-level and election data lives under
 | `hub_backgrounds/{sha256}` | hash of the stored image | immutable | an uploaded page background as a WebP at most 2560px wide, uploadedAt, uploadedBy (§10.6) *(added)* |
 | `hub_clicks/{target}` | `link-{id}` or `discord` | counters only | total, and a count per UTC day; nothing about who clicked (§10.6) *(added)* |
 | `course_images/{sha256}` | hash of the stored image | immutable | a portrait uploaded by a Course Administrator as a WebP of at most 800px, its size, courseId, uploadedAt, uploadedBy (§10.8) *(added)* |
+| `videos/{videoId}` | UUIDv7 | received and ready change as parts arrive, then immutable | a video uploaded for a lesson, news, the press kit or the hub: its place (and course), type (MP4 or WebM), size, parts, how many are stored, ready, the file name it downloads as, uploadedAt, uploadedBy; the bytes are in the videos bucket, a part per object (§10.10) *(added)* |
 | `courses/{courseId}` | made from the title when added | the draft's title and summary, status and versions change with editing and publishing; deleted only if never published | courseId, title, summary, status, version, publishedVersion, prerequisites (course IDs), position (row and column, or null for off the map), placedAt, placedBy, createdAt, updatedAt, updatedBy; records from before the map have no prerequisites or position (read as none and off it) (§10.8) *(added)* |
 | `course_seeds/{seed}` | `course-map-2026-10` | created once | that the party's map courses were added, and when (§10.8) *(added)* |
 | `course_threads/{courseId}_{accountId}` | course and learner | switched by Course Admins; read times updated on reading | messaging on or off, switchedAt, switchedBy, when each side last wrote and last read (§10.8) *(added)* |
@@ -3900,6 +3949,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /page-visits` · `POST /public/page-visits` | M · P | a page opened (`path`): counted, and signed in to an account also recorded with it; 204, 404 for the ballot, the receipt check or a path the app has no page for, 429 past 60 a minute from one account or address (§10.7) |
 | `GET /public/courses` · `GET /courses` | P · M | the course map and list: every published course and every draft on the map (title only); signed in, also how the learner stands in each (§10.8) |
 | `GET /public/courses/{courseId}` · `GET /public/course-images/{sha256}` | P | the published course without quiz answers, with its prerequisites; an uploaded portrait, cached for good (§10.8) |
+| `GET /public/videos/{videoId}` | P | an uploaded video once all its parts are in (404 before): by byte range, at most one part per answer (206), whole without a range, 416 past the end, `?download=1` as a file; cached by browsers only (§10.10) |
 | `GET /courses/{courseId}` | M | the course as the learner takes it: their version, progress, certificate, the prerequisites they still need, and whether they may message the instructors (§10.8) |
 | `POST /courses/{courseId}/lessons/{lessonId}/attempts` | M | submit a quiz, one answer per question in order (400 otherwise; 409 until the prerequisites are passed); the score, progress, any certificate, and for each question whether it was right and its explanation (§10.8) |
 | `GET\|POST /courses/{courseId}/messages` | M | the learner's conversation with the instructors (reading marks their answers read); write to them, 403 while a Course Admin has not turned messaging on (§10.8) |
@@ -3993,7 +4043,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET\|PUT /admin/site-analytics` | System Admin | the Google Analytics setting with who saved it; save a measurement ID or null from the version it was edited from (400 not a GA4 ID, 409 if someone saved since), ledgered (§10.7) |
 | `GET\|PUT /admin/home-quote` | System Admin | the voting home's quote with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if shown without its words or who said them, or a part over its limit), ledgered (§10.5) |
 | `GET\|PUT /admin/hub` · `PUT /admin/hub/logo` · `PUT /admin/hub/cover` · `PUT /admin/hub/background` · `GET /admin/hub/clicks` | System Admin, Communications Admin | the link hub with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if something shown is unfinished, an address, the accent, or the logo, cover banner or page background cannot be used), ledgered; upload a logo, cover banner or page background (the image as the body, giving its ID; shown once saved); each link's clicks in the last 30 days and in all (§10.6) |
-| `GET\|PUT /admin/courses/{courseId}` · `POST /admin/courses/{courseId}/lessons\|profiles` · `PUT /admin/courses/{courseId}/images` · `POST /admin/courses/{courseId}/publish` | Course Admin | the course draft; save a lesson with its quiz or a profile with its portrait (400 if a portrait is half done or names no upload); upload a portrait (the image as the body; shown once saved and published); publish a new version (409 while a profile lacks a complete portrait) (§10.8) |
+| `GET\|PUT /admin/courses/{courseId}` · `POST /admin/courses/{courseId}/lessons\|profiles` · `PUT /admin/courses/{courseId}/images` · `POST /admin/courses/{courseId}/publish` | Course Admin | the course draft; save a lesson with its quiz and any video, or a profile with its portrait (400 if a portrait is half done or names no upload, or a video names no finished upload); upload a portrait (the image as the body; shown once saved and published); publish a new version (409 while a profile lacks a complete portrait) (§10.8) |
+| `POST /admin/courses/{courseId}/videos` · `POST /admin/communications/videos` · `POST /admin/hub/videos`, each with `PUT …/videos/{videoId}/parts/{index}` | Course Admin · Communications Admin · System or Communications Admin | start uploading a video for lessons, for news and the press kit, or for the hub (type, size, file name; MP4 or WebM, at most 1 GB), then send its 8 MiB parts in order as raw bodies with its type; 404 for a part sent where its upload did not begin, 409 for one sent too soon, 400 for a wrong size or a first part that is not that kind of video, 503 until `VIDEOS_BUCKET` is set (§10.10) |
 | `GET\|POST /admin/courses` · `DELETE /admin/courses/{courseId}` · `PUT /admin/courses/{courseId}/map` · `PUT /admin/course-map` | Course Admin | every course, drafts included; add a draft course (its ID from its title); delete one never published (409 if published or another course comes after it); set where it sits on the map and its prerequisites, at once (409 for a loop, an unknown course or a taken square); save the board: the squares and prerequisites of up to 100 courses together, checked as one map, all or nothing (same 409s) (§10.8) |
 | `GET /admin/courses/{courseId}/learners` · `PUT /admin/courses/{courseId}/learners/{accountId}/messaging` · `GET\|POST /admin/courses/{courseId}/learners/{accountId}/messages` | Course Admin | the course's students and how they stand, without emails; turn a student's messaging on or off; read their conversation (marking it read) and answer as an instructor (409 while it is off) (§10.8) |
 | `GET\|POST /testing/personas` · header `X-Act-As` on any signed-in route | System Admin, testing mode only (404 otherwise) | test personas and acting as them (§10.4) |

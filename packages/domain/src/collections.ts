@@ -132,6 +132,8 @@ export const Collections = {
   pressKit: 'press_kit',
   /** `press_assets/{sha256}`: files uploaded for the press kit, as stored. */
   pressAssets: 'press_assets',
+  /** `videos/{videoId}`: videos uploaded for lessons, news, the press kit and the hub; their bytes are in the videos bucket. */
+  videos: 'videos',
   /** `share_posts/{shareId}`: the share kit's ready-made posts for members. */
   sharePosts: 'share_posts',
   /** `share_counts/{item}`: how often each share button was pressed; nothing about who. */

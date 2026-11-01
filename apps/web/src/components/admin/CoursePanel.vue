@@ -29,6 +29,8 @@ import {
   removeChoice,
   type QuestionDraft,
 } from '../../academy/course-editor.js';
+import { videoDraft, videoFromDraft } from '../../video-fields.js';
+import VideoField from '../VideoField.vue';
 import CourseLearnersCard from './CourseLearnersCard.vue';
 import CourseMapCard from './CourseMapCard.vue';
 
@@ -54,6 +56,9 @@ const lesson = reactive({
   title: '',
   summary: '',
   body: '',
+  /** The uploaded video's ID; while there is one, the YouTube link is not used. */
+  videoUpload: null as string | null,
+  videoLink: '',
   estimatedMinutes: 10,
   questions: [] as QuestionDraft[],
 });
@@ -125,9 +130,13 @@ async function deleteCourse() {
 }
 
 function editLesson(value?: CourseLesson) {
+  const video = value?.video ?? null;
   Object.assign(lesson, value
     ? { lessonId: value.lessonId, order: value.order, title: value.title, summary: value.summary, body: value.body, estimatedMinutes: value.estimatedMinutes, questions: questionDrafts(value.questions) }
     : { lessonId: undefined, order: lessons.value.length + 1, title: '', summary: '', body: '', estimatedMinutes: 10, questions: [blankQuestion()] });
+  const draft = videoDraft(video);
+  Object.assign(lesson, { videoUpload: draft.upload, videoLink: draft.link });
+  videoBusy.value = false;
   lessonErrors.value = [];
   lessonOpen.value = true;
 }
@@ -165,6 +174,7 @@ async function saveLesson() {
     title: lesson.title,
     summary: lesson.summary,
     body: lesson.body,
+    video: videoFromDraft({ upload: lesson.videoUpload, link: lesson.videoLink }),
     estimatedMinutes: draft.estimatedMinutes,
     questions: questionsPayload(lesson.questions),
   };
@@ -177,6 +187,9 @@ async function saveLesson() {
 function addQuestion() {
   lesson.questions.push(blankQuestion());
 }
+
+/** While a video is uploading, the lesson waits for it before it can be saved. */
+const videoBusy = ref(false);
 
 async function saveProfile() {
   const payload = {
@@ -356,6 +369,20 @@ void loadCourses().catch((e: unknown) => console.error(errorMessage(e)));
         <q-card-section class="course-form">
           <div class="row q-col-gutter-md"><q-input v-model.number="lesson.order" type="number" outlined class="col-12 col-sm-3" label="Order" /><q-input v-model.number="lesson.estimatedMinutes" type="number" outlined class="col-12 col-sm-3" label="Minutes" /><q-input v-model="lesson.title" outlined class="col-12 col-sm-6" label="Title" /></div>
           <q-input v-model="lesson.summary" outlined type="textarea" autogrow label="Summary" />
+          <div>
+            <h3 class="text-h6 q-my-none">Video</h3>
+            <p class="text-grey-7 q-mt-xs q-mb-none">
+              Optional, shown above the lesson text. Link a YouTube video, or upload a video to keep it on this site.
+            </p>
+          </div>
+          <VideoField
+            v-model:upload="lesson.videoUpload"
+            v-model:link="lesson.videoLink"
+            :upload-path="`/v1/admin/courses/${courseId}/videos`"
+            :title="lesson.title || 'this lesson'"
+            @busy="(busy) => (videoBusy = busy)"
+          />
+          <q-separator />
           <q-input v-model="lesson.body" outlined type="textarea" autogrow label="Lesson text (separate paragraphs with a blank line)" />
           <div>
             <h3 class="text-h6 q-my-none">Quiz</h3>
@@ -389,7 +416,7 @@ void loadCourses().catch((e: unknown) => console.error(errorMessage(e)));
             <ul class="q-my-xs q-pl-md"><li v-for="problem in lessonErrors" :key="problem">{{ problem }}</li></ul>
           </q-banner>
         </q-card-section>
-        <q-card-actions align="right" class="q-pa-md"><q-btn v-close-popup flat no-caps label="Cancel" /><q-btn color="primary" no-caps label="Save lesson" @click="saveLesson" /></q-card-actions>
+        <q-card-actions align="right" class="q-pa-md"><q-btn v-close-popup flat no-caps label="Cancel" /><q-btn color="primary" no-caps label="Save lesson" :disable="videoBusy" @click="saveLesson" /></q-card-actions>
       </q-card>
     </q-dialog>
 

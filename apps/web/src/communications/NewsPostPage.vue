@@ -5,6 +5,7 @@ import { newsItem, type PublicNewsPost } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { ApiError, errorMessage } from '../api.js';
 import PageShell from '../components/PageShell.vue';
+import VideoPlayer from '../components/VideoPlayer.vue';
 import { newsPost } from './api.js';
 import CommsNav from './CommsNav.vue';
 import { longDate, NEWS_KIND_NAMES, newsShareable } from './comms-text.js';
@@ -59,6 +60,7 @@ watch(
           ><template v-if="published.editedAt"> · updated {{ longDate(published.editedAt) }}</template>
         </div>
         <p v-if="published.summary" class="text-subtitle1 q-mt-md">{{ published.summary }}</p>
+        <VideoPlayer v-if="published.video" :video="published.video" :title="published.title" />
         <p v-if="published.dateline" class="text-weight-bold q-mb-xs">{{ published.dateline }}</p>
         <NewsBody :body="published.body" />
         <div v-if="published.hashtags.length" class="text-grey-7 q-mb-md">

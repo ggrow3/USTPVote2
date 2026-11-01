@@ -42,7 +42,7 @@ export function clicksText(count: Pick<HubClickCount, 'total' | 'recent'> | unde
   return `${number(recent)} in the last ${RECENT_DAYS} days, ${number(total)} in all`;
 }
 
-const FIELD_NAMES = { title: 'title', subtitle: 'subtitle', url: 'address', icon: 'icon' } as const;
+const FIELD_NAMES = { title: 'title', subtitle: 'subtitle', url: 'address', video: 'video', icon: 'icon' } as const;
 
 const and = (words: readonly string[]) => (words.length > 1 ? `${words.slice(0, -1).join(', ')} and ${words.at(-1)}` : (words[0] ?? ''));
 

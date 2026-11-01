@@ -21,6 +21,7 @@ import {
 import { accepted, assertCheck } from '../common/validation.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { VideosService } from '../videos/videos.js';
 import { CommunicationsRepository } from './communications.repository.js';
 
 /** The Press page: the press kit and the party's public bots. */
@@ -70,6 +71,7 @@ export class PressKitService {
     private readonly firebase: Firebase,
     private readonly repo: CommunicationsRepository,
     private readonly ledger: LedgerService,
+    private readonly videos: VideosService,
   ) {}
 
   private static record(stored: Partial<PressKitRecord> | null): PressKitRecord {
@@ -83,16 +85,21 @@ export class PressKitService {
 
   async page(): Promise<PressPage> {
     const kit = await this.current();
-    const [files, bots] = await Promise.all([this.repo.pressAssets(kit.assets.map((a) => a.id)), this.repo.allBots()]);
-    return { kit: publicPressKit(kit, files), bots: publicBots(bots) };
+    const [files, videos, bots] = await Promise.all([
+      this.repo.pressAssets(kit.assets.map((a) => a.id)),
+      this.videos.finished(kit.videos.map((v) => v.videoId)),
+      this.repo.allBots(),
+    ]);
+    return { kit: publicPressKit(kit, files, videos), bots: publicBots(bots) };
   }
 
-  /** Saves the kit from the version it was edited from; every file it lists must have been uploaded here. */
+  /** Saves the kit from the version it was edited from; every file and video it lists must have been uploaded here. */
   async save(actor: string, input: PressKitInput): Promise<PressKitRecord> {
     return this.firebase.db.runTransaction(async (tx) => {
       const current = PressKitService.record(await this.repo.pressKit(tx));
       const files = await this.repo.pressAssets(input.assets.map((a) => a.id), tx);
       assertCheck(checkPressAssets(input, new Set(files.keys())), BadRequestException);
+      await this.videos.requireReady(input.videos.map((v) => v.videoId), tx);
       const { kit, event } = accepted(savePressKit(current, input, actor, new Date().toISOString()));
       if (!event) return kit;
       await this.ledger.record(tx, [event]);

@@ -55,7 +55,7 @@ const community = (url: string): HubSection => ({
   id: 'community',
   title: 'Community',
   shown: true,
-  links: [{ id: 'subreddit', title: 'Subreddit', subtitle: 'Long-form discussion', url, icon: 'reddit', shown: true, iconRow: true, featured: false }],
+  links: [{ id: 'subreddit', title: 'Subreddit', subtitle: 'Long-form discussion', url, video: null, icon: 'reddit', shown: true, iconRow: true, featured: false }],
 });
 
 describe('the home page hub (design §10.6)', () => {
@@ -141,7 +141,7 @@ describe('the home page hub (design §10.6)', () => {
 
   it('refuses what cannot be shown: unfinished links, unsafe addresses and an unreadable accent', async () => {
     const draft = await put(sa1, { sections: [community('')] });
-    expect(draft).toMatchObject({ status: 400, body: { detail: 'Subreddit needs an address before it can be shown' } });
+    expect(draft).toMatchObject({ status: 400, body: { detail: 'Subreddit needs an address or a video before it can be shown' } });
     const script = await put(sa1, { sections: [community('javascript:alert(1)')] });
     expect(script).toMatchObject({ status: 400, body: { detail: 'Subreddit: use an https:// address' } });
     const accent = await put(sa1, { profile: { ...DEFAULT_HUB.profile, accent: '#ff6900' } });

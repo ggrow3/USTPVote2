@@ -68,6 +68,18 @@ describe('the quiz editor', () => {
   });
 });
 
+describe('the lesson video', () => {
+  const upload = '0190a000-0000-7000-8000-000000000000';
+
+  it('needs a link to be one YouTube video', () => {
+    const watch = { ...lesson([question()]), videoUpload: null };
+    expect(lessonProblems({ ...watch, videoLink: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' })).toEqual([]);
+    expect(lessonProblems({ ...watch, videoLink: '' })).toEqual([]);
+    expect(lessonProblems({ ...watch, videoLink: 'https://vimeo.com/1' })).toEqual(['The video link must be the address of one YouTube video, or leave it empty.']);
+    expect(lessonProblems({ ...watch, videoUpload: upload, videoLink: 'https://vimeo.com/1' })).toEqual([]);
+  });
+});
+
 describe('the profile editor', () => {
   it('lets a draft go without a portrait, but not half of one', () => {
     expect(profileProblems(profile)).toEqual([]);

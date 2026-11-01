@@ -4,19 +4,23 @@ import {
   PRESS_ASSET_MAX_BYTES,
   PRESS_KIT_LIMITS,
   pressKitSchema,
+  VIDEO_UPLOAD,
+  videoSrc,
   type PressAssetType,
   type PressKitRecord,
 } from 'ustp-domain';
 import { focusFirstInvalid } from '../a11y.js';
 import { attempt } from '../dialogs.js';
+import { fileSize as videoSize, videoFileProblem } from '../video-fields.js';
+import { uploadVideo } from '../video-upload.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../forms.js';
-import { adminPressKit, pressAssetBlob, pressPage, savePressKit, uploadPressAsset } from './api.js';
+import { adminPressKit, pressAssetBlob, pressPage, savePressKit, uploadPressAsset, VIDEO_UPLOADS } from './api.js';
 import { fileSize, longDate } from './comms-text.js';
 
 /**
  * The press kit for Communications Admins (design §10.9): the public Press page's media contact, the party's own
- * description, facts and files. Uploading a file changes nothing the public sees until the kit is saved listing it.
- * Each save is recorded in the audit ledger.
+ * description, facts, files and videos (§10.10). Uploading changes nothing the public sees until the kit is saved
+ * listing the upload. Each save is recorded in the audit ledger.
  */
 interface FileInfo {
   readonly contentType: PressAssetType;
@@ -29,6 +33,7 @@ interface Form {
   contact: { name: string; role: string; email: string; phone: string; note: string };
   facts: { label: string; value: string }[];
   assets: { id: string; title: string; description: string }[];
+  videos: { videoId: string; title: string; description: string }[];
 }
 
 const saved = ref<PressKitRecord | null>(null);
@@ -38,12 +43,17 @@ const thumbs = ref<Record<string, string>>({});
 const errors = ref<FieldErrors>({});
 const uploading = ref(false);
 const picker = ref<HTMLInputElement | null>(null);
+const videoPicker = ref<HTMLInputElement | null>(null);
+/** A video uploading, with how much is sent; uploads made since the page opened, with their sizes. */
+const videoProgress = ref<number | null>(null);
+const videoSizes = ref<Record<string, number>>({});
 
 const toForm = (k: PressKitRecord): Form => ({
   about: k.about,
   contact: { ...k.contact },
   facts: k.facts.map((f) => ({ ...f })),
   assets: k.assets.map((a) => ({ id: a.id, title: a.title, description: a.description })),
+  videos: (k.videos ?? []).map((v) => ({ videoId: v.videoId, title: v.title, description: v.description })),
 });
 const dirty = computed(() => !!saved.value && !!form.value && JSON.stringify(toForm(saved.value)) !== JSON.stringify(form.value));
 
@@ -62,6 +72,7 @@ async function load() {
     saved.value = kit;
     form.value = toForm(kit);
     for (const a of page.kit.assets) files.value[a.id] = a;
+    for (const v of page.kit.videos) videoSizes.value[v.videoId] = v.bytes;
     for (const a of kit.assets) void thumb(a.id);
   });
 }
@@ -83,6 +94,30 @@ async function upload(event: Event) {
     }, 'Uploaded: give it a title, then save the kit to offer it');
   } finally {
     uploading.value = false;
+  }
+}
+
+/** Uploads a video a part at a time and lists it, titled after its file; the kit offers it once saved. */
+async function uploadVideoFile(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file || !form.value) return;
+  const problem = videoFileProblem(file);
+  if (problem) {
+    errors.value = { videos: problem };
+    return;
+  }
+  videoProgress.value = 0;
+  try {
+    await attempt(async () => {
+      const videoId = await uploadVideo(VIDEO_UPLOADS, file, (sent) => (videoProgress.value = sent), () => false);
+      if (!videoId) return;
+      videoSizes.value[videoId] = file.size;
+      form.value!.videos.push({ videoId, title: file.name.replace(/\.[^.]*$/, '').slice(0, PRESS_KIT_LIMITS.assetTitle), description: '' });
+    }, 'Uploaded: give it a title, then save the kit to offer it');
+  } finally {
+    videoProgress.value = null;
   }
 }
 
@@ -243,8 +278,58 @@ onBeforeUnmount(() => Object.values(thumbs.value).forEach((url) => URL.revokeObj
         </q-card-section>
       </q-card>
 
+      <q-card flat bordered>
+        <q-card-section class="ustp-form">
+          <h2 class="text-subtitle1">Videos</h2>
+          <div class="text-caption text-grey-7">
+            MP4 or WebM files up to {{ videoSize(VIDEO_UPLOAD.maxBytes) }}, for journalists to play or download. They are kept exactly as
+            sent, with anything the camera stored in them, such as where they were filmed.
+          </div>
+          <div v-for="(v, i) in form.videos" :key="v.videoId" class="press-row">
+            <div class="press-row__thumb">
+              <video :src="videoSrc(v.videoId)" preload="metadata" muted playsinline aria-hidden="true" tabindex="-1"></video>
+            </div>
+            <div class="press-row__fields">
+              <q-input
+                v-model="v.title"
+                outlined
+                dense
+                label="Title"
+                :maxlength="PRESS_KIT_LIMITS.assetTitle"
+                :error="!!errors[`videos.${i}.title`]"
+                :error-message="errors[`videos.${i}.title`]"
+              />
+              <q-input v-model="v.description" outlined dense label="Description (optional)" :maxlength="PRESS_KIT_LIMITS.assetDescription" />
+              <div v-if="videoSizes[v.videoId]" class="text-caption text-grey-7">Video, {{ fileSize(videoSizes[v.videoId]!) }}</div>
+            </div>
+            <div class="press-row__actions">
+              <q-btn flat round dense icon="arrow_upward" :aria-label="`Move ${v.title || 'video'} up`" :disable="i === 0" @click="move(form.videos, i, -1)" />
+              <q-btn flat round dense icon="arrow_downward" :aria-label="`Move ${v.title || 'video'} down`" :disable="i === form.videos.length - 1" @click="move(form.videos, i, 1)" />
+              <q-btn flat round dense icon="close" :aria-label="`Remove ${v.title || 'video'}`" @click="form.videos.splice(i, 1)" />
+            </div>
+          </div>
+          <div v-if="videoProgress !== null" role="status" class="row items-center q-gutter-sm">
+            <q-linear-progress :value="videoProgress" size="10px" rounded class="col" color="primary" />
+            <span class="text-caption">Uploading, {{ Math.round(videoProgress * 100) }}%</span>
+          </div>
+          <q-banner v-if="errors.videos" class="bg-red-1 text-black" rounded role="alert">{{ errors.videos }}</q-banner>
+          <div>
+            <input ref="videoPicker" type="file" accept="video/mp4,video/webm,.mp4,.m4v,.webm" class="hidden" aria-hidden="true" tabindex="-1" @change="uploadVideoFile" />
+            <q-btn
+              flat
+              no-caps
+              icon="video_call"
+              label="Upload a video"
+              :loading="videoProgress !== null"
+              :disable="form.videos.length >= PRESS_KIT_LIMITS.videos"
+              @click="videoPicker?.click()"
+            />
+          </div>
+        </q-card-section>
+      </q-card>
+
       <div class="ustp-actions">
-        <q-btn type="submit" unelevated no-caps color="primary" label="Save the press kit" :disable="!dirty" />
+        <q-btn type="submit" unelevated no-caps color="primary" label="Save the press kit" :disable="!dirty || videoProgress !== null" />
         <q-btn v-if="dirty" flat no-caps label="Undo changes" @click="form = toForm(saved!)" />
       </div>
     </q-form>
@@ -268,7 +353,8 @@ onBeforeUnmount(() => Object.values(thumbs.value).forEach((url) => URL.revokeObj
   border-radius: 6px;
   overflow: hidden;
 }
-.press-row__thumb img {
+.press-row__thumb img,
+.press-row__thumb video {
   max-width: 100%;
   max-height: 100%;
   object-fit: contain;

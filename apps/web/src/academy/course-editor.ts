@@ -1,4 +1,5 @@
 import { portraitProblem, QUIZ_LIMITS, type CourseQuestion, type SaveCourseLessonInput, type SaveFuturistProfileInput } from 'ustp-domain';
+import { videoDraftProblem } from '../video-fields.js';
 
 /** A question as the Course tab edits it: `key` keeps its card while questions move; a new one has no questionId yet. */
 export interface QuestionDraft {
@@ -55,6 +56,8 @@ export function lessonProblems(lesson: {
   title: string;
   summary: string;
   body: string;
+  videoUpload?: string | null;
+  videoLink?: string;
   questions: readonly QuestionDraft[];
 }): string[] {
   const problems: string[] = [];
@@ -63,6 +66,8 @@ export function lessonProblems(lesson: {
   if (blank(lesson.title)) problems.push('The lesson needs a title.');
   if (blank(lesson.summary)) problems.push('The lesson needs a summary.');
   if (blank(lesson.body)) problems.push('The lesson needs its text.');
+  const video = videoDraftProblem({ upload: lesson.videoUpload ?? null, link: lesson.videoLink ?? '' });
+  if (video) problems.push(video);
   const { minQuestions, maxQuestions, minChoices, maxChoices } = QUIZ_LIMITS;
   if (lesson.questions.length < minQuestions || lesson.questions.length > maxQuestions) {
     problems.push(`The quiz needs ${minQuestions} to ${maxQuestions} questions.`);
