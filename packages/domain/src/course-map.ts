@@ -70,11 +70,17 @@ export const courseMapSchema = z.strictObject({
 });
 export type CourseMapInput = z.infer<typeof courseMapSchema>;
 
-type Placed = Pick<CourseRecord, 'courseId' | 'title'> & CoursePlacement;
+/** `PUT /v1/admin/courses/{courseId}/visibility`: hides the course from the Courses page or shows it, at once. */
+export const courseVisibilitySchema = z.strictObject({ hidden: z.boolean() });
+export type CourseVisibilityInput = z.infer<typeof courseVisibilitySchema>;
+
+/** A course as the map's checks see it; one without `hidden` is shown. */
+type Placed = Pick<CourseRecord, 'courseId' | 'title'> & CoursePlacement & { readonly hidden?: boolean };
 
 /**
  * What stops a course being placed as asked, in words, or null: a prerequisite that is not a course, the course
- * itself, a loop (A before B before A, which nobody could ever finish), or another course on the same square.
+ * itself, a loop (A before B before A, which nobody could ever finish), a hidden course before one shown on the
+ * Courses page (its learners would be sent to a course they cannot find there), or another course on the same square.
  */
 export function coursePlacementProblem(courses: readonly Placed[], courseId: string, input: CoursePlacement): string | null {
   const byId = new Map(courses.map((course) => [course.courseId, course]));
@@ -85,6 +91,8 @@ export function coursePlacementProblem(courses: readonly Placed[], courseId: str
   }
   const loop = loopThrough(byId, courseId, input.prerequisites);
   if (loop) return `that makes a loop nobody could finish: ${loop.map(title).join(' → ')}`;
+  const hidden = byId.get(courseId)?.hidden ? undefined : input.prerequisites.find((id) => byId.get(id)!.hidden);
+  if (hidden) return `${title(hidden)} is hidden from the Courses page, so a course shown there cannot come after it: show it first`;
   if (input.position) {
     const { row, column } = input.position;
     const other = courses.find((course) => course.courseId !== courseId && course.position?.row === row && course.position.column === column);
@@ -112,6 +120,23 @@ function loopThrough(byId: ReadonlyMap<string, Placed>, courseId: string, prereq
     return null;
   };
   return walk([courseId]);
+}
+
+/**
+ * What stops a course being hidden from the Courses page, in words, or null: a course shown there that comes after
+ * it, whose learners would be sent to pass a course they cannot find. Showing a course again is never refused.
+ */
+export function courseHidingProblem(courses: readonly Placed[], courseId: string, hidden: boolean): string | null {
+  if (!hidden) return null;
+  const after = courses.filter((course) => !course.hidden && course.prerequisites.includes(courseId));
+  if (!after.length) return null;
+  const one = after.length === 1;
+  const titles = after.map((course) => course.title);
+  const names = one ? titles[0] : `${titles.slice(0, -1).join(', ')} and ${titles[titles.length - 1]}`;
+  return (
+    `${names} ${one ? 'comes' : 'come'} after this course and ${one ? 'is' : 'are'} ` +
+    `shown on the Courses page: hide ${one ? 'it' : 'them'} first, or take this course off ${one ? 'its' : 'their'} prerequisites`
+  );
 }
 
 /** The most courses one save of the Course tab's board may change. */
@@ -237,7 +262,7 @@ export interface CourseLink {
 /**
  * One course on the map and in the course list (`GET /v1/public/courses`). A published course shows its published
  * title and summary; one placed on the map but not yet published shows only its title, as coming soon. A course that
- * is neither is not listed.
+ * is neither is not listed, nor is one hidden from the Courses page.
  */
 export interface CourseMapEntry {
   readonly courseId: string;

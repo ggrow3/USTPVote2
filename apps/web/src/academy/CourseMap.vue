@@ -16,7 +16,7 @@ const props = defineProps<{
 }>();
 defineSlots<{ card(props: { course: C }): unknown }>();
 
-const layout = computed(() => courseMapLayout(props.courses));
+const layout = computed(() => courseMapLayout(props.courses, { trim: true }));
 const { cardWidth, cardHeight } = MAP_GEOMETRY;
 </script>
 

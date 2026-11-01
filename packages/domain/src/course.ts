@@ -32,6 +32,14 @@ export interface CourseRecord {
   /** Who last changed the prerequisites or position, and when; absent until someone does. */
   readonly placedAt?: string;
   readonly placedBy?: string;
+  /**
+   * Left off the Courses page for everyone, though it stays published, on its square and open at its address (design
+   * §10.8). Off by default; records from before the switch have none and are shown.
+   */
+  readonly hidden: boolean;
+  /** Who last hid or showed it, and when; absent until someone does. */
+  readonly hiddenChangedAt?: string;
+  readonly hiddenChangedBy?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly updatedBy: string;

@@ -12,6 +12,7 @@ const course: CourseRecord = {
   publishedVersion: 2,
   prerequisites: [],
   position: { row: 0, column: 0 },
+  hidden: true,
   createdAt: '2026-10-01T00:00:00.000Z',
   updatedAt: '2026-10-28T00:00:00.000Z',
   updatedBy: '01a1-editor',
@@ -58,7 +59,7 @@ const profile: FuturistProfile = {
 };
 
 describe('course packages', () => {
-  it('hold the draft in course order, answers included, without who edited it', () => {
+  it('hold the draft in course order, answers included, without who edited it or whether it is hidden', () => {
     const pkg = draftCoursePackage(course, [lesson('later', 2), lesson('first', 1)], [profile], AT);
     expect(pkg).toMatchObject({
       format: 'ustp.course',
@@ -71,6 +72,7 @@ describe('course packages', () => {
     expect(pkg.lessons[0]!.questions[2]).toEqual({ questionId: 'q3', prompt: 'Question 3?', choices: ['A', 'B', 'C', 'D'], correctIndex: 3, explanation: 'Because 3.' });
     const text = JSON.stringify(pkg);
     expect(text).not.toContain('01a1-editor');
+    expect(text).not.toContain('hidden');
     expect(pkg.lessons[0]).not.toHaveProperty('courseId');
     expect(pkg.profiles[0]).not.toHaveProperty('updatedAt');
   });

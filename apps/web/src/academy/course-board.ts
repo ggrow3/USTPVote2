@@ -11,6 +11,8 @@ import { MAP_GEOMETRY, type MapCourse } from './course-map.js';
 export interface BoardCourse extends MapCourse {
   readonly prerequisites: readonly string[];
   readonly position: CoursePosition | null;
+  /** Hidden from the Courses page, so no course shown there may come after it; set apart from the board. */
+  readonly hidden?: boolean;
 }
 
 /** An edit refused on the board, in words, or the board after it. */
@@ -20,7 +22,10 @@ export type BoardEdit = { readonly board: BoardCourse[] } | { readonly problem: 
  * The board for the saved courses, with the edits not saved yet (`boardChanges` of the board before) of courses that
  * are still there. Only real edits are kept, so a change saved by someone else meanwhile shows.
  */
-export function boardFrom(saved: readonly MapCourse[], edited: readonly (CoursePlacement & { readonly courseId: string })[] = []): BoardCourse[] {
+export function boardFrom(
+  saved: readonly (MapCourse & { readonly hidden?: boolean })[],
+  edited: readonly (CoursePlacement & { readonly courseId: string })[] = [],
+): BoardCourse[] {
   const ids = new Set(saved.map((course) => course.courseId));
   const edits = new Map(edited.map((course) => [course.courseId, course]));
   return saved.map((course) => {
@@ -31,6 +36,7 @@ export function boardFrom(saved: readonly MapCourse[], edited: readonly (CourseP
       title: course.title,
       prerequisites: placement.prerequisites.filter((id) => ids.has(id)),
       position: placement.position,
+      ...(course.hidden && { hidden: true }),
     };
   });
 }
@@ -72,7 +78,7 @@ export function nudgeCourse(board: readonly BoardCourse[], courseId: string, row
   return moveCourse(board, courseId, to);
 }
 
-/** Sets which courses come before one, refusing what the api would: itself, too many, or a loop. */
+/** Sets which courses come before one, refusing what the api would: itself, too many, a loop, or a shown course after a hidden one. */
 export function setPrerequisites(board: readonly BoardCourse[], courseId: string, prerequisites: readonly string[]): BoardEdit {
   const course = board.find((candidate) => candidate.courseId === courseId);
   if (!course) return { problem: 'that course is no longer here' };

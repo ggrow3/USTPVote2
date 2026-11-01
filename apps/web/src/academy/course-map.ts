@@ -35,11 +35,15 @@ export interface MapLayout<C extends MapCourse> {
  * Lays the courses with a position out on a grid, and draws a line from each prerequisite to the course after it: down
  * from the bottom of the earlier card, across the gap above the later one, and down into it, so courses after the same
  * one share a bar, as on the party's drawing; sideways between cards on the same row. Courses off the map are left out.
+ * `trim` starts the drawing at the first row and column in use, so the squares of courses learners are not shown
+ * (hidden ones) leave no empty margin; the Course tab's board keeps every square.
  */
-export function courseMapLayout<C extends MapCourse>(courses: readonly C[]): MapLayout<C> {
+export function courseMapLayout<C extends MapCourse>(courses: readonly C[], { trim = false } = {}): MapLayout<C> {
   const { cardWidth: w, cardHeight: h, columnGap, rowGap } = MAP_GEOMETRY;
   const placed = courses.filter((course): course is C & { position: CoursePosition } => course.position !== null);
-  const at = (position: CoursePosition) => ({ x: position.column * (w + columnGap), y: position.row * (h + rowGap) });
+  const top = trim && placed.length ? Math.min(...placed.map((course) => course.position.row)) : 0;
+  const left = trim && placed.length ? Math.min(...placed.map((course) => course.position.column)) : 0;
+  const at = (position: CoursePosition) => ({ x: (position.column - left) * (w + columnGap), y: (position.row - top) * (h + rowGap) });
   const cards = placed.map((course) => ({ course, ...at(course.position) }));
   const byId = new Map(cards.map((card) => [card.course.courseId, card]));
   const lines: MapLine[] = [];
@@ -49,8 +53,8 @@ export function courseMapLayout<C extends MapCourse>(courses: readonly C[]): Map
       if (before) lines.push({ from: id, to: card.course.courseId, path: linePath(before, card) });
     }
   }
-  const columns = Math.max(0, ...placed.map((course) => course.position.column + 1));
-  const rows = Math.max(0, ...placed.map((course) => course.position.row + 1));
+  const columns = Math.max(0, ...placed.map((course) => course.position.column + 1 - left));
+  const rows = Math.max(0, ...placed.map((course) => course.position.row + 1 - top));
   return {
     width: Math.max(0, columns * (w + columnGap) - columnGap),
     height: Math.max(0, rows * (h + rowGap) - rowGap),
