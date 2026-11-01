@@ -18,7 +18,7 @@ import PageShell from '../components/PageShell.vue';
 import TwoStepCodeCard from '../components/TwoStepCodeCard.vue';
 import { auth } from '../firebase.js';
 import { apiFieldErrors, STATES, validate, type FieldErrors } from '../forms.js';
-import { refreshMe, refreshUser, session } from '../session.js';
+import { refreshMe, refreshUser, secondFactorMissing, session } from '../session.js';
 import {
   MIN_PASSWORD_LENGTH,
   PasswordRejected,
@@ -441,6 +441,12 @@ async function submit() {
           <template #action>
             <q-btn flat no-caps label="Send the link again" @click="resendVerification" />
           </template>
+        </q-banner>
+        <!-- Applying is refused without the second factor the site requires (design §4), so say so before the form. -->
+        <q-banner v-if="secondFactorMissing()" class="bg-orange-2 text-black" rounded>
+          This site requires two-step verification. Before you apply,
+          {{ session.user.emailVerified ? '' : 'confirm your email address, then' }} set up an authenticator app on your
+          <router-link to="/account" class="text-black">Account page</router-link> and come back here.
         </q-banner>
         <q-banner v-if="lastDecision?.status === 'rejected'" class="bg-orange-1 text-black" rounded>
           Your previous application was not approved: {{ lastDecision.decisionReason }}

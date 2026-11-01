@@ -5,6 +5,8 @@ export const Collections = {
   accountIdentities: 'account_identities',
   accountFactors: 'account_factors',
   signInMethods: 'sign_in_methods',
+  /** `mfa_policy/current`: whether members without an admin role must sign in with a second factor (design §4). */
+  mfaPolicy: 'mfa_policy',
   members: 'members',
   memberStatusHistory: 'member_status_history',
   applications: 'applications',

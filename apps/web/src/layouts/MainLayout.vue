@@ -8,7 +8,7 @@ import UpdateBanner from '../components/UpdateBanner.vue';
 import { usingEmulators } from '../firebase.js';
 import { navigationState, shown } from '../governance/navigation.js';
 import { MENU_LABELS } from '../governance/navigation-text.js';
-import { session, signOut } from '../session.js';
+import { hasRole, secondFactorMissing, session, signOut } from '../session.js';
 import { toggleTheme } from '../theme.js';
 import { update } from '../update.js';
 import { linksInRow } from './menu-fit.js';
@@ -34,6 +34,11 @@ const isActive = (to: string) => route.path === to || route.path.startsWith(`${t
 const bare = computed(() => !!route.meta.bare);
 /** The header also holds the new-version banner (design §15), so the hub gets one while a reload is offered. */
 const headerShown = computed(() => !bare.value || !!update.banner);
+/**
+ * Every page but the hub and the account page, where it is set up, says when the site needs a second factor first
+ * (design §4).
+ */
+const secondFactorBanner = computed(() => secondFactorMissing() && !bare.value && route.path !== '/account');
 
 /**
  * The bar keeps one row (WCAG 1.4.10 at 320 px): the links that do not fit go behind a More button at its end, measured
@@ -204,6 +209,11 @@ watch(headerShown, (now) => now || (document.documentElement.style.scrollPadding
     <q-page-container>
       <q-banner v-if="session.error" class="bg-negative text-white">
         Could not load your account: {{ session.error }}
+      </q-banner>
+      <q-banner v-if="secondFactorBanner" class="bg-orange-2 text-black" role="region" aria-label="Two-step verification">
+        {{ hasRole('system_admin') ? 'System Admins must use two-step verification.' : 'This site requires two-step verification.' }}
+        Set it up, or sign in with it, on your
+        <router-link to="/account" class="text-black">Account page</router-link> to use the rest of the site.
       </q-banner>
       <!-- Keyed by persona, so switching reloads every page's data as the new persona. -->
       <router-view :key="acting.persona?.accountId ?? 'self'" />
