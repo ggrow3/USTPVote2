@@ -1,6 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { OFFICE_DISTRICTS, PUBLIC_OFFICES, type District } from 'ustp-domain';
-import { areaText, districtText, feedNote, localToday, mailtoLink, OFFICE_CHOICES, stateName, websiteText } from './candidacy-text.js';
+import { OFFICE_DISTRICTS, PUBLIC_OFFICES, templateProblem, type District } from 'ustp-domain';
+import {
+  areaText,
+  BLANK_EMAIL,
+  districtText,
+  feedNote,
+  localToday,
+  mailtoLink,
+  OFFICE_CHOICES,
+  stateName,
+  templateSuitsText,
+  websiteText,
+} from './candidacy-text.js';
 
 const district = (over: Partial<District>): Pick<{ district: District }, 'district'> => ({
   district: { kind: 'congressional', geoid: '0612', state: 'CA', name: 'Congressional District 12', point: null, vintage: null, ...over },
@@ -41,5 +52,11 @@ describe('candidacy wording', () => {
     expect(feedNote('fec', 'ok')).toBeNull();
     expect(feedNote('openstates', 'off')).toMatch(/not connected to Open States/);
     expect(feedNote('congress', 'unavailable')).toMatch(/^The list of members of Congress did not answer/);
+  });
+
+  it('says whom each email template suits; the blank email has only placeholders the page fills in', () => {
+    expect(templateSuitsText({ offices: [], audience: 'anyone' })).toBe('Every office · Anyone listed');
+    expect(templateSuitsText({ offices: ['county', 'local'], audience: 'candidate' })).toBe('County offices, City or town offices · People running');
+    expect(templateProblem(BLANK_EMAIL.body)).toBeNull();
   });
 });

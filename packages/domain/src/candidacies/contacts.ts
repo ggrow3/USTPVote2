@@ -83,8 +83,8 @@ export interface AreaContactsView {
   readonly electionYear: number;
   readonly contacts: readonly AreaContact[];
   readonly feeds: Readonly<Record<ContactFeed, ContactFeedState>>;
-  /** Each kind of office's email, for the page to fill in. */
-  readonly templates: Readonly<Record<PublicOffice, EmailTemplate>>;
+  /** The email templates, in the list's order, for the page to offer those that suit each person and fill them in. */
+  readonly templates: readonly EmailTemplate[];
 }
 
 const optionalText = (max: number) =>

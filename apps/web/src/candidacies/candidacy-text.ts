@@ -9,7 +9,9 @@ import type {
   District,
   DistrictKind,
   ElectionStage,
+  EmailTemplate,
   PublicOffice,
+  TemplateAudience,
 } from 'ustp-domain';
 import { STATES } from '../states.js';
 
@@ -151,6 +153,22 @@ export function feedNote(feed: ContactFeed, state: ContactFeedState): string | n
   };
   return `${what[feed]} did not answer, so some people are missing here. Try again later.`;
 }
+
+/** Who an email template is for, as its admins choose it. */
+export const AUDIENCE_TEXT: Readonly<Record<TemplateAudience, string>> = {
+  anyone: 'Anyone listed',
+  holder: 'People in office',
+  candidate: 'People running',
+};
+
+/** Whom a template suits, in a line: "Every office · Anyone listed", "County offices, City or town offices · People running". */
+export function templateSuitsText(template: Pick<EmailTemplate, 'offices' | 'audience'>): string {
+  const offices = template.offices.length ? template.offices.map((o) => OFFICE_HEADINGS[o]).join(', ') : 'Every office';
+  return `${offices} · ${AUDIENCE_TEXT[template.audience]}`;
+}
+
+/** What the Write dialog starts from without a template: the greeting and the member's name. */
+export const BLANK_EMAIL = { subject: '', body: 'Dear {name},\n\n\n\n{myName}' } as const;
 
 /** A link that opens the member's own email app with the email filled in. */
 export function mailtoLink(to: string, subject: string, body: string): string {

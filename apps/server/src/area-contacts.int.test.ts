@@ -62,8 +62,11 @@ describe('the Your area page', () => {
       'openstates holder state_upper@06001 Uma Upper',
       'openstates holder state_lower@06001 Lou Lower',
     ]);
-    expect(Object.keys(v.templates)).toHaveLength(8);
-    expect(v.templates.us_house).toMatchObject({ version: 0, body: expect.stringContaining('{asRole}') });
+    expect(v.templates.map((t) => [t.templateId, t.version])).toEqual([
+      ['starting-stance', 0],
+      ['starting-meeting', 0],
+      ['starting-questions', 0],
+    ]);
     expect(JSON.stringify(v)).not.toContain('94615');
   });
 
@@ -118,23 +121,67 @@ describe('what Communications Admins enter', () => {
 });
 
 describe('email templates', () => {
-  it('start with the starting text; a saved one is what members get, ledgered for Auditors', async () => {
-    const all = (await api.call('GET', '/v1/admin/email-templates', comms)).body as EmailTemplate[];
-    expect(all.map((t) => [t.office, t.version])).toHaveLength(8);
-    const saved = await api.call('PUT', '/v1/admin/email-templates/county', comms, { subject: 'Hello {name}', body: 'Dear {name}, {asRole}. {myName}', basedOn: 0 });
-    expect(saved.body).toEqual({ office: 'county', subject: 'Hello {name}', body: 'Dear {name}, {asRole}. {myName}', version: 1 });
-    expect((await view(ada)).templates.county).toMatchObject({ subject: 'Hello {name}', version: 1 });
-    expect((await entries('email_template.changed')).map((e) => e.payload)).toMatchObject([{ office: 'county', version: 1 }]);
+  let memb: Member;
+  beforeEach(async () => {
+    memb = await api.member('memb@example.test');
+    await api.grant(memb.accountId, 'membership_admin', sa1);
   });
 
-  it('refuse an older version, an unknown placeholder, an unknown office and anyone else', async () => {
-    const body = { subject: 'S', body: 'B', basedOn: 0 };
-    await api.call('PUT', '/v1/admin/email-templates/us_house', comms, body);
-    expect((await api.call('PUT', '/v1/admin/email-templates/us_house', comms, { ...body, body: 'C' })).status).toBe(409);
-    const unknown = await api.call('PUT', '/v1/admin/email-templates/us_house', comms, { ...body, body: 'Dear {candidate}', basedOn: 1 });
+  const TEMPLATE = { name: 'Invite to a forum', offices: ['county'], audience: 'holder', subject: 'Hello {name}', body: 'Dear {name}, {asRole}. {myName}' };
+  const list = async (by: User = comms) => (await api.call('GET', '/v1/admin/email-templates', by)).body as EmailTemplate[];
+
+  it('start with three ready-made ones; Membership and Communications Admins both add, change and remove them, ledgered', async () => {
+    expect((await list(memb)).map((t) => t.name)).toEqual(['Where they stand on longevity and science', 'Ask for a meeting', 'Questions for a candidate']);
+
+    const added = await api.call('POST', '/v1/admin/email-templates', memb, TEMPLATE);
+    expect(added.status).toBe(201);
+    const template = added.body as EmailTemplate;
+    expect(template).toMatchObject({ ...TEMPLATE, version: 1 });
+    const changed = await api.call('PUT', `/v1/admin/email-templates/${template.templateId}`, comms, { template: { ...TEMPLATE, offices: ['local', 'county'] }, basedOn: 1 });
+    expect(changed.body).toMatchObject({ templateId: template.templateId, offices: ['county', 'local'], version: 2 });
+    expect((await api.call('PUT', '/v1/admin/email-templates/starting-meeting', memb, { template: { ...TEMPLATE, name: 'Meet us' }, basedOn: 0 })).status).toBe(200);
+
+    // Members get the list in its order, and the page offers each person those that suit them.
+    expect((await view(ada)).templates.map((t) => [t.name, t.version])).toEqual([
+      ['Where they stand on longevity and science', 0],
+      ['Meet us', 1],
+      ['Questions for a candidate', 0],
+      ['Invite to a forum', 2],
+    ]);
+
+    expect((await api.call('DELETE', '/v1/admin/email-templates/starting-questions', comms)).status).toBe(204);
+    expect((await api.call('DELETE', '/v1/admin/email-templates/starting-questions', memb)).status).toBe(404);
+    expect((await list()).map((t) => t.name)).toEqual(['Where they stand on longevity and science', 'Meet us', 'Invite to a forum']);
+
+    const ledgered = await entries('email_template.changed');
+    expect(ledgered.map((e) => [e.actor, e.payload.change, e.payload.version])).toEqual([
+      [memb.accountId, 'added', 1],
+      [comms.accountId, 'changed', 2],
+      [memb.accountId, 'changed', 1],
+      [comms.accountId, 'removed', 0],
+    ]);
+    expect(ledgered[0]!.payload.contentHash).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it('refuse an older version, an unknown placeholder, a name in use, an unknown template and anyone else', async () => {
+    const template = (await api.call('POST', '/v1/admin/email-templates', comms, TEMPLATE)).body as EmailTemplate;
+    const put = (body: unknown, id = template.templateId, by: User = comms) => api.call('PUT', `/v1/admin/email-templates/${id}`, by, body);
+    expect((await put({ template: TEMPLATE, basedOn: 1 })).status).toBe(409);
+    expect((await put({ template: { ...TEMPLATE, body: 'C' }, basedOn: 0 })).status).toBe(409);
+    const unknown = await put({ template: { ...TEMPLATE, body: 'Dear {candidate}' }, basedOn: 1 });
     expect(unknown.status).toBe(400);
-    expect(unknown.body.errors).toMatchObject([{ path: 'body' }]);
-    expect((await api.call('PUT', '/v1/admin/email-templates/mayor', comms, body)).status).toBe(400);
-    expect((await api.call('PUT', '/v1/admin/email-templates/county', ada, body)).status).toBe(403);
+    expect(unknown.body.errors).toMatchObject([{ path: 'template.body' }]);
+    expect((await api.call('POST', '/v1/admin/email-templates', memb, { ...TEMPLATE, name: 'invite to a FORUM' })).status).toBe(409);
+    expect((await put({ template: TEMPLATE, basedOn: 0 }, 'no-such-template')).status).toBe(404);
+
+    const election = await api.member('election@example.test');
+    await api.grant(election.accountId, 'election_admin', sa1);
+    for (const by of [ada, election, sa1]) {
+      expect((await api.call('GET', '/v1/admin/email-templates', by)).status).toBe(403);
+      expect((await api.call('POST', '/v1/admin/email-templates', by, { ...TEMPLATE, name: 'Other' })).status).toBe(403);
+      expect((await put({ template: { ...TEMPLATE, body: 'D' }, basedOn: 1 }, template.templateId, by)).status).toBe(403);
+      expect((await api.call('DELETE', `/v1/admin/email-templates/${template.templateId}`, by)).status).toBe(403);
+    }
+    expect((await list()).map((t) => t.version)).toEqual([0, 0, 0, 1]);
   });
 });

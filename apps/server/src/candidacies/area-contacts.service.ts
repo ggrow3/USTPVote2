@@ -1,23 +1,27 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
   addAreaContact,
+  addEmailTemplate,
   areaContactContent,
   areaContactView,
   changeAreaContact,
-  emailTemplates,
+  changeEmailTemplate,
+  emailTemplateList,
   inContactArea,
   mergeContacts,
   nextFederalElectionYear,
   PUBLIC_OFFICES,
   removeAreaContact,
-  saveEmailTemplate,
+  removeEmailTemplate,
   uuidv7,
   type AreaContactInput,
   type AreaContactRecord,
   type AreaContactsView,
   type EmailTemplate,
   type EmailTemplateInput,
-  type PublicOffice,
+  type EmailTemplateListRecord,
+  type LedgerEvent,
+  type Outcome,
 } from 'ustp-domain';
 import { accepted } from '../common/validation.js';
 import { Firebase } from '../infra/firebase.js';
@@ -28,8 +32,8 @@ import { CONTACT_SOURCE, type ContactSource } from './contact-source.js';
 
 /**
  * The Your area page (design §5.12): for a signed-in member, who holds each office in their area and who runs for it,
- * from public records and from what Communications Admins enter, with each kind of office's email. Admins' entries and
- * templates are ledgered in the transaction that saves them.
+ * from public records and from what Communications Admins enter, with the email templates Membership Admins and
+ * Communications Admins keep. Admins' entries and templates are ledgered in the transaction that saves them.
  */
 @Injectable()
 export class AreaContactsService {
@@ -50,12 +54,12 @@ export class AreaContactsService {
     const [found, entered, saved] = await Promise.all([
       this.source.forArea(area.state, area.basis === 'zip' ? area.districts : [], electionYear),
       this.repo.all(),
-      this.repo.allTemplates(),
+      this.repo.templateList(),
     ]);
     const mine = entered
       .filter((r) => inContactArea(r.district, area) && (r.role === 'holder' || (r.electionDate ?? '') >= yesterday))
       .map(areaContactView);
-    return { area, electionYear, contacts: mergeContacts(found.contacts, mine), feeds: found.feeds, templates: emailTemplates(saved) };
+    return { area, electionYear, contacts: mergeContacts(found.contacts, mine), feeds: found.feeds, templates: emailTemplateList(saved) };
   }
 
   /** Every entry, for Communications Admins: by state (nationwide first), office and name. */
@@ -92,18 +96,33 @@ export class AreaContactsService {
     });
   }
 
-  /** Every kind of office's template, saved or the starting text, in the offices' order. */
-  async templates(): Promise<EmailTemplate[]> {
-    const all = emailTemplates(await this.repo.allTemplates());
-    return PUBLIC_OFFICES.map((office) => all[office]);
+  /** The email templates, saved or the starting ones, in the order the Write dialog offers them. */
+  async templates(): Promise<readonly EmailTemplate[]> {
+    return emailTemplateList(await this.repo.templateList());
   }
 
-  async saveTemplate(actor: string, office: PublicOffice, input: EmailTemplateInput): Promise<EmailTemplate> {
+  addTemplate(actor: string, input: EmailTemplateInput): Promise<EmailTemplate> {
+    const templateId = uuidv7();
+    return this.saveTemplates((list, at) => addEmailTemplate(list, input, templateId, actor, at));
+  }
+
+  changeTemplate(actor: string, templateId: string, input: EmailTemplateInput, basedOn: number): Promise<EmailTemplate> {
+    return this.saveTemplates((list, at) => changeEmailTemplate(list, templateId, input, basedOn, actor, at));
+  }
+
+  async removeTemplate(actor: string, templateId: string): Promise<void> {
+    await this.saveTemplates((list, at) => removeEmailTemplate(list, templateId, actor, at));
+  }
+
+  /** Reads the list, applies one change to it in a transaction with its ledger entry, and returns the template. */
+  private saveTemplates(
+    apply: (list: readonly EmailTemplate[], at: string) => Outcome<{ record: EmailTemplateListRecord; template: EmailTemplate; event: LedgerEvent }>,
+  ): Promise<EmailTemplate> {
     return this.firebase.db.runTransaction(async (tx) => {
-      const { record, event } = accepted(saveEmailTemplate(await this.repo.getTemplate(tx, office), office, input, actor, new Date().toISOString()));
+      const { record, template, event } = accepted(apply(emailTemplateList(await this.repo.templateList(tx)), new Date().toISOString()));
       await this.ledger.record(tx, [event]);
-      this.repo.setTemplate(tx, record);
-      return { office, subject: record.subject, body: record.body, version: record.version };
+      this.repo.setTemplateList(tx, record);
+      return template;
     });
   }
 }

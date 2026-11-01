@@ -7,17 +7,21 @@ import {
   fillTemplate,
   groupAreaContacts,
   placeholderValues,
+  templatesFor,
   type AreaContact,
   type AreaContactsView,
+  type EmailTemplate,
 } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { errorMessage } from '../api.js';
 import PageShell from '../components/PageShell.vue';
+import { confirmAction } from '../communications/admin-forms.js';
 import { attempt } from '../dialogs.js';
 import { session } from '../session.js';
 import { areaContacts } from './api.js';
 import {
   areaText,
+  BLANK_EMAIL,
   CONTACT_SOURCE_TEXT,
   DISTRICT_LABELS,
   districtText,
@@ -30,7 +34,8 @@ import {
 /**
  * Your area (design §5.12): for a signed-in member, who holds each office where they live and who is running for it,
  * from public records and from the party's communications team, each with an email the member can edit and send from
- * their own email app. The site sends nothing and keeps no copy.
+ * their own email app: they pick one of the templates that suit the person, which the page fills in. The site sends
+ * nothing and keeps no copy.
  */
 usePageTitle('Your area');
 const view = ref<AreaContactsView | null>(null);
@@ -60,8 +65,21 @@ const sections = computed(() => {
 const running = (c: AreaContact) => (c.election && /^\d{4}-\d{2}-\d{2}$/.test(c.election) ? `Election ${electionDay(c.election)}` : `Running in ${c.election ?? 'the next election'}`);
 const caption = (c: AreaContact) => [c.officeTitle, c.party, CONTACT_SOURCE_TEXT[c.source]].filter(Boolean).join(' · ');
 
-/** The email being written: to whom, and its text, filled in from the office's template and editable. */
-const writing = ref<{ contact: AreaContact; subject: string; body: string } | null>(null);
+/** The template list's choice that starts from a blank email: no template ID is empty. */
+const BLANK = '';
+
+/**
+ * The email being written: to whom, the templates that suit them, the one chosen, the text as it filled in, and the
+ * text as the member has edited it.
+ */
+const writing = ref<{
+  contact: AreaContact;
+  offered: EmailTemplate[];
+  templateId: string;
+  filled: { subject: string; body: string };
+  subject: string;
+  body: string;
+} | null>(null);
 const open = computed({
   get: () => writing.value !== null,
   set: (v) => {
@@ -69,11 +87,33 @@ const open = computed({
   },
 });
 
-function write(contact: AreaContact) {
-  const template = view.value!.templates[contact.office];
+const templateOptions = computed(() => [
+  ...(writing.value?.offered ?? []).map((t) => ({ value: t.templateId, label: t.name })),
+  { value: BLANK, label: 'Blank email' },
+]);
+
+/** The text of a template (or the blank email) filled in for the person. */
+function filledFor(contact: AreaContact, template: Pick<EmailTemplate, 'subject' | 'body'>) {
   const me = session.me?.member;
   const values = placeholderValues(contact, districtText(contact), me ? candidateName(me) : '');
-  writing.value = { contact, subject: fillTemplate(template.subject, values), body: fillTemplate(template.body, values) };
+  return { subject: fillTemplate(template.subject, values), body: fillTemplate(template.body, values) };
+}
+
+function write(contact: AreaContact) {
+  const offered = templatesFor(view.value!.templates, contact);
+  const first = offered[0];
+  const filled = filledFor(contact, first ?? BLANK_EMAIL);
+  writing.value = { contact, offered, templateId: first?.templateId ?? BLANK, filled, ...filled };
+}
+
+/** Fills in another template; text the member changed is replaced only once they say so. */
+async function choose(templateId: string) {
+  const w = writing.value;
+  if (!w || templateId === w.templateId) return;
+  const edited = w.subject !== w.filled.subject || w.body !== w.filled.body;
+  if (edited && !(await confirmAction('Replace your changes?', 'The email you changed is replaced by the template you chose.', 'Replace'))) return;
+  const filled = filledFor(w.contact, w.offered.find((t) => t.templateId === templateId) ?? BLANK_EMAIL);
+  writing.value = { ...w, templateId, filled, ...filled };
 }
 
 async function copy() {
@@ -177,6 +217,17 @@ async function copy() {
             <template v-if="writing.contact.contactUrl">Copy the text and paste it into their contact form.</template>
             <template v-else>Copy the text and send it through their website or office.</template>
           </q-banner>
+          <q-select
+            :model-value="writing.templateId"
+            outlined
+            dense
+            emit-value
+            map-options
+            :options="templateOptions"
+            label="Template"
+            class="q-mb-sm"
+            @update:model-value="choose"
+          />
           <q-input v-model="writing.subject" outlined dense label="Subject" class="q-mb-sm" />
           <q-input v-model="writing.body" outlined type="textarea" autogrow label="Email" input-class="area-email-body" />
         </q-card-section>

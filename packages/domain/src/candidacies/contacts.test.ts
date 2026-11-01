@@ -5,11 +5,7 @@ import {
   areaContactInputSchema,
   areaContactView,
   changeAreaContact,
-  DEFAULT_EMAIL_TEMPLATES,
-  emailTemplates,
-  emailTemplateSchema,
   fecDisplayName,
-  fillTemplate,
   generalElectionDay,
   groupAreaContacts,
   inContactArea,
@@ -17,10 +13,7 @@ import {
   mergeContacts,
   nextFederalElectionYear,
   OFFICES_OF_KIND,
-  placeholderValues,
   removeAreaContact,
-  saveEmailTemplate,
-  templateProblem,
   type AreaContact,
   type CandidateArea,
   type District,
@@ -154,43 +147,5 @@ describe('the Your area page', () => {
     expect(fecDisplayName("O'BRIEN-SMITH, MARY MRS.")).toBe("Mary O'Brien-Smith");
     expect(fecDisplayName('DE LA CRUZ, ANA III')).toBe('Ana De La Cruz III');
     expect(fecDisplayName('WRITE IN')).toBe('Write In');
-  });
-});
-
-describe('email templates', () => {
-  it('start with a text for every office, until one is saved', () => {
-    expect(Object.keys(DEFAULT_EMAIL_TEMPLATES)).toHaveLength(8);
-    expect(DEFAULT_EMAIL_TEMPLATES.us_house.body).toContain('in Congress?');
-    expect(templateProblem(DEFAULT_EMAIL_TEMPLATES.local.body)).toBeNull();
-    const saved = emailTemplates([{ office: 'county', subject: 'S', body: 'B', version: 3, updatedAt: AT, updatedBy: 'a' }]);
-    expect(saved.county).toEqual({ office: 'county', subject: 'S', body: 'B', version: 3 });
-    expect(saved.us_house.version).toBe(0);
-  });
-
-  it('allow only the placeholders the page fills in', () => {
-    expect(templateProblem('Dear {name}, {myName}')).toBeNull();
-    expect(templateProblem('Dear {candidate}')).toMatch(/^\{candidate\} is not a placeholder/);
-    expect(emailTemplateSchema.safeParse({ subject: 'Hi {nme}', body: 'x', basedOn: 0 }).error?.issues[0]?.path).toEqual(['subject']);
-  });
-
-  it('are saved from the version edited, each change ledgered with its hash', () => {
-    const input = { subject: 'Hello', body: 'Dear {name}', basedOn: 0 };
-    const first = saveEmailTemplate(null, 'us_house', input, 'admin', AT);
-    if (!first.ok) throw new Error(first.reason);
-    expect(first.value.record).toMatchObject({ office: 'us_house', version: 1 });
-    expect(first.value.event).toMatchObject({ type: 'email_template.changed', subject: 'us_house', payload: { office: 'us_house', version: 1 } });
-    expect(first.value.event.payload.contentHash).toMatch(/^[0-9a-f]{64}$/);
-    expect(saveEmailTemplate(first.value.record, 'us_house', input, 'admin', AT)).toMatchObject({ ok: false, reason: expect.stringMatching(/changed this template/) });
-    expect(saveEmailTemplate(first.value.record, 'us_house', { ...input, basedOn: 1 }, 'admin', AT)).toMatchObject({ ok: false, reason: 'nothing changed' });
-    const { subject, body } = DEFAULT_EMAIL_TEMPLATES.us_house;
-    expect(saveEmailTemplate(null, 'us_house', { subject, body, basedOn: 0 }, 'admin', AT)).toMatchObject({ ok: false, reason: 'nothing changed' });
-  });
-
-  it('fill in each person', () => {
-    const holder = placeholderValues({ name: 'Mike Levin', officeTitle: 'U.S. Representative', role: 'holder' }, 'Congressional District 49, California', 'Ada');
-    expect(fillTemplate('Dear {name}, I write {asRole} from {district}. {myName} {other}', holder)).toBe(
-      'Dear Mike Levin, I write as my U.S. Representative from Congressional District 49, California. Ada {other}',
-    );
-    expect(placeholderValues({ name: 'Eli Stern', officeTitle: 'U.S. Representative', role: 'candidate' }, 'x', 'Ada').asRole).toBe('as a candidate for U.S. Representative');
   });
 });

@@ -24,6 +24,7 @@ import {
   AreaContactsAdminController,
   CandidaciesAdminController,
   CandidaciesController,
+  EmailTemplatesAdminController,
   PublicCandidaciesController,
   PublicDistrictsController,
 } from '../candidacies/candidacies.controller.js';
@@ -124,6 +125,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     PublicCandidaciesController,
     PublicDistrictsController,
     AreaContactsAdminController,
+    EmailTemplatesAdminController,
     TeamsController,
     TeamsAdminController,
     ForumController,

@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import type { Transaction } from 'firebase-admin/firestore';
-import { Collections, type AreaContactRecord, type EmailTemplateRecord, type PublicOffice } from 'ustp-domain';
+import { Collections, type AreaContactRecord, type EmailTemplateListRecord } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 
 /**
  * Storage of the Your area page's own data (design §5.12, §11): `area_contacts`, the people Communications Admins
- * enter, and `email_templates`, one per kind of office. Both stay small, so they are read whole and filtered by the
- * caller.
+ * enter, and `email_templates/current`, the list of email templates (absent until an admin first changes it). Both stay
+ * small, so they are read whole and filtered by the caller.
  */
 @Injectable()
 export class AreaContactRepository {
@@ -17,7 +17,7 @@ export class AreaContactRepository {
   }
 
   private templates() {
-    return this.firebase.db.collection(Collections.emailTemplates);
+    return this.firebase.db.collection(Collections.emailTemplates).doc('current');
   }
 
   async all(): Promise<AreaContactRecord[]> {
@@ -36,15 +36,13 @@ export class AreaContactRepository {
     tx.delete(this.contacts().doc(contactId));
   }
 
-  async allTemplates(): Promise<EmailTemplateRecord[]> {
-    return (await this.templates().get()).docs.map((d) => d.data() as EmailTemplateRecord);
+  /** The saved list, read in `tx` when given; null until it is first saved. */
+  async templateList(tx?: Transaction): Promise<EmailTemplateListRecord | null> {
+    const ref = this.templates();
+    return ((await (tx ? tx.get(ref) : ref.get())).data() as EmailTemplateListRecord | undefined) ?? null;
   }
 
-  async getTemplate(tx: Transaction, office: PublicOffice): Promise<EmailTemplateRecord | null> {
-    return ((await tx.get(this.templates().doc(office))).data() as EmailTemplateRecord | undefined) ?? null;
-  }
-
-  setTemplate(tx: Transaction, record: EmailTemplateRecord): void {
-    tx.set(this.templates().doc(record.office), record);
+  setTemplateList(tx: Transaction, record: EmailTemplateListRecord): void {
+    tx.set(this.templates(), record);
   }
 }
