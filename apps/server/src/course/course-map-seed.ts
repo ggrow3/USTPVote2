@@ -8,10 +8,13 @@ export const FIRST_COURSE_POSITION: CoursePosition = { row: 0, column: 0 };
 
 const SEEDED_AT = '2026-10-31T00:00:00.000Z';
 
+/** A map course's summary until someone writes one. */
+export const DRAFT_SUMMARY = 'Lessons for this course are still being written.';
+
 const draft = (courseId: string, title: string, prerequisites: readonly string[], row: number, column: number): CourseRecord => ({
   courseId,
   title,
-  summary: 'Lessons for this course are still being written.',
+  summary: DRAFT_SUMMARY,
   status: 'draft',
   version: 0,
   publishedVersion: null,
