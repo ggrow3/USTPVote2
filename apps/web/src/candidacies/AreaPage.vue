@@ -9,6 +9,7 @@ import {
   placeholderValues,
   type AreaContact,
   type AreaContactsView,
+  type ContactDistrict,
 } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { errorMessage } from '../api.js';
@@ -20,17 +21,21 @@ import {
   areaText,
   CONTACT_SOURCE_TEXT,
   DISTRICT_LABELS,
+  districtPeopleText,
   districtText,
   electionDay,
   feedNote,
   mailtoLink,
   OFFICE_HEADINGS,
 } from './candidacy-text.js';
+import DistrictMap, { type MapMarker } from './DistrictMap.vue';
+import { mapsRefused } from './maps.js';
 
 /**
  * Your area (design §5.12): for a signed-in member, who holds each office where they live and who is running for it,
  * from public records and from the party's communications team, each with an email the member can edit and send from
- * their own email app. The site sends nothing and keeps no copy.
+ * their own email app. The site sends nothing and keeps no copy. Where the map is set up, it shows a pin in each of
+ * their districts, with who is in office and running there, and the outline of the one they choose.
  */
 usePageTitle('Your area');
 const view = ref<AreaContactsView | null>(null);
@@ -56,6 +61,25 @@ const sections = computed(() => {
     groups: groups.filter((g) => g.district.kind === district.kind && g.district.geoid === district.geoid),
   }));
 });
+
+// The map: a pin per district with a point, and the chosen district's outline (the first, until one is chosen).
+const districtKey = (d: Pick<ContactDistrict, 'kind' | 'geoid'>) => `${d.kind}:${d.geoid}`;
+const mapLoaded = ref(false);
+/** Google can refuse the key after the map has loaded; then the page shows no map. */
+const mapReady = computed(() => mapLoaded.value && !mapsRefused.value);
+const chosen = ref<string | null>(null);
+const mapped = computed(() => (view.value?.area.districts ?? []).filter((d) => d.point));
+const shown = computed(() => mapped.value.find((d) => districtKey(d) === chosen.value) ?? mapped.value[0] ?? null);
+const markers = computed<MapMarker[]>(() =>
+  mapped.value.map((d) => ({ id: districtKey(d), point: d.point!, title: d.name, caption: districtPeopleText(view.value!.contacts, d) })),
+);
+const outline = computed(() => (shown.value ? { kind: shown.value.kind, geoid: shown.value.geoid } : null));
+const onMap = (d: Pick<ContactDistrict, 'kind' | 'geoid'>) => mapReady.value && mapped.value.some((m) => districtKey(m) === districtKey(d));
+
+function showOnMap(d: Pick<ContactDistrict, 'kind' | 'geoid'>) {
+  chosen.value = districtKey(d);
+  document.getElementById('area-map')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
 
 const running = (c: AreaContact) => (c.election && /^\d{4}-\d{2}-\d{2}$/.test(c.election) ? `Election ${electionDay(c.election)}` : `Running in ${c.election ?? 'the next election'}`);
 const caption = (c: AreaContact) => [c.officeTitle, c.party, CONTACT_SOURCE_TEXT[c.source]].filter(Boolean).join(' · ');
@@ -106,18 +130,34 @@ async function copy() {
           <div v-if="view.area.districts.length" class="row q-gutter-xs q-mt-xs" role="list" aria-label="Your districts">
             <q-chip
               v-for="d in view.area.districts"
-              :key="`${d.kind}:${d.geoid}`"
+              :key="districtKey(d)"
               role="listitem"
               dense
               square
-              outline
+              :outline="!mapReady || shown?.geoid !== d.geoid || shown?.kind !== d.kind"
               color="primary"
+              :text-color="mapReady && shown?.geoid === d.geoid && shown?.kind === d.kind ? 'white' : undefined"
               icon="place"
+              :clickable="onMap(d)"
               :title="DISTRICT_LABELS[d.kind]"
+              :aria-pressed="onMap(d) ? shown?.geoid === d.geoid && shown?.kind === d.kind : undefined"
+              @click="onMap(d) && (chosen = districtKey(d))"
             >
               {{ d.name }}
             </q-chip>
           </div>
+          <div v-if="mapReady && mapped.length > 1" class="text-caption text-grey-7 q-mt-xs">Choose a district, or a pin, to see its lines on the map.</div>
+        </div>
+        <div v-if="mapped.length" id="area-map">
+          <DistrictMap
+            optional
+            :markers="markers"
+            :outline="outline"
+            :label="`Map of your districts, showing ${shown?.name ?? 'your area'}`"
+            height="320px"
+            @ready="mapLoaded = true"
+            @select="chosen = $event"
+          />
         </div>
         <q-banner v-for="n in feedNotes" :key="n" dense rounded class="bg-grey-3 text-black">{{ n }}</q-banner>
         <div>
@@ -127,8 +167,19 @@ async function copy() {
         <section v-for="s in sections" :key="`${s.district.kind}:${s.district.geoid}`" class="area-section">
           <h2 class="text-h6 q-my-sm">{{ districtText(s) }}</h2>
           <q-card v-for="g in s.groups" :key="g.office" flat bordered class="q-mb-md">
-            <q-card-section class="q-pb-xs">
-              <h3 class="text-subtitle1 text-weight-medium q-my-none">{{ OFFICE_HEADINGS[g.office] }}</h3>
+            <q-card-section class="q-pb-xs row items-center no-wrap">
+              <h3 class="text-subtitle1 text-weight-medium q-my-none col">{{ OFFICE_HEADINGS[g.office] }}</h3>
+              <q-btn
+                v-if="onMap(g.district)"
+                flat
+                dense
+                no-caps
+                color="primary"
+                icon="map"
+                label="On the map"
+                :aria-label="`Show ${g.district.name} on the map`"
+                @click="showOnMap(g.district)"
+              />
             </q-card-section>
             <q-card-section v-if="!g.holders.length && !g.candidates.length" class="text-grey-7 q-pt-none">
               No one is listed for this office yet.
