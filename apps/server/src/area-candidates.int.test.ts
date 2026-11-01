@@ -34,17 +34,14 @@ const names = (v: AreaCandidatesView) => v.candidates.map((c) => `${c.source} ${
 const lookUp = (zip: unknown, headers: Record<string, string> = {}) => api.call('POST', '/v1/public/candidates/area', undefined, { zip }, headers);
 
 describe('the Candidates page’s people running in an area', () => {
-  it('for a member, in their own area: public records only, with the ballot and profiles, and never their ZIP code', async () => {
-    // An admin's entry is for the Your area page only.
-    await api.call('POST', '/v1/admin/area-contacts', comms, {
-      role: 'candidate',
-      office: 'county',
-      officeTitle: 'County Supervisor',
-      state: 'CA',
-      districtId: '06001',
-      name: 'Cora County',
-      electionDate: '2030-11-05',
-    });
+  it('for a member, in their own area: public records and admins’ candidates, with the ballot and profiles, and never their ZIP code', async () => {
+    const enter = (body: Record<string, unknown>) =>
+      api.call('POST', '/v1/admin/area-contacts', comms, { role: 'candidate', office: 'county', officeTitle: 'County Supervisor', state: 'CA', ...body });
+    await enter({ districtId: '06001', name: 'Cora County', electionDate: '2030-11-05' });
+    // Not in Ada's area, past its election, or in office: none of these is listed.
+    await enter({ districtId: '06003', name: 'Sam Second', electionDate: '2030-11-05' });
+    await enter({ districtId: '06001', name: 'Pat Past', electionDate: '2020-11-03' });
+    await enter({ role: 'holder', districtId: '06001', name: 'Hope Holder' });
     const res = await api.call('GET', '/v1/candidacies/area/candidates', ada);
     expect(res.status).toBe(200);
     const v = res.body as AreaCandidatesView;
@@ -59,6 +56,7 @@ describe('the Candidates page’s people running in an area', () => {
       'fec us_house@0602 Cass Challenger',
       'civic state_upper@06001 Uma Upper',
       'civic state_upper@06001 Bea Ballot',
+      'admin county@06001 Cora County',
     ]);
     expect(v.candidates.every((c) => c.role === 'candidate')).toBe(true);
     expect(v.candidates[1]).toMatchObject({ incumbent: true, profile: { summary: expect.stringContaining('made-up') } });
@@ -68,7 +66,16 @@ describe('the Candidates page’s people running in an area', () => {
     expect((await api.call('GET', '/v1/candidacies/area/candidates')).status).toBe(401);
   });
 
-  it('for anyone, by a ZIP code they type: its state and districts, the same records, and nothing kept', async () => {
+  it('for anyone, by a ZIP code they type: its state and districts, public records only, and nothing kept', async () => {
+    await api.call('POST', '/v1/admin/area-contacts', comms, {
+      role: 'candidate',
+      office: 'county',
+      officeTitle: 'County Executive',
+      state: 'NY',
+      districtId: '36001',
+      name: 'Nell North',
+      electionDate: '2030-11-05',
+    });
     const res = await lookUp('10005');
     expect(res.status).toBe(200);
     const v = res.body as AreaCandidatesView;
@@ -82,6 +89,7 @@ describe('the Candidates page’s people running in an area', () => {
       'place:3600100',
     ]);
     expect(names(v)).toContain('fec us_house@3602 Cass Challenger');
+    expect(v.candidates.some((c) => c.source === 'admin')).toBe(false);
     expect(v.ballot).toHaveLength(1);
     expect(JSON.stringify(v)).not.toContain('10005');
     expect((await api.firebase.db.listCollections()).map((c) => c.id)).not.toContain('area_lookups');

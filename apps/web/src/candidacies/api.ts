@@ -88,8 +88,20 @@ export function districts(kind: DistrictKind, state: string | null): Promise<Dis
   return api<DistrictOption[]>('GET', `/v1/public/districts?${new URLSearchParams({ kind, ...(state ? { state } : {}) })}`);
 }
 
+/** Outlines already asked for: the map and each office's card draw the same districts. A failure is asked again. */
+const boundaries = new Map<string, Promise<DistrictBoundary>>();
+const MAX_BOUNDARIES = 200;
+
 export function districtBoundary(kind: DistrictKind, geoid: string): Promise<DistrictBoundary> {
-  return api<DistrictBoundary>('GET', `/v1/public/districts/${encodeURIComponent(kind)}/${encodeURIComponent(geoid)}/boundary`);
+  const key = `${kind}:${geoid}`;
+  let found = boundaries.get(key);
+  if (!found) {
+    found = api<DistrictBoundary>('GET', `/v1/public/districts/${encodeURIComponent(kind)}/${encodeURIComponent(geoid)}/boundary`);
+    found.catch(() => boundaries.delete(key));
+    if (boundaries.size >= MAX_BOUNDARIES) boundaries.delete(boundaries.keys().next().value!);
+    boundaries.set(key, found);
+  }
+  return found;
 }
 
 export function mapsConfig(): Promise<MapsConfig> {

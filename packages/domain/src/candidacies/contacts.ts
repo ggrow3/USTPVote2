@@ -124,13 +124,13 @@ export interface AreaContactsView {
 
 /**
  * `GET /v1/candidacies/area/candidates` (the member's own area) and `POST /v1/public/candidates/area` (a ZIP code
- * anyone types): the candidates the Candidates page lists from public records, beside members' own candidacies. Admins'
- * entries stay on the Your area page.
+ * anyone types): the candidates the Candidates page lists beside members' own candidacies. Admins' entries are in the
+ * member's own area only: a ZIP code anyone types gets public records alone.
  */
 export interface AreaCandidatesView {
   readonly area: CandidateArea;
   readonly electionYear: number;
-  /** Only people running, and only from public records. */
+  /** Only people running: from public records, and in the member's own area admins' entries too. */
   readonly candidates: readonly AreaContact[];
   readonly ballot: readonly BallotContest[];
   readonly feeds: Readonly<Record<ContactFeed, ContactFeedState>>;
