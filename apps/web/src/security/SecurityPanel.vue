@@ -14,6 +14,7 @@ import { attempt } from '../dialogs.js';
 import { usingEmulators } from '../firebase.js';
 import { hasRole } from '../session.js';
 import { saveSiteAnalytics, signInLog, siteAnalyticsSettings } from './api.js';
+import PageVisitsSection from './PageVisitsSection.vue';
 import {
   filterSignIns,
   identityLogsUrl,
@@ -24,7 +25,10 @@ import {
   summarizeSignIns,
 } from './sign-ins.js';
 
-/** Sign-in traffic and site analytics (design §10.7): System Admins and Auditors read the log; System Admins set analytics. */
+/**
+ * Sign-in traffic and site analytics (design §10.7): System Admins and Auditors read the log and the page visits;
+ * System Admins set Google Analytics.
+ */
 
 const days = ref<number>(30);
 const log = ref<SignInLog | null>(null);
@@ -170,6 +174,8 @@ onMounted(() => {
         </tbody>
       </q-markup-table>
     </section>
+
+    <PageVisitsSection />
 
     <section v-if="isSystemAdmin" class="ustp-content" aria-labelledby="analytics-title">
       <div>
