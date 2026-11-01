@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { parseRoomInput } from './commands.js';
 import {
   acceptTerms,
+  changeDoor,
   changeRoomSetting,
   checkAsk,
   checkRoomOpen,
@@ -11,6 +12,7 @@ import {
   checkMessageRate,
   checkRoomMember,
   citations,
+  DEFAULT_DOOR,
   deleteMessage,
   EMPTY_FEED,
   erased,
@@ -18,16 +20,21 @@ import {
   newAction,
   newDecision,
   newMessage,
+  ROOM_INTRO,
   ROOM_LIMITS,
   ROOM_TERMS,
   ROOM_TERMS_HASH,
+  roomDoorSchema,
   searchWords,
   switchAssistant,
+  tidyRoomIntro,
+  tidyRoomTerms,
   updateAction,
   withdrawConsent,
   type RoomActionRecord,
   type RoomConsentRecord,
   type RoomDecisionRecord,
+  type RoomDoorRecord,
 } from './room.js';
 import { memoryLists, messageView, roomStatus, type RoomViewContext } from './views.js';
 
@@ -49,12 +56,14 @@ const action = (fields: Partial<RoomActionRecord> = {}): RoomActionRecord => ({
   ...fields,
 });
 
+const TERMS = DEFAULT_DOOR.terms;
+
 describe('the door', () => {
   it('is for Active members who accepted the current terms and have not left', () => {
     expect(checkRoomMember('active').ok).toBe(true);
     expect(checkRoomMember('applicant')).toMatchObject({ ok: false, refusal: 'forbidden' });
-    expect(checkInRoom(null)).toMatchObject({ ok: false, reason: 'accept the room’s terms to enter' });
-    const accepted = acceptTerms(null, { version: ROOM_TERMS.version }, 'ada', AT);
+    expect(checkInRoom(null, TERMS.version)).toMatchObject({ ok: false, reason: 'accept the room’s terms to enter' });
+    const accepted = acceptTerms(null, TERMS, { version: ROOM_TERMS.version }, 'ada', AT);
     expect(accepted).toMatchObject({
       ok: true,
       value: {
@@ -63,16 +72,16 @@ describe('the door', () => {
       },
     });
     const consent = (accepted as { ok: true; value: { consent: RoomConsentRecord } }).value.consent;
-    expect(checkInRoom(consent).ok).toBe(true);
+    expect(checkInRoom(consent, TERMS.version).ok).toBe(true);
     expect(ROOM_TERMS_HASH).toBe(sha256Hex(ROOM_TERMS.text));
-    expect(acceptTerms(consent, { version: ROOM_TERMS.version }, 'ada', AT)).toMatchObject({ ok: false, refusal: 'conflict' });
+    expect(acceptTerms(consent, TERMS, { version: ROOM_TERMS.version }, 'ada', AT)).toMatchObject({ ok: false, refusal: 'conflict' });
   });
 
   it('refuses terms other than those in force, and sends back members who accepted older ones', () => {
-    expect(acceptTerms(null, { version: ROOM_TERMS.version + 1 }, 'ada', AT)).toMatchObject({ ok: false, reason: expect.stringContaining('read them again') });
+    expect(acceptTerms(null, TERMS, { version: ROOM_TERMS.version + 1 }, 'ada', AT)).toMatchObject({ ok: false, reason: expect.stringContaining('read them again') });
     const old: RoomConsentRecord = { accountId: 'ada', termsVersion: 0, termsHash: 'x', acceptedAt: AT, withdrawnAt: null };
-    expect(checkInRoom(old)).toMatchObject({ ok: false, reason: expect.stringContaining('terms have changed') });
-    expect(acceptTerms(old, { version: ROOM_TERMS.version }, 'ada', AT).ok).toBe(true);
+    expect(checkInRoom(old, TERMS.version)).toMatchObject({ ok: false, reason: expect.stringContaining('terms have changed') });
+    expect(acceptTerms(old, TERMS, { version: ROOM_TERMS.version }, 'ada', AT).ok).toBe(true);
   });
 
   it('lets a member leave at once, ledgered, and come back by accepting again', () => {
@@ -80,10 +89,10 @@ describe('the door', () => {
     const left = withdrawConsent(consent, '2026-10-30T00:00:00.000Z');
     expect(left).toMatchObject({ ok: true, value: { consent: { withdrawnAt: '2026-10-30T00:00:00.000Z' }, event: { payload: { change: 'withdrawn' } } } });
     const gone = (left as { ok: true; value: { consent: RoomConsentRecord } }).value.consent;
-    expect(checkInRoom(gone).ok).toBe(false);
+    expect(checkInRoom(gone, TERMS.version).ok).toBe(false);
     expect(withdrawConsent(gone, AT)).toMatchObject({ ok: false });
     expect(withdrawConsent(null, AT)).toMatchObject({ ok: false });
-    expect(acceptTerms(gone, { version: ROOM_TERMS.version }, 'ada', AT)).toMatchObject({ ok: true, value: { consent: { withdrawnAt: null } } });
+    expect(acceptTerms(gone, TERMS, { version: ROOM_TERMS.version }, 'ada', AT)).toMatchObject({ ok: true, value: { consent: { withdrawnAt: null } } });
   });
 
   it('shows the room’s state only to a member in it', () => {
@@ -98,10 +107,64 @@ describe('the door', () => {
       voiceSeq: 0,
       voice: [],
     };
-    expect(roomStatus(true, consent, room)).toMatchObject({ member: true, inRoom: true, room: { seq: 3 } });
-    expect(roomStatus(false, consent, room)).toMatchObject({ member: false, inRoom: false, room: null });
-    expect(roomStatus(true, { ...consent, withdrawnAt: AT }, room)).toMatchObject({ inRoom: false, room: null, consent: { withdrawnAt: AT } });
-    expect(roomStatus(true, null, room).terms).toEqual({ version: ROOM_TERMS.version, text: ROOM_TERMS.text, hash: ROOM_TERMS_HASH });
+    expect(roomStatus(DEFAULT_DOOR, true, consent, room)).toMatchObject({ member: true, inRoom: true, room: { seq: 3 } });
+    expect(roomStatus(DEFAULT_DOOR, false, consent, room)).toMatchObject({ member: false, inRoom: false, room: null });
+    expect(roomStatus(DEFAULT_DOOR, true, { ...consent, withdrawnAt: AT }, room)).toMatchObject({ inRoom: false, room: null, consent: { withdrawnAt: AT } });
+    const door = roomStatus(DEFAULT_DOOR, true, null, room);
+    expect(door.terms).toEqual({ version: ROOM_TERMS.version, text: ROOM_TERMS.text, hash: ROOM_TERMS_HASH });
+    expect(door.intro).toBe(ROOM_INTRO);
+  });
+});
+
+describe('the door’s words', () => {
+  const input = (fields: Partial<{ basedOn: number; intro: string; terms: string }> = {}) =>
+    roomDoorSchema.parse({ basedOn: 0, intro: ROOM_INTRO, terms: ROOM_TERMS.text, ...fields });
+
+  it('are tidied: the intro on one line, the terms with one blank line at most between paragraphs', () => {
+    expect(tidyRoomIntro('  A room\n for  members ')).toBe('A room for members');
+    expect(tidyRoomTerms('\r\nFirst line  \r\nstill first\r\n\r\n\r\n \r\nSecond\t\n\n')).toBe('First line\nstill first\n\nSecond');
+    expect(input({ intro: '', terms: ' One.\n\n\n\nTwo. ' })).toMatchObject({ intro: '', terms: 'One.\n\nTwo.' });
+    expect(roomDoorSchema.safeParse({ basedOn: 0, intro: '', terms: ' \n\n ' }).success).toBe(false);
+    expect(roomDoorSchema.safeParse({ basedOn: 0, intro: 'x'.repeat(ROOM_LIMITS.intro + 1), terms: 'Terms' }).success).toBe(false);
+    expect(roomDoorSchema.safeParse({ basedOn: 0, intro: '', terms: 'x'.repeat(ROOM_LIMITS.terms + 1) }).success).toBe(false);
+  });
+
+  it('make changed terms the next version, ledgered with their text and hash, so everyone accepts them again', () => {
+    const saved = changeDoor(DEFAULT_DOOR, input({ terms: 'New terms.\n\nLeave with /leave-room.' }), 'ma', AT);
+    const text = 'New terms.\n\nLeave with /leave-room.';
+    expect(saved).toEqual({
+      ok: true,
+      value: {
+        door: {
+          ...DEFAULT_DOOR,
+          revision: 1,
+          terms: { version: 2, text, hash: sha256Hex(text) },
+          termsChangedAt: AT,
+          termsChangedBy: 'ma',
+        },
+        newTerms: true,
+        event: { type: 'room.door_changed', actor: 'ma', subject: null, payload: { termsVersion: 2, termsHash: sha256Hex(text), changes: [{ part: 'terms', to: text }] } },
+      },
+    });
+    const door = (saved as { ok: true; value: { door: RoomDoorRecord } }).value.door;
+    const consent: RoomConsentRecord = { accountId: 'ada', termsVersion: 1, termsHash: ROOM_TERMS_HASH, acceptedAt: AT, withdrawnAt: null };
+    expect(checkInRoom(consent, door.terms.version)).toMatchObject({ ok: false, reason: expect.stringContaining('terms have changed') });
+    expect(acceptTerms(consent, door.terms, { version: 2 }, 'ada', AT)).toMatchObject({ ok: true, value: { consent: { termsVersion: 2, termsHash: sha256Hex(text) } } });
+  });
+
+  it('change the intro without a new version, and refuse an edit of an older revision', () => {
+    const saved = changeDoor(DEFAULT_DOOR, input({ intro: 'Where the group plans.' }), 'ma', AT);
+    expect(saved).toMatchObject({
+      ok: true,
+      value: {
+        door: { revision: 1, intro: 'Where the group plans.', terms: { version: 1 }, introChangedBy: 'ma', termsChangedBy: null },
+        newTerms: false,
+        event: { payload: { termsVersion: 1, changes: [{ part: 'intro', to: 'Where the group plans.' }] } },
+      },
+    });
+    const door = (saved as { ok: true; value: { door: RoomDoorRecord } }).value.door;
+    expect(changeDoor(door, input({ intro: 'Mine' }), 'sa', AT)).toMatchObject({ ok: false, refusal: 'conflict', reason: expect.stringContaining('reload') });
+    expect(changeDoor(door, input({ basedOn: 1, intro: 'Where the group plans.' }), 'sa', AT)).toEqual({ ok: true, value: null });
   });
 });
 
@@ -262,7 +325,7 @@ describe('the admins’ switches', () => {
   it('show a closed room’s door with who closed it, and nothing of the room', () => {
     const consent: RoomConsentRecord = { accountId: 'ada', termsVersion: ROOM_TERMS.version, termsHash: ROOM_TERMS_HASH, acceptedAt: AT, withdrawnAt: null };
     const room = { seq: 3, memorySeq: 1, peopleSeq: 1, assistant: { on: true, server: true, model: 'stand-in' as const, switchedAt: null, switchedBy: null, pending: [] }, moderator: false, people: [], voiceSeq: 0, voice: [] };
-    expect(roomStatus(true, consent, room, { at: AT, by: { accountId: 'ma', name: 'Morgan' } })).toMatchObject({
+    expect(roomStatus(DEFAULT_DOOR, true, consent, room, { at: AT, by: { accountId: 'ma', name: 'Morgan' } })).toMatchObject({
       open: false,
       inRoom: false,
       room: null,

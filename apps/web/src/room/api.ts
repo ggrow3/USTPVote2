@@ -4,6 +4,7 @@ import type {
   RoomActionView,
   RoomDecisionInput,
   RoomDecisionView,
+  RoomDoorInput,
   RoomHistory,
   RoomMemory,
   RoomMessageView,
@@ -81,6 +82,7 @@ export function forget(itemId: string, asAdmin: boolean): Promise<void> {
 
 export const switchAssistant = (on: boolean) => api<RoomStatus>('PUT', '/v1/admin/room/assistant', { on });
 
-/** Admin › Members' room: the room open or closed, its model server on or off. */
+/** Admin › Members' room: the room open or closed, its model server on or off, the door's words. */
 export const roomSettings = () => api<RoomSettingsView>('GET', '/v1/admin/room/settings');
 export const setRoomSetting = (setting: RoomSetting, on: boolean) => api<RoomSettingsView>('PUT', `/v1/admin/room/settings/${setting}`, { on });
+export const saveDoor = (input: RoomDoorInput) => api<RoomSettingsView>('PUT', '/v1/admin/room/door', input);

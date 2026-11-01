@@ -444,10 +444,7 @@ watch(
       <template v-else-if="!status.room">
         <div>
           <h1 class="text-h5 q-mb-xs">Members’ room</h1>
-          <div class="text-grey-7">
-            A chat room for Active members, with an assistant that keeps the group’s decisions and action items and answers
-            questions about them.
-          </div>
+          <div v-if="status.intro" class="text-grey-7">{{ status.intro }}</div>
         </div>
         <q-banner v-if="!status.open" class="bg-grey-3 text-black" rounded>
           <template #avatar><q-icon name="lock" /></template>
@@ -589,6 +586,7 @@ watch(
 }
 .room-terms p {
   margin: 0 0 0.75em;
+  white-space: pre-line;
 }
 .room-header {
   display: flex;

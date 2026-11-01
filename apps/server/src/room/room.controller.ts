@@ -6,6 +6,7 @@ import {
   roomAssistantSchema,
   roomConsentSchema,
   roomDecisionSchema,
+  roomDoorSchema,
   roomHistoryQuerySchema,
   roomMessageSchema,
   roomReactionSchema,
@@ -21,6 +22,7 @@ import {
   type RoomAssistantInput,
   type RoomConsentInput,
   type RoomDecisionInput,
+  type RoomDoorInput,
   type RoomHistoryQuery,
   type RoomMessageInput,
   type RoomReactionInput,
@@ -195,8 +197,8 @@ export class RoomAdminController {
   }
 
   /**
-   * Admin › Members' room: the room open or closed and its model server on or off, and how the room is doing. These
-   * act on the room from the console, so the admin need not be in it.
+   * Admin › Members' room: the room open or closed, its model server on or off, the door's words, and how the room is
+   * doing. These act on the room from the console, so the admin need not be in it.
    */
   @Get('settings')
   @Roles('membership_admin', 'system_admin')
@@ -209,6 +211,16 @@ export class RoomAdminController {
   @Roles('membership_admin', 'system_admin')
   setOpen(@Ctx() ctx: RequestContext, @Body(new ZodPipe(roomAssistantSchema)) body: RoomAssistantInput) {
     return this.room.changeSetting(moderator(ctx), 'open', body.on);
+  }
+
+  /**
+   * The door's intro line and terms. Changed terms are a new version, which sends everyone in the room back to the door
+   * to accept them. Ledgered.
+   */
+  @Put('door')
+  @Roles('membership_admin', 'system_admin')
+  saveDoor(@Ctx() ctx: RequestContext, @Body(new ZodPipe(roomDoorSchema)) body: RoomDoorInput) {
+    return this.room.saveDoor(moderator(ctx), body);
   }
 
   /** Lets the model server run, starting it, or stops anything reaching it, so its GPU scales to zero. Ledgered. */
