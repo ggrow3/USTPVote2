@@ -17,6 +17,7 @@ import { SearchEnginesController } from '../administration/search-engines.js';
 import { SecurityController, SignInLogService } from '../security/sign-in-log.js';
 import { PublicSiteAnalyticsController, SiteAnalyticsAdminController, SiteAnalyticsService } from '../security/site-analytics.js';
 import { AuthGuard } from '../auth/auth.guard.js';
+import { MfaPolicyController } from '../auth/mfa-policy.js';
 import { BylawsChecksController } from '../bylaws-check/bylaws-checks.controller.js';
 import {
   CandidaciesAdminController,
@@ -130,6 +131,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     AccountsAdminController,
     PublicSignInMethodsController,
     SignInMethodsController,
+    MfaPolicyController,
     AnthropicKeyController,
     PublicNavigationController,
     NavigationAdminController,

@@ -115,7 +115,7 @@ export const SECTION_CAPTIONS: Readonly<Record<AdminSection, string>> = {
   room: 'Open or close the members’ room; switch its model server on or off',
   approvals: 'Two-person requests waiting for a decision',
   people: 'Accounts and their roles; change roles',
-  signin: 'Switch sign-in methods on or off',
+  signin: 'Switch sign-in methods on or off; require two-step verification',
   claude: 'The Anthropic API key for the Claude checks',
   email: 'Which emails go to voters, when, and their wording',
   audit: 'Read and verify the audit ledger',

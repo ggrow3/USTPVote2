@@ -46,7 +46,7 @@ What is not domain-centred:
 
 | Context | DESIGN.md | Owns (Firestore) | Kind |
 |---|---|---|---|
-| **Accounts & identity** | §4 | `accounts`, `account_identities`, `sign_in_methods` | supporting |
+| **Accounts & identity** | §4 | `accounts`, `account_identities`, `sign_in_methods`, `mfa_policy` | supporting |
 | **Membership** | §5.1–5.3 | `members`, `member_status_history`, `applications`, `registration_form`, `registration_form_versions`, `profile_photos`, `photo_checks` | core |
 | **Bylaws** | §5.2, §5.4, §6.6 | `bylaws_versions`, `bylaws_checks`, `bylaws_check_references` | core |
 | **Elections** (setup, roll, voting, sealing, results) | §5.5, §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results`, `consistency_checks`, `consistency_documents` | core |
