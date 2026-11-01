@@ -20,7 +20,6 @@ import PageShell from '../components/PageShell.vue';
 import { attempt, dialog } from '../dialogs.js';
 import { session } from '../session.js';
 import { myArea, myAreaCandidates, myCandidacies, publicCandidacies, withdrawCandidacy, zipCandidates } from './api.js';
-import AreaPerson from './AreaPerson.vue';
 import BallotContests from './BallotContests.vue';
 import CandidacyDetails from './CandidacyDetails.vue';
 import {
@@ -42,6 +41,7 @@ import {
 import DistrictMap, { type MapMarker } from './DistrictMap.vue';
 import { mapsRefused } from './maps.js';
 import OfficeCard from './OfficeCard.vue';
+import OfficePeople from './OfficePeople.vue';
 
 /**
  * Members running for public office (design §5.8): public, each candidacy as a Membership Admin approved it, on a map and
@@ -429,15 +429,7 @@ function withdraw(c: MyCandidacy) {
                 :empty="g.holders.length || g.candidates.length || seatNotUp(running.notUp, g) ? null : emptyOfficeText(g.office, !withHolders)"
                 @map="showOnMap(g.district)"
               >
-                <template v-for="part in [
-                  { title: 'In office', people: g.holders },
-                  { title: 'Running', people: g.candidates },
-                ]" :key="part.title">
-                  <q-list v-if="part.people.length" dense separator>
-                    <q-item-label v-if="withHolders" header class="area-offices__part">{{ part.title }}</q-item-label>
-                    <AreaPerson v-for="c in part.people" :key="c.contactId" :person="c" show-email />
-                  </q-list>
-                </template>
+                <OfficePeople :holders="g.holders" :candidates="g.candidates" :labelled="withHolders" show-email />
               </OfficeCard>
             </div>
             <BallotContests :contests="running.ballot" class="q-mb-md" />
@@ -467,9 +459,5 @@ function withdraw(c: MyCandidacy) {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
   gap: 12px;
   align-items: start;
-}
-.area-offices__part {
-  padding: 4px 16px 0;
-  min-height: 0;
 }
 </style>

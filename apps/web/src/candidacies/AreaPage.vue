@@ -21,7 +21,6 @@ import { confirmAction } from '../communications/admin-forms.js';
 import { attempt } from '../dialogs.js';
 import { session } from '../session.js';
 import { areaContacts } from './api.js';
-import AreaPerson from './AreaPerson.vue';
 import BallotContests from './BallotContests.vue';
 import {
   areaText,
@@ -41,6 +40,7 @@ import {
 import DistrictMap, { type MapMarker } from './DistrictMap.vue';
 import { mapsRefused } from './maps.js';
 import OfficeCard from './OfficeCard.vue';
+import OfficePeople from './OfficePeople.vue';
 
 /**
  * Your area (design §5.12): for a signed-in member, who holds each office where they live and who is running for it,
@@ -230,19 +230,11 @@ async function copy() {
               :empty="g.holders.length || g.candidates.length || seatNotUp(view.notUp, g) ? null : emptyOfficeText(g.office, false)"
               @map="showOnMap(g.district)"
             >
-              <template v-for="part in [
-                { title: 'In office', people: g.holders },
-                { title: 'Running', people: g.candidates },
-              ]" :key="part.title">
-                <q-list v-if="part.people.length" dense separator>
-                  <q-item-label header class="area-offices__part">{{ part.title }}</q-item-label>
-                  <AreaPerson v-for="c in part.people" :key="c.contactId" :person="c">
-                    <q-item-section side top>
-                      <q-btn outline dense no-caps size="sm" color="primary" icon="mail" label="Write" :aria-label="`Write to ${c.name}`" @click="write(c)" />
-                    </q-item-section>
-                  </AreaPerson>
-                </q-list>
-              </template>
+              <OfficePeople v-slot="{ person: c }" :holders="g.holders" :candidates="g.candidates" labelled>
+                <q-item-section side top>
+                  <q-btn outline dense no-caps size="sm" color="primary" icon="mail" label="Write" :aria-label="`Write to ${c.name}`" @click="write(c)" />
+                </q-item-section>
+              </OfficePeople>
             </OfficeCard>
           </div>
         </section>
@@ -316,10 +308,6 @@ async function copy() {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
   gap: 12px;
   align-items: start;
-}
-.area-offices__part {
-  padding: 4px 16px 0;
-  min-height: 0;
 }
 .area-email {
   width: 640px;
