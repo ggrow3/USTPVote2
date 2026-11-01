@@ -275,6 +275,15 @@ export function officeShown(group: { readonly office: PublicOffice; readonly hol
 /** What a seat's card says when the state's own list says it is not on this election's ballot. */
 export const notUpText = (electionYear: number): string => `No election for this seat in ${electionYear}.`;
 
+/** How many of an office's holders, and of its candidates, its card lists before *Show N more*. */
+export const FIRST_SHOWN = 4;
+
+/** The people of an office's list that its card shows: the first few, or all of them once opened. */
+export const firstShown = <T>(people: readonly T[], open: boolean): readonly T[] => (open ? people : people.slice(0, FIRST_SHOWN));
+
+/** What the button under an office's list says: how many more it shows, or, opened, that it shows fewer. */
+export const showMoreText = (count: number, open: boolean): string => (open ? 'Show fewer' : `Show ${count - FIRST_SHOWN} more`);
+
 /**
  * The lines under the others running in the member's own area, which list only the offices someone else runs for:
  * the seats not on this election's ballot, then the offices nobody else is listed as running for.
