@@ -56,15 +56,19 @@ function copy(text: string) {
 
 const nameOf = (a: AccountSummary) => a.displayName ?? a.primaryEmail ?? a.accountId;
 
-/** Only an account on the deployment's deletion list that is not a member, and never your own (design §4). */
-const deletable = (a: AccountSummary) => a.onDeletionList && !a.memberStatus && a.accountId !== me.value;
+/**
+ * Only an account on the deployment's deletion list, never your own (design §4); the API also refuses one an election
+ * has on its roll or among those who voted, and says so.
+ */
+const deletable = (a: AccountSummary) => a.onDeletionList && a.accountId !== me.value;
 
 /** One System Admin's word is enough, so the dialog says plainly what is about to happen before it does. */
 async function remove(a: AccountSummary) {
+  const membership = a.memberStatus ? ` So are their membership (${a.memberStatus}), its history and their applications.` : '';
   const reason = await askReason(
     `Delete ${a.primaryEmail ?? nameOf(a)}?`,
-    'The account, its logins and its roles are deleted as soon as you confirm, and it cannot be undone. No other admin ' +
-      'approves it. The audit ledger keeps its entries about the account and records the deletion.',
+    `The account, its logins and its roles are deleted as soon as you confirm, and it cannot be undone.${membership} ` +
+      'No other admin approves it. The audit ledger keeps its entries about the account and records the deletion.',
   );
   if (reason === null) return;
   const ok = await attempt(() => api('POST', `/v1/admin/accounts/${encodeURIComponent(a.accountId)}/delete`, { reason }), 'Account deleted');

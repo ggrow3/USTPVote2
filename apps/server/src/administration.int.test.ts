@@ -300,19 +300,44 @@ describe('deleting an account (POST /v1/admin/accounts/{accountId}/delete)', () 
     expect((await api.call('GET', '/v1/admin/audit/verify', auditor)).body).toMatchObject({ ok: true });
   });
 
-  it('refuses accounts not on the list, members, your own account, and anyone but a System Admin', async () => {
-    const member = await api.member('leaving-member@example.test');
-    await db().collection('members').doc(member.accountId).set({ accountId: member.accountId, status: 'applicant' });
+  it('deletes a listed member with their membership: member record, status history and applications', async () => {
+    const member = { accountId: leaving.accountId, status: 'active' };
+    await db().collection('members').doc(leaving.accountId).set(member);
+    await db().collection('member_status_history').doc('h1').set({ accountId: leaving.accountId, from: null, to: 'applicant' });
+    await db().collection('member_status_history').doc('h2').set({ accountId: leaving.accountId, from: 'applicant', to: 'active' });
+    await db().collection('applications').doc('a1').set({ accountId: leaving.accountId, status: 'approved' });
+    await db().collection('members').doc(pat.accountId).set({ accountId: pat.accountId, status: 'active' });
+    // An election in which the account is on no roll and has not voted does not stop it.
+    await db().collection('elections').doc('e1').set({ electionId: 'e1' });
+    await db().collection('elections').doc('e1').collection('roll_entries').doc(pat.accountId).set({ snapshotId: 's1' });
+
+    expect((await remove(sa1, leaving.accountId)).status).toBe(204);
+
+    expect((await db().collection('members').doc(leaving.accountId).get()).exists).toBe(false);
+    for (const c of ['member_status_history', 'applications']) {
+      expect((await db().collection(c).where('accountId', '==', leaving.accountId).get()).size).toBe(0);
+    }
+    expect((await db().collection('members').doc(pat.accountId).get()).exists).toBe(true);
+    expect((await db().collection('accounts').doc(leaving.accountId).get()).exists).toBe(false);
+  });
+
+  it('refuses accounts not on the list, on an election roll or that voted, your own, and anyone but a System Admin', async () => {
+    const onRoll = await api.member('leaving-member@example.test');
+    await db().collection('elections').doc('e1').set({ electionId: 'e1' });
+    await db().collection('elections').doc('e1').collection('roll_entries').doc(onRoll.accountId).set({ snapshotId: 's1' });
     await api.grant(pat.accountId, 'membership_admin', sa1);
 
     expect(await remove(sa1, pat.accountId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/deletion list/) } });
-    expect(await remove(sa1, member.accountId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/member cannot be deleted/) } });
+    expect(await remove(sa1, onRoll.accountId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/election roll/) } });
+    await db().collection('elections').doc('e1').collection('roll_entries').doc(onRoll.accountId).delete();
+    await db().collection('elections').doc('e1').collection('participation').doc(onRoll.accountId).set({ castAt: '2026-11-02T12:00:00.000Z' });
+    expect(await remove(sa1, onRoll.accountId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/voted/) } });
     expect(await remove(sa1, sa1.accountId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/own account/) } });
     expect(await remove(pat, leaving.accountId)).toMatchObject({ status: 403, body: { detail: 'requires role system_admin' } });
     expect((await remove(sa1, '01a00000-0000-7000-8000-000000000000')).status).toBe(404);
     expect((await api.call('POST', `/v1/admin/accounts/${leaving.accountId}/delete`, sa1, { reason: ' ' })).status).toBe(400);
 
-    for (const id of [pat.accountId, member.accountId, sa1.accountId, leaving.accountId]) {
+    for (const id of [pat.accountId, onRoll.accountId, sa1.accountId, leaving.accountId]) {
       expect((await db().collection('accounts').doc(id).get()).exists).toBe(true);
     }
     expect((await api.firebase.auth.getUser(leaving.uid)).uid).toBe(leaving.uid);

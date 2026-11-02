@@ -80,18 +80,18 @@ export function checkCanChangeRole(
 
 /**
  * Deleting an account (design §4): one System Admin, signed in with MFA within the last 15 minutes, deletes an account
- * whose primary email is on the deployment's `DELETABLE_ACCOUNT_EMAILS` and which has no member record, never their
- * own, and it takes effect at once. The API checks this again inside its transaction.
+ * whose primary email is on the deployment's `DELETABLE_ACCOUNT_EMAILS`, member or not, unless it is on an election's
+ * roll or has voted, never their own, and it takes effect at once. The API checks this again inside its transaction.
  */
 export function checkCanDeleteAccount(
   deleter: Actor,
-  subject: { readonly accountId: string; readonly onDeletionList: boolean; readonly member: boolean },
+  subject: { readonly accountId: string; readonly onDeletionList: boolean; readonly inElections: boolean },
 ): Check {
   if (!deleter.mfa) return deny('admin actions require multi-factor sign-in', 'mfaRequired');
   if (!deleter.roles.includes('system_admin')) return deny('accounts are deleted by system_admin');
   if (subject.accountId === deleter.accountId) return deny('you cannot delete your own account');
   if (!subject.onDeletionList) return deny("only accounts whose email is on the deployment's deletion list can be deleted");
-  if (subject.member) return deny('a member cannot be deleted; change their membership status instead');
+  if (subject.inElections) return deny('an account on an election roll, or that has voted, cannot be deleted');
   if (deleter.authAgeSeconds > APPROVAL_MAX_AUTH_AGE_SECONDS) return deny('sign in again to delete an account', 'reauthRequired');
   return OK;
 }
