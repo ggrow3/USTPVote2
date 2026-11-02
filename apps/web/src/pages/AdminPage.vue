@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, type Component } from 'vue';
+import { computed, onUnmounted, ref, watch, watchEffect, type Component } from 'vue';
 import type { AdminSection } from 'ustp-domain';
 import ApiKeysPanel from '../claude-key/ApiKeysPanel.vue';
 import ApprovalsPanel from '../components/admin/ApprovalsPanel.vue';
@@ -24,11 +24,12 @@ import NavigationPanel from '../governance/NavigationPanel.vue';
 import NoticeSettingsPanel from '../notifications/NoticeSettingsPanel.vue';
 import { shown } from '../governance/navigation.js';
 import { SECTION_LABELS } from '../governance/navigation-text.js';
+import { guide } from '../guide/tour.js';
 import ApplicationsPanel from '../membership/ApplicationsPanel.vue';
 import MembersPanel from '../membership/MembersPanel.vue';
 import RegistrationFormPanel from '../membership/RegistrationFormPanel.vue';
 import SecurityPanel from '../security/SecurityPanel.vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { usePageTitle } from '../a11y.js';
 import { acting } from '../acting.js';
 import { session } from '../session.js';
@@ -72,8 +73,25 @@ const tabs = computed(() =>
 const officer = computed(() => !session.me || session.me.roles.length > 0);
 const email = computed(() => session.me?.account?.primaryEmail);
 const needsMfa = computed(() => !!session.me?.mfa.required && !session.me.mfa.signedInWithMfa);
-const requested = String(useRoute().query.tab ?? '');
+const route = useRoute();
+const router = useRouter();
+const requested = String(route.query.tab ?? '');
 const tab = ref<string>(tabs.value.some((t) => t.name === requested) ? requested : (tabs.value[0]?.name ?? 'approvals'));
+// A link to another tab while the console is open, such as a walkthrough's Next, opens that tab; a tab picked here is
+// kept in the address, so such a link is never to the address already shown, and a reload stays on it. Neither is a
+// page visit (§10.7), and the admin pages have no analytics.
+watch(
+  () => route.query.tab,
+  (now) => {
+    if (tabs.value.some((t) => t.name === now)) tab.value = String(now);
+  },
+);
+watch(tab, (now) => {
+  if (route.query.tab !== now) void router.replace({ query: { ...route.query, tab: now } });
+});
+// The tab shown, for the walkthrough's steps on a tab (design §10.11).
+watchEffect(() => (guide.openTab = officer.value && tabs.value.some((t) => t.name === tab.value) ? tab.value : null));
+onUnmounted(() => (guide.openTab = null));
 </script>
 
 <template>

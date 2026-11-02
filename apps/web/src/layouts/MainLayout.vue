@@ -8,12 +8,15 @@ import UpdateBanner from '../components/UpdateBanner.vue';
 import { usingEmulators } from '../firebase.js';
 import { navigationState, shown } from '../governance/navigation.js';
 import { MENU_LABELS } from '../governance/navigation-text.js';
+import { guide } from '../guide/tour.js';
 import { hasRole, secondFactorMissing, session, signOut } from '../session.js';
 import { toggleTheme } from '../theme.js';
 import { update } from '../update.js';
 import { linksInRow } from './menu-fit.js';
 
 const TestingBar = defineAsyncComponent(() => import('../components/TestingBar.vue'));
+/** The walkthrough under way (design §10.11), loaded only while there is one. */
+const GuideBar = defineAsyncComponent(() => import('../guide/GuideBar.vue'));
 
 const route = useRoute();
 const router = useRouter();
@@ -134,6 +137,8 @@ watch(headerShown, (now) => now || (document.documentElement.style.scrollPadding
           </q-toolbar-title>
           <q-space />
           <q-badge v-if="usingEmulators" color="orange" text-color="black" label="Local emulators" class="q-mr-md gt-xs" />
+          <!-- The Guide: walkthroughs of the site for voters, Election Admins and Auditors (design §10.11). -->
+          <q-btn flat round icon="help_outline" aria-label="Guide" to="/guide" />
           <q-btn
             flat
             round
@@ -218,6 +223,8 @@ watch(headerShown, (now) => now || (document.documentElement.style.scrollPadding
       <!-- Keyed by persona, so switching reloads every page's data as the new persona. -->
       <router-view :key="acting.persona?.accountId ?? 'self'" />
     </q-page-container>
+
+    <GuideBar v-if="guide.progress" />
 
     <div class="sr-only" role="status">{{ liveRegions.polite }}</div>
     <div class="sr-only" role="alert">{{ liveRegions.assertive }}</div>

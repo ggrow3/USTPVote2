@@ -28,6 +28,7 @@ export const TRACKED_PAGES: readonly TrackedPage[] = [
   { id: 'signin', pattern: '/signin', label: 'Sign in' },
   { id: 'register', pattern: '/register', label: 'Register' },
   { id: 'account', pattern: '/account', label: 'Account' },
+  { id: 'guide', pattern: '/guide', label: 'Guide' },
   { id: 'courses', pattern: '/courses', label: 'Courses' },
   { id: 'course-certificate', pattern: '/course/certificates/:id', label: 'A course certificate' },
   { id: 'course', pattern: '/course/:courseId', label: 'A course' },
