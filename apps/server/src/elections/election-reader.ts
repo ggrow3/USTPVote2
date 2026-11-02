@@ -121,4 +121,18 @@ export class ElectionReader {
     );
     return !standing.empty;
   }
+
+  /** Whether the account is on any election's roll or has voted in one, so is never deleted (design §4). */
+  async inAnyElection(accountId: string, tx?: Transaction): Promise<boolean> {
+    const db = this.firebase.db;
+    const query = db.collection(Collections.elections).select();
+    const elections = tx ? await tx.get(query) : await query.get();
+    const refs = elections.docs.flatMap((e) => [
+      e.ref.collection(ElectionCollections.rollEntries).doc(accountId),
+      e.ref.collection(ElectionCollections.participation).doc(accountId),
+    ]);
+    if (!refs.length) return false;
+    const found = tx ? await tx.getAll(...refs) : await db.getAll(...refs);
+    return found.some((s) => s.exists);
+  }
 }

@@ -293,19 +293,25 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
   removable from the console. A **System Admin** deletes one from the People tab ("Delete account", §10.3;
   `POST /v1/admin/accounts/{accountId}/delete` with a written reason), at once, with no second admin, under the role
   changes' rules (`checkCanDeleteAccount` in `ustp-domain`): signed in with MFA within 15 minutes, never their own
-  account, and never an account with a member record or an application, since rolls and status history key on the
-  account; a member leaves by resigning or a status change (§5.1). The deletion:
+  account, and never an account on any election's roll or among those who voted in one
+  (`elections/{id}/roll_entries` or `participation`), since an election's record keys on the account. A listed member
+  can be deleted *(changed 2026-11-02, at the owner's request, after the dev demo admin signed up again and was
+  admitted)*; other members leave by resigning or a status change (§5.1). The deletion:
   - first deletes the account's Identity Platform users, so if anything later fails, nobody can sign in to the half-
     deleted account and deleting it again finishes the job; if Identity Platform refuses, nothing is deleted (503);
   - then, in one transaction that checks everything again, ledgers `role.revoked` for each active role,
     `identity.unlinked` for each login and `account.deleted` with `{ email, uid, reason }` (`uid` its first login), all
     with the System Admin as actor and the deleted `accountId` as subject, and deletes `accounts/{accountId}`, its
-    `account_identities`, all its `role_assignments` (revoked ones too) and the approval requests about it;
+    `account_identities`, all its `role_assignments` (revoked ones too), the approval requests about it and, through
+    the membership context (`Members.forgetting`), its membership: `members/{accountId}`, its
+    `member_status_history` and its `applications` (the ledger keeps their `member.status_changed` entries);
   - last, deletes its sign-ins (§10.7, by account and by login), page visits, and course progress, attempts,
     certificates and instructor messages (§10.8), which can be too many for the transaction; a failure there is logged
     and leaves them to expire.
 
-  What others wrote that names the account (authorship fields, approvals it decided) keeps the bare `accountId`. Ledger
+  What others wrote that names the account (authorship fields, approvals it decided) keeps the bare `accountId`, and so
+  do a member's records in other contexts (profile photo, candidacy, team, forum and room posts), which their own
+  admins remove as usual. Ledger
   entries about the account stay, since the ledger is append-only (§8.2), and like other member entries they are
   Auditors' only. Bootstrap checks roles by account, so a deleted account's email still on
   `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` would be made System Admin again on its next sign-in: take it off that list first. The
@@ -3219,9 +3225,11 @@ when the account was created, the member status if there is a member record, and
   The form sits in the People tab, under the list ("Change roles" on a row fills it in), and asks for confirmation
   before sending, because the change takes effect at once. The API still decides.
 - **Delete account** *(added)*: each row says whether the deployment lists the account for deletion
-  (`onDeletionList`, from `DELETABLE_ACCOUNT_EMAILS`; §4), and a row that is listed, not a member and not your own gets
-  a "Delete account" button. It asks for a written reason in a dialog that says the deletion happens at once, cannot be
-  undone and needs no other admin, and that the ledger keeps its entries; then it reloads the list. On a deployment
+  (`onDeletionList`, from `DELETABLE_ACCOUNT_EMAILS`; §4), and a row that is listed and not your own, member or not, gets
+  a "Delete account" button; the API refuses, with its reason, an account an election has on its roll or among those
+  who voted. It asks for a written reason in a dialog that says the deletion happens at once, cannot be undone and
+  needs no other admin, that a member's membership, its history and applications go too, and that the ledger keeps its
+  entries; then it reloads the list. On a deployment
   that lists nobody, no row has the button.
 
 ### 10.4 Testing mode
@@ -4248,7 +4256,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET\|PUT /admin/sign-in-methods` · `POST /admin/roles` | System Admin | auth switches; grant or revoke a role, at once (returns the account's roles afterwards; §10.2) |
 | `GET\|PUT /admin/mfa-policy` | System Admin | whether members without a role must use two-step verification, with who saved it; save it from the version it was edited from (409 if someone saved since), ledgered (§4) |
 | `GET /admin/accounts` (paged; `email` prefix, `role` filter) | System Admin | People list: accounts with member status, active roles and whether the deployment lists them for deletion, read-only (§10.3) |
-| `POST /admin/accounts/{accountId}/delete` | System Admin | permanently delete an account the deployment lists that is not a member, with its logins and roles, at once (204; 403 otherwise; §4) |
+| `POST /admin/accounts/{accountId}/delete` | System Admin | permanently delete an account the deployment lists that no election has on its roll or among those who voted, with its logins, roles and membership, at once (204; 403 otherwise; §4) |
 | `GET\|PUT\|DELETE /admin/anthropic-key` | System Admin | whether a key is set, its last four characters, who added it and when, and how each Claude check is switched; add a key in place of any before it, after trying it with Anthropic (400 not an API key, 422 refused, 502 Anthropic unreachable; nothing kept); remove it (404 if none); never returns the key; ledgered (§5.6) |
 | `GET\|PUT /admin/navigation` | System Admin | the navigation settings with who saved them; save the whole matrix from the version it was edited from (409 if someone saved since, or a locked cell is switched), ledgered (§10.5) |
 | `GET /admin/security/sign-ins?days=` | System Admin, Auditor | the sign-ins of the last 1, 7, 30 (default), 90 or 180 days, newest first, at most 2,000, and whether more were left out (§10.7) |

@@ -232,9 +232,9 @@ describe('role changes (one System Admin)', () => {
 
 describe('deleting an account (one System Admin)', () => {
   const sa1: Actor = { accountId: 'sa1', roles: ['system_admin'], mfa: true, authAgeSeconds: 10 };
-  const listed = { accountId: 'demo', onDeletionList: true, member: false };
+  const listed = { accountId: 'demo', onDeletionList: true, inElections: false };
 
-  it('lets one System Admin delete a listed account that is not a member', () => {
+  it('lets one System Admin delete a listed account, member or not, that no election names', () => {
     expect(checkCanDeleteAccount(sa1, listed).ok).toBe(true);
   });
 
@@ -243,7 +243,7 @@ describe('deleting an account (one System Admin)', () => {
     expect(checkCanDeleteAccount({ ...sa1, roles: ['membership_admin'] }, listed)).toMatchObject({ reason: /system_admin/ });
     expect(checkCanDeleteAccount(sa1, { ...listed, accountId: 'sa1' })).toMatchObject({ reason: /own account/ });
     expect(checkCanDeleteAccount(sa1, { ...listed, onDeletionList: false })).toMatchObject({ reason: /deletion list/ });
-    expect(checkCanDeleteAccount(sa1, { ...listed, member: true })).toMatchObject({ reason: /member cannot be deleted/ });
+    expect(checkCanDeleteAccount(sa1, { ...listed, inElections: true })).toMatchObject({ reason: /election roll/ });
     expect(checkCanDeleteAccount({ ...sa1, authAgeSeconds: 3600 }, listed)).toMatchObject({ code: 'reauthRequired' });
   });
 });

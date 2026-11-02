@@ -36,7 +36,9 @@ import { assertCheck } from '../common/validation.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { ElectionReader } from '../elections/election-reader.js';
 import { MemberDirectory } from '../membership/member-directory.js';
+import { Members } from '../membership/members.service.js';
 
 /** A second sign-in used to link a login method must be this fresh. */
 const LINK_MAX_AUTH_AGE_SECONDS = 5 * 60;
@@ -62,6 +64,8 @@ export class AccountsService {
     private readonly directory: DirectoryService,
     private readonly signInMethods: SignInMethodsService,
     private readonly members: MemberDirectory,
+    private readonly membership: Members,
+    private readonly elections: ElectionReader,
     private readonly mfaPolicy: MfaPolicyService,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
@@ -145,10 +149,11 @@ export class AccountsService {
 
   /**
    * Deletes an account (design §4): one System Admin, at once, only an account on the deployment's deletion list that
-   * has no member record. Its logins go first, from Identity Platform, so a failure later leaves an account nobody can
-   * sign in to, which deleting again finishes. Then one transaction ledgers `role.revoked` for each active role,
-   * `identity.unlinked` for each login and `account.deleted`, and deletes the account, its logins, its role assignments
-   * and the requests about it; last, its sign-ins, page visits and course records. Ledger entries about it stay.
+   * no election has on its roll or among those who voted. Its logins go first, from Identity Platform, so a failure
+   * later leaves an account nobody can sign in to, which deleting again finishes. Then one transaction ledgers
+   * `role.revoked` for each active role, `identity.unlinked` for each login and `account.deleted`, and deletes the
+   * account, its logins, its role assignments, the requests about it and its membership (member record, status history,
+   * applications); last, its sign-ins, page visits and course records. Ledger entries about it stay.
    */
   async delete(ctx: RequestContext, accountId: string, reason: string): Promise<void> {
     const deletedBy = requireAccount(ctx);
@@ -166,9 +171,10 @@ export class AccountsService {
 
     const later = await db.runTransaction(async (tx) => {
       const found = await this.deletable(actor, accountId, tx);
-      const [assignments, requests] = await Promise.all([
+      const [assignments, requests, forgetMembership] = await Promise.all([
         tx.get(db.collection(Collections.roleAssignments).where('accountId', '==', accountId)),
         tx.get(db.collection(Collections.approvalRequests).where('subject', '==', accountId)),
+        this.membership.forgetting(tx, accountId),
       ]);
       const active = assignments.docs.map((d) => d.data() as RoleAssignmentRecord).filter((r) => r.revokedAt === null);
       const first = [...found.identities].sort((a, b) => (a.linkedAt < b.linkedAt ? -1 : a.linkedAt > b.linkedAt ? 1 : 0))[0];
@@ -190,6 +196,7 @@ export class AccountsService {
       tx.delete(db.collection(Collections.accounts).doc(accountId));
       for (const i of found.identities) tx.delete(db.collection(Collections.accountIdentities).doc(i.uid));
       for (const doc of [...assignments.docs, ...requests.docs]) tx.delete(doc.ref);
+      forgetMembership();
       // A login linked since the first look is deleted from Identity Platform below.
       return found.identities.map((i) => i.uid).filter((uid) => !uids.includes(uid));
     });
@@ -211,7 +218,7 @@ export class AccountsService {
 
   /**
    * The account and its logins, if the actor may delete it now (`checkCanDeleteAccount`): it exists, is on the
-   * deletion list, and has no member record (applying makes one, design §5.2). Read in `tx` when given.
+   * deletion list, and no election has it on its roll or among those who voted. Read in `tx` when given.
    */
   private async deletable(
     actor: Actor,
@@ -221,14 +228,14 @@ export class AccountsService {
     const db = this.firebase.db;
     const accountRef = db.collection(Collections.accounts).doc(accountId);
     const logins = db.collection(Collections.accountIdentities).where('accountId', '==', accountId);
-    const [account, [member], identities] = await Promise.all([
+    const [account, inElections, identities] = await Promise.all([
       tx ? tx.get(accountRef) : accountRef.get(),
-      tx ? this.members.getAll(tx, [accountId]) : this.members.findMany([accountId]),
+      this.elections.inAnyElection(accountId, tx),
       tx ? tx.get(logins) : logins.get(),
     ]);
     if (!account.exists) throw new NotFoundException('no such account');
     const record = account.data() as AccountRecord;
-    const subject = { accountId, onDeletionList: this.onDeletionList(record), member: !!member };
+    const subject = { accountId, onDeletionList: this.onDeletionList(record), inElections };
     assertCheck(checkCanDeleteAccount(actor, subject), ForbiddenException);
     return { account: record, identities: identities.docs.map((d) => d.data() as IdentityRecord) };
   }
