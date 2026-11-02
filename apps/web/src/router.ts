@@ -41,6 +41,8 @@ export const router = createRouter({
         { path: 'ballot', component: () => import('./pages/BallotPage.vue'), meta: { requiresAuth: true } },
         { path: 'ballot/:id', component: () => import('./pages/VotePage.vue'), meta: { requiresAuth: true } },
         { path: 'verify', component: () => import('./pages/VerifyPage.vue') },
+        // Walkthroughs for a Voter, an Election Admin and an Auditor, page by page, for everyone (design §10.11).
+        { path: 'guide', component: () => import('./guide/GuidePage.vue') },
         { path: 'bylaws/:version?', component: () => import('./pages/BylawsPage.vue') },
         { path: 'results/:id', component: () => import('./pages/ResultsPage.vue') },
         { path: 'offices', component: () => import('./offices/OfficesPage.vue') },
