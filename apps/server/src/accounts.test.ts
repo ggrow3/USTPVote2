@@ -16,7 +16,7 @@ const emulators = { FIRESTORE_EMULATOR_HOST: '127.0.0.1:8085', FIREBASE_AUTH_EMU
 
 describe('People list route (GET /v1/admin/accounts)', () => {
   /** What the AuthGuard does with the real route's metadata: true, or the refusal's body. */
-  async function admit(roles: Role[], { mfa = true } = {}): Promise<unknown> {
+  async function admit(roles: Role[], { mfa = true, handler = AccountsAdminController.prototype.list as unknown } = {}): Promise<unknown> {
     const token = { uid: 'u1', firebase: { sign_in_provider: 'password', ...(mfa && { sign_in_second_factor: 'totp' }) } };
     const guard = new AuthGuard(
       new Reflector(),
@@ -27,7 +27,7 @@ describe('People list route (GET /v1/admin/accounts)', () => {
       { current: async () => ({ membersRequired: false }) } as unknown as MfaPolicyService,
     );
     const context = {
-      getHandler: () => AccountsAdminController.prototype.list,
+      getHandler: () => handler,
       getClass: () => AccountsAdminController,
       switchToHttp: () => ({ getRequest: () => ({ headers: { authorization: 'Bearer t' } }) }),
     } as unknown as ExecutionContext;
@@ -44,6 +44,13 @@ describe('People list route (GET /v1/admin/accounts)', () => {
       expect(await admit(roles)).toMatchObject({ message: 'requires role system_admin' });
     }
     expect(await admit(['system_admin'], { mfa: false })).toMatchObject({ type: PROBLEM_TYPES.mfaRequired });
+  });
+
+  it('keeps deleting an account to System Admins signed in with a second factor (design §4)', async () => {
+    const handler = AccountsAdminController.prototype.delete;
+    expect(await admit(['system_admin'], { handler })).toBe(true);
+    expect(await admit(['membership_admin', 'election_admin'], { handler })).toMatchObject({ message: 'requires role system_admin' });
+    expect(await admit(['system_admin'], { mfa: false, handler })).toMatchObject({ type: PROBLEM_TYPES.mfaRequired });
   });
 });
 

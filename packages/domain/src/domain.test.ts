@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { checkCanApprove, checkCanChangeRole, checkCanRequest, type Actor, type PendingApproval } from './approvals.js';
+import { checkCanApprove, checkCanChangeRole, checkCanDeleteAccount, checkCanRequest, type Actor, type PendingApproval } from './approvals.js';
 import { electionDocPath, sequenceId } from './collections.js';
 import { checkElectionDeletable, electionTransitionAuthority, isTerminal } from './election-state.js';
 import { isUuidV7, uuidv7, uuidv7Timestamp } from './ids.js';
@@ -227,6 +227,24 @@ describe('role changes (one System Admin)', () => {
   it('leaves the roles check to the API when the roles held are unknown', () => {
     expect(checkCanChangeRole(sa1, { accountId: 'pat', roles: null }, 'grant', 'election_admin').ok).toBe(true);
     expect(checkCanChangeRole(sa1, { accountId: 'pat', roles: null }, 'revoke', 'system_admin').ok).toBe(true);
+  });
+});
+
+describe('deleting an account (one System Admin)', () => {
+  const sa1: Actor = { accountId: 'sa1', roles: ['system_admin'], mfa: true, authAgeSeconds: 10 };
+  const listed = { accountId: 'demo', onDeletionList: true, member: false };
+
+  it('lets one System Admin delete a listed account that is not a member', () => {
+    expect(checkCanDeleteAccount(sa1, listed).ok).toBe(true);
+  });
+
+  it('refuses in the order the API checks, with its reasons', () => {
+    expect(checkCanDeleteAccount({ ...sa1, mfa: false }, listed)).toMatchObject({ code: 'mfaRequired' });
+    expect(checkCanDeleteAccount({ ...sa1, roles: ['membership_admin'] }, listed)).toMatchObject({ reason: /system_admin/ });
+    expect(checkCanDeleteAccount(sa1, { ...listed, accountId: 'sa1' })).toMatchObject({ reason: /own account/ });
+    expect(checkCanDeleteAccount(sa1, { ...listed, onDeletionList: false })).toMatchObject({ reason: /deletion list/ });
+    expect(checkCanDeleteAccount(sa1, { ...listed, member: true })).toMatchObject({ reason: /member cannot be deleted/ });
+    expect(checkCanDeleteAccount({ ...sa1, authAgeSeconds: 3600 }, listed)).toMatchObject({ code: 'reauthRequired' });
   });
 });
 

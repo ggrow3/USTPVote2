@@ -162,6 +162,8 @@ export interface AccountSummary {
   readonly memberStatus: MemberStatus | null;
   /** Active roles, from `role_assignments`. */
   readonly roles: readonly Role[];
+  /** The primary email is on the deployment's `DELETABLE_ACCOUNT_EMAILS`, so a System Admin may delete it (design §4). */
+  readonly onDeletionList: boolean;
 }
 
 /** `sign_in_methods/{provider}`; a missing document means enabled. */

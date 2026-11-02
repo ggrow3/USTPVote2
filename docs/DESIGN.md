@@ -287,15 +287,30 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
   sends both ID tokens; the API links the second uid to the same account if that sign-in is under 5 minutes old and the
   uid has no account of its own. The last login method cannot be unlinked. Linking and unlinking are ledgered. Losing
   every login method requires Membership-Admin-assisted relinking with a written reason (not yet built).
-- **Deleting an account** *(added)*. The app has **no delete-account action yet**. When an account is deleted, one
-  transaction deletes `accounts/{accountId}` and each of its `account_identities/{uid}`, marks each of its active
-  `role_assignments` revoked, and ledgers, with the System Admin who did it as actor and the deleted `accountId` as
-  subject: `identity.unlinked` for each login, `role.revoked` for each active role, and `account.deleted` with
-  `{ email, uid, reason }`; its Identity Platform user is deleted as well. Ledger entries about the account stay, since
-  the ledger is append-only (§8.2), and like other member entries these are Auditors' only. Bootstrap checks roles by
-  account, so a deleted account's email still on `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` would be made System Admin again on
-  its next sign-in: take it off the list first. So far this was done once, by hand on dev on 2026-11-02, for four
-  accounts (seq 159–167, sealed in block 92).
+- **Deleting an account** *(added)*. Only accounts the deployment names can be deleted: `DELETABLE_ACCOUNT_EMAILS`
+  (Terraform `deletable_account_emails`, empty by default) lists primary emails, set per environment like the bootstrap
+  list because they are people's addresses. On dev it names one demo admin's address, the one account the owner wants
+  removable from the console. A **System Admin** deletes one from the People tab ("Delete account", §10.3;
+  `POST /v1/admin/accounts/{accountId}/delete` with a written reason), at once, with no second admin, under the role
+  changes' rules (`checkCanDeleteAccount` in `ustp-domain`): signed in with MFA within 15 minutes, never their own
+  account, and never an account with a member record or an application, since rolls and status history key on the
+  account; a member leaves by resigning or a status change (§5.1). The deletion:
+  - first deletes the account's Identity Platform users, so if anything later fails, nobody can sign in to the half-
+    deleted account and deleting it again finishes the job; if Identity Platform refuses, nothing is deleted (503);
+  - then, in one transaction that checks everything again, ledgers `role.revoked` for each active role,
+    `identity.unlinked` for each login and `account.deleted` with `{ email, uid, reason }` (`uid` its first login), all
+    with the System Admin as actor and the deleted `accountId` as subject, and deletes `accounts/{accountId}`, its
+    `account_identities`, all its `role_assignments` (revoked ones too) and the approval requests about it;
+  - last, deletes its sign-ins (§10.7, by account and by login), page visits, and course progress, attempts,
+    certificates and instructor messages (§10.8), which can be too many for the transaction; a failure there is logged
+    and leaves them to expire.
+
+  What others wrote that names the account (authorship fields, approvals it decided) keeps the bare `accountId`. Ledger
+  entries about the account stay, since the ledger is append-only (§8.2), and like other member entries they are
+  Auditors' only. Bootstrap checks roles by account, so a deleted account's email still on
+  `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` would be made System Admin again on its next sign-in: take it off that list first. The
+  first deletions came before this action, by hand on dev on 2026-11-02, for four accounts (seq 159–167, sealed in
+  block 92); their leftover role assignment and an expired role request were deleted by hand later the same day.
 - **Passwords (NIST SP 800-63B-4).** Minimum 15 characters (the single-factor minimum, applied to everyone), at least 64
   allowed, no composition rules, no forced rotation, breached-password screening, rate-limited attempts. Identity Platform
   enforces length; the browser screens against breached passwords before creating the account (Q9): it sends only the
@@ -2904,8 +2919,9 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   `ustp-domain`.
 - `account.deleted` (Auditors only) records an account's deletion (§4): payload `{ email, uid, reason }`, actor the
   System Admin, subject the deleted `accountId`, written with an `identity.unlinked` for each login and a `role.revoked`
-  for each active role. No code writes it yet: the four so far, among seq 159–167 on dev, were written by hand on
-  2026-11-02 by the api's own append (`ledger_head/main`), and the worker sealed them like any other entry.
+  for each active role by `POST /v1/admin/accounts/{accountId}/delete`. The first four, among seq 159–167 on dev, were
+  written by hand on 2026-11-02, before that route existed, by the api's own append (`ledger_head/main`), and the worker
+  sealed them like any other entry.
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
   entries are public; the election notice entries (`notice.*`, §6.8), about delivering mail rather than the election's
   record, are Auditors' only. A public verifier checks a public entry by Merkle inclusion in its ledger block (§8.3) without
@@ -3114,7 +3130,7 @@ results page, the CLI and the tests pass it that entry.
 | Define or change offices (at once; §6.4); request an appointment to an office or the end of a term (§6.4) | ● | ● | | |
 | Approve roll, scheduling, certification, cancellation, an appointment to an office, ending a term of office | | | ● | |
 | Read full ledger, run verifications | | | ● | |
-| Grant/revoke roles (one System Admin, at once; §10.2), see who holds them (§10.3), sign-in switches and the two-step requirement for members (§4), the Anthropic API key (§5.6), operations | | | | ● |
+| Grant/revoke roles (one System Admin, at once; §10.2), see who holds them (§10.3), delete an account the deployment lists (at once; §4), sign-in switches and the two-step requirement for members (§4), the Anthropic API key (§5.6), operations | | | | ● |
 
 **Content roles** *(added)*: Course Administrators run the courses: they add courses and place them on the course
 map, publish them, see how each student stands and turn each student's messages with the instructors on or off, the
@@ -3202,6 +3218,11 @@ when the account was created, the member status if there is a member record, and
   API's own checks (`checkCanChangeRole` in `ustp-domain`: not for your own account, compatible with the roles held, at most two roles).
   The form sits in the People tab, under the list ("Change roles" on a row fills it in), and asks for confirmation
   before sending, because the change takes effect at once. The API still decides.
+- **Delete account** *(added)*: each row says whether the deployment lists the account for deletion
+  (`onDeletionList`, from `DELETABLE_ACCOUNT_EMAILS`; §4), and a row that is listed, not a member and not your own gets
+  a "Delete account" button. It asks for a written reason in a dialog that says the deletion happens at once, cannot be
+  undone and needs no other admin, and that the ledger keeps its entries; then it reloads the list. On a deployment
+  that lists nobody, no row has the button.
 
 ### 10.4 Testing mode
 
@@ -4010,7 +4031,7 @@ Physically, registration collections are top-level and election data lives under
 | Path | Key | Mutability | Notes |
 |---|---|---|---|
 | **registration** | | | |
-| `accounts/{accountId}` | UUIDv7 | mutable | display name, primary email, state; `preferences` (the daily quote and joke, §4.1) |
+| `accounts/{accountId}` | UUIDv7 | mutable; deleted only as §4 says | display name, primary email, state; `preferences` (the daily quote and joke, §4.1) |
 | `account_identities/{uid}` | Identity Platform uid | create/delete | → `accountId`, provider, linkedAt |
 | `account_factors/{accountId}/factors/{factorId}` | | mutable | mirror of MFA enrollment, no secrets |
 | `sign_in_methods/{method}` | provider ID | mutable | enabled flag (auth switches) |
@@ -4226,7 +4247,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/audit/events` · `GET /admin/audit/verify` | Auditor | ledger (paged by seq); verification of chain, blocks, signatures and anchors |
 | `GET\|PUT /admin/sign-in-methods` · `POST /admin/roles` | System Admin | auth switches; grant or revoke a role, at once (returns the account's roles afterwards; §10.2) |
 | `GET\|PUT /admin/mfa-policy` | System Admin | whether members without a role must use two-step verification, with who saved it; save it from the version it was edited from (409 if someone saved since), ledgered (§4) |
-| `GET /admin/accounts` (paged; `email` prefix, `role` filter) | System Admin | People list: accounts with member status and active roles, read-only (§10.3) |
+| `GET /admin/accounts` (paged; `email` prefix, `role` filter) | System Admin | People list: accounts with member status, active roles and whether the deployment lists them for deletion, read-only (§10.3) |
+| `POST /admin/accounts/{accountId}/delete` | System Admin | permanently delete an account the deployment lists that is not a member, with its logins and roles, at once (204; 403 otherwise; §4) |
 | `GET\|PUT\|DELETE /admin/anthropic-key` | System Admin | whether a key is set, its last four characters, who added it and when, and how each Claude check is switched; add a key in place of any before it, after trying it with Anthropic (400 not an API key, 422 refused, 502 Anthropic unreachable; nothing kept); remove it (404 if none); never returns the key; ledgered (§5.6) |
 | `GET\|PUT /admin/navigation` | System Admin | the navigation settings with who saved them; save the whole matrix from the version it was edited from (409 if someone saved since, or a locked cell is switched), ledgered (§10.5) |
 | `GET /admin/security/sign-ins?days=` | System Admin, Auditor | the sign-ins of the last 1, 7, 30 (default), 90 or 180 days, newest first, at most 2,000, and whether more were left out (§10.7) |
