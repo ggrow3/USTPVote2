@@ -178,6 +178,7 @@ export {
   checkCanRequest,
   checkCanApprove,
   checkCanChangeRole,
+  checkCanDeleteAccount,
 } from './approvals.js';
 export type { TwoPersonAction, Actor, PendingApproval } from './approvals.js';
 export { Collections, ElectionCollections, NOTICE_RECIPIENTS, electionDocPath, sequenceId } from './collections.js';

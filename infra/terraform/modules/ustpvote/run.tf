@@ -12,10 +12,10 @@
 locals {
   # api: Secret Manager (creating tie-break seeds, and keeping the Anthropic API key a System Admin adds, which it tries
   # with Anthropic first), encrypting ballots to an election's pool key, Auditor verification of anchors, profile
-  # photos, uploaded videos, bootstrap System Admins, testing mode, which the api also refuses in prod, how election
-  # notices go out (notices.tf), the Candidates page's Google Maps browser key (maps.tf), the Your area page's keys for
-  # public records (FEC, Open States; the Civic Information API's comes from Secret Manager, civic.tf), and the site's
-  # own address, the only one robots.txt opens to search engines (in prod).
+  # photos, uploaded videos, bootstrap System Admins, the accounts System Admins may delete, testing mode, which the
+  # api also refuses in prod, how election notices go out (notices.tf), the Candidates page's Google Maps browser key
+  # (maps.tf), the Your area page's keys for public records (FEC, Open States; the Civic Information API's comes from
+  # Secret Manager, civic.tf), and the site's own address, the only one robots.txt opens to search engines (in prod).
   api_env = merge(
     {
       GOOGLE_CLOUD_PROJECT          = var.project_id
@@ -32,6 +32,8 @@ locals {
     },
     local.notices_env,
     var.testing_mode ? { TESTING_MODE = "true" } : {},
+    # Accounts a System Admin may delete (design §4): people's addresses, set only when listed, kept out of api_env.
+    length(var.deletable_account_emails) > 0 ? { DELETABLE_ACCOUNT_EMAILS = join(",", var.deletable_account_emails) } : {},
     # The provider marks every key string sensitive, but this one is public by nature (maps.tf), and a sensitive value
     # here would make the api_env output refuse to plan.
     var.maps_enabled ? { GOOGLE_MAPS_BROWSER_KEY = nonsensitive(google_apikeys_key.maps_browser[0].key_string) } : {},

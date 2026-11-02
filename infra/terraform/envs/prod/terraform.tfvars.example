@@ -5,6 +5,9 @@
 
 bootstrap_system_admin_emails = ["first.admin@example.org", "second.admin@example.org"]
 
+# Accounts a System Admin may delete from the People tab, if they are not members (design §4); none by default.
+deletable_account_emails = []
+
 # The release workflow's ustp-release may already push and attest; list anyone else who needs to.
 image_publishers    = []
 attestation_signers = []

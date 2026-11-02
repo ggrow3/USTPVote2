@@ -40,8 +40,8 @@ output "videos_bucket" {
 }
 
 output "api_env" {
-  description = "Environment of the api service, except BOOTSTRAP_SYSTEM_ADMIN_EMAILS and the Your area page's keys."
-  value       = { for name, value in local.api_env : name => value if !contains(["BOOTSTRAP_SYSTEM_ADMIN_EMAILS", "FEC_API_KEY", "OPENSTATES_API_KEY"], name) }
+  description = "Environment of the api service, except the people's addresses (BOOTSTRAP_SYSTEM_ADMIN_EMAILS, DELETABLE_ACCOUNT_EMAILS) and the Your area page's keys."
+  value       = { for name, value in local.api_env : name => value if !contains(["BOOTSTRAP_SYSTEM_ADMIN_EMAILS", "DELETABLE_ACCOUNT_EMAILS", "FEC_API_KEY", "OPENSTATES_API_KEY"], name) }
 }
 
 output "worker_env" {

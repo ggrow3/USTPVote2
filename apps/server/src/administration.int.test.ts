@@ -203,6 +203,7 @@ describe('People list (GET /v1/admin/accounts)', () => {
       createdAt: expect.stringMatching(/^\d{4}-\d\d-\d\dT/),
       memberStatus: 'active',
       roles: ['membership_admin'],
+      onDeletionList: false,
     });
     expect(rows.find((r: { accountId: string }) => r.accountId === lee.accountId)).toMatchObject({ emailVerified: false, memberStatus: null });
   });
@@ -238,5 +239,82 @@ describe('People list (GET /v1/admin/accounts)', () => {
     for (const query of ['?role=nope', '?limit=0', '?limit=101', `?after=${'0'.repeat(65)}`, '?after=01890000-0000-7000-8000-000000000000']) {
       expect((await list(sa1, query)).status, query).toBe(400);
     }
+  });
+});
+
+describe('deleting an account (POST /v1/admin/accounts/{accountId}/delete)', () => {
+  let leaving: Member;
+
+  beforeEach(async () => {
+    leaving = await api.member('leaving@example.test');
+  });
+
+  const remove = (by: User, accountId: string) =>
+    api.call('POST', `/v1/admin/accounts/${accountId}/delete`, by, { reason: 'demo account, no longer used' });
+  const db = () => api.firebase.db;
+
+  it('deletes a listed account that is not a member, with its logins, roles and records, and ledgers it', async () => {
+    await api.grant(leaving.accountId, 'election_admin', sa1);
+    const request = { action: 'role.grant', subject: leaving.accountId, status: 'pending', requestedBy: sa2.accountId };
+    await db().collection('approval_requests').doc('old-request').set(request);
+    await db().collection('sign_ins').doc(`${leaving.uid}_1`).set({ uid: leaving.uid, accountId: leaving.accountId });
+    await db().collection('sign_ins').doc(`${leaving.uid}_0`).set({ uid: leaving.uid, accountId: null });
+    await db().collection('page_visits').doc('visit').set({ accountId: leaving.accountId, page: 'courses' });
+    await db().collection('course_progress').doc(`course_${leaving.accountId}`).set({ courseId: 'course', accountId: leaving.accountId });
+    await db().collection('page_visits').doc('pats-visit').set({ accountId: pat.accountId, page: 'courses' });
+
+    const rows = (await api.call('GET', '/v1/admin/accounts', sa1)).body as { accountId: string; onDeletionList: boolean }[];
+    expect(Object.fromEntries(rows.map((r) => [r.accountId, r.onDeletionList]))).toMatchObject({
+      [leaving.accountId]: true,
+      [pat.accountId]: false,
+    });
+    const seq = (await db().collection('ledger_head').doc('main').get()).data()!.seq as number;
+
+    expect((await remove(sa1, leaving.accountId)).status).toBe(204);
+
+    expect((await db().collection('accounts').doc(leaving.accountId).get()).exists).toBe(false);
+    expect((await db().collection('account_identities').doc(leaving.uid).get()).exists).toBe(false);
+    for (const c of ['role_assignments', 'sign_ins', 'page_visits', 'course_progress']) {
+      expect((await db().collection(c).where('accountId', '==', leaving.accountId).get()).size).toBe(0);
+    }
+    expect((await db().collection('sign_ins').where('uid', '==', leaving.uid).get()).size).toBe(0);
+    expect((await db().collection('approval_requests').doc('old-request').get()).exists).toBe(false);
+    expect((await db().collection('page_visits').doc('pats-visit').get()).exists).toBe(true);
+    await expect(api.firebase.auth.getUser(leaving.uid)).rejects.toMatchObject({ code: 'auth/user-not-found' });
+
+    const events = (await db().collection('audit_events').where('seq', '>', seq).orderBy('seq').get()).docs.map((d) => d.data());
+    const reason = 'demo account, no longer used';
+    expect(events.map((e) => [e.type, e.actor, e.subject])).toEqual([
+      ['role.revoked', sa1.accountId, leaving.accountId],
+      ['identity.unlinked', sa1.accountId, leaving.accountId],
+      ['account.deleted', sa1.accountId, leaving.accountId],
+    ]);
+    expect(events.map((e) => e.payload)).toEqual([
+      { role: 'election_admin', reason },
+      { uid: leaving.uid, provider: 'password', reason },
+      { email: 'leaving@example.test', uid: leaving.uid, reason },
+    ]);
+    // The chain still verifies: the deletion only appended to it.
+    const auditor = await api.member('auditor@example.test');
+    await api.grant(auditor.accountId, 'auditor', sa1);
+    expect((await api.call('GET', '/v1/admin/audit/verify', auditor)).body).toMatchObject({ ok: true });
+  });
+
+  it('refuses accounts not on the list, members, your own account, and anyone but a System Admin', async () => {
+    const member = await api.member('leaving-member@example.test');
+    await db().collection('members').doc(member.accountId).set({ accountId: member.accountId, status: 'applicant' });
+    await api.grant(pat.accountId, 'membership_admin', sa1);
+
+    expect(await remove(sa1, pat.accountId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/deletion list/) } });
+    expect(await remove(sa1, member.accountId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/member cannot be deleted/) } });
+    expect(await remove(sa1, sa1.accountId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/own account/) } });
+    expect(await remove(pat, leaving.accountId)).toMatchObject({ status: 403, body: { detail: 'requires role system_admin' } });
+    expect((await remove(sa1, '01a00000-0000-7000-8000-000000000000')).status).toBe(404);
+    expect((await api.call('POST', `/v1/admin/accounts/${leaving.accountId}/delete`, sa1, { reason: ' ' })).status).toBe(400);
+
+    for (const id of [pat.accountId, member.accountId, sa1.accountId, leaving.accountId]) {
+      expect((await db().collection('accounts').doc(id).get()).exists).toBe(true);
+    }
+    expect((await api.firebase.auth.getUser(leaving.uid)).uid).toBe(leaving.uid);
   });
 });

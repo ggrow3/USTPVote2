@@ -44,6 +44,12 @@ variable "bootstrap_system_admin_emails" {
   default     = []
 }
 
+variable "deletable_account_emails" {
+  description = "DELETABLE_ACCOUNT_EMAILS (design §4): primary emails of accounts a System Admin may delete from the People tab, if they are not members. Empty means none can be."
+  type        = list(string)
+  default     = []
+}
+
 variable "image_publishers" {
   description = "IAM members allowed to push images to the Artifact Registry repository, besides the release workflow's ustp-release."
   type        = list(string)
