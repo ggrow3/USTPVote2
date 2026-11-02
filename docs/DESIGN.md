@@ -287,6 +287,15 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
   sends both ID tokens; the API links the second uid to the same account if that sign-in is under 5 minutes old and the
   uid has no account of its own. The last login method cannot be unlinked. Linking and unlinking are ledgered. Losing
   every login method requires Membership-Admin-assisted relinking with a written reason (not yet built).
+- **Deleting an account** *(added)*. The app has **no delete-account action yet**. When an account is deleted, one
+  transaction deletes `accounts/{accountId}` and each of its `account_identities/{uid}`, marks each of its active
+  `role_assignments` revoked, and ledgers, with the System Admin who did it as actor and the deleted `accountId` as
+  subject: `identity.unlinked` for each login, `role.revoked` for each active role, and `account.deleted` with
+  `{ email, uid, reason }`; its Identity Platform user is deleted as well. Ledger entries about the account stay, since
+  the ledger is append-only (§8.2), and like other member entries these are Auditors' only. Bootstrap checks roles by
+  account, so a deleted account's email still on `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` would be made System Admin again on
+  its next sign-in: take it off the list first. So far this was done once, by hand on dev on 2026-11-02, for four
+  accounts (seq 159–167, sealed in block 92).
 - **Passwords (NIST SP 800-63B-4).** Minimum 15 characters (the single-factor minimum, applied to everyone), at least 64
   allowed, no composition rules, no forced rotation, breached-password screening, rate-limited attempts. Identity Platform
   enforces length; the browser screens against breached passwords before creating the account (Q9): it sends only the
@@ -2893,6 +2902,10 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed`,
   `navigation.changed`, `home_quote.changed`, `hub.changed`, `analytics.changed`, `notice.sent`, `notice.resend_requested`, `notice.settings_changed`, `anthropic_key.changed`, `api_key.changed`, `position_term.appointed`, `registration_form.changed`, `team.changed`, `team.member_changed`, `forum.moderated`, `room.consent_changed`, `room.assistant_switched`, `room.settings_changed`, `room.door_changed`, `candidacy.changed`, `area_contact.changed`, `email_template.changed` (M5; Auditors only). The authoritative list is `LEDGER_EVENT_TYPES` in
   `ustp-domain`.
+- `account.deleted` (Auditors only) records an account's deletion (§4): payload `{ email, uid, reason }`, actor the
+  System Admin, subject the deleted `accountId`, written with an `identity.unlinked` for each login and a `role.revoked`
+  for each active role. No code writes it yet: the four so far, among seq 159–167 on dev, were written by hand on
+  2026-11-02 by the api's own append (`ledger_head/main`), and the worker sealed them like any other entry.
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
   entries are public; the election notice entries (`notice.*`, §6.8), about delivering mail rather than the election's
   record, are Auditors' only. A public verifier checks a public entry by Merkle inclusion in its ledger block (§8.3) without

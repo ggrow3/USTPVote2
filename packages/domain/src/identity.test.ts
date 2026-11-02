@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_MFA_POLICY, isSignInProvider, mfaPolicySchema, secondFactorScope } from './identity.js';
+import { isPublicLedgerEvent } from './ledger.js';
+import { LEDGER_EVENT_TYPES } from './ledger-events.js';
 import { ROLES, type Role } from './roles.js';
 
 describe('sign-in providers', () => {
@@ -43,5 +45,14 @@ describe('two-step verification policy', () => {
     expect(mfaPolicySchema.safeParse({ membersRequired: true }).success).toBe(false);
     expect(mfaPolicySchema.safeParse({ basedOn: -1, membersRequired: true }).success).toBe(false);
     expect(mfaPolicySchema.safeParse({ basedOn: 0, membersRequired: 'yes' }).success).toBe(false);
+  });
+});
+
+describe('account deletion entries', () => {
+  it('are a known ledger type that Auditors read, like the unlinked logins and revoked roles beside them', () => {
+    expect(LEDGER_EVENT_TYPES).toContain('account.deleted');
+    for (const type of ['account.deleted', 'identity.unlinked', 'role.revoked'] as const) {
+      expect(isPublicLedgerEvent(type)).toBe(false);
+    }
   });
 });
