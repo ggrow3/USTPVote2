@@ -61,8 +61,8 @@ describe('site analytics', () => {
     }
   });
 
-  it('never counts the ballot, receipts, sign-in, the account page or the admin console', () => {
-    for (const path of ['/ballot', '/ballot/01a17d23', '/verify', '/signin', '/account', '/admin', '/admin/elections/x']) {
+  it('never counts the ballot, receipts, sign-in, account email links, the account page or the admin console', () => {
+    for (const path of ['/ballot', '/ballot/01a17d23', '/verify', '/signin', '/email-action', '/account', '/admin', '/admin/elections/x']) {
       expect(analyticsAllowed(path)).toBe(false);
     }
     for (const path of ['/', '/vote', '/register', '/offices', '/results/01a17d23', '/course', '/ballots-explained']) {

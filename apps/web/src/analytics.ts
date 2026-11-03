@@ -6,9 +6,9 @@ import { session } from './session.js';
 
 /**
  * Google Analytics 4 on the public pages (design §10.7), only once a System Admin has set a measurement ID. It is
- * loaded on the first page it may see, never on the ballot, receipts, sign-in, account or admin pages, and each page
- * view sends the path alone: no query string, nobody's identity, no Google signals or ad personalization. Browsers
- * that send Global Privacy Control get none of it.
+ * loaded on the first page it may see, never on the ballot, receipts, sign-in, account email link, account or admin
+ * pages, and each page view sends the path alone: no query string, nobody's identity, no Google signals or ad
+ * personalization. Browsers that send Global Privacy Control get none of it.
  */
 
 declare global {

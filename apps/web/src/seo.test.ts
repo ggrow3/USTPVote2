@@ -17,8 +17,9 @@ describe('pageSeo', () => {
     expect(pageSeo(route('/admin/elections/:id', { requiresAuth: true, roles: ['election_admin'] })).listed).toBe(false);
   });
 
-  it('keeps signing in and certificates out too, though anyone may open them', () => {
+  it('keeps signing in, account email links and certificates out too, though anyone may open them', () => {
     expect(pageSeo(route('/signin')).listed).toBe(false);
+    expect(pageSeo(route('/email-action')).listed).toBe(false);
     expect(pageSeo(route('/course/certificates/:id')).listed).toBe(false);
   });
 
