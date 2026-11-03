@@ -8,6 +8,7 @@ import {
   dnsChecks,
   fromDomain,
   identityChecks,
+  identityPlatformCheck,
   isRehearsalRoll,
   MAIL_CHECK_INTERVAL_MINUTES,
   MAIL_RATE_DAYS,
@@ -33,10 +34,13 @@ import { MAIL_TRANSPORT, type MailTransport } from './mail-transport.js';
 import { MailRepository } from './mail.repository.js';
 import { Mailer } from './mailer.js';
 import { NoticeSettingsService } from './notice-settings.js';
-import type { SesAccountReader } from './ses-account.js';
+import type { IdentityPlatformReader, SesAccountReader } from './ses-account.js';
 
 /** The SES reader, or null where the worker does not send through SES. */
 export const SES_ACCOUNT = Symbol('SesAccountReader');
+
+/** The reader of Identity Platform's email settings, or null where there is no project to read (the emulators). */
+export const IDENTITY_PLATFORM = Symbol('IdentityPlatformReader');
 
 /** Looks up a name's TXT records, each joined from its strings; tests replace it. */
 export const DNS_TXT = Symbol('DnsTxt');
@@ -60,6 +64,7 @@ const SES_CHECKS: readonly MailCheckId[] = [
   'dkim',
   'mail_from',
   'default_configuration_set',
+  'identity_platform',
   'configuration_set',
   'event_destination',
   'queue',
@@ -86,6 +91,7 @@ export class MailHealthChecker {
     private readonly elections: ElectionReader,
     @Inject(MAIL_TRANSPORT) private readonly transport: MailTransport | null,
     @Inject(SES_ACCOUNT) private readonly ses: SesAccountReader | null,
+    @Inject(IDENTITY_PLATFORM) private readonly identityPlatform: IdentityPlatformReader | null,
     @Inject(DNS_TXT) private readonly txt: DnsTxt,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
@@ -115,17 +121,21 @@ export class MailHealthChecker {
     const checks: MailCheck[] = configChecks({ transport, webOrigin, contact: settings.contact ?? this.config.noticeContact, queueUrl: eventsQueueUrl });
 
     if (transport === 'ses' && this.ses && domain) {
-      const [account, identity, set, queue, largestRoll] = await Promise.all([
+      const [account, identity, set, queue, largestRoll, signIn, lastSeen] = await Promise.all([
         this.ses.account(),
         this.ses.identity(domain),
         configurationSet ? this.ses.configurationSet(configurationSet) : Promise.resolve({ unread: 'none' }),
         this.ses.queue(),
         this.largestRoll(),
+        this.identityPlatform ? this.identityPlatform.email() : Promise.resolve({ unread: 'no project' }),
+        this.mail.lastIdentityMail(),
       ]);
       const mailFromDomain = 'mailFromDomain' in identity ? identity.mailFromDomain : null;
+      const productionAccess = 'productionAccess' in account ? account.productionAccess : null;
       checks.push(
         ...accountChecks(account, { maxSendRate, largestRoll }),
         ...identityChecks(identity, { domain, configurationSet }),
+        identityPlatformCheck('unread' in signIn ? signIn : { ...signIn, lastSeen }, { region: this.config.ses.region, domain, productionAccess, now }),
         ...configurationSetChecks(set, { name: configurationSet }),
         ...queueChecks(queue),
         ...dnsChecks(await this.dns(domain, mailFromDomain), { domain, mailFromDomain }),

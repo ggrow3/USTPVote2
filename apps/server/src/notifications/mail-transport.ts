@@ -106,8 +106,9 @@ export function sesEventBody(input: {
   readonly at: string;
   readonly tags: Readonly<Record<string, string>>;
   readonly detail?: Record<string, unknown>;
+  readonly subject?: string;
 }): string {
-  const { eventType, messageId, to, sentAt, at, tags, detail } = input;
+  const { eventType, messageId, to, sentAt, at, tags, detail, subject } = input;
   const key = { Bounce: 'bounce', Complaint: 'complaint', Delivery: 'delivery', DeliveryDelay: 'deliveryDelay', Send: 'send' }[eventType];
   const sub = key ? { ...((detail?.[key] as object | undefined) ?? {}), timestamp: at } : {};
   return JSON.stringify({
@@ -117,6 +118,7 @@ export function sesEventBody(input: {
       messageId,
       destination: to ? [to] : [],
       tags: Object.fromEntries(Object.entries(tags).map(([k, v]) => [k, [v]])),
+      ...(subject !== undefined && { commonHeaders: { subject } }),
     },
     ...detail,
     ...(key && { [key]: sub }),

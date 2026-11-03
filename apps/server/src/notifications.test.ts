@@ -192,6 +192,7 @@ describe('delivery reports from SQS', () => {
     ref: 'e1_voting_open',
     configurationSet: 'ustp-mail-dev',
     destination: 'ada@example.org',
+    subject: null,
     bounce: { type: 'permanent', subType: 'General' },
     delay: null,
   };
@@ -226,9 +227,16 @@ describe('delivery reports from SQS', () => {
     expect(read({ eventType: 'Rendering Failure', failure: {} })).toMatchObject({ type: 'rendering_failure' });
   });
 
-  it('reads mail Identity Platform sent, which carries none of this app’s tags', () => {
-    const plain = event({ eventType: 'Delivery', mail: { messageId: 'ses-9', timestamp: '2026-11-03T12:00:00.000Z', destination: ['ada@example.org'] } });
-    expect(sesMailEvent(JSON.stringify(plain))).toMatchObject({ type: 'delivery', kind: null, ref: null, configurationSet: null, destination: 'ada@example.org' });
+  it('reads mail Identity Platform sent, which carries none of this app’s tags, with its subject', () => {
+    const mail = { messageId: 'ses-9', timestamp: '2026-11-03T12:00:00.000Z', destination: ['ada@example.org'], commonHeaders: { subject: 'Verify your email for USTP Vote' } };
+    expect(sesMailEvent(JSON.stringify(event({ eventType: 'Delivery', mail })))).toMatchObject({
+      type: 'delivery',
+      kind: null,
+      ref: null,
+      configurationSet: null,
+      destination: 'ada@example.org',
+      subject: 'Verify your email for USTP Vote',
+    });
   });
 
   it('drops opens, clicks, other notifications and garbage', () => {
@@ -292,6 +300,7 @@ describe('the outbox acting out SES', () => {
       ref: 'a1',
       configurationSet: 'ustp-mail-dev',
       destination: 'full@soft.test',
+      subject: null,
       bounce: { type: 'transient', subType: 'MailboxFull' },
       delay: null,
     });

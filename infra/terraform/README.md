@@ -342,7 +342,7 @@ factors with `adjacentIntervals: 5` and no SMS (design §4), and the authorized 
   one click in the Firebase console (Authentication → Sign-in method → Google), which creates the client. The admin
   sign-in switches turn a provider off in the api without touching this configuration.
 - **Email sender** and templates once the sender domain is decided (Q15). Sending them through Amazon SES from the
-  environment's own domain is "Email (Amazon SES)", step 9.
+  environment's own domain is "Email (Amazon SES)" › "SES sign-in mail".
 
 ### App Check and the web build
 
@@ -626,6 +626,36 @@ sender domain, the configuration set, both queues and the DNS records, works out
 sends three messages to SES's mailbox simulator to see their reports come back. Each check that is not right names the
 step above that fixes it. With `alert_emails` set, a check that starts failing also emails those addresses (alert
 policy `mail`, through Google, not SES).
+
+#### SES sign-in mail
+
+Identity Platform's own email (sign-in links, address confirmations, password resets) can go through SES's SMTP
+interface too, from the environment's address, so it is DKIM-signed by the party's domain and its delivery reports
+reach the worker like the app's: each member sees theirs on their Account page. Identity Platform cannot name a
+configuration set, so the sender domain's default one (set by the `aws` root) publishes its reports. Switch it over in
+this order, one environment at a time, dev first:
+
+1. The DNS records are published, and the setup check shows the domain verified, DKIM and MAIL FROM successful.
+2. Production access is granted: while the account is in the sandbox, sign-in links would reach almost nobody, and the
+   check fails.
+3. The worker sends through SES, the check's probe passes, and your own test email shows delivered.
+4. Switch Identity Platform over. A new access key for the environment's SMTP user goes straight into the script on
+   standard input, which derives the SES SMTP password from it and sets Identity Platform's custom SMTP; neither is
+   printed or stored anywhere else:
+
+   ```bash
+   aws iam create-access-key --user-name ustpvote-smtp-dev --query 'AccessKey.[AccessKeyId,SecretAccessKey]' --output text \
+     | node infra/terraform/aws/scripts/identity-platform-smtp.mjs --project ustpvote2-dev --from noreply@dev.transhumanist-party.org
+   ```
+
+5. Send yourself a sign-in link, a password reset and an address confirmation; each shows on your Account page as
+   delivered, and the check's "Sign-in email through SES" turns ok.
+6. Staging after a clean week, then prod.
+
+To switch back to Google's sender at once: `node infra/terraform/aws/scripts/identity-platform-smtp.mjs --project
+<project> --off`. The email action handler (`callbackUri`, "Identity Platform") is a separate setting and is left as it
+is. The worker reads Identity Platform's configuration for the check with the custom role `ustpAuthConfigViewer`
+(`firebaseauth.configs.get` only).
 
 #### SES key rotation
 

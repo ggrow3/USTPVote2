@@ -22,6 +22,7 @@ export const MAIL_CHECK_IDS = [
   'dkim',
   'mail_from',
   'default_configuration_set',
+  'identity_platform',
   'configuration_set',
   'event_destination',
   'queue',
@@ -46,6 +47,7 @@ export const MAIL_SETUP_STEPS = {
   key: 'SES worker key',
   switchOn: 'SES switch on',
   app: 'SES in the app',
+  signIn: 'SES sign-in mail',
 } as const;
 export type MailSetupStep = (typeof MAIL_SETUP_STEPS)[keyof typeof MAIL_SETUP_STEPS];
 
@@ -154,6 +156,19 @@ export interface MailQueueFacts {
   /** Reports in the dead-letter queue; null when there is none to read. */
   readonly deadLetters: number | null;
 }
+
+/** How Identity Platform sends its email (its project configuration), and when its mail was last reported. */
+export interface IdentityPlatformFacts {
+  /** `DEFAULT` (Google's sender) or `CUSTOM_SMTP`. */
+  readonly method: string;
+  readonly host: string | null;
+  readonly senderEmail: string | null;
+  /** The last delivery report of a message Identity Platform sent through SES; null when none in 180 days. */
+  readonly lastSeen: string | null;
+}
+
+/** Sign-in mail through SES is expected to be reported this often at least. */
+export const IDENTITY_MAIL_QUIET_DAYS = 7;
 
 /** The DNS records found: the DMARC record (the domain's or its parent's) and the MAIL FROM domain's SPF. */
 export interface MailDnsFacts {
@@ -283,6 +298,47 @@ export function identityChecks(facts: SesIdentityFacts | Unread, input: { readon
           MAIL_SETUP_STEPS.terraform,
         ),
   ];
+}
+
+/**
+ * Identity Platform's email (§4): sent through SES's SMTP interface from this deployment's domain, never while the
+ * account is in the sandbox (sign-in links would reach nobody), and reported recently enough to know it arrives.
+ */
+export function identityPlatformCheck(
+  facts: IdentityPlatformFacts | Unread,
+  input: { readonly region: string | null; readonly domain: string; readonly productionAccess: boolean | null; readonly now: Date },
+): MailCheck {
+  const id = 'identity_platform';
+  if (isUnread(facts)) {
+    return check(id, 'warn', `Could not read Identity Platform's configuration (${facts.unread}).`, MAIL_SETUP_STEPS.signIn);
+  }
+  if (facts.method !== 'CUSTOM_SMTP') {
+    return check(
+      id,
+      'warn',
+      "Sign-in links, address confirmations and password resets come from Google's sender, not the party's domain, and nothing is known of whether they arrive.",
+      MAIL_SETUP_STEPS.signIn,
+    );
+  }
+  const host = input.region ? `email-smtp.${input.region}.amazonaws.com` : null;
+  if (host && facts.host !== host) {
+    return check(id, 'fail', `Identity Platform sends through ${facts.host ?? 'no host'}, not ${host}: sign-in email may not arrive.`, MAIL_SETUP_STEPS.signIn);
+  }
+  if (fromDomain(facts.senderEmail ?? '') !== input.domain) {
+    return check(id, 'fail', `Identity Platform sends from ${facts.senderEmail ?? 'no address'}, not an address at ${input.domain}.`, MAIL_SETUP_STEPS.signIn);
+  }
+  if (input.productionAccess === false) {
+    return check(id, 'fail', 'Sign-in email goes through SES while the account is in the sandbox, so it reaches almost nobody: switch it back (--off).', MAIL_SETUP_STEPS.signIn);
+  }
+  if (!facts.lastSeen || Date.parse(facts.lastSeen) < input.now.getTime() - IDENTITY_MAIL_QUIET_DAYS * 86_400_000) {
+    return check(
+      id,
+      'warn',
+      `Sign-in email goes through SES, but none has been reported for ${IDENTITY_MAIL_QUIET_DAYS} days: send yourself a sign-in link and see it on your Account page.`,
+      MAIL_SETUP_STEPS.signIn,
+    );
+  }
+  return check(id, 'ok', `Sign-in email goes through SES from ${facts.senderEmail}; the last was reported ${new Date(facts.lastSeen).toISOString().slice(0, 10)}.`);
 }
 
 /** The configuration set: sending, publishing every delivery report and no opens or clicks to a topic. */

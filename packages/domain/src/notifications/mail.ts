@@ -12,10 +12,21 @@ import { NOTICE_KINDS, type NoticeDelivery, type NoticeKind, type RecipientStatu
 /**
  * What a message is: an election notice (`NoticeKind`), an Election Admin's test of one, a welcome email to an added
  * member (§5.13), the setup check's message to SES's mailbox simulator (`probe`, §10.12), a test email a member asked for
- * on their Account page (`member_test`, §10.12), or an email Identity Platform sent about the account (a sign-in link, an address to confirm, a password reset), which the worker learns of only
+ * on their Account page (`member_test`, §10.12), or an email Identity Platform sent about the account through SES (§4):
+ * a sign-in link, an address to confirm, a password reset, or another (`account_email`), which the worker learns of only
  * from its delivery reports.
  */
-export const MAIL_KINDS = [...NOTICE_KINDS, 'notice_test', 'welcome', 'probe', 'member_test', 'account_email'] as const;
+export const MAIL_KINDS = [
+  ...NOTICE_KINDS,
+  'notice_test',
+  'welcome',
+  'probe',
+  'member_test',
+  'sign_in_link',
+  'address_verification',
+  'password_reset',
+  'account_email',
+] as const;
 export type MailKind = (typeof MAIL_KINDS)[number];
 
 /** Who sent it: this app's worker, or Identity Platform through the same mail service. */
@@ -61,6 +72,8 @@ export interface MailEvent {
    * never stored or logged.
    */
   readonly destination: string | null;
+  /** The subject, used only to tell Identity Platform's emails apart (`identityMailKind`); never stored or logged. */
+  readonly subject: string | null;
   readonly bounce: { readonly type: BounceType; readonly subType: string } | null;
   readonly delay: { readonly type: string; readonly until: string | null } | null;
 }
@@ -192,10 +205,23 @@ export function mailMessageRecord(input: {
   };
 }
 
+/**
+ * What an email Identity Platform sent is, from its subject (its templates' own words, which name the app): a sign-in
+ * link, an address to confirm, a password reset, or another account email (a changed address, a second factor added).
+ */
+export function identityMailKind(subject: string | null): MailKind {
+  const s = (subject ?? '').toLowerCase();
+  if (/reset (your )?password|password reset/.test(s)) return 'password_reset';
+  if (/(verify|confirm) (your )?email/.test(s)) return 'address_verification';
+  if (/^sign in to|sign-in link|sign in link/.test(s) && !/changed/.test(s)) return 'sign_in_link';
+  return 'account_email';
+}
+
 /** The record of a message Identity Platform sent, from its first report; `accountId` is whose address it went to. */
 export function identityMailRecord(event: MailEvent, accountId: string | null): MailMessageRecord {
+  const kind = identityMailKind(event.subject);
   return {
-    ...mailMessageRecord({ messageId: event.messageId, kind: 'account_email', ref: null, electionId: null, accountId, delivery: 'mail', at: event.sentAt }),
+    ...mailMessageRecord({ messageId: event.messageId, kind, ref: null, electionId: null, accountId, delivery: 'mail', at: event.sentAt }),
     sender: 'identity_platform',
   };
 }

@@ -9,6 +9,7 @@ import {
 import { GetQueueAttributesCommand, SQSClient } from '@aws-sdk/client-sqs';
 import type { MailQueueFacts, SesAccountFacts, SesConfigurationSetFacts, SesIdentityFacts, Unread } from 'ustp-domain';
 import type { ServerConfig } from '../config.js';
+import { accessToken } from '../infra/google-identity.js';
 
 /** How long one read may take before the check reports it unread. */
 const READ_TIMEOUT_MS = 5_000;
@@ -148,4 +149,38 @@ function redriveTarget(policy: string | undefined): string | null {
 export function queueUrlOf(arn: string | null): string | null {
   const m = arn ? /^arn:aws:sqs:([a-z0-9-]+):(\d{12}):([A-Za-z0-9_-]+)$/.exec(arn) : null;
   return m ? `https://sqs.${m[1]}.amazonaws.com/${m[2]}/${m[3]}` : null;
+}
+
+/** How Identity Platform sends its email, from its project configuration (`firebaseauth.configs.get`). */
+export interface IdentityPlatformEmail {
+  readonly method: string;
+  readonly host: string | null;
+  readonly senderEmail: string | null;
+}
+
+/**
+ * Reads Identity Platform's email settings for the setup check (design §10.12), with the worker's own token from the
+ * metadata server; never the SMTP password, which the check does not need.
+ */
+export class IdentityPlatformReader {
+  constructor(
+    private readonly projectId: string,
+    private readonly token: () => Promise<string> = accessToken,
+  ) {}
+
+  /** Null where the worker cannot tell which project it is in (the emulators). */
+  static fromConfig(config: ServerConfig): IdentityPlatformReader | null {
+    return config.mailTransport === 'ses' && config.projectId ? new IdentityPlatformReader(config.projectId) : null;
+  }
+
+  async email(): Promise<IdentityPlatformEmail | Unread> {
+    return read(async () => {
+      const url = `https://identitytoolkit.googleapis.com/admin/v2/projects/${encodeURIComponent(this.projectId)}/config`;
+      const res = await fetch(url, { headers: { authorization: `Bearer ${await this.token()}` }, signal: AbortSignal.timeout(READ_TIMEOUT_MS) });
+      if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { name: res.status === 403 ? 'PermissionDenied' : `HTTP${res.status}` });
+      const config = (await res.json()) as { notification?: { sendEmail?: { method?: string; smtp?: { host?: string; senderEmail?: string } } } };
+      const send = config.notification?.sendEmail;
+      return { method: send?.method ?? 'DEFAULT', host: send?.smtp?.host ?? null, senderEmail: send?.smtp?.senderEmail ?? null };
+    });
+  }
 }
