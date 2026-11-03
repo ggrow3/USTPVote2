@@ -121,7 +121,7 @@ resource "google_monitoring_alert_policy" "mail" {
   count = length(var.alert_emails) > 0 && var.mail_transport == "ses" ? 1 : 0
 
   project      = var.project_id
-  display_name = "USTPVote ${var.environment}: email is not set up properly"
+  display_name = "USTPVote ${var.environment}: email is not set up properly, or did not arrive"
   combiner     = "OR"
   severity     = "ERROR"
 
@@ -149,11 +149,13 @@ resource "google_monitoring_alert_policy" "mail" {
 
   documentation {
     mime_type = "text/markdown"
-    subject   = "USTPVote ${var.environment}: an email setup check is failing"
+    subject   = "USTPVote ${var.environment}: email setup failing, email held, or email not delivered"
     content   = <<-EOT
-      The worker's email setup check found something that can keep members from getting their email (design §10.12).
-      Admin › Email lists each check, why it fails and the step of the infra README ("Email (Amazon SES)") that fixes
-      it; System Admins can run it again there with "Check now".
+      The worker's email setup check found something that can keep members from getting their email (design §10.12),
+      election email was held because of it, or a send's emails did not all reach their mail servers within 30 minutes
+      (design §6.8). Admin › Email lists each check, why it fails and the step of the infra README ("Email (Amazon
+      SES)") that fixes it; System Admins can run it again there with "Check now". The election's "Email to voters" card
+      shows a held email and each send's delivery check.
     EOT
   }
 

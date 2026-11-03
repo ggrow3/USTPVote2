@@ -154,6 +154,8 @@ export const Collections = {
   noticeReceipts: 'notice_receipts',
   /** `notice_tests/{testId}`: an Election Admin's test email to themselves, queued for the worker (design §6.8). */
   noticeTests: 'notice_tests',
+  /** `notice_verifications/{receiptId}`: each send to a roll, checked 30 minutes after it finished (design §6.8). */
+  noticeVerifications: 'notice_verifications',
   /** `welcome_emails/{accountId}`: the welcome email to a member a Membership Admin added, queued for the worker (§5.13). */
   welcomeEmails: 'welcome_emails',
   /** `mail_messages/{messageId}`: each message the mail service took and what its delivery reports said, kept 180 days (§6.8). */

@@ -13,6 +13,7 @@ import { NoticeSettingsService } from './notice-settings.js';
 import { NoticeSender } from './notice-sender.js';
 import { NoticeRepository } from './notice.repository.js';
 import { NoticesService } from './notices.service.js';
+import { SendVerifier } from './send-verification.js';
 import { MyEmailService } from './my-email.js';
 import { IdentityPlatformReader, SesAccountReader } from './ses-account.js';
 import { SesEventQueue, sesMailEvent, SesTransport } from './ses.js';
@@ -46,6 +47,7 @@ export const NOTIFICATION_WORKER_PROVIDERS: Provider[] = [
   MailHealthChecker,
   MailRequestSender,
   NoticeSender,
+  SendVerifier,
   WelcomeSender,
   { provide: SES_ACCOUNT, inject: [CONFIG], useFactory: (config: ServerConfig) => SesAccountReader.fromConfig(config) },
   { provide: IDENTITY_PLATFORM, inject: [CONFIG], useFactory: (config: ServerConfig) => IdentityPlatformReader.fromConfig(config) },

@@ -7,6 +7,7 @@ import {
   noticeSummary,
   noticeTestRecord,
   noticeTestSummary,
+  noticeVerificationTotals,
   type NoticeDelivery,
   type NoticeKind,
   type NoticeResendPayload,
@@ -47,12 +48,13 @@ export class NoticesService {
 
   async view(ctx: RequestContext, electionId: string): Promise<NoticesView> {
     if (!(await this.elections.find(electionId))) throw new NotFoundException('no such election');
-    const [notices, settings, receipts, tests, health] = await Promise.all([
+    const [notices, settings, receipts, tests, health, verifications] = await Promise.all([
       this.notices.ofElection(electionId),
       this.settings.current(),
       this.notices.receiptCounts(electionId),
       this.notices.testsTo(electionId, testRecipient(ctx)),
       this.mail.health(),
+      this.notices.verificationsOf(electionId),
     ]);
     const { version: _v, updatedAt: _at, updatedBy: _by, ...current } = settings;
     return {
@@ -63,6 +65,7 @@ export class NoticesService {
       receipts: noticeReceiptTotals(receipts),
       tests: tests.slice(0, TESTS_SHOWN).map(noticeTestSummary),
       setup: health?.overall ?? null,
+      verifications: noticeVerificationTotals(verifications),
     };
   }
 

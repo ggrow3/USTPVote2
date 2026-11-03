@@ -113,7 +113,26 @@ export class MailHealthChecker {
     return true;
   }
 
-  private async check(asked: MailHealthRequest | null, now: Date): Promise<MailHealthRecord> {
+  /** The last run of the check. */
+  current(): Promise<MailHealthRecord | null> {
+    return this.mail.health();
+  }
+
+  /**
+   * The last run, after running one now if it is over an hour old, for a send of election email about to go (design
+   * §6.8). The old one when another worker is running it.
+   */
+  async ensureFresh(now: Date = new Date()): Promise<MailHealthRecord | null> {
+    const previous = await this.mail.health();
+    if (previous && Date.parse(previous.checkedAt) > now.getTime() - MAIL_CHECK_INTERVAL_MINUTES * 60_000) return previous;
+    if (!(await this.mail.claimHealthRun(now))) return previous;
+    const record = await this.check(null, now, 'send');
+    await this.mail.saveHealth(record, null);
+    this.alert(record, previous);
+    return record;
+  }
+
+  private async check(asked: MailHealthRequest | null, now: Date, trigger: MailHealthRecord['trigger'] = 'schedule'): Promise<MailHealthRecord> {
     const { mailTransport: transport, webOrigin, mailFrom } = this.config;
     const { configurationSet, eventsQueueUrl, maxSendRate } = this.config.ses;
     const domain = fromDomain(mailFrom);
@@ -151,7 +170,7 @@ export class MailHealthChecker {
     checks.push(probeCheck(probe, now));
     return {
       checkedAt: now.toISOString(),
-      trigger: asked ? 'request' : 'schedule',
+      trigger: asked ? 'request' : trigger,
       requestedBy: asked?.requestedBy ?? null,
       transport,
       domain,

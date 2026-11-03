@@ -340,6 +340,7 @@ describe('notice rules', () => {
       counts,
       createdAt: record.createdAt,
       completedAt: record.completedAt,
+      held: null,
     });
   });
 });
@@ -356,6 +357,7 @@ describe('the emails in the workflow', () => {
     counts: { pending: 0, sent: 3, delivered: 0, complained: 0, failed: 0, bounced: 0, skipped: 0 },
     createdAt: ELECTION.opensAt,
     completedAt: null,
+    held: null,
   });
   const view = (delivery: NoticesView['delivery'], notices: NoticeSummary[] = [], settings: NoticeSettings = DEFAULT_NOTICE_SETTINGS): NoticesView => ({
     delivery,
@@ -365,6 +367,7 @@ describe('the emails in the workflow', () => {
     receipts: noticeReceiptTotals([]),
     tests: [],
     setup: null,
+    verifications: [],
   });
   const steps = (over: Partial<Parameters<typeof noticeSteps>[0]> = {}) =>
     noticeSteps({ election, rehearsal: false, testingMode: false, view: view('mail'), now: new Date('2026-11-03T12:00:00Z'), ...over }).map(

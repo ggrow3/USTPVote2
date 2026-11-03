@@ -1,6 +1,14 @@
 {
   "indexes": [
     {
+      "collectionGroup": "notice_verifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "dueAt", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "mail_messages",
       "queryScope": "COLLECTION",
       "fields": [

@@ -16,6 +16,7 @@ import { MailEventRecorder } from '../notifications/mail-events.js';
 import { MailHealthChecker } from '../notifications/mail-health.js';
 import { MailRequestSender } from '../notifications/mail-requests.js';
 import { NoticeSender } from '../notifications/notice-sender.js';
+import { SendVerifier } from '../notifications/send-verification.js';
 import { WelcomeSender } from '../notifications/welcome-sender.js';
 import { RoomAssistant } from '../room/room-assistant.js';
 import { RoomRetention } from '../room/room-retention.js';
@@ -48,6 +49,7 @@ export class TasksController {
     private readonly mailEvents: MailEventRecorder,
     private readonly mailHealth: MailHealthChecker,
     private readonly mailRequests: MailRequestSender,
+    private readonly sendChecks: SendVerifier,
     private readonly suggestions: SuggestionsService,
     private readonly roomRetention: RoomRetention,
     private readonly roomAssistant: RoomAssistant,
@@ -89,6 +91,7 @@ export class TasksController {
       memberEmailsSent: await step("do members' email requests", () => this.mailRequests.sendDue(), 0),
       mailEventsRecorded: await step('record mail events', () => this.mailEvents.record(), 0),
       deliveryReports: await step('report delivery', () => this.notices.reportDelivery(), 0),
+      sendsVerified: await step('verify sends', () => this.sendChecks.verifyDue(), 0),
       mailChecked: await step('check mail setup', () => this.mailHealth.runDue(), false),
       suggestionsDeleted: await step('delete old suggestions', () => this.suggestions.deleteExpired(), 0),
       roomExpired: await step('expire room records', () => this.roomRetention.run(), 0),

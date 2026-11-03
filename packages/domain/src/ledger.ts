@@ -129,6 +129,8 @@ export interface TickResult {
   readonly mailEventsRecorded: number;
   /** Notice rounds whose delivery reports were added up and ledgered as `notice.delivery_reported` (design §6.8). */
   readonly deliveryReports: number;
+  /** Sends of election email checked against their delivery reports, 30 minutes after each (design §6.8). */
+  readonly sendsVerified: number;
   /** Whether the email setup check ran (hourly, or when a System Admin asked; design §10.12). */
   readonly mailChecked: boolean;
   /** Members' requests done: test emails, and addresses tried again (design §10.12). */

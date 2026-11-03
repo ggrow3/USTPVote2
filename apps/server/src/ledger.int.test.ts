@@ -68,6 +68,7 @@ describe('ledger blocks and anchors', () => {
       welcomeEmailsSent: 0,
       mailEventsRecorded: 0,
       deliveryReports: 0,
+      sendsVerified: 0,
       mailChecked: false,
       memberEmailsSent: 0,
       suggestionsDeleted: 0,

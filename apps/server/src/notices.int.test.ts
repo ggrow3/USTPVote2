@@ -2,6 +2,7 @@ import {
   DEFAULT_NOTICE_SETTINGS,
   mailAddressKey,
   noticeReceiptTotals,
+  noticeVerificationTotals,
   type MailMessageRecord,
   type NoticeReceiptRecord,
   type NoticeRecipientRecord,
@@ -395,6 +396,7 @@ describe('a rehearsal roll', () => {
       receipts: noticeReceiptTotals([]),
       tests: [],
       setup: null,
+      verifications: noticeVerificationTotals([]),
     });
   });
 

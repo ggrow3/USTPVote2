@@ -22,6 +22,7 @@ import { loadNotices, noticesOf } from './notice-store.js';
 import {
   countRows,
   EMAIL_DESCRIPTION,
+  heldText,
   NOTICE_TITLES,
   noNoticeText,
   noticeStatus,
@@ -29,6 +30,7 @@ import {
   testBlocked,
   testReceiptText,
   testStatusText,
+  verificationText,
 } from './notice-text.js';
 import { setupLine } from './mail-health-text.js';
 
@@ -58,6 +60,7 @@ const steps = computed(() =>
 );
 const stepOf = (kind: NoticeKind): NoticeStep => steps.value.find((s) => s.kind === kind)!;
 const rollSent = (kind: NoticeKind) => view.value?.receipts.roll.find((t) => t.kind === kind);
+const checksOf = (kind: NoticeKind) => view.value?.verifications.find((t) => t.kind === kind);
 const testsSent = (kind: NoticeKind) => view.value?.receipts.tests.find((t) => t.kind === kind);
 // The caller's newest test of each email; the view lists them newest first.
 const lastTest = (kind: NoticeKind): NoticeTestSummary | null => view.value?.tests.find((t) => t.kind === kind) ?? null;
@@ -159,6 +162,7 @@ function sendTest(kind: NoticeKind) {
           </div>
         </div>
         <q-badge v-if="noticeOf(kind)?.rehearsal" color="orange-2" text-color="black" label="Rehearsal: outbox only" />
+        <q-badge v-if="noticeOf(kind)?.held" color="negative" label="Held" />
         <q-btn
           v-if="canTest && !testUnavailable"
           flat
@@ -178,6 +182,9 @@ function sendTest(kind: NoticeKind) {
           @click="resend(kind)"
         />
       </q-card-section>
+      <q-card-section v-if="noticeOf(kind)?.held" class="q-pt-none">
+        <q-banner dense rounded class="bg-orange-1 text-black" role="status">{{ heldText(noticeOf(kind)!.held!) }}</q-banner>
+      </q-card-section>
       <q-card-section v-if="noticeOf(kind)" class="q-pt-none">
         <dl class="ustp-facts">
           <template v-for="row in countRows(kind, noticeOf(kind)!.counts)" :key="row.label">
@@ -188,6 +195,10 @@ function sendTest(kind: NoticeKind) {
       </q-card-section>
       <q-card-section v-if="view" class="q-pt-none">
         <p class="q-my-none"><strong>Send receipts:</strong> {{ receiptText(rollSent(kind)) }}</p>
+        <q-banner v-if="checksOf(kind)?.shortSends" dense rounded class="bg-orange-1 text-black q-my-xs" role="status">
+          <strong>Delivery check:</strong> {{ verificationText(checksOf(kind)) }}
+        </q-banner>
+        <p v-else-if="verificationText(checksOf(kind))" class="q-my-none"><strong>Delivery check:</strong> {{ verificationText(checksOf(kind)) }}</p>
         <p v-if="testReceiptText(testsSent(kind))" class="q-my-none text-caption text-grey-7">{{ testReceiptText(testsSent(kind)) }}</p>
         <p v-if="lastTest(kind)" class="q-my-none text-caption">{{ testStatusText(lastTest(kind)!) }}</p>
       </q-card-section>

@@ -11,10 +11,13 @@ import {
   type NoticeStep,
   type NoticeSummary,
   type MailStatus,
+  type NoticeHold,
   type NoticeTestSummary,
+  type NoticeVerificationTotals,
   type RecipientCounts,
   type StepStatus,
 } from 'ustp-domain';
+import { MAIL_CHECK_LABELS } from './mail-health-text.js';
 
 /** Wording for the election editor's notice card (design §6.8). */
 
@@ -146,6 +149,39 @@ export function receiptText(totals: NoticeSendTotals | undefined): string {
   const last = totals.lastSentAt ? `; the last finished ${new Date(totals.lastSentAt).toLocaleString()}` : '';
   const failed = totals.failed ? ` The mail service did not take ${count(totals.failed, 'message')}.` : '';
   return `${count(totals.accepted, 'email')} sent in ${count(totals.sends, 'send')}${last}.${failed}`;
+}
+
+/** Why nothing more of an email goes for now (design §6.8): the email setup check is failing. */
+export function heldText(held: NoticeHold): string {
+  const checks = held.checks.map((c) => MAIL_CHECK_LABELS[c]).join(', ');
+  return (
+    `Held since ${new Date(held.since).toLocaleString()}: nothing more of this email goes while the email setup check fails ` +
+    `(${checks}). The System Admins have been alerted; it goes on by itself once the check passes.`
+  );
+}
+
+/**
+ * What the checks of an email's sends found, each made 30 minutes after a send finished (design §6.8); null before the
+ * first send.
+ */
+export function verificationText(totals: NoticeVerificationTotals | undefined): string | null {
+  if (!totals || totals.checked + totals.pending === 0) return null;
+  const waiting = totals.pending ? ` ${count(totals.pending, 'send')} still to be checked.` : '';
+  if (!totals.checked) return `Each send is checked 30 minutes after it finishes.${waiting}`;
+  if (!totals.shortSends) {
+    return `${count(totals.checked, 'send')} checked: all ${count(totals.messages, 'email')} reached their mail servers.${waiting}`;
+  }
+  const short = totals.messages - totals.delivered;
+  const why = [
+    totals.bounced && `${totals.bounced} bounced`,
+    totals.rejected && `${totals.rejected} rejected`,
+    totals.delayed && `${totals.delayed} still delayed`,
+    totals.noReport && `${totals.noReport} with no report`,
+  ].filter(Boolean);
+  return (
+    `${totals.shortSends} of ${count(totals.checked, 'send')} fell short: ${short} of ${count(totals.messages, 'email')} not confirmed ` +
+    `delivered after 30 minutes (${why.join(', ')}). The System Admins have been alerted.${waiting}`
+  );
 }
 
 /** The test emails Election Admins had sent to themselves, counted apart from the roll. */

@@ -2,6 +2,7 @@ import { deny, OK, refuse, type Check } from '../check.js';
 import type { ElectionRecord } from '../elections.js';
 import type { NoticeSettings } from './notice-settings.js';
 import type { MailCheckStatus } from './mail-health.js';
+import type { NoticeHold, NoticeVerificationTotals } from './send-checks.js';
 import type { NoticeReceiptTotals, NoticeTestSummary } from './receipts.js';
 
 /**
@@ -107,6 +108,10 @@ export interface NoticeRecord {
   /** When the current round finished; null while it runs. */
   readonly completedAt: string | null;
   /**
+   * Set while the notice is held because the email setup check is failing (design §6.8); cleared when it goes on.
+   */
+  readonly held?: NoticeHold | null;
+  /**
    * For vote confirmations: when the worker last looked for voters, so the next look starts a little before it; the
    * notice finishes once a look has been made after voting closed.
    */
@@ -170,6 +175,8 @@ export interface NoticeSummary {
   readonly counts: RecipientCounts;
   readonly createdAt: string;
   readonly completedAt: string | null;
+  /** Why nothing more of it goes for now, when the email setup check is failing; null otherwise. */
+  readonly held: NoticeHold | null;
 }
 
 /** `GET /v1/admin/elections/{id}/notices`. */
@@ -190,6 +197,8 @@ export interface NoticesView {
   readonly tests: readonly NoticeTestSummary[];
   /** How the email setup check's last run went (design §10.12), in a word; null before its first run. */
   readonly setup: MailCheckStatus | null;
+  /** What the checks of each email's sends, 30 minutes after each, found (design §6.8). */
+  readonly verifications: readonly NoticeVerificationTotals[];
 }
 
 /** The `notice.sent` payload: a round finished. Counts only. */
@@ -241,7 +250,7 @@ export function isNoticeKind(value: string): value is NoticeKind {
 
 export function noticeSummary(notice: NoticeRecord, counts: RecipientCounts): NoticeSummary {
   const { kind, delivery, rehearsal, status, round, recipients, createdAt, completedAt } = notice;
-  return { kind, delivery, rehearsal, status, round, recipients, counts, createdAt, completedAt };
+  return { kind, delivery, rehearsal, status, round, recipients, counts, createdAt, completedAt, held: notice.held ?? null };
 }
 
 /** Who gets a notice: real members always (where email is set up); a rehearsal's test voters only in testing mode. */
