@@ -6,6 +6,7 @@ import type { MailAddressState, MailKind, MailRequestOutcome, MailStatus, MyEmai
 export const MAIL_KIND_LABELS: Readonly<Record<MailKind, string>> = {
   voting_open: 'Voting is open',
   closing_soon: 'Reminder: voting closes soon',
+  voted: 'Your vote was recorded',
   notice_test: 'Test of an election email',
   welcome: 'Welcome',
   probe: 'Setup check',

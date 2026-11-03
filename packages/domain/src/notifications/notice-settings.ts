@@ -22,6 +22,10 @@ export const DEFAULT_NOTICE_TEXT: Readonly<Record<NoticeKind, { readonly subject
     subject: 'Voting closes soon: {title}',
     intro: 'You have not voted yet in “{title}”, an election of the US Transhumanist Party, and voting closes in {time_left}.',
   },
+  voted: {
+    subject: 'Your vote was recorded: {title}',
+    intro: 'Your ballot in “{title}”, an election of the US Transhumanist Party, was recorded.',
+  },
 };
 
 export const MAX_NOTICE_SUBJECT = 150;
@@ -51,6 +55,7 @@ export const DEFAULT_NOTICE_SETTINGS: NoticeSettings = {
   kinds: {
     voting_open: { enabled: true, subject: null, intro: null },
     closing_soon: { enabled: true, subject: null, intro: null },
+    voted: { enabled: true, subject: null, intro: null },
   },
   reminderHours: REMINDER_HOURS_BEFORE_CLOSE,
   contact: null,
@@ -65,7 +70,9 @@ export interface NoticeSettingsRecord extends NoticeSettings {
 }
 
 /** The stored settings with anything missing taken from the defaults. */
-export function resolveNoticeSettings(stored: Partial<NoticeSettings> | undefined | null): NoticeSettings {
+export function resolveNoticeSettings(
+  stored: (Omit<Partial<NoticeSettings>, 'kinds'> & { readonly kinds?: Partial<NoticeSettings['kinds']> }) | undefined | null,
+): NoticeSettings {
   const kinds = Object.fromEntries(
     NOTICE_KINDS.map((kind) => [kind, { ...DEFAULT_NOTICE_SETTINGS.kinds[kind], ...stored?.kinds?.[kind] }]),
   ) as Record<NoticeKind, NoticeKindSettings>;
@@ -116,7 +123,8 @@ const kindSettings = z.strictObject({
 /** `PUT /v1/admin/notice-settings`: the whole settings, and the version they were edited from. */
 export const noticeSettingsSchema = z.strictObject({
   basedOn: z.number().int().min(0),
-  kinds: z.strictObject({ voting_open: kindSettings, closing_soon: kindSettings }),
+  // Vote confirmations came later: a page opened before them saves without them, and keeps what was set.
+  kinds: z.strictObject({ voting_open: kindSettings, closing_soon: kindSettings, voted: kindSettings.optional() }),
   reminderHours: z.number().int().min(MIN_REMINDER_HOURS).max(MAX_REMINDER_HOURS),
   contact: z
     .string()

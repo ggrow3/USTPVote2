@@ -44,6 +44,7 @@ const settingsOf = (over: Partial<NoticeSettings> & { votingOpen?: Partial<Notic
     kinds: {
       voting_open: { ...DEFAULT_NOTICE_SETTINGS.kinds.voting_open, ...votingOpen },
       closing_soon: { ...DEFAULT_NOTICE_SETTINGS.kinds.closing_soon, ...closingSoon },
+      voted: DEFAULT_NOTICE_SETTINGS.kinds.voted,
     },
   };
 };

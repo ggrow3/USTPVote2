@@ -89,6 +89,7 @@ describe('noticeReceiptTotals', () => {
     expect(totals.roll).toEqual([
       { kind: 'voting_open', sends: 2, accepted: 237, failed: 1, skipped: 2, lastSentAt: minutesAgo(59) },
       { kind: 'closing_soon', sends: 1, accepted: 12, failed: 0, skipped: 0, lastSentAt: minutesAgo(5) },
+      { kind: 'voted', sends: 0, accepted: 0, failed: 0, skipped: 0, lastSentAt: null },
     ]);
   });
 
@@ -108,8 +109,9 @@ describe('noticeReceiptTotals', () => {
     expect(totals.roll.map((t) => [t.kind, t.sends, t.lastSentAt])).toEqual([
       ['voting_open', 0, null],
       ['closing_soon', 0, null],
+      ['voted', 0, null],
     ]);
-    expect(totals.tests).toHaveLength(2);
+    expect(totals.tests).toHaveLength(3);
   });
 });
 

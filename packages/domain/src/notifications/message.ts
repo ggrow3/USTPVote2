@@ -33,6 +33,8 @@ export interface NoticeMessageInput {
   readonly text?: { readonly subject: string | null; readonly intro: string | null } | null;
   /** A test email to the Election Admin who asked for it: "[TEST]" leads the subject, and a note opens the message. */
   readonly test?: boolean;
+  /** For a vote confirmation, when the ballot was cast; `now` when absent (a test). */
+  readonly castAt?: string;
 }
 
 /** The time zones the window is given in: the US zones members live in, then UTC. Eastern leads. */
@@ -64,7 +66,7 @@ export const TEST_NOTE =
   'get the same email without this note, when it is due.';
 
 export function noticeMessage(kind: NoticeKind, input: NoticeMessageInput): NoticeMessage {
-  return kind === 'closing_soon' ? closingSoonMessage(input) : votingOpenMessage(input);
+  return kind === 'closing_soon' ? closingSoonMessage(input) : kind === 'voted' ? votedMessage(input) : votingOpenMessage(input);
 }
 
 /** "Voting is open": to everyone on the roll, when the election opens. */
@@ -116,6 +118,38 @@ export function closingSoonMessage(input: NoticeMessageInput): NoticeMessage {
       small:
         'You are getting this reminder because you are on the voter roll of this election and had not voted when it ' +
         'was sent. It is sent once. Only whether you had voted was used to send it, never how anyone votes.',
+    },
+    ...footer(input.contact, links.site),
+  ]);
+}
+
+/**
+ * "Your vote was recorded": to each voter soon after their ballot was cast (design §6.8), so that someone who did not
+ * vote learns at once that a ballot went in with their account. When it was cast, never how: no choice, commitment or
+ * receipt goes in it.
+ */
+export function votedMessage(input: NoticeMessageInput): NoticeMessage {
+  const { election } = input;
+  const title = oneLine(election.title);
+  const links = linksOf(input);
+  const window = votingWindow(election.opensAt, election.closesAt);
+  const words = wording('voted', input, window[0]!.closes);
+  const cast = zoneTime(input.castAt ?? input.now.toISOString(), NOTICE_TIME_ZONES[0].zone);
+  return render(input, words.subject, words.heading, [
+    greeting(input.name),
+    ...words.intro.map((p) => ({ p })),
+    { strong: `Your ballot was recorded ${cast} (Eastern Time).` },
+    {
+      p:
+        'If you did not vote, someone may have signed in as you: change your password on your Account page, and tell ' +
+        'the party at once (below). A ballot cannot be taken back, but the party can look into it.',
+    },
+    ...checking(links.verify),
+    { hr: true },
+    {
+      small:
+        'You are getting this email because a ballot was cast with your account in this election. It is sent once, and ' +
+        'says only when, never how you voted.',
     },
     ...footer(input.contact, links.site),
   ]);

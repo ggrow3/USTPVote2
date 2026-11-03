@@ -31,11 +31,12 @@ const input = (text: NoticeMessageInput['text'] = null): NoticeMessageInput => (
 const body = (over: Partial<Record<string, unknown>> = {}) => ({ basedOn: 0, ...DEFAULT_NOTICE_SETTINGS, ...over });
 
 describe('the default settings', () => {
-  it('keep the emails as they were: both on, the reminder a day before, the built-in wording', () => {
+  it('keep the emails as they were: all on, the reminder a day before, the built-in wording', () => {
     expect(DEFAULT_NOTICE_SETTINGS).toEqual({
       kinds: {
         voting_open: { enabled: true, subject: null, intro: null },
         closing_soon: { enabled: true, subject: null, intro: null },
+        voted: { enabled: true, subject: null, intro: null },
       },
       reminderHours: 24,
       contact: null,
@@ -125,6 +126,7 @@ describe('noticeSettingsChanges', () => {
       kinds: {
         voting_open: { enabled: true, subject: 'Vote: {title}', intro: null },
         closing_soon: { enabled: false, subject: null, intro: null },
+        voted: { enabled: true, subject: null, intro: null },
       },
       reminderHours: 48,
       contact: 'elections@example.org',

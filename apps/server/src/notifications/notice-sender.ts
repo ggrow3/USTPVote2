@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
+  canConfirmVote,
   isClaimable,
   isRehearsalRoll,
   isReminderDue,
@@ -13,6 +14,7 @@ import {
   noticeMessage,
   noticeReceipt,
   reminderTime,
+  VOTED_SCAN_OVERLAP_MINUTES,
   type ElectionRecord,
   type NoticeDeliveryReportedPayload,
   type NoticeKind,
@@ -94,9 +96,14 @@ export class NoticeSender {
     for (const election of await this.elections.inState('open')) {
       await this.start(election, 'voting_open');
       await this.start(election, 'closing_soon');
+      await this.start(election, 'voted');
     }
+    // A first ballot cast just before the close still gets its confirmation.
+    for (const election of await this.elections.inState('closed')) await this.start(election, 'voted');
     let sent = 0;
-    for (const notice of await this.notices.unfinished()) sent += await this.work(notice, deadline);
+    // Vote confirmations first: a large roll's notice never holds up telling a voter their ballot was recorded.
+    const unfinished = (await this.notices.unfinished()).sort((a, b) => Number(b.kind === 'voted') - Number(a.kind === 'voted'));
+    for (const notice of unfinished) sent += await this.work(notice, deadline);
     return sent;
   }
 
@@ -114,9 +121,16 @@ export class NoticeSender {
     const now = new Date();
     const { settings } = this.run!;
     if (!settings.kinds[kind].enabled) return;
-    const due = kind === 'voting_open' ? isVotingOpen(election, now) : isReminderDue(election, now, settings.reminderHours);
+    const due =
+      kind === 'closing_soon'
+        ? isReminderDue(election, now, settings.reminderHours)
+        : kind === 'voted'
+          ? canConfirmVote(election, now)
+          : isVotingOpen(election, now);
     const id = noticeId(election.electionId, kind);
     if (!due || (await this.notices.find(id))) return;
+    // Vote confirmations start with the first ballot, so an election nobody voted in has none.
+    if (kind === 'voted' && (await this.elections.voterCount(election.electionId)) === 0) return;
     if (kind === 'closing_soon') {
       // The reminder comes after the voting-open notice has gone, never with it.
       const opening = await this.notices.find(noticeId(election.electionId, 'voting_open'));
@@ -145,9 +159,12 @@ export class NoticeSender {
       kind,
       delivery,
       rehearsal,
-      // Replaced by the number of recipient records once they are written; a reminder's leave out those who voted.
-      recipients: roll.count,
-      status: 'preparing',
+      // Replaced by the number of recipient records once they are written; a reminder's leave out those who voted, and
+      // vote confirmations count voters as they vote.
+      recipients: kind === 'voted' ? 0 : roll.count,
+      // Vote confirmations have no list to prepare: voters are added as they vote, from the opening on.
+      status: kind === 'voted' ? 'sending' : 'preparing',
+      ...(kind === 'voted' && { scannedTo: election.opensAt }),
       round: 1,
       roundRequestedBy: 'system',
       createdAt: at,
@@ -188,9 +205,11 @@ export class NoticeSender {
         tx.update(this.notices.ref(notice.noticeId), { status: 'sending', recipients });
       });
     }
+    if (notice.kind === 'voted') notice = await this.syncVoters(notice, election);
     await this.failInterrupted(notice);
 
-    const open = isVotingOpen(election, new Date());
+    // Too late to send: voting closed (for a vote confirmation, a day after it closed).
+    const open = notice.kind === 'voted' ? canConfirmVote(election, new Date()) : isVotingOpen(election, new Date());
     const startedAt = new Date().toISOString();
     const results: SendResult[] = [];
     try {
@@ -210,8 +229,31 @@ export class NoticeSender {
       // What went, even when a later batch failed.
       await this.keepReceipt(notice, transport, startedAt, results);
     }
-    await this.finishRound(notice);
+    await this.finishRound(notice, election);
     return results.filter((r) => r.status === 'sent').length;
+  }
+
+  /**
+   * Adds a recipient record for each voter the vote confirmations have not reached yet (design §6.8): when the
+   * participation records outnumber the recipients, it reads those cast since a little before its last look (a ballot's
+   * `castAt` is set before its record commits), and, if that is not all of them, every one. It records when it looked;
+   * a look after voting closed lets the notice finish.
+   */
+  private async syncVoters(notice: NoticeRecord, election: ElectionRecord): Promise<NoticeRecord> {
+    const now = new Date().toISOString();
+    const [voters, recipients] = await Promise.all([this.elections.voterCount(election.electionId), this.notices.total(notice.noticeId)]);
+    let total = recipients;
+    if (voters > recipients) {
+      const from = new Date(Date.parse(notice.scannedTo ?? election.opensAt) - VOTED_SCAN_OVERLAP_MINUTES * 60_000).toISOString();
+      await this.notices.addRecipients(notice.noticeId, await this.elections.votedSince(election.electionId, from), now);
+      total = await this.notices.total(notice.noticeId);
+      if (total < voters) {
+        await this.notices.addRecipients(notice.noticeId, [...(await this.elections.voted(election.electionId))], now);
+        total = await this.notices.total(notice.noticeId);
+      }
+    }
+    await this.notices.ref(notice.noticeId).update({ scannedTo: now, recipients: total });
+    return { ...notice, scannedTo: now, recipients: total };
   }
 
   /** The receipt of one pass over a notice's recipients, if it handled anyone. */
@@ -242,10 +284,11 @@ export class NoticeSender {
   ): Promise<SendResult[]> {
     const claimed = (await Promise.all(batch.map((r) => this.claim(notice, r.accountId, null)))).filter((r) => r !== null);
     const ids = claimed.map((r) => r.accountId);
-    const [mailboxes, members, voted] = await Promise.all([
+    const [mailboxes, members, voted, castAt] = await Promise.all([
       this.directory.mailboxes(ids),
       this.members.findMany(ids),
       notice.kind === 'closing_soon' ? this.elections.voted(election.electionId, ids) : new Set<string>(),
+      notice.kind === 'voted' ? this.elections.castTimes(election.electionId, ids) : new Map<string, string>(),
     ]);
     return Promise.all(
       claimed.map(async (r, i): Promise<SendResult> => {
@@ -254,7 +297,8 @@ export class NoticeSender {
           return { status: 'skipped', outcome: 'voted' };
         }
         const member = members[i];
-        return this.deliver(notice, election, transport, r, mailboxes.get(r.accountId), member?.preferredName || member?.legalName || null);
+        const name = member?.preferredName || member?.legalName || null;
+        return this.deliver(notice, election, transport, r, mailboxes.get(r.accountId), name, castAt.get(r.accountId));
       }),
     );
   }
@@ -297,6 +341,7 @@ export class NoticeSender {
     recipient: NoticeRecipientRecord,
     mailbox: Mailbox | undefined,
     name: string | null,
+    castAt?: string,
   ): Promise<SendResult> {
     const finish = (fields: Partial<NoticeRecipientRecord>) => this.finish(notice, recipient.accountId, fields);
     const skip = (outcome: NoticeOutcome) => finish({ status: 'skipped', outcome }).then((): SendResult => ({ status: 'skipped', outcome }));
@@ -313,6 +358,7 @@ export class NoticeSender {
       contact,
       now: new Date(),
       text: settings.kinds[notice.kind],
+      castAt,
     });
     const result = await this.mailer.send(transport, {
       to: notice.rehearsal ? null : mailbox!.email,
@@ -456,11 +502,15 @@ export class NoticeSender {
     }
   }
 
-  /** Once every recipient of the round has an outcome: ledger the counts and mark the notice done, once. */
-  private async finishRound(notice: NoticeRecord): Promise<void> {
+  /**
+   * Once every recipient of the round has an outcome: ledger the counts and mark the notice done, once. Vote
+   * confirmations go on while voting is open, so they finish only after a look for voters made once it closed.
+   */
+  private async finishRound(notice: NoticeRecord, election: ElectionRecord): Promise<void> {
     await this.firebase.db.runTransaction(async (tx) => {
       const current = await this.notices.find(notice.noticeId, tx);
       if (!current || current.status !== 'sending' || current.round !== notice.round) return;
+      if (current.kind === 'voted' && !(current.scannedTo && current.scannedTo >= election.closesAt && election.state !== 'open')) return;
       const [counts, retry] = await Promise.all([
         this.notices.counts(notice.noticeId, tx),
         current.round > 1 ? this.notices.failedBefore(notice.noticeId, current.round, tx) : 0,

@@ -21,12 +21,14 @@ import {
 export const NOTICE_TITLES: Readonly<Record<NoticeKind, string>> = {
   voting_open: 'Voting is open',
   closing_soon: 'Closing soon: reminder to those who have not voted',
+  voted: 'Your vote was recorded: a confirmation to each voter',
 };
 
 /** Each email by a short name, for the workflow's list. */
 export const NOTICE_SHORT_TITLES: Readonly<Record<NoticeKind, string>> = {
   voting_open: 'Voting is open',
   closing_soon: 'Closing-soon reminder',
+  voted: 'Vote confirmations',
 };
 
 /** The emails' status in the workflow's list, read before its name; they never hold the election up. */
@@ -83,7 +85,9 @@ export function noticeStatus(notice: NoticeSummary): string {
   const of =
     notice.kind === 'closing_soon'
       ? `of the ${count(notice.recipients, 'person', 'people')} who had not voted when it was prepared`
-      : `of the ${count(notice.recipients, 'person', 'people')} on the roll`;
+      : notice.kind === 'voted'
+        ? `of the ${count(notice.recipients, 'person', 'people')} who have voted`
+        : `of the ${count(notice.recipients, 'person', 'people')} on the roll`;
   if (notice.status === 'done') {
     const finished = notice.completedAt ? `, finished ${new Date(notice.completedAt).toLocaleString()}` : '';
     return `Sent to ${acceptedCount(notice.counts)} ${of}${round}${finished}.${where}`;
@@ -108,11 +112,19 @@ export function noNoticeText(step: NoticeStep, detail: ElectionDetail, view: Not
     case 'no_contact':
       return NO_CONTACT;
     case 'off':
-      return `A System Admin has switched ${step.kind === 'closing_soon' ? 'the reminder' : 'this email'} off (Admin › Email).`;
+      return `A System Admin has switched ${step.kind === 'closing_soon' ? 'the reminder' : step.kind === 'voted' ? 'vote confirmations' : 'this email'} off (Admin › Email).`;
     case 'short_window':
       return `Voting is open for ${lead} or less, so there is no reminder.`;
     case 'closed':
-      return step.kind === 'closing_soon' ? 'No reminder was sent for this election.' : 'No notice was sent for this election.';
+      return step.kind === 'closing_soon'
+        ? 'No reminder was sent for this election.'
+        : step.kind === 'voted'
+          ? 'No vote confirmations were sent for this election.'
+          : 'No notice was sent for this election.';
+  }
+  if (step.kind === 'voted') {
+    const who = 'the worker tells each voter, within a minute or so of their vote, that their ballot was recorded and when (never how)';
+    return step.status === 'current' ? `Voting is open: ${who}.${outbox}` : `When voting opens, ${who}.${outbox}`;
   }
   if (step.kind === 'voting_open') {
     const who = 'the worker emails everyone on the roll that it is time to vote, once each';

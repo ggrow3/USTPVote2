@@ -5,8 +5,6 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
-  NotImplementedException,
-  Param,
   Post,
 } from '@nestjs/common';
 import type { BylawsRunResult, ConsistencyRunResult, ElectionRunResult, TickResult } from 'ustp-domain';
@@ -30,7 +28,7 @@ import { Tallier } from './tallier.js';
  * Worker task endpoints (design §13), invoked by Cloud Scheduler and Cloud Tasks. The worker's Cloud Run service only
  * admits their OIDC tokens (IAM invoker), so these routes have no sign-in of their own.
  */
-export const WORKER_TASKS = ['tick', 'bylaws-checks', 'consistency-checks', 'election-checks', 'room-assistant', 'room-warm', 'email'] as const;
+export const WORKER_TASKS = ['tick', 'bylaws-checks', 'consistency-checks', 'election-checks', 'room-assistant', 'room-warm'] as const;
 export type WorkerTask = (typeof WORKER_TASKS)[number];
 
 @Controller('tasks')
@@ -58,7 +56,7 @@ export class TasksController {
   /**
    * Every minute: prepare ballot-pool keys, open and close elections on time, seal ballots, tally elections that are
    * now fully sealed, destroy the pool keys of certified and cancelled elections, send election notices (for at most
-   * 20 seconds), the test emails Election Admins asked for and the welcome emails of added members (§5.13), record what
+   * 20 seconds, vote confirmations first), the test emails Election Admins asked for and the welcome emails of added members (§5.13), record what
    * the mail provider reported of them and ledger each notice round's reports after three days, check how email is set
    * up every hour or when a System Admin asks (§10.12), delete suggestions a year old
    * (design §10.9) and the members' room's records past their time (§5.10), then seal new ledger entries (including those) into a signed block, sign approved rolls and anchor
@@ -152,12 +150,5 @@ export class TasksController {
       this.logger.warn(`room model warm-up failed: ${e instanceof Error ? e.message : e}`);
       return { warmed: false };
     }
-  }
-
-  @Post(':task')
-  @HttpCode(202)
-  run(@Param('task') task: string) {
-    if (!(WORKER_TASKS as readonly string[]).includes(task)) throw new NotFoundException(`unknown task ${task}`);
-    throw new NotImplementedException(`task ${task} is not implemented yet`);
   }
 }
