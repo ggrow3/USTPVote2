@@ -1,4 +1,4 @@
-import { Injectable, Logger, type OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { Collections } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 
@@ -7,18 +7,23 @@ const LOOKUP_BATCH = 100;
 
 /**
  * Marks verified the accounts whose login confirmed their address before `POST /v1/accounts` began recording it (design
- * §4), so election email reaches them without waiting for their next sign-in (§6.8). It runs in the background each
- * time an api instance starts; once they are caught up it finds only accounts whose address is still unconfirmed, and
- * changes nothing. An added member nobody has signed in to yet is left alone: their first sign-in does it (§5.13). The
- * api may read Identity Platform's users already, to check revocation.
+ * §4), so election email reaches them without waiting for their next sign-in (§6.8). It runs in the background once per
+ * api instance, on the first sign-in the instance sees (not at start, so an instance with no database to reach, such as
+ * the image's smoke test, never tries); once they are caught up it finds only accounts whose address is still
+ * unconfirmed, and changes nothing. An added member nobody has signed in to yet is left alone: their first sign-in does
+ * it (§5.13). The api may read Identity Platform's users already, to check revocation.
  */
 @Injectable()
-export class EmailVerifiedSync implements OnApplicationBootstrap {
+export class EmailVerifiedSync {
   private readonly logger = new Logger(EmailVerifiedSync.name);
+  private started = false;
 
   constructor(private readonly firebase: Firebase) {}
 
-  onApplicationBootstrap(): void {
+  /** Starts the catch-up in the background, the first time only. */
+  startOnce(): void {
+    if (this.started) return;
+    this.started = true;
     void this.run().catch((e: unknown) => this.logger.warn(`checking unverified addresses failed: ${e instanceof Error ? e.message : String(e)}`));
   }
 
