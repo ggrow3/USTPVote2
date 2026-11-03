@@ -12,7 +12,8 @@ import { healthSummary, MAIL_CHECK_LABELS, MAIL_CHECK_LOOK } from './mail-health
  */
 const view = ref<MailHealthView | null>(null);
 const health = computed(() => view.value?.health ?? null);
-const waiting = computed(() => !!view.value?.requested || health.value?.overall === 'pending');
+// A run asked for, or the probe's reports still awaited, whatever the other checks say.
+const waiting = computed(() => !!view.value?.requested || !!health.value?.checks.some((c) => c.status === 'pending'));
 let timer: ReturnType<typeof setInterval> | undefined;
 
 async function load() {
