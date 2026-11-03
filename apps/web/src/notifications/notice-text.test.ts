@@ -17,6 +17,7 @@ import {
   heldText,
   receiptText,
   testBlocked,
+  TESTS_OFF,
   testReceiptText,
   testStatusText,
   verificationText,
@@ -160,6 +161,8 @@ describe('the send receipts and test emails', () => {
     expect(testBlocked(base, now)).toBeNull();
     expect(testBlocked({ ...base, delivery: 'none' }, now)).toBe(NOT_SET_UP);
     expect(testBlocked({ ...base, contact: null }, now)).toBe(NO_CONTACT);
+    const off = { ...base, settings: { ...DEFAULT_NOTICE_SETTINGS, emails: { ...DEFAULT_NOTICE_SETTINGS.emails, electionTests: false } } };
+    expect(testBlocked(off, now)).toBe(TESTS_OFF);
     expect(testBlocked({ ...base, tests: [test()] }, now)).toBe('Your last test email has not gone yet; wait for it first.');
     expect(testBlocked({ ...base, tests: [test({ status: 'done', sent: true })] }, now)).toBeNull();
   });

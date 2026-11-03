@@ -18,6 +18,7 @@ import {
   type PlannedMemberRow,
   type SkippedMemberRow,
   type WelcomeAgain,
+  type WelcomeDelivery,
 } from 'ustp-domain';
 import { requireAccount } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
@@ -82,13 +83,14 @@ export class MemberAdditions {
   async welcomeAgain(ctx: RequestContext, accountId: string): Promise<WelcomeAgain> {
     const actor = requireAccount(ctx);
     const db = this.firebase.db;
+    const welcome = await this.welcomes.delivery();
     return db.runTransaction(async (tx) => {
       const account = (await tx.get(db.collection(Collections.accounts).doc(accountId))).data() as AccountRecord | undefined;
       if (!account?.addedAt || !account.primaryEmail) throw new NotFoundException('no member added by a Membership Admin has this account');
       if (account.claimedAt) throw new ConflictException('this member has signed in already, so needs no welcome email');
       const latest = await this.welcomes.latest(tx, accountId);
-      this.welcomes.again(tx, latest, accountId, actor);
-      return { welcome: this.welcomes.delivery, email: account.primaryEmail };
+      this.welcomes.again(tx, welcome, latest, accountId, actor);
+      return { welcome, email: account.primaryEmail };
     });
   }
 
@@ -100,17 +102,18 @@ export class MemberAdditions {
       skipped: plan.rows.filter((r) => !r.add).map(skippedRow),
     };
     const adding = plan.rows.filter((r) => r.add);
+    const welcome = await this.welcomes.delivery();
     for (let i = 0; i < adding.length; i += PER_TRANSACTION) {
-      const done = await this.addSome(actor, adding.slice(i, i + PER_TRANSACTION), reason);
+      const done = await this.addSome(actor, adding.slice(i, i + PER_TRANSACTION), reason, welcome);
       result.added.push(...done.added);
       result.skipped.push(...done.skipped);
     }
     result.skipped.sort((a, b) => a.line - b.line);
-    return { ...result, skippedBy: skipCounts(result.skipped), welcome: this.welcomes.delivery };
+    return { ...result, skippedBy: skipCounts(result.skipped), welcome };
   }
 
   /** Adds up to PER_TRANSACTION planned rows in one transaction, skipping any address taken since the plan. */
-  private async addSome(actor: string, rows: readonly PlannedMemberRow[], reason: string) {
+  private async addSome(actor: string, rows: readonly PlannedMemberRow[], reason: string, welcome: WelcomeDelivery) {
     const db = this.firebase.db;
     return db.runTransaction(async (tx) => {
       const bylaws = await this.membership.currentBylaws(tx);
@@ -142,7 +145,7 @@ export class MemberAdditions {
           claimedAt: null,
         };
         tx.create(db.collection(Collections.accounts).doc(accountId), account);
-        this.welcomes.queue(tx, accountId, actor, at);
+        this.welcomes.queue(tx, welcome, accountId, actor, at);
       }
       return {
         added: additions.map(({ row, accountId }) => ({ line: row.line, email: row.email, legalName: row.legalName, accountId })),

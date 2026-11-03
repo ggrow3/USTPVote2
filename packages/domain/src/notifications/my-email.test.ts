@@ -28,9 +28,12 @@ describe('a member’s own email', () => {
 
   it('takes a test only to an address that can be mailed, and a retry only of one that cannot', () => {
     const check = (over: Partial<Parameters<typeof checkMailRequest>[0]>) =>
-      checkMailRequest({ kind: 'test', state: 'ok', mailing: true, theirs: [], now: NOW, ...over });
+      checkMailRequest({ kind: 'test', state: 'ok', mailing: true, enabled: true, theirs: [], now: NOW, ...over });
     expect(check({}).ok).toBe(true);
     expect(check({ mailing: false }).ok).toBe(false);
+    // System Admins switched members' test emails off: neither a test nor a retry.
+    expect(check({ enabled: false })).toMatchObject({ ok: false, reason: expect.stringMatching(/switched these emails off/) });
+    expect(check({ kind: 'retry', state: 'bounced', enabled: false }).ok).toBe(false);
     expect(check({ state: 'bounced' }).ok).toBe(false);
     expect(check({ state: 'unverified' }).ok).toBe(false);
     expect(check({ kind: 'retry' }).ok).toBe(false);
@@ -38,7 +41,7 @@ describe('a member’s own email', () => {
   });
 
   it('takes one request at a time, a few a day', () => {
-    const check = (theirs: MailRequestRecord[]) => checkMailRequest({ kind: 'test', state: 'ok', mailing: true, theirs, now: NOW });
+    const check = (theirs: MailRequestRecord[]) => checkMailRequest({ kind: 'test', state: 'ok', mailing: true, enabled: true, theirs, now: NOW });
     expect(check([request({ status: 'pending', doneAt: null })]).ok).toBe(false);
     expect(check([request(), request(), request()])).toMatchObject({ ok: false, refusal: 'rate_limited' });
     expect(check([request(), request(), request({ requestedAt: minutesAgo(25 * 60) })]).ok).toBe(true);

@@ -185,12 +185,15 @@ export function noticeTestSummary(test: NoticeTestRecord): NoticeTestSummary {
  */
 export function checkNoticeTest(input: {
   readonly delivery: NoticeDelivery | 'none';
+  /** Whether System Admins have test emails switched on (Admin › Email). */
+  readonly enabled: boolean;
   readonly contact: string | null;
   readonly theirs: readonly Pick<NoticeTestRecord, 'status' | 'claimedAt' | 'requestedAt'>[];
   readonly now: Date;
 }): Check {
   const { delivery, contact, theirs, now } = input;
   if (delivery === 'none') return deny('this deployment sends no email (MAIL_TRANSPORT=off), so there is nothing to test');
+  if (!input.enabled) return deny('a System Admin has switched test emails off (Admin › Email)');
   if (delivery === 'mail' && !contact) {
     return deny('no contact for election questions is set (Admin › Email), and no email goes without one');
   }
