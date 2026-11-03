@@ -4316,7 +4316,8 @@ every 15 seconds in place of Cloud Scheduler.
   points this section left open:
   - Both services *read* the anchors bucket: the api for the Auditor's anchor check (§8.4), the worker to compare the
     stored bytes when a write is retried. Only the worker may create objects, and nobody may delete or overwrite them.
-  - The api needs `roles/firebaseauth.viewer` for `verifyIdToken(…, checkRevoked)` on admin routes and casting.
+  - The api needs `roles/firebaseauth.viewer` for `verifyIdToken(…, checkRevoked)` on admin routes and casting, and
+    `firebaseauth.users.delete` (custom role `ustpLoginDeleter`) to delete the logins of an account it deletes (§4).
   - The worker may also destroy `ballot-pool` versions, after certification or cancellation (§13); destroyed versions
     stay restorable for 24 hours.
   - The release workflow's `ustp-release` may push to the image repository, sign attestations for
