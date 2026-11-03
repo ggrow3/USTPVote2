@@ -2,6 +2,7 @@ import type { MemberCorrectionInput, MemberDetailsInput } from '../api.js';
 import { OK, refuse, type Check, type Outcome } from '../check.js';
 import type { LedgerEvent } from '../ledger-events.js';
 import { countryOf, DEFAULT_COUNTRY } from './countries.js';
+import type { NewMember } from './member-import.js';
 import { checkStatusChange, nextStatuses, type MemberStatus } from './member-status.js';
 import type { CommunicationConsents, MemberContact, MemberRecord, StatusHistoryRecord } from './records.js';
 import { normalizePhone, normalizePostalCode, normalizePostcode } from './registration.js';
@@ -281,6 +282,44 @@ export function correctMemberDetails(
   const { input, actor } = request;
   if (!input.reason.trim()) return refuse('conflict', 'a written reason is required');
   return detailsTransition(current, { ...current, legalName: input.legalName, ...addressDetails(input) }, actor, input.reason);
+}
+
+/**
+ * A Membership Admin adds someone as an Active member at once (design §5.13), with a written reason: like a test voter
+ * persona, a status change that skips the application, on the bylaws in force (`bylawsVersion`), which the member has
+ * not been shown. They answered neither membership question here: the US-vote answer is the admin's, if given, and
+ * the Core Ideals answer stays "Not asked". The admin gives no email opt-ins: those are the member's to give.
+ */
+export function memberAddition(args: {
+  readonly accountId: string;
+  readonly member: NewMember;
+  readonly actor: string;
+  readonly reason: string;
+  readonly bylawsVersion: string;
+  readonly at: string;
+}): StatusTransition {
+  const { member } = args;
+  return memberStatusTransition({
+    accountId: args.accountId,
+    current: null,
+    to: 'active',
+    actor: args.actor,
+    reason: args.reason,
+    applicationId: null,
+    profile: {
+      legalName: member.legalName,
+      preferredName: member.preferredName,
+      country: member.country,
+      state: member.state,
+      region: member.region,
+      contact: member.contact,
+      communications: null,
+      usVoteEligible: member.usVoteEligible,
+      agreesWithCoreIdeals: null,
+      bylawsVersion: args.bylawsVersion,
+    },
+    at: args.at,
+  });
 }
 
 /**

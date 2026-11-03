@@ -14,6 +14,8 @@ const props = defineProps<{
   errors: FieldErrors;
   /** The signed-in person's own details, which the browser may fill in; off for someone else's. */
   own?: boolean;
+  /** City and ZIP code may be left out in the US too, as when a Membership Admin adds a member (design §5.13). */
+  optionalContact?: boolean;
 }>();
 const auto = (token: string) => (props.own ? token : 'off');
 const us = computed(() => place.value.country === DEFAULT_COUNTRY);
@@ -79,7 +81,7 @@ const countryOptions = computed(() => {
       outlined
       dense
       hide-bottom-space
-      :label="us ? 'City' : 'City (optional)'"
+      :label="us && !optionalContact ? 'City' : 'City (optional)'"
       :autocomplete="auto('address-level2')"
       :error="!!errors.city"
       :error-message="errors.city"
@@ -89,7 +91,7 @@ const countryOptions = computed(() => {
       outlined
       dense
       hide-bottom-space
-      :label="us ? 'ZIP code' : 'Postcode (optional)'"
+      :label="us ? (optionalContact ? 'ZIP code (optional)' : 'ZIP code') : 'Postcode (optional)'"
       :inputmode="us ? 'numeric' : 'text'"
       :autocomplete="auto('postal-code')"
       :error="!!errors.postalCode"

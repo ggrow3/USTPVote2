@@ -1,17 +1,23 @@
-import { Body, Controller, Get, NotFoundException, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, NotFoundException, Param, Post, Query } from '@nestjs/common';
 import {
+  addMemberSchema,
   createApplicationSchema,
   decisionSchema,
   MEMBER_STATUSES,
   memberCorrectionSchema,
   memberDetailsSchema,
+  memberImportPreviewSchema,
+  memberImportSchema,
   memberStatusSchema,
   publishBylawsSchema,
   resignSchema,
+  type AddMemberInput,
   type CreateApplicationInput,
   type DecisionInput,
   type MemberCorrectionInput,
   type MemberDetailsInput,
+  type MemberImportInput,
+  type MemberImportPreviewInput,
   type MemberStatusInput,
   type PublishBylawsInput,
   type ResignInput,
@@ -21,6 +27,7 @@ import { Ctx, Public, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { parseQuery, ZodPipe } from '../common/validation.js';
 import { MembershipApplications } from './applications.service.js';
+import { MemberAdditions } from './member-additions.service.js';
 import { Members } from './members.service.js';
 import { MembershipService } from './membership.service.js';
 
@@ -88,6 +95,7 @@ export class MembershipAdminController {
     private readonly membership: MembershipService,
     private readonly applications: MembershipApplications,
     private readonly members: Members,
+    private readonly additions: MemberAdditions,
   ) {}
 
   @Post('bylaws')
@@ -115,6 +123,31 @@ export class MembershipAdminController {
       parseQuery(z.string().min(1).optional(), after, 'after'),
       parseQuery(limitParam, limit, 'limit'),
     );
+  }
+
+  /** Adds one member, Active at once, who sets their own password when they first come (design §5.13). */
+  @Post('members')
+  addMember(@Ctx() ctx: RequestContext, @Body(new ZodPipe(addMemberSchema)) body: AddMemberInput) {
+    return this.additions.addOne(ctx, body);
+  }
+
+  /** What importing a file's rows would do: each row added or skipped, with the reasons. Writes nothing. */
+  @Post('member-imports/preview')
+  @HttpCode(200)
+  previewImport(@Body(new ZodPipe(memberImportPreviewSchema)) body: MemberImportPreviewInput) {
+    return this.additions.preview(body.rows);
+  }
+
+  @Post('member-imports')
+  importMembers(@Ctx() ctx: RequestContext, @Body(new ZodPipe(memberImportSchema)) body: MemberImportInput) {
+    return this.additions.import(ctx, body.rows, body.reason);
+  }
+
+  /** Sends an added member's welcome email again, before they have signed in. */
+  @Post('members/:accountId/welcome')
+  @HttpCode(200)
+  welcomeAgain(@Ctx() ctx: RequestContext, @Param('accountId') accountId: string) {
+    return this.additions.welcomeAgain(ctx, accountId);
   }
 
   @Post('members/:accountId/status')

@@ -65,6 +65,7 @@ describe('ledger blocks and anchors', () => {
       poolKeysDestroyed: 0,
       noticesSent: 0,
       testEmailsSent: 0,
+      welcomeEmailsSent: 0,
       bouncesRecorded: 0,
       suggestionsDeleted: 0,
       roomExpired: 0,

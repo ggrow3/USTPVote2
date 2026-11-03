@@ -64,8 +64,17 @@ export {
   votingWindow,
   zoneTime,
   timeLeft,
+  welcomeMessage,
 } from './message.js';
 export type { NoticeElection, NoticeMessage, NoticeMessageInput } from './message.js';
+export {
+  WELCOME_STATUSES,
+  WELCOME_OUTCOMES,
+  SET_PASSWORD_PATH,
+  welcomeEmailRecord,
+  isWelcomeInFlight,
+} from './welcome.js';
+export type { WelcomeStatus, WelcomeOutcome, WelcomeEmailRecord } from './welcome.js';
 export { noticeSteps, emailStepStatus } from './notice-steps.js';
 export type { NoticeStep, NoticeAbsence } from './notice-steps.js';
 export {

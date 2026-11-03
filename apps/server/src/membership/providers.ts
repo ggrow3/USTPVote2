@@ -1,6 +1,7 @@
 import type { Provider } from '@nestjs/common';
 import { ApplicationRepository } from './application.repository.js';
 import { MembershipApplications } from './applications.service.js';
+import { MemberAdditions } from './member-additions.service.js';
 import { MemberDirectory } from './member-directory.js';
 import { MemberRepository } from './member.repository.js';
 import { Members } from './members.service.js';
@@ -16,6 +17,7 @@ export const MEMBERSHIP_PROVIDERS: Provider[] = [
   ApplicationRepository,
   MemberDirectory,
   Members,
+  MemberAdditions,
   MembershipApplications,
   MembershipService,
   RegistrationFormService,

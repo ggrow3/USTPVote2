@@ -1,4 +1,5 @@
 import type {
+  AddMemberInput,
   ApplicationRecord,
   ApplicationStatus,
   CreateApplicationInput,
@@ -6,6 +7,10 @@ import type {
   MemberCorrectionInput,
   MemberDetail,
   MemberDetailsInput,
+  MemberImportInput,
+  MemberImportPlan,
+  MemberImportPreviewInput,
+  MemberImportResult,
   MemberRecord,
   MemberStatus,
   MemberStatusInput,
@@ -13,6 +18,7 @@ import type {
   RegistrationFormInput,
   RegistrationFormRecord,
   StatusHistoryRecord,
+  WelcomeAgain,
 } from 'ustp-domain';
 import { api } from '../api.js';
 
@@ -85,6 +91,25 @@ export function member(accountId: string): Promise<MemberDetail> {
 /** Corrects someone else's names, state or contact details, with a reason. */
 export function correctMemberDetails(accountId: string, input: MemberCorrectionInput): Promise<MemberRecord> {
   return api<MemberRecord>('POST', `/v1/admin/members/${accountId}/details`, input);
+}
+
+/** Adds one member, Active at once; they set their own password when they first come (design §5.13). */
+export function addMember(input: AddMemberInput): Promise<MemberImportResult> {
+  return api<MemberImportResult>('POST', '/v1/admin/members', input);
+}
+
+/** What importing a file's rows would do now: each row added or skipped, with the reasons. */
+export function previewMemberImport(input: MemberImportPreviewInput): Promise<MemberImportPlan> {
+  return api<MemberImportPlan>('POST', '/v1/admin/member-imports/preview', input);
+}
+
+export function importMembers(input: MemberImportInput): Promise<MemberImportResult> {
+  return api<MemberImportResult>('POST', '/v1/admin/member-imports', input);
+}
+
+/** Sends an added member's welcome email again, or gives the address for the browser to send Identity Platform's. */
+export function welcomeAgain(accountId: string): Promise<WelcomeAgain> {
+  return api<WelcomeAgain>('POST', `/v1/admin/members/${accountId}/welcome`);
 }
 
 /** The registration form's wording with who changed it last. */

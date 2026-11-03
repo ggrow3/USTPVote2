@@ -26,6 +26,7 @@ import type { RequestContext } from '../auth/principal.js';
 import { accepted, assertCheck } from '../common/validation.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { WelcomeEmails } from '../notifications/welcome-emails.js';
 import { ApplicationRepository } from './application.repository.js';
 import { MemberRepository } from './member.repository.js';
 
@@ -41,6 +42,7 @@ export class Members {
     private readonly ledger: LedgerService,
     private readonly members: MemberRepository,
     private readonly applications: ApplicationRepository,
+    private readonly welcomes: WelcomeEmails,
   ) {}
 
   /**
@@ -85,14 +87,30 @@ export class Members {
 
   /** One member as a Membership Admin sees them: the record, every application with its answers, and the history. */
   async detail(accountId: string): Promise<MemberDetail> {
-    const [member, applications, history, account] = await Promise.all([
+    const [member, applications, history, account, welcome] = await Promise.all([
       this.members.find(accountId),
       this.applications.ofAccount(accountId),
       this.members.history(accountId),
       this.firebase.db.collection(Collections.accounts).doc(accountId).get(),
+      this.welcomes.find(accountId),
     ]);
     if (!member) throw new NotFoundException('no such member');
-    return { member, applications, history, preferences: preferencesOf(account.data() as AccountRecord | undefined) };
+    const record = account.data() as AccountRecord | undefined;
+    const added =
+      record?.addedAt && record.addedBy
+        ? {
+            at: record.addedAt,
+            by: record.addedBy,
+            signedInAt: record.claimedAt ?? null,
+            welcome: welcome && {
+              status: welcome.status,
+              requestedAt: welcome.requestedAt,
+              doneAt: welcome.doneAt,
+              outcome: welcome.outcome,
+            },
+          }
+        : null;
+    return { member, applications, history, preferences: preferencesOf(record), added };
   }
 
   /** The signed-in member changes their own details and email opt-ins. */
@@ -133,6 +151,20 @@ export class Members {
     const [ledgerSeq] = await this.ledger.record(tx, [transition.event]);
     this.members.save(tx, transition.member, transition.history(ledgerSeq!));
     return transition.member;
+  }
+
+  /**
+   * Several members' first status changes at once, as when a Membership Admin adds members (design §5.13): their ledger
+   * entries in one append, then each record and history entry. Call after the transaction's other reads.
+   */
+  async recordAll(tx: Transaction, transitions: readonly StatusTransition[]): Promise<MemberRecord[]> {
+    if (!transitions.length) return [];
+    const seqs = await this.ledger.record(
+      tx,
+      transitions.map((t) => t.event),
+    );
+    transitions.forEach((t, i) => this.members.save(tx, t.member, t.history(seqs[i]!)));
+    return transitions.map((t) => t.member);
   }
 
   /** A change of details: its ledger entry (field names only) and the member record, in the caller's transaction. */

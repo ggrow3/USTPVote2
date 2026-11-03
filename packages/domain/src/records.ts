@@ -19,6 +19,17 @@ export interface AccountRecord {
   readonly createdAt: string;
   /** The person's own display choices (design §4.1); absent until they make one, so read it with `preferencesOf`. */
   readonly preferences?: AccountPreferences;
+  /**
+   * Set when a Membership Admin added the account as a member (design §5.13), before it had any login: when, and by
+   * whom. Absent on accounts made by signing in.
+   */
+  readonly addedAt?: string;
+  readonly addedBy?: string;
+  /**
+   * When an added account got its first login: someone signed in with a verified address equal to `primaryEmail`
+   * (design §4). Null until then; absent on accounts made by signing in.
+   */
+  readonly claimedAt?: string | null;
 }
 
 /** `account_identities/{uid}` */

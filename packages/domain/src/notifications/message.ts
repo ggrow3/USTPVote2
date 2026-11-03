@@ -2,6 +2,7 @@ import type { ElectionRecord } from '../elections.js';
 import { DEFAULT_NOTICE_TEXT, fillNoticeText, type NoticePlaceholder } from './notice-settings.js';
 import type { NoticeKind } from './notices.js';
 import { TEST_SUBJECT_PREFIX } from './receipts.js';
+import { SET_PASSWORD_PATH } from './welcome.js';
 
 /**
  * The election notices' emails (design §6.8), as plain text and simple HTML with the same content: real text, no
@@ -120,6 +121,34 @@ export function closingSoonMessage(input: NoticeMessageInput): NoticeMessage {
   ]);
 }
 
+/**
+ * The welcome email to a member a Membership Admin added (design §5.13), sent where the deployment sends mail. It
+ * leads to the page where they set their password, which first emails them a sign-in link to prove the address is
+ * theirs; this email carries no link that signs anyone in.
+ */
+export function welcomeMessage(input: { readonly origin: string; readonly name: string | null; readonly contact: string | null }): NoticeMessage {
+  const site = `${input.origin}/`;
+  const subject = 'Welcome to the US Transhumanist Party: set your password';
+  const blocks: Block[] = [
+    greeting(input.name),
+    {
+      p:
+        'A Membership Admin has added you as a member of the US Transhumanist Party. To vote in party elections and take ' +
+        "part on the party's site, set your password the first time you come.",
+    },
+    { link: `${input.origin}${SET_PASSWORD_PATH}`, label: 'Set your password', after: '.' },
+    {
+      p:
+        'Enter the address this email came to. We will email you a sign-in link, which shows the address is yours; open ' +
+        'it, then choose your password. Nobody at the party sets it or can see it.',
+    },
+    { hr: true },
+    { small: 'You are getting this email because a Membership Admin added this address to the party’s member list.' },
+    ...footer(input.contact, site, 'your membership'),
+  ];
+  return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
+}
+
 /** One row per time zone: the zone's name and when voting opens and closes there, each with its abbreviation. */
 export function votingWindow(opensAt: string, closesAt: string): { name: string; opens: string; closes: string }[] {
   return NOTICE_TIME_ZONES.map(({ zone, name }) => ({ name, opens: zoneTime(opensAt, zone), closes: zoneTime(closesAt, zone) }));
@@ -181,7 +210,7 @@ type Block =
   | { closes: Row[] }
   | { hr: true }
   | { small: string }
-  | { contact: string | null }
+  | { contact: string | null; about?: string }
   | { test: string };
 
 function linksOf({ election, origin }: NoticeMessageInput) {
@@ -236,9 +265,9 @@ function checking(verify: string): Block[] {
   ];
 }
 
-function footer(contact: string | null, site: string): Block[] {
+function footer(contact: string | null, site: string, about?: string): Block[] {
   return [
-    { contact },
+    { contact, ...(about && { about }) },
     {
       small:
         'We never ask for your password or a sign-in code by email. If you are unsure about this message, go to ' +
@@ -272,7 +301,7 @@ function asText(block: Block): string {
   if ('hr' in block) return '--';
   if ('test' in block) return block.test;
   if ('contact' in block) {
-    return `Questions about this election? Replies to this email are not read; write to ${block.contact ? oneLine(block.contact) : NOTICE_CONTACT_PLACEHOLDER}.`;
+    return `Questions about ${block.about ?? 'this election'}? Replies to this email are not read; write to ${block.contact ? oneLine(block.contact) : NOTICE_CONTACT_PLACEHOLDER}.`;
   }
   return block.small;
 }
@@ -324,7 +353,7 @@ function asHtml(subject: string, heading: string, blocks: readonly Block[]): str
           : /^https:\/\/[^\s<>"]+$/.test(contact)
             ? a(contact, escapeHtml(contact))
             : escapeHtml(contact);
-      return `<p style="font-size:14px">Questions about this election? Replies to this email are not read; write to ${where}.</p>`;
+      return `<p style="font-size:14px">Questions about ${escapeHtml(block.about ?? 'this election')}? Replies to this email are not read; write to ${where}.</p>`;
     }
     return `<p style="font-size:14px">${escapeHtml(block.small)}</p>`;
   });

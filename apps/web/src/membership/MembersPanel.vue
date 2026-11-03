@@ -5,6 +5,7 @@ import { adminStatusChanges, countryName, countryOf, DEFAULT_COUNTRY, type Membe
 import { askReason, attempt } from '../dialogs.js';
 import { offices as fetchOffices } from '../offices/api.js';
 import { session } from '../session.js';
+import AddMembersCard from './AddMembersCard.vue';
 import { changeMemberStatus, memberHistory, members } from './api.js';
 import { stateName } from './member-text.js';
 import {
@@ -37,6 +38,8 @@ const all = ref<MemberRow[]>([]);
 /** An empty table only means "no members" once a load has succeeded. */
 const listState = ref<'loading' | 'ready' | 'failed'>('loading');
 const history = ref<{ member: MemberRecord; entries: StatusHistoryRecord[] } | null>(null);
+/** The form and CSV import for adding members (design §5.13) is open. */
+const adding = ref(false);
 
 /** Null once the field's clear button is used. */
 const search = ref<string | null>('');
@@ -196,10 +199,17 @@ onMounted(() => load());
           <template v-else-if="listState === 'loading'">Loading…</template>
         </div>
       </div>
-      <q-btn outline no-caps icon="file_download" class="members-outline" :disable="!exported.rows.length" @click="exportCsv">
-        <template v-if="exported.ticked">Export {{ exported.rows.length }} selected</template>
-        <template v-else>Export CSV<span class="sr-only">: {{ plural(exported.rows.length, 'member') }}</span></template>
-      </q-btn>
+      <div class="members-head-actions">
+        <q-btn v-if="!adding" outline no-caps icon="person_add" class="members-outline" label="Add members" @click="adding = true" />
+        <q-btn outline no-caps icon="file_download" class="members-outline" :disable="!exported.rows.length" @click="exportCsv">
+          <template v-if="exported.ticked">Export {{ exported.rows.length }} selected</template>
+          <template v-else>Export CSV<span class="sr-only">: {{ plural(exported.rows.length, 'member') }}</span></template>
+        </q-btn>
+      </div>
+    </q-card-section>
+
+    <q-card-section v-if="adding">
+      <AddMembersCard @added="load" @close="adding = false" />
     </q-card-section>
 
     <q-card-section class="members-toolbar">
@@ -467,6 +477,12 @@ onMounted(() => load());
 /* Neutral outlined buttons (Export CSV, Change status, the pager): Quasar's outline is the text colour itself. */
 .members-outline.q-btn--outline::before {
   border-color: var(--members-control);
+}
+
+.members-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .members-toolbar {
