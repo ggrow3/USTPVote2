@@ -5,7 +5,7 @@ import { ADMIN_PERSONAS, MAX_TEST_VOTERS, type PersonaSummary } from 'ustp-domai
 import { personaStart } from '../../acting.js';
 import { api } from '../../api.js';
 import { roleLabel } from '../../approval-text.js';
-import { attempt } from '../../dialogs.js';
+import { attempt, dialog } from '../../dialogs.js';
 import { actAs } from '../../session.js';
 import DemoElectionCard from './DemoElectionCard.vue';
 
@@ -19,7 +19,8 @@ const voters = ref(5);
 const hasAdmins = computed(() => personas.value?.some((p) => p.kind !== 'voter') ?? false);
 /** Admin personas not made yet, such as one for a role added since the others were created. */
 const missingAdmins = computed(() => ADMIN_PERSONAS.filter((a) => !personas.value?.some((p) => p.kind === a.kind)));
-const room = computed(() => MAX_TEST_VOTERS - (personas.value?.filter((p) => p.kind === 'voter').length ?? 0));
+const testVoters = computed(() => personas.value?.filter((p) => p.kind === 'voter') ?? []);
+const room = computed(() => MAX_TEST_VOTERS - testVoters.value.length);
 
 function describe(p: PersonaSummary): string {
   if (p.roles.length) return p.roles.map(roleLabel).join(', ');
@@ -36,6 +37,33 @@ async function create(count: number) {
   const done = count ? `Added ${count} test voter${count === 1 ? '' : 's'}` : 'Admin personas ready';
   await attempt(async () => {
     personas.value = await api<PersonaSummary[]>('POST', '/v1/testing/personas', { voters: count });
+  }, done);
+}
+
+/**
+ * Deletes test voters at once, whatever elections hold them (design §10.4). One System Admin's word is enough, so the
+ * dialog says plainly what goes and what stays before it happens.
+ */
+async function removeVoters(chosen: readonly PersonaSummary[]) {
+  const one = chosen.length === 1 ? chosen[0]! : null;
+  const confirmed = await new Promise<boolean>((resolve) =>
+    dialog({
+      title: one ? `Delete ${one.label}?` : `Delete all ${chosen.length} test voters?`,
+      message:
+        `${one ? 'Its account, membership and persona are' : 'Their accounts, memberships and personas are'} deleted as soon as ` +
+        'you confirm, with no other admin, and it cannot be undone. Elections keep their rolls, ballots and results as ' +
+        'they are, so they still verify, and a roll lists a deleted voter as “(no member record)”. The audit ledger keeps ' +
+        (one ? 'its entries about it and records the deletion.' : 'its entries about them and records each deletion.'),
+      cancel: { flat: true, noCaps: true, label: 'Cancel' },
+      ok: { unelevated: true, noCaps: true, color: 'negative', label: 'Delete' },
+    })
+      .onOk(() => resolve(true))
+      .onCancel(() => resolve(false)),
+  );
+  if (!confirmed) return;
+  const done = one ? `Deleted ${one.label}` : `Deleted ${chosen.length} test voters`;
+  await attempt(async () => {
+    personas.value = await api<PersonaSummary[]>('POST', '/v1/testing/personas/delete', { voters: chosen.map((v) => v.accountId) });
   }, done);
 }
 
@@ -76,7 +104,20 @@ onMounted(load);
             <q-item-label caption>{{ describe(p) }}</q-item-label>
           </q-item-section>
           <q-item-section side>
-            <q-btn flat dense no-caps color="primary" label="Act as" :aria-label="`Act as ${p.label}`" @click="actAsPersona(p)" />
+            <div class="row no-wrap">
+              <q-btn flat dense no-caps color="primary" label="Act as" :aria-label="`Act as ${p.label}`" @click="actAsPersona(p)" />
+              <q-btn
+                v-if="p.kind === 'voter'"
+                flat
+                dense
+                no-caps
+                color="negative"
+                label="Delete"
+                class="q-ml-sm"
+                :aria-label="`Delete ${p.label}`"
+                @click="removeVoters([p])"
+              />
+            </div>
           </q-item-section>
         </q-item>
       </q-list>
@@ -93,6 +134,14 @@ onMounted(load);
           :hint="`Up to ${room} more`"
         />
         <q-btn color="primary" no-caps label="Add voters" :disable="!(voters >= 1 && voters <= room)" @click="create(voters)" />
+        <q-btn
+          v-if="testVoters.length > 1"
+          flat
+          no-caps
+          color="negative"
+          :label="`Delete all ${testVoters.length} test voters`"
+          @click="removeVoters(testVoters)"
+        />
       </q-card-section>
     </q-card>
 
@@ -118,6 +167,9 @@ onMounted(load);
             Auditor approves it.
           </li>
           <li>To clear it away, the Test Election Admin deletes it from its page in the election editor.</li>
+          <li>
+            Delete test voters you no longer need, above. Elections keep them on their rolls, with their ballots and results.
+          </li>
         </ol>
         <p class="q-mt-sm q-mb-none">Create demo election, above, does steps 2 to 4 for you with an election made up at random.</p>
       </q-card-section>

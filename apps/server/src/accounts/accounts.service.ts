@@ -171,32 +171,7 @@ export class AccountsService {
 
     const later = await db.runTransaction(async (tx) => {
       const found = await this.deletable(actor, accountId, tx);
-      const [assignments, requests, forgetMembership] = await Promise.all([
-        tx.get(db.collection(Collections.roleAssignments).where('accountId', '==', accountId)),
-        tx.get(db.collection(Collections.approvalRequests).where('subject', '==', accountId)),
-        this.membership.forgetting(tx, accountId),
-      ]);
-      const active = assignments.docs.map((d) => d.data() as RoleAssignmentRecord).filter((r) => r.revokedAt === null);
-      const first = [...found.identities].sort((a, b) => (a.linkedAt < b.linkedAt ? -1 : a.linkedAt > b.linkedAt ? 1 : 0))[0];
-      await this.ledger.record(tx, [
-        ...active.map((r) => ({ type: 'role.revoked' as const, actor: deletedBy, subject: accountId, payload: { role: r.role, reason } })),
-        ...found.identities.map((i) => ({
-          type: 'identity.unlinked' as const,
-          actor: deletedBy,
-          subject: accountId,
-          payload: { uid: i.uid, provider: i.provider, reason },
-        })),
-        {
-          type: 'account.deleted',
-          actor: deletedBy,
-          subject: accountId,
-          payload: { email: found.account.primaryEmail, uid: first?.uid ?? null, reason },
-        },
-      ]);
-      tx.delete(db.collection(Collections.accounts).doc(accountId));
-      for (const i of found.identities) tx.delete(db.collection(Collections.accountIdentities).doc(i.uid));
-      for (const doc of [...assignments.docs, ...requests.docs]) tx.delete(doc.ref);
-      forgetMembership();
+      await this.erase(tx, found, deletedBy, reason);
       // A login linked since the first look is deleted from Identity Platform below.
       return found.identities.map((i) => i.uid).filter((uid) => !uids.includes(uid));
     });
@@ -210,6 +185,49 @@ export class AccountsService {
     await this.forgetActivity(accountId, [...uids, ...later]).catch((e: unknown) => {
       this.logger.warn(`account ${accountId} deleted, but not all its activity: ${e instanceof Error ? e.message : String(e)}`);
     });
+  }
+
+  /**
+   * The part of deleting an account done in one transaction (design §4), after the caller's own reads: ledgers
+   * `role.revoked` for each active role, `identity.unlinked` for each of `identities` and `account.deleted`, all by
+   * `deletedBy`, and deletes the account, those logins, its role assignments, the requests about it and its membership.
+   * Its Identity Platform users and its activity (`forgetActivity`) are the caller's to delete, outside the transaction.
+   * Test voters are deleted through this too (design §10.4).
+   */
+  async erase(
+    tx: Transaction,
+    found: { readonly account: AccountRecord; readonly identities: readonly IdentityRecord[] },
+    deletedBy: string,
+    reason: string,
+  ): Promise<void> {
+    const db = this.firebase.db;
+    const { accountId } = found.account;
+    const [assignments, requests, forgetMembership] = await Promise.all([
+      tx.get(db.collection(Collections.roleAssignments).where('accountId', '==', accountId)),
+      tx.get(db.collection(Collections.approvalRequests).where('subject', '==', accountId)),
+      this.membership.forgetting(tx, accountId),
+    ]);
+    const active = assignments.docs.map((d) => d.data() as RoleAssignmentRecord).filter((r) => r.revokedAt === null);
+    const first = [...found.identities].sort((a, b) => (a.linkedAt < b.linkedAt ? -1 : a.linkedAt > b.linkedAt ? 1 : 0))[0];
+    await this.ledger.record(tx, [
+      ...active.map((r) => ({ type: 'role.revoked' as const, actor: deletedBy, subject: accountId, payload: { role: r.role, reason } })),
+      ...found.identities.map((i) => ({
+        type: 'identity.unlinked' as const,
+        actor: deletedBy,
+        subject: accountId,
+        payload: { uid: i.uid, provider: i.provider, reason },
+      })),
+      {
+        type: 'account.deleted',
+        actor: deletedBy,
+        subject: accountId,
+        payload: { email: found.account.primaryEmail, uid: first?.uid ?? null, reason },
+      },
+    ]);
+    tx.delete(db.collection(Collections.accounts).doc(accountId));
+    for (const i of found.identities) tx.delete(db.collection(Collections.accountIdentities).doc(i.uid));
+    for (const doc of [...assignments.docs, ...requests.docs]) tx.delete(doc.ref);
+    forgetMembership();
   }
 
   private onDeletionList(account: AccountRecord): boolean {
@@ -244,7 +262,7 @@ export class AccountsService {
    * A deleted account's sign-ins (by account, and by login for those seen before it had one), page visits, and its
    * courses' progress, attempts, certificates and messages.
    */
-  private async forgetActivity(accountId: string, uids: readonly string[]): Promise<void> {
+  async forgetActivity(accountId: string, uids: readonly string[]): Promise<void> {
     const db = this.firebase.db;
     const collections = [
       Collections.signIns,
