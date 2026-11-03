@@ -1,10 +1,11 @@
 import { Controller, Get, HttpCode, Injectable, Post } from '@nestjs/common';
-import { checkMailHealthRequest, type MailCheckStatus, type MailHealthView } from 'ustp-domain';
+import { checkMailHealthRequest, type MailCheckStatus, type MailHealthView, type MemberMailFlag } from 'ustp-domain';
 import { Ctx, requireAccount, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { assertCheck } from '../common/validation.js';
 import { Firebase } from '../infra/firebase.js';
 import { MailRepository } from './mail.repository.js';
+import { MyEmailService } from './my-email.js';
 
 /**
  * The email setup check as the api shows it (design §10.12): the worker's last run for System Admins, and their request
@@ -40,11 +41,23 @@ export class MailHealthService {
   }
 }
 
-/** System Admins see whether email is set up properly, and ask for a check now (design §10.12). */
+/**
+ * System Admins see whether email is set up properly, and ask for a check now; Membership Admins see which members
+ * cannot be emailed (design §10.12).
+ */
 @Controller('v1/admin/mail')
 @Roles('system_admin')
 export class MailAdminController {
-  constructor(private readonly health: MailHealthService) {}
+  constructor(
+    private readonly health: MailHealthService,
+    private readonly email: MyEmailService,
+  ) {}
+
+  @Get('members')
+  @Roles('membership_admin')
+  members(): Promise<MemberMailFlag[]> {
+    return this.email.flags();
+  }
 
   @Get('health')
   view() {

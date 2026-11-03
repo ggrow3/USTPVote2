@@ -6,7 +6,9 @@ import {
   MAIL_SUPPRESSION_DAYS,
   type MailHealthRecord,
   type MailHealthRequest,
+  MAIL_REQUEST_RETENTION_DAYS,
   type MailMessageRecord,
+  type MailRequestRecord,
   type MailSuppressionRecord,
 } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
@@ -60,6 +62,64 @@ export class MailRepository {
       ...record,
       expireAt: Timestamp.fromMillis(Date.parse(record.lastEventAt) + MAIL_SUPPRESSION_DAYS * DAY_MS),
     } satisfies Stored<MailSuppressionRecord>);
+  }
+
+  /** An account's messages sent since `since`, newest first, at most `limit` (the member's own list, §10.12). */
+  async messagesOf(accountId: string, since: string, limit: number): Promise<MailMessageRecord[]> {
+    const snap = await this.firebase.db
+      .collection(Collections.mailMessages)
+      .where('accountId', '==', accountId)
+      .where('sentAt', '>=', since)
+      .orderBy('sentAt', 'desc')
+      .limit(limit)
+      .get();
+    return snap.docs.map((d) => withoutExpiry(d.data() as Stored<MailMessageRecord>));
+  }
+
+  /** Suppressions found through an account's message, for the Membership Admins' flags (§10.12). */
+  async suppressionsOfAccounts(): Promise<MailSuppressionRecord[]> {
+    const snap = await this.firebase.db.collection(Collections.mailSuppressions).where('accountId', '!=', null).get();
+    return snap.docs.map((d) => withoutExpiry(d.data() as Stored<MailSuppressionRecord>));
+  }
+
+  /** Takes an address off the app's list of addresses not to mail (its owner asked to try it again). */
+  async deleteSuppression(addressKey: string): Promise<void> {
+    await this.suppressionRef(addressKey).delete();
+  }
+
+  // --- members' requests (§10.12) -------------------------------------------------------------------------------------
+
+  requestRef(requestId?: string): DocumentReference {
+    const requests = this.firebase.db.collection(Collections.mailRequests);
+    return requestId ? requests.doc(requestId) : requests.doc();
+  }
+
+  createRequest(tx: Transaction, record: MailRequestRecord): void {
+    const expireAt = Timestamp.fromMillis(Date.parse(record.requestedAt) + MAIL_REQUEST_RETENTION_DAYS * DAY_MS);
+    tx.create(this.requestRef(record.requestId), { ...record, expireAt } satisfies Stored<MailRequestRecord>);
+  }
+
+  /** An account's requests, newest first. */
+  async requestsOf(accountId: string, tx?: Transaction): Promise<MailRequestRecord[]> {
+    const query = this.firebase.db.collection(Collections.mailRequests).where('accountId', '==', accountId);
+    const snap = tx ? await tx.get(query) : await query.get();
+    return snap.docs.map((d) => withoutExpiry(d.data() as Stored<MailRequestRecord>)).sort((a, b) => b.requestedAt.localeCompare(a.requestedAt));
+  }
+
+  /** Requests the worker has still to do, or has claimed. */
+  async unfinishedRequests(limit: number): Promise<MailRequestRecord[]> {
+    const snap = await this.firebase.db.collection(Collections.mailRequests).where('status', 'in', ['pending', 'sending']).limit(limit).get();
+    return snap.docs.map((d) => withoutExpiry(d.data() as Stored<MailRequestRecord>));
+  }
+
+  /** Moves a request on from `from` in a transaction; false when it is no longer there, as another worker moved it. */
+  moveRequest(requestId: string, from: MailRequestRecord['status'], next: Partial<MailRequestRecord>): Promise<boolean> {
+    const ref = this.requestRef(requestId);
+    return this.firebase.db.runTransaction(async (tx) => {
+      if ((await tx.get(ref)).get('status') !== from) return false;
+      tx.update(ref, next);
+      return true;
+    });
   }
 
   /** Messages by ID, those missing left out (the setup check's probe). */
@@ -123,11 +183,12 @@ export class MailRepository {
     await batch.commit();
   }
 
-  /** Deletes an account's messages and the suppressions found through its messages (a deleted account, design §4). */
+  /** Deletes an account's messages, the suppressions found through them and its requests (a deleted account, design §4). */
   async forgetAccount(accountId: string): Promise<void> {
     await this.deleteWhere([
       this.firebase.db.collection(Collections.mailMessages).where('accountId', '==', accountId),
       this.firebase.db.collection(Collections.mailSuppressions).where('accountId', '==', accountId),
+      this.firebase.db.collection(Collections.mailRequests).where('accountId', '==', accountId),
     ]);
   }
 

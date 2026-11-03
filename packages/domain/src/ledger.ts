@@ -131,6 +131,8 @@ export interface TickResult {
   readonly deliveryReports: number;
   /** Whether the email setup check ran (hourly, or when a System Admin asked; design §10.12). */
   readonly mailChecked: boolean;
+  /** Members' requests done: test emails, and addresses tried again (design §10.12). */
+  readonly memberEmailsSent: number;
   /** Suggestions a year old, and the form's limits for days gone, deleted (design §10.9). */
   readonly suggestionsDeleted: number;
   /** The room's messages, done action items and finished questions past their time, and questions given up on (design §5.10). */

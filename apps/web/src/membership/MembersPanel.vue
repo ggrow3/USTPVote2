@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { memberMailFlags } from '../notifications/api.js';
 import { useQuasar } from 'quasar';
 import { computed, onMounted, ref, watch } from 'vue';
 import { adminStatusChanges, countryName, countryOf, DEFAULT_COUNTRY, type MemberRecord, type MemberStatus, type StatusHistoryRecord } from 'ustp-domain';
@@ -13,6 +14,7 @@ import {
   classCellText,
   filterRows,
   initials,
+  mailFlagText,
   memberRows,
   membersCsv,
   membersCsvFileName,
@@ -48,6 +50,8 @@ const place = ref('');
 /** United States or Allied Members (design §5.2), or those never asked; '' for every class. */
 const memberClass = ref<ClassFilter | ''>('');
 const classOptions = [{ label: 'All classes', value: '' }, ...CLASS_FILTERS];
+/** Members who cannot be emailed (design §10.12), or everyone. */
+const mailFilter = ref<'unreachable' | ''>('');
 const status = ref<MemberStatus | null>(null);
 const sort = ref<{ key: SortKey; descending: boolean }>({ key: 'name', descending: false });
 const page = ref(1);
@@ -58,12 +62,14 @@ async function load() {
   const ok = await attempt(async () => {
     const found: MemberRecord[] = [];
     const offices = fetchOffices();
+    // Membership Admins see who cannot be emailed; anyone else sees the table without it.
+    const flags = memberMailFlags().catch(() => []);
     for (;;) {
       const batch = await members({ status: null, after: found.at(-1)?.accountId, limit: FETCH });
       found.push(...batch);
       if (batch.length < FETCH) break;
     }
-    all.value = memberRows(found, await offices);
+    all.value = memberRows(found, await offices, await flags);
   });
   listState.value = ok ? 'ready' : 'failed';
 }
@@ -79,7 +85,7 @@ const placeOptions = computed(() => [
 ]);
 /** Search, location and class first: the pills count within them. */
 const scoped = computed(() =>
-  filterRows(all.value, { search: search.value ?? '', place: place.value, memberClass: memberClass.value }),
+  filterRows(all.value, { search: search.value ?? '', place: place.value, memberClass: memberClass.value, mail: mailFilter.value }),
 );
 const counts = computed(() => statusCounts(scoped.value));
 const pills = computed(() => statusFilters(counts.value, status.value));
@@ -99,7 +105,12 @@ const showing = computed(() => {
   const range = pages.value > 1 ? `${(page.value - 1) * PAGE + 1}–${(page.value - 1) * PAGE + shown.value.length}` : `${total}`;
   return `Showing ${range} of ${total} ${total === 1 ? 'member' : 'members'}`;
 });
-watch([search, place, memberClass, status, sort], () => (page.value = 1));
+const unreachable = computed(() => all.value.filter((r) => r.mail).length);
+const mailOptions = computed(() => [
+  { label: 'Everyone', value: '' },
+  { label: `Can't be emailed (${unreachable.value})`, value: 'unreachable' },
+]);
+watch([search, place, memberClass, mailFilter, status, sort], () => (page.value = 1));
 watch(pages, (n) => (page.value = Math.min(page.value, n)));
 
 const COLUMNS: readonly { key: SortKey; label: string }[] = [
@@ -232,6 +243,10 @@ onMounted(() => load());
         <label for="members-class" class="members-muted">Class</label>
         <q-select v-model="memberClass" for="members-class" outlined dense emit-value map-options :options="classOptions" />
       </div>
+      <div class="members-state">
+        <label for="members-email" class="members-muted">Email</label>
+        <q-select v-model="mailFilter" for="members-email" outlined dense emit-value map-options :options="mailOptions" />
+      </div>
       <div role="group" aria-label="Status" class="members-pills">
         <button type="button" class="members-pill" :aria-pressed="status === null" @click="status = null">
           All <span class="members-count">{{ scoped.length }}</span>
@@ -276,6 +291,9 @@ onMounted(() => load());
             <div class="members-name">
               <span class="members-avatar" aria-hidden="true">{{ initials(r.member.legalName) }}</span>
               <router-link :to="`/admin/members/${r.member.accountId}`">{{ r.member.legalName }}</router-link>
+              <q-icon v-if="r.mail" name="unsubscribe" color="warning" size="18px" role="img" :aria-label="`Can't be emailed: ${mailFlagText(r.mail)}`">
+                <q-tooltip>Can't be emailed: {{ mailFlagText(r.mail) }}</q-tooltip>
+              </q-icon>
               <q-btn
                 flat
                 dense

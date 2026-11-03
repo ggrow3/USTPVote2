@@ -11,11 +11,11 @@ import { NOTICE_KINDS, type NoticeDelivery, type NoticeKind, type RecipientStatu
 
 /**
  * What a message is: an election notice (`NoticeKind`), an Election Admin's test of one, a welcome email to an added
- * member (§5.13), the setup check's message to SES's mailbox simulator (`probe`, §10.12), or an email Identity Platform
- * sent about the account (a sign-in link, an address to confirm, a password reset), which the worker learns of only
+ * member (§5.13), the setup check's message to SES's mailbox simulator (`probe`, §10.12), a test email a member asked for
+ * on their Account page (`member_test`, §10.12), or an email Identity Platform sent about the account (a sign-in link, an address to confirm, a password reset), which the worker learns of only
  * from its delivery reports.
  */
-export const MAIL_KINDS = [...NOTICE_KINDS, 'notice_test', 'welcome', 'probe', 'account_email'] as const;
+export const MAIL_KINDS = [...NOTICE_KINDS, 'notice_test', 'welcome', 'probe', 'member_test', 'account_email'] as const;
 export type MailKind = (typeof MAIL_KINDS)[number];
 
 /** Who sent it: this app's worker, or Identity Platform through the same mail service. */

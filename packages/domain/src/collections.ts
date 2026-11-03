@@ -162,6 +162,8 @@ export const Collections = {
   mailSuppressions: 'mail_suppressions',
   /** `mail_health/current` and `mail_health/request`: the email setup check's last run, and a System Admin's request (§10.12). */
   mailHealth: 'mail_health',
+  /** `mail_requests/{requestId}`: a member's request for a test email, or to try their address again, kept 30 days (§10.12). */
+  mailRequests: 'mail_requests',
   // testing mode (design §10.4)
   testingPersonas: 'testing_personas',
 } as const;

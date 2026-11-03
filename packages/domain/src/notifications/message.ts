@@ -149,6 +149,25 @@ export function welcomeMessage(input: { readonly origin: string; readonly name: 
   return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
 }
 
+/**
+ * The test email a member asks for on their Account page (design §10.12), to see that email from the party reaches
+ * them. Nothing in it but where to look if it went to spam.
+ */
+export function memberTestMessage(input: { readonly origin: string; readonly name: string | null; readonly contact: string | null }): NoticeMessage {
+  const site = `${input.origin}/`;
+  const subject = 'Your test email from the US Transhumanist Party';
+  const blocks: Block[] = [
+    greeting(input.name),
+    { p: 'You asked for this test email on your Account page. It reached you, so election email from the party should too.' },
+    { p: 'If it was in your spam or junk folder, mark it as not spam, so the next emails from the party land in your inbox.' },
+    { link: `${input.origin}/account`, label: 'Open your Account page', after: ' to see what became of each email the party sent you.' },
+    { hr: true },
+    { small: 'You are getting this email because you asked for it.' },
+    ...footer(input.contact, site),
+  ];
+  return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
+}
+
 /** One row per time zone: the zone's name and when voting opens and closes there, each with its abbreviation. */
 export function votingWindow(opensAt: string, closesAt: string): { name: string; opens: string; closes: string }[] {
   return NOTICE_TIME_ZONES.map(({ zone, name }) => ({ name, opens: zoneTime(opensAt, zone), closes: zoneTime(closesAt, zone) }));

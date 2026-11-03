@@ -4,6 +4,14 @@
       "collectionGroup": "mail_messages",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "accountId", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "mail_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "counted", "order": "ASCENDING" },
         { "fieldPath": "sentAt", "order": "ASCENDING" }
       ]
@@ -291,6 +299,7 @@
     { "collectionGroup": "page_visits", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
     { "collectionGroup": "mail_messages", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
     { "collectionGroup": "mail_suppressions", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "mail_requests", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
     { "collectionGroup": "page_hits", "fieldPath": "days", "indexes": [] },
     { "collectionGroup": "page_hits", "fieldPath": "signedIn", "indexes": [] },
     { "collectionGroup": "participation", "fieldPath": "parts", "indexes": [] },
