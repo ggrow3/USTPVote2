@@ -2,8 +2,16 @@ import { z } from 'zod';
 import { BYLAWS_CHECK_SCOPES } from './bylaws-check.js';
 import { SIGN_IN_PROVIDERS } from './identity.js';
 import { MEMBER_STATUSES } from './membership/member-status.js';
-import { COUNTRY_CODES } from './membership/places.js';
-import { checkApplicantAge, isCalendarDate, MINIMUM_MEMBER_AGE, normalizePhone, US_POSTAL_CODE } from './membership/registration.js';
+import { DEFAULT_COUNTRY, isCountryCode } from './membership/countries.js';
+import {
+  checkApplicantAge,
+  isCalendarDate,
+  MINIMUM_MEMBER_AGE,
+  normalizePhone,
+  normalizePostcode,
+  POSTCODE,
+  US_POSTAL_CODE,
+} from './membership/registration.js';
 import { ROLES } from './roles.js';
 import { MAX_TEST_VOTERS } from './testing.js';
 
@@ -26,14 +34,44 @@ export const hex32Schema = hex32;
 const uuidV7 = z.string().regex(/^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/, 'expected a UUIDv7');
 const optionalText = (max: number) => z.string().trim().max(max).optional();
 
-/** Where a member lives and how to reach them: the same rules on the application and on later changes (design §5.2). */
-const state = z.string().regex(/^[A-Z]{2}$/, 'choose your state or territory (two-letter code)');
-const city = z.string().trim().min(1, 'enter your city').max(100);
-const postalCode = z.string().trim().regex(US_POSTAL_CODE, 'enter a 5-digit ZIP code');
+/**
+ * Where a member lives and how to reach them: the same rules on the application and on later changes (design
+ * §5.2). The country comes first, the United States when none is given. In the US the state, city and ZIP code are
+ * needed; elsewhere the region (a state, province or county), city and postcode are all optional. `state` is read
+ * for the US only and `region` everywhere else. `checkPlace` applies the rules.
+ */
+const place = {
+  country: z.string().refine(isCountryCode, 'choose your country').default(DEFAULT_COUNTRY),
+  /** The two-letter code of a US state or territory. */
+  state: z.string().max(100).optional(),
+  region: optionalText(100),
+  city: optionalText(100),
+  postalCode: optionalText(16),
+};
 const phone = optionalText(32).refine(
   (v) => !v || normalizePhone(v) !== null,
   'enter a phone number with its area code, or with +country code outside the US',
 );
+
+interface PlaceInput {
+  readonly country: string;
+  readonly state?: string | undefined;
+  readonly city?: string | undefined;
+  readonly postalCode?: string | undefined;
+}
+
+function checkPlace(input: PlaceInput, ctx: z.RefinementCtx): void {
+  const issue = (path: keyof PlaceInput, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });
+  if (input.country !== DEFAULT_COUNTRY) {
+    if (input.postalCode && !POSTCODE.test(normalizePostcode(input.postalCode))) {
+      issue('postalCode', 'enter a postcode of letters and digits, with spaces or dashes between them');
+    }
+    return;
+  }
+  if (!/^[A-Z]{2}$/.test(input.state ?? '')) issue('state', 'choose your state or territory (two-letter code)');
+  if (!input.city) issue('city', 'enter your city');
+  if (!US_POSTAL_CODE.test(input.postalCode ?? '')) issue('postalCode', 'enter a 5-digit ZIP code');
+}
 
 export const createApplicationSchema = z
   .strictObject({
@@ -51,9 +89,7 @@ export const createApplicationSchema = z
     usVoteEligible: z.boolean({ error: 'answer Yes or No' }),
     /** Yes or No, and neither is refused (design §5.2). */
     agreesWithCoreIdeals: z.boolean({ error: 'answer Yes or No' }),
-    state,
-    city,
-    postalCode,
+    ...place,
     phone,
     statement: optionalText(5000),
     interests: optionalText(1000),
@@ -61,11 +97,15 @@ export const createApplicationSchema = z
     volunteer: z.boolean().optional(),
     runForOffice: z.boolean().optional(),
     referral: optionalText(200),
-    /** Opt-ins to party email; recorded with the time of consent. */
+    /**
+     * Opt-ins to party email; recorded with the time of consent. The Register page asks both at once with one box
+     * (design §5.2).
+     */
     newsletter: z.boolean().optional(),
     announcements: z.boolean().optional(),
   })
   .superRefine((input, ctx) => {
+    checkPlace(input, ctx);
     if (!isCalendarDate(input.dateOfBirth)) return;
     const age = checkApplicantAge(input.dateOfBirth, new Date());
     if (!age.ok) ctx.addIssue({ code: 'custom', path: ['dateOfBirth'], message: age.reason });
@@ -94,31 +134,13 @@ export const resignSchema = z.strictObject({ reason: optionalText(2000) });
 export type ResignInput = z.infer<typeof resignSchema>;
 
 /**
- * Where a member lives, when it changes after joining (design §5.2, §5.13): a US state and ZIP code, or, for a member a
- * Membership Admin recorded as living abroad, a country (never the US), any state they vote in, and a postal code.
- */
-const livingAbroad = z.string().refine((c) => c !== 'US' && COUNTRY_CODES.includes(c), 'choose the country').optional();
-function checkPlace(input: { state: string; country?: string | undefined; postalCode: string }, ctx: z.RefinementCtx): void {
-  const issue = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });
-  if (!input.country) {
-    if (!/^[A-Z]{2}$/.test(input.state)) issue('state', 'choose your state or territory (two-letter code)');
-    if (!US_POSTAL_CODE.test(input.postalCode.trim())) issue('postalCode', 'enter a 5-digit ZIP code');
-  } else {
-    if (input.state && !/^[A-Z]{2}$/.test(input.state)) issue('state', 'choose a state or territory, or none');
-    if (input.postalCode.trim() && !/^[A-Za-z0-9 -]{1,12}$/.test(input.postalCode.trim())) issue('postalCode', 'enter a postal code, or none');
-  }
-}
-const placeFields = { state: z.string().max(2), country: livingAbroad, postalCode: z.string().max(20) };
-
-/**
  * `POST /v1/me/details`: a member's own preferred name, where they live, phone and email opt-ins (design §5.2). The
  * legal name is not here: a Membership Admin corrects it.
  */
 export const memberDetailsSchema = z
   .strictObject({
     preferredName: optionalText(200),
-    ...placeFields,
-    city,
+    ...place,
     phone,
     newsletter: z.boolean(),
     announcements: z.boolean(),
@@ -134,8 +156,7 @@ export const memberCorrectionSchema = z
   .strictObject({
     legalName: z.string().trim().min(1, 'enter the legal name').max(200),
     preferredName: optionalText(200),
-    ...placeFields,
-    city,
+    ...place,
     phone,
     reason,
   })
@@ -186,6 +207,16 @@ export const createPersonasSchema = z.strictObject({
   voters: z.number().int().min(0).max(MAX_TEST_VOTERS).default(0),
 });
 export type CreatePersonasInput = z.infer<typeof createPersonasSchema>;
+
+/** `POST /v1/testing/personas/delete`: deletes these test voters at once, whatever elections hold them (design §10.4). */
+export const deleteTestVotersSchema = z.strictObject({
+  voters: z
+    .array(uuidV7)
+    .min(1, 'choose at least one test voter')
+    .max(MAX_TEST_VOTERS)
+    .refine((ids) => new Set(ids).size === ids.length, 'each test voter once'),
+});
+export type DeleteTestVotersInput = z.infer<typeof deleteTestVotersSchema>;
 
 export const signInMethodsSchema = z
   .strictObject(Object.fromEntries(SIGN_IN_PROVIDERS.map((p) => [p, z.boolean().optional()])) as Record<

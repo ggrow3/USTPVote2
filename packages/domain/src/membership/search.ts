@@ -8,7 +8,7 @@ export interface MemberMatch {
   readonly accountId: string;
   readonly legalName: string;
   readonly preferredName: string | null;
-  /** Two-letter state code. */
+  /** Where they live (`placeText`): the state's code in the US ("NY"), the country's name elsewhere ("Canada"). */
   readonly state: string;
 }
 

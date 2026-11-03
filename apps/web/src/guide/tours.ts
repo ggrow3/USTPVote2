@@ -190,7 +190,7 @@ const electionAdmin: readonly TourStep[] = [
     todo: [
       'Press “New election”. Give it a “Title”, choose “Secret ballot” or “Open roll-call”, and set when voting opens and closes.',
       'Press “Create draft”: the election editor opens.',
-      'Or press “Import JSON” to start from a ustp.election file.',
+      'Or press “Import JSON” to start from a ustp.election file. “Download sample ballot” gives one with a question of every kind, to change first.',
     ],
     notes: ['To work on an election already listed, press it.', 'To tie a contest to an office, define the office first in Admin › Offices.'],
   },
@@ -209,6 +209,7 @@ const electionAdmin: readonly TourStep[] = [
     notes: [
       'You cannot stand in an election you administer, and a candidate in an election cannot administer it.',
       'Forum proposals are put on a draft’s ballot from Admin › Forum, with “Put on a ballot”.',
+      'Questions from a ustp.election file, such as the sample ballot, are added after the ballot’s own with “Import JSON” beside “Download as JSON”.',
     ],
   },
   {

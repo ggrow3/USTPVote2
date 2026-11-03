@@ -6,12 +6,13 @@ import { focusFirstInvalid, usePageTitle } from '../a11y.js';
 import { errorMessage } from '../api.js';
 import { APP_NAME } from '../app-name.js';
 import PageShell from '../components/PageShell.vue';
+import PasswordInput from '../components/PasswordInput.vue';
 import TwoStepCodeCard from '../components/TwoStepCodeCard.vue';
 import { auth } from '../firebase.js';
 import { session, signOut } from '../session.js';
 import {
   completeEmailLink,
-  MIN_PASSWORD_LENGTH,
+  PASSWORD_HINT,
   PasswordRejected,
   passwordProblem,
   pendingEmailLink,
@@ -67,7 +68,8 @@ const signInAgain = ref(false);
 const staleSignIn = ref(false);
 
 async function savePassword() {
-  passwordError.value = passwordProblem(password.value) ?? (password.value !== confirm.value ? 'The two passwords differ.' : null);
+  passwordError.value =
+    passwordProblem(password.value, session.user?.email ?? '') ?? (password.value !== confirm.value ? 'The two passwords differ.' : null);
   if (passwordError.value) return focusFirstInvalid();
   const user = auth.currentUser;
   if (!user) return;
@@ -201,16 +203,14 @@ async function freshLink() {
           <q-card-section>
             <h2 class="text-subtitle1">Choose your password</h2>
             <div class="text-caption text-grey-7">
-              At least {{ MIN_PASSWORD_LENGTH }} characters; a few unrelated words make a good one. We check that it has
-              not appeared in a known data breach without sending it anywhere.
+              {{ PASSWORD_HINT }} We check that it has not appeared in a known data breach without sending it anywhere.
             </div>
           </q-card-section>
           <q-card-section>
             <q-form class="ustp-form" @submit.prevent="savePassword">
               <input type="email" :value="session.user?.email ?? ''" autocomplete="username" class="hidden" aria-hidden="true" tabindex="-1" readonly />
-              <q-input
+              <PasswordInput
                 v-model="password"
-                type="password"
                 label="New password"
                 outlined
                 dense
@@ -219,7 +219,7 @@ async function freshLink() {
                 :error="!!passwordError"
                 :error-message="passwordError ?? undefined"
               />
-              <q-input v-model="confirm" type="password" label="The same password again" outlined dense autocomplete="new-password" />
+              <PasswordInput v-model="confirm" label="The same password again" outlined dense autocomplete="new-password" />
               <div class="ustp-actions">
                 <q-btn type="submit" color="primary" no-caps label="Set password" :loading="saving" />
               </div>

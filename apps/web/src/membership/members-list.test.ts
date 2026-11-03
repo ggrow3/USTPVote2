@@ -9,7 +9,6 @@ import {
   membersCsv,
   membersCsvFileName,
   noOfficeText,
-  placeCellText,
   placeKey,
   sinceText,
   sortRows,
@@ -121,26 +120,36 @@ describe('initials', () => {
 
 describe('filterRows', () => {
   it('matches part of the legal or preferred name, ignoring case and accents', () => {
-    expect(names(filterRows(rows, { search: 'CLEO', state: '' }))).toEqual(['Cléo Dunn']);
-    expect(names(filterRows(rows, { search: 'benji', state: '' }))).toEqual(['Ben Cruz']);
-    expect(names(filterRows(rows, { search: '  ', state: '' }))).toHaveLength(4);
+    expect(names(filterRows(rows, { search: 'CLEO', place: '' }))).toEqual(['Cléo Dunn']);
+    expect(names(filterRows(rows, { search: 'benji', place: '' }))).toEqual(['Ben Cruz']);
+    expect(names(filterRows(rows, { search: '  ', place: '' }))).toHaveLength(4);
+  });
+
+  it('keeps one US state, or one country, never mistaking California for Canada', () => {
+    const abroad = memberRows([...rows.map((r) => r.member), member('a5', 'Eli Grant', { country: 'CA', state: null, region: 'Ontario' })], view);
+    expect(placeKey(abroad[0]!.member)).toBe('US-CA');
+    expect(placeKey(abroad[4]!.member)).toBe('CA');
+    expect(names(filterRows(abroad, { search: '', place: 'CA' }))).toEqual(['Eli Grant']);
+    expect(names(filterRows(abroad, { search: '', place: 'US-CA' }))).toEqual(['Ada Brooks']);
+    expect(names(sortRows(abroad, 'state', false)).at(-1)).toBe('Eli Grant');
+    expect(membersCsv(abroad.slice(4)).split('\r\n')[1]).toBe('Eli Grant,a5,,,Canada,United States Member,Yes,Active,2026-10-22');
   });
 
   it('keeps one state', () => {
-    expect(names(filterRows(rows, { search: '', state: 'NY' }))).toEqual(['Cléo Dunn', 'Dana Ito']);
+    expect(names(filterRows(rows, { search: '', place: 'US-NY' }))).toEqual(['Cléo Dunn', 'Dana Ito']);
   });
 
   it('keeps one class: United States or Allied Members, or those never asked', () => {
-    expect(names(filterRows(rows, { search: '', state: '', memberClass: 'united_states' }))).toEqual(['Ada Brooks', 'Dana Ito']);
-    expect(names(filterRows(rows, { search: '', state: '', memberClass: 'allied' }))).toEqual(['Ben Cruz']);
-    expect(names(filterRows(rows, { search: '', state: 'NY', memberClass: 'not_asked' }))).toEqual(['Cléo Dunn']);
-    expect(names(filterRows(rows, { search: '', state: '', memberClass: '' }))).toHaveLength(4);
+    expect(names(filterRows(rows, { search: '', place: '', memberClass: 'united_states' }))).toEqual(['Ada Brooks', 'Dana Ito']);
+    expect(names(filterRows(rows, { search: '', place: '', memberClass: 'allied' }))).toEqual(['Ben Cruz']);
+    expect(names(filterRows(rows, { search: '', place: 'US-NY', memberClass: 'not_asked' }))).toEqual(['Cléo Dunn']);
+    expect(names(filterRows(rows, { search: '', place: '', memberClass: '' }))).toHaveLength(4);
   });
 
   it('treats a record from before the question, without the field, as never asked', () => {
     const { usVoteEligible: _, ...old } = member('a5', 'Eve Fox');
     const oldRows = memberRows([old as MemberRecord], view);
-    expect(names(filterRows(oldRows, { search: '', state: '', memberClass: 'not_asked' }))).toEqual(['Eve Fox']);
+    expect(names(filterRows(oldRows, { search: '', place: '', memberClass: 'not_asked' }))).toEqual(['Eve Fox']);
     expect(classCellText(old as MemberRecord)).toBeNull();
   });
 });
@@ -200,12 +209,12 @@ describe('sinceText', () => {
 describe('membersCsv', () => {
   it('has the table columns, the account ID and the Core Ideals answer, never contact details', () => {
     expect(membersCsv(rows.slice(0, 2))).toBe(
-      'Name,Account ID,Offices,State,Class,Agrees with the Core Ideals,Status,Member since\r\n' +
-        'Ada Brooks,a1,,CA,United States Member,Yes,Active,2026-10-22\r\n' +
-        'Ben Cruz,a2,Chair; State Chair,DC,Allied Member,No,Active,2026-10-22\r\n',
+      'Name,Account ID,Offices,State,Country,Class,Agrees with the Core Ideals,Status,Member since\r\n' +
+        'Ada Brooks,a1,,CA,United States,United States Member,Yes,Active,2026-10-22\r\n' +
+        'Ben Cruz,a2,Chair; State Chair,DC,United States,Allied Member,No,Active,2026-10-22\r\n',
     );
     // Cléo joined before the questions were asked.
-    expect(membersCsv(rows.slice(2, 3)).split('\r\n')[1]).toMatch(/^Cléo Dunn,a3,,NY,Not asked,Not asked,Suspended,2025-01-0[45]$/);
+    expect(membersCsv(rows.slice(2, 3)).split('\r\n')[1]).toMatch(/^Cléo Dunn,a3,,NY,United States,Not asked,Not asked,Suspended,2025-01-0[45]$/);
     expect(membersCsv(rows)).not.toMatch(/Springfield|10001|5551234567/);
   });
 
@@ -217,25 +226,5 @@ describe('membersCsv', () => {
 
   it('is named by the date', () => {
     expect(membersCsvFileName(new Date(2026, 9, 6))).toBe('ustp-members-2026-10-06.csv');
-  });
-});
-
-describe('members living abroad', () => {
-  const de = member('a7', 'Grete Abroad', { state: '', country: 'DE' });
-  const delaware = member('a8', 'Del Home', { state: 'DE' });
-  const rows: MemberRow[] = [de, delaware].map((m) => ({ member: m, offices: [] }));
-
-  it('are filtered by country, never mistaken for the state with the same code', () => {
-    expect(placeKey(de)).toBe('country:DE');
-    expect(placeKey(delaware)).toBe('DE');
-    expect(filterRows(rows, { search: '', state: 'country:DE' }).map((r) => r.member.legalName)).toEqual(['Grete Abroad']);
-    expect(filterRows(rows, { search: '', state: 'DE' }).map((r) => r.member.legalName)).toEqual(['Del Home']);
-  });
-
-  it('show and export the country by name', () => {
-    expect(placeCellText(de)).toBe('Germany');
-    expect(placeCellText(delaware)).toBe('DE');
-    expect(sortRows(rows, 'state', false).map((r) => r.member.legalName)).toEqual(['Del Home', 'Grete Abroad']);
-    expect(membersCsv(rows)).toContain('Grete Abroad,a7,,Germany,');
   });
 });

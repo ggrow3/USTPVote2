@@ -65,7 +65,7 @@ describe('adding one member', () => {
     const res = await add({ email: 'eve@example.test', legalName: 'Eve', country: 'Germany', postalCode: '10115', usVoteEligible: 'no', reason: 'Roster' });
     expect(res.status).toBe(201);
     const profile = await api.call('GET', `/v1/admin/members/${res.body.added[0].accountId}`, admin);
-    expect(profile.body.member).toMatchObject({ state: '', country: 'DE', usVoteEligible: false, agreesWithCoreIdeals: null });
+    expect(profile.body.member).toMatchObject({ country: 'DE', state: null, region: null, contact: { city: null, postalCode: '10115' }, usVoteEligible: false, agreesWithCoreIdeals: null });
   });
 
   it('refuses bad fields by name, an address already on the site, and anyone but a Membership Admin', async () => {
@@ -211,7 +211,6 @@ describe('the added member signs in', () => {
     const user = await api.user('eve@example.test');
     expect((await api.call('POST', '/v1/accounts', user)).body).toMatchObject({ accountId: eve, claimed: true });
     const changed = await api.call('POST', '/v1/me/details', user, {
-      state: '',
       country: 'GB',
       city: 'London',
       postalCode: 'SW1A 1AA',

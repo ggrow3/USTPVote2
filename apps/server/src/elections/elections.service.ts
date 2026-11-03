@@ -15,8 +15,11 @@ import {
   electionPackageFrom,
   electionTransitionAuthority,
   isRehearsalRoll,
+  MAX_PACKAGE_CONTESTS,
+  packageContestRecords,
   packageProposals,
   packageRecords,
+  placeText,
   planQuestion,
   planQuestionOrder,
   PROBLEM_TYPES,
@@ -28,7 +31,6 @@ import {
   validateDefinition,
   type AmendingContest,
   type ApprovalRequestRecord,
-  type BylawsAmendment,
   type CancelPayload,
   type CertifyPayload,
   type CandidateInput,
@@ -174,73 +176,140 @@ export class ElectionsService {
    */
   async importPackage(ctx: RequestContext, pkg: ElectionPackage): Promise<ElectionDetail> {
     const createdBy = requireAccount(ctx);
-    const proposals = packageProposals(pkg);
-    const standing = pkg.contests.flatMap((c) => (c.kind === 'proposal' ? [] : c.candidates));
-    const accountIds = [...new Set(standing.map((k) => ('accountId' in k && k.accountId) || null).filter((id): id is string => !!id))];
-    if (accountIds.includes(createdBy)) throw new ForbiddenException('you cannot add yourself as a candidate in an election you administer');
-    const positionIds = [...new Set(pkg.contests.map((c) => (c.kind === 'proposal' ? null : c.positionId)).filter((id): id is string => !!id))];
     const electionId = uuidv7();
     await this.db.runTransaction(async (tx) => {
-      const snapshots = this.db.collection(Collections.proposalSnapshots);
-      const referenced = [...new Set(proposals.flatMap((p) => (p && 'snapshotId' in p ? [p.snapshotId] : [])))];
-      const [existing, matches, offices, members, current] = await Promise.all([
-        referenced.length ? tx.getAll(...referenced.map((id) => snapshots.doc(id))) : [],
-        Promise.all(proposals.map((p) => (p && 'input' in p ? tx.get(snapshots.where('contentHash', '==', p.contentHash).limit(20)) : null))),
-        positionIds.length ? tx.getAll(...positionIds.map((id) => this.db.collection(Collections.positions).doc(id))) : [],
-        this.members.getAll(tx, accountIds),
-        this.membership.currentBylaws(tx),
-      ]);
-      const missingText = existing.find((s) => !s.exists);
-      if (missingText) throw new BadRequestException(`there is no proposal text ${missingText.id}`);
-      const missingOffice = offices.find((s) => !s.exists);
-      if (missingOffice) throw new BadRequestException(`there is no office ${missingOffice.id}`);
-      accountIds.forEach((id, i) => assertCheck(checkCandidateAccount(id, members[i] ?? null), BadRequestException));
-
-      // Each proposal contest's text: the one referenced, one already captured (here or earlier in this package) with the
-      // same hash and source, or a new one.
-      const randomId = () => snapshots.doc().id;
-      const capturedAt = new Date().toISOString();
-      const created: ProposalSnapshotRecord[] = [];
-      const texts = proposals.map((p, i): ProposalSnapshotRecord | null => {
-        if (!p) return null;
-        if ('snapshotId' in p) return existing.find((s) => s.id === p.snapshotId)!.data() as ProposalSnapshotRecord;
-        const source = p.input.source || null;
-        const known = [...(matches[i]?.docs.map((d) => d.data() as ProposalSnapshotRecord) ?? []), ...created];
-        const same = known.find((s) => s.contentHash === p.contentHash && s.source === source);
-        if (same) return same;
-        const record: ProposalSnapshotRecord = {
-          snapshotId: randomId(),
-          title: p.input.title,
-          body: p.input.body,
-          source,
-          ...(p.input.amendment && { amendment: p.input.amendment }),
-          contentHash: p.contentHash,
-          capturedAt,
-          capturedBy: createdBy,
-        };
-        created.push(record);
-        return record;
-      });
-      const amending = pkg.contests.flatMap((c, i): AmendingContest[] => {
-        const amendment: BylawsAmendment | null | undefined = texts[i]?.amendment;
-        return amendment ? [{ contestId: c.id ?? `${i + 1}`, title: c.title, amendment }] : [];
-      });
-      const problems = amendmentProblems(amending, current);
-      if (problems.length) throw new ConflictException(problems.join('; '));
-
+      const { texts, created } = await this.packageTexts(tx, pkg, createdBy);
       const records = packageRecords(pkg, {
         electionId,
         createdBy,
         now: new Date(),
-        newId: randomId,
+        newId: () => this.db.collection(Collections.proposalSnapshots).doc().id,
         snapshotIds: texts.map((t) => t?.snapshotId ?? null),
       });
+      await this.assertBallotAmendmentsFit(tx, records.contests, texts.filter((t): t is ProposalSnapshotRecord => !!t));
+
+      const snapshots = this.db.collection(Collections.proposalSnapshots);
       for (const record of created) tx.create(snapshots.doc(record.snapshotId), record);
       tx.create(this.electionRef(electionId), records.election);
       for (const c of records.contests) tx.create(this.electionRef(electionId).collection(ElectionCollections.contests).doc(c.contestId), c);
       for (const k of records.candidates) tx.create(this.electionRef(electionId).collection(ElectionCollections.candidates).doc(k.candidateId), k);
     });
     return this.detail(electionId);
+  }
+
+  /**
+   * Adds a package's questions after a draft's own (design §6.7), in one transaction, with an import's rules and the
+   * draft's: only a draft, by an admin who is not a candidate in it, at most `MAX_PACKAGE_CONTESTS` questions in all,
+   * and the bylaws amendments of the whole ballot fitting the current version. Only the file's questions are used: its
+   * title, window and secrecy are not. They keep the file's IDs but for those the draft already uses.
+   */
+  async importQuestions(ctx: RequestContext, electionId: string, pkg: ElectionPackage): Promise<ElectionDetail> {
+    const actor = requireAccount(ctx);
+    if (!pkg.contests.length) throw new BadRequestException('the file has no questions to add');
+    await this.db.runTransaction(async (tx) => {
+      await this.editable(tx, ctx, electionId);
+      const contestsRef = this.electionRef(electionId).collection(ElectionCollections.contests);
+      const candidatesRef = this.electionRef(electionId).collection(ElectionCollections.candidates);
+      const snapshots = this.db.collection(Collections.proposalSnapshots);
+      const [contestsSnap, candidatesSnap] = await Promise.all([tx.get(contestsRef), tx.get(candidatesRef)]);
+      const own = contestsSnap.docs.map((d) => d.data() as ContestRecord);
+      if (own.length + pkg.contests.length > MAX_PACKAGE_CONTESTS) {
+        throw new BadRequestException(
+          `a ballot holds at most ${MAX_PACKAGE_CONTESTS} questions; this one has ${own.length} and the file adds ${pkg.contests.length}`,
+        );
+      }
+      const { texts, created } = await this.packageTexts(tx, pkg, actor);
+      const ownTextIds = [...new Set(own.map((c) => c.proposalSnapshotId).filter((id): id is string => !!id))];
+      const ownTexts = ownTextIds.length
+        ? (await tx.getAll(...ownTextIds.map((id) => snapshots.doc(id)))).map((d) => d.data() as ProposalSnapshotRecord | undefined)
+        : [];
+      const records = packageContestRecords(pkg, {
+        firstOrder: Math.max(0, ...own.map((c) => c.order)) + 1,
+        newId: () => contestsRef.doc().id,
+        snapshotIds: texts.map((t) => t?.snapshotId ?? null),
+        taken: { contests: new Set(own.map((c) => c.contestId)), candidates: new Set(candidatesSnap.docs.map((d) => d.id)) },
+      });
+      await this.assertBallotAmendmentsFit(
+        tx,
+        [...own, ...records.contests],
+        [...ownTexts, ...texts].filter((t): t is ProposalSnapshotRecord => !!t),
+      );
+
+      for (const record of created) tx.create(snapshots.doc(record.snapshotId), record);
+      for (const c of records.contests) tx.create(contestsRef.doc(c.contestId), c);
+      for (const k of records.candidates) tx.create(candidatesRef.doc(k.candidateId), k);
+    });
+    return this.detail(electionId);
+  }
+
+  /**
+   * Reads and checks inside `tx` what importing a package's contests needs (design §6.7), as the editor checks each
+   * piece: the offices and proposal texts it names exist, and each linked candidate is an Active member and not the
+   * importing admin. Gives each proposal contest's text by contest index (null for candidate contests): the one it
+   * names, one already captured with the same content hash and source (here or earlier in the file), or a new one,
+   * which is also in `created`, to write.
+   */
+  private async packageTexts(
+    tx: Transaction,
+    pkg: ElectionPackage,
+    actor: string,
+  ): Promise<{ texts: (ProposalSnapshotRecord | null)[]; created: ProposalSnapshotRecord[] }> {
+    const proposals = packageProposals(pkg);
+    const standing = pkg.contests.flatMap((c) => (c.kind === 'proposal' ? [] : c.candidates));
+    const accountIds = [...new Set(standing.map((k) => ('accountId' in k && k.accountId) || null).filter((id): id is string => !!id))];
+    if (accountIds.includes(actor)) throw new ForbiddenException('you cannot add yourself as a candidate in an election you administer');
+    const positionIds = [...new Set(pkg.contests.map((c) => (c.kind === 'proposal' ? null : c.positionId)).filter((id): id is string => !!id))];
+    const snapshots = this.db.collection(Collections.proposalSnapshots);
+    const referenced = [...new Set(proposals.flatMap((p) => (p && 'snapshotId' in p ? [p.snapshotId] : [])))];
+    const [existing, matches, offices, members] = await Promise.all([
+      referenced.length ? tx.getAll(...referenced.map((id) => snapshots.doc(id))) : [],
+      Promise.all(proposals.map((p) => (p && 'input' in p ? tx.get(snapshots.where('contentHash', '==', p.contentHash).limit(20)) : null))),
+      positionIds.length ? tx.getAll(...positionIds.map((id) => this.db.collection(Collections.positions).doc(id))) : [],
+      this.members.getAll(tx, accountIds),
+    ]);
+    const missingText = existing.find((s) => !s.exists);
+    if (missingText) throw new BadRequestException(`there is no proposal text ${missingText.id}`);
+    const missingOffice = offices.find((s) => !s.exists);
+    if (missingOffice) throw new BadRequestException(`there is no office ${missingOffice.id}`);
+    accountIds.forEach((id, i) => assertCheck(checkCandidateAccount(id, members[i] ?? null), BadRequestException));
+
+    const capturedAt = new Date().toISOString();
+    const created: ProposalSnapshotRecord[] = [];
+    const texts = proposals.map((p, i): ProposalSnapshotRecord | null => {
+      if (!p) return null;
+      if ('snapshotId' in p) return existing.find((s) => s.id === p.snapshotId)!.data() as ProposalSnapshotRecord;
+      const source = p.input.source || null;
+      const known = [...(matches[i]?.docs.map((d) => d.data() as ProposalSnapshotRecord) ?? []), ...created];
+      const same = known.find((s) => s.contentHash === p.contentHash && s.source === source);
+      if (same) return same;
+      const record: ProposalSnapshotRecord = {
+        snapshotId: snapshots.doc().id,
+        title: p.input.title,
+        body: p.input.body,
+        source,
+        ...(p.input.amendment && { amendment: p.input.amendment }),
+        contentHash: p.contentHash,
+        capturedAt,
+        capturedBy: actor,
+      };
+      created.push(record);
+      return record;
+    });
+    return { texts, created };
+  }
+
+  /**
+   * The bylaws amendments a whole ballot's `contests` put to the vote, read from `texts`, must amend the current
+   * version and not conflict (design §6.6): for an import, which writes many contests at once.
+   */
+  private async assertBallotAmendmentsFit(tx: Transaction, contests: readonly ContestRecord[], texts: readonly ProposalSnapshotRecord[]): Promise<void> {
+    const amending = contests.flatMap((c): AmendingContest[] => {
+      const amendment = texts.find((t) => t.snapshotId === c.proposalSnapshotId)?.amendment;
+      return amendment ? [{ contestId: c.contestId, title: c.title, amendment }] : [];
+    });
+    if (!amending.length) return;
+    const problems = amendmentProblems(amending, await this.membership.currentBylaws(tx));
+    if (problems.length) throw new ConflictException(problems.join('; '));
   }
 
   /** Any election as a package (design §6.7), to import again here or elsewhere. */
@@ -364,7 +433,7 @@ export class ElectionsService {
     const entries = snapshot.accountIds.map((accountId, i) => ({
       accountId,
       legalName: members[i]?.legalName ?? '(no member record)',
-      state: members[i]?.state ?? '',
+      state: members[i] ? placeText(members[i]!) : '',
     }));
     return { snapshot: withoutList(snapshot), entries };
   }

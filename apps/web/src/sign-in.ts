@@ -18,10 +18,9 @@ import {
   type User,
 } from 'firebase/auth';
 import { SET_PASSWORD_PATH, type SignInProvider } from 'ustp-domain';
+import { passwordProblem } from './password-policy.js';
 
-/** NIST SP 800-63B-4 single-factor minimum (design §4); applied to every account. */
-export const MIN_PASSWORD_LENGTH = 15;
-export const MAX_PASSWORD_LENGTH = 128;
+export { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, PASSWORD_HINT, passwordProblem } from './password-policy.js';
 
 export type FederatedProvider = Exclude<SignInProvider, 'password'>;
 
@@ -54,13 +53,6 @@ export function reauthenticate(user: User, method: { provider: FederatedProvider
     : reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email ?? '', method.password));
 }
 
-/** Returns a problem with the password, or null if it meets the policy. */
-export function passwordProblem(password: string): string | null {
-  if (password.length < MIN_PASSWORD_LENGTH) return `Use at least ${MIN_PASSWORD_LENGTH} characters (a passphrase works well).`;
-  if (password.length > MAX_PASSWORD_LENGTH) return `Use at most ${MAX_PASSWORD_LENGTH} characters.`;
-  return null;
-}
-
 /**
  * How often the password appears in known breaches (design §4, Q9), from Have I Been Pwned's k-anonymity range API:
  * only the first 5 hex digits of its SHA-1 leave the browser, and padded responses hide which range was of interest.
@@ -86,9 +78,12 @@ export async function breachCount(password: string): Promise<number | null> {
 /** The chosen password breaks the policy or is breached, so the form can show the message on the password field. */
 export class PasswordRejected extends Error {}
 
-/** Refuses a password that breaks the policy or has appeared in a breach (design §4), before it reaches Identity Platform. */
-async function checkNewPassword(password: string): Promise<void> {
-  const problem = passwordProblem(password);
+/**
+ * Refuses a password that breaks the rule for `email`'s login or has appeared in a breach (design §4), before it
+ * reaches Identity Platform.
+ */
+async function checkNewPassword(password: string, email: string): Promise<void> {
+  const problem = passwordProblem(password, email);
   if (problem) throw new PasswordRejected(problem);
   const breaches = await breachCount(password);
   if (breaches) {
@@ -98,7 +93,7 @@ async function checkNewPassword(password: string): Promise<void> {
 
 /** Creates an email/password login and sends the verification email, whose link leads back to registering. */
 export async function signUpWithPassword(auth: Auth, email: string, password: string) {
-  await checkNewPassword(password);
+  await checkNewPassword(password, email);
   const credential = await createUserWithEmailAndPassword(auth, email, password);
   await sendEmailVerification(credential.user, { url: `${location.origin}/register` });
   return credential;
@@ -136,7 +131,7 @@ export function sendWelcomeLink(auth: Auth, email: string): Promise<void> {
  * Resolves false when that sign-in needs the second step; it has then signed out, and they sign in as usual.
  */
 export async function setOwnPassword(auth: Auth, user: User, password: string): Promise<boolean> {
-  await checkNewPassword(password);
+  await checkNewPassword(password, user.email ?? '');
   await updatePassword(user, password);
   try {
     await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email ?? '', password));

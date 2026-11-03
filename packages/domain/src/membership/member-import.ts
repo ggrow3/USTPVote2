@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import { readCsv } from '../csv-read.js';
 import type { MemberStatus } from './member-status.js';
+import { DEFAULT_COUNTRY } from './countries.js';
 import { placeOf } from './places.js';
 import type { MemberContact } from './records.js';
-import { normalizePhone, normalizePostalCode, US_POSTAL_CODE } from './registration.js';
+import { normalizePhone, normalizePostalCode, normalizePostcode, POSTCODE, US_POSTAL_CODE } from './registration.js';
 
 /**
  * Members a Membership Admin adds (design §5.13): one at a time on a form, or many from a CSV file. Both give the
@@ -19,6 +20,7 @@ export const MEMBER_IMPORT_COLUMNS = [
   'legalName',
   'preferredName',
   'state',
+  'region',
   'country',
   'city',
   'postalCode',
@@ -36,6 +38,7 @@ export const MEMBER_IMPORT_HEADERS: Readonly<Record<MemberImportColumn, readonly
   legalName: ['legal_name', 'name', 'full name'],
   preferredName: ['preferred_name', 'nickname'],
   state: ['state', 'state code', 'state or territory'],
+  region: ['region', 'province', 'county'],
   country: ['country', 'country code'],
   city: ['city', 'town'],
   postalCode: ['zip', 'zip code', 'postal code', 'postcode'],
@@ -56,6 +59,8 @@ export const newMemberTextSchema = z.strictObject({
   legalName: cell,
   preferredName: cell.optional(),
   state: cell.optional(),
+  /** Outside the US, the state, province or county, as given; the state column may hold it instead. */
+  region: cell.optional(),
   country: cell.optional(),
   city: cell.optional(),
   postalCode: cell.optional(),
@@ -91,10 +96,12 @@ export interface NewMember {
   readonly email: string;
   readonly legalName: string;
   readonly preferredName: string | null;
-  /** A US state or territory; empty for a member abroad who gave none. */
-  readonly state: string;
-  /** ISO 3166-1 alpha-2, for a member living outside the US; null in the US. */
-  readonly country: string | null;
+  /** ISO 3166-1 alpha-2 (`COUNTRIES`); the United States unless the row gives another. */
+  readonly country: string;
+  /** In the US, the state or territory code; null elsewhere. */
+  readonly state: string | null;
+  /** Outside the US, the state, province or county as given, or null; null in the US. */
+  readonly region: string | null;
   /** Null when no city, postal code or phone was given. */
   readonly contact: MemberContact | null;
   readonly usVoteEligible: boolean | null;
@@ -140,18 +147,18 @@ export function checkNewMember(text: NewMemberText):
   const preferredName = value(text.preferredName);
   if (preferredName.length > 200) problem('preferredName', 'the preferred name is longer than 200 characters');
 
-  const place = placeOf(value(text.state), value(text.country));
+  const place = placeOf(value(text.state), value(text.region), value(text.country));
   if ('problem' in place) {
     problem(value(text.country) && !value(text.state) ? 'country' : 'state', place.problem, place.missing ? 'missing' : 'invalid');
   }
-  const abroad = 'country' in place && place.country !== null;
+  const abroad = 'country' in place && place.country !== DEFAULT_COUNTRY;
 
   const city = value(text.city);
   if (city.length > 100) problem('city', 'the city is longer than 100 characters');
   const postal = value(text.postalCode);
   if (postal && !abroad && !US_POSTAL_CODE.test(postal)) problem('postalCode', `"${postal}" is not a US ZIP code`);
-  if (postal && abroad && (postal.length > 12 || !/^[A-Za-z0-9 -]+$/.test(postal))) {
-    problem('postalCode', `"${postal}" is not a postal code`);
+  if (postal && abroad && (postal.length > 16 || !POSTCODE.test(normalizePostcode(postal)))) {
+    problem('postalCode', `"${postal}" is not a postcode`);
   }
   const phoneText = value(text.phone);
   const phone = phoneText ? normalizePhone(phoneText) : null;
@@ -162,16 +169,17 @@ export function checkNewMember(text: NewMemberText):
   if (eligibleText && usVoteEligible === null) problem('usVoteEligible', `"${value(text.usVoteEligible)}" is not yes or no`);
 
   if (problems.length || 'problem' in place) return { ok: false, problems };
-  const postalCode = postal ? (abroad ? postal.toUpperCase() : normalizePostalCode(postal)) : '';
+  const postalCode = postal ? (abroad ? normalizePostcode(postal) : normalizePostalCode(postal)) : null;
   return {
     ok: true,
     member: {
       email,
       legalName,
       preferredName: preferredName || null,
-      state: place.state,
       country: place.country,
-      contact: city || postalCode || phone ? { city, postalCode, phone } : null,
+      state: place.state,
+      region: place.region,
+      contact: city || postalCode || phone ? { city: city || null, postalCode, phone } : null,
       usVoteEligible,
     },
   };
@@ -229,7 +237,7 @@ export function readMemberImport(text: string): MemberImportFile {
     };
     const row: MemberImportRow = { line, email: get('email') ?? '', legalName: get('legalName') ?? '' };
     const extra = Object.fromEntries(
-      (['preferredName', 'state', 'country', 'city', 'postalCode', 'phone', 'usVoteEligible'] as const).flatMap((c) => {
+      (['preferredName', 'state', 'region', 'country', 'city', 'postalCode', 'phone', 'usVoteEligible'] as const).flatMap((c) => {
         const v = get(c);
         return v === undefined ? [] : [[c, v]];
       }),

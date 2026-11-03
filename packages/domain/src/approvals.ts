@@ -96,6 +96,18 @@ export function checkCanDeleteAccount(
   return OK;
 }
 
+/**
+ * Deleting test voters (design §10.4): one System Admin, signed in with MFA within the last 15 minutes, at once. Unlike
+ * other accounts, whatever elections hold them, so there is nothing about the voters to check here; the API checks that
+ * each is a test voter, and answers 404 where testing mode is off.
+ */
+export function checkCanDeleteTestVoters(deleter: Actor): Check {
+  if (!deleter.mfa) return deny('admin actions require multi-factor sign-in', 'mfaRequired');
+  if (!deleter.roles.includes('system_admin')) return deny('test voters are deleted by system_admin');
+  if (deleter.authAgeSeconds > APPROVAL_MAX_AUTH_AGE_SECONDS) return deny('sign in again to delete test voters', 'reauthRequired');
+  return OK;
+}
+
 export function checkCanApprove(request: PendingApproval, approver: Actor, now: Date = new Date()): Check {
   const rule: ApprovalRule = TWO_PERSON_ACTIONS[request.action];
   if (request.status !== 'pending') return deny(`request is ${request.status}`);

@@ -4,11 +4,12 @@ import type { MemberStatus } from './member-status.js';
 
 /** Document shapes of the membership context (design §5.1, §5.2, §11). */
 
-/** How to reach a member. City and ZIP code only: the street address is never collected (design §5.2). */
+/** How to reach a member. City and ZIP code or postcode only: the street address is never collected (design §5.2). */
 export interface MemberContact {
-  readonly city: string;
-  /** `12345` or `12345-6789`. */
-  readonly postalCode: string;
+  /** Always given in the US; optional elsewhere, and null when not given. */
+  readonly city: string | null;
+  /** In the US the ZIP code, `12345` or `12345-6789`; elsewhere the postcode (`SW1A 1AA`), or null if not given. */
+  readonly postalCode: string | null;
   /** E.164 (`+15551234567`), or null. */
   readonly phone: string | null;
 }
@@ -26,15 +27,17 @@ export interface MemberRecord {
   readonly legalName: string;
   readonly preferredName: string | null;
   /**
-   * Two-letter state code; the street address is never stored (design §5.2). Empty for a member living outside the US
-   * who gave no state (`country` is set).
+   * ISO 3166-1 alpha-2 code (`countryOf`). Records made before the country was asked have none, and are in the
+   * United States.
    */
-  readonly state: string;
+  readonly country?: string;
   /**
-   * ISO 3166-1 alpha-2 code of the country a member lives in outside the US, as a Membership Admin may record it
-   * (design §5.13); absent or null for members in the US, and for everyone who applied, since the application is US-only.
+   * In the US, the two-letter state or territory code; null elsewhere. The street address is never stored (design
+   * §5.2).
    */
-  readonly country?: string | null;
+  readonly state: string | null;
+  /** Outside the US, the state, province or county as given, or null; absent on older records. */
+  readonly region?: string | null;
   /** Null for members who applied before contact details were collected. */
   readonly contact: MemberContact | null;
   readonly communications: CommunicationConsents | null;
@@ -91,7 +94,12 @@ export interface ApplicationRecord {
   readonly usVoteEligible?: boolean;
   /** Agrees with the Core Ideals listed on the form. */
   readonly agreesWithCoreIdeals?: boolean;
-  readonly state: string;
+  /** ISO 3166-1 alpha-2 code; absent on applications made before it was asked, which are all from the United States. */
+  readonly country?: string;
+  /** In the US, the state or territory code; null elsewhere. */
+  readonly state: string | null;
+  /** Outside the US, the state, province or county as given, or null. */
+  readonly region?: string | null;
   readonly contact: MemberContact;
   readonly communications: CommunicationConsents;
   readonly statement: string | null;

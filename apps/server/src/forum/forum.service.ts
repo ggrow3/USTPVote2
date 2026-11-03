@@ -18,6 +18,7 @@ import {
   newComment,
   newPost,
   newReport,
+  placeText,
   postView,
   reportGroups,
   uuidv7,
@@ -325,7 +326,7 @@ export class ForumService {
       votes(posts.map((p) => p.postId)),
       caller.moderator ? this.forum.openReportCounts(postIds) : Promise.resolve(undefined),
     ]);
-    const people = new Map(ids.map((id, i) => [id, { name: records[i] ? (records[i]!.preferredName ?? records[i]!.legalName) : 'Unknown member', state: records[i]?.state ?? '' }]));
+    const people = new Map(ids.map((id, i) => [id, { name: records[i] ? (records[i]!.preferredName ?? records[i]!.legalName) : 'Unknown member', state: records[i] ? placeText(records[i]!) : '' }]));
     return { viewer: caller, people, votes: mine, ...(reports && { reports }) };
   }
 

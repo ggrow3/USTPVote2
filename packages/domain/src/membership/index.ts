@@ -5,13 +5,17 @@ export {
   APPLICATION_WINDOW_DAYS,
   MAX_APPLICATIONS_PER_WINDOW,
   MINIMUM_MEMBER_AGE,
+  POSTCODE,
   US_POSTAL_CODE,
   ageOn,
   checkApplicantAge,
   isCalendarDate,
   normalizePhone,
   normalizePostalCode,
+  normalizePostcode,
+  staysInTouchByDefault,
 } from './registration.js';
+export { COUNTRIES, DEFAULT_COUNTRY, countryName, countryOf, isCountryCode, placeText } from './countries.js';
 export {
   memberStatusTransition,
   resignMembership,
@@ -21,6 +25,7 @@ export {
   testVoterAdmission,
   memberAddition,
   MEMBER_DETAIL_FIELDS,
+  storedPlace,
   updateOwnDetails,
   checkMemberCorrectionRequest,
   correctMemberDetails,
@@ -61,7 +66,7 @@ export type {
   RegistrationFormInput,
 } from './registration-form.js';
 export type * from './records.js';
-export { COUNTRY_CODES, US_STATES, countryCode, countryName, placeOf, usStateCode, usStateName } from './places.js';
+export { US_STATES, countryCode, placeOf, usStateCode, usStateName } from './places.js';
 export {
   MAX_MEMBER_IMPORT_ROWS,
   MEMBER_IMPORT_COLUMNS,

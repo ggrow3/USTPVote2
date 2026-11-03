@@ -2,6 +2,7 @@
 import { computed, reactive, ref } from 'vue';
 import {
   checkNewMember,
+  DEFAULT_COUNTRY,
   MAX_MEMBER_IMPORT_ROWS,
   MEMBER_IMPORT_TEMPLATE,
   readMemberImport,
@@ -34,7 +35,15 @@ const mode = ref<'one' | 'file'>('one');
 
 // --- one member ----------------------------------------------------------------------------------------------------
 
-const blankDetails = (): DetailsForm => ({ preferredName: '', state: null, country: null, city: '', postalCode: '', phone: '' });
+const blankDetails = (): DetailsForm => ({
+  preferredName: '',
+  country: DEFAULT_COUNTRY,
+  state: null,
+  region: '',
+  city: '',
+  postalCode: '',
+  phone: '',
+});
 const one = reactive({ email: '', legalName: '', details: blankDetails(), usVoteEligible: '', reason: '' });
 const errors = ref<FieldErrors>({});
 const busy = ref(false);
@@ -46,12 +55,14 @@ const VOTE_OPTIONS = [
 
 function oneText(): NewMemberText {
   const d = one.details;
+  const us = d.country === DEFAULT_COUNTRY;
   return {
     email: one.email,
     legalName: one.legalName,
     preferredName: d.preferredName,
-    state: d.state ?? '',
-    country: d.country ?? '',
+    state: us ? (d.state ?? '') : '',
+    region: us ? '' : d.region,
+    country: d.country,
     city: d.city,
     postalCode: d.postalCode,
     phone: d.phone,
@@ -259,7 +270,8 @@ async function sendLinks(emails: readonly string[]) {
       <p>
         The first row names the columns. Each member needs <code>email</code>, <code>legal_name</code> and
         <code>state</code>, or <code>country</code> for a member living outside the US; <code>preferred_name</code>,
-        <code>city</code>, <code>zip</code>, <code>phone</code> and <code>us_vote_eligible</code> (yes or no) are optional.
+        <code>region</code> (a province or county abroad), <code>city</code>, <code>zip</code>, <code>phone</code> and
+        <code>us_vote_eligible</code> (yes or no) are optional.
         Other columns are ignored. At most {{ MAX_MEMBER_IMPORT_ROWS }} members a file.
       </p>
       <div class="ustp-toolbar">
