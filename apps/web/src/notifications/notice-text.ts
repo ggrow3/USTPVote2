@@ -50,6 +50,9 @@ export const EMAIL_DESCRIPTION =
 /** Where this deployment sends no email (`MAIL_TRANSPORT=off`). */
 export const NOT_SET_UP = 'Nothing is sent until email (Amazon SES) is set up for this deployment.';
 
+/** Where System Admins have switched Election Admins' test emails off. */
+export const TESTS_OFF = 'Test emails are switched off by a System Admin (Admin › Email).';
+
 /** Where no contact for questions is set, in the app or the deployment. */
 export const NO_CONTACT = 'Nothing is mailed until a contact for election questions is set (Admin › Email).';
 
@@ -224,9 +227,11 @@ export function testStatusText(test: NoticeTestSummary): string {
 /** Why the caller cannot have a test email sent now, or null when they can (as far as the browser can tell). */
 export function testBlocked(view: NoticesView | null, now: Date): string | null {
   if (!view) return null;
-  const check = checkNoticeTest({ delivery: view.delivery, contact: view.contact, theirs: view.tests, now });
+  const enabled = view.settings.emails.electionTests;
+  const check = checkNoticeTest({ delivery: view.delivery, enabled, contact: view.contact, theirs: view.tests, now });
   if (check.ok) return null;
   if (view.delivery === 'none') return NOT_SET_UP;
+  if (!enabled) return TESTS_OFF;
   if (view.delivery === 'mail' && !view.contact) return NO_CONTACT;
   return `${check.reason[0]!.toUpperCase()}${check.reason.slice(1)}.`;
 }

@@ -43,8 +43,20 @@ export interface NoticeKindSettings {
   readonly intro: string | null;
 }
 
+/**
+ * The site's other emails, each on or off (design §6.8). `welcome`: to members a Membership Admin added (§5.13); off,
+ * the admin's browser sends Identity Platform's sign-in link instead. `electionTests`: "Send test email" on an election's
+ * email card. `memberTests`: "Send me a test email" and "Try my address again" on the Account page (§10.12). Switching
+ * one off stops new ones; one already queued still goes.
+ */
+export const OTHER_EMAILS = ['welcome', 'electionTests', 'memberTests'] as const;
+export type OtherEmail = (typeof OTHER_EMAILS)[number];
+export type OtherEmailSettings = Readonly<Record<OtherEmail, boolean>>;
+
 export interface NoticeSettings {
   readonly kinds: Readonly<Record<NoticeKind, NoticeKindSettings>>;
+  /** The site's other emails, each on or off. */
+  readonly emails: OtherEmailSettings;
   /** How long before voting closes the reminder goes. */
   readonly reminderHours: number;
   /** Where members ask about an election: an email address or an https page; null for the deployment's `NOTICE_CONTACT`. */
@@ -57,6 +69,7 @@ export const DEFAULT_NOTICE_SETTINGS: NoticeSettings = {
     closing_soon: { enabled: true, subject: null, intro: null },
     voted: { enabled: true, subject: null, intro: null },
   },
+  emails: { welcome: true, electionTests: true, memberTests: true },
   reminderHours: REMINDER_HOURS_BEFORE_CLOSE,
   contact: null,
 };
@@ -71,13 +84,20 @@ export interface NoticeSettingsRecord extends NoticeSettings {
 
 /** The stored settings with anything missing taken from the defaults. */
 export function resolveNoticeSettings(
-  stored: (Omit<Partial<NoticeSettings>, 'kinds'> & { readonly kinds?: Partial<NoticeSettings['kinds']> }) | undefined | null,
+  stored:
+    | (Omit<Partial<NoticeSettings>, 'kinds' | 'emails'> & {
+        readonly kinds?: Partial<NoticeSettings['kinds']>;
+        readonly emails?: Partial<OtherEmailSettings>;
+      })
+    | undefined
+    | null,
 ): NoticeSettings {
   const kinds = Object.fromEntries(
     NOTICE_KINDS.map((kind) => [kind, { ...DEFAULT_NOTICE_SETTINGS.kinds[kind], ...stored?.kinds?.[kind] }]),
   ) as Record<NoticeKind, NoticeKindSettings>;
   return {
     kinds,
+    emails: { ...DEFAULT_NOTICE_SETTINGS.emails, ...stored?.emails },
     reminderHours: stored?.reminderHours ?? DEFAULT_NOTICE_SETTINGS.reminderHours,
     contact: stored?.contact ?? DEFAULT_NOTICE_SETTINGS.contact,
   };
@@ -125,6 +145,8 @@ export const noticeSettingsSchema = z.strictObject({
   basedOn: z.number().int().min(0),
   // Vote confirmations came later: a page opened before them saves without them, and keeps what was set.
   kinds: z.strictObject({ voting_open: kindSettings, closing_soon: kindSettings, voted: kindSettings.optional() }),
+  // Likewise the other emails' switches: a page opened before them keeps what was set.
+  emails: z.strictObject({ welcome: z.boolean(), electionTests: z.boolean(), memberTests: z.boolean() }).optional(),
   reminderHours: z.number().int().min(MIN_REMINDER_HOURS).max(MAX_REMINDER_HOURS),
   contact: z
     .string()
@@ -136,7 +158,7 @@ export const noticeSettingsSchema = z.strictObject({
 });
 export type NoticeSettingsInput = z.infer<typeof noticeSettingsSchema>;
 
-/** One setting that changed: its path (`closing_soon.enabled`, `reminderHours`, `contact`) and its old and new value. */
+/** One setting that changed: its path (`closing_soon.enabled`, `emails.welcome`, `reminderHours`, `contact`) and its old and new value. */
 export interface NoticeSettingsChange {
   readonly field: string;
   readonly from: string | number | boolean | null;
@@ -157,6 +179,9 @@ export function noticeSettingsChanges(before: NoticeSettings, after: NoticeSetti
       const to = after.kinds[kind][key];
       if (from !== to) changes.push({ field: `${kind}.${key}`, from, to });
     }
+  }
+  for (const key of OTHER_EMAILS) {
+    if (before.emails[key] !== after.emails[key]) changes.push({ field: `emails.${key}`, from: before.emails[key], to: after.emails[key] });
   }
   if (before.reminderHours !== after.reminderHours) changes.push({ field: 'reminderHours', from: before.reminderHours, to: after.reminderHours });
   if (before.contact !== after.contact) changes.push({ field: 'contact', from: before.contact, to: after.contact });

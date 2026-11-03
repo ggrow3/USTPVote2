@@ -20,6 +20,7 @@ import { ElectionReader } from '../elections/election-reader.js';
 import { Firebase } from '../infra/firebase.js';
 import { MemberDirectory } from '../membership/member-directory.js';
 import { MailRepository } from './mail.repository.js';
+import { NoticeSettingsService } from './notice-settings.js';
 
 /**
  * A member's own email (design §10.12): the emails sent to them in the last 90 days and what became of each, whether
@@ -34,6 +35,7 @@ export class MyEmailService {
     private readonly directory: DirectoryService,
     private readonly elections: ElectionReader,
     private readonly members: MemberDirectory,
+    private readonly settings: NoticeSettingsService,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
@@ -48,11 +50,12 @@ export class MyEmailService {
   async view(ctx: RequestContext): Promise<MyEmailView> {
     const accountId = requireAccount(ctx);
     const since = new Date(Date.now() - MY_EMAIL_DAYS * 86_400_000).toISOString();
-    const [mailbox, state, messages, requests] = await Promise.all([
+    const [mailbox, state, messages, requests, settings] = await Promise.all([
       this.directory.mailboxes([accountId]).then((m) => m.get(accountId)),
       this.state(accountId),
       this.mail.messagesOf(accountId, since, MY_EMAIL_SHOWN),
       this.mail.requestsOf(accountId),
+      this.settings.current(),
     ]);
     const titles = new Map<string, string>();
     for (const id of new Set(messages.flatMap((m) => (m.electionId ? [m.electionId] : [])))) {
@@ -63,6 +66,7 @@ export class MyEmailService {
     return {
       address: mailbox?.email ?? null,
       ...state,
+      requestsEnabled: this.config.mailTransport !== 'off' && settings.emails.memberTests,
       messages: messages.map((m) => ({
         messageId: m.messageId,
         kind: m.kind,
@@ -82,11 +86,13 @@ export class MyEmailService {
   /** Queues a test email, or trying the address again, for the worker; one at a time, a few a day. */
   async request(ctx: RequestContext, kind: MailRequestKind): Promise<MyEmailView> {
     const accountId = requireAccount(ctx);
-    const state = await this.state(accountId);
+    const [state, settings] = await Promise.all([this.state(accountId), this.settings.current()]);
     await this.firebase.db.runTransaction(async (tx) => {
       const theirs = await this.mail.requestsOf(accountId, tx);
       const now = new Date();
-      assertCheck(checkMailRequest({ kind, state: state.state, mailing: this.config.mailTransport !== 'off', theirs, now }));
+      assertCheck(
+        checkMailRequest({ kind, state: state.state, mailing: this.config.mailTransport !== 'off', enabled: settings.emails.memberTests, theirs, now }),
+      );
       const ref = this.mail.requestRef();
       const record: MailRequestRecord = {
         requestId: ref.id,

@@ -9,6 +9,7 @@ import {
   MAX_REMINDER_HOURS,
   MIN_REMINDER_HOURS,
   NOTICE_KINDS,
+  OTHER_EMAILS,
   noticeMessage,
   noticeSettingsChanges,
   noticeSettingsSchema,
@@ -16,6 +17,7 @@ import {
   type NoticeKind,
   type NoticeSettings,
   type NoticeSettingsRecord,
+  type OtherEmail,
 } from 'ustp-domain';
 import { attempt } from '../dialogs.js';
 import { validate } from '../forms.js';
@@ -23,12 +25,14 @@ import { noticeSettings, saveNoticeSettings } from './api.js';
 import { leadTimeText, NOTICE_TITLES } from './notice-text.js';
 
 /**
- * The election emails' settings (design §6.8), for System Admins: whether each email goes, how long before the close
- * the reminder goes, where the emails tell members to ask, and each email's subject and opening. The election's
- * details fill themselves in; the From address stays in the deployment's configuration.
+ * The site's email settings (design §6.8), for System Admins: whether each election email goes, how long before the
+ * close the reminder goes, where the emails tell members to ask, each email's subject and opening, and whether the
+ * site's other emails (welcome and test emails) go. The election's details fill themselves in; the From address stays
+ * in the deployment's configuration.
  */
 type Draft = {
   kinds: Record<NoticeKind, { enabled: boolean; subject: string; intro: string }>;
+  emails: Record<OtherEmail, boolean>;
   reminderHours: number | string;
   contact: string;
 };
@@ -37,6 +41,7 @@ const toDraft = (s: NoticeSettings): Draft => ({
   kinds: Object.fromEntries(
     NOTICE_KINDS.map((k) => [k, { enabled: s.kinds[k].enabled, subject: s.kinds[k].subject ?? '', intro: s.kinds[k].intro ?? '' }]),
   ) as Draft['kinds'],
+  emails: { ...s.emails },
   reminderHours: s.reminderHours,
   contact: s.contact ?? '',
 });
@@ -45,6 +50,7 @@ const fromDraft = (d: Draft): NoticeSettings => ({
   kinds: Object.fromEntries(
     NOTICE_KINDS.map((k) => [k, { enabled: d.kinds[k].enabled, subject: d.kinds[k].subject.trim() || null, intro: d.kinds[k].intro.trim() || null }]),
   ) as NoticeSettings['kinds'],
+  emails: { ...d.emails },
   reminderHours: Number(d.reminderHours),
   contact: d.contact.trim() || null,
 });
@@ -118,13 +124,31 @@ const previews = computed(() =>
 
 const field = (kind: NoticeKind, name: 'subject' | 'intro') => `kinds.${kind}.${name}`;
 
+/** What each of the other emails is, and what happens instead while it is off. */
+const OTHER_EMAIL_TEXT: Readonly<Record<OtherEmail, { label: string; caption: string }>> = {
+  welcome: {
+    label: 'Welcome emails',
+    caption:
+      'To members a Membership Admin adds, with a link to set a password. Off: the admin’s browser has Identity Platform send its own sign-in link instead.',
+  },
+  electionTests: {
+    label: 'Election Admins’ test emails',
+    caption: '“Send test email” on an election’s email card, to the admin’s own address. Off: the button is refused.',
+  },
+  memberTests: {
+    label: 'Members’ test emails',
+    caption:
+      '“Send me a test email” and “Try my address again” on a member’s Account page. Off: members are told it is switched off for now.',
+  },
+};
+
 onMounted(load);
 </script>
 
 <template>
   <div class="ustp-content">
     <div>
-      <h2 class="text-subtitle1">Election emails</h2>
+      <h2 class="text-subtitle1">Email settings</h2>
       <div class="text-caption text-grey-7">
         <template v-if="saved?.version">Version {{ saved.version }}, saved {{ savedAt }}.</template>
         <template v-else-if="saved">The defaults: nobody has changed these settings yet.</template>
@@ -135,8 +159,8 @@ onMounted(load);
       not voted. They are official election notices, sent whatever members' newsletter and announcement choices. Here
       you choose whether each goes, when the reminder goes, where members ask questions, and each email's subject and
       opening. The rest of each email (the ballot link, the times in every zone, how to check a vote) fills itself in.
-      The From address is set with the deployment, since Amazon SES has to verify it. Every change is recorded in the
-      audit ledger.
+      Below them, the site's welcome and test emails can each be switched off. The From address is set with the
+      deployment, since Amazon SES has to verify it. Every change is recorded in the audit ledger.
     </p>
     <p class="text-caption">
       In a subject or opening, <code>{title}</code> is the election's title, <code>{closes}</code> when voting closes
@@ -211,6 +235,22 @@ onMounted(load);
             :error="!!errors.contact"
             :error-message="errors.contact"
           />
+        </q-card-section>
+      </q-card>
+
+      <q-card flat bordered tag="section" aria-labelledby="settings-other">
+        <q-card-section>
+          <h3 id="settings-other" class="text-subtitle2 q-my-none">Other emails</h3>
+          <div class="text-caption text-grey-7">
+            Switching one off stops new ones; one already queued still goes. The email setup check’s test messages to
+            Amazon’s simulator always go.
+          </div>
+        </q-card-section>
+        <q-card-section class="ustp-form">
+          <div v-for="key in OTHER_EMAILS" :key="key">
+            <q-toggle v-model="draft!.emails[key]" :label="OTHER_EMAIL_TEXT[key].label" />
+            <div class="text-caption text-grey-7 q-pl-xl">{{ OTHER_EMAIL_TEXT[key].caption }}</div>
+          </div>
         </q-card-section>
       </q-card>
 

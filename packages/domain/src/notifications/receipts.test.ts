@@ -144,16 +144,18 @@ describe('test emails', () => {
 
   it('are refused where nothing would be mailed, as the real emails would not be', () => {
     const check = (over: Partial<Parameters<typeof checkNoticeTest>[0]>) =>
-      checkNoticeTest({ delivery: 'mail', contact: 'elections@example.org', theirs: [], now: NOW, ...over });
+      checkNoticeTest({ delivery: 'mail', enabled: true, contact: 'elections@example.org', theirs: [], now: NOW, ...over });
     expect(check({})).toEqual({ ok: true });
     expect(check({ delivery: 'none' })).toMatchObject({ ok: false, reason: expect.stringMatching(/sends no email/) });
+    expect(check({ enabled: false })).toMatchObject({ ok: false, reason: expect.stringMatching(/switched test emails off/) });
+    expect(check({ delivery: 'outbox', enabled: false }).ok).toBe(false);
     expect(check({ contact: null })).toMatchObject({ ok: false, reason: expect.stringMatching(/no contact/) });
     // The outbox is never mailed, so it needs no contact.
     expect(check({ delivery: 'outbox', contact: null })).toEqual({ ok: true });
   });
 
   it('go one at a time, and at most so many a day', () => {
-    const check = (theirs: NoticeTestRecord[]) => checkNoticeTest({ delivery: 'mail', contact: 'x@example.org', theirs, now: NOW });
+    const check = (theirs: NoticeTestRecord[]) => checkNoticeTest({ delivery: 'mail', enabled: true, contact: 'x@example.org', theirs, now: NOW });
     expect(check([test()])).toMatchObject({ ok: false, reason: expect.stringMatching(/not gone yet/) });
     expect(check([test({ status: 'done', doneAt: minutesAgo(29) })])).toEqual({ ok: true });
     // A claim the worker never finished does not hold the next test up.

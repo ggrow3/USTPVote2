@@ -63,7 +63,16 @@ onUnmounted(() => clearInterval(timer));
         and links go straight to this site.
       </p>
     </q-card-section>
-    <q-card-section v-if="view && (view.state === 'ok' || blocked)" class="ustp-actions q-pt-none">
+    <q-card-section v-if="view && (view.state === 'ok' || blocked) && !view.requestsEnabled" class="q-pt-none">
+      <p class="q-my-none text-grey-7">
+        {{
+          blocked
+            ? 'Trying your address again from here is switched off for now by the site’s administrators.'
+            : 'Test emails are switched off for now by the site’s administrators.'
+        }}
+      </p>
+    </q-card-section>
+    <q-card-section v-else-if="view && (view.state === 'ok' || blocked)" class="ustp-actions q-pt-none">
       <q-btn v-if="blocked" color="primary" no-caps label="Try my address again" :disable="waiting" @click="ask('retry')" />
       <q-btn v-else outline color="primary" no-caps label="Send me a test email" :disable="waiting" @click="ask('test')" />
     </q-card-section>

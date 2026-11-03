@@ -88,7 +88,9 @@ export class NoticesService {
       }
       const now = new Date();
       const theirs = await this.notices.testsTo(electionId, recipient, tx);
-      assertCheck(checkNoticeTest({ delivery: this.delivery(), contact: settings.contact ?? this.config.noticeContact, theirs, now }));
+      assertCheck(
+        checkNoticeTest({ delivery: this.delivery(), enabled: settings.emails.electionTests, contact: settings.contact ?? this.config.noticeContact, theirs, now }),
+      );
       const record = noticeTestRecord({ testId: ref.id, electionId, kind, caller: { accountId: actor, operator: ctx.operator }, now });
       tx.create(ref, record);
       return record;

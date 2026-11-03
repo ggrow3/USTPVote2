@@ -114,6 +114,7 @@ export { noticeSteps, emailStepStatus } from './notice-steps.js';
 export type { NoticeStep, NoticeAbsence } from './notice-steps.js';
 export {
   NOTICE_PLACEHOLDERS,
+  OTHER_EMAILS,
   DEFAULT_NOTICE_TEXT,
   DEFAULT_NOTICE_SETTINGS,
   MAX_NOTICE_SUBJECT,
@@ -129,6 +130,8 @@ export {
 } from './notice-settings.js';
 export type {
   NoticePlaceholder,
+  OtherEmail,
+  OtherEmailSettings,
   NoticeKindSettings,
   NoticeSettings,
   NoticeSettingsRecord,

@@ -82,6 +82,8 @@ export interface MyEmailView {
   readonly since: string | null;
   /** Newest first. */
   readonly messages: readonly MyEmailMessage[];
+  /** Whether they may ask for a test email, or to try their address again, at all: System Admins can switch it off. */
+  readonly requestsEnabled: boolean;
   /** The member's requests of the last day, newest first. */
   readonly requests: readonly Pick<MailRequestRecord, 'requestId' | 'kind' | 'requestedAt' | 'status' | 'doneAt' | 'outcome' | 'messageId'>[];
 }
@@ -105,11 +107,14 @@ export function checkMailRequest(input: {
   readonly kind: MailRequestKind;
   readonly state: MailAddressState;
   readonly mailing: boolean;
+  /** Whether System Admins have members' test emails switched on (Admin › Email). */
+  readonly enabled: boolean;
   readonly theirs: readonly Pick<MailRequestRecord, 'kind' | 'status' | 'claimedAt' | 'requestedAt'>[];
   readonly now: Date;
 }): Check {
   const { kind, state, mailing, theirs, now } = input;
   if (!mailing) return deny('this deployment sends no email');
+  if (!input.enabled) return deny('a System Admin has switched these emails off for now');
   if (state === 'no_address') return deny('your account has no email address');
   if (state === 'unverified') return deny('your email address is not confirmed yet');
   if (kind === 'test' && (state === 'bounced' || state === 'complained')) {
