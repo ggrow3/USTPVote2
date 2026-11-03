@@ -1,4 +1,13 @@
-import { electionPackageSchema, type ElectionDefinition, type ElectionPackage, type ElectionState, type ResultsRecord } from 'ustp-domain';
+import {
+  electionPackageSchema,
+  SAMPLE_BALLOT,
+  SAMPLE_BALLOT_FILE_NAME,
+  type ElectionDefinition,
+  type ElectionPackage,
+  type ElectionPackageInput,
+  type ElectionState,
+  type ResultsRecord,
+} from 'ustp-domain';
 import { saveDocx, saveFile } from './bylaws-files.js';
 import type { ProposalText } from './election-docx.js';
 import { electionSlug, fileDate } from './election-text.js';
@@ -24,10 +33,19 @@ export function electionPackageFileName(title: string, exportedAt: Date, timeZon
   return `ustp-vote-${electionSlug(title)}-${fileDate(exportedAt, timeZone)}.election.json`;
 }
 
+/** A package as its file holds it: two-space indents and a closing newline, as `examples/elections` has them. */
+export function packageFileText(pkg: ElectionPackage | ElectionPackageInput): string {
+  return `${JSON.stringify(pkg, null, 2)}\n`;
+}
+
 /** Hands the browser an election package to save (design §6.7). */
 export function saveElectionPackage(pkg: ElectionPackage): void {
-  const blob = new Blob([`${JSON.stringify(pkg, null, 2)}\n`], { type: 'application/json' });
-  saveFile(blob, electionPackageFileName(pkg.title, new Date()));
+  saveFile(new Blob([packageFileText(pkg)], { type: 'application/json' }), electionPackageFileName(pkg.title, new Date()));
+}
+
+/** The sample ballot (design §6.7), to change and import as a new draft or into a draft's ballot. */
+export function saveSampleBallot(): void {
+  saveFile(new Blob([packageFileText(SAMPLE_BALLOT)], { type: 'application/json' }), SAMPLE_BALLOT_FILE_NAME);
 }
 
 /** "contests.2.title: enter a title"; problems with the file as a whole have no path. */

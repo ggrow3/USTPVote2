@@ -245,10 +245,12 @@ export {
   contestRecord,
   electionPackageFrom,
   electionPackageSchema,
+  packageContestRecords,
   packageProposals,
   packageRecords,
   packageWindow,
 } from './election-package.js';
+export { SAMPLE_BALLOT, SAMPLE_BALLOT_FILE_NAME, SAMPLE_BALLOT_NOTE } from './sample-ballot.js';
 export type { ElectionPackage, ElectionPackageInput, PackageContest, PackageProposal } from './election-package.js';
 export {
   MAX_QUESTION_OPTIONS,

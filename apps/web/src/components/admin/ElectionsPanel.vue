@@ -5,7 +5,7 @@ import { createElectionSchema, type ElectionDetail, type ElectionRecord } from '
 import { api, ApiError } from '../../api.js';
 import { focusFirstInvalid } from '../../a11y.js';
 import { attempt } from '../../dialogs.js';
-import { packageProblem, readElectionPackage } from '../../election-files.js';
+import { packageProblem, readElectionPackage, saveSampleBallot } from '../../election-files.js';
 import { fromLocalInput, toLocalInput } from '../../election-text.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../../forms.js';
 import { hasRole } from '../../session.js';
@@ -107,6 +107,8 @@ onMounted(load);
         @click="packageInput?.click()"
       />
       <input ref="packageInput" type="file" accept=".json,application/json" hidden @change="importPackage" />
+      <!-- A file to start from: a question of every kind on Transhumanist themes (design §6.7). -->
+      <q-btn v-if="hasRole('election_admin')" flat no-caps color="primary" icon="download" label="Download sample ballot" @click="saveSampleBallot" />
       <q-btn flat dense icon="refresh" aria-label="Refresh elections" @click="load" />
     </div>
     <q-banner v-if="importProblems" class="bg-negative text-white" rounded role="alert">
