@@ -15,6 +15,7 @@ import { SuggestionsService } from '../communications/suggestions.service.js';
 import { ConsistencyCheckRunner } from '../consistency-check/consistency-check-runner.js';
 import { ElectionCheckRunner } from '../election-check/election-check-runner.js';
 import { MailEventRecorder } from '../notifications/mail-events.js';
+import { MailHealthChecker } from '../notifications/mail-health.js';
 import { NoticeSender } from '../notifications/notice-sender.js';
 import { WelcomeSender } from '../notifications/welcome-sender.js';
 import { RoomAssistant } from '../room/room-assistant.js';
@@ -46,6 +47,7 @@ export class TasksController {
     private readonly notices: NoticeSender,
     private readonly welcomes: WelcomeSender,
     private readonly mailEvents: MailEventRecorder,
+    private readonly mailHealth: MailHealthChecker,
     private readonly suggestions: SuggestionsService,
     private readonly roomRetention: RoomRetention,
     private readonly roomAssistant: RoomAssistant,
@@ -55,8 +57,8 @@ export class TasksController {
    * Every minute: prepare ballot-pool keys, open and close elections on time, seal ballots, tally elections that are
    * now fully sealed, destroy the pool keys of certified and cancelled elections, send election notices (for at most
    * 20 seconds), the test emails Election Admins asked for and the welcome emails of added members (§5.13), record what
-   * the mail provider reported of them and ledger each notice round's reports after three days, delete suggestions a
-   * year old
+   * the mail provider reported of them and ledger each notice round's reports after three days, check how email is set
+   * up every hour or when a System Admin asks (§10.12), delete suggestions a year old
    * (design §10.9) and the members' room's records past their time (§5.10), then seal new ledger entries (including those) into a signed block, sign approved rolls and anchor
    * new blocks. Each step runs even if an earlier one failed.
    */
@@ -86,6 +88,7 @@ export class TasksController {
       welcomeEmailsSent: await step('send welcome emails', () => this.welcomes.sendDue(), 0),
       mailEventsRecorded: await step('record mail events', () => this.mailEvents.record(), 0),
       deliveryReports: await step('report delivery', () => this.notices.reportDelivery(), 0),
+      mailChecked: await step('check mail setup', () => this.mailHealth.runDue(), false),
       suggestionsDeleted: await step('delete old suggestions', () => this.suggestions.deleteExpired(), 0),
       roomExpired: await step('expire room records', () => this.roomRetention.run(), 0),
       blocksSealed: (await step('seal blocks', () => this.sealer.sealBlocks(), [])).length,

@@ -160,6 +160,8 @@ export const Collections = {
   mailMessages: 'mail_messages',
   /** `mail_suppressions/{addressKey}`: addresses not to mail, because they bounced for good or were marked as spam (§6.8). */
   mailSuppressions: 'mail_suppressions',
+  /** `mail_health/current` and `mail_health/request`: the email setup check's last run, and a System Admin's request (§10.12). */
+  mailHealth: 'mail_health',
   // testing mode (design §10.4)
   testingPersonas: 'testing_personas',
 } as const;

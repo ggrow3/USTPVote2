@@ -129,6 +129,8 @@ export interface TickResult {
   readonly mailEventsRecorded: number;
   /** Notice rounds whose delivery reports were added up and ledgered as `notice.delivery_reported` (design §6.8). */
   readonly deliveryReports: number;
+  /** Whether the email setup check ran (hourly, or when a System Admin asked; design §10.12). */
+  readonly mailChecked: boolean;
   /** Suggestions a year old, and the form's limits for days gone, deleted (design §10.9). */
   readonly suggestionsDeleted: number;
   /** The room's messages, done action items and finished questions past their time, and questions given up on (design §5.10). */

@@ -392,6 +392,7 @@ describe('a rehearsal roll', () => {
       notices: [],
       receipts: noticeReceiptTotals([]),
       tests: [],
+      setup: null,
     });
   });
 

@@ -1,6 +1,7 @@
 import { deny, OK, refuse, type Check } from '../check.js';
 import type { ElectionRecord } from '../elections.js';
 import type { NoticeSettings } from './notice-settings.js';
+import type { MailCheckStatus } from './mail-health.js';
 import type { NoticeReceiptTotals, NoticeTestSummary } from './receipts.js';
 
 /**
@@ -173,6 +174,8 @@ export interface NoticesView {
   readonly receipts: NoticeReceiptTotals;
   /** The caller's own test emails of the election, newest first (the last few). */
   readonly tests: readonly NoticeTestSummary[];
+  /** How the email setup check's last run went (design §10.12), in a word; null before its first run. */
+  readonly setup: MailCheckStatus | null;
 }
 
 /** The `notice.sent` payload: a round finished. Counts only. */

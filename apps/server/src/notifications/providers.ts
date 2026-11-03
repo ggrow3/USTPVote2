@@ -1,7 +1,9 @@
 import type { Provider } from '@nestjs/common';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
+import { MailHealthService } from './mail-admin.controller.js';
 import { MailEventRecorder } from './mail-events.js';
+import { DNS_TXT, dnsTxt, MailHealthChecker, SES_ACCOUNT } from './mail-health.js';
 import { MailRecords } from './mail-records.js';
 import { MAIL_EVENT_SOURCE, MAIL_TRANSPORT, OutboxMailEvents, OutboxTransport, type MailEventSource, type MailTransport } from './mail-transport.js';
 import { MailRepository } from './mail.repository.js';
@@ -10,13 +12,15 @@ import { NoticeSettingsService } from './notice-settings.js';
 import { NoticeSender } from './notice-sender.js';
 import { NoticeRepository } from './notice.repository.js';
 import { NoticesService } from './notices.service.js';
+import { SesAccountReader } from './ses-account.js';
 import { SesEventQueue, sesMailEvent, SesTransport } from './ses.js';
 import { WelcomeEmails } from './welcome-emails.js';
 import { WelcomeSender } from './welcome-sender.js';
 
 /**
- * The notifications context (design §6.8). The api reads counts and starts resends; only the worker sends and reads the
- * provider's delivery reports, so only it gets the mail transport and its credentials. Elections use
+ * The notifications context (design §6.8). The api reads counts and starts resends; only the worker sends, reads the
+ * provider's delivery reports and checks how SES is set up (§10.12), so only it gets the mail transport and its
+ * credentials. Elections use
  * `NoticesService.forgetElection` when one is deleted, membership `WelcomeEmails` when a Membership Admin adds a member
  * (§5.13), and accounts `MailRecords` when one is deleted (§4).
  */
@@ -24,6 +28,7 @@ export const NOTIFICATION_API_PROVIDERS: Provider[] = [
   NoticeRepository,
   MailRepository,
   MailRecords,
+  MailHealthService,
   NoticeSettingsService,
   NoticesService,
   WelcomeEmails,
@@ -35,8 +40,11 @@ export const NOTIFICATION_WORKER_PROVIDERS: Provider[] = [
   NoticeSettingsService,
   Mailer,
   MailEventRecorder,
+  MailHealthChecker,
   NoticeSender,
   WelcomeSender,
+  { provide: SES_ACCOUNT, inject: [CONFIG], useFactory: (config: ServerConfig) => SesAccountReader.fromConfig(config) },
+  { provide: DNS_TXT, useValue: dnsTxt },
   {
     provide: MAIL_TRANSPORT,
     inject: [CONFIG, Firebase],

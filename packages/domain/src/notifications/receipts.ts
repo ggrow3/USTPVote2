@@ -192,7 +192,7 @@ export function checkNoticeTest(input: {
   const { delivery, contact, theirs, now } = input;
   if (delivery === 'none') return deny('this deployment sends no email (MAIL_TRANSPORT=off), so there is nothing to test');
   if (delivery === 'mail' && !contact) {
-    return deny('no contact for election questions is set (Admin › Election emails), and no email goes without one');
+    return deny('no contact for election questions is set (Admin › Email), and no email goes without one');
   }
   if (theirs.some((t) => isTestInFlight(t, now))) return deny('your last test email has not gone yet; wait for it first');
   const today = theirs.filter((t) => Date.parse(t.requestedAt) > now.getTime() - 86_400_000).length;
