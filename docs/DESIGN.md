@@ -293,8 +293,8 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
   that exists, a token saying its address is verified marks the account's `emailVerified` once, if that address is
   the account's primary email. A password sign-up starts unverified and confirms the address while registering, and
   election email goes only to a verified address (§6.8), so without this it would never reach them. Accounts whose
-  login confirmed the address before this are caught up in the background when an api instance starts
-  (`EmailVerifiedSync`, reading Identity Platform's users by email), leaving an added member nobody has signed in to
+  login confirmed the address before this are caught up in the background once per api instance, on the first sign-in
+  it sees (`EmailVerifiedSync`, reading Identity Platform's users by email), leaving an added member nobody has signed in to
   yet to their first sign-in.
 - **Portability.** To add a login method the member, while signed in, also signs in with the new method and the client
   sends both ID tokens; the API links the second uid to the same account if that sign-in is under 5 minutes old and the
