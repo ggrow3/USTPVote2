@@ -144,6 +144,12 @@ export class ElectionsController {
     return this.elections.saveQuestion(ctx, id, contestId, body);
   }
 
+  /** A `ustp.election` file's questions added after a draft's own (design §6.7), written at once or not at all. */
+  @Post(':id/questions/import')
+  importQuestions(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(electionPackageSchema)) body: ElectionPackage) {
+    return this.elections.importQuestions(ctx, id, body);
+  }
+
   /** The order of the ballot's questions: every question once. */
   @Put(':id/question-order')
   @HttpCode(204)

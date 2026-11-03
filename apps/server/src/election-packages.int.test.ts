@@ -159,3 +159,75 @@ describe('election packages', () => {
     expect(imported.body.problems).toContain('voting must open in the future');
   });
 });
+
+describe('a file’s questions added to a draft', () => {
+  const addQuestions = (electionId: string, body: unknown, by: User = ea) => api.call('POST', `/v1/admin/elections/${electionId}/questions/import`, by, body);
+
+  it('come after the draft’s own, keep their IDs but where the draft has them, and reuse captured texts', async () => {
+    const draft = (await importPackage(pkg())).body as ElectionDetail;
+    const electionId = draft.election.electionId;
+    const textsBefore = (await counts()).texts;
+    const more = {
+      ...pkg(),
+      title: 'Not used',
+      secrecy: 'open',
+      window: { opensInSeconds: 60, votingSeconds: 60 },
+      contests: [
+        { id: 'chair', kind: 'choose_n', title: 'Board', seats: 2, maxSelections: 2, candidates: [{ id: 'ada', name: 'Ada' }, 'Grace', 'Lin'] },
+        { id: 'plank-13', kind: 'proposal', title: 'Plank 13', passRule: MAJORITY, proposal: { body: 'Adopt this too.' } },
+        // The same text as the draft's Plank 12, which is reused rather than captured again.
+        { kind: 'proposal', title: 'Plank 12 again', passRule: MAJORITY, proposal: { title: 'Platform plank 12', body: 'Adopt it.' } },
+      ],
+    };
+    const res = await addQuestions(electionId, more);
+    expect(res.status).toBe(201);
+    const detail = res.body as ElectionDetail;
+    // The draft keeps its own title, window and secrecy.
+    expect(detail.election).toMatchObject({ title: 'Spring vote', secrecy: 'secret', opensAt: draft.election.opensAt });
+    const contests = [...detail.contests].sort((a, b) => a.order - b.order);
+    expect(contests.map((c) => [c.order, c.title])).toEqual([
+      [1, 'Chair'],
+      [2, 'Our name'],
+      [3, 'Plank 12'],
+      [4, 'Board'],
+      [5, 'Plank 13'],
+      [6, 'Plank 12 again'],
+    ]);
+    const board = contests[3]!;
+    expect(board.contestId).not.toBe('chair');
+    expect(contests[4]!.contestId).toBe('plank-13');
+    const boardIds = board.spec.kind === 'choose_n' ? board.spec.candidates : [];
+    const boardOptions = boardIds.map((id) => detail.candidates.find((k) => k.candidateId === id)!);
+    expect(boardOptions.map((k) => k.name)).toEqual(['Ada', 'Grace', 'Lin']);
+    expect(boardOptions.every((k) => k.candidateId !== 'ada')).toBe(true);
+    expect(contests[5]!.proposalSnapshotId).toBe(contests[2]!.proposalSnapshotId);
+    expect((await counts()).texts).toBe(textsBefore + 1);
+    expect(detail.problems).toEqual([]);
+  });
+
+  it('are refused whole outside a draft, past 100 questions, or with an amendment that does not fit', async () => {
+    const draft = (await importPackage(pkg())).body as ElectionDetail;
+    const electionId = draft.election.electionId;
+    const contestCount = async () => (await api.firebase.db.collection('elections').doc(electionId).collection('contests').count().get()).data().count;
+    const one = (contests: unknown[]) => ({ ...pkg(), contests });
+
+    expect(await addQuestions(electionId, one([]))).toMatchObject({ status: 400, body: { detail: 'the file has no questions to add' } });
+    const plank = (i: number) => ({ kind: 'proposal', title: `Plank ${i}`, passRule: MAJORITY, proposal: { body: `Text ${i}.` } });
+    expect(await addQuestions(electionId, one(Array.from({ length: 98 }, (_, i) => plank(i))))).toMatchObject({
+      status: 400,
+      body: { detail: 'a ballot holds at most 100 questions; this one has 3 and the file adds 98' },
+    });
+    // A second amendment of the same line conflicts with the draft's own.
+    const clash = { ...amendment, changes: [{ ...amendment.changes[0], lines: ['The party is the Transhumanist Party.'] }] };
+    expect(
+      await addQuestions(electionId, one([{ kind: 'proposal', title: 'Another name', passRule: MAJORITY, proposal: { body: 'Shorter.', amendment: clash } }])),
+    ).toMatchObject({ status: 409 });
+    expect(await addQuestions(electionId, one([plank(1)]), auditor)).toMatchObject({ status: 403 });
+    expect(await addQuestions('no-such-election', one([plank(1)]))).toMatchObject({ status: 404 });
+    expect(await contestCount()).toBe(3);
+
+    await api.call('POST', `/v1/admin/elections/${electionId}/cancel`, ea, { reason: 'done' });
+    expect(await addQuestions(electionId, one([plank(1)]))).toMatchObject({ status: 409, body: { detail: 'the election is cancelled; only drafts can be edited' } });
+    expect(await contestCount()).toBe(3);
+  });
+});
