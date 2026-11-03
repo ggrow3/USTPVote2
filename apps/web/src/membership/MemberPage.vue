@@ -62,14 +62,24 @@ const WELCOME_OUTCOMES: Readonly<Record<string, string>> = {
   interrupted: 'interrupted; it may or may not have gone',
   error: 'an error',
   no_address: 'the account has no address',
+  undeliverable: 'the address bounced before, or was marked as spam',
   signed_in: 'they had signed in already',
+};
+/** What the mail service reported of a welcome email it took. */
+const WELCOME_DELIVERY: Readonly<Record<string, string>> = {
+  delayed: ', delayed so far',
+  delivered: ', delivered',
+  bounced: ', and it bounced: check the address',
+  complained: ', delivered, and marked as spam',
+  rejected: ', but the mail service did not send it after all',
 };
 const welcomeText = computed(() => {
   const w = detail.value?.added?.welcome;
   if (!w) return "Identity Platform's sign-in link, sent from the adding admin's browser";
   if (w.status === 'pending') return 'Waiting to be sent';
   if (w.status === 'sending') return 'Being sent';
-  return w.outcome ? `Not sent: ${WELCOME_OUTCOMES[w.outcome] ?? w.outcome}` : `Sent ${dateTime(w.doneAt ?? w.requestedAt)}`;
+  if (w.outcome) return `Not sent: ${WELCOME_OUTCOMES[w.outcome] ?? w.outcome}`;
+  return `Sent ${dateTime(w.doneAt ?? w.requestedAt)}${w.delivery ? (WELCOME_DELIVERY[w.delivery] ?? '') : ''}`;
 });
 const welcoming = ref(false);
 

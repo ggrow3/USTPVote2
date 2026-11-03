@@ -42,6 +42,12 @@ export class NoticeRepository {
     return snap.docs.map((d) => d.data() as NoticeRecord).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   }
 
+  /** Notices whose last round has finished. */
+  async done(): Promise<NoticeRecord[]> {
+    const snap = await this.firebase.db.collection(Collections.notices).where('status', '==', 'done').get();
+    return snap.docs.map((d) => d.data() as NoticeRecord);
+  }
+
   /** Notices whose current round has not finished. */
   async unfinished(): Promise<NoticeRecord[]> {
     const snap = await this.firebase.db.collection(Collections.notices).where('status', 'in', ['preparing', 'sending']).get();
@@ -92,20 +98,17 @@ export class NoticeRepository {
     return snap.docs.map((d) => d.data() as NoticeRecipientRecord);
   }
 
-  /** The recipient sent the message with this provider ID, for a bounce report; null if none did. */
-  async byMessageId(noticeId: string, messageId: string): Promise<NoticeRecipientRecord | null> {
-    const snap = await this.ref(noticeId).collection(NOTICE_RECIPIENTS).where('messageId', '==', messageId).limit(1).get();
-    return (snap.docs[0]?.data() as NoticeRecipientRecord | undefined) ?? null;
-  }
-
   /** Recipients by status, counted by Firestore (no record is read). `pending` includes those being sent. */
   async counts(noticeId: string, tx?: Transaction): Promise<RecipientCounts> {
     const count = (status: RecipientStatus) => {
       const query: Query = this.ref(noticeId).collection(NOTICE_RECIPIENTS).where('status', '==', status);
       return (tx ? tx.get(query.count()) : query.count().get()).then((s) => s.data().count);
     };
-    const [pending, sending, sent, failed, bounced, skipped] = await Promise.all(RECIPIENT_STATUSES.map(count));
-    return { pending: pending! + sending!, sent: sent!, failed: failed!, bounced: bounced!, skipped: skipped! };
+    const n = Object.fromEntries(
+      await Promise.all(RECIPIENT_STATUSES.map(async (status) => [status, await count(status)] as const)),
+    ) as Record<RecipientStatus, number>;
+    const { pending, sending, ...rest } = n;
+    return { ...rest, pending: pending + sending };
   }
 
   /** How many recipient records the notice has. */

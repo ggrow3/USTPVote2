@@ -8,6 +8,7 @@ import type { ServerConfig } from './config.js';
 import type { ElectionReader } from './elections/election-reader.js';
 import type { Firebase } from './infra/firebase.js';
 import type { LedgerService } from './ledger/ledger.service.js';
+import type { MailRepository } from './notifications/mail.repository.js';
 import type { NoticeSettingsService } from './notifications/notice-settings.js';
 import type { NoticeRepository } from './notifications/notice.repository.js';
 import { NoticesController } from './notifications/notices.controller.js';
@@ -59,7 +60,7 @@ describe('NoticesService.requestTest', () => {
       current: async () => ({ ...DEFAULT_NOTICE_SETTINGS, contact: over.contact === undefined ? 'elections@example.org' : over.contact }),
     } as unknown as NoticeSettingsService;
     const config = { mailTransport: over.mailTransport ?? 'ses', noticeContact: null } as unknown as ServerConfig;
-    return { created, notices: new NoticesService(firebase, {} as LedgerService, notices, elections, settings, config) };
+    return { created, notices: new NoticesService(firebase, {} as LedgerService, notices, {} as MailRepository, elections, settings, config) };
   }
 
   it('queues a test addressed to the caller’s own account, never another', async () => {

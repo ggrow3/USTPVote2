@@ -11,7 +11,6 @@ import {
   noticeTestSummary,
   TEST_NOTE,
   TEST_SUBJECT_PREFIX,
-  testNoticeTag,
   type NoticeMessageInput,
   type NoticeTestRecord,
   type ReceiptCounts,
@@ -171,8 +170,10 @@ describe('test emails', () => {
     expect(Object.keys(noticeTestSummary(test()))).not.toContain('accountId');
   });
 
-  it('carry a tag of their own, so a bounce report never matches a roll member', () => {
-    expect(testNoticeTag('e1', 'voting_open')).toBe('e1_voting_open_test');
+  it('say what the mail service reported of one it took, and nothing of one it did not', () => {
+    expect(noticeTestSummary(test({ status: 'done' }))).toMatchObject({ sent: true, delivery: null });
+    expect(noticeTestSummary(test({ status: 'done', delivery: 'bounced' }))).toMatchObject({ sent: true, delivery: 'bounced' });
+    expect(noticeTestSummary(test({ status: 'done', outcome: 'refused', delivery: 'bounced' }))).toMatchObject({ sent: false, delivery: null });
   });
 });
 

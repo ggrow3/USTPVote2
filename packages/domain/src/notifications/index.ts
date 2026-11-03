@@ -30,8 +30,38 @@ export type {
   NoticeSummary,
   NoticesView,
   NoticeSentPayload,
+  NoticeDeliveryReportedPayload,
   NoticeResendPayload,
 } from './notices.js';
+export {
+  MAIL_KINDS,
+  MAIL_STATUSES,
+  MAIL_EVENT_TYPES,
+  SUPPRESSED_BOUNCE,
+  MAIL_MESSAGE_RETENTION_DAYS,
+  MAIL_SUPPRESSION_DAYS,
+  NOTICE_REPORT_HOURS,
+  mailAddressKey,
+  isMailKind,
+  isNoticeMail,
+  mailMessageRecord,
+  identityMailRecord,
+  applyMailEvent,
+  recipientStatusOf,
+  nextSuppression,
+} from './mail.js';
+export type {
+  MailKind,
+  MailSender,
+  MailStatus,
+  MailEventType,
+  BounceType,
+  MailEvent,
+  MailMessageRecord,
+  MailSuppressionReason,
+  MailSuppressionRecord,
+  MailEventEffect,
+} from './mail.js';
 export {
   NOTICE_TEST_STATUSES,
   MAX_NOTICE_TESTS_PER_DAY,
@@ -42,7 +72,6 @@ export {
   noticeTestSummary,
   checkNoticeTest,
   noticeTestRecord,
-  testNoticeTag,
 } from './receipts.js';
 export type {
   NoticeReceiptRecord,

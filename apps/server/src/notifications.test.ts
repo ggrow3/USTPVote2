@@ -2,8 +2,8 @@ import { SendEmailCommand } from '@aws-sdk/client-sesv2';
 import { DeleteMessageBatchCommand, ReceiveMessageCommand } from '@aws-sdk/client-sqs';
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_MAIL_FROM, loadConfig } from './config.js';
-import { MailNotSent, type MailMessage } from './notifications/mail-transport.js';
-import { sesBounce, SesBounceQueue, sesEmail, sesFailure, SesTransport } from './notifications/ses.js';
+import { actedOutReports, MailNotSent, sesEventBody, type MailMessage } from './notifications/mail-transport.js';
+import { sesEmail, SesEventQueue, sesFailure, sesMailEvent, SesTransport } from './notifications/ses.js';
 
 describe('election notice configuration', () => {
   const emulators = { FIRESTORE_EMULATOR_HOST: 'x', FIREBASE_AUTH_EMULATOR_HOST: 'y', GCLOUD_PROJECT: 'demo-p' };
@@ -68,7 +68,7 @@ const MESSAGE: MailMessage = {
   subject: 'Voting is open: Officers',
   text: 'Hello Ada,',
   html: '<p>Hello Ada,</p>',
-  tags: { noticeId: 'e1_voting_open', electionId: 'e1', accountId: 'a1' },
+  meta: { kind: 'voting_open', ref: 'e1_voting_open', electionId: 'e1', accountId: 'a1' },
 };
 
 /** Stands in for the AWS SDK client: records each command and answers as told. */
@@ -89,7 +89,7 @@ const awsError = (name: string, status?: number) =>
   Object.assign(new Error(name), { name, ...(status !== undefined && { $metadata: { httpStatusCode: status } }) });
 
 describe('sending through Amazon SES', () => {
-  it('asks for plain text and HTML in UTF-8, from the agreed address, tagged with the notice', () => {
+  it('asks for plain text and HTML in UTF-8, from the agreed address, tagged with what it is and nothing personal', () => {
     expect(sesEmail(MESSAGE, 'ustp-notices')).toEqual({
       FromEmailAddress: 'USTP Elections <noreply@transhumanist-party.org>',
       Destination: { ToAddresses: ['ada@example.org'] },
@@ -100,8 +100,14 @@ describe('sending through Amazon SES', () => {
         },
       },
       ConfigurationSetName: 'ustp-notices',
-      EmailTags: [{ Name: 'notice', Value: 'e1_voting_open' }],
+      EmailTags: [
+        { Name: 'kind', Value: 'voting_open' },
+        { Name: 'ref', Value: 'e1_voting_open' },
+      ],
     });
+    expect(sesEmail({ ...MESSAGE, meta: { kind: 'account_email', ref: null, electionId: null, accountId: 'a1' } }, null).EmailTags).toEqual([
+      { Name: 'kind', Value: 'account_email' },
+    ]);
     const plain = sesEmail({ ...MESSAGE, replyTo: 'secretary@example.org' }, null);
     expect(plain.ReplyToAddresses).toEqual(['secretary@example.org']);
     expect(plain).not.toHaveProperty('ConfigurationSetName');
@@ -160,58 +166,134 @@ describe('sending through Amazon SES', () => {
       WEB_ORIGIN: 'https://ustpvote2-dev.web.app',
     });
     expect(SesTransport.fromConfig(ready)).toBeInstanceOf(SesTransport);
-    expect(SesBounceQueue.fromConfig(ready)).toBeNull(); // no queue: bounces are not counted
+    expect(SesEventQueue.fromConfig(ready)).toBeNull(); // no queue: no delivery reports
   });
 });
 
-describe('bounce reports from SQS', () => {
+describe('delivery reports from SQS', () => {
+  const tags = { kind: ['voting_open'], ref: ['e1_voting_open'], 'ses:configuration-set': ['ustp-mail-dev'] };
   const event = (over: Record<string, unknown> = {}) => ({
     eventType: 'Bounce',
-    bounce: { bounceType: 'Permanent', bouncedRecipients: [{ emailAddress: 'ada@example.org' }] },
-    mail: { messageId: 'ses-1', tags: { notice: ['e1_voting_open'], 'ses:configuration-set': ['ustp-notices'] } },
+    bounce: {
+      bounceType: 'Permanent',
+      bounceSubType: 'General',
+      timestamp: '2026-11-03T12:01:00.000Z',
+      bouncedRecipients: [{ emailAddress: 'ada@example.org', diagnosticCode: 'smtp; 550 5.1.1 user unknown' }],
+    },
+    mail: { messageId: 'ses-1', timestamp: '2026-11-03T12:00:00.000Z', destination: ['ada@example.org'], tags },
     ...over,
   });
+  const bounced = {
+    type: 'bounce',
+    messageId: 'ses-1',
+    sentAt: '2026-11-03T12:00:00.000Z',
+    at: '2026-11-03T12:01:00.000Z',
+    kind: 'voting_open',
+    ref: 'e1_voting_open',
+    configurationSet: 'ustp-mail-dev',
+    destination: 'ada@example.org',
+    bounce: { type: 'permanent', subType: 'General' },
+    delay: null,
+  };
 
-  it('reads a permanent bounce, raw or in its SNS envelope, by message ID and notice', () => {
-    expect(sesBounce(JSON.stringify(event()))).toEqual({ noticeId: 'e1_voting_open', messageId: 'ses-1' });
-    expect(sesBounce(JSON.stringify({ Type: 'Notification', Message: JSON.stringify(event()) }))).toEqual({
-      noticeId: 'e1_voting_open',
-      messageId: 'ses-1',
-    });
+  it('reads a report, raw or in its SNS envelope, keeping no mail server text', () => {
+    expect(sesMailEvent(JSON.stringify(event()))).toEqual(bounced);
+    expect(sesMailEvent(JSON.stringify({ Type: 'Notification', Message: JSON.stringify(event()) }))).toEqual(bounced);
     const { eventType, ...notification } = event();
     expect(eventType).toBe('Bounce');
-    expect(sesBounce(JSON.stringify({ ...notification, notificationType: 'Bounce' }))).toEqual({ noticeId: 'e1_voting_open', messageId: 'ses-1' });
+    expect(sesMailEvent(JSON.stringify({ ...notification, notificationType: 'Bounce' }))).toEqual(bounced);
+    expect(JSON.stringify(sesMailEvent(JSON.stringify(event())))).not.toContain('550');
   });
 
-  it('drops transient bounces, complaints, deliveries, other mail and garbage', () => {
-    expect(sesBounce(JSON.stringify(event({ bounce: { bounceType: 'Transient' } })))).toBeNull();
-    expect(sesBounce(JSON.stringify(event({ eventType: 'Complaint' })))).toBeNull();
-    expect(sesBounce(JSON.stringify(event({ eventType: 'Delivery' })))).toBeNull();
-    expect(sesBounce(JSON.stringify(event({ mail: { messageId: 'ses-1', tags: {} } })))).toBeNull();
-    expect(sesBounce('not json')).toBeNull();
-    expect(sesBounce('null')).toBeNull();
+  it('reads every kind of report the configuration set publishes', () => {
+    const read = (over: Record<string, unknown>) => sesMailEvent(JSON.stringify(event(over)));
+    expect(read({ eventType: 'Bounce', bounce: { bounceType: 'Transient', bounceSubType: 'MailboxFull' } })).toMatchObject({
+      type: 'bounce',
+      bounce: { type: 'transient', subType: 'MailboxFull' },
+      at: '2026-11-03T12:00:00.000Z',
+    });
+    expect(read({ eventType: 'Delivery', delivery: { timestamp: '2026-11-03T12:00:05.000Z' } })).toMatchObject({ type: 'delivery', at: '2026-11-03T12:00:05.000Z' });
+    expect(read({ eventType: 'Complaint', complaint: { complainedRecipients: [{ emailAddress: 'Ada@Example.org' }] } })).toMatchObject({
+      type: 'complaint',
+      destination: 'Ada@Example.org',
+    });
+    expect(read({ eventType: 'DeliveryDelay', deliveryDelay: { delayType: 'MailboxFull', expirationTime: '2026-11-04T12:00:00.000Z' } })).toMatchObject({
+      type: 'delay',
+      delay: { type: 'MailboxFull', until: '2026-11-04T12:00:00.000Z' },
+    });
+    expect(read({ eventType: 'Send', send: {} })).toMatchObject({ type: 'send' });
+    expect(read({ eventType: 'Reject', reject: { reason: 'Bad content' } })).toMatchObject({ type: 'reject' });
+    expect(read({ eventType: 'Rendering Failure', failure: {} })).toMatchObject({ type: 'rendering_failure' });
   });
 
-  it('receives a batch and deletes what was handled', async () => {
+  it('reads mail Identity Platform sent, which carries none of this app’s tags', () => {
+    const plain = event({ eventType: 'Delivery', mail: { messageId: 'ses-9', timestamp: '2026-11-03T12:00:00.000Z', destination: ['ada@example.org'] } });
+    expect(sesMailEvent(JSON.stringify(plain))).toMatchObject({ type: 'delivery', kind: null, ref: null, configurationSet: null, destination: 'ada@example.org' });
+  });
+
+  it('drops opens, clicks, other notifications and garbage', () => {
+    expect(sesMailEvent(JSON.stringify(event({ eventType: 'Open' })))).toBeNull();
+    expect(sesMailEvent(JSON.stringify(event({ eventType: 'Click' })))).toBeNull();
+    expect(sesMailEvent(JSON.stringify(event({ mail: { tags } })))).toBeNull();
+    expect(sesMailEvent('not json')).toBeNull();
+    expect(sesMailEvent('null')).toBeNull();
+  });
+
+  it('receives a batch and deletes only what was handled', async () => {
     const queueUrl = 'https://sqs.us-east-1.amazonaws.com/123456789012/q';
     const client = fakeClient((command) =>
       command instanceof ReceiveMessageCommand
-        ? { Messages: [{ Body: JSON.stringify(event()), ReceiptHandle: 'r1' }, { Body: '{}', ReceiptHandle: 'r2' }] }
+        ? { Messages: [{ Body: JSON.stringify(event()), ReceiptHandle: 'r1' }, { Body: '{}', ReceiptHandle: 'r2' }, { Body: '{}' }] }
         : {},
     );
-    const queue = new SesBounceQueue(client, queueUrl);
-    expect(await queue.receive()).toEqual({ bounces: [{ noticeId: 'e1_voting_open', messageId: 'ses-1' }], receipts: ['r1', 'r2'] });
-    expect((client.sent[0] as ReceiveMessageCommand).input).toMatchObject({ QueueUrl: queueUrl, MaxNumberOfMessages: 10, WaitTimeSeconds: 0 });
-    await queue.acknowledge(['r1', 'r2']);
+    const queue = new SesEventQueue(client, queueUrl);
+    expect(await queue.receive()).toEqual([
+      { receipt: 'r1', event: bounced },
+      { receipt: 'r2', event: null },
+    ]);
+    expect((client.sent[0] as ReceiveMessageCommand).input).toMatchObject({ QueueUrl: queueUrl, MaxNumberOfMessages: 10, WaitTimeSeconds: 1 });
+    await queue.acknowledge(['r2']);
     expect(client.sent[1]).toBeInstanceOf(DeleteMessageBatchCommand);
-    expect((client.sent[1] as DeleteMessageBatchCommand).input).toEqual({
-      QueueUrl: queueUrl,
-      Entries: [
-        { Id: '0', ReceiptHandle: 'r1' },
-        { Id: '1', ReceiptHandle: 'r2' },
-      ],
-    });
+    expect((client.sent[1] as DeleteMessageBatchCommand).input).toEqual({ QueueUrl: queueUrl, Entries: [{ Id: '0', ReceiptHandle: 'r2' }] });
     await queue.acknowledge([]);
     expect(client.sent).toHaveLength(2);
+  });
+});
+
+describe('the outbox acting out SES', () => {
+  it('delivers by default, and answers as the test domains and SES’s simulator say', () => {
+    const types = (to: string | null) => actedOutReports(to).map((r) => r.eventType);
+    expect(types('ada@example.test')).toEqual(['Delivery']);
+    expect(types(null)).toEqual([]);
+    expect(types('gone@bounce.test')).toEqual(['Bounce']);
+    expect(types('spam@complaint.test')).toEqual(['Delivery', 'Complaint']);
+    expect(types('slow@delay.test')).toEqual(['DeliveryDelay', 'Delivery']);
+    expect(types('success+probe1@simulator.amazonses.com')).toEqual(['Delivery']);
+    expect(types('bounce+probe1@simulator.amazonses.com')).toEqual(['Bounce']);
+    expect(types('complaint@simulator.amazonses.com')).toEqual(['Delivery', 'Complaint']);
+  });
+
+  it('writes reports the SES parser reads', () => {
+    const [report] = actedOutReports('full@soft.test');
+    const body = sesEventBody({
+      ...report!,
+      messageId: 'o1',
+      to: 'full@soft.test',
+      sentAt: '2026-11-03T12:00:00.000Z',
+      at: '2026-11-03T12:00:00.000Z',
+      tags: { kind: 'welcome', ref: 'a1', 'ses:configuration-set': 'ustp-mail-dev' },
+    });
+    expect(sesMailEvent(body)).toEqual({
+      type: 'bounce',
+      messageId: 'o1',
+      sentAt: '2026-11-03T12:00:00.000Z',
+      at: '2026-11-03T12:00:00.000Z',
+      kind: 'welcome',
+      ref: 'a1',
+      configurationSet: 'ustp-mail-dev',
+      destination: 'full@soft.test',
+      bounce: { type: 'transient', subType: 'MailboxFull' },
+      delay: null,
+    });
   });
 });

@@ -30,12 +30,15 @@ export type NoticeDelivery = 'mail' | 'outbox';
  * - `pending`: to be sent in the current round (also after a send the provider could not take yet, until
  *   `MAX_SEND_ATTEMPTS`).
  * - `sending`: a worker has claimed it and is sending it now.
- * - `sent`: the provider (or the outbox) accepted it.
+ * - `sent`: the provider (or the outbox) accepted it, and has not reported on it since.
+ * - `delivered`: the provider reported that the recipient's mail server took it.
+ * - `complained`: delivered, and the recipient marked it as spam.
  * - `failed`: not sent; an Election Admin can resend it while voting is open.
- * - `bounced`: accepted, then reported undeliverable by the provider. Not resent: the address does not work.
+ * - `bounced`: accepted, then reported undeliverable by the provider (or rejected by it after all). Not resent: the
+ *   address does not work.
  * - `skipped`: never sent, because there is nowhere to send it (see `NoticeOutcome`).
  */
-export const RECIPIENT_STATUSES = ['pending', 'sending', 'sent', 'failed', 'bounced', 'skipped'] as const;
+export const RECIPIENT_STATUSES = ['pending', 'sending', 'sent', 'delivered', 'complained', 'failed', 'bounced', 'skipped'] as const;
 export type RecipientStatus = (typeof RECIPIENT_STATUSES)[number];
 
 /**
@@ -43,8 +46,9 @@ export type RecipientStatus = (typeof RECIPIENT_STATUSES)[number];
  * Failures: `refused` (the provider will not take it), `unavailable` (the provider was down for every attempt),
  * `interrupted` (the worker stopped while sending, so whether it went is unknown; never resent automatically, so
  * nobody gets it twice), `error` (anything else, the outcome unknown), `voting_closed` (voting ended before it was
- * sent, so it was not). Skips: `no_address` (the account has no email), `unverified_address`, `voted` (a reminder to
- * someone who voted after it was prepared).
+ * sent, so it was not). Skips: `no_address` (the account has no email), `unverified_address`, `undeliverable` (the
+ * address bounced for good, or its owner marked an email as spam, and is not mailed until they ask to try again),
+ * `voted` (a reminder to someone who voted after it was prepared).
  */
 export const NOTICE_OUTCOMES = [
   'refused',
@@ -54,6 +58,7 @@ export const NOTICE_OUTCOMES = [
   'voting_closed',
   'no_address',
   'unverified_address',
+  'undeliverable',
   'voted',
 ] as const;
 export type NoticeOutcome = (typeof NOTICE_OUTCOMES)[number];
@@ -91,6 +96,11 @@ export interface NoticeRecord {
   readonly roundStartedAt: string;
   /** When the current round finished; null while it runs. */
   readonly completedAt: string | null;
+  /**
+   * The last round whose delivery reports were added up and ledgered (`notice.delivery_reported`), `NOTICE_REPORT_HOURS`
+   * after it finished; absent until the first.
+   */
+  readonly reportedRound?: number;
 }
 
 /** `notices/{noticeId}/recipients/{accountId}`: one person's notice. No address: the account holds it. */
@@ -113,9 +123,11 @@ export interface NoticeRecipientRecord {
 /** `notice_outbox/{id}`: a message recorded instead of mailed (emulators; rehearsals in testing mode). */
 export interface OutboxMessageRecord {
   readonly id: string;
-  readonly noticeId: string;
-  readonly electionId: string;
-  readonly accountId: string;
+  /** What it is (`MailKind`), and the notice, test email or added member it belongs to. */
+  readonly kind: string;
+  readonly ref: string | null;
+  readonly electionId: string | null;
+  readonly accountId: string | null;
   /** Null for a test voter, who has no address. */
   readonly to: string | null;
   readonly from: string;
@@ -170,10 +182,27 @@ export interface NoticeSentPayload {
   readonly round: number;
   readonly delivery: NoticeDelivery;
   readonly recipients: number;
+  /** Messages the provider took, whatever it has reported of them since. */
   readonly sent: number;
   readonly failed: number;
   readonly bounced: number;
   readonly skipped: number;
+}
+
+/**
+ * The `notice.delivery_reported` payload: what the provider's reports said of a round's messages, `NOTICE_REPORT_HOURS`
+ * after it finished, since bounces and complaints can come after `notice.sent`. Counts only.
+ */
+export interface NoticeDeliveryReportedPayload {
+  readonly electionId: string;
+  readonly kind: NoticeKind;
+  readonly round: number;
+  readonly recipients: number;
+  readonly delivered: number;
+  readonly bounced: number;
+  readonly complained: number;
+  /** Messages the provider took and has said nothing more about. */
+  readonly noReport: number;
 }
 
 /** The `notice.resend_requested` payload. */

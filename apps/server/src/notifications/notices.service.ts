@@ -21,6 +21,7 @@ import { CONFIG, type ServerConfig } from '../config.js';
 import { ElectionReader } from '../elections/election-reader.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { MailRepository } from './mail.repository.js';
 import { NoticeSettingsService } from './notice-settings.js';
 import { NoticeRepository } from './notice.repository.js';
 
@@ -38,6 +39,7 @@ export class NoticesService {
     private readonly firebase: Firebase,
     private readonly ledger: LedgerService,
     private readonly notices: NoticeRepository,
+    private readonly mail: MailRepository,
     private readonly elections: ElectionReader,
     private readonly settings: NoticeSettingsService,
     @Inject(CONFIG) private readonly config: ServerConfig,
@@ -120,9 +122,12 @@ export class NoticesService {
     return noticeSummary(notice, await this.notices.counts(id));
   }
 
-  /** Removes a deleted election's notices, receipts and test emails (design §6.1), after the deletion has committed. */
-  forgetElection(electionId: string): Promise<void> {
-    return this.notices.deleteForElection(electionId);
+  /**
+   * Removes a deleted election's notices, receipts, test emails and the records of their messages (design §6.1), after
+   * the deletion has committed.
+   */
+  async forgetElection(electionId: string): Promise<void> {
+    await Promise.all([this.notices.deleteForElection(electionId), this.mail.forgetElection(electionId)]);
   }
 }
 

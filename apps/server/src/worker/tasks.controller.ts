@@ -14,6 +14,7 @@ import { BylawsCheckRunner } from '../bylaws-check/bylaws-check-runner.js';
 import { SuggestionsService } from '../communications/suggestions.service.js';
 import { ConsistencyCheckRunner } from '../consistency-check/consistency-check-runner.js';
 import { ElectionCheckRunner } from '../election-check/election-check-runner.js';
+import { MailEventRecorder } from '../notifications/mail-events.js';
 import { NoticeSender } from '../notifications/notice-sender.js';
 import { WelcomeSender } from '../notifications/welcome-sender.js';
 import { RoomAssistant } from '../room/room-assistant.js';
@@ -44,6 +45,7 @@ export class TasksController {
     private readonly electionChecks: ElectionCheckRunner,
     private readonly notices: NoticeSender,
     private readonly welcomes: WelcomeSender,
+    private readonly mailEvents: MailEventRecorder,
     private readonly suggestions: SuggestionsService,
     private readonly roomRetention: RoomRetention,
     private readonly roomAssistant: RoomAssistant,
@@ -52,8 +54,9 @@ export class TasksController {
   /**
    * Every minute: prepare ballot-pool keys, open and close elections on time, seal ballots, tally elections that are
    * now fully sealed, destroy the pool keys of certified and cancelled elections, send election notices (for at most
-   * 20 seconds), the test emails Election Admins asked for and the welcome emails of added members (§5.13), and record
-   * their bounces, delete suggestions a year old
+   * 20 seconds), the test emails Election Admins asked for and the welcome emails of added members (§5.13), record what
+   * the mail provider reported of them and ledger each notice round's reports after three days, delete suggestions a
+   * year old
    * (design §10.9) and the members' room's records past their time (§5.10), then seal new ledger entries (including those) into a signed block, sign approved rolls and anchor
    * new blocks. Each step runs even if an earlier one failed.
    */
@@ -81,7 +84,8 @@ export class TasksController {
       noticesSent: await step('send notices', () => this.notices.sendDue(), 0),
       testEmailsSent: await step('send test emails', () => this.notices.sendTests(), 0),
       welcomeEmailsSent: await step('send welcome emails', () => this.welcomes.sendDue(), 0),
-      bouncesRecorded: await step('record bounces', () => this.notices.recordBounces(), 0),
+      mailEventsRecorded: await step('record mail events', () => this.mailEvents.record(), 0),
+      deliveryReports: await step('report delivery', () => this.notices.reportDelivery(), 0),
       suggestionsDeleted: await step('delete old suggestions', () => this.suggestions.deleteExpired(), 0),
       roomExpired: await step('expire room records', () => this.roomRetention.run(), 0),
       blocksSealed: (await step('seal blocks', () => this.sealer.sealBlocks(), [])).length,
