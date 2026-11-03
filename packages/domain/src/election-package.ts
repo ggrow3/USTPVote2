@@ -215,29 +215,49 @@ export function packageRecords(
     certifiedAt: null,
     poolKeyDestroyedAt: null,
   };
+  return { election, ...packageContestRecords(pkg, { firstOrder: 1, newId: options.newId, snapshotIds: options.snapshotIds }) };
+}
+
+/**
+ * A package's contests and candidates as stored, in package order numbered from `firstOrder`: a new draft's whole
+ * ballot, or questions added after a draft's own (design §6.7). They keep the package's `id`s but for those in `taken`,
+ * the IDs the draft already uses, which get `newId()` as those without one do.
+ */
+export function packageContestRecords(
+  pkg: ElectionPackage,
+  options: {
+    readonly firstOrder: number;
+    readonly newId: () => string;
+    /** By contest index; null for candidate contests. */
+    readonly snapshotIds: readonly (string | null)[];
+    readonly taken?: { readonly contests: ReadonlySet<string>; readonly candidates: ReadonlySet<string> };
+  },
+): { contests: ContestRecord[]; candidates: CandidateRecord[] } {
+  const free = (id: string | undefined, used: ReadonlySet<string> | undefined) => (id !== undefined && !used?.has(id) ? id : options.newId());
   const contests: ContestRecord[] = [];
   const candidates: CandidateRecord[] = [];
   pkg.contests.forEach((c, i) => {
-    const contestId = c.id ?? options.newId();
+    const contestId = free(c.id, options.taken?.contests);
+    const order = options.firstOrder + i;
     if (c.kind === 'proposal') {
       const { id: _id, proposal: _proposal, ...rules } = c;
       const snapshotId = options.snapshotIds[i];
       if (!snapshotId) throw new Error(`contest ${i + 1} has no proposal text`);
-      contests.push(contestRecord(contestId, i + 1, { ...rules, proposalSnapshotId: snapshotId }, []));
+      contests.push(contestRecord(contestId, order, { ...rules, proposalSnapshotId: snapshotId }, []));
       return;
     }
     const { id: _id, candidates: listed, ...rules } = c;
     const records = listed.map((k) => ({
-      candidateId: ('id' in k && k.id) || options.newId(),
+      candidateId: free(('id' in k && k.id) || undefined, options.taken?.candidates),
       contestId,
       name: k.name,
       statement: ('statement' in k && k.statement) || null,
       accountId: ('accountId' in k && k.accountId) || null,
     }));
     candidates.push(...records);
-    contests.push(contestRecord(contestId, i + 1, rules, records.map((k) => k.candidateId)));
+    contests.push(contestRecord(contestId, order, rules, records.map((k) => k.candidateId)));
   });
-  return { election, contests, candidates };
+  return { contests, candidates };
 }
 
 /**

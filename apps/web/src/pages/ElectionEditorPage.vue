@@ -14,7 +14,7 @@ import {
   type RollView,
 } from 'ustp-domain';
 import { focusElement, usePageTitle } from '../a11y.js';
-import { api } from '../api.js';
+import { api, ApiError } from '../api.js';
 import { aRole, describeRequest } from '../approval-text.js';
 import PageShell from '../components/PageShell.vue';
 import ConsistencyCheckCard from '../consistency-check/ConsistencyCheckCard.vue';
@@ -23,7 +23,7 @@ import BylawsCheckNotes from '../election-check/BylawsCheckNotes.vue';
 import ElectionCheckSection from '../election-check/ElectionCheckSection.vue';
 import { pointerText } from '../election-check/election-check-text.js';
 import { useElectionCheck } from '../election-check/use-election-check.js';
-import { downloadElectionDocx, saveElectionPackage } from '../election-files.js';
+import { downloadElectionDocx, packageProblem, readElectionPackage, saveElectionPackage } from '../election-files.js';
 import { electionDetail, proposalTexts } from '../elections/api.js';
 import BallotBuilder from '../elections/BallotBuilder.vue';
 import ElectionWorkflow from '../elections/ElectionWorkflow.vue';
@@ -142,6 +142,62 @@ async function downloadWord() {
 /** The election as a `ustp.election` file (design §6.7), to import again here or elsewhere. */
 async function downloadJson() {
   await attempt(async () => saveElectionPackage(await api<ElectionPackage>('GET', `${url}/package`)));
+}
+
+/**
+ * Adds a `ustp.election` file's questions after the ballot's own (design §6.7): checked in the browser with the api's
+ * schema first, then, once the builder has saved what it holds, added in one request; what is wrong is listed by path
+ * until the next import. The file's title, window and secrecy are not used.
+ */
+const questionsInput = ref<HTMLInputElement | null>(null);
+const importingQuestions = ref(false);
+const questionProblems = ref<{ readonly file: string; readonly problems: readonly string[] } | null>(null);
+const questionCount = (n: number) => (n === 1 ? '1 question' : `${n} questions`);
+
+async function importQuestions(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file) return;
+  questionProblems.value = null;
+  const read = await readElectionPackage(file);
+  if (!read.ok || !read.pkg.contests.length) {
+    questionProblems.value = { file: file.name, problems: read.ok ? ['the file has no questions to add'] : read.problems };
+    return;
+  }
+  const { pkg } = read;
+  const added = questionCount(pkg.contests.length);
+  const confirmed = await new Promise<boolean>((resolve) => {
+    dialog({
+      title: `Add the questions from ${file.name}?`,
+      message: `Its ${added} go after this ballot's own. Its title, voting window and secrecy are not used.`,
+      cancel: { label: 'Cancel', flat: true, noCaps: true },
+      ok: { label: `Add ${added}`, noCaps: true },
+    })
+      .onOk(() => resolve(true))
+      .onCancel(() => resolve(false));
+  });
+  if (!confirmed) return;
+  // What the builder holds is saved first, so the file's questions come after it and nothing is lost on reloading it.
+  if (builder.value && !(await builder.value.flush())) {
+    questionProblems.value = { file: file.name, problems: ['some changes to the ballot are not saved yet; the bar at the bottom of the ballot says why'] };
+    return;
+  }
+  importingQuestions.value = true;
+  try {
+    const ok = await attempt(async () => {
+      try {
+        await api<ElectionDetail>('POST', `${url}/questions/import`, pkg);
+      } catch (e) {
+        const errors = e instanceof ApiError ? (e.problem.errors ?? []) : [];
+        if (errors.length) questionProblems.value = { file: file.name, problems: errors.map((i) => packageProblem(i.path, i.message)) };
+        throw e;
+      }
+    }, `Added ${added}`);
+    if (ok) await reloadBallot();
+  } finally {
+    importingQuestions.value = false;
+  }
 }
 
 function copyHash() {
@@ -399,8 +455,29 @@ onMounted(load);
               <q-btn outline no-caps color="primary" icon="data_object" label="Download as JSON" @click="downloadJson">
                 <span class="sr-only">: {{ detail.election.title }}</span>
               </q-btn>
+              <q-btn
+                outline
+                no-caps
+                color="primary"
+                icon="upload_file"
+                label="Import JSON"
+                :loading="importingQuestions"
+                @click="questionsInput?.click()"
+              >
+                <span class="sr-only">: add questions from a file to {{ detail.election.title }}</span>
+              </q-btn>
+              <input ref="questionsInput" type="file" accept=".json,application/json" hidden @change="importQuestions" />
             </div>
           </div>
+          <q-banner v-if="questionProblems" class="bg-negative text-white q-mb-md" rounded role="alert">
+            <p class="q-mb-xs">No questions were added from {{ questionProblems.file }}:</p>
+            <ul class="q-my-none">
+              <li v-for="p in questionProblems.problems" :key="p">{{ p }}</li>
+            </ul>
+            <template #action>
+              <q-btn flat no-caps color="white" label="Dismiss" @click="questionProblems = null" />
+            </template>
+          </q-banner>
           <BallotBuilder
             ref="builder"
             :key="builderKey"
