@@ -625,7 +625,9 @@ The same tab's **email setup check** runs every hour by itself, or now with "Che
 sender domain, the configuration set, both queues and the DNS records, works out the bounce and complaint rates, and
 sends three messages to SES's mailbox simulator to see their reports come back. Each check that is not right names the
 step above that fixes it. With `alert_emails` set, a check that starts failing also emails those addresses (alert
-policy `mail`, through Google, not SES).
+policy `mail`, through Google, not SES). The same policy carries two warnings about election email itself: a notice
+held because the check is failing (it goes on by itself once the check passes), and a send whose emails did not all
+reach their mail servers within 30 minutes; Election Admins see both on the election's "Email to voters" card.
 
 #### SES sign-in mail
 

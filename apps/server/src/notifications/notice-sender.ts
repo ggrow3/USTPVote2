@@ -13,9 +13,12 @@ import {
   noticeId,
   noticeMessage,
   noticeReceipt,
+  pendingVerification,
   reminderTime,
+  sendGate,
   VOTED_SCAN_OVERLAP_MINUTES,
   type ElectionRecord,
+  type MailCheckId,
   type NoticeDeliveryReportedPayload,
   type NoticeKind,
   type NoticeOutcome,
@@ -32,6 +35,8 @@ import { ElectionReader } from '../elections/election-reader.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { MemberDirectory } from '../membership/member-directory.js';
+import { alertLog } from '../common/logging.js';
+import { MailHealthChecker } from './mail-health.js';
 import { MAIL_TRANSPORT, OutboxTransport, type MailTransport } from './mail-transport.js';
 import { Mailer } from './mailer.js';
 import { NoticeSettingsService } from './notice-settings.js';
@@ -78,6 +83,7 @@ export class NoticeSender {
     private readonly members: MemberDirectory,
     private readonly settings: NoticeSettingsService,
     private readonly mailer: Mailer,
+    private readonly health: MailHealthChecker,
     @Inject(MAIL_TRANSPORT) private readonly transport: MailTransport | null,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {
@@ -194,6 +200,10 @@ export class NoticeSender {
       this.logger.warn(`notice ${notice.noticeId} is waiting: no contact for election questions is set (NOTICE_CONTACT or the app's setting)`);
       return 0;
     }
+    // Checked before it goes (design §6.8): never into a setup the email check finds failing. A rehearsal mails nobody,
+    // and once it is too late to send, what is left is failed below rather than held.
+    const sendable = notice.kind === 'voted' ? canConfirmVote(election, new Date()) : isVotingOpen(election, new Date());
+    if (!notice.rehearsal && sendable && !(await this.mayGo(notice, election))) return 0;
     if (notice.status === 'preparing') {
       const roll = (await this.elections.approvedRoll(election))?.accountIds ?? [];
       // The reminder goes to those who have not voted: participation records say who did, never how.
@@ -256,6 +266,36 @@ export class NoticeSender {
     return { ...notice, scannedTo: now, recipients: total };
   }
 
+  /**
+   * Whether the notice may go on now: on a setup check from the last hour (run first when the last is older, where mail
+   * goes through SES) with nothing failing that keeps mail from arriving or from being verified. Otherwise it is held,
+   * with why on the notice, and the System Admins are alerted once; it goes on by itself once the check passes.
+   */
+  private async mayGo(notice: NoticeRecord, election: ElectionRecord): Promise<boolean> {
+    const now = new Date();
+    const mail = notice.delivery === 'mail';
+    let gate = sendGate(await this.health.current(), now, mail);
+    if (gate.stale) gate = sendGate(await this.health.ensureFresh(now), now, mail);
+    if (gate.stale) return false; // another worker is running the check: go next tick
+    const ref = this.notices.ref(notice.noticeId);
+    if (!gate.failing.length) {
+      if (notice.held) await ref.update({ held: null });
+      return true;
+    }
+    if (JSON.stringify(notice.held?.checks) !== JSON.stringify(gate.failing)) {
+      await ref.update({ held: { checks: gate.failing, since: notice.held?.since ?? now.toISOString() } });
+      this.warnHeld(notice, election, gate.failing);
+    }
+    return false;
+  }
+
+  /** Tells the System Admins a notice is held (their alert email, through Google, where mail goes through SES). */
+  private warnHeld(notice: NoticeRecord, election: ElectionRecord, failing: readonly MailCheckId[]): void {
+    const line = `election email held: the ${notice.kind} email of "${election.title}" waits while the email setup check fails (${failing.join(', ')}); see Admin › Email`;
+    if (notice.delivery === 'mail') alertLog('mail', line, { check: 'send_held', election: election.electionId });
+    else this.logger.warn(line);
+  }
+
   /** The receipt of one pass over a notice's recipients, if it handled anyone. */
   private async keepReceipt(notice: NoticeRecord, transport: MailTransport, startedAt: string, results: readonly SendResult[]): Promise<void> {
     const ref = this.notices.receiptRef();
@@ -273,7 +313,22 @@ export class NoticeSender {
       finishedAt: new Date().toISOString(),
       results,
     });
-    if (receipt) await ref.create(receipt);
+    if (!receipt) return;
+    await ref.create(receipt);
+    // Checked after it goes, once its delivery reports have had time to come in (design §6.8). A rehearsal mails nobody.
+    if (!notice.rehearsal && receipt.accepted > 0) {
+      await this.notices.verificationRef(receipt.receiptId).create(
+        pendingVerification({
+          receiptId: receipt.receiptId,
+          electionId: notice.electionId,
+          kind: notice.kind,
+          noticeId: notice.noticeId,
+          round: notice.round,
+          finishedAt: receipt.finishedAt,
+          messages: receipt.accepted,
+        }),
+      );
+    }
   }
 
   private async sendBatch(

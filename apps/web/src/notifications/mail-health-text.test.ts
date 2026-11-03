@@ -30,6 +30,7 @@ describe('the email setup check’s wording', () => {
       `Checked ${when}, when a System Admin asked. 2 checks failing: members may not get their email.`,
     );
     expect(healthSummary(run([check('dmarc', 'warn')], { overall: 'warn' }))).toMatch(/No check is failing; 1 warning\.$/);
+    expect(healthSummary(run([check('dkim', 'ok')], { trigger: 'send' }))).toMatch(/, before election email went out\./);
     expect(healthSummary(run([check('probe', 'pending')], { overall: 'pending' }))).toMatch(/waiting for the test messages/);
     expect(healthSummary(run([check('transport', 'warn')], { transport: 'off', overall: 'warn' }))).toMatch(/1 warning/);
   });

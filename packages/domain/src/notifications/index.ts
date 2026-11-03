@@ -206,3 +206,14 @@ export type {
   MyEmailView,
   MemberMailFlag,
 } from './my-email.js';
+export {
+  NOT_SEND_BLOCKING,
+  SEND_CHECK_MINUTES,
+  SEND_VERIFY_MINUTES,
+  sendGate,
+  pendingVerification,
+  shortOf,
+  verifySend,
+  noticeVerificationTotals,
+} from './send-checks.js';
+export type { SendGate, NoticeHold, SendVerificationRecord, NoticeVerificationTotals } from './send-checks.js';

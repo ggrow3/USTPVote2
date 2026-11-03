@@ -80,8 +80,8 @@ export interface MailProbe {
 /** `mail_health/current`: the last run of the check. */
 export interface MailHealthRecord {
   readonly checkedAt: string;
-  /** `schedule`: the hourly run. `request`: a System Admin asked (`requestedBy`). */
-  readonly trigger: 'schedule' | 'request';
+  /** `schedule`: the hourly run. `request`: a System Admin asked (`requestedBy`). `send`: election email was about to go. */
+  readonly trigger: 'schedule' | 'request' | 'send';
   readonly requestedBy: string | null;
   readonly transport: 'ses' | 'outbox' | 'off';
   /** The From address's domain, which the identity checks are about. */

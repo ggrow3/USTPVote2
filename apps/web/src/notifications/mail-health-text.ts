@@ -41,7 +41,7 @@ export const MAIL_CHECK_LOOK: Readonly<Record<MailCheckStatus, { word: string; i
 export function healthSummary(health: MailHealthRecord | null): string {
   if (!health) return 'The check has not run yet. Where email goes through Amazon SES it runs every hour by itself.';
   const when = new Date(health.checkedAt).toLocaleString();
-  const how = health.trigger === 'request' ? 'when a System Admin asked' : 'on its hourly run';
+  const how = { request: 'when a System Admin asked', send: 'before election email went out', schedule: 'on its hourly run' }[health.trigger];
   const failing = health.checks.filter((c) => c.status === 'fail').length;
   const warning = health.checks.filter((c) => c.status === 'warn').length;
   const verdict =
