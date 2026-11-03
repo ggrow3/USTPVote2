@@ -621,6 +621,12 @@ voters" card says whether your mail server took it. The card's counts (delivered
 spam, skipped) come from SES's delivery reports; an address that bounced for good or was marked as spam is not mailed
 again.
 
+The same tab's **email setup check** runs every hour by itself, or now with "Check now": it reads the account, the
+sender domain, the configuration set, both queues and the DNS records, works out the bounce and complaint rates, and
+sends three messages to SES's mailbox simulator to see their reports come back. Each check that is not right names the
+step above that fixes it. With `alert_emails` set, a check that starts failing also emails those addresses (alert
+policy `mail`, through Google, not SES).
+
 #### SES key rotation
 
 Run the worker-key script again (an IAM user holds two keys at most), roll the worker so it reads the new versions,

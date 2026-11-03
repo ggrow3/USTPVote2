@@ -11,10 +11,11 @@ import { NOTICE_KINDS, type NoticeDelivery, type NoticeKind, type RecipientStatu
 
 /**
  * What a message is: an election notice (`NoticeKind`), an Election Admin's test of one, a welcome email to an added
- * member (§5.13), or an email Identity Platform sent about the account (a sign-in link, an address to confirm, a password
- * reset), which the worker learns of only from its delivery reports.
+ * member (§5.13), the setup check's message to SES's mailbox simulator (`probe`, §10.12), or an email Identity Platform
+ * sent about the account (a sign-in link, an address to confirm, a password reset), which the worker learns of only
+ * from its delivery reports.
  */
-export const MAIL_KINDS = [...NOTICE_KINDS, 'notice_test', 'welcome', 'account_email'] as const;
+export const MAIL_KINDS = [...NOTICE_KINDS, 'notice_test', 'welcome', 'probe', 'account_email'] as const;
 export type MailKind = (typeof MAIL_KINDS)[number];
 
 /** Who sent it: this app's worker, or Identity Platform through the same mail service. */
@@ -180,7 +181,7 @@ export function mailMessageRecord(input: {
     status: 'sent',
     bounce: null,
     delay: null,
-    counted: delivery === 'mail',
+    counted: delivery === 'mail' && kind !== 'probe',
     sentAt: at,
     delayedAt: null,
     deliveredAt: null,
@@ -209,7 +210,7 @@ export interface MailEventEffect {
 /**
  * Applies one report to a message's record. Reports may come late, twice or out of order: a status only moves further
  * down `MAIL_STATUSES`, each time is kept from its first report, so applying a report again changes nothing. A permanent
- * bounce or a complaint stops mail to the address.
+ * bounce or a complaint stops mail to the address, except on the setup check's own messages to the simulator.
  */
 export function applyMailEvent(record: MailMessageRecord, event: MailEvent): MailEventEffect {
   const target = EVENT_STATUS[event.type];
@@ -221,7 +222,8 @@ export function applyMailEvent(record: MailMessageRecord, event: MailEvent): Mai
   if (event.delay) next.delay = event.delay;
   if (event.bounce?.subType === SUPPRESSED_BOUNCE) next.counted = false;
   const changed = Object.keys(next).some((k) => JSON.stringify(next[k]) !== JSON.stringify(record[k as keyof MailMessageRecord]));
-  const suppress = event.type === 'complaint' ? 'complained' : event.bounce?.type === 'permanent' ? 'bounced' : null;
+  const suppress =
+    record.kind === 'probe' ? null : event.type === 'complaint' ? 'complained' : event.bounce?.type === 'permanent' ? 'bounced' : null;
   return {
     record: (changed ? { ...next, updatedAt: event.at } : record) as MailMessageRecord,
     changed,

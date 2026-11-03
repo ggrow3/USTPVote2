@@ -46,7 +46,7 @@ export const EMAIL_DESCRIPTION =
 export const NOT_SET_UP = 'Nothing is sent until email (Amazon SES) is set up for this deployment.';
 
 /** Where no contact for questions is set, in the app or the deployment. */
-export const NO_CONTACT = 'Nothing is mailed until a contact for election questions is set (Admin › Election emails).';
+export const NO_CONTACT = 'Nothing is mailed until a contact for election questions is set (Admin › Email).';
 
 /** The reminder's lead time in words: "a day", "2 days", "an hour", "36 hours". */
 export function leadTimeText(hours: number): string {
@@ -108,7 +108,7 @@ export function noNoticeText(step: NoticeStep, detail: ElectionDetail, view: Not
     case 'no_contact':
       return NO_CONTACT;
     case 'off':
-      return `A System Admin has switched ${step.kind === 'closing_soon' ? 'the reminder' : 'this email'} off (Admin › Election emails).`;
+      return `A System Admin has switched ${step.kind === 'closing_soon' ? 'the reminder' : 'this email'} off (Admin › Email).`;
     case 'short_window':
       return `Voting is open for ${lead} or less, so there is no reminder.`;
     case 'closed':

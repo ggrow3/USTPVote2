@@ -21,7 +21,7 @@ import PageShell from '../components/PageShell.vue';
 import HomeQuotePanel from '../governance/HomeQuotePanel.vue';
 import HubPanel from '../governance/HubPanel.vue';
 import NavigationPanel from '../governance/NavigationPanel.vue';
-import NoticeSettingsPanel from '../notifications/NoticeSettingsPanel.vue';
+import EmailAdminPanel from '../notifications/EmailAdminPanel.vue';
 import { shown } from '../governance/navigation.js';
 import { SECTION_LABELS } from '../governance/navigation-text.js';
 import { guide } from '../guide/tour.js';
@@ -51,7 +51,7 @@ const PANELS: Record<AdminSection, Component> = {
   people: PeoplePanel,
   signin: SignInMethodsPanel,
   claude: ApiKeysPanel,
-  email: NoticeSettingsPanel,
+  email: EmailAdminPanel,
   audit: AuditPanel,
   security: SecurityPanel,
   testing: TestingPanel,

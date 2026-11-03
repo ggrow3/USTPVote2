@@ -43,6 +43,7 @@ describe('noNoticeText', () => {
     notices: [],
     receipts: noticeReceiptTotals([]),
     tests: [],
+    setup: null,
   });
   const step = (kind: NoticeStep['kind'], status: NoticeStep['status'], absent: NoticeStep['absent'] = null): NoticeStep => ({
     kind,
@@ -55,7 +56,7 @@ describe('noNoticeText', () => {
     expect(noNoticeText(step('voting_open', 'not_reached', 'not_set_up'), detail, view())).toBe(NOT_SET_UP);
     expect(noNoticeText(step('voting_open', 'not_reached', 'no_contact'), detail, view())).toBe(NO_CONTACT);
     expect(noNoticeText(step('closing_soon', 'not_reached', 'off'), detail, view())).toBe(
-      'A System Admin has switched the reminder off (Admin › Election emails).',
+      'A System Admin has switched the reminder off (Admin › Email).',
     );
     expect(noNoticeText(step('closing_soon', 'not_reached', 'short_window'), detail, view(48))).toBe(
       'Voting is open for 2 days or less, so there is no reminder.',
@@ -149,6 +150,7 @@ describe('the send receipts and test emails', () => {
       notices: [],
       receipts: noticeReceiptTotals([]),
       tests: [],
+      setup: null,
     };
     expect(testBlocked(null, now)).toBeNull();
     expect(testBlocked(base, now)).toBeNull();

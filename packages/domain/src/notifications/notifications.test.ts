@@ -336,6 +336,7 @@ describe('the emails in the workflow', () => {
     notices,
     receipts: noticeReceiptTotals([]),
     tests: [],
+    setup: null,
   });
   const steps = (over: Partial<Parameters<typeof noticeSteps>[0]> = {}) =>
     noticeSteps({ election, rehearsal: false, testingMode: false, view: view('mail'), now: new Date('2026-11-03T12:00:00Z'), ...over }).map(
