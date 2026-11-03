@@ -40,10 +40,12 @@ module "ustpvote" {
   # The members' room's self-hosted model, one L4 GPU (design §5.10; README "Members' room model").
   room_model_enabled = var.room_model_enabled
 
-  # Election notices (design §6.8; README "Election notices").
-  web_origin           = var.web_origin
-  mail_transport       = var.mail_transport
-  notice_contact       = var.notice_contact
-  ses_region           = var.ses_region
-  ses_events_queue_url = var.ses_events_queue_url
+  # Email (design §6.8; README "Email (Amazon SES)").
+  web_origin            = var.web_origin
+  mail_transport        = var.mail_transport
+  notice_contact        = var.notice_contact
+  ses_region            = var.ses_region
+  ses_events_queue_url  = var.ses_events_queue_url
+  ses_configuration_set = var.ses_configuration_set
+  mail_from             = var.mail_from
 }
