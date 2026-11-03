@@ -1,3 +1,4 @@
+import type { MailStatus } from './mail.js';
 import { NOTICE_CLAIM_MINUTES } from './notices.js';
 
 /**
@@ -9,8 +10,11 @@ import { NOTICE_CLAIM_MINUTES } from './notices.js';
 export const WELCOME_STATUSES = ['pending', 'sending', 'done'] as const;
 export type WelcomeStatus = (typeof WELCOME_STATUSES)[number];
 
-/** Why a welcome email did not go: as for a notice, or the member had already signed in. */
-export const WELCOME_OUTCOMES = ['refused', 'unavailable', 'interrupted', 'error', 'no_address', 'signed_in'] as const;
+/**
+ * Why a welcome email did not go: as for a notice (`undeliverable`: the address bounced for good or was marked as spam),
+ * or the member had already signed in.
+ */
+export const WELCOME_OUTCOMES = ['refused', 'unavailable', 'interrupted', 'error', 'no_address', 'undeliverable', 'signed_in'] as const;
 export type WelcomeOutcome = (typeof WELCOME_OUTCOMES)[number];
 
 /** `welcome_emails/{accountId}`: the latest welcome email asked for an added member; asking again starts it over. */
@@ -26,11 +30,13 @@ export interface WelcomeEmailRecord {
   readonly outcome: WelcomeOutcome | null;
   /** The provider's ID for the message, once sent. */
   readonly messageId: string | null;
+  /** What the provider has reported of it since it took it (design §6.8); null until a report, absent on older records. */
+  readonly delivery?: MailStatus | null;
 }
 
 /** A welcome email waiting for the worker. */
 export function welcomeEmailRecord(accountId: string, requestedBy: string, at: string): WelcomeEmailRecord {
-  return { accountId, requestedBy, requestedAt: at, status: 'pending', claimedAt: null, doneAt: null, outcome: null, messageId: null };
+  return { accountId, requestedBy, requestedAt: at, status: 'pending', claimedAt: null, doneAt: null, outcome: null, messageId: null, delivery: null };
 }
 
 /** Waiting, or claimed by a worker that may still be sending it: asking again now could send two. */

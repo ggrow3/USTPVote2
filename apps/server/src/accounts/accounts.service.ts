@@ -40,6 +40,7 @@ import { LedgerService } from '../ledger/ledger.service.js';
 import { ElectionReader } from '../elections/election-reader.js';
 import { MemberDirectory } from '../membership/member-directory.js';
 import { Members } from '../membership/members.service.js';
+import { MailRecords } from '../notifications/mail-records.js';
 
 /** A second sign-in used to link a login method must be this fresh. */
 const LINK_MAX_AUTH_AGE_SECONDS = 5 * 60;
@@ -68,6 +69,7 @@ export class AccountsService {
     private readonly membership: Members,
     private readonly elections: ElectionReader,
     private readonly mfaPolicy: MfaPolicyService,
+    private readonly mailRecords: MailRecords,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
@@ -261,7 +263,8 @@ export class AccountsService {
 
   /**
    * A deleted account's sign-ins (by account, and by login for those seen before it had one), page visits, its
-   * courses' progress, attempts, certificates and messages, and the welcome email of an added member (§5.13).
+   * courses' progress, attempts, certificates and messages, the welcome email of an added member (§5.13), and the
+   * records of the email sent to it (§6.8).
    */
   async forgetActivity(accountId: string, uids: readonly string[]): Promise<void> {
     const db = this.firebase.db;
@@ -283,7 +286,7 @@ export class AccountsService {
     // A sign-in can be found both by account and by login.
     const refs = new Map(found.flatMap((snap) => snap.docs.map((d) => [d.ref.path, d.ref] as const)));
     for (const ref of refs.values()) void writer.delete(ref);
-    await writer.close();
+    await Promise.all([writer.close(), this.mailRecords.forgetAccount(accountId)]);
   }
 
   /**
@@ -293,7 +296,8 @@ export class AccountsService {
    * stays theirs to reach. Each call also applies the bootstrap System Admin grant once the email is verified (password
    * sign-ups start unverified), but only to an account that has never held the role, so a revocation is never undone,
    * and only when the grant keeps to the role rules (design §10.1): an account that is an Auditor or already holds two
-   * roles is left as it is until a System Admin brings it within them.
+   * roles is left as it is until a System Admin brings it within them. A call from a login whose address is now verified
+   * marks the account's primary email verified, if it is that address.
    */
   async create(ctx: RequestContext): Promise<{ readonly created: boolean; readonly accountId: string; readonly claimed?: true }> {
     const { principal } = ctx;
@@ -317,7 +321,10 @@ export class AccountsService {
           bootstrap = false;
         }
       }
-      if (existing.exists && !bootstrap) return { created: false, accountId };
+      if (existing.exists && !bootstrap) {
+        await this.confirmEmail(tx, accountId, principal);
+        return { created: false, accountId };
+      }
 
       const now = new Date().toISOString();
       const events: LedgerEvent[] = [];
@@ -360,6 +367,19 @@ export class AccountsService {
       }
       return added ? { created: false, accountId, claimed: true as const } : { created: !existing.exists, accountId };
     });
+  }
+
+  /**
+   * Marks the account's primary email verified once its login says the address is (design §4): a password sign-up
+   * starts unverified and confirms the address afterwards, and election email goes only to a verified address (§6.8).
+   */
+  private async confirmEmail(tx: Transaction, accountId: string, principal: Principal): Promise<void> {
+    if (!principal.emailVerified || !principal.email) return;
+    const ref = this.firebase.db.collection(Collections.accounts).doc(accountId);
+    const account = (await tx.get(ref)).data() as AccountRecord | undefined;
+    if (account && !account.emailVerified && account.primaryEmail?.toLowerCase() === principal.email.toLowerCase()) {
+      tx.update(ref, { emailVerified: true });
+    }
   }
 
   /**

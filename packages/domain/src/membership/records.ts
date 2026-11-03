@@ -1,4 +1,5 @@
 import type { AccountPreferences } from '../daily.js';
+import type { MailStatus } from '../notifications/mail.js';
 import type { WelcomeEmailRecord } from '../notifications/welcome.js';
 import type { MemberStatus } from './member-status.js';
 
@@ -132,6 +133,6 @@ export interface MemberDetail {
     readonly at: string;
     readonly by: string;
     readonly signedInAt: string | null;
-    readonly welcome: Pick<WelcomeEmailRecord, 'status' | 'requestedAt' | 'doneAt' | 'outcome'> | null;
+    readonly welcome: (Pick<WelcomeEmailRecord, 'status' | 'requestedAt' | 'doneAt' | 'outcome'> & { readonly delivery: MailStatus | null }) | null;
   } | null;
 }

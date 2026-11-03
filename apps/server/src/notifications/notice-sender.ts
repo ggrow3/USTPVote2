@@ -7,13 +7,14 @@ import {
   isTestInFlight,
   isVotingOpen,
   MAX_SEND_ATTEMPTS,
+  NOTICE_REPORT_HOURS,
   noticeDelivery,
   noticeId,
   noticeMessage,
   noticeReceipt,
   reminderTime,
-  testNoticeTag,
   type ElectionRecord,
+  type NoticeDeliveryReportedPayload,
   type NoticeKind,
   type NoticeOutcome,
   type NoticeRecipientRecord,
@@ -29,7 +30,8 @@ import { ElectionReader } from '../elections/election-reader.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { MemberDirectory } from '../membership/member-directory.js';
-import { BOUNCE_SOURCE, MAIL_TRANSPORT, MailNotSent, OutboxTransport, type BounceSource, type MailTransport } from './mail-transport.js';
+import { MAIL_TRANSPORT, OutboxTransport, type MailTransport } from './mail-transport.js';
+import { Mailer } from './mailer.js';
 import { NoticeSettingsService } from './notice-settings.js';
 import { NoticeRepository } from './notice.repository.js';
 
@@ -41,9 +43,6 @@ const BATCH = 10;
 
 /** How long one tick may spend sending, so a large roll never holds up the rest of the tick for long. */
 export const NOTICE_TICK_BUDGET_MS = 20_000;
-
-/** How long one tick may spend reading bounce reports. */
-export const BOUNCE_TICK_BUDGET_MS = 5_000;
 
 /** Test emails a tick sends at most; each goes to one Election Admin. */
 const TESTS_PER_TICK = 10;
@@ -76,11 +75,12 @@ export class NoticeSender {
     private readonly directory: DirectoryService,
     private readonly members: MemberDirectory,
     private readonly settings: NoticeSettingsService,
+    private readonly mailer: Mailer,
     @Inject(MAIL_TRANSPORT) private readonly transport: MailTransport | null,
-    @Inject(BOUNCE_SOURCE) private readonly bounces: BounceSource | null,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {
-    this.outbox = new OutboxTransport(firebase.db);
+    // Acts out the provider's reports only as the emulators' stand-in, not for a rehearsal's notices on a real project.
+    this.outbox = new OutboxTransport(firebase.db, { actOut: config.mailTransport === 'outbox', configurationSet: config.ses.configurationSet });
   }
 
   /** Starts the notices of elections that have opened and sends what is due. Returns how many messages went. */
@@ -314,28 +314,23 @@ export class NoticeSender {
       now: new Date(),
       text: settings.kinds[notice.kind],
     });
-    try {
-      const { messageId } = await transport.send({
-        to: notice.rehearsal ? null : mailbox!.email,
-        from: this.config.mailFrom,
-        replyTo: this.config.mailReplyTo,
-        ...message,
-        tags: { noticeId: notice.noticeId, electionId: notice.electionId, accountId: recipient.accountId },
-      });
-      await finish({ status: 'sent', sentAt: new Date().toISOString(), messageId, outcome: null });
-      return { status: 'sent', messageId };
-    } catch (e) {
-      if (e instanceof MailNotSent && e.outcome === 'unavailable') {
-        const retry = recipient.attempts < MAX_SEND_ATTEMPTS;
-        await finish({ status: retry ? 'pending' : 'failed', outcome: 'unavailable' });
-        return { status: 'failed', outcome: 'unavailable' };
-      }
-      // Never the error's text, which can quote the address.
-      this.logger.error(`notice ${notice.noticeId} to account ${recipient.accountId} not sent (${errorName(e)})`);
-      const outcome = e instanceof MailNotSent ? e.outcome : 'error';
-      await finish({ status: 'failed', outcome });
-      return { status: 'failed', outcome };
+    const result = await this.mailer.send(transport, {
+      to: notice.rehearsal ? null : mailbox!.email,
+      from: this.config.mailFrom,
+      replyTo: this.config.mailReplyTo,
+      ...message,
+      meta: { kind: notice.kind, ref: notice.noticeId, electionId: notice.electionId, accountId: recipient.accountId },
+    });
+    if (result.status === 'sent') {
+      await finish({ status: 'sent', sentAt: new Date().toISOString(), messageId: result.messageId, outcome: null });
+    } else if (result.status === 'skipped') {
+      await finish({ status: 'skipped', outcome: result.outcome });
+    } else {
+      // The provider could not take it yet: try again next tick, a few times.
+      const retry = result.outcome === 'unavailable' && recipient.attempts < MAX_SEND_ATTEMPTS;
+      await finish({ status: retry ? 'pending' : 'failed', outcome: result.outcome });
     }
+    return result;
   }
 
   /**
@@ -433,52 +428,18 @@ export class NoticeSender {
       text: settings.kinds[test.kind],
       test: true,
     });
-    try {
-      const { messageId } = await transport.send({
-        to: mailbox.email,
-        from: this.config.mailFrom,
-        replyTo: this.config.mailReplyTo,
-        ...message,
-        tags: { noticeId: testNoticeTag(test.electionId, test.kind), electionId: test.electionId, accountId: test.accountId },
-      });
-      return { status: 'sent', messageId };
-    } catch (e) {
-      this.logger.error(`test email ${test.testId} to account ${test.accountId} not sent (${errorName(e)})`);
-      return { status: 'failed', outcome: e instanceof MailNotSent ? e.outcome : 'error' };
-    }
+    return this.mailer.send(transport, {
+      to: mailbox.email,
+      from: this.config.mailFrom,
+      replyTo: this.config.mailReplyTo,
+      ...message,
+      meta: { kind: 'notice_test', ref: test.testId, electionId: test.electionId, accountId: test.accountId },
+    });
   }
 
   /** Records a claimed recipient's outcome and releases the claim. */
   private async finish(notice: NoticeRecord, accountId: string, fields: Partial<NoticeRecipientRecord>): Promise<void> {
     await this.notices.recipientRef(notice.noticeId, accountId).update({ ...fields, claimedAt: null, updatedAt: new Date().toISOString() });
-  }
-
-  /**
-   * Reads the provider's bounce reports (design §6.8) for up to `budgetMs` and marks each bounced message's recipient
-   * `bounced`. Reports about anything else are dropped. Returns how many recipients it marked.
-   */
-  async recordBounces(budgetMs: number = BOUNCE_TICK_BUDGET_MS): Promise<number> {
-    if (!this.bounces) return 0;
-    const deadline = Date.now() + budgetMs;
-    let recorded = 0;
-    while (Date.now() < deadline) {
-      const { bounces, receipts } = await this.bounces.receive();
-      if (!receipts.length) break;
-      for (const { noticeId: id, messageId } of bounces) {
-        const recipient = await this.notices.byMessageId(id, messageId);
-        if (!recipient) continue;
-        const ref = this.notices.recipientRef(id, recipient.accountId);
-        const marked = await this.firebase.db.runTransaction(async (tx) => {
-          const current = (await tx.get(ref)).data() as NoticeRecipientRecord | undefined;
-          if (current?.status !== 'sent' || current.messageId !== messageId) return false; // recorded already
-          tx.update(ref, { status: 'bounced', updatedAt: new Date().toISOString() });
-          return true;
-        });
-        if (marked) recorded++;
-      }
-      await this.bounces.acknowledge(receipts);
-    }
-    return recorded;
   }
 
   /** Claims older than the claim limit were interrupted: failed, so the message is never sent twice. */
@@ -505,14 +466,15 @@ export class NoticeSender {
         current.round > 1 ? this.notices.failedBefore(notice.noticeId, current.round, tx) : 0,
       ]);
       if (counts.pending > 0 || retry > 0) return;
-      const { sent, failed, bounced, skipped } = counts;
+      const { failed, bounced, skipped } = counts;
       const payload: NoticeSentPayload = {
         electionId: current.electionId,
         kind: current.kind,
         round: current.round,
         delivery: current.delivery,
         recipients: current.recipients,
-        sent,
+        // Taken by the provider, whatever it has reported of them since.
+        sent: counts.sent + counts.delivered + counts.complained,
         failed,
         bounced,
         skipped,
@@ -521,9 +483,38 @@ export class NoticeSender {
       tx.update(this.notices.ref(notice.noticeId), { status: 'done', completedAt: new Date().toISOString() });
     });
   }
-}
 
-/** What went wrong, as a code: never the error's text, which can quote the address. */
-function errorName(e: unknown): string {
-  return e instanceof MailNotSent ? e.outcome : e instanceof Error ? e.name : 'error';
+  /**
+   * Ledgers what the provider's reports said of each finished round (`notice.delivery_reported`), once per round,
+   * `NOTICE_REPORT_HOURS` after it finished, since bounces and complaints come after `notice.sent`. Not for a rehearsal,
+   * whose test voters have no address to report on. Returns how many rounds it ledgered.
+   */
+  async reportDelivery(): Promise<number> {
+    const due = Date.now() - NOTICE_REPORT_HOURS * 3_600_000;
+    const isDue = (n: NoticeRecord) =>
+      n.status === 'done' && !n.rehearsal && !!n.completedAt && Date.parse(n.completedAt) <= due && (n.reportedRound ?? 0) < n.round;
+    let reported = 0;
+    for (const notice of (await this.notices.done()).filter(isDue)) {
+      const ledgered = await this.firebase.db.runTransaction(async (tx) => {
+        const current = await this.notices.find(notice.noticeId, tx);
+        if (!current || !isDue(current)) return false;
+        const counts = await this.notices.counts(notice.noticeId, tx);
+        const payload: NoticeDeliveryReportedPayload = {
+          electionId: current.electionId,
+          kind: current.kind,
+          round: current.round,
+          recipients: current.recipients,
+          delivered: counts.delivered,
+          bounced: counts.bounced,
+          complained: counts.complained,
+          noReport: counts.sent,
+        };
+        await this.ledger.record(tx, [{ type: 'notice.delivery_reported', actor: 'system', subject: current.electionId, payload: { ...payload } }]);
+        tx.update(this.notices.ref(notice.noticeId), { reportedRound: current.round });
+        return true;
+      });
+      if (ledgered) reported++;
+    }
+    return reported;
+  }
 }

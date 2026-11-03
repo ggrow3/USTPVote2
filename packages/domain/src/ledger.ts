@@ -125,8 +125,10 @@ export interface TickResult {
   readonly testEmailsSent: number;
   /** Welcome emails sent (or recorded in the outbox) to members a Membership Admin added (design §5.13). */
   readonly welcomeEmailsSent: number;
-  /** Notice recipients the mail provider reported as bounced since the last tick (design §6.8). */
-  readonly bouncesRecorded: number;
+  /** Delivery reports from the mail provider that changed what is known of a message (design §6.8). */
+  readonly mailEventsRecorded: number;
+  /** Notice rounds whose delivery reports were added up and ledgered as `notice.delivery_reported` (design §6.8). */
+  readonly deliveryReports: number;
   /** Suggestions a year old, and the form's limits for days gone, deleted (design §10.9). */
   readonly suggestionsDeleted: number;
   /** The room's messages, done action items and finished questions past their time, and questions given up on (design §5.10). */

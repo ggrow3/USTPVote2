@@ -107,6 +107,7 @@ export class Members {
               requestedAt: welcome.requestedAt,
               doneAt: welcome.doneAt,
               outcome: welcome.outcome,
+              delivery: welcome.delivery ?? null,
             },
           }
         : null;

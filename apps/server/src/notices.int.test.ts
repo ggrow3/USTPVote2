@@ -1,6 +1,8 @@
 import {
   DEFAULT_NOTICE_SETTINGS,
+  mailAddressKey,
   noticeReceiptTotals,
+  type MailMessageRecord,
   type NoticeReceiptRecord,
   type NoticeRecipientRecord,
   type NoticeRecord,
@@ -10,6 +12,7 @@ import {
   type PersonaSummary,
 } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { addEmulatorMailEvent, sesEventBody } from './notifications/mail-transport.js';
 import { NoticeSender } from './notifications/notice-sender.js';
 import { NoticesService } from './notifications/notices.service.js';
 import { closeNow, minutes, seedElection, type SeededElection } from './testing/elections.js';
@@ -92,7 +95,8 @@ describe('the voting-open notice', () => {
     expect(first!.text).toContain('http://localhost:5173/verify');
     expect(first!.html).toContain('Open your ballot for “Officers”');
 
-    expect((await recipients(election)).map((r) => r.status)).toEqual(['sent', 'sent', 'sent', 'sent']);
+    // The provider's reports (acted out by the outbox) came in the same tick.
+    expect((await recipients(election)).map((r) => r.status)).toEqual(['delivered', 'delivered', 'delivered', 'delivered']);
     // The records never hold an address.
     expect(JSON.stringify(await recipients(election))).not.toContain('@');
     const sent = await ledger('notice.sent', election);
@@ -145,7 +149,7 @@ describe('the voting-open notice', () => {
           status: 'done',
           round: 1,
           recipients: 5,
-          counts: { pending: 0, sent: 4, failed: 1, bounced: 0, skipped: 0 },
+          counts: { pending: 0, sent: 0, delivered: 4, complained: 0, failed: 1, bounced: 0, skipped: 0 },
         },
       ],
     });
@@ -168,7 +172,7 @@ describe('the voting-open notice', () => {
     const messages = await outbox(election);
     expect(messages).toHaveLength(5);
     expect(messages.filter((m) => m.accountId === refused.accountId).map((m) => m.to)).toEqual(['fixed@example.test']);
-    expect((await view(election)).body.notices[0]).toMatchObject({ status: 'done', round: 2, counts: { sent: 5, failed: 0 } });
+    expect((await view(election)).body.notices[0]).toMatchObject({ status: 'done', round: 2, counts: { delivered: 5, failed: 0 } });
     expect((await ledger('notice.sent', election)).map((e) => e.payload.round).sort()).toEqual([1, 2]);
     expect((await resend(election)).status).toBe(409); // failed for nobody now
   });
@@ -220,16 +224,101 @@ describe('the voting-open notice', () => {
   });
 });
 
-describe('bounces', () => {
-  it('marks a message the provider took and then bounced, and never resends it', async () => {
+describe('delivery reports', () => {
+  const mailMessages = async (accountId: string) =>
+    (await db().collection('mail_messages').where('accountId', '==', accountId).get()).docs.map((d) => d.data() as MailMessageRecord);
+  const suppression = async (address: string) => (await db().collection('mail_suppressions').doc(mailAddressKey(address)).get()).data();
+
+  it('record what the provider said of each message, without the address', async () => {
+    const complaining = await memberAt('spam@complaint.test');
+    const slow = await memberAt('slow@delay.test');
+    const full = await memberAt('full@soft.test');
+    const election = await seedElection(api, { voters: [voters[0]!.accountId, complaining.accountId, slow.accountId, full.accountId] });
+    expect((await worker.tick()).body).toMatchObject({ noticesSent: 4, mailEventsRecorded: 6 });
+
+    expect(await recipient(election, voters[0]!.accountId)).toMatchObject({ status: 'delivered' });
+    expect(await recipient(election, complaining.accountId)).toMatchObject({ status: 'complained' });
+    expect(await recipient(election, slow.accountId)).toMatchObject({ status: 'delivered' });
+    expect(await recipient(election, full.accountId)).toMatchObject({ status: 'bounced' });
+    expect((await view(election)).body.notices[0].counts).toEqual({ pending: 0, sent: 0, delivered: 2, complained: 1, failed: 0, bounced: 1, skipped: 0 });
+
+    const [record] = await mailMessages(slow.accountId);
+    expect(record).toMatchObject({
+      kind: 'voting_open',
+      ref: noticeOf(election),
+      electionId: election.electionId,
+      sender: 'app',
+      delivery: 'outbox',
+      status: 'delivered',
+      delayedAt: expect.any(String),
+      deliveredAt: expect.any(String),
+      counted: false,
+    });
+    const all = (await db().collection('mail_messages').get()).docs.map((d) => d.data());
+    expect(all).toHaveLength(4);
+    expect(JSON.stringify(all.map(({ expireAt: _e, ...r }) => r))).not.toContain('@');
+
+    // A soft bounce stops nothing; a complaint stops mail to that address.
+    expect(await suppression('full@soft.test')).toBeUndefined();
+    expect(await suppression('spam@complaint.test')).toMatchObject({ reason: 'complained', accountId: complaining.accountId });
+    expect((await worker.tick()).body).toMatchObject({ mailEventsRecorded: 0 });
+  });
+
+  it('mark a message that bounced for good, which is never resent, and that address is mailed no more', async () => {
     const bouncing = await memberAt('gone@bounce.test');
-    const election = await seedElection(api, { voters: [voters[0]!.accountId, bouncing.accountId] });
-    expect((await worker.tick()).body).toMatchObject({ noticesSent: 2, bouncesRecorded: 1 });
-    expect(await recipient(election, bouncing.accountId)).toMatchObject({ status: 'bounced', messageId: expect.any(String) });
-    expect(await recipient(election, voters[0]!.accountId)).toMatchObject({ status: 'sent' });
-    expect((await view(election)).body.notices[0].counts).toEqual({ pending: 0, sent: 1, failed: 0, bounced: 1, skipped: 0 });
-    expect((await worker.tick()).body).toMatchObject({ bouncesRecorded: 0 });
-    expect((await resend(election)).status).toBe(409); // a bounced address is not retried
+    const first = await seedElection(api, { voters: [voters[0]!.accountId, bouncing.accountId] });
+    expect((await worker.tick()).body).toMatchObject({ noticesSent: 2, mailEventsRecorded: 2 });
+    expect(await recipient(first, bouncing.accountId)).toMatchObject({ status: 'bounced', messageId: expect.any(String) });
+    expect((await resend(first)).status).toBe(409); // a bounced address is not retried
+    expect(await suppression('Gone@Bounce.test ')).toMatchObject({ reason: 'bounced', subType: 'General', accountId: bouncing.accountId });
+
+    // The next election skips the address rather than mail it again.
+    const second = await seedElection(api, { voters: [voters[0]!.accountId, bouncing.accountId] });
+    expect((await worker.tick()).body).toMatchObject({ noticesSent: 1 });
+    expect(await recipient(second, bouncing.accountId)).toMatchObject({ status: 'skipped', outcome: 'undeliverable' });
+    expect((await outbox(second)).map((m) => m.accountId)).toEqual([voters[0]!.accountId]);
+  });
+
+  it('are ledgered for each round three days after it finished, once', async () => {
+    const bouncing = await memberAt('gone@bounce.test');
+    const election = await seedElection(api, { voters: [...voters.slice(0, 3).map((v) => v.accountId), bouncing.accountId] });
+    expect((await worker.tick()).body).toMatchObject({ deliveryReports: 0 });
+    await db().collection('notices').doc(noticeOf(election)).update({ completedAt: minutes(-71 * 60) });
+    expect((await worker.tick()).body).toMatchObject({ deliveryReports: 0 });
+    await db().collection('notices').doc(noticeOf(election)).update({ completedAt: minutes(-73 * 60) });
+    expect((await worker.tick()).body).toMatchObject({ deliveryReports: 1 });
+    expect((await worker.tick()).body).toMatchObject({ deliveryReports: 0 });
+    const reported = await ledger('notice.delivery_reported', election);
+    expect(reported).toEqual([
+      expect.objectContaining({
+        actor: 'system',
+        payload: { electionId: election.electionId, kind: 'voting_open', round: 1, recipients: 4, delivered: 3, bounced: 1, complained: 0, noReport: 0 },
+      }),
+    ]);
+    expect((await notice(election))!.reportedRound).toBe(1);
+  });
+
+  it('record mail Identity Platform sent, as the account its address belongs to', async () => {
+    const at = new Date().toISOString();
+    const report = (eventType: string, messageId: string, to: string, detail?: Record<string, unknown>) =>
+      addEmulatorMailEvent(db(), sesEventBody({ eventType, messageId, to, sentAt: at, at, tags: {}, detail }));
+    await report('Delivery', 'idp-1', voters[1]!.email.toUpperCase());
+    await report('Bounce', 'idp-2', 'stranger@example.test', { bounce: { bounceType: 'Permanent', bounceSubType: 'NoEmail' } });
+    expect((await worker.tick()).body).toMatchObject({ mailEventsRecorded: 2 });
+
+    const message = async (id: string) => (await db().collection('mail_messages').doc(id).get()).data();
+    expect(await message('idp-1')).toMatchObject({ sender: 'identity_platform', kind: 'account_email', accountId: voters[1]!.accountId, status: 'delivered' });
+    expect(await message('idp-2')).toMatchObject({ sender: 'identity_platform', accountId: null, status: 'bounced' });
+    expect(await suppression('stranger@example.test')).toMatchObject({ reason: 'bounced', accountId: null, messageId: 'idp-2' });
+    expect(JSON.stringify(await message('idp-1'))).not.toContain('@');
+  });
+
+  it('of an election go with it when it is deleted', async () => {
+    const election = await seedElection(api, { voters: [voters[0]!.accountId] });
+    await worker.tick();
+    expect(await mailMessages(voters[0]!.accountId)).toHaveLength(1);
+    await api.app.get(NoticesService).forgetElection(election.electionId);
+    expect(await mailMessages(voters[0]!.accountId)).toHaveLength(0);
   });
 });
 
@@ -256,7 +345,7 @@ describe('the closing-soon reminder', () => {
     expect(sent[0]!.text).toContain('You have not voted yet in “Officers”');
     expect(sent[0]!.text).toMatch(/voting closes in about 2[23] hours/);
     const summary = (await view(election)).body.notices.find((n: { kind: string }) => n.kind === 'closing_soon');
-    expect(summary).toMatchObject({ status: 'done', recipients: 2, counts: { sent: 2, skipped: 0 } });
+    expect(summary).toMatchObject({ status: 'done', recipients: 2, counts: { delivered: 2, skipped: 0 } });
     const ledgered = (await ledger('notice.sent', election)).map((e) => e.payload);
     expect(ledgered).toEqual(
       expect.arrayContaining([expect.objectContaining({ kind: 'voting_open', sent: 4 }), expect.objectContaining({ kind: 'closing_soon', recipients: 2, sent: 2 })]),
@@ -389,7 +478,7 @@ describe('test emails', () => {
     expect((await worker.tick()).body).toMatchObject({ electionsOpened: 0, noticesSent: 0, testEmailsSent: 1 });
     const messages = await outbox(election);
     expect(messages).toHaveLength(1);
-    expect(messages[0]).toMatchObject({ to: 'ea@example.test', accountId: electionAdmin.accountId, noticeId: `${election.electionId}_voting_open_test` });
+    expect(messages[0]).toMatchObject({ to: 'ea@example.test', accountId: electionAdmin.accountId, kind: 'notice_test', ref: asked.body.testId });
     expect(messages[0]!.subject).toBe('[TEST] Voting is open: Officers');
     expect(messages[0]!.text).toMatch(/^TEST EMAIL\. This was sent only to you/);
     // Nobody on the roll got anything, and the notice itself has not started.
@@ -412,7 +501,7 @@ describe('test emails', () => {
     const seen = (await view(election)).body as NoticesView;
     expect(seen.receipts.tests[0]).toMatchObject({ kind: 'voting_open', sends: 1, accepted: 1 });
     expect(seen.receipts.roll[0]).toMatchObject({ sends: 0, accepted: 0, lastSentAt: null });
-    expect(seen.tests).toEqual([expect.objectContaining({ kind: 'voting_open', status: 'done', sent: true, outcome: null })]);
+    expect(seen.tests).toEqual([expect.objectContaining({ kind: 'voting_open', status: 'done', sent: true, outcome: null, delivery: 'delivered' })]);
     // Others see the count of tests, not this admin's own list.
     expect(((await view(election, auditor)).body as NoticesView).tests).toEqual([]);
 

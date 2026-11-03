@@ -10,7 +10,8 @@ import {
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { MemberDirectory } from '../membership/member-directory.js';
-import { MAIL_TRANSPORT, MailNotSent, type MailTransport } from './mail-transport.js';
+import { MAIL_TRANSPORT, type MailTransport } from './mail-transport.js';
+import { Mailer } from './mailer.js';
 import { NoticeSettingsService } from './notice-settings.js';
 
 /** Welcome emails a tick sends at most, one after another. */
@@ -32,6 +33,7 @@ export class WelcomeSender {
     private readonly firebase: Firebase,
     private readonly members: MemberDirectory,
     private readonly settings: NoticeSettingsService,
+    private readonly mailer: Mailer,
     @Inject(MAIL_TRANSPORT) private readonly transport: MailTransport | null,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
@@ -89,19 +91,15 @@ export class WelcomeSender {
       name: member?.preferredName || member?.legalName || null,
       contact,
     });
-    try {
-      const { messageId } = await this.transport!.send({
-        to: account.primaryEmail,
-        from: this.config.mailFrom,
-        replyTo: this.config.mailReplyTo,
-        ...message,
-        tags: { noticeId: `welcome_${accountId}`, electionId: 'none', accountId },
-      });
-      return { messageId };
-    } catch (e) {
-      this.logger.error(`welcome email to account ${accountId} not sent (${e instanceof MailNotSent ? e.outcome : e instanceof Error ? e.name : 'error'})`);
-      return { outcome: e instanceof MailNotSent ? e.outcome : 'error' };
-    }
+    const result = await this.mailer.send(this.transport!, {
+      to: account.primaryEmail,
+      from: this.config.mailFrom,
+      replyTo: this.config.mailReplyTo,
+      ...message,
+      meta: { kind: 'welcome', ref: accountId, electionId: null, accountId },
+    });
+    if (result.status === 'sent') return { messageId: result.messageId };
+    return { outcome: result.outcome };
   }
 
   /**

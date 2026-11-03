@@ -10,6 +10,7 @@ import {
   type NoticesView,
   type NoticeStep,
   type NoticeSummary,
+  type MailStatus,
   type NoticeTestSummary,
   type RecipientCounts,
   type StepStatus,
@@ -56,18 +57,22 @@ export function leadTimeText(hours: number): string {
 
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
+/** Messages the mail service took, whatever it has reported of them since. */
+export function acceptedCount(counts: RecipientCounts): number {
+  return counts.sent + counts.delivered + counts.complained;
+}
+
 /** The counts, in the order an admin reads them, each with what it means. */
 export function countRows(kind: NoticeKind, counts: RecipientCounts): { label: string; value: number; note: string }[] {
+  const nowhere = 'no verified email address, or one that bounced or was marked as spam before';
   return [
-    { label: 'Sent', value: counts.sent, note: 'the mail service took them' },
+    { label: 'Delivered', value: counts.delivered, note: "the recipient's mail server took them; whether they were read, nobody here knows" },
+    { label: 'Sent, no report yet', value: counts.sent, note: 'the mail service took them and has not said more' },
     { label: 'Still to send', value: counts.pending, note: 'the worker sends a batch every minute' },
     { label: 'Failed', value: counts.failed, note: 'not sent; can be resent while voting is open' },
-    { label: 'Bounced', value: counts.bounced, note: 'sent, then reported undeliverable; not resent' },
-    {
-      label: 'Skipped',
-      value: counts.skipped,
-      note: kind === 'closing_soon' ? 'no verified email address, or voted before it went' : 'no verified email address on the account',
-    },
+    { label: 'Bounced', value: counts.bounced, note: 'sent, then reported undeliverable; not resent, and that address is not mailed again' },
+    { label: 'Marked as spam', value: counts.complained, note: 'delivered, then marked as spam; that address is not mailed again' },
+    { label: 'Skipped', value: counts.skipped, note: kind === 'closing_soon' ? `${nowhere}; or voted before it went` : nowhere },
   ];
 }
 
@@ -81,9 +86,9 @@ export function noticeStatus(notice: NoticeSummary): string {
       : `of the ${count(notice.recipients, 'person', 'people')} on the roll`;
   if (notice.status === 'done') {
     const finished = notice.completedAt ? `, finished ${new Date(notice.completedAt).toLocaleString()}` : '';
-    return `Sent to ${notice.counts.sent} ${of}${round}${finished}.${where}`;
+    return `Sent to ${acceptedCount(notice.counts)} ${of}${round}${finished}.${where}`;
   }
-  return `Sending${round}: ${notice.counts.sent} ${of} so far.${where}`;
+  return `Sending${round}: ${acceptedCount(notice.counts)} ${of} so far.${where}`;
 }
 
 /**
@@ -142,10 +147,21 @@ export function testReceiptText(totals: NoticeSendTotals | undefined): string | 
 const TEST_OUTCOMES: Readonly<Partial<Record<NoticeOutcome, string>>> = {
   no_address: 'your account has no email address',
   unverified_address: "your account's email address is not verified",
+  undeliverable: 'your address bounced before, or you marked one of these emails as spam, so it is not mailed',
   refused: 'the mail service refused it',
   unavailable: 'the mail service could not take it; try again later',
   interrupted: 'it was interrupted, so whether it went is unknown',
   error: 'something went wrong, so whether it went is unknown',
+};
+
+/** What the mail service reported of a test email it took. */
+const TEST_DELIVERY: Readonly<Record<MailStatus, string>> = {
+  sent: 'If it is not in your inbox, look in spam.',
+  delayed: 'Your mail server has not taken it yet; the mail service keeps trying.',
+  delivered: 'Your mail server took it: if it is not in your inbox, look in spam.',
+  bounced: 'It bounced: your mail server would not take it.',
+  complained: 'It was delivered, and marked as spam.',
+  rejected: 'The mail service did not send it after all.',
 };
 
 /** Where the caller's last test email of this kind stands. */
@@ -153,7 +169,7 @@ export function testStatusText(test: NoticeTestSummary): string {
   if (test.status === 'pending') return 'Your test email is queued: the worker sends it to your own address within a minute.';
   if (test.status === 'sending') return 'Your test email is being sent.';
   const when = test.doneAt ? ` ${new Date(test.doneAt).toLocaleString()}` : '';
-  if (test.sent) return `Your test email went to your own address${when}. If it is not in your inbox, look in spam.`;
+  if (test.sent) return `Your test email went to your own address${when}. ${TEST_DELIVERY[test.delivery ?? 'sent']}`;
   return `Your test email was not sent: ${TEST_OUTCOMES[test.outcome!] ?? 'something went wrong'}.`;
 }
 

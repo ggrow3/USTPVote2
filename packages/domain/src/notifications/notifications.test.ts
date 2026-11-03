@@ -301,7 +301,7 @@ describe('notice rules', () => {
       roundStartedAt: '2026-11-02T14:00:00.000Z',
       completedAt: '2026-11-02T14:01:00.000Z',
     };
-    const counts = { pending: 0, sent: 2, failed: 1, bounced: 0, skipped: 0 };
+    const counts = { pending: 0, sent: 1, delivered: 1, complained: 0, failed: 1, bounced: 0, skipped: 0 };
     expect(noticeSummary(record, counts)).toEqual({
       kind: 'voting_open',
       delivery: 'mail',
@@ -325,7 +325,7 @@ describe('the emails in the workflow', () => {
     status,
     round: 1,
     recipients: 3,
-    counts: { pending: 0, sent: 3, failed: 0, bounced: 0, skipped: 0 },
+    counts: { pending: 0, sent: 3, delivered: 0, complained: 0, failed: 0, bounced: 0, skipped: 0 },
     createdAt: ELECTION.opensAt,
     completedAt: null,
   });

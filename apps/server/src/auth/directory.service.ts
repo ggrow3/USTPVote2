@@ -44,6 +44,23 @@ export class DirectoryService {
     return found;
   }
 
+  /**
+   * The account an email address belongs to, for a delivery report about mail Identity Platform sent (design §6.8): the
+   * account whose primary email it is, else the one with a login of that address. Null when none, or more than one, has
+   * it.
+   */
+  async accountWithEmail(address: string): Promise<string | null> {
+    const email = address.trim().toLowerCase();
+    const db = this.firebase.db;
+    const [accounts, identities] = await Promise.all([
+      db.collection(Collections.accounts).where('primaryEmail', '==', email).select().limit(2).get(),
+      db.collection(Collections.accountIdentities).where('email', '==', email).select('accountId').limit(2).get(),
+    ]);
+    if (accounts.size === 1) return accounts.docs[0]!.id;
+    const owners = new Set(identities.docs.map((d) => d.get('accountId') as string));
+    return owners.size === 1 ? [...owners][0]! : null;
+  }
+
   /** Each account's display name, by accountId, where it has one (never its email); for naming staff who need no membership. */
   async displayNames(accountIds: readonly string[]): Promise<Map<string, string>> {
     const db = this.firebase.db;

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { AccountsAdminController, AccountsController } from '../accounts/accounts.controller.js';
 import { AccountsService } from '../accounts/accounts.service.js';
+import { EmailVerifiedSync } from '../accounts/email-verified-sync.js';
 import {
   ApprovalsController,
   AuditController,
@@ -172,6 +173,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
   ],
   providers: [
     AccountsService,
+    EmailVerifiedSync,
     ...MEMBERSHIP_PROVIDERS,
     ...NOTIFICATION_API_PROVIDERS,
     BylawsChecksService,

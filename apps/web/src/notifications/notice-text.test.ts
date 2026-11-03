@@ -8,6 +8,8 @@ import {
 } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
 import {
+  acceptedCount,
+  countRows,
   leadTimeText,
   NO_CONTACT,
   noNoticeText,
@@ -106,13 +108,33 @@ describe('the send receipts and test emails', () => {
     doneAt: null,
     outcome: null,
     sent: false,
+    delivery: null,
     ...over,
+  });
+
+  it('count what the mail service took, and say what each count means', () => {
+    const counts = { pending: 1, sent: 2, delivered: 5, complained: 1, failed: 0, bounced: 1, skipped: 0 };
+    expect(acceptedCount(counts)).toBe(8);
+    const rows = countRows('voting_open', counts);
+    expect(rows.map((r) => [r.label, r.value])).toEqual([
+      ['Delivered', 5],
+      ['Sent, no report yet', 2],
+      ['Still to send', 1],
+      ['Failed', 0],
+      ['Bounced', 1],
+      ['Marked as spam', 1],
+      ['Skipped', 0],
+    ]);
+    expect(countRows('closing_soon', counts).at(-1)!.note).toMatch(/voted before it went/);
   });
 
   it('say where the admin’s own test stands', () => {
     expect(testStatusText(test())).toMatch(/^Your test email is queued/);
     expect(testStatusText(test({ status: 'sending', claimedAt: at }))).toBe('Your test email is being sent.');
-    expect(testStatusText(test({ status: 'done', doneAt: at, sent: true }))).toMatch(/^Your test email went to your own address/);
+    expect(testStatusText(test({ status: 'done', doneAt: at, sent: true }))).toMatch(/^Your test email went to your own address.*look in spam\.$/);
+    expect(testStatusText(test({ status: 'done', doneAt: at, sent: true, delivery: 'delivered' }))).toMatch(/Your mail server took it/);
+    expect(testStatusText(test({ status: 'done', doneAt: at, sent: true, delivery: 'bounced' }))).toMatch(/It bounced/);
+    expect(testStatusText(test({ status: 'done', outcome: 'undeliverable' }))).toMatch(/bounced before, or you marked/);
     expect(testStatusText(test({ status: 'done', outcome: 'unverified_address' }))).toBe(
       "Your test email was not sent: your account's email address is not verified.",
     );

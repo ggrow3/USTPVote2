@@ -156,6 +156,10 @@ export const Collections = {
   noticeTests: 'notice_tests',
   /** `welcome_emails/{accountId}`: the welcome email to a member a Membership Admin added, queued for the worker (§5.13). */
   welcomeEmails: 'welcome_emails',
+  /** `mail_messages/{messageId}`: each message the mail service took and what its delivery reports said, kept 180 days (§6.8). */
+  mailMessages: 'mail_messages',
+  /** `mail_suppressions/{addressKey}`: addresses not to mail, because they bounced for good or were marked as spam (§6.8). */
+  mailSuppressions: 'mail_suppressions',
   // testing mode (design §10.4)
   testingPersonas: 'testing_personas',
 } as const;
