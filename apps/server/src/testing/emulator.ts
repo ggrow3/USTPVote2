@@ -14,6 +14,8 @@ const PROJECT = process.env.GCLOUD_PROJECT ?? 'demo-ustpvote';
 
 export const SA1_EMAIL = 'sa1@example.test';
 export const SA2_EMAIL = 'sa2@example.test';
+/** Accounts with these emails may be deleted by a System Admin, if they are not members (design §4). */
+export const DELETABLE_EMAILS = ['leaving@example.test', 'leaving-member@example.test'] as const;
 const PASSWORD = 'correct horse battery staple';
 
 if (!AUTH_HOST || !FIRESTORE_HOST || !STORAGE_HOST) {
@@ -22,6 +24,7 @@ if (!AUTH_HOST || !FIRESTORE_HOST || !STORAGE_HOST) {
 process.env.APP_CHECK_ENFORCED = 'false';
 process.env.ADMIN_MFA_REQUIRED = 'false';
 process.env.BOOTSTRAP_SYSTEM_ADMIN_EMAILS = `${SA1_EMAIL},${SA2_EMAIL}`;
+process.env.DELETABLE_ACCOUNT_EMAILS = DELETABLE_EMAILS.join(',');
 // Candidacies look districts up in a few made-up ones, not the Census Bureau: tests do not reach the internet.
 process.env.DISTRICTS = 'local';
 

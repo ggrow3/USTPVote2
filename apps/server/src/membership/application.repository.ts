@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Transaction } from 'firebase-admin/firestore';
+import type { DocumentReference, Transaction } from 'firebase-admin/firestore';
 import { Collections, MAX_APPLICATIONS_PER_WINDOW, type ApplicationRecord, type ApplicationStatus } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 
@@ -49,6 +49,11 @@ export class ApplicationRepository {
   /** Writes a decided application; it exists already. */
   save(tx: Transaction, application: ApplicationRecord): void {
     tx.set(this.applications().doc(application.applicationId), application);
+  }
+
+  /** Every application of the account, read in `tx`, for deleting the account (design §4). */
+  async refsOf(tx: Transaction, accountId: string): Promise<DocumentReference[]> {
+    return (await tx.get(this.applications().where('accountId', '==', accountId).select())).docs.map((d) => d.ref);
   }
 
   private applications() {

@@ -43,6 +43,18 @@ export class Members {
     private readonly applications: ApplicationRepository,
   ) {}
 
+  /**
+   * For deleting an account (design §4): reads in `tx` what membership keeps about it, its member record, status
+   * history and applications, and returns the step that deletes them, to run after the transaction's other reads. The
+   * ledger keeps its `member.status_changed` entries.
+   */
+  async forgetting(tx: Transaction, accountId: string): Promise<() => void> {
+    const refs = (await Promise.all([this.members.refsOf(tx, accountId), this.applications.refsOf(tx, accountId)])).flat();
+    return () => {
+      for (const ref of refs) tx.delete(ref);
+    };
+  }
+
   async resign(ctx: RequestContext, reason: string | undefined): Promise<MemberRecord> {
     const accountId = requireAccount(ctx);
     return this.firebase.db.runTransaction(async (tx) => {

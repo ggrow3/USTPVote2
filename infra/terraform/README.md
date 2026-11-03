@@ -84,6 +84,7 @@ Set in each root's `terraform.tfvars` (or with `-var`):
 |---|---|---|---|---|
 | `server_image` | | | | Image by digest the services are created with; null (default) skips the Cloud Run services and the tick. Keep it set: later releases come from the release workflow, and Terraform ignores the image once a service exists |
 | `bootstrap_system_admin_emails` | | | | `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` (§4): one is enough; `[]` once real admins exist |
+| `deletable_account_emails` | | | | `DELETABLE_ACCOUNT_EMAILS` (§4): accounts a System Admin may delete from the People tab, if they are not members; `[]` (default) for none |
 | `firebase_web_app_id` | | | | The Firebase web app's ID; registers the reCAPTCHA key with App Check ([App Check](#app-check-and-the-web-build)) |
 | `anchors_retention_days` | 3653 | 3653 | 3653 | Q11; 10 years |
 | `anchors_retention_locked` | false (fixed) | false (fixed) | **required** | Bucket Lock, irreversible; see [Bucket Lock](#bucket-lock-production) |
@@ -129,6 +130,7 @@ for running the server locally against a real project. Variable names are those 
 | `PHOTOS_BUCKET` | `photos_bucket` (`<project>-profile-photos`) | ● | |
 | `VIDEOS_BUCKET` | `videos_bucket` (`<project>-videos`) | ● | |
 | `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` | from the variable, not output | ● | |
+| `DELETABLE_ACCOUNT_EMAILS` | from the variable, not output; unset when empty | ● | |
 | `GOOGLE_MAPS_BROWSER_KEY` | not output: the `maps-browser` API key's value, when `maps_enabled`; the api gives it to browsers for the Candidates map (design §5.8) | ● | |
 | `FEC_API_KEY`, `OPENSTATES_API_KEY` | not output: `fec_api_key` and `openstates_api_key`, when set; the api's keys for the Your area page's public records (design §5.12) | ● | |
 | `GOOGLE_CIVIC_API_KEY` | not output: the `google-civic-api-key` secret's latest version (the `civic-server` API key), when `civic_enabled`; the api's key for the ballot's contests (design §5.12) | ● | |

@@ -5,7 +5,7 @@ import { ROLES, type AccountSummary, type Role } from 'ustp-domain';
 import { announce } from '../../a11y.js';
 import { api } from '../../api.js';
 import { roleLabel } from '../../approval-text.js';
-import { attempt } from '../../dialogs.js';
+import { askReason, attempt } from '../../dialogs.js';
 import { heldOffices, type HeldOffice } from '../../membership/members-list.js';
 import { offices as fetchOffices } from '../../offices/api.js';
 import { session } from '../../session.js';
@@ -55,6 +55,25 @@ function copy(text: string) {
 }
 
 const nameOf = (a: AccountSummary) => a.displayName ?? a.primaryEmail ?? a.accountId;
+
+/**
+ * Only an account on the deployment's deletion list, never your own (design §4); the API also refuses one an election
+ * has on its roll or among those who voted, and says so.
+ */
+const deletable = (a: AccountSummary) => a.onDeletionList && a.accountId !== me.value;
+
+/** One System Admin's word is enough, so the dialog says plainly what is about to happen before it does. */
+async function remove(a: AccountSummary) {
+  const membership = a.memberStatus ? ` So are their membership (${a.memberStatus}), its history and their applications.` : '';
+  const reason = await askReason(
+    `Delete ${a.primaryEmail ?? nameOf(a)}?`,
+    `The account, its logins and its roles are deleted as soon as you confirm, and it cannot be undone.${membership} ` +
+      'No other admin approves it. The audit ledger keeps its entries about the account and records the deletion.',
+  );
+  if (reason === null) return;
+  const ok = await attempt(() => api('POST', `/v1/admin/accounts/${encodeURIComponent(a.accountId)}/delete`, { reason }), 'Account deleted');
+  if (ok) void load();
+}
 
 /** The offices each account holds now (design §6.4), beside its roles; null until loaded, or if they could not be. */
 const offices = ref<Map<string, HeldOffice[]> | null>(null);
@@ -142,6 +161,9 @@ onMounted(() => {
           <td class="text-right text-no-wrap">
             <q-btn flat dense round size="sm" icon="content_copy" :aria-label="`Copy account ID of ${nameOf(a)}`" @click="copy(a.accountId)" />
             <q-btn v-if="a.accountId !== me" flat dense no-caps label="Change roles" @click="form?.choose(a)">
+              <span class="sr-only">&nbsp;of {{ nameOf(a) }}</span>
+            </q-btn>
+            <q-btn v-if="deletable(a)" flat dense no-caps color="negative" label="Delete account" @click="remove(a)">
               <span class="sr-only">&nbsp;of {{ nameOf(a) }}</span>
             </q-btn>
           </td>

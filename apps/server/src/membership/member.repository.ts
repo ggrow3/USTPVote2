@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { FieldPath, type Transaction } from 'firebase-admin/firestore';
+import { FieldPath, type DocumentReference, type Transaction } from 'firebase-admin/firestore';
 import { Collections, type MemberMatch, type MemberRecord, type MemberStatus, type StatusHistoryRecord } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 
@@ -75,6 +75,15 @@ export class MemberRepository {
       .limit(100)
       .get();
     return snap.docs.map((d) => d.data() as StatusHistoryRecord);
+  }
+
+  /** The account's member record, if any, and its status history, read in `tx`, for deleting the account (design §4). */
+  async refsOf(tx: Transaction, accountId: string): Promise<DocumentReference[]> {
+    const [member, history] = await Promise.all([
+      tx.get(this.members().doc(accountId)),
+      tx.get(this.firebase.db.collection(Collections.memberStatusHistory).where('accountId', '==', accountId).select()),
+    ]);
+    return [...(member.exists ? [member.ref] : []), ...history.docs.map((d) => d.ref)];
   }
 
   /** Writes changed details (design §5.2); the status and its history are untouched. */

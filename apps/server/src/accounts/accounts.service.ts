@@ -1,6 +1,16 @@
-import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
-import type { Query } from 'firebase-admin/firestore';
 import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  ServiceUnavailableException,
+} from '@nestjs/common';
+import type { Query, Transaction } from 'firebase-admin/firestore';
+import {
+  checkCanDeleteAccount,
   checkRoleChange,
   Collections,
   DEFAULT_ACCOUNT_PREFERENCES,
@@ -11,6 +21,7 @@ import {
   type AccountPreferencesInput,
   type AccountRecord,
   type AccountSummary,
+  type Actor,
   type IdentityRecord,
   type MeResponse,
   type Role,
@@ -19,12 +30,15 @@ import {
 import { requireAccount, requireOwnAccount } from '../auth/decorators.js';
 import { DirectoryService, roleAssignmentId } from '../auth/directory.service.js';
 import { MfaPolicyService } from '../auth/mfa-policy.js';
-import { principalFromToken, type Principal, type RequestContext } from '../auth/principal.js';
+import { actorOf, principalFromToken, type Principal, type RequestContext } from '../auth/principal.js';
 import { SignInMethodsService } from '../auth/sign-in-methods.service.js';
+import { assertCheck } from '../common/validation.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { ElectionReader } from '../elections/election-reader.js';
 import { MemberDirectory } from '../membership/member-directory.js';
+import { Members } from '../membership/members.service.js';
 
 /** A second sign-in used to link a login method must be this fresh. */
 const LINK_MAX_AUTH_AGE_SECONDS = 5 * 60;
@@ -50,6 +64,8 @@ export class AccountsService {
     private readonly directory: DirectoryService,
     private readonly signInMethods: SignInMethodsService,
     private readonly members: MemberDirectory,
+    private readonly membership: Members,
+    private readonly elections: ElectionReader,
     private readonly mfaPolicy: MfaPolicyService,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
@@ -127,7 +143,127 @@ export class AccountsService {
       createdAt: a.createdAt,
       memberStatus: members[i]?.status ?? null,
       roles: roles.get(a.accountId) ?? [],
+      onDeletionList: this.onDeletionList(a),
     }));
+  }
+
+  /**
+   * Deletes an account (design §4): one System Admin, at once, only an account on the deployment's deletion list that
+   * no election has on its roll or among those who voted. Its logins go first, from Identity Platform, so a failure
+   * later leaves an account nobody can sign in to, which deleting again finishes. Then one transaction ledgers
+   * `role.revoked` for each active role, `identity.unlinked` for each login and `account.deleted`, and deletes the
+   * account, its logins, its role assignments, the requests about it and its membership (member record, status history,
+   * applications); last, its sign-ins, page visits and course records. Ledger entries about it stay.
+   */
+  async delete(ctx: RequestContext, accountId: string, reason: string): Promise<void> {
+    const deletedBy = requireAccount(ctx);
+    const actor = actorOf(ctx, this.config.adminMfaRequired);
+    const db = this.firebase.db;
+
+    const before = await this.deletable(actor, accountId);
+    const uids = before.identities.map((i) => i.uid);
+    const removed = uids.length ? await this.firebase.auth.deleteUsers(uids) : null;
+    if (removed?.failureCount) {
+      const why = removed.errors.map((e) => e.error.message).join('; ');
+      this.logger.warn(`account ${accountId}: Identity Platform kept ${removed.failureCount} of its logins: ${why}`);
+      throw new ServiceUnavailableException('could not delete its logins from Identity Platform; nothing else was deleted, so try again');
+    }
+
+    const later = await db.runTransaction(async (tx) => {
+      const found = await this.deletable(actor, accountId, tx);
+      const [assignments, requests, forgetMembership] = await Promise.all([
+        tx.get(db.collection(Collections.roleAssignments).where('accountId', '==', accountId)),
+        tx.get(db.collection(Collections.approvalRequests).where('subject', '==', accountId)),
+        this.membership.forgetting(tx, accountId),
+      ]);
+      const active = assignments.docs.map((d) => d.data() as RoleAssignmentRecord).filter((r) => r.revokedAt === null);
+      const first = [...found.identities].sort((a, b) => (a.linkedAt < b.linkedAt ? -1 : a.linkedAt > b.linkedAt ? 1 : 0))[0];
+      await this.ledger.record(tx, [
+        ...active.map((r) => ({ type: 'role.revoked' as const, actor: deletedBy, subject: accountId, payload: { role: r.role, reason } })),
+        ...found.identities.map((i) => ({
+          type: 'identity.unlinked' as const,
+          actor: deletedBy,
+          subject: accountId,
+          payload: { uid: i.uid, provider: i.provider, reason },
+        })),
+        {
+          type: 'account.deleted',
+          actor: deletedBy,
+          subject: accountId,
+          payload: { email: found.account.primaryEmail, uid: first?.uid ?? null, reason },
+        },
+      ]);
+      tx.delete(db.collection(Collections.accounts).doc(accountId));
+      for (const i of found.identities) tx.delete(db.collection(Collections.accountIdentities).doc(i.uid));
+      for (const doc of [...assignments.docs, ...requests.docs]) tx.delete(doc.ref);
+      forgetMembership();
+      // A login linked since the first look is deleted from Identity Platform below.
+      return found.identities.map((i) => i.uid).filter((uid) => !uids.includes(uid));
+    });
+
+    if (later.length) {
+      await this.firebase.auth.deleteUsers(later).catch((e: unknown) => {
+        this.logger.warn(`account ${accountId} deleted, but not its logins ${later.join(', ')}: ${e instanceof Error ? e.message : String(e)}`);
+      });
+    }
+    // Records about what the account did, too many for the transaction; a failure leaves them to expire or be found.
+    await this.forgetActivity(accountId, [...uids, ...later]).catch((e: unknown) => {
+      this.logger.warn(`account ${accountId} deleted, but not all its activity: ${e instanceof Error ? e.message : String(e)}`);
+    });
+  }
+
+  private onDeletionList(account: AccountRecord): boolean {
+    return account.primaryEmail !== null && this.config.deletableAccountEmails.includes(account.primaryEmail);
+  }
+
+  /**
+   * The account and its logins, if the actor may delete it now (`checkCanDeleteAccount`): it exists, is on the
+   * deletion list, and no election has it on its roll or among those who voted. Read in `tx` when given.
+   */
+  private async deletable(
+    actor: Actor,
+    accountId: string,
+    tx?: Transaction,
+  ): Promise<{ readonly account: AccountRecord; readonly identities: IdentityRecord[] }> {
+    const db = this.firebase.db;
+    const accountRef = db.collection(Collections.accounts).doc(accountId);
+    const logins = db.collection(Collections.accountIdentities).where('accountId', '==', accountId);
+    const [account, inElections, identities] = await Promise.all([
+      tx ? tx.get(accountRef) : accountRef.get(),
+      this.elections.inAnyElection(accountId, tx),
+      tx ? tx.get(logins) : logins.get(),
+    ]);
+    if (!account.exists) throw new NotFoundException('no such account');
+    const record = account.data() as AccountRecord;
+    const subject = { accountId, onDeletionList: this.onDeletionList(record), inElections };
+    assertCheck(checkCanDeleteAccount(actor, subject), ForbiddenException);
+    return { account: record, identities: identities.docs.map((d) => d.data() as IdentityRecord) };
+  }
+
+  /**
+   * A deleted account's sign-ins (by account, and by login for those seen before it had one), page visits, and its
+   * courses' progress, attempts, certificates and messages.
+   */
+  private async forgetActivity(accountId: string, uids: readonly string[]): Promise<void> {
+    const db = this.firebase.db;
+    const collections = [
+      Collections.signIns,
+      Collections.pageVisits,
+      Collections.courseProgress,
+      Collections.courseAttempts,
+      Collections.courseCertificates,
+      Collections.courseThreads,
+      Collections.courseMessages,
+    ];
+    const found = await Promise.all([
+      ...collections.map((c) => db.collection(c).where('accountId', '==', accountId).select().get()),
+      ...uids.map((uid) => db.collection(Collections.signIns).where('uid', '==', uid).select().get()),
+    ]);
+    const writer = db.bulkWriter();
+    // A sign-in can be found both by account and by login.
+    const refs = new Map(found.flatMap((snap) => snap.docs.map((d) => [d.ref.path, d.ref] as const)));
+    for (const ref of refs.values()) void writer.delete(ref);
+    await writer.close();
   }
 
   /**

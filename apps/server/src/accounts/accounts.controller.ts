@@ -1,6 +1,14 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, Post, Put, Query, Res } from '@nestjs/common';
 import type { FastifyReply } from 'fastify';
-import { accountPreferencesSchema, linkIdentitySchema, ROLES, type AccountPreferencesInput, type LinkIdentityInput } from 'ustp-domain';
+import {
+  accountPreferencesSchema,
+  linkIdentitySchema,
+  reasonInputSchema,
+  ROLES,
+  type AccountPreferencesInput,
+  type LinkIdentityInput,
+  type ReasonInput,
+} from 'ustp-domain';
 import { z } from 'zod';
 import { Ctx, MfaExempt, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
@@ -53,11 +61,21 @@ export class AccountsController {
   }
 }
 
-/** The People list (design §10.3): read-only, so System Admins can see who holds which role and pick whose to change. */
+/**
+ * The People list (design §10.3), so System Admins can see who holds which role and pick whose to change, and deleting
+ * an account on the deployment's deletion list (§4).
+ */
 @Controller('v1/admin/accounts')
 @Roles('system_admin')
 export class AccountsAdminController {
   constructor(private readonly accounts: AccountsService) {}
+
+  /** Permanently deletes the account and its logins; the ledger keeps its entries and records the deletion. */
+  @Post(':accountId/delete')
+  @HttpCode(204)
+  async delete(@Ctx() ctx: RequestContext, @Param('accountId') accountId: string, @Body(new ZodPipe(reasonInputSchema)) body: ReasonInput) {
+    await this.accounts.delete(ctx, accountId, body.reason);
+  }
 
   @Get()
   list(@Query('email') email?: string, @Query('role') role?: string, @Query('after') after?: string, @Query('limit') limit?: string) {

@@ -24,7 +24,7 @@ output "videos_bucket" {
 }
 
 output "api_env" {
-  description = "Environment of the api service, except BOOTSTRAP_SYSTEM_ADMIN_EMAILS."
+  description = "Environment of the api service, except BOOTSTRAP_SYSTEM_ADMIN_EMAILS and DELETABLE_ACCOUNT_EMAILS."
   value       = module.ustpvote.api_env
 }
 

@@ -49,6 +49,11 @@ describe('loadConfig', () => {
       'b@example.org',
     ]);
   });
+
+  it('normalizes the emails of accounts that may be deleted, and lists none by default', () => {
+    expect(loadConfig({ DELETABLE_ACCOUNT_EMAILS: ' Demo@Example.org ,' }).deletableAccountEmails).toEqual(['demo@example.org']);
+    expect(loadConfig({}).deletableAccountEmails).toEqual([]);
+  });
 });
 
 describe('assertCheck', () => {

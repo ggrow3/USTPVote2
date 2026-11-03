@@ -9,6 +9,8 @@ export interface ServerConfig {
   readonly adminMfaRequired: boolean;
   /** Verified emails that receive System Admin when their account is created (design §10.1). Lowercase. */
   readonly bootstrapSystemAdmins: readonly string[];
+  /** Primary emails of accounts a System Admin may delete, if they are not members (design §4). Lowercase. */
+  readonly deletableAccountEmails: readonly string[];
   /** Private bucket for profile photos (design §5.3); photo endpoints answer 503 until it is set. */
   readonly photosBucket: string | null;
   /** Private bucket for uploaded videos (design §10.10); uploading and playing them answer 503 until it is set. */
@@ -218,10 +220,8 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     usingEmulators,
     appCheckEnforced,
     adminMfaRequired,
-    bootstrapSystemAdmins: (env.BOOTSTRAP_SYSTEM_ADMIN_EMAILS ?? '')
-      .split(',')
-      .map((e) => e.trim().toLowerCase())
-      .filter(Boolean),
+    bootstrapSystemAdmins: emailList(env.BOOTSTRAP_SYSTEM_ADMIN_EMAILS),
+    deletableAccountEmails: emailList(env.DELETABLE_ACCOUNT_EMAILS),
     photosBucket: env.PHOTOS_BUCKET || (usingEmulators && projectId ? `${projectId}-profile-photos` : null),
     videosBucket: env.VIDEOS_BUCKET || (usingEmulators && projectId ? `${projectId}-videos` : null),
     photoChecker,
@@ -315,4 +315,12 @@ function originOf(value: string, name: string): string {
     throw new Error(`${name} must be an origin (scheme, host and port only), such as https://vote.example.org`);
   }
   return url.origin;
+}
+
+/** Email addresses, comma-separated, as primary emails are stored: trimmed and lowercase. */
+function emailList(value: string | undefined): string[] {
+  return (value ?? '')
+    .split(',')
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
 }

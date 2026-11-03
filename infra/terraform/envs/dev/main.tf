@@ -10,6 +10,7 @@ module "ustpvote" {
 
   server_image                  = var.server_image
   bootstrap_system_admin_emails = var.bootstrap_system_admin_emails
+  deletable_account_emails      = var.deletable_account_emails
   image_publishers              = var.image_publishers
   firebase_web_app_id           = var.firebase_web_app_id
 

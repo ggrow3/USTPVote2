@@ -22,6 +22,12 @@ variable "bootstrap_system_admin_emails" {
   default     = []
 }
 
+variable "deletable_account_emails" {
+  description = "Primary emails of accounts a System Admin may delete, if they are not members; [] for none."
+  type        = list(string)
+  default     = []
+}
+
 variable "image_publishers" {
   description = "IAM members that push images, besides the release workflow's ustp-release."
   type        = list(string)
