@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { FieldPath, type DocumentReference, type Transaction } from 'firebase-admin/firestore';
-import { Collections, type MemberMatch, type MemberRecord, type MemberStatus, type StatusHistoryRecord } from 'ustp-domain';
+import { Collections, placeText, type MemberMatch, type MemberRecord, type MemberStatus, type StatusHistoryRecord } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 
 /** `db.getAll` reads at most this many documents per call. */
@@ -48,14 +48,14 @@ export class MemberRepository {
     return active.docs.map((d) => d.id);
   }
 
-  /** Every Active member's names and state, and nothing else (a projection), in no particular order. */
+  /** Every Active member's names and where they live, and nothing else (a projection), in no particular order. */
   async activeNames(): Promise<MemberMatch[]> {
-    const active = await this.members().where('status', '==', 'active').select('legalName', 'preferredName', 'state').get();
+    const active = await this.members().where('status', '==', 'active').select('legalName', 'preferredName', 'country', 'state').get();
     return active.docs.map((d) => ({
       accountId: d.id,
       legalName: (d.get('legalName') as string | undefined) ?? '',
       preferredName: (d.get('preferredName') as string | null | undefined) ?? null,
-      state: (d.get('state') as string | undefined) ?? '',
+      state: placeText({ country: d.get('country') as string | undefined, state: (d.get('state') as string | null | undefined) ?? null }),
     }));
   }
 

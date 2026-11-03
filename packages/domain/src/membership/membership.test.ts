@@ -40,12 +40,24 @@ const input: CreateApplicationInput = {
   formVersion: 2,
   usVoteEligible: true,
   agreesWithCoreIdeals: false,
+  country: 'US',
   state: 'NY',
   city: 'Albany',
   postalCode: '122071234',
   phone: '(518) 555-0100',
   statement: 'Hello',
   newsletter: true,
+};
+
+/** An application from Canada: no state, and only what the applicant chose to give of the rest. */
+const abroad: CreateApplicationInput = {
+  ...input,
+  country: 'CA',
+  state: undefined,
+  region: 'Ontario',
+  city: undefined,
+  postalCode: 'k1a  0b1',
+  phone: '+1 613 555 0100',
 };
 
 function member(status: MemberStatus, memberSince: string | null = null): MemberRecord {
@@ -265,6 +277,38 @@ describe('applications', () => {
     expect(transition.event.payload).toEqual({ from: null, to: 'applicant', reason: null, applicationId: 'app-1' });
   });
 
+  it('keep the country, and of a US address only its state, city and ZIP code', () => {
+    const base = { applicationId: 'app-1', accountId: 'acc-1', bylaws, formVersion: 2, recent: 0, current: null, at: AT };
+    const us = submitApplication({ ...base, input: { ...input, region: 'Upstate' } });
+    if (!us.ok) throw new Error(us.reason);
+    expect(us.value.application).toMatchObject({ country: 'US', state: 'NY', region: null });
+    expect(us.value.transition.member).toMatchObject({ country: 'US', state: 'NY', region: null });
+  });
+
+  it('take an application from outside the US without a state, city or ZIP code', () => {
+    const base = { applicationId: 'app-1', accountId: 'acc-1', bylaws, formVersion: 2, recent: 0, current: null, at: AT };
+    const outcome = submitApplication({ ...base, input: abroad });
+    if (!outcome.ok) throw new Error(outcome.reason);
+    const place = {
+      country: 'CA',
+      state: null,
+      region: 'Ontario',
+      contact: { city: null, postalCode: 'K1A 0B1', phone: '+16135550100' },
+    };
+    expect(outcome.value.application).toMatchObject(place);
+    expect(outcome.value.transition.member).toMatchObject(place);
+
+    const ignored = submitApplication({ ...base, input: { ...abroad, state: 'NY', region: '', postalCode: '' } });
+    expect(ignored.ok && ignored.value.application).toMatchObject({ state: null, region: null, contact: { postalCode: null } });
+  });
+
+  it('place members from before the country was asked in the United States', () => {
+    const old = member('suspended', AT);
+    expect(old).not.toHaveProperty('country');
+    const t = memberStatusTransition({ accountId: 'acc-1', current: old, to: 'active', actor: 'admin', reason: 'back', applicationId: null, at: LATER });
+    expect(t.member).toMatchObject({ country: 'US', state: 'NY', region: null });
+  });
+
   it('take No to both membership questions, and a new application replaces the answers', () => {
     const base = { applicationId: 'app-2', accountId: 'acc-1', bylaws, formVersion: 2, recent: 1, at: AT };
     const no = submitApplication({ ...base, input: { ...input, usVoteEligible: false, agreesWithCoreIdeals: false }, current: null });
@@ -325,6 +369,7 @@ describe('member details', () => {
   };
   const own: MemberDetailsInput = {
     preferredName: '',
+    country: 'US',
     state: 'NY',
     city: 'Albany',
     postalCode: '122071234',
@@ -339,7 +384,9 @@ describe('member details', () => {
     expect(moved.value.member).toEqual({
       ...joined,
       preferredName: 'Ada',
+      country: 'US',
       state: 'VT',
+      region: null,
       contact: { city: 'Burlington', postalCode: '05401', phone: null },
     });
     expect(moved.value.event).toEqual({
@@ -349,6 +396,25 @@ describe('member details', () => {
       payload: { fields: ['preferredName', 'state', 'contact.city', 'contact.postalCode', 'contact.phone'], reason: null },
     });
     expect(JSON.stringify(moved.value.event)).not.toContain('Burlington');
+  });
+
+  it('move abroad and back, the ledger naming the fields that changed and never the place', () => {
+    const moved = updateOwnDetails(joined, {
+      input: { ...own, country: 'DE', state: 'NY', region: 'Berlin', city: 'Berlin', postalCode: '10115' },
+      at: LATER,
+    });
+    if (!moved.ok) throw new Error(moved.reason);
+    expect(moved.value.member).toMatchObject({
+      country: 'DE',
+      state: null,
+      region: 'Berlin',
+      contact: { city: 'Berlin', postalCode: '10115', phone: '+15185550100' },
+    });
+    expect(moved.value.event.payload.fields).toEqual(['country', 'state', 'region', 'contact.city', 'contact.postalCode']);
+    expect(JSON.stringify(moved.value.event)).not.toContain('Berlin');
+
+    const back = updateOwnDetails(moved.value.member, { input: own, at: LATER });
+    expect(back.ok && back.value.member).toMatchObject({ country: 'US', state: 'NY', region: null, contact: joined.contact });
   });
 
   it('keep when an email opt-in was first given, and clear it when withdrawn', () => {
@@ -379,7 +445,7 @@ describe('member details', () => {
 
     const corrected = correctMemberDetails(joined, { input: correction, actor: 'admin' });
     if (!corrected.ok) throw new Error(corrected.reason);
-    expect(corrected.value.member).toEqual({ ...joined, legalName: 'Ada King' });
+    expect(corrected.value.member).toEqual({ ...joined, legalName: 'Ada King', country: 'US', region: null });
     expect(corrected.value.event).toEqual({
       type: 'member.details_changed',
       actor: 'admin',

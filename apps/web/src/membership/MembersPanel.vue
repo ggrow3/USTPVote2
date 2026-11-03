@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useQuasar } from 'quasar';
 import { computed, onMounted, ref, watch } from 'vue';
-import { adminStatusChanges, type MemberRecord, type MemberStatus, type StatusHistoryRecord } from 'ustp-domain';
+import { adminStatusChanges, countryName, countryOf, DEFAULT_COUNTRY, type MemberRecord, type MemberStatus, type StatusHistoryRecord } from 'ustp-domain';
 import { askReason, attempt } from '../dialogs.js';
 import { offices as fetchOffices } from '../offices/api.js';
 import { session } from '../session.js';
@@ -16,6 +16,7 @@ import {
   membersCsv,
   membersCsvFileName,
   noOfficeText,
+  placeKey,
   sinceText,
   sortRows,
   STATUS_LABELS,
@@ -39,7 +40,8 @@ const history = ref<{ member: MemberRecord; entries: StatusHistoryRecord[] } | n
 
 /** Null once the field's clear button is used. */
 const search = ref<string | null>('');
-const state = ref('');
+/** A `placeKey`: a US state, or a country elsewhere; '' for everywhere. */
+const place = ref('');
 /** United States or Allied Members (design §5.2), or those never asked; '' for every class. */
 const memberClass = ref<ClassFilter | ''>('');
 const classOptions = [{ label: 'All classes', value: '' }, ...CLASS_FILTERS];
@@ -64,15 +66,17 @@ async function load() {
 }
 
 const activeCount = computed(() => all.value.filter((r) => r.member.status === 'active').length);
-const stateOptions = computed(() => [
-  { label: 'All states', value: '' },
-  ...[...new Set(all.value.map((r) => r.member.state))]
-    .map((code) => ({ label: stateName(code), value: code }))
+/** The Location column: a US member's state code ("NY"), anyone else's country ("Canada"). */
+const placeCell = (m: MemberRecord) => (countryOf(m) === DEFAULT_COUNTRY ? { code: m.state ?? '' } : { name: countryName(countryOf(m)) });
+const placeOptions = computed(() => [
+  { label: 'Everywhere', value: '' },
+  ...[...new Map(all.value.map((r) => [placeKey(r.member), r.member])).entries()]
+    .map(([key, m]) => ({ label: countryOf(m) === DEFAULT_COUNTRY ? stateName(m.state ?? '') : countryName(countryOf(m)), value: key }))
     .sort((a, b) => a.label.localeCompare(b.label)),
 ]);
-/** Search, state and class first: the pills count within them. */
+/** Search, location and class first: the pills count within them. */
 const scoped = computed(() =>
-  filterRows(all.value, { search: search.value ?? '', state: state.value, memberClass: memberClass.value }),
+  filterRows(all.value, { search: search.value ?? '', place: place.value, memberClass: memberClass.value }),
 );
 const counts = computed(() => statusCounts(scoped.value));
 const pills = computed(() => statusFilters(counts.value, status.value));
@@ -92,13 +96,13 @@ const showing = computed(() => {
   const range = pages.value > 1 ? `${(page.value - 1) * PAGE + 1}–${(page.value - 1) * PAGE + shown.value.length}` : `${total}`;
   return `Showing ${range} of ${total} ${total === 1 ? 'member' : 'members'}`;
 });
-watch([search, state, memberClass, status, sort], () => (page.value = 1));
+watch([search, place, memberClass, status, sort], () => (page.value = 1));
 watch(pages, (n) => (page.value = Math.min(page.value, n)));
 
 const COLUMNS: readonly { key: SortKey; label: string }[] = [
   { key: 'name', label: 'Member' },
   { key: 'position', label: 'Position' },
-  { key: 'state', label: 'State' },
+  { key: 'state', label: 'Location' },
   { key: 'class', label: 'Class' },
   { key: 'status', label: 'Status' },
   { key: 'since', label: 'Member since' },
@@ -153,7 +157,7 @@ function exportCsv() {
 
 function clearFilters() {
   search.value = '';
-  state.value = '';
+  place.value = '';
   memberClass.value = '';
   status.value = null;
 }
@@ -211,8 +215,8 @@ onMounted(() => load());
         <template #prepend><q-icon name="search" size="20px" /></template>
       </q-input>
       <div class="members-state">
-        <label for="members-state" class="members-muted">State</label>
-        <q-select v-model="state" for="members-state" outlined dense emit-value map-options :options="stateOptions" />
+        <label for="members-state" class="members-muted">Location</label>
+        <q-select v-model="place" for="members-state" outlined dense emit-value map-options :options="placeOptions" />
       </div>
       <div class="members-state">
         <label for="members-class" class="members-muted">Class</label>
@@ -281,7 +285,10 @@ onMounted(() => load());
             </div>
             <span v-if="!r.offices.length" class="members-muted">{{ noOfficeText(r.member.status) }}</span>
           </td>
-          <td><span class="members-code">{{ r.member.state }}</span></td>
+          <td>
+            <span v-if="placeCell(r.member).code !== undefined" class="members-code">{{ placeCell(r.member).code }}</span>
+            <span v-else>{{ placeCell(r.member).name }}</span>
+          </td>
           <td>
             <span v-if="classCellText(r.member)">{{ classCellText(r.member) }}</span>
             <span v-else class="members-muted">Not asked</span>

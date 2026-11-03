@@ -13,7 +13,7 @@ import { session } from '../session.js';
 import ApplicationAnswers from './ApplicationAnswers.vue';
 import DetailsFields from './DetailsFields.vue';
 import { changeMemberStatus, correctMemberDetails, member as fetchMember } from './api.js';
-import { answerText, classOf, consentText, detailsForm, memberClassText, stateName, type DetailsForm } from './member-text.js';
+import { answerText, classOf, consentText, detailsForm, memberClassText, placeFacts, placeInput, type DetailsForm } from './member-text.js';
 
 /** One member as a Membership Admin sees them (design §5.2): details, every application's answers, status history. */
 const $q = useQuasar();
@@ -73,10 +73,12 @@ async function saveCorrection() {
     errors.value = { _: 'Nothing has changed.' };
     return;
   }
+  if (!correction.details) return;
   const checked = validate(memberCorrectionSchema, {
     legalName: correction.legalName,
-    ...correction.details,
-    state: correction.details?.state ?? '',
+    preferredName: correction.details.preferredName,
+    ...placeInput(correction.details),
+    phone: correction.details.phone,
     reason: correction.reason,
   });
   if (!checked.ok) {
@@ -175,12 +177,10 @@ watch(
               <dd>{{ m.legalName }}</dd>
               <dt>Preferred name</dt>
               <dd :class="{ 'text-grey-7': !m.preferredName }">{{ m.preferredName ?? NOT_GIVEN }}</dd>
-              <dt>State or territory</dt>
-              <dd>{{ stateName(m.state) }}</dd>
-              <dt>City</dt>
-              <dd :class="{ 'text-grey-7': !m.contact }">{{ m.contact?.city ?? NOT_GIVEN }}</dd>
-              <dt>ZIP code</dt>
-              <dd :class="{ 'text-grey-7': !m.contact }">{{ m.contact?.postalCode ?? NOT_GIVEN }}</dd>
+              <template v-for="fact in placeFacts(m)" :key="fact.label">
+                <dt>{{ fact.label }}</dt>
+                <dd :class="{ 'text-grey-7': !fact.value }">{{ fact.value ?? NOT_GIVEN }}</dd>
+              </template>
               <dt>Phone</dt>
               <dd :class="{ 'text-grey-7': !m.contact?.phone }">{{ m.contact?.phone ?? NOT_GIVEN }}</dd>
               <dt>USTP newsletter</dt>

@@ -47,10 +47,26 @@ export function checkApplicantAge(dateOfBirth: string, on: Date): Check {
 /** US ZIP code: 5 digits, optionally ZIP+4 (with or without the dash). */
 export const US_POSTAL_CODE = /^\d{5}(?:-?\d{4})?$/;
 
+/** A postcode outside the US: letters and digits, with spaces or dashes between them ("SW1A 1AA", "10115", "1010-001"). */
+export const POSTCODE = /^[A-Za-z0-9]+(?:[ -][A-Za-z0-9]+)*$/;
+
 /** Stores ZIP+4 as `12345-6789` and a plain ZIP as `12345`. */
 export function normalizePostalCode(value: string): string {
   const digits = value.replace(/\D/g, '');
   return digits.length === 9 ? `${digits.slice(0, 5)}-${digits.slice(5)}` : digits;
+}
+
+/** A postcode outside the US as given, in capitals with single spaces (`sw1a  1aa` is stored as `SW1A 1AA`). */
+export function normalizePostcode(value: string): string {
+  return value.trim().replace(/\s+/g, ' ').toUpperCase();
+}
+
+/**
+ * Whether the application's "Staying in touch" box starts ticked (design §5.2): in the United States, so an applicant
+ * opts out by unticking it; elsewhere it starts unticked, since a box ticked in advance is not consent under the GDPR.
+ */
+export function staysInTouchByDefault(country: string): boolean {
+  return country === 'US';
 }
 
 /**

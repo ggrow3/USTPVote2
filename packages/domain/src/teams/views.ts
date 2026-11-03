@@ -1,3 +1,4 @@
+import { placeText } from '../membership/countries.js';
 import type { MemberRecord } from '../membership/records.js';
 import type { TeamMemberRecord, TeamRecord, TeamRequestRecord, TeamRole, TeamState } from './team.js';
 
@@ -11,14 +12,16 @@ import type { TeamMemberRecord, TeamRecord, TeamRequestRecord, TeamRole, TeamSta
 export interface TeamPersonInfo {
   /** Their preferred name, or else their legal name. */
   readonly name: string;
-  /** Two-letter state code. */
+  /** Where they live (`placeText`): the state's code in the US ("NY"), the country's name elsewhere ("Canada"). */
   readonly state: string;
   readonly active: boolean;
 }
 
-export function personInfo(member: Pick<MemberRecord, 'legalName' | 'preferredName' | 'state' | 'status'> | null): TeamPersonInfo {
+export function personInfo(
+  member: Pick<MemberRecord, 'legalName' | 'preferredName' | 'country' | 'state' | 'status'> | null,
+): TeamPersonInfo {
   if (!member) return { name: 'Unknown member', state: '', active: false };
-  return { name: member.preferredName ?? member.legalName, state: member.state, active: member.status === 'active' };
+  return { name: member.preferredName ?? member.legalName, state: placeText(member), active: member.status === 'active' };
 }
 
 /** One person on a team. `active` is false for someone who is no longer an Active member (shown to leads only). */

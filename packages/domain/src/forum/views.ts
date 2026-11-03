@@ -22,10 +22,11 @@ import {
  * and why it was removed; others see only that it was. Membership Admins at the console see it all, and the reports.
  */
 
-/** Who wrote a post or comment: preferred name, else legal name, and state, as on the teams pages. */
+/** Who wrote a post or comment: preferred name, else legal name, and where they live, as on the teams pages. */
 export interface ForumAuthor {
   readonly accountId: string;
   readonly name: string;
+  /** `placeText`: the state's code in the US ("NY"), the country's name elsewhere ("Canada"). */
   readonly state: string;
 }
 

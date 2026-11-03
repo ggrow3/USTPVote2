@@ -1,15 +1,13 @@
 import type { CreateApplicationInput, DecisionInput } from '../api.js';
 import { OK, refuse, type Check, type Outcome } from '../check.js';
 import type { BylawsRecord } from '../records.js';
-import { memberStatusTransition, type StatusTransition } from './member.js';
+import { memberStatusTransition, storedPlace, type StatusTransition } from './member.js';
 import { checkStatusChange } from './member-status.js';
 import type { ApplicationRecord, MemberRecord } from './records.js';
 import {
   APPLICATION_WINDOW_DAYS,
   MAX_APPLICATIONS_PER_WINDOW,
   MINIMUM_MEMBER_AGE,
-  normalizePhone,
-  normalizePostalCode,
 } from './registration.js';
 
 /**
@@ -83,12 +81,7 @@ export function submitApplication(args: {
     formVersion: input.formVersion,
     usVoteEligible: input.usVoteEligible,
     agreesWithCoreIdeals: input.agreesWithCoreIdeals,
-    state: input.state,
-    contact: {
-      city: input.city,
-      postalCode: normalizePostalCode(input.postalCode),
-      phone: input.phone ? normalizePhone(input.phone) : null,
-    },
+    ...storedPlace(input),
     communications: { newsletter: input.newsletter ? at : null, announcements: input.announcements ? at : null },
     statement: input.statement || null,
     interests: input.interests || null,
@@ -111,7 +104,9 @@ export function submitApplication(args: {
     profile: {
       legalName: application.legalName,
       preferredName: application.preferredName,
+      country: application.country,
       state: application.state,
+      region: application.region,
       contact: application.contact,
       communications: application.communications,
       usVoteEligible: input.usVoteEligible,

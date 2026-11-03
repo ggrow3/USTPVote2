@@ -1,9 +1,10 @@
 import type { MemberCorrectionInput, MemberDetailsInput } from '../api.js';
 import { OK, refuse, type Check, type Outcome } from '../check.js';
 import type { LedgerEvent } from '../ledger-events.js';
+import { countryOf, DEFAULT_COUNTRY } from './countries.js';
 import { checkStatusChange, nextStatuses, type MemberStatus } from './member-status.js';
 import type { CommunicationConsents, MemberContact, MemberRecord, StatusHistoryRecord } from './records.js';
-import { normalizePhone, normalizePostalCode } from './registration.js';
+import { normalizePhone, normalizePostalCode, normalizePostcode } from './registration.js';
 
 /**
  * The Member aggregate (design §5.1): `members/{accountId}` and its append-only `member_status_history`. A status
@@ -22,7 +23,16 @@ export type MemberStatusChangedPayload = {
 /** What a first status change sets on the member record: from an application, or for a test voter persona. */
 export type MemberProfile = Pick<
   MemberRecord,
-  'legalName' | 'preferredName' | 'state' | 'contact' | 'communications' | 'usVoteEligible' | 'agreesWithCoreIdeals' | 'bylawsVersion'
+  | 'legalName'
+  | 'preferredName'
+  | 'country'
+  | 'state'
+  | 'region'
+  | 'contact'
+  | 'communications'
+  | 'usVoteEligible'
+  | 'agreesWithCoreIdeals'
+  | 'bylawsVersion'
 >;
 
 export interface MemberStatusChange {
@@ -59,7 +69,10 @@ export function memberStatusTransition(change: MemberStatusChange): StatusTransi
     status: change.to,
     legalName: profile.legalName,
     preferredName: profile.preferredName,
+    // Records from before the country was asked are in the United States, and say so once they change.
+    country: countryOf(profile),
     state: profile.state,
+    region: profile.region ?? null,
     contact: profile.contact ?? null,
     communications: profile.communications ?? null,
     // Records from before the membership questions have no answers.
@@ -156,7 +169,9 @@ export type MemberDetailsChangedPayload = {
 export const MEMBER_DETAIL_FIELDS = [
   'legalName',
   'preferredName',
+  'country',
   'state',
+  'region',
   'contact.city',
   'contact.postalCode',
   'contact.phone',
@@ -189,7 +204,9 @@ function detailValues(m: MemberRecord): Record<MemberDetailField, string | null>
   return {
     legalName: m.legalName,
     preferredName: m.preferredName,
+    country: countryOf(m),
     state: m.state,
+    region: m.region ?? null,
     'contact.city': m.contact?.city ?? null,
     'contact.postalCode': m.contact?.postalCode ?? null,
     'contact.phone': m.contact?.phone ?? null,
@@ -198,14 +215,27 @@ function detailValues(m: MemberRecord): Record<MemberDetailField, string | null>
   };
 }
 
-/** Where the member lives and how to reach them, as stored: the same normalizing as the application's. */
-function addressDetails(input: Pick<MemberDetailsInput, 'preferredName' | 'state' | 'city' | 'postalCode' | 'phone'>) {
-  const contact: MemberContact = {
-    city: input.city,
-    postalCode: normalizePostalCode(input.postalCode),
-    phone: input.phone ? normalizePhone(input.phone) : null,
+type PlaceInput = Pick<MemberDetailsInput, 'country' | 'state' | 'region' | 'city' | 'postalCode' | 'phone'>;
+
+/**
+ * Where a member lives and how to reach them, as stored from the application or a later change (design §5.2): in the
+ * US the state, city and ZIP code; elsewhere whatever was given of the region, city and postcode, and null for the
+ * rest. Each keeps only its own field: a US address has no region, and one elsewhere no state.
+ */
+export function storedPlace(input: PlaceInput): Pick<MemberRecord, 'country' | 'state' | 'region'> & { readonly contact: MemberContact } {
+  const us = input.country === DEFAULT_COUNTRY;
+  const postalCode = input.postalCode ? (us ? normalizePostalCode(input.postalCode) : normalizePostcode(input.postalCode)) : null;
+  return {
+    country: input.country,
+    state: us ? (input.state ?? null) : null,
+    region: us ? null : input.region || null,
+    contact: { city: input.city || null, postalCode, phone: input.phone ? normalizePhone(input.phone) : null },
   };
-  return { preferredName: input.preferredName || null, state: input.state, contact };
+}
+
+/** Where the member lives and how to reach them, as stored: the same normalizing as the application's. */
+function addressDetails(input: PlaceInput & Pick<MemberDetailsInput, 'preferredName'>) {
+  return { preferredName: input.preferredName || null, ...storedPlace(input) };
 }
 
 /** An opt-in keeps the time it was first given; withdrawing it clears that (design §5.2). */
