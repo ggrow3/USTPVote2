@@ -4,6 +4,7 @@ import type { SignInProvider } from './identity.js';
 import type { MemberRecord } from './membership/records.js';
 import type { MemberStatus } from './membership/member-status.js';
 import type { PhotoSignals } from './photos.js';
+import type { MyMailState } from './notifications/my-email.js';
 import type { Role } from './roles.js';
 
 /**
@@ -157,6 +158,8 @@ export interface MeResponse {
     /** When this request was made as a persona, the System Admin acting as it; otherwise null. */
     readonly operator: string | null;
   };
+  /** Whether the caller's address can be mailed (design §10.12); null without an account. */
+  readonly mail: MyMailState | null;
 }
 
 /**

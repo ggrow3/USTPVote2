@@ -15,7 +15,7 @@ const CONTEXTS: Readonly<Record<string, readonly string[]>> = {
     '/v1/me/resign',
     '/v1/me/details',
   ],
-  notifications: ['/notices', '/notice-settings', '/v1/admin/mail'],
+  notifications: ['/notices', '/notice-settings', '/v1/admin/mail', '/v1/me/email'],
   governance: ['/v1/navigation', '/v1/admin/navigation', '/v1/home-quote', '/v1/admin/home-quote', '/v1/hub', '/v1/admin/hub'],
   // Its routes end the path after an election ID; the folder's own name appears in imports.
   'consistency-check': ['}/consistency-check'],

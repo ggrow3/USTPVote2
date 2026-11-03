@@ -1,5 +1,8 @@
 import type {
   MailHealthView,
+  MailRequestKind,
+  MemberMailFlag,
+  MyEmailView,
   NoticeKind,
   NoticeSettingsInput,
   NoticeSettingsRecord,
@@ -48,4 +51,20 @@ export function mailHealth(): Promise<MailHealthView> {
 /** Asks the worker to run the check on its next tick; refused while one waits (409) or soon after a run (429). */
 export function requestMailCheck(): Promise<MailHealthView> {
   return api<MailHealthView>('POST', '/v1/admin/mail/health/check');
+}
+
+// --- The member's own email (design §10.12) -----------------------------------------------------------------------
+
+export function myEmail(): Promise<MyEmailView> {
+  return api<MyEmailView>('GET', '/v1/me/email');
+}
+
+/** A test email to oneself, or trying one's address again, on the worker's next tick. */
+export function requestMyEmail(kind: MailRequestKind): Promise<MyEmailView> {
+  return api<MyEmailView>('POST', `/v1/me/email/${kind}`);
+}
+
+/** Membership Admin: members who cannot be emailed, and why. */
+export function memberMailFlags(): Promise<MemberMailFlag[]> {
+  return api<MemberMailFlag[]>('GET', '/v1/admin/mail/members');
 }

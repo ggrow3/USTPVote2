@@ -85,13 +85,14 @@ export class AccountsService {
       const scope = this.config.adminMfaRequired ? secondFactorScope(roles, policy) : 'none';
       return { required: scope !== 'none', everywhere: scope === 'everywhere', signedInWithMfa };
     };
-    if (!accountId) return { account: null, identities: [], member: null, roles: [], mfa: mfa([]), testing };
+    if (!accountId) return { account: null, identities: [], member: null, roles: [], mfa: mfa([]), testing, mail: null };
     const db = this.firebase.db;
-    const [account, identities, member, roles] = await Promise.all([
+    const [account, identities, member, roles, mail] = await Promise.all([
       db.collection(Collections.accounts).doc(accountId).get(),
       db.collection(Collections.accountIdentities).where('accountId', '==', accountId).get(),
       this.members.find(accountId),
       this.directory.activeRoles(accountId),
+      this.mailRecords.state(accountId),
     ]);
     return {
       account: (account.data() as AccountRecord | undefined) ?? null,
@@ -100,6 +101,7 @@ export class AccountsService {
       roles,
       mfa: mfa(roles),
       testing,
+      mail,
     };
   }
 

@@ -3,6 +3,7 @@ import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { MailHealthService } from './mail-admin.controller.js';
 import { MailEventRecorder } from './mail-events.js';
+import { MailRequestSender } from './mail-requests.js';
 import { DNS_TXT, dnsTxt, MailHealthChecker, SES_ACCOUNT } from './mail-health.js';
 import { MailRecords } from './mail-records.js';
 import { MAIL_EVENT_SOURCE, MAIL_TRANSPORT, OutboxMailEvents, OutboxTransport, type MailEventSource, type MailTransport } from './mail-transport.js';
@@ -12,6 +13,7 @@ import { NoticeSettingsService } from './notice-settings.js';
 import { NoticeSender } from './notice-sender.js';
 import { NoticeRepository } from './notice.repository.js';
 import { NoticesService } from './notices.service.js';
+import { MyEmailService } from './my-email.js';
 import { SesAccountReader } from './ses-account.js';
 import { SesEventQueue, sesMailEvent, SesTransport } from './ses.js';
 import { WelcomeEmails } from './welcome-emails.js';
@@ -29,6 +31,7 @@ export const NOTIFICATION_API_PROVIDERS: Provider[] = [
   MailRepository,
   MailRecords,
   MailHealthService,
+  MyEmailService,
   NoticeSettingsService,
   NoticesService,
   WelcomeEmails,
@@ -41,6 +44,7 @@ export const NOTIFICATION_WORKER_PROVIDERS: Provider[] = [
   Mailer,
   MailEventRecorder,
   MailHealthChecker,
+  MailRequestSender,
   NoticeSender,
   WelcomeSender,
   { provide: SES_ACCOUNT, inject: [CONFIG], useFactory: (config: ServerConfig) => SesAccountReader.fromConfig(config) },

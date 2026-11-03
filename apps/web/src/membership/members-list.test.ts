@@ -6,6 +6,7 @@ import {
   initials,
   heldOffices,
   memberRows,
+  mailFlagText,
   membersCsv,
   membersCsvFileName,
   noOfficeText,
@@ -132,7 +133,7 @@ describe('filterRows', () => {
     expect(names(filterRows(abroad, { search: '', place: 'CA' }))).toEqual(['Eli Grant']);
     expect(names(filterRows(abroad, { search: '', place: 'US-CA' }))).toEqual(['Ada Brooks']);
     expect(names(sortRows(abroad, 'state', false)).at(-1)).toBe('Eli Grant');
-    expect(membersCsv(abroad.slice(4)).split('\r\n')[1]).toBe('Eli Grant,a5,,,Canada,United States Member,Yes,Active,2026-10-22');
+    expect(membersCsv(abroad.slice(4)).split('\r\n')[1]).toBe('Eli Grant,a5,,,Canada,United States Member,Yes,Active,2026-10-22,Yes');
   });
 
   it('keeps one state', () => {
@@ -206,15 +207,28 @@ describe('sinceText', () => {
   });
 });
 
+describe('members who cannot be emailed', () => {
+  it('are flagged, filtered and exported with why', () => {
+    const flagged = memberRows(
+      rows.map((r) => r.member),
+      view,
+      [{ accountId: 'a2', state: 'bounced', since: '2026-11-01T00:00:00.000Z' }],
+    );
+    expect(flagged.map((r) => mailFlagText(r.mail))).toEqual(flagged.map((r) => (r.member.accountId === 'a2' ? 'Email bounced' : null)));
+    expect(filterRows(flagged, { search: '', place: '', mail: 'unreachable' }).map((r) => r.member.accountId)).toEqual(['a2']);
+    expect(membersCsv(flagged.filter((r) => r.member.accountId === 'a2')).split('\r\n')[1]).toMatch(/,No: Email bounced$/);
+  });
+});
+
 describe('membersCsv', () => {
   it('has the table columns, the account ID and the Core Ideals answer, never contact details', () => {
     expect(membersCsv(rows.slice(0, 2))).toBe(
-      'Name,Account ID,Offices,State,Country,Class,Agrees with the Core Ideals,Status,Member since\r\n' +
-        'Ada Brooks,a1,,CA,United States,United States Member,Yes,Active,2026-10-22\r\n' +
-        'Ben Cruz,a2,Chair; State Chair,DC,United States,Allied Member,No,Active,2026-10-22\r\n',
+      'Name,Account ID,Offices,State,Country,Class,Agrees with the Core Ideals,Status,Member since,Can be emailed\r\n' +
+        'Ada Brooks,a1,,CA,United States,United States Member,Yes,Active,2026-10-22,Yes\r\n' +
+        'Ben Cruz,a2,Chair; State Chair,DC,United States,Allied Member,No,Active,2026-10-22,Yes\r\n',
     );
     // Cléo joined before the questions were asked.
-    expect(membersCsv(rows.slice(2, 3)).split('\r\n')[1]).toMatch(/^Cléo Dunn,a3,,NY,United States,Not asked,Not asked,Suspended,2025-01-0[45]$/);
+    expect(membersCsv(rows.slice(2, 3)).split('\r\n')[1]).toMatch(/^Cléo Dunn,a3,,NY,United States,Not asked,Not asked,Suspended,2025-01-0[45],Yes$/);
     expect(membersCsv(rows)).not.toMatch(/Springfield|10001|5551234567/);
   });
 

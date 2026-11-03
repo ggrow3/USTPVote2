@@ -94,6 +94,7 @@ export {
   zoneTime,
   timeLeft,
   welcomeMessage,
+  memberTestMessage,
 } from './message.js';
 export type { NoticeElection, NoticeMessage, NoticeMessageInput } from './message.js';
 export {
@@ -175,3 +176,25 @@ export type {
   MailDnsFacts,
   Unread,
 } from './mail-health.js';
+export {
+  MAIL_ADDRESS_STATES,
+  MAIL_REQUEST_KINDS,
+  MAIL_REQUEST_OUTCOMES,
+  MY_EMAIL_DAYS,
+  MY_EMAIL_SHOWN,
+  MAIL_REQUESTS_PER_DAY,
+  MAIL_REQUEST_RETENTION_DAYS,
+  mailAddressState,
+  isMailRequestInFlight,
+  checkMailRequest,
+} from './my-email.js';
+export type {
+  MailAddressState,
+  MyMailState,
+  MyEmailMessage,
+  MailRequestKind,
+  MailRequestOutcome,
+  MailRequestRecord,
+  MyEmailView,
+  MemberMailFlag,
+} from './my-email.js';

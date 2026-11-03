@@ -61,6 +61,15 @@ export class DirectoryService {
     return owners.size === 1 ? [...owners][0]! : null;
   }
 
+  /**
+   * Accounts whose primary email is not verified, or who have none, with the address if any: for the Membership Admins'
+   * list of members who cannot be emailed (design §10.12).
+   */
+  async unverifiedMailboxes(): Promise<{ accountId: string; email: string | null }[]> {
+    const snap = await this.firebase.db.collection(Collections.accounts).where('emailVerified', '==', false).select('primaryEmail').get();
+    return snap.docs.map((d) => ({ accountId: d.id, email: (d.get('primaryEmail') as string | null) ?? null }));
+  }
+
   /** Each account's display name, by accountId, where it has one (never its email); for naming staff who need no membership. */
   async displayNames(accountIds: readonly string[]): Promise<Map<string, string>> {
     const db = this.firebase.db;

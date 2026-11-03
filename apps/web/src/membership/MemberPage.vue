@@ -14,6 +14,8 @@ import ApplicationAnswers from './ApplicationAnswers.vue';
 import DetailsFields from './DetailsFields.vue';
 import { auth } from '../firebase.js';
 import { sendWelcomeLink } from '../sign-in.js';
+import { memberMailFlags } from '../notifications/api.js';
+import { FLAG_LABELS } from '../notifications/my-email-text.js';
 import { changeMemberStatus, correctMemberDetails, member as fetchMember, welcomeAgain } from './api.js';
 import { answerText, classOf, consentText, detailsForm, memberClassText, placeFacts, placeInput, type DetailsForm } from './member-text.js';
 
@@ -33,11 +35,16 @@ const date = (iso: string) => new Date(iso).toLocaleDateString();
 const dateTime = (iso: string) => new Date(iso).toLocaleString();
 const NOT_GIVEN = 'Not given';
 
+/** Why this member cannot be emailed (design §10.12); null when they can, or before it is known. */
+const mailProblem = ref<string | null>(null);
+
 async function load() {
   const id = accountId.value;
   try {
-    const found = await fetchMember(id);
+    const [found, flags] = await Promise.all([fetchMember(id), memberMailFlags().catch(() => [])]);
     if (id !== accountId.value) return;
+    const flag = flags.find((f) => f.accountId === id);
+    mailProblem.value = flag ? FLAG_LABELS[flag.state] : null;
     detail.value = found;
     loadState.value = 'ready';
   } catch (e) {
@@ -191,6 +198,11 @@ watch(
             <dl class="ustp-facts">
               <dt>Status</dt>
               <dd><q-badge :label="m.status" /></dd>
+              <dt>Email</dt>
+              <dd>
+                <q-chip v-if="mailProblem" dense color="orange-2" text-color="black" icon="unsubscribe" :label="`Can't be emailed: ${mailProblem}`" />
+                <template v-else>Can be emailed</template>
+              </dd>
               <dt>Class</dt>
               <dd :class="{ 'text-grey-7': classOf(m) === null }">{{ memberClassText(m.usVoteEligible) }}</dd>
               <dt>Agrees with the Core Ideals</dt>
