@@ -72,9 +72,9 @@ jobs:
           terraform_wrapper: false
       - run: terraform fmt -check -recursive infra/terraform
       # No backend and no credentials: checks syntax, types and the module's validations against the locked provider.
-      - name: Validate each environment
+      - name: Validate each environment and the AWS root
         run: |
-          for env in dev staging prod; do
-            terraform -chdir="infra/terraform/envs/$env" init -backend=false -input=false -lockfile=readonly
-            terraform -chdir="infra/terraform/envs/$env" validate
+          for root in envs/dev envs/staging envs/prod aws; do
+            terraform -chdir="infra/terraform/$root" init -backend=false -input=false -lockfile=readonly
+            terraform -chdir="infra/terraform/$root" validate
           done

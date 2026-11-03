@@ -4604,8 +4604,11 @@ every 15 seconds in place of Cloud Scheduler.
   IDs. Admins see counts only, on an election they can already see. A test email goes only to the caller's own
   account, which the server chooses; the request cannot name an address. Only
   the worker holds the AWS access key, from Secret Manager (`aws-ses-*`, versions added by a person, never in
-  Terraform state); the key's IAM user may only send from the agreed address through the notices' configuration set
-  and read the bounce queue. Amazon SES learns each member's address, name and the elections they may vote in, and
+  Terraform state, added by `worker-key.mjs` on standard input); the key's IAM user (`ustpvote-worker-<env>`, made by
+  `infra/terraform/aws`) may only send from the environment's own address through its configuration set, read and
+  delete that environment's delivery reports, read the account, identity, configuration set and queues for the setup
+  check, and take an address off SES's suppression list. Each environment has its own sender domain, configuration set
+  and queue, so none reads another's reports. Amazon SES learns each member's address, name and the elections they may vote in, and
   from the reminder which members had not voted a day before the close (never how anyone voted). The outbox, which
   does store messages with their addresses, is refused outside the emulators, apart from a rehearsal's notices in
   testing mode, which have no address.
@@ -4642,6 +4645,13 @@ every 15 seconds in place of Cloud Scheduler.
   Terraform in [`infra/terraform`](../infra/terraform) (Q13, adopted pending USTP's confirmation): one module, one
   root per environment, state in a `ustpvote2-<env>-tfstate` bucket, provider versions locked. CI runs
   `terraform fmt` and `validate` on every pull request; nothing has been planned or applied against a real project.
+  *(Added 2026-11-03)* A separate root, `infra/terraform/aws`, holds Amazon SES for every environment's email in one
+  AWS account (state in the prod bucket under `aws-mail`, validated in CI with the others, applied by hand with an AWS
+  login and never by a workflow): per environment a sender domain of its own (prod the party's domain, `dev.` and
+  `staging.` under it) with Easy DKIM and a MAIL FROM domain, a configuration set as that domain's default, its event
+  destination, an SNS topic, an SQS queue with a dead-letter queue, and the worker's and Identity Platform's IAM users;
+  its outputs are the DNS records to publish and each environment's queue URL. Access keys are made outside Terraform,
+  so its state holds no secret (§14).
 - **Server image:** [`apps/server/Dockerfile`](../apps/server/Dockerfile), built from the repository root. A build
   stage installs the server's workspaces from the lockfile with `--ignore-scripts` and compiles them; the runtime
   stage holds only the compiled packages and the server's production dependencies, owned by root and run as the
@@ -4849,8 +4859,9 @@ Decisions for USTP; the design's proposed default is in brackets.
 13. **Infrastructure as code:** Terraform acceptable? [yes]
 14. **Repository visibility and license.** `ustp-tally` and `ustp-audit` are meant to be public; the repository was created private. [decide before the first release]
 15. **Email sender domain** for Amazon SES and DMARC alignment. [Decided 2026-10-26: Amazon SES, From `USTP Elections
-    <noreply@transhumanist-party.org>`, no Reply-To. Still to do: verify the domain in SES with DKIM, a custom MAIL
-    FROM domain and DMARC (infra README "Election notices")]
+    <noreply@transhumanist-party.org>`, no Reply-To. 2026-11-03: dev and staging send from `noreply@dev.` and
+    `noreply@staging.transhumanist-party.org`, each a domain of its own in SES. Still to do: apply `infra/terraform/aws`
+    in an AWS account of USTP's and publish its DKIM, MAIL FROM and DMARC records (infra README "Email (Amazon SES)")]
 16. **GCP region** for Cloud Run, Firestore and the buckets. [`us-central1`, the cheapest free-tier region]
 17. **Membership requirements:** minimum age, and the wording of the platform attestation applicants confirm. [18; "I
     support the platform and goals of the US Transhumanist Party." Decided 2026-10-28: the attestation is dropped, and

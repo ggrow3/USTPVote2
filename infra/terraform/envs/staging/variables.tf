@@ -131,7 +131,7 @@ variable "web_origin" {
 }
 
 variable "mail_transport" {
-  description = "How the worker sends election notices: \"ses\" through Amazon SES, or \"off\" (design §6.8; README \"Election notices\")."
+  description = "How the worker sends election notices: \"ses\" through Amazon SES, or \"off\" (design §6.8; README \"Email (Amazon SES)\")."
   type        = string
   default     = "off"
 }
@@ -143,15 +143,27 @@ variable "notice_contact" {
 }
 
 variable "ses_region" {
-  description = "AWS region of the SES identity and the bounce queue."
+  description = "AWS region of the SES identity and the delivery-report queue."
   type        = string
   default     = "us-east-1"
 }
 
 variable "ses_events_queue_url" {
-  description = "URL of the SQS queue SES bounce reports arrive on; empty: bounces are not counted."
+  description = "URL of the SQS queue SES delivery reports arrive on (infra/terraform/aws's queue_urls output); needed with \"ses\"."
   type        = string
   default     = ""
+}
+
+variable "ses_configuration_set" {
+  description = "This environment's SES configuration set (infra/terraform/aws's configuration_sets output)."
+  type        = string
+  default     = "ustp-mail-staging"
+}
+
+variable "mail_from" {
+  description = "From header of the app's email: this environment's address (infra/terraform/aws's mail_from output)."
+  type        = string
+  default     = "USTP Elections <noreply@staging.transhumanist-party.org>"
 }
 
 variable "room_model_enabled" {

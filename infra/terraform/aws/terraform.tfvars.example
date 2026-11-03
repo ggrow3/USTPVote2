@@ -1,0 +1,12 @@
+# Copy to terraform.tfvars (ignored by git). The defaults give dev, staging and prod a sender domain each; list fewer to
+# set up only some of them.
+
+# region = "us-east-1"
+
+# environments = {
+#   dev  = { domain = "dev.transhumanist-party.org" }
+#   prod = { domain = "transhumanist-party.org" }
+# }
+
+# A mailbox USTP reads, for DMARC aggregate reports; empty leaves rua out of the advised record.
+# dmarc_report_address = "dmarc-reports@example.org"
