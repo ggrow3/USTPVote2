@@ -108,7 +108,7 @@ describe('importing a file', () => {
     const before = (await db().collection('accounts').get()).size;
     const res = await api.call('POST', '/v1/admin/member-imports/preview', admin, { rows: rows() });
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ adding: 2, skipping: 4 });
+    expect(res.body).toMatchObject({ adding: 2, skipping: 4, skippedBy: { missing: 1, bad_email: 1, invalid: 0, duplicate: 1, on_site: 1 } });
     expect(res.body.rows.map((r: { line: number; add: boolean; reasons: string[] }) => [r.line, r.add, r.reasons])).toEqual([
       [2, true, []],
       [3, false, ['the same email address as row 2']],
@@ -126,9 +126,28 @@ describe('importing a file', () => {
     const res = await api.call('POST', '/v1/admin/member-imports', admin, { rows: many, reason: '2026 roster' });
     expect(res.status).toBe(201);
     expect(res.body.added).toHaveLength(29);
-    expect(res.body.skipped).toEqual([{ line: 7, email: 'm5@example.test', legalName: 'Member 5', reasons: ['already has a login on the site, so they apply on the Register page'] }]);
+    expect(res.body.skipped).toEqual([
+      { line: 7, email: 'm5@example.test', legalName: 'Member 5', reasons: ['already has a login on the site, so they apply on the Register page'], cause: 'on_site' },
+    ]);
+    expect(res.body.skippedBy).toEqual({ missing: 0, bad_email: 0, invalid: 0, duplicate: 0, on_site: 1 });
     const active = await db().collection('members').where('status', '==', 'active').get();
     expect(active.size).toBe(29);
+  });
+
+  it('says how many it added and skipped, and why, the same as the preview', async () => {
+    const preview = await api.call('POST', '/v1/admin/member-imports/preview', admin, { rows: rows() });
+    const res = await api.call('POST', '/v1/admin/member-imports', admin, { rows: rows(), reason: 'Roster' });
+    expect(res.status).toBe(201);
+    expect(res.body.added.map((a: { line: number }) => a.line)).toEqual([2, 7]);
+    expect(res.body.skipped.map((s: { line: number; cause: string }) => [s.line, s.cause])).toEqual([
+      [3, 'duplicate'],
+      [4, 'bad_email'],
+      [5, 'missing'],
+      [6, 'on_site'],
+    ]);
+    expect(res.body.skippedBy).toEqual(preview.body.skippedBy);
+    expect(res.body.added.length).toBe(preview.body.adding);
+    expect(res.body.skipped.length).toBe(preview.body.skipping);
   });
 
   it('needs a reason, and at most 500 rows', async () => {

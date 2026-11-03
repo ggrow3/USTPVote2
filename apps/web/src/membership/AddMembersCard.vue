@@ -18,6 +18,7 @@ import { apiFieldErrors, type FieldErrors } from '../forms.js';
 import { sendWelcomeLink } from '../sign-in.js';
 import DetailsFields from './DetailsFields.vue';
 import { addMember, importMembers, previewMemberImport } from './api.js';
+import { plural, sentence, skippedText } from './import-text.js';
 import type { DetailsForm } from './member-text.js';
 
 /**
@@ -118,10 +119,11 @@ async function importFile() {
   busy.value = true;
   try {
     const result = await importMembers({ rows: [...read.value.rows], reason: reason.value });
+    const from = file.value?.name ?? null;
     file.value = null;
     read.value = null;
     plan.value = null;
-    await finished(result);
+    await finished(result, from);
   } catch (e) {
     fileError.value = errorMessage(e);
   } finally {
@@ -144,6 +146,8 @@ function downloadTemplate() {
 
 interface Outcome {
   readonly result: MemberImportResult;
+  /** The file's name, for an import; null for one member added on the form. */
+  readonly from: string | null;
   /** Identity Platform's links this browser has sent so far, and those it could not. */
   sent: number;
   failed: { email: string; why: string }[];
@@ -151,8 +155,8 @@ interface Outcome {
 }
 const outcome = ref<Outcome | null>(null);
 
-async function finished(result: MemberImportResult) {
-  outcome.value = { result, sent: 0, failed: [], sending: false };
+async function finished(result: MemberImportResult, from: string | null = null) {
+  outcome.value = { result, from, sent: 0, failed: [], sending: false };
   if (result.added.length) emit('added');
   if (result.welcome === 'identity_platform') await sendLinks(result.added.map((a) => a.email));
 }
@@ -173,8 +177,6 @@ async function sendLinks(emails: readonly string[]) {
   }
   o.sending = false;
 }
-
-const plural = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}`;
 </script>
 
 <template>
@@ -276,9 +278,12 @@ const plural = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}
       <q-banner v-if="fileError" class="bg-negative text-white" rounded>{{ fileError }}</q-banner>
 
       <template v-if="plan && read">
-        <div role="status">
-          <strong>{{ plural(plan.adding, 'member') }} to add</strong>, {{ plural(plan.skipping, 'row') }} skipped.
-          <span v-if="read.ignored.length" class="text-grey-7">Columns ignored: {{ read.ignored.join(', ') }}.</span>
+        <div role="status" class="ustp-stack">
+          <div>
+            {{ file?.name ?? 'The file' }} has {{ plural(plan.rows.length, 'row') }}:
+            <strong>{{ plural(plan.adding, 'member') }} to add</strong>, {{ skippedText(plan.skippedBy) }}.
+          </div>
+          <div v-if="read.ignored.length" class="text-grey-7">Columns ignored: {{ read.ignored.join(', ') }}.</div>
         </div>
 
         <div v-if="skippedRows.length">
@@ -324,15 +329,19 @@ const plural = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}
 
     <q-card-section v-if="outcome" class="ustp-stack" role="status">
       <q-separator />
-      <div>
-        <strong>Added {{ plural(outcome.result.added.length, 'member') }}.</strong>
-        <template v-if="outcome.result.skipped.length">
-          Skipped {{ plural(outcome.result.skipped.length, 'row') }}:
-          <span v-for="(s, i) in outcome.result.skipped" :key="s.line">
-            row {{ s.line }} ({{ s.email || 'no email' }}: {{ s.reasons.join('; ') }}){{ i < outcome.result.skipped.length - 1 ? ', ' : '.' }}
-          </span>
-        </template>
+      <div class="add-members__done">
+        <strong v-if="outcome.from">Imported {{ plural(outcome.result.added.length, 'member') }} from {{ outcome.from }}.</strong>
+        <strong v-else>Added {{ plural(outcome.result.added.length, 'member') }}.</strong>
+        <template v-if="outcome.from || outcome.result.skipped.length">{{ ` ${sentence(skippedText(outcome.result.skippedBy))}` }}</template>
       </div>
+      <q-list v-if="outcome.result.skipped.length" bordered separator dense class="add-members__list">
+        <q-item v-for="s in outcome.result.skipped" :key="s.line">
+          <q-item-section>
+            <q-item-label>Row {{ s.line }}: {{ s.email || 'no email' }}<template v-if="s.legalName"> ({{ s.legalName }})</template></q-item-label>
+            <q-item-label caption>{{ s.reasons.join('; ') }}</q-item-label>
+          </q-item-section>
+        </q-item>
+      </q-list>
       <template v-if="outcome.result.added.length">
         <div v-if="outcome.result.welcome === 'mail'">
           Each gets a welcome email from the site within a few minutes, leading to the page where they set their password.
@@ -361,6 +370,10 @@ const plural = (n: number, word: string) => `${n} ${n === 1 ? word : `${word}s`}
 </template>
 
 <style scoped>
+.add-members__done {
+  font-size: 1.05rem;
+}
+
 .add-members__list {
   max-height: 24rem;
   overflow-y: auto;

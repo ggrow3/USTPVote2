@@ -102,7 +102,10 @@ export function usStateName(code: string): string {
  * Where someone lives, from what a roster says: a US state, or a country other than the US. A territory with its own
  * country code (Puerto Rico, Guam…) counts as that state; the United States as a country needs the state too.
  */
-export function placeOf(state: string, country: string): { readonly state: string; readonly country: string | null } | { readonly problem: string } {
+export function placeOf(
+  state: string,
+  country: string,
+): { readonly state: string; readonly country: string | null } | { readonly problem: string; readonly missing?: true } {
   const stateText = state.trim();
   const countryText = country.trim();
   const countryValue = countryText ? countryCode(countryText) : null;
@@ -110,7 +113,10 @@ export function placeOf(state: string, country: string): { readonly state: strin
   const stateValue = stateText ? usStateCode(stateText) : null;
   if (stateText && !stateValue) return { problem: `"${stateText}" is not a US state or territory` };
   if (countryValue === null || countryValue === 'US') {
-    if (!stateValue) return { problem: countryValue ? 'the country is the United States, so give the state too' : 'no state, or country for a member living outside the US' };
+    if (!stateValue) {
+      const problem = countryValue ? 'the country is the United States, so give the state too' : 'no state, or country for a member living outside the US';
+      return { problem, missing: true };
+    }
     return { state: stateValue, country: null };
   }
   if (US_TERRITORY_COUNTRIES.has(countryValue)) {

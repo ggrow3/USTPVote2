@@ -76,6 +76,8 @@ export {
   readMemberImport,
   existingEmailReason,
   planMemberImport,
+  SKIP_CAUSES,
+  skipCounts,
 } from './member-import.js';
 export type {
   MemberImportColumn,
@@ -90,6 +92,8 @@ export type {
   ExistingEmail,
   PlannedMemberRow,
   MemberImportPlan,
+  SkipCause,
+  SkippedMemberRow,
   WelcomeDelivery,
   MemberImportResult,
   WelcomeAgain,

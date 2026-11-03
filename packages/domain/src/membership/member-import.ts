@@ -100,10 +100,19 @@ export interface NewMember {
   readonly usVoteEligible: boolean | null;
 }
 
-/** Why a member cannot be added as given, and the field it is about (null for the email's owner, below). */
+/**
+ * Why an import skips a row, by cause, as the preview and the result count them: a needed field empty, an email
+ * address that is not one, another field that breaks the rules, the same address as an earlier row, or an address
+ * already on the site. A row counts once, under the first of these that applies.
+ */
+export const SKIP_CAUSES = ['missing', 'bad_email', 'invalid', 'duplicate', 'on_site'] as const;
+export type SkipCause = (typeof SKIP_CAUSES)[number];
+
+/** Why a member cannot be added as given, the field it is about, and which cause it counts under. */
 export interface NewMemberProblem {
   readonly field: MemberImportColumn | null;
   readonly message: string;
+  readonly cause: Extract<SkipCause, 'missing' | 'bad_email' | 'invalid'>;
 }
 
 const emailSchema = z.email();
@@ -115,21 +124,26 @@ export function checkNewMember(text: NewMemberText):
   | { readonly ok: true; readonly member: NewMember }
   | { readonly ok: false; readonly problems: readonly NewMemberProblem[] } {
   const problems: NewMemberProblem[] = [];
-  const problem = (field: MemberImportColumn, message: string) => problems.push({ field, message });
+  const problem = (field: MemberImportColumn, message: string, cause: NewMemberProblem['cause'] = 'invalid') =>
+    problems.push({ field, message, cause });
   const value = (v: string | undefined) => (v ?? '').trim();
 
   const email = value(text.email).toLowerCase();
-  if (!email) problem('email', 'no email address');
-  else if (email.length > 254 || !emailSchema.safeParse(email).success) problem('email', `"${value(text.email)}" is not an email address`);
+  if (!email) problem('email', 'no email address', 'missing');
+  else if (email.length > 254 || !emailSchema.safeParse(email).success) {
+    problem('email', `"${value(text.email)}" is not an email address`, 'bad_email');
+  }
 
   const legalName = value(text.legalName);
-  if (!legalName) problem('legalName', 'no legal name');
+  if (!legalName) problem('legalName', 'no legal name', 'missing');
   else if (legalName.length > 200) problem('legalName', 'the legal name is longer than 200 characters');
   const preferredName = value(text.preferredName);
   if (preferredName.length > 200) problem('preferredName', 'the preferred name is longer than 200 characters');
 
   const place = placeOf(value(text.state), value(text.country));
-  if ('problem' in place) problem(value(text.country) && !value(text.state) ? 'country' : 'state', place.problem);
+  if ('problem' in place) {
+    problem(value(text.country) && !value(text.state) ? 'country' : 'state', place.problem, place.missing ? 'missing' : 'invalid');
+  }
   const abroad = 'country' in place && place.country !== null;
 
   const city = value(text.city);
@@ -246,6 +260,8 @@ export interface PlannedMemberRow {
   readonly legalName: string;
   readonly add: boolean;
   readonly reasons: readonly string[];
+  /** What a skipped row counts under; null for a row added. */
+  readonly cause: SkipCause | null;
   /** The member to add, when `add`. */
   readonly member: NewMember | null;
 }
@@ -254,6 +270,15 @@ export interface MemberImportPlan {
   readonly rows: readonly PlannedMemberRow[];
   readonly adding: number;
   readonly skipping: number;
+  /** The rows skipped, counted by cause; they add up to `skipping`. */
+  readonly skippedBy: Readonly<Record<SkipCause, number>>;
+}
+
+/** Skipped rows counted by cause, each once. */
+export function skipCounts(rows: readonly { readonly cause: SkipCause | null }[]): Record<SkipCause, number> {
+  const counts = Object.fromEntries(SKIP_CAUSES.map((c) => [c, 0])) as Record<SkipCause, number>;
+  for (const { cause } of rows) if (cause) counts[cause]++;
+  return counts;
 }
 
 /**
@@ -269,30 +294,51 @@ export function planMemberImport(
   const planned = rows.map((row): PlannedMemberRow => {
     const checked = checkNewMember(row);
     const email = checked.ok ? checked.member.email : row.email.trim();
-    const reasons = checked.ok ? [] : checked.problems.map((p) => p.message);
-    if (checked.ok) {
-      const earlier = first.get(email);
-      const known = existing.get(email);
-      if (earlier !== undefined) reasons.push(`the same email address as row ${earlier}`);
-      else {
-        first.set(email, row.line);
-        if (known) reasons.push(existingEmailReason(known));
-      }
+    const skip = (reasons: readonly string[], cause: SkipCause): PlannedMemberRow => ({
+      line: row.line,
+      email,
+      legalName: row.legalName.trim(),
+      add: false,
+      reasons,
+      cause,
+      member: null,
+    });
+    if (!checked.ok) {
+      const cause = SKIP_CAUSES.find((c) => checked.problems.some((p) => p.cause === c))!;
+      return skip(
+        checked.problems.map((p) => p.message),
+        cause,
+      );
     }
-    const add = checked.ok && reasons.length === 0;
-    return { line: row.line, email, legalName: row.legalName.trim(), add, reasons, member: add && checked.ok ? checked.member : null };
+    const earlier = first.get(email);
+    if (earlier !== undefined) return skip([`the same email address as row ${earlier}`], 'duplicate');
+    first.set(email, row.line);
+    const known = existing.get(email);
+    if (known) return skip([existingEmailReason(known)], 'on_site');
+    return { line: row.line, email, legalName: row.legalName.trim(), add: true, reasons: [], cause: null, member: checked.member };
   });
   const adding = planned.filter((r) => r.add).length;
-  return { rows: planned, adding, skipping: planned.length - adding };
+  return { rows: planned, adding, skipping: planned.length - adding, skippedBy: skipCounts(planned) };
 }
 
 /** How an added member's welcome email goes (design §5.13): through the site's mail, or Identity Platform's link. */
 export type WelcomeDelivery = 'mail' | 'identity_platform';
 
+/** A row an import skipped, with its reasons and the cause it counts under. */
+export interface SkippedMemberRow {
+  readonly line: number;
+  readonly email: string;
+  readonly legalName: string;
+  readonly reasons: readonly string[];
+  readonly cause: SkipCause;
+}
+
 /** `POST /v1/admin/members` and `/v1/admin/member-imports`: who was added, who was skipped, how to welcome them. */
 export interface MemberImportResult {
   readonly added: readonly { readonly line: number; readonly email: string; readonly accountId: string; readonly legalName: string }[];
-  readonly skipped: readonly { readonly line: number; readonly email: string; readonly legalName: string; readonly reasons: readonly string[] }[];
+  readonly skipped: readonly SkippedMemberRow[];
+  /** The rows skipped, counted by cause; they add up to `skipped.length`. */
+  readonly skippedBy: Readonly<Record<SkipCause, number>>;
   /**
    * `mail`: the worker sends each one our welcome email. `identity_platform`: this deployment sends no mail, so the
    * browser asks Identity Platform to send each added address its sign-in link.

@@ -64,8 +64,8 @@ describe('places', () => {
     expect(placeOf('TX', 'DE')).toEqual({ state: 'TX', country: 'DE' });
     // A territory with its own country code is that state.
     expect(placeOf('', 'PR')).toEqual({ state: 'PR', country: null });
-    expect(placeOf('', '')).toEqual({ problem: 'no state, or country for a member living outside the US' });
-    expect(placeOf('', 'US')).toEqual({ problem: 'the country is the United States, so give the state too' });
+    expect(placeOf('', '')).toEqual({ problem: 'no state, or country for a member living outside the US', missing: true });
+    expect(placeOf('', 'US')).toEqual({ problem: 'the country is the United States, so give the state too', missing: true });
     expect(placeOf('Ontario', '')).toMatchObject({ problem: expect.stringContaining('not a US state') });
     expect(placeOf('', 'Narnia')).toMatchObject({ problem: expect.stringContaining('not a country') });
     expect(placeOf('NY', 'Guam')).toMatchObject({ problem: expect.stringContaining('not in Guam') });
@@ -110,12 +110,13 @@ describe('checkNewMember', () => {
     expect(checked.ok).toBe(false);
     if (checked.ok) return;
     expect(checked.problems.map((p) => p.field)).toEqual(['email', 'legalName', 'state', 'postalCode', 'phone', 'usVoteEligible']);
+    expect(checked.problems.map((p) => p.cause)).toEqual(['bad_email', 'missing', 'invalid', 'invalid', 'invalid', 'invalid']);
     expect(checked.problems[0]!.message).toBe('"not-an-email" is not an email address');
     expect(checkNewMember({ email: '', legalName: 'X', country: 'Narnia' })).toMatchObject({
       ok: false,
       problems: [
-        { field: 'email', message: 'no email address' },
-        { field: 'country', message: expect.stringContaining('not a country') },
+        { field: 'email', message: 'no email address', cause: 'missing' },
+        { field: 'country', message: expect.stringContaining('not a country'), cause: 'invalid' },
       ],
     });
   });
@@ -173,6 +174,9 @@ describe('planMemberImport', () => {
     );
     expect(plan.adding).toBe(1);
     expect(plan.skipping).toBe(5);
+    // Each skipped row counts once, under its first cause: row 7 has a bad email and no legal name, so it is missing one.
+    expect(plan.skippedBy).toEqual({ missing: 1, bad_email: 0, invalid: 0, duplicate: 1, on_site: 3 });
+    expect(plan.rows.map((r) => r.cause)).toEqual([null, 'duplicate', 'on_site', 'on_site', 'on_site', 'missing']);
     expect(plan.rows.map((r) => [r.line, r.email, r.add, r.reasons])).toEqual([
       [2, 'new@example.test', true, []],
       [3, 'new@example.test', false, ['the same email address as row 2']],
@@ -183,6 +187,24 @@ describe('planMemberImport', () => {
     ]);
     expect(plan.rows[0]!.member).toMatchObject({ email: 'new@example.test', state: 'NY' });
     expect(plan.rows[1]!.member).toBeNull();
+  });
+});
+
+describe('skipped rows by cause', () => {
+  it('add up to the rows skipped, a missing field counting before the rest', () => {
+    const plan = planMemberImport(
+      [
+        { line: 2, email: '', legalName: 'No Email', state: 'NY' },
+        { line: 3, email: 'x@example.test', legalName: 'No Place', state: '' },
+        { line: 4, email: 'United States', legalName: 'Two Problems', state: 'Ontario' },
+        { line: 5, email: 'y@example.test', legalName: 'Bad Phone', state: 'NY', phone: '12' },
+        { line: 6, email: 'z@example.test', legalName: 'US With No State', country: 'USA' },
+        { line: 7, email: 'ok@example.test', legalName: 'Fine', state: 'NY' },
+      ],
+      new Map(),
+    );
+    expect(plan).toMatchObject({ adding: 1, skipping: 5, skippedBy: { missing: 3, bad_email: 1, invalid: 1, duplicate: 0, on_site: 0 } });
+    expect(Object.values(plan.skippedBy).reduce((a, b) => a + b, 0)).toBe(plan.skipping);
   });
 });
 

@@ -2025,8 +2025,15 @@ that already has a login is skipped.
     answer other than yes or no), the same address as an earlier row, or an address already on the site. That is a
     login without a membership ("they apply on the Register page": an existing login's address may never have been
     verified, so attaching a membership to it could hand it to whoever made that login), a membership in any status,
-    or a member added before who has not signed in yet. The card shows the skipped rows with their reasons and the
-    rows to add, asks for one written reason, and `POST /v1/admin/member-imports` adds them.
+    or a member added before who has not signed in yet. Each skipped row counts once, under the first cause that
+    applies (`SKIP_CAUSES`: a needed field missing, an email address that is not one, another field that breaks the
+    rules, an address repeated from an earlier row, an address already on the site), and the preview gives the
+    counts (`skippedBy`, adding up to the rows skipped). The card says how many rows the file has, how many members
+    it will add and how many rows it skips, by cause ("roster.csv has 9 rows: 3 members to add, 6 rows skipped: 1
+    missing a needed field, …"), lists the skipped rows with their reasons and the rows to add, asks for one written
+    reason, and `POST /v1/admin/member-imports` adds them. Its answer has the same counts (`skippedBy`, a row taken
+    since the preview counting as already on the site), and the card shows them: "Imported 3 members from
+    roster.csv. 6 rows skipped: …", with each skipped row and its reasons.
 - **The rules** (`checkNewMember`, the same function in the browser and the api, so the form names a problem before
   sending and the preview matches the import): the email is stored lowercase; names as on the application (§5.2); a
   state by code or name; a country by its ISO 3166-1 alpha-2 code or English name, and a few common names (USA, UK…).
@@ -4309,7 +4316,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/members/{accountId}` · `POST /admin/members/{accountId}/details` | Membership Admin | member profile (record, applications with answers, history, whether the daily quote and joke is on); correct names, state, contact with a reason (§5.2, §4.1) |
 | `POST /admin/members/{accountId}/status` | Membership Admin | status changes |
 | `POST /admin/members` | Membership Admin | add one member, Active at once, with a reason; 400 naming each bad field, 409 for an address already on the site (§5.13) |
-| `POST /admin/member-imports/preview` · `POST /admin/member-imports` | Membership Admin | a CSV file's rows (at most 500) as read in the browser: what importing them would do, row by row, writing nothing; import them with one reason (§5.13) |
+| `POST /admin/member-imports/preview` · `POST /admin/member-imports` | Membership Admin | a CSV file's rows (at most 500) as read in the browser: what importing them would do, row by row, with the rows to add and those skipped counted by cause, writing nothing; import them with one reason, answering what was added and skipped with the same counts (§5.13) |
 | `POST /admin/members/{accountId}/welcome` | Membership Admin | send an added member's welcome email again before they sign in, or get the address for the browser to ask Identity Platform (§5.13) |
 | `GET /admin/photos` · `GET /admin/photos/{id}/image` · `POST /admin/photos/{id}/decision` | Membership Admin | photo review |
 | `GET /admin/elections` · `GET /admin/elections/{id}` (detail, definition hash, problems) · `GET /admin/proposals` | Election Admin, Auditor | read election setup |

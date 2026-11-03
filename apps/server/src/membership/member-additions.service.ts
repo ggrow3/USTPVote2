@@ -6,6 +6,7 @@ import {
   existingEmailReason,
   memberAddition,
   planMemberImport,
+  skipCounts,
   uuidv7,
   type AccountRecord,
   type AddMemberInput,
@@ -15,6 +16,7 @@ import {
   type MemberImportRow,
   type MemberRecord,
   type PlannedMemberRow,
+  type SkippedMemberRow,
   type WelcomeAgain,
 } from 'ustp-domain';
 import { requireAccount } from '../auth/decorators.js';
@@ -93,7 +95,7 @@ export class MemberAdditions {
   private async add(ctx: RequestContext, rows: readonly MemberImportRow[], reason: string): Promise<MemberImportResult> {
     const actor = requireAccount(ctx);
     const plan = await this.preview(rows);
-    const result: { added: MemberImportResult['added'][number][]; skipped: MemberImportResult['skipped'][number][] } = {
+    const result: { added: MemberImportResult['added'][number][]; skipped: SkippedMemberRow[] } = {
       added: [],
       skipped: plan.rows.filter((r) => !r.add).map(skippedRow),
     };
@@ -104,7 +106,7 @@ export class MemberAdditions {
       result.skipped.push(...done.skipped);
     }
     result.skipped.sort((a, b) => a.line - b.line);
-    return { ...result, welcome: this.welcomes.delivery };
+    return { ...result, skippedBy: skipCounts(result.skipped), welcome: this.welcomes.delivery };
   }
 
   /** Adds up to PER_TRANSACTION planned rows in one transaction, skipping any address taken since the plan. */
@@ -146,7 +148,13 @@ export class MemberAdditions {
         added: additions.map(({ row, accountId }) => ({ line: row.line, email: row.email, legalName: row.legalName, accountId })),
         skipped: rows
           .filter((r) => taken.has(r.email))
-          .map((r) => ({ line: r.line, email: r.email, legalName: r.legalName, reasons: [existingEmailReason(taken.get(r.email)!)] })),
+          .map((r): SkippedMemberRow => ({
+            line: r.line,
+            email: r.email,
+            legalName: r.legalName,
+            reasons: [existingEmailReason(taken.get(r.email)!)],
+            cause: 'on_site',
+          })),
       };
     });
   }
@@ -175,6 +183,6 @@ export class MemberAdditions {
   }
 }
 
-function skippedRow(row: PlannedMemberRow): MemberImportResult['skipped'][number] {
-  return { line: row.line, email: row.email, legalName: row.legalName, reasons: row.reasons };
+function skippedRow(row: PlannedMemberRow): SkippedMemberRow {
+  return { line: row.line, email: row.email, legalName: row.legalName, reasons: row.reasons, cause: row.cause! };
 }
