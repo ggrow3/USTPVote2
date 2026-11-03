@@ -108,6 +108,14 @@ async function member(email, legalName, current) {
   if (me.member?.status === 'active') return;
   const pending = (await call('GET', '/v1/registration/applications/me', email)).find((a) => a.status === 'pending');
   const form = pending ? null : await call('GET', '/v1/registration/form', email);
+  // Mostly United States Members who agree with the Core Ideals, and a few of each other answer; half the Allied
+  // Members live in Canada, giving no city or postcode.
+  const usVoteEligible = randomInt(5) > 0;
+  const where =
+    usVoteEligible || randomInt(2) === 0
+      ? { state: STATES[randomInt(STATES.length)], city: 'Springfield', postalCode: String(10000 + randomInt(89999)) }
+      : { country: 'CA', region: 'Ontario' };
+  const consents = randomInt(2) === 1;
   const application =
     pending ??
     (await call('POST', '/v1/registration/applications', email, {
@@ -117,14 +125,13 @@ async function member(email, legalName, current) {
       dateOfBirth: `${1950 + randomInt(55)}-0${1 + randomInt(9)}-1${randomInt(10)}`,
       attestsAge: true,
       formVersion: form.version,
-      // Mostly United States Members who agree with the Core Ideals, and a few of each other answer.
-      usVoteEligible: randomInt(5) > 0,
+      usVoteEligible,
       agreesWithCoreIdeals: randomInt(5) > 0,
-      state: STATES[randomInt(STATES.length)],
-      city: 'Springfield',
-      postalCode: String(10000 + randomInt(89999)),
+      ...where,
       volunteer: randomInt(2) === 1,
-      newsletter: randomInt(2) === 1,
+      // The Register page's one "Staying in touch" box gives both opt-ins or neither.
+      newsletter: consents,
+      announcements: consents,
     }));
   await call('POST', `/v1/admin/applications/${application.applicationId}/decision`, ELECTION_ADMIN, { decision: 'approve', reason: 'dev seed' });
 }

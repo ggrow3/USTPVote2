@@ -4,9 +4,11 @@ import { useQuasar } from 'quasar';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import {
   createApplicationSchema,
+  DEFAULT_COUNTRY,
   DEFAULT_REGISTRATION_FORM,
   mayApply,
   MINIMUM_MEMBER_AGE,
+  staysInTouchByDefault,
   type ApplicationRecord,
   type BylawsRecord,
   type PublicRegistrationForm,
@@ -18,7 +20,7 @@ import PageShell from '../components/PageShell.vue';
 import PasswordInput from '../components/PasswordInput.vue';
 import TwoStepCodeCard from '../components/TwoStepCodeCard.vue';
 import { auth } from '../firebase.js';
-import { apiFieldErrors, STATES, validate, type FieldErrors } from '../forms.js';
+import { apiFieldErrors, validate, type FieldErrors } from '../forms.js';
 import { refreshMe, refreshUser, secondFactorMissing, session } from '../session.js';
 import {
   PASSWORD_HINT,
@@ -32,6 +34,8 @@ import {
 import { useSignInFlow } from '../sign-in-flow.js';
 import { myApplications, registrationForm, submitApplication } from './api.js';
 import MembershipQuestions from './MembershipQuestions.vue';
+import { placeInput } from './member-text.js';
+import PlaceFields from './PlaceFields.vue';
 import RegistrationIntro from './RegistrationIntro.vue';
 
 const $q = useQuasar();
@@ -71,7 +75,9 @@ const form = reactive({
   legalName: '',
   preferredName: '',
   dateOfBirth: '',
+  country: DEFAULT_COUNTRY as string,
   state: null as string | null,
+  region: '',
   city: '',
   postalCode: '',
   phone: '',
@@ -81,8 +87,8 @@ const form = reactive({
   referral: '',
   volunteer: false,
   runForOffice: false,
-  newsletter: false,
-  announcements: false,
+  // One box for the newsletter and the announcements both (design §5.2).
+  keepInTouch: staysInTouchByDefault(DEFAULT_COUNTRY),
   attestsAge: false,
   // Yes or No, nothing chosen until the person answers.
   usVoteEligible: null as boolean | null,
@@ -90,6 +96,18 @@ const form = reactive({
 });
 /** Optional text fields go to the API only when filled in. */
 const optional = (value: string) => value.trim() || undefined;
+
+/**
+ * The "Staying in touch" box starts ticked in the United States and unticked elsewhere (`staysInTouchByDefault`), and
+ * follows the country chosen until the applicant ticks or unticks it themselves.
+ */
+const keepInTouchChosen = ref(false);
+watch(
+  () => form.country,
+  (country) => {
+    if (!keepInTouchChosen.value) form.keepInTouch = staysInTouchByDefault(country);
+  },
+);
 
 const status = computed(() => session.me?.member?.status ?? null);
 const canApply = computed(() => mayApply(status.value));
@@ -100,7 +118,6 @@ const memberTitle = computed(() => {
   return 'You are already a member';
 });
 const lastDecision = computed(() => applications.value.find((a) => a.status !== 'pending') ?? null);
-const stateOptions = STATES.map((s) => ({ label: `${s.name} (${s.code})`, value: s.code }));
 /** The current step, or null for members, who have nothing left to do here. */
 const step = computed(() => {
   if (!session.user) return 0;
@@ -248,9 +265,7 @@ async function submit() {
     formVersion: wording.value.version,
     usVoteEligible: form.usVoteEligible,
     agreesWithCoreIdeals: form.agreesWithCoreIdeals,
-    state: form.state ?? '',
-    city: form.city,
-    postalCode: form.postalCode,
+    ...placeInput(form),
     phone: optional(form.phone),
     statement: optional(form.statement),
     interests: optional(form.interests),
@@ -258,8 +273,8 @@ async function submit() {
     volunteer: form.volunteer,
     runForOffice: form.runForOffice,
     referral: optional(form.referral),
-    newsletter: form.newsletter,
-    announcements: form.announcements,
+    newsletter: form.keepInTouch,
+    announcements: form.keepInTouch,
   });
   if (!checked.ok) {
     errors.value = checked.errors;
@@ -524,42 +539,7 @@ async function submit() {
                 <legend class="text-subtitle1">Where you live and how to reach you</legend>
                 <div class="text-caption text-grey-7">We never ask for your street address.</div>
                 <div class="ustp-form">
-                  <q-select
-                    v-model="form.state"
-                    outlined
-                    dense
-                    hide-bottom-space
-                    emit-value
-                    map-options
-                    :options="stateOptions"
-                    label="State or territory"
-                    :error="!!errors.state"
-                    :error-message="errors.state"
-                  />
-                  <div class="ustp-row">
-                    <q-input
-                      v-model="form.city"
-                      class="ustp-row__wide"
-                      outlined
-                      dense
-                      hide-bottom-space
-                      label="City"
-                      autocomplete="address-level2"
-                      :error="!!errors.city"
-                      :error-message="errors.city"
-                    />
-                    <q-input
-                      v-model="form.postalCode"
-                      outlined
-                      dense
-                      hide-bottom-space
-                      label="ZIP code"
-                      inputmode="numeric"
-                      autocomplete="postal-code"
-                      :error="!!errors.postalCode"
-                      :error-message="errors.postalCode"
-                    />
-                  </div>
+                  <PlaceFields v-model="form" :errors="errors" own />
                   <q-input
                     v-model="form.phone"
                     outlined
@@ -617,13 +597,23 @@ async function submit() {
 
           <q-card flat bordered>
             <q-card-section>
+              <!-- One box, ticked to start in the US only: elsewhere a box ticked in advance is no consent (design §5.2). -->
               <fieldset class="ustp-fieldset">
                 <legend class="text-subtitle1">Staying in touch</legend>
-                <div class="text-caption text-grey-7">Optional. You can withdraw either at any time.</div>
-                <div class="ustp-form">
-                  <div class="ustp-options">
-                    <q-checkbox v-model="form.newsletter" label="Send me the USTP newsletter." />
-                    <q-checkbox v-model="form.announcements" label="Email me party announcements and calls to vote." />
+                <div class="register-touch">
+                  <p class="text-body2">
+                    <strong>Please stay in touch.</strong> The party is only as strong as the members it can reach. The
+                    newsletter and announcements keep you up to date with its work, and calls to vote bring members out
+                    when every vote counts.
+                  </p>
+                  <q-checkbox
+                    v-model="form.keepInTouch"
+                    label="Email me the USTP newsletter, party announcements and calls to vote."
+                    @update:model-value="keepInTouchChosen = true"
+                  />
+                  <div class="text-caption text-grey-7">
+                    {{ staysInTouchByDefault(form.country) ? 'Ticked to start: untick it to opt out.' : 'Tick it to opt in.' }}
+                    You can change this on your Account page at any time.
                   </div>
                 </div>
               </fieldset>
@@ -655,6 +645,15 @@ async function submit() {
 </template>
 
 <style scoped>
+/* Staying in touch matters to the party, so its box stands out from the optional questions around it. */
+.register-touch {
+  margin-top: 12px;
+  border-left: 4px solid var(--q-primary);
+  padding-left: 12px;
+}
+.register-touch > p {
+  margin: 0 0 4px;
+}
 .register-steps {
   list-style: none;
   margin: 0;
