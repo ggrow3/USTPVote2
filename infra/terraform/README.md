@@ -301,11 +301,13 @@ sets email sign-in with a password or an email link, phone and anonymous sign-in
 factors with `adjacentIntervals: 5` and no SMS (design §4), and the authorized domains: `ustpvote2-<env>.web.app`,
 `ustpvote2-<env>.firebaseapp.com`, and `localhost` outside production. Per project, by hand:
 
-- **Password policy** (§4, NIST SP 800-63B-4): minimum length 15, up to 4096, no composition rules, enforced. The
-  provider cannot set it; with an Owner's credentials:
+- **Password policy** (§4): minimum length 12, up to 4096, no composition rules, enforced, existing passwords not
+  forced to change. It must not ask for more than the web app's `MIN_PASSWORD_LENGTH`, or sign-ups the form accepts
+  fail; when lowering the minimum, change it here before releasing the web app. The provider cannot set it; with an
+  Owner's credentials:
 
   ```bash
-  curl -X PATCH "https://identitytoolkit.googleapis.com/admin/v2/projects/ustpvote2-dev/config?updateMask=passwordPolicyConfig" -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "x-goog-user-project: ustpvote2-dev" -H "Content-Type: application/json" -d '{"passwordPolicyConfig":{"passwordPolicyEnforcementState":"ENFORCE","forceUpgradeOnSignin":false,"passwordPolicyVersions":[{"customStrengthOptions":{"minPasswordLength":15,"maxPasswordLength":4096}}]}}'
+  curl -X PATCH "https://identitytoolkit.googleapis.com/admin/v2/projects/ustpvote2-dev/config?updateMask=passwordPolicyConfig" -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "x-goog-user-project: ustpvote2-dev" -H "Content-Type: application/json" -d '{"passwordPolicyConfig":{"passwordPolicyEnforcementState":"ENFORCE","forceUpgradeOnSignin":false,"passwordPolicyVersions":[{"customStrengthOptions":{"minPasswordLength":12,"maxPasswordLength":4096}}]}}'
   ```
 
 - **Email-enumeration protection** (§4): the same answer for a wrong password and an unknown address. API-only:

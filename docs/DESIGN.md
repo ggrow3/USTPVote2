@@ -320,8 +320,14 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
   `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` would be made System Admin again on its next sign-in: take it off that list first. The
   first deletions came before this action, by hand on dev on 2026-11-02, for four accounts (seq 159–167, sealed in
   block 92); their leftover role assignment and an expired role request were deleted by hand later the same day.
-- **Passwords (NIST SP 800-63B-4).** Minimum 15 characters (the single-factor minimum, applied to everyone), at least 64
-  allowed, no composition rules, no forced rotation, breached-password screening, rate-limited attempts. Identity Platform
+- **Passwords (NIST SP 800-63B-4, but 12 characters).** Minimum 12 characters *(changed 2026-11-03 from NIST's
+  15-character single-factor minimum, §17)*, counted as Unicode code points, up to 128 in the browser (Identity
+  Platform allows 4096), any characters including spaces, no composition rules, no forced rotation, breached-password
+  screening, rate-limited attempts. The browser also refuses a password that, ignoring case, spaces, dots, dashes and
+  underscores, is the login's email address or its part before the `@`, the party's name, or one character repeated
+  (`passwordProblem` in `apps/web/src/password-policy.ts`; the whole password is compared, never a part of it, as NIST
+  asks). Password fields have a "Show password" button (`PasswordInput`). Existing passwords stay valid
+  (`forceUpgradeOnSignin` off). Identity Platform
   enforces length; the browser screens against breached passwords before creating the account (Q9): it sends only the
   first 5 hex digits of the password's SHA-1 to Have I Been Pwned's range API, with padded responses, and refuses any
   password found there. If that service is unreachable sign-up goes ahead, since Identity Platform never exposes the
@@ -4609,6 +4615,7 @@ every 15 seconds in place of Cloud Scheduler.
 |---|---|---|
 | §2 Firestore "namespaces" | Module boundaries in code; top-level registration collections, election data under each election | Firestore Native mode has no namespaces |
 | §2 worker as "Cloud Run Worker / Jobs" | Cloud Run service, HTTP-triggered | Per-minute Jobs would exceed the free tier |
+| §1.1 "NIST SP 800-63B-4 Email/Password" | NIST's rules except the length: 12 characters, not the 15 it sets for a password used alone (§4) | 15 was more than members expect and are asked for elsewhere (Google, Microsoft and Apple ask for 8). 12 is PCI DSS 4.0's minimum and above OWASP ASVS 5.0's 8; breached passwords are refused, guessing is rate-limited and bot-scored, and every admin role needs a second factor, for which NIST asks only 8 |
 | §4 sealer only | + KMS encryption of pool entries with per-election key versions destroyed after certification | Sealing does not protect the pool while it exists, nor backups |
 | §4 lifecycle | + `Cancelled`; scheduling is two-person; a cancelled election nobody voted in can be deleted | Need a terminal state for aborted elections; the contest rules matter as much as the roll; elections set up by mistake or for practice should not stay in every list, and the ledger keeps their record (§6.1) |
 | §5 two-person list | + scheduling, cancellation; officer position modifications only for ending a term and appointing to an office | Same reasoning. Role changes were two-person too until USTP chose one System Admin for them (§10.2), and defining or changing an office until USTP chose one Membership or Election Admin for it (§6.4) |
