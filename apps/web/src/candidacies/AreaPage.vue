@@ -5,6 +5,9 @@ import {
   areaSections,
   candidateName,
   contactDistricts,
+  countryName,
+  countryOf,
+  DEFAULT_COUNTRY,
   fillTemplate,
   personMarks,
   placeholderValues,
@@ -58,8 +61,14 @@ const error = ref<string | null>(null);
 const candidacies = ref<PublicCandidacy[] | null>(null);
 const candidaciesError = ref<string | null>(null);
 const today = localToday();
+/** A member living outside the United States has no US area: the country, to say so instead (design §5.12). */
+const abroad = computed(() => {
+  const member = session.me?.member;
+  return member && countryOf(member) !== DEFAULT_COUNTRY ? countryName(countryOf(member)) : null;
+});
 
 onMounted(async () => {
+  if (abroad.value) return;
   const listed = publicCandidacies().then(
     (list) => (candidacies.value = list),
     (e) => (candidaciesError.value = errorMessage(e)),
@@ -187,7 +196,12 @@ async function copy() {
         </div>
       </div>
 
-      <q-banner v-if="error" class="bg-orange-1 text-black" rounded>{{ error }}</q-banner>
+      <div v-if="abroad" class="text-grey-7">
+        Your membership record says you live in {{ abroad }}, so there are no US offices to list for you here. The
+        <router-link to="/candidates">Candidates page</router-link> lists every state’s candidates, and any US ZIP code’s.
+        If you have moved, change where you live on your <router-link to="/account">Account page</router-link>.
+      </div>
+      <q-banner v-else-if="error" class="bg-orange-1 text-black" rounded>{{ error }}</q-banner>
       <div v-else-if="!view" class="text-grey-7">Loading…</div>
       <template v-else>
         <div v-if="note">

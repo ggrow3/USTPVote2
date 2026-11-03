@@ -1,13 +1,23 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { ageOn, type ApplicationRecord, type ApplicationStatus } from 'ustp-domain';
+import { ageOn, placeText, type ApplicationRecord, type ApplicationStatus } from 'ustp-domain';
 import { askReason, attempt } from '../dialogs.js';
 import { session } from '../session.js';
 import { applications, decideApplication } from './api.js';
-import { answerText, memberClassText } from './member-text.js';
+import { answerText, localityText, memberClassText } from './member-text.js';
 
 const status = ref<ApplicationStatus>('pending');
 const rows = ref<ApplicationRecord[]>([]);
+
+/** Where they live, their phone and their age, each only if given: an applicant outside the US may give none of the first. */
+const contactLine = (a: ApplicationRecord) =>
+  [
+    localityText(a),
+    a.contact?.phone,
+    a.dateOfBirth ? `born ${a.dateOfBirth} (age ${ageOn(a.dateOfBirth, new Date())})` : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
 const loading = ref(false);
 /** An empty list only means "none" once a load has succeeded. */
 const listState = ref<'loading' | 'ready' | 'failed'>('loading');
@@ -24,7 +34,7 @@ async function load() {
 async function decide(app: ApplicationRecord, decision: 'approve' | 'reject') {
   const reason = await askReason(
     decision === 'approve' ? 'Approve application' : 'Reject application',
-    `${app.legalName} (${app.state}). A written reason is required and is recorded in the audit ledger` +
+    `${app.legalName} (${placeText(app)}). A written reason is required and is recorded in the audit ledger` +
       (decision === 'reject' ? '; the applicant sees it.' : '.'),
   );
   if (reason === null) return;
@@ -69,12 +79,9 @@ onMounted(load);
         <q-item-section>
           <q-item-label>
             <router-link :to="`/admin/members/${a.accountId}`">{{ a.legalName }}</router-link
-            ><span v-if="a.preferredName"> ({{ a.preferredName }})</span> · {{ a.state }}
+            ><span v-if="a.preferredName"> ({{ a.preferredName }})</span> · {{ placeText(a) }}
           </q-item-label>
-          <q-item-label v-if="a.contact" caption>
-            {{ a.contact.city }} {{ a.contact.postalCode }}<span v-if="a.contact.phone"> · {{ a.contact.phone }}</span>
-            <span v-if="a.dateOfBirth"> · born {{ a.dateOfBirth }} (age {{ ageOn(a.dateOfBirth, new Date()) }})</span>
-          </q-item-label>
+          <q-item-label v-if="a.contact && contactLine(a)" caption>{{ contactLine(a) }}</q-item-label>
           <q-item-label v-if="typeof a.usVoteEligible === 'boolean'" caption>
             {{ memberClassText(a.usVoteEligible) }} · agrees with the Core Ideals: {{ answerText(a.agreesWithCoreIdeals) }}
           </q-item-label>

@@ -19,6 +19,7 @@ import {
   packageContestRecords,
   packageProposals,
   packageRecords,
+  placeText,
   planQuestion,
   planQuestionOrder,
   PROBLEM_TYPES,
@@ -432,7 +433,7 @@ export class ElectionsService {
     const entries = snapshot.accountIds.map((accountId, i) => ({
       accountId,
       legalName: members[i]?.legalName ?? '(no member record)',
-      state: members[i]?.state ?? '',
+      state: members[i] ? placeText(members[i]!) : '',
     }));
     return { snapshot: withoutList(snapshot), entries };
   }

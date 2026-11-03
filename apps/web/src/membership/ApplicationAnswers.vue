@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { ageOn, type ApplicationRecord } from 'ustp-domain';
-import { answerText, consentText, memberClassText, stateName } from './member-text.js';
+import { answerText, consentText, memberClassText, placeFacts } from './member-text.js';
 
 /**
  * Every answer on one application, as the applicant gave it, grouped and worded as on the Register page (design §5.2),
@@ -28,9 +28,7 @@ const groups = computed(() => {
     {
       title: 'Where they live and how to reach them',
       facts: [
-        ['State or territory', stateName(a.state)],
-        ['City', a.contact?.city ?? NOT_ANSWERED],
-        ['ZIP code', a.contact?.postalCode ?? NOT_ANSWERED],
+        ...placeFacts(a).map((fact) => [fact.label, fact.value ?? NOT_ANSWERED]),
         ['Phone', a.contact?.phone ?? NOT_ANSWERED],
       ],
     },

@@ -117,6 +117,12 @@ describe('a member’s own area', () => {
     expect((await area()).status).toBe(401);
     expect((await area(await api.member('nobody@example.test'))).status).toBe(404);
   });
+
+  it('is none for a member outside the United States, whose page lists every state instead', async () => {
+    await api.firebase.db.collection('members').doc(ada.accountId).update({ country: 'CA', state: null, region: 'Ontario' });
+    expect(await area(ada)).toMatchObject({ status: 404, body: { detail: expect.stringMatching(/in Canada, so it has no US area/) } });
+    expect((await api.call('GET', '/v1/candidacies/area/contacts', ada)).status).toBe(404);
+  });
 });
 
 describe('declaring', () => {
