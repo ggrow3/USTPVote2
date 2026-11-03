@@ -16,10 +16,9 @@ import {
   type User,
 } from 'firebase/auth';
 import type { SignInProvider } from 'ustp-domain';
+import { passwordProblem } from './password-policy.js';
 
-/** NIST SP 800-63B-4 single-factor minimum (design §4); applied to every account. */
-export const MIN_PASSWORD_LENGTH = 15;
-export const MAX_PASSWORD_LENGTH = 128;
+export { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, PASSWORD_HINT, passwordProblem } from './password-policy.js';
 
 export type FederatedProvider = Exclude<SignInProvider, 'password'>;
 
@@ -52,13 +51,6 @@ export function reauthenticate(user: User, method: { provider: FederatedProvider
     : reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email ?? '', method.password));
 }
 
-/** Returns a problem with the password, or null if it meets the policy. */
-export function passwordProblem(password: string): string | null {
-  if (password.length < MIN_PASSWORD_LENGTH) return `Use at least ${MIN_PASSWORD_LENGTH} characters (a passphrase works well).`;
-  if (password.length > MAX_PASSWORD_LENGTH) return `Use at most ${MAX_PASSWORD_LENGTH} characters.`;
-  return null;
-}
-
 /**
  * How often the password appears in known breaches (design §4, Q9), from Have I Been Pwned's k-anonymity range API:
  * only the first 5 hex digits of its SHA-1 leave the browser, and padded responses hide which range was of interest.
@@ -86,7 +78,7 @@ export class PasswordRejected extends Error {}
 
 /** Creates an email/password login and sends the verification email, whose link leads back to registering. */
 export async function signUpWithPassword(auth: Auth, email: string, password: string) {
-  const problem = passwordProblem(password);
+  const problem = passwordProblem(password, email);
   if (problem) throw new PasswordRejected(problem);
   const breaches = await breachCount(password);
   if (breaches) {

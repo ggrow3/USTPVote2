@@ -16,6 +16,7 @@ import {
   type FederatedProvider,
 } from '../sign-in.js';
 import { useSignInFlow } from '../sign-in-flow.js';
+import PasswordInput from './PasswordInput.vue';
 import TwoStepCodeCard from './TwoStepCodeCard.vue';
 
 /**
@@ -121,10 +122,9 @@ function submitEmail() {
             @submit.prevent="submitEmail"
           >
             <q-input v-model="email" type="email" label="Email" outlined dense autocomplete="email" />
-            <q-input
+            <PasswordInput
               v-if="mode === 'signin'"
               v-model="password"
-              type="password"
               label="Password"
               outlined
               dense

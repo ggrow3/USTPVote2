@@ -15,12 +15,13 @@ import {
 import { focusElement, focusFirstInvalid, focusSoon, usePageTitle } from '../a11y.js';
 import { api, ApiError, errorMessage } from '../api.js';
 import PageShell from '../components/PageShell.vue';
+import PasswordInput from '../components/PasswordInput.vue';
 import TwoStepCodeCard from '../components/TwoStepCodeCard.vue';
 import { auth } from '../firebase.js';
 import { apiFieldErrors, STATES, validate, type FieldErrors } from '../forms.js';
 import { refreshMe, refreshUser, secondFactorMissing, session } from '../session.js';
 import {
-  MIN_PASSWORD_LENGTH,
+  PASSWORD_HINT,
   PasswordRejected,
   passwordProblem,
   PROVIDER_LABELS,
@@ -164,7 +165,7 @@ watch(
   (password) => {
     if (!loginErrors.value.password) return;
     const { password: _, ...rest } = loginErrors.value;
-    const problem = passwordProblem(password);
+    const problem = passwordProblem(password, login.email);
     loginErrors.value = problem ? { ...rest, password: problem } : rest;
   },
 );
@@ -176,7 +177,7 @@ function withProvider(p: FederatedProvider) {
 async function createLogin() {
   const problems: FieldErrors = {};
   if (!login.email.trim()) problems.email = 'Enter your email address.';
-  const problem = passwordProblem(login.password);
+  const problem = passwordProblem(login.password, login.email);
   if (problem) problems.password = problem;
   loginErrors.value = problems;
   if (Object.keys(problems).length) return focusFirstInvalid();
@@ -360,15 +361,14 @@ async function submit() {
                 :error="!!loginErrors.email"
                 :error-message="loginErrors.email"
               />
-              <q-input
+              <PasswordInput
                 v-model="login.password"
-                type="password"
                 label="Password"
                 outlined
                 dense
                 autocomplete="new-password"
                 hide-bottom-space
-                :hint="`At least ${MIN_PASSWORD_LENGTH} characters. No other rules.`"
+                :hint="PASSWORD_HINT"
                 :error="!!loginErrors.password"
                 :error-message="loginErrors.password"
               />
