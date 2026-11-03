@@ -122,15 +122,17 @@ export class ElectionReader {
     return !standing.empty;
   }
 
-  /** Whether the account is on any election's roll or has voted in one, so is never deleted (design §4). */
+  /**
+   * Whether the account is on any election's roll (a snapshot an Auditor has not rejected: pending, approved or
+   * superseded) or has voted in one, so is never deleted (design §4).
+   */
   async inAnyElection(accountId: string, tx?: Transaction): Promise<boolean> {
     const db = this.firebase.db;
-    const query = db.collection(Collections.elections).select();
-    const elections = tx ? await tx.get(query) : await query.get();
-    const refs = elections.docs.flatMap((e) => [
-      e.ref.collection(ElectionCollections.rollEntries).doc(accountId),
-      e.ref.collection(ElectionCollections.participation).doc(accountId),
-    ]);
+    const rolls = db.collection(Collections.eligibilitySnapshots).where('accountIds', 'array-contains', accountId).select('status');
+    const elections = db.collection(Collections.elections).select();
+    const [onRolls, all] = await Promise.all([tx ? tx.get(rolls) : rolls.get(), tx ? tx.get(elections) : elections.get()]);
+    if (onRolls.docs.some((s) => (s.get('status') as RollSnapshotRecord['status']) !== 'rejected')) return true;
+    const refs = all.docs.map((e) => e.ref.collection(ElectionCollections.participation).doc(accountId));
     if (!refs.length) return false;
     const found = tx ? await tx.getAll(...refs) : await db.getAll(...refs);
     return found.some((s) => s.exists);

@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { checkCanApprove, checkCanChangeRole, checkCanDeleteAccount, checkCanRequest, type Actor, type PendingApproval } from './approvals.js';
+import { deleteTestVotersSchema } from './api.js';
+import {
+  checkCanApprove,
+  checkCanChangeRole,
+  checkCanDeleteAccount,
+  checkCanDeleteTestVoters,
+  checkCanRequest,
+  type Actor,
+  type PendingApproval,
+} from './approvals.js';
 import { electionDocPath, sequenceId } from './collections.js';
 import { checkElectionDeletable, electionTransitionAuthority, isTerminal } from './election-state.js';
 import { isUuidV7, uuidv7, uuidv7Timestamp } from './ids.js';
 import { checkStatusChange, mayApply, type MemberStatus } from './membership/member-status.js';
 import { checkRoleChange, conflictingRoles, MAX_ROLES_PER_ACCOUNT, ROLES } from './roles.js';
-import { ADMIN_PERSONAS } from './testing.js';
+import { ADMIN_PERSONAS, MAX_TEST_VOTERS } from './testing.js';
 
 describe('uuidv7', () => {
   it('produces RFC 9562 version 7 IDs that embed the timestamp', () => {
@@ -245,6 +254,33 @@ describe('deleting an account (one System Admin)', () => {
     expect(checkCanDeleteAccount(sa1, { ...listed, onDeletionList: false })).toMatchObject({ reason: /deletion list/ });
     expect(checkCanDeleteAccount(sa1, { ...listed, inElections: true })).toMatchObject({ reason: /election roll/ });
     expect(checkCanDeleteAccount({ ...sa1, authAgeSeconds: 3600 }, listed)).toMatchObject({ code: 'reauthRequired' });
+  });
+});
+
+describe('deleting test voters (one System Admin, testing mode)', () => {
+  const sa1: Actor = { accountId: 'sa1', roles: ['system_admin'], mfa: true, authAgeSeconds: 10 };
+
+  it('lets one System Admin delete them at once, whatever elections hold them', () => {
+    expect(checkCanDeleteTestVoters(sa1).ok).toBe(true);
+  });
+
+  it('refuses without MFA, to anyone but a System Admin, and after 15 minutes without signing in', () => {
+    expect(checkCanDeleteTestVoters({ ...sa1, mfa: false })).toMatchObject({ code: 'mfaRequired' });
+    expect(checkCanDeleteTestVoters({ ...sa1, roles: ['membership_admin', 'election_admin'] })).toMatchObject({ reason: /system_admin/ });
+    expect(checkCanDeleteTestVoters({ ...sa1, authAgeSeconds: 15 * 60 }).ok).toBe(true);
+    expect(checkCanDeleteTestVoters({ ...sa1, authAgeSeconds: 15 * 60 + 1 })).toMatchObject({ code: 'reauthRequired' });
+  });
+
+  it('takes 1 to 50 distinct account IDs', () => {
+    const id = (n: number) => `01a19f3e-411a-7701-be68-${String(n).padStart(12, '0')}`;
+    const ids = (count: number) => Array.from({ length: count }, (_, i) => id(i));
+    expect(deleteTestVotersSchema.safeParse({ voters: ids(1) }).success).toBe(true);
+    expect(deleteTestVotersSchema.safeParse({ voters: ids(MAX_TEST_VOTERS) }).success).toBe(true);
+    expect(deleteTestVotersSchema.safeParse({ voters: ids(MAX_TEST_VOTERS + 1) }).success).toBe(false);
+    expect(deleteTestVotersSchema.safeParse({ voters: [] }).success).toBe(false);
+    expect(deleteTestVotersSchema.safeParse({ voters: [id(1), id(1)] }).success).toBe(false);
+    expect(deleteTestVotersSchema.safeParse({ voters: ['Test Voter 1'] }).success).toBe(false);
+    expect(deleteTestVotersSchema.safeParse({ voters: ids(1), reason: 'x' }).success).toBe(false);
   });
 });
 

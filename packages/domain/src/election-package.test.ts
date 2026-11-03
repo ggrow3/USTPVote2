@@ -6,6 +6,7 @@ import {
   electionPackageFrom,
   electionPackageSchema,
   MAX_PACKAGE_DOCUMENTS,
+  packageContestRecords,
   packageProposals,
   packageRecords,
   packageWindow,
@@ -138,5 +139,36 @@ describe('election packages', () => {
 
   it('count a relative window from the import', () => {
     expect(packageWindow({ opensInSeconds: 0, votingSeconds: 60 }, now)).toEqual({ opensAt: '2026-10-20T12:00:00.000Z', closesAt: '2026-10-20T12:01:00.000Z' });
+  });
+
+  it('add their questions after a draft’s own, giving new IDs where the draft has them already', () => {
+    const pkg = electionPackageSchema.parse({
+      format: 'ustp.election',
+      v: 1,
+      title: 'Questions to add',
+      secrecy: 'secret',
+      window: { opensInSeconds: 60, votingSeconds: 60 },
+      contests: [
+        { id: 'chair', kind: 'irv', title: 'Chair', candidates: [{ id: 'ada', name: 'Ada' }, { id: 'ben', name: 'Ben' }] },
+        { id: 'plank', kind: 'proposal', title: 'Plank', passRule: MAJORITY, proposal: { body: 'Text.' } },
+      ],
+    });
+    let n = 0;
+    const { contests, candidates } = packageContestRecords(pkg, {
+      firstOrder: 4,
+      newId: () => `new${++n}`,
+      snapshotIds: [null, 'text1'],
+      taken: { contests: new Set(['chair']), candidates: new Set(['ben']) },
+    });
+    expect(contests.map((c) => [c.contestId, c.order])).toEqual([
+      ['new1', 4],
+      ['plank', 5],
+    ]);
+    expect(candidates.map((k) => [k.candidateId, k.contestId])).toEqual([
+      ['ada', 'new1'],
+      ['new2', 'new1'],
+    ]);
+    expect(contests[0]!.spec).toMatchObject({ kind: 'irv', id: 'new1', candidates: ['ada', 'new2'] });
+    expect(contests[1]!.proposalSnapshotId).toBe('text1');
   });
 });

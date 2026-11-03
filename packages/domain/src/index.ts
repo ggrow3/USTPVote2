@@ -162,7 +162,7 @@ export type {
   NamedAmendment,
   ProposalOutcome,
 } from './amendments.js';
-export { ACT_AS_HEADER, ADMIN_PERSONAS, MAX_TEST_VOTERS, PERSONA_KINDS, voterPersonaLabel } from './testing.js';
+export { ACT_AS_HEADER, ADMIN_PERSONAS, MAX_TEST_VOTERS, PERSONA_KINDS, TEST_VOTER_DELETION_REASON, voterPersonaLabel } from './testing.js';
 export { BUILD_COMMIT_HEADER, buildCommit } from './build.js';
 export type { HealthStatus } from './build.js';
 export type { PersonaKind, PersonaRecord, PersonaSummary } from './testing.js';
@@ -179,6 +179,7 @@ export {
   checkCanApprove,
   checkCanChangeRole,
   checkCanDeleteAccount,
+  checkCanDeleteTestVoters,
 } from './approvals.js';
 export type { TwoPersonAction, Actor, PendingApproval } from './approvals.js';
 export { Collections, ElectionCollections, NOTICE_RECIPIENTS, electionDocPath, sequenceId } from './collections.js';
@@ -245,10 +246,12 @@ export {
   contestRecord,
   electionPackageFrom,
   electionPackageSchema,
+  packageContestRecords,
   packageProposals,
   packageRecords,
   packageWindow,
 } from './election-package.js';
+export { SAMPLE_BALLOT, SAMPLE_BALLOT_FILE_NAME, SAMPLE_BALLOT_NOTE } from './sample-ballot.js';
 export type { ElectionPackage, ElectionPackageInput, PackageContest, PackageProposal } from './election-package.js';
 export {
   MAX_QUESTION_OPTIONS,

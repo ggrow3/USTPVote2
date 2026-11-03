@@ -307,9 +307,10 @@ describe('deleting an account (POST /v1/admin/accounts/{accountId}/delete)', () 
     await db().collection('member_status_history').doc('h2').set({ accountId: leaving.accountId, from: 'applicant', to: 'active' });
     await db().collection('applications').doc('a1').set({ accountId: leaving.accountId, status: 'approved' });
     await db().collection('members').doc(pat.accountId).set({ accountId: pat.accountId, status: 'active' });
-    // An election in which the account is on no roll and has not voted does not stop it.
+    // An election in which the account is on no roll and has not voted does not stop it, nor does a rejected roll.
     await db().collection('elections').doc('e1').set({ electionId: 'e1' });
-    await db().collection('elections').doc('e1').collection('roll_entries').doc(pat.accountId).set({ snapshotId: 's1' });
+    await db().collection('eligibility_snapshots').doc('s1').set({ electionId: 'e1', status: 'approved', accountIds: [pat.accountId] });
+    await db().collection('eligibility_snapshots').doc('s2').set({ electionId: 'e1', status: 'rejected', accountIds: [leaving.accountId] });
 
     expect((await remove(sa1, leaving.accountId)).status).toBe(204);
 
@@ -324,12 +325,16 @@ describe('deleting an account (POST /v1/admin/accounts/{accountId}/delete)', () 
   it('refuses accounts not on the list, on an election roll or that voted, your own, and anyone but a System Admin', async () => {
     const onRoll = await api.member('leaving-member@example.test');
     await db().collection('elections').doc('e1').set({ electionId: 'e1' });
-    await db().collection('elections').doc('e1').collection('roll_entries').doc(onRoll.accountId).set({ snapshotId: 's1' });
+    const roll = db().collection('eligibility_snapshots').doc('s1');
     await api.grant(pat.accountId, 'membership_admin', sa1);
 
     expect(await remove(sa1, pat.accountId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/deletion list/) } });
-    expect(await remove(sa1, onRoll.accountId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/election roll/) } });
-    await db().collection('elections').doc('e1').collection('roll_entries').doc(onRoll.accountId).delete();
+    // On a roll waiting for an Auditor, approved, or approved and later replaced.
+    for (const status of ['pending', 'approved', 'superseded']) {
+      await roll.set({ electionId: 'e1', status, accountIds: [pat.accountId, onRoll.accountId] });
+      expect(await remove(sa1, onRoll.accountId), status).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/election roll/) } });
+    }
+    await roll.delete();
     await db().collection('elections').doc('e1').collection('participation').doc(onRoll.accountId).set({ castAt: '2026-11-02T12:00:00.000Z' });
     expect(await remove(sa1, onRoll.accountId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/voted/) } });
     expect(await remove(sa1, sa1.accountId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/own account/) } });
