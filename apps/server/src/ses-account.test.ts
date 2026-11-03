@@ -6,9 +6,9 @@ import {
   GetEmailIdentityCommand,
 } from '@aws-sdk/client-sesv2';
 import { GetQueueAttributesCommand } from '@aws-sdk/client-sqs';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from './config.js';
-import { queueUrlOf, SesAccountReader } from './notifications/ses-account.js';
+import { IdentityPlatformReader, queueUrlOf, SesAccountReader } from './notifications/ses-account.js';
 
 const QUEUE = 'https://sqs.us-east-1.amazonaws.com/123456789012/ustp-mail-events-dev';
 
@@ -126,5 +126,31 @@ describe('reading how SES is set up', () => {
     expect(SesAccountReader.fromConfig(loadConfig(ses))).toBeInstanceOf(SesAccountReader);
     expect(queueUrlOf('arn:aws:sqs:eu-west-1:123456789012:q-dlq')).toBe('https://sqs.eu-west-1.amazonaws.com/123456789012/q-dlq');
     expect(queueUrlOf('nonsense')).toBeNull();
+  });
+});
+
+describe('reading how Identity Platform sends its email', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('reads the method, host and sender, with the worker’s own token, never the password', async () => {
+    const fetched: { url: string; auth: string | null }[] = [];
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (url, init) => {
+      fetched.push({ url: String(url), auth: new Headers(init?.headers).get('authorization') });
+      const smtp = { host: 'email-smtp.us-east-1.amazonaws.com', senderEmail: 'noreply@dev.example.org', password: 'secret', port: 587 };
+      return new Response(JSON.stringify({ notification: { sendEmail: { method: 'CUSTOM_SMTP', smtp } } }), { status: 200 });
+    });
+    const reader = new IdentityPlatformReader('ustpvote2-dev', async () => 'tok');
+    const email = await reader.email();
+    expect(email).toEqual({ method: 'CUSTOM_SMTP', host: 'email-smtp.us-east-1.amazonaws.com', senderEmail: 'noreply@dev.example.org' });
+    expect(JSON.stringify(email)).not.toContain('secret');
+    expect(fetched).toEqual([{ url: 'https://identitytoolkit.googleapis.com/admin/v2/projects/ustpvote2-dev/config', auth: 'Bearer tok' }]);
+  });
+
+  it('reports a refusal by name, and Google’s sender where none is set', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(new Response('{}', { status: 403 })).mockResolvedValueOnce(new Response('{}', { status: 200 }));
+    const reader = new IdentityPlatformReader('p', async () => 'tok');
+    expect(await reader.email()).toEqual({ unread: 'PermissionDenied' });
+    expect(await reader.email()).toEqual({ method: 'DEFAULT', host: null, senderEmail: null });
+    expect(IdentityPlatformReader.fromConfig(loadConfig({}))).toBeNull();
   });
 });

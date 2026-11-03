@@ -300,15 +300,16 @@ describe('delivery reports', () => {
 
   it('record mail Identity Platform sent, as the account its address belongs to', async () => {
     const at = new Date().toISOString();
-    const report = (eventType: string, messageId: string, to: string, detail?: Record<string, unknown>) =>
-      addEmulatorMailEvent(db(), sesEventBody({ eventType, messageId, to, sentAt: at, at, tags: {}, detail }));
-    await report('Delivery', 'idp-1', voters[1]!.email.toUpperCase());
+    const report = (eventType: string, messageId: string, to: string, detail?: Record<string, unknown>, subject?: string) =>
+      addEmulatorMailEvent(db(), sesEventBody({ eventType, messageId, to, sentAt: at, at, tags: {}, detail, subject }));
+    await report('Delivery', 'idp-1', voters[1]!.email.toUpperCase(), undefined, 'Sign in to USTP Vote requested at 10:04 AM');
     await report('Bounce', 'idp-2', 'stranger@example.test', { bounce: { bounceType: 'Permanent', bounceSubType: 'NoEmail' } });
     expect((await worker.tick()).body).toMatchObject({ mailEventsRecorded: 2 });
 
     const message = async (id: string) => (await db().collection('mail_messages').doc(id).get()).data();
-    expect(await message('idp-1')).toMatchObject({ sender: 'identity_platform', kind: 'account_email', accountId: voters[1]!.accountId, status: 'delivered' });
-    expect(await message('idp-2')).toMatchObject({ sender: 'identity_platform', accountId: null, status: 'bounced' });
+    expect(await message('idp-1')).toMatchObject({ sender: 'identity_platform', kind: 'sign_in_link', accountId: voters[1]!.accountId, status: 'delivered' });
+    expect(await message('idp-2')).toMatchObject({ sender: 'identity_platform', kind: 'account_email', accountId: null, status: 'bounced' });
+    expect(JSON.stringify(await message('idp-1'))).not.toContain('Sign in to');
     expect(await suppression('stranger@example.test')).toMatchObject({ reason: 'bounced', accountId: null, messageId: 'idp-2' });
     expect(JSON.stringify(await message('idp-1'))).not.toContain('@');
   });

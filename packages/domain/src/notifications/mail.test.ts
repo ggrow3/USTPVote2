@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyMailEvent,
+  identityMailKind,
   identityMailRecord,
   isNoticeMail,
   mailAddressKey,
@@ -28,6 +29,7 @@ const event = (type: MailEvent['type'], minutes: number, over: Partial<MailEvent
   ref: 'e1_voting_open',
   configurationSet: 'ustp-mail-dev',
   destination: 'ada@example.org',
+  subject: null,
   bounce: null,
   delay: null,
   ...over,
@@ -45,6 +47,17 @@ describe('the record of a message sent', () => {
   it('of mail Identity Platform sent is made from its first report', () => {
     const record = identityMailRecord(event('send', 0, { kind: null, ref: null }), 'a7');
     expect(record).toMatchObject({ messageId: 'm1', accountId: 'a7', kind: 'account_email', sender: 'identity_platform', status: 'sent', sentAt: SENT });
+    expect(identityMailRecord(event('send', 0, { kind: null, subject: 'Sign in to USTP Vote requested at 10:04' }), null).kind).toBe('sign_in_link');
+  });
+
+  it('tells Identity Platform’s emails apart by their subjects, without keeping them', () => {
+    expect(identityMailKind('Sign in to USTP Vote requested at November 3, 2026')).toBe('sign_in_link');
+    expect(identityMailKind('Verify your email for USTP Vote')).toBe('address_verification');
+    expect(identityMailKind('Reset your password for USTP Vote')).toBe('password_reset');
+    expect(identityMailKind('Your sign-in email was changed for USTP Vote')).toBe('account_email');
+    expect(identityMailKind("You've added 2 step verification to your USTP Vote account")).toBe('account_email');
+    expect(identityMailKind(null)).toBe('account_email');
+    expect(Object.keys(identityMailRecord(event('send', 0, { subject: 'Verify your email' }), null))).not.toContain('subject');
   });
 });
 

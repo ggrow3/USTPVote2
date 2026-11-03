@@ -149,6 +149,7 @@ export function sesMailEvent(body: string): MailEvent | null {
       ref: tag(SES_REF_TAG),
       configurationSet: tag('ses:configuration-set'),
       destination,
+      subject: typeof mail.commonHeaders?.subject === 'string' ? mail.commonHeaders.subject : null,
       bounce: type === 'bounce' ? { type: BOUNCE_TYPES[String(detail.bounceType)] ?? 'undetermined', subType: String(detail.bounceSubType ?? 'Undetermined') } : null,
       delay: type === 'delay' ? { type: String(detail.delayType ?? 'Undetermined'), until: typeof detail.expirationTime === 'string' ? detail.expirationTime : null } : null,
     };

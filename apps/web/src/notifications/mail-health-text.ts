@@ -16,6 +16,7 @@ export const MAIL_CHECK_LABELS: Readonly<Record<MailCheckId, string>> = {
   dkim: 'DKIM signature',
   mail_from: 'MAIL FROM domain',
   default_configuration_set: 'Default configuration set',
+  identity_platform: 'Sign-in email through SES',
   configuration_set: 'Configuration set',
   event_destination: 'Delivery reports published',
   queue: 'Delivery-report queue',

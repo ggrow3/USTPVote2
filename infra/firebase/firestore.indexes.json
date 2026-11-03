@@ -4,6 +4,14 @@
       "collectionGroup": "mail_messages",
       "queryScope": "COLLECTION",
       "fields": [
+        { "fieldPath": "sender", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "mail_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
         { "fieldPath": "accountId", "order": "ASCENDING" },
         { "fieldPath": "sentAt", "order": "DESCENDING" }
       ]

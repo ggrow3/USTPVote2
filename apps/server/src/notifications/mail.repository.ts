@@ -122,6 +122,18 @@ export class MailRepository {
     });
   }
 
+  /** When the last message Identity Platform sent through SES was sent, for the setup check (§10.12). */
+  async lastIdentityMail(): Promise<string | null> {
+    const snap = await this.firebase.db
+      .collection(Collections.mailMessages)
+      .where('sender', '==', 'identity_platform')
+      .orderBy('sentAt', 'desc')
+      .limit(1)
+      .select('sentAt')
+      .get();
+    return (snap.docs[0]?.get('sentAt') as string | undefined) ?? null;
+  }
+
   /** Messages by ID, those missing left out (the setup check's probe). */
   async messages(messageIds: readonly string[]): Promise<MailMessageRecord[]> {
     if (!messageIds.length) return [];

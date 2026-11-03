@@ -10,7 +10,10 @@ export const MAIL_KIND_LABELS: Readonly<Record<MailKind, string>> = {
   welcome: 'Welcome',
   probe: 'Setup check',
   member_test: 'Test email you asked for',
-  account_email: 'Sign-in or account email',
+  sign_in_link: 'Sign-in link',
+  address_verification: 'Confirm your email address',
+  password_reset: 'Password reset',
+  account_email: 'Account email',
 };
 
 /** What the mail service said became of it. */

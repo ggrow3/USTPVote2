@@ -7,6 +7,7 @@ import {
   dnsChecks,
   fromDomain,
   identityChecks,
+  identityPlatformCheck,
   overallStatus,
   probeCheck,
   queueChecks,
@@ -78,6 +79,19 @@ describe('the email setup check', () => {
     const pending = identityChecks({ ...good, verified: false, dkim: 'PENDING', mailFromStatus: 'FAILED', configurationSet: null }, input);
     expect(statuses(pending)).toEqual({ identity: 'fail', dkim: 'warn', mail_from: 'fail', default_configuration_set: 'warn' });
     expect(pending.map((c) => c.fix)).toEqual(['SES DNS records', 'SES DNS records', 'SES DNS records', 'SES account and Terraform']);
+  });
+
+  it('wants Identity Platform’s email through SES from the domain, never from the sandbox, and seen lately', () => {
+    const input = { region: 'us-east-1', domain: 'dev.example.org', productionAccess: true, now: NOW };
+    const smtp = { method: 'CUSTOM_SMTP', host: 'email-smtp.us-east-1.amazonaws.com', senderEmail: 'noreply@dev.example.org', lastSeen: minutesAgo(60) };
+    expect(identityPlatformCheck(smtp, input).status).toBe('ok');
+    expect(identityPlatformCheck({ ...smtp, method: 'DEFAULT' }, input)).toMatchObject({ status: 'warn', fix: 'SES sign-in mail' });
+    expect(identityPlatformCheck({ ...smtp, host: 'smtp.example.org' }, input).status).toBe('fail');
+    expect(identityPlatformCheck({ ...smtp, senderEmail: 'noreply@example.com' }, input).status).toBe('fail');
+    expect(identityPlatformCheck(smtp, { ...input, productionAccess: false })).toMatchObject({ status: 'fail', detail: expect.stringMatching(/sandbox/) });
+    expect(identityPlatformCheck({ ...smtp, lastSeen: minutesAgo(8 * 24 * 60) }, input).status).toBe('warn');
+    expect(identityPlatformCheck({ ...smtp, lastSeen: null }, input).status).toBe('warn');
+    expect(identityPlatformCheck({ unread: 'PermissionDenied' }, input).status).toBe('warn');
   });
 
   it('wants every delivery report published, and no open or click', () => {
