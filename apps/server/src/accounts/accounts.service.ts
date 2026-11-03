@@ -41,6 +41,7 @@ import { ElectionReader } from '../elections/election-reader.js';
 import { MemberDirectory } from '../membership/member-directory.js';
 import { Members } from '../membership/members.service.js';
 import { MailRecords } from '../notifications/mail-records.js';
+import { EmailVerifiedSync } from './email-verified-sync.js';
 
 /** A second sign-in used to link a login method must be this fresh. */
 const LINK_MAX_AUTH_AGE_SECONDS = 5 * 60;
@@ -70,6 +71,7 @@ export class AccountsService {
     private readonly elections: ElectionReader,
     private readonly mfaPolicy: MfaPolicyService,
     private readonly mailRecords: MailRecords,
+    private readonly emailSync: EmailVerifiedSync,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
@@ -301,6 +303,7 @@ export class AccountsService {
    */
   async create(ctx: RequestContext): Promise<{ readonly created: boolean; readonly accountId: string; readonly claimed?: true }> {
     const { principal } = ctx;
+    this.emailSync.startOnce();
     const db = this.firebase.db;
     const bootstrapEligible =
       principal.emailVerified && principal.email !== null && this.config.bootstrapSystemAdmins.includes(principal.email);
