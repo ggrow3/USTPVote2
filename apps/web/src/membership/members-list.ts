@@ -1,4 +1,4 @@
-import { csvCell, MEMBER_STATUSES, type MemberClass, type MemberRecord, type MemberStatus, type PositionsView } from 'ustp-domain';
+import { countryName, csvCell, MEMBER_STATUSES, type MemberClass, type MemberRecord, type MemberStatus, type PositionsView } from 'ustp-domain';
 import { answerText, CLASS_NOT_ASKED, classOf, MEMBER_CLASS_LABELS } from './class-text.js';
 
 /**
@@ -19,6 +19,19 @@ export const STATUS_LABELS: Readonly<Record<MemberStatus, string>> = {
 export interface HeldOffice {
   readonly title: string;
   readonly description: string;
+}
+
+/**
+ * Where a member lives, as the State filter keys it: the state's code, or `country:DE` for a member living abroad
+ * (design §5.13), so Germany is never taken for Delaware.
+ */
+export function placeKey(member: Pick<MemberRecord, 'state' | 'country'>): string {
+  return member.country ? `country:${member.country}` : member.state;
+}
+
+/** The State column's text: the state's code, or the country's name for a member living abroad. */
+export function placeCellText(member: Pick<MemberRecord, 'state' | 'country'>): string {
+  return member.country ? countryName(member.country) : member.state;
 }
 
 export interface MemberRow {
@@ -89,7 +102,7 @@ export function filterRows(rows: readonly MemberRow[], filter: MemberFilter): Me
   const wanted = filter.memberClass || null;
   return rows.filter(
     ({ member: m }) =>
-      (!filter.state || m.state === filter.state) &&
+      (!filter.state || placeKey(m) === filter.state) &&
       (!wanted || (classOf(m) ?? 'not_asked') === wanted) &&
       (!search || folded(m.legalName).includes(search) || (m.preferredName !== null && folded(m.preferredName).includes(search))),
   );
@@ -139,7 +152,7 @@ export function sortRows(rows: readonly MemberRow[], key: SortKey, descending: b
         return sign * compare(x, y);
       }
       case 'state':
-        return sign * compare(a.member.state, b.member.state);
+        return sign * compare(placeCellText(a.member), placeCellText(b.member));
       case 'class': {
         const [x, y] = [classCellText(a.member), classCellText(b.member)];
         if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
@@ -194,7 +207,7 @@ export function membersCsv(rows: readonly MemberRow[]): string {
         m.legalName,
         m.accountId,
         offices.map((o) => o.title).join('; '),
-        m.state,
+        placeCellText(m),
         c ? MEMBER_CLASS_LABELS[c] : CLASS_NOT_ASKED,
         answerText(m.agreesWithCoreIdeals),
         STATUS_LABELS[m.status],

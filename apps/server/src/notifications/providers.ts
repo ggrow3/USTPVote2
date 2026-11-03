@@ -7,17 +7,21 @@ import { NoticeSender } from './notice-sender.js';
 import { NoticeRepository } from './notice.repository.js';
 import { NoticesService } from './notices.service.js';
 import { SesBounceQueue, SesTransport } from './ses.js';
+import { WelcomeEmails } from './welcome-emails.js';
+import { WelcomeSender } from './welcome-sender.js';
 
 /**
  * The notifications context (design §6.8). The api reads counts and starts resends; only the worker sends, so only it
- * gets the mail transport and its credentials. Elections use `NoticesService.forgetElection` when one is deleted.
+ * gets the mail transport and its credentials. Elections use `NoticesService.forgetElection` when one is deleted, and
+ * membership `WelcomeEmails` when a Membership Admin adds a member (§5.13).
  */
-export const NOTIFICATION_API_PROVIDERS: Provider[] = [NoticeRepository, NoticeSettingsService, NoticesService];
+export const NOTIFICATION_API_PROVIDERS: Provider[] = [NoticeRepository, NoticeSettingsService, NoticesService, WelcomeEmails];
 
 export const NOTIFICATION_WORKER_PROVIDERS: Provider[] = [
   NoticeRepository,
   NoticeSettingsService,
   NoticeSender,
+  WelcomeSender,
   {
     provide: MAIL_TRANSPORT,
     inject: [CONFIG, Firebase],

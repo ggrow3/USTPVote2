@@ -3,6 +3,7 @@ import { OK, refuse, type Check, type Outcome } from '../check.js';
 import type { LedgerEvent } from '../ledger-events.js';
 import { checkStatusChange, nextStatuses, type MemberStatus } from './member-status.js';
 import type { CommunicationConsents, MemberContact, MemberRecord, StatusHistoryRecord } from './records.js';
+import type { NewMember } from './member-import.js';
 import { normalizePhone, normalizePostalCode } from './registration.js';
 
 /**
@@ -19,10 +20,13 @@ export type MemberStatusChangedPayload = {
   readonly applicationId: string | null;
 };
 
-/** What a first status change sets on the member record: from an application, or for a test voter persona. */
+/**
+ * What a first status change sets on the member record: from an application, for a member a Membership Admin adds, or
+ * for a test voter persona.
+ */
 export type MemberProfile = Pick<
   MemberRecord,
-  'legalName' | 'preferredName' | 'state' | 'contact' | 'communications' | 'usVoteEligible' | 'agreesWithCoreIdeals' | 'bylawsVersion'
+  'legalName' | 'preferredName' | 'state' | 'country' | 'contact' | 'communications' | 'usVoteEligible' | 'agreesWithCoreIdeals' | 'bylawsVersion'
 >;
 
 export interface MemberStatusChange {
@@ -60,6 +64,8 @@ export function memberStatusTransition(change: MemberStatusChange): StatusTransi
     legalName: profile.legalName,
     preferredName: profile.preferredName,
     state: profile.state,
+    // Only a member living abroad has a country; an application (US-only) leaves it out.
+    ...(profile.country ? { country: profile.country } : {}),
     contact: profile.contact ?? null,
     communications: profile.communications ?? null,
     // Records from before the membership questions have no answers.
@@ -157,6 +163,7 @@ export const MEMBER_DETAIL_FIELDS = [
   'legalName',
   'preferredName',
   'state',
+  'country',
   'contact.city',
   'contact.postalCode',
   'contact.phone',
@@ -190,6 +197,7 @@ function detailValues(m: MemberRecord): Record<MemberDetailField, string | null>
     legalName: m.legalName,
     preferredName: m.preferredName,
     state: m.state,
+    country: m.country ?? null,
     'contact.city': m.contact?.city ?? null,
     'contact.postalCode': m.contact?.postalCode ?? null,
     'contact.phone': m.contact?.phone ?? null,
@@ -199,13 +207,21 @@ function detailValues(m: MemberRecord): Record<MemberDetailField, string | null>
 }
 
 /** Where the member lives and how to reach them, as stored: the same normalizing as the application's. */
-function addressDetails(input: Pick<MemberDetailsInput, 'preferredName' | 'state' | 'city' | 'postalCode' | 'phone'>) {
+function addressDetails(input: Pick<MemberDetailsInput, 'preferredName' | 'state' | 'country' | 'city' | 'postalCode' | 'phone'>) {
+  const abroad = !!input.country;
   const contact: MemberContact = {
     city: input.city,
-    postalCode: normalizePostalCode(input.postalCode),
+    postalCode: abroad ? input.postalCode.trim().toUpperCase() : normalizePostalCode(input.postalCode),
     phone: input.phone ? normalizePhone(input.phone) : null,
   };
-  return { preferredName: input.preferredName || null, state: input.state, contact };
+  return { preferredName: input.preferredName || null, state: input.state, country: input.country || null, contact };
+}
+
+/** A member in the US keeps no `country` at all, as on records made from an application. */
+function placed(member: MemberRecord): MemberRecord {
+  if (member.country) return member;
+  const { country: _, ...inUs } = member;
+  return inUs;
 }
 
 /** An opt-in keeps the time it was first given; withdrawing it clears that (design §5.2). */
@@ -227,7 +243,7 @@ export function updateOwnDetails(
     newsletter: consent(input.newsletter, current.communications?.newsletter, at),
     announcements: consent(input.announcements, current.communications?.announcements, at),
   };
-  return detailsTransition(current, { ...current, ...addressDetails(input), communications }, current.accountId, null);
+  return detailsTransition(current, placed({ ...current, ...addressDetails(input), communications }), current.accountId, null);
 }
 
 /**
@@ -250,7 +266,44 @@ export function correctMemberDetails(
   if (!current) return refuse('not_found', 'no such member');
   const { input, actor } = request;
   if (!input.reason.trim()) return refuse('conflict', 'a written reason is required');
-  return detailsTransition(current, { ...current, legalName: input.legalName, ...addressDetails(input) }, actor, input.reason);
+  return detailsTransition(current, placed({ ...current, legalName: input.legalName, ...addressDetails(input) }), actor, input.reason);
+}
+
+/**
+ * A Membership Admin adds someone as an Active member at once (design §5.13), with a written reason: like a test voter
+ * persona, a status change that skips the application, on the bylaws in force (`bylawsVersion`), which the member has
+ * not been shown. They answered neither membership question here: the US-vote answer is the admin's, if given, and
+ * the Core Ideals answer stays "Not asked". The admin gives no email opt-ins: those are the member's to give.
+ */
+export function memberAddition(args: {
+  readonly accountId: string;
+  readonly member: NewMember;
+  readonly actor: string;
+  readonly reason: string;
+  readonly bylawsVersion: string;
+  readonly at: string;
+}): StatusTransition {
+  const { member } = args;
+  return memberStatusTransition({
+    accountId: args.accountId,
+    current: null,
+    to: 'active',
+    actor: args.actor,
+    reason: args.reason,
+    applicationId: null,
+    profile: {
+      legalName: member.legalName,
+      preferredName: member.preferredName,
+      state: member.state,
+      country: member.country,
+      contact: member.contact,
+      communications: null,
+      usVoteEligible: member.usVoteEligible,
+      agreesWithCoreIdeals: null,
+      bylawsVersion: args.bylawsVersion,
+    },
+    at: args.at,
+  });
 }
 
 /**

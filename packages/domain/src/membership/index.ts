@@ -19,6 +19,7 @@ export {
   changeMemberStatus,
   adminStatusChanges,
   testVoterAdmission,
+  memberAddition,
   MEMBER_DETAIL_FIELDS,
   updateOwnDetails,
   checkMemberCorrectionRequest,
@@ -60,5 +61,38 @@ export type {
   RegistrationFormInput,
 } from './registration-form.js';
 export type * from './records.js';
+export { COUNTRY_CODES, US_STATES, countryCode, countryName, placeOf, usStateCode, usStateName } from './places.js';
+export {
+  MAX_MEMBER_IMPORT_ROWS,
+  MEMBER_IMPORT_COLUMNS,
+  MEMBER_IMPORT_HEADERS,
+  MEMBER_IMPORT_TEMPLATE,
+  newMemberTextSchema,
+  memberImportRowSchema,
+  addMemberSchema,
+  memberImportPreviewSchema,
+  memberImportSchema,
+  checkNewMember,
+  readMemberImport,
+  existingEmailReason,
+  planMemberImport,
+} from './member-import.js';
+export type {
+  MemberImportColumn,
+  NewMemberText,
+  MemberImportRow,
+  AddMemberInput,
+  MemberImportPreviewInput,
+  MemberImportInput,
+  NewMember,
+  NewMemberProblem,
+  MemberImportFile,
+  ExistingEmail,
+  PlannedMemberRow,
+  MemberImportPlan,
+  WelcomeDelivery,
+  MemberImportResult,
+  WelcomeAgain,
+} from './member-import.js';
 export { MEMBER_SEARCH_DEFAULT_LIMIT, MEMBER_SEARCH_MAX_LIMIT, foldName, matchMembers } from './search.js';
 export type { MemberMatch } from './search.js';

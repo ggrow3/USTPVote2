@@ -307,6 +307,7 @@ export { buildResultsBundle, resultsHash, resultsSigningInput, tieBreakOrders, m
 export type { ResultsBundle, ResultsRecord, ResultsSummary, ContestOutcome } from './results.js';
 export { checkResults } from './results-check.js';
 export { csvCell, resultsCsv, RESULTS_CSV_NOTICE } from './results-csv.js';
+export { readCsv } from './csv-read.js';
 export { comparedPercents, percent, resultsSynopsis, synopsisTally } from './results-synopsis.js';
 export type {
   CandidateLine,

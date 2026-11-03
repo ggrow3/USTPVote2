@@ -27,6 +27,7 @@ export const TRACKED_PAGES: readonly TrackedPage[] = [
   { id: 'vote', pattern: '/vote', label: 'Voting home' },
   { id: 'signin', pattern: '/signin', label: 'Sign in' },
   { id: 'register', pattern: '/register', label: 'Register' },
+  { id: 'set-password', pattern: '/set-password', label: 'Set your password' },
   { id: 'account', pattern: '/account', label: 'Account' },
   { id: 'guide', pattern: '/guide', label: 'Guide' },
   { id: 'courses', pattern: '/courses', label: 'Courses' },

@@ -154,6 +154,8 @@ export const Collections = {
   noticeReceipts: 'notice_receipts',
   /** `notice_tests/{testId}`: an Election Admin's test email to themselves, queued for the worker (design §6.8). */
   noticeTests: 'notice_tests',
+  /** `welcome_emails/{accountId}`: the welcome email to a member a Membership Admin added, queued for the worker (§5.13). */
+  welcomeEmails: 'welcome_emails',
   // testing mode (design §10.4)
   testingPersonas: 'testing_personas',
 } as const;

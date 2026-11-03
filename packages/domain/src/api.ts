@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { BYLAWS_CHECK_SCOPES } from './bylaws-check.js';
 import { SIGN_IN_PROVIDERS } from './identity.js';
 import { MEMBER_STATUSES } from './membership/member-status.js';
+import { COUNTRY_CODES } from './membership/places.js';
 import { checkApplicantAge, isCalendarDate, MINIMUM_MEMBER_AGE, normalizePhone, US_POSTAL_CODE } from './membership/registration.js';
 import { ROLES } from './roles.js';
 import { MAX_TEST_VOTERS } from './testing.js';
@@ -93,33 +94,52 @@ export const resignSchema = z.strictObject({ reason: optionalText(2000) });
 export type ResignInput = z.infer<typeof resignSchema>;
 
 /**
+ * Where a member lives, when it changes after joining (design §5.2, §5.13): a US state and ZIP code, or, for a member a
+ * Membership Admin recorded as living abroad, a country (never the US), any state they vote in, and a postal code.
+ */
+const livingAbroad = z.string().refine((c) => c !== 'US' && COUNTRY_CODES.includes(c), 'choose the country').optional();
+function checkPlace(input: { state: string; country?: string | undefined; postalCode: string }, ctx: z.RefinementCtx): void {
+  const issue = (path: string, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });
+  if (!input.country) {
+    if (!/^[A-Z]{2}$/.test(input.state)) issue('state', 'choose your state or territory (two-letter code)');
+    if (!US_POSTAL_CODE.test(input.postalCode.trim())) issue('postalCode', 'enter a 5-digit ZIP code');
+  } else {
+    if (input.state && !/^[A-Z]{2}$/.test(input.state)) issue('state', 'choose a state or territory, or none');
+    if (input.postalCode.trim() && !/^[A-Za-z0-9 -]{1,12}$/.test(input.postalCode.trim())) issue('postalCode', 'enter a postal code, or none');
+  }
+}
+const placeFields = { state: z.string().max(2), country: livingAbroad, postalCode: z.string().max(20) };
+
+/**
  * `POST /v1/me/details`: a member's own preferred name, where they live, phone and email opt-ins (design §5.2). The
  * legal name is not here: a Membership Admin corrects it.
  */
-export const memberDetailsSchema = z.strictObject({
-  preferredName: optionalText(200),
-  state,
-  city,
-  postalCode,
-  phone,
-  newsletter: z.boolean(),
-  announcements: z.boolean(),
-});
+export const memberDetailsSchema = z
+  .strictObject({
+    preferredName: optionalText(200),
+    ...placeFields,
+    city,
+    phone,
+    newsletter: z.boolean(),
+    announcements: z.boolean(),
+  })
+  .superRefine(checkPlace);
 export type MemberDetailsInput = z.infer<typeof memberDetailsSchema>;
 
 /**
  * `POST /v1/admin/members/{accountId}/details`: a Membership Admin corrects a member's names, state or contact
  * details, with a reason (design §5.2). Never the email opt-ins, which are the member's to give.
  */
-export const memberCorrectionSchema = z.strictObject({
-  legalName: z.string().trim().min(1, 'enter the legal name').max(200),
-  preferredName: optionalText(200),
-  state,
-  city,
-  postalCode,
-  phone,
-  reason,
-});
+export const memberCorrectionSchema = z
+  .strictObject({
+    legalName: z.string().trim().min(1, 'enter the legal name').max(200),
+    preferredName: optionalText(200),
+    ...placeFields,
+    city,
+    phone,
+    reason,
+  })
+  .superRefine(checkPlace);
 export type MemberCorrectionInput = z.infer<typeof memberCorrectionSchema>;
 
 

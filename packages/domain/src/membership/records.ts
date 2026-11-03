@@ -1,4 +1,5 @@
 import type { AccountPreferences } from '../daily.js';
+import type { WelcomeEmailRecord } from '../notifications/welcome.js';
 import type { MemberStatus } from './member-status.js';
 
 /** Document shapes of the membership context (design §5.1, §5.2, §11). */
@@ -24,8 +25,16 @@ export interface MemberRecord {
   readonly status: MemberStatus;
   readonly legalName: string;
   readonly preferredName: string | null;
-  /** Two-letter state code; the street address is never stored (design §5.2). */
+  /**
+   * Two-letter state code; the street address is never stored (design §5.2). Empty for a member living outside the US
+   * who gave no state (`country` is set).
+   */
   readonly state: string;
+  /**
+   * ISO 3166-1 alpha-2 code of the country a member lives in outside the US, as a Membership Admin may record it
+   * (design §5.13); absent or null for members in the US, and for everyone who applied, since the application is US-only.
+   */
+  readonly country?: string | null;
   /** Null for members who applied before contact details were collected. */
   readonly contact: MemberContact | null;
   readonly communications: CommunicationConsents | null;
@@ -106,4 +115,15 @@ export interface MemberDetail {
   readonly history: readonly StatusHistoryRecord[];
   /** The account's display choices, so a Membership Admin sees whether the daily quote and joke is on (design §4.1). */
   readonly preferences: AccountPreferences;
+  /**
+   * For a member a Membership Admin added (design §5.13): when, by whom, when they first signed in (null until then),
+   * and how their latest welcome email went where the deployment sends mail (null where it sends none). Null for
+   * everyone who registered themselves.
+   */
+  readonly added: {
+    readonly at: string;
+    readonly by: string;
+    readonly signedInAt: string | null;
+    readonly welcome: Pick<WelcomeEmailRecord, 'status' | 'requestedAt' | 'doneAt' | 'outcome'> | null;
+  } | null;
 }

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { useQuasar } from 'quasar';
 import { computed, onMounted, ref, watch } from 'vue';
-import { adminStatusChanges, type MemberRecord, type MemberStatus, type StatusHistoryRecord } from 'ustp-domain';
+import { adminStatusChanges, countryName, type MemberRecord, type MemberStatus, type StatusHistoryRecord } from 'ustp-domain';
 import { askReason, attempt } from '../dialogs.js';
 import { offices as fetchOffices } from '../offices/api.js';
 import { session } from '../session.js';
+import AddMembersCard from './AddMembersCard.vue';
 import { changeMemberStatus, memberHistory, members } from './api.js';
 import { stateName } from './member-text.js';
 import {
@@ -16,6 +17,8 @@ import {
   membersCsv,
   membersCsvFileName,
   noOfficeText,
+  placeCellText,
+  placeKey,
   sinceText,
   sortRows,
   STATUS_LABELS,
@@ -36,6 +39,8 @@ const all = ref<MemberRow[]>([]);
 /** An empty table only means "no members" once a load has succeeded. */
 const listState = ref<'loading' | 'ready' | 'failed'>('loading');
 const history = ref<{ member: MemberRecord; entries: StatusHistoryRecord[] } | null>(null);
+/** The form and CSV import for adding members (design §5.13) is open. */
+const adding = ref(false);
 
 /** Null once the field's clear button is used. */
 const search = ref<string | null>('');
@@ -66,8 +71,8 @@ async function load() {
 const activeCount = computed(() => all.value.filter((r) => r.member.status === 'active').length);
 const stateOptions = computed(() => [
   { label: 'All states', value: '' },
-  ...[...new Set(all.value.map((r) => r.member.state))]
-    .map((code) => ({ label: stateName(code), value: code }))
+  ...[...new Map(all.value.map((r) => [placeKey(r.member), r.member])).entries()]
+    .map(([key, m]) => ({ label: m.country ? countryName(m.country) : stateName(m.state), value: key }))
     .sort((a, b) => a.label.localeCompare(b.label)),
 ]);
 /** Search, state and class first: the pills count within them. */
@@ -192,10 +197,17 @@ onMounted(() => load());
           <template v-else-if="listState === 'loading'">Loading…</template>
         </div>
       </div>
-      <q-btn outline no-caps icon="file_download" class="members-outline" :disable="!exported.rows.length" @click="exportCsv">
-        <template v-if="exported.ticked">Export {{ exported.rows.length }} selected</template>
-        <template v-else>Export CSV<span class="sr-only">: {{ plural(exported.rows.length, 'member') }}</span></template>
-      </q-btn>
+      <div class="members-actions">
+        <q-btn v-if="!adding" outline no-caps icon="person_add" class="members-outline" label="Add members" @click="adding = true" />
+        <q-btn outline no-caps icon="file_download" class="members-outline" :disable="!exported.rows.length" @click="exportCsv">
+          <template v-if="exported.ticked">Export {{ exported.rows.length }} selected</template>
+          <template v-else>Export CSV<span class="sr-only">: {{ plural(exported.rows.length, 'member') }}</span></template>
+        </q-btn>
+      </div>
+    </q-card-section>
+
+    <q-card-section v-if="adding">
+      <AddMembersCard @added="load" @close="adding = false" />
     </q-card-section>
 
     <q-card-section class="members-toolbar">
@@ -281,7 +293,7 @@ onMounted(() => load());
             </div>
             <span v-if="!r.offices.length" class="members-muted">{{ noOfficeText(r.member.status) }}</span>
           </td>
-          <td><span class="members-code">{{ r.member.state }}</span></td>
+          <td><span class="members-code">{{ placeCellText(r.member) }}</span></td>
           <td>
             <span v-if="classCellText(r.member)">{{ classCellText(r.member) }}</span>
             <span v-else class="members-muted">Not asked</span>
@@ -460,6 +472,12 @@ onMounted(() => load());
 /* Neutral outlined buttons (Export CSV, Change status, the pager): Quasar's outline is the text colour itself. */
 .members-outline.q-btn--outline::before {
   border-color: var(--members-control);
+}
+
+.members-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .members-toolbar {

@@ -158,7 +158,7 @@ this structure one at a time, without changing routes, documents or the ledger.
 | Communications | §10.9 | `news_posts`, `press_kit`, `press_assets`, `share_posts`, `share_counts`, `calendar_items`, `suggestions`, `suggestion_limits`, `bots` |
 | Governance | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `anthropic_key`, `api_keys` |
 | Audit ledger | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` |
-| Notifications | §6.8 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests` |
+| Notifications | §6.8, §5.13 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests`, `welcome_emails` |
 
 **Layers.** Records stay plain data (Firestore stores them, JCS hashes them, the browser reads them), so an aggregate
 is its record types plus pure functions in `ustp-domain`:
@@ -283,6 +283,12 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
 - **First sign-in.** `POST /v1/accounts` creates `accounts/{accountId}` and `account_identities/{uid}` in one
   transaction (`create`, so a race cannot mint two accounts for one uid). In the web app a new login is made as the
   first step of registering (§5.2), not on the sign-in page.
+  *(Added)* A first sign-in whose address a Membership Admin added as a member (§5.13: an account with that
+  `primaryEmail` and `claimedAt: null`) gets that account instead, but only when the ID token says the address is
+  verified: the same transaction creates the identity, sets `claimedAt` and `emailVerified`, and ledgers
+  `identity.linked` with `claimed: true` (actor and subject the account), and the answer is 200 `{created: false,
+  accountId, claimed: true}`. With the address not verified it answers 403 and mints nothing, so the person confirms
+  the address and comes back to their membership.
 - **Portability.** To add a login method the member, while signed in, also signs in with the new method and the client
   sends both ID tokens; the API links the second uid to the same account if that sign-in is under 5 minutes old and the
   uid has no account of its own. The last login method cannot be unlinked. Linking and unlinking are ledgered. Losing
@@ -408,6 +414,7 @@ are not ledgered. There is one so far, `dailyQuote`:
 ```mermaid
 stateDiagram-v2
   [*] --> Applicant: application submitted
+  [*] --> Active: added (Membership Admin, §5.13)
   Applicant --> Active: approved (Membership Admin)
   Applicant --> Rejected: rejected + reason
   Active --> Lapsed: lapse rule (Q2)
@@ -423,7 +430,8 @@ stateDiagram-v2
 
 Every transition writes, in one transaction, the new status on `members/{accountId}`, an append-only
 `member_status_history` entry and a ledger entry. Admin-initiated transitions require a non-empty written reason
-(spec §9, due process). The allowed transitions are defined once in `ustp-domain`.
+(spec §9, due process). The allowed transitions are defined once in `ustp-domain`. A member a Membership Admin adds
+(§5.13) and a test voter persona (§10.4) start Active without an application, each recorded like any other change.
 
 ### 5.2 Applications, bylaws, address
 
@@ -543,7 +551,7 @@ Every transition writes, in one transaction, the new status on `members/{account
   filters with counts (Active, Lapsed, Suspended and Resigned always; Applicant and Rejected while someone has that
   status, since applications are decided on their own tab), sorting by any column (Class included, Not asked last),
   and 50 rows a page. Each row keeps the profile link, the copy-account-ID button, History and Change
-  status (§5.1). **Export CSV** builds the file in the browser from the list as filtered and sorted, or from the
+  status (§5.1). **Add members** opens the form and CSV import of §5.13. **Export CSV** builds the file in the browser from the list as filtered and sorted, or from the
   ticked rows if any: name, account ID, offices, state, class, the Core Ideals answer, status and member-since date
   (the reader's own date), never contact details or opt-ins; UTF-8 with a byte-order mark for Excel, and a cell a spreadsheet would read as a formula
   starts with `'`. The checkboxes only choose what to export: there are no bulk status changes. The api never sees an
@@ -1991,6 +1999,105 @@ records only, on the public Candidates page for the member's area or any ZIP cod
   (`civic_enabled`; infra README "Your area records"), or a key a System Admin adds under Admin › API keys, which
   comes first (§5.6).
 
+### 5.13 Members added by a Membership Admin *(added)*
+
+A Membership Admin can add someone as a member without an application: one at a time on a form, or a whole roster
+from a CSV file. The admin never sets or sees a password: the member sets their own the first time they come, after
+proving the email address is theirs. The owner's decisions (2026-11-03): added members are Active at once; a welcome
+email always goes out, by the site's mail where it sends mail and by Identity Platform's sign-in link where it does
+not; each needs an email address, a legal name, and a US state or, for someone living abroad, a country; an address
+that already has a login is skipped.
+
+- **Where.** The Members tab's **Add members** button opens a card with two tabs.
+  - *One member:* email, legal name, preferred name, where they live (a US state, or "Lives outside the United States"
+    and the country, with any state they vote in), city, ZIP or postal code, phone, whether they are eligible to vote
+    in US elections (Yes, No or Not asked) and a written reason. `POST /v1/admin/members`; a field that breaks the
+    rules is a 400 naming it, an address already on the site 409.
+  - *From a CSV file:* the browser reads the file (`readMemberImport` in `ustp-domain`; RFC 4180, as spreadsheets save
+    it). The first row names the columns, in any order, compared without case, spaces, `_` or `-`: `email`,
+    `legal_name` (or `name`), `preferred_name`, `state`, `country`, `city`, `zip` (or `postal code`), `phone` and
+    `us_vote_eligible` (yes or no); other columns are ignored and listed. A file without `email`, `legal_name`, and
+    `state` or `country` columns, without rows, or with more than 500 (`MAX_MEMBER_IMPORT_ROWS`) is refused whole,
+    saying why, and nothing is sent. "Download the template" gives the header row alone, so nothing in it can be
+    imported by mistake. The rows go to `POST /v1/admin/member-imports/preview`, which writes nothing and answers each
+    row as added or skipped with its reasons (`planMemberImport`): a field that breaks the rules (no or a bad email
+    address, no legal name, no state or country, an unknown state or country, a bad ZIP code or phone, a US-vote
+    answer other than yes or no), the same address as an earlier row, or an address already on the site. That is a
+    login without a membership ("they apply on the Register page": an existing login's address may never have been
+    verified, so attaching a membership to it could hand it to whoever made that login), a membership in any status,
+    or a member added before who has not signed in yet. The card shows the skipped rows with their reasons and the
+    rows to add, asks for one written reason, and `POST /v1/admin/member-imports` adds them.
+- **The rules** (`checkNewMember`, the same function in the browser and the api, so the form names a problem before
+  sending and the preview matches the import): the email is stored lowercase; names as on the application (§5.2); a
+  state by code or name; a country by its ISO 3166-1 alpha-2 code or English name, and a few common names (USA, UK…).
+  The United States as the country needs the state too; a territory with its own country code (Puerto Rico, Guam,
+  American Samoa, the Northern Mariana Islands, the US Virgin Islands) is that state; someone abroad may still give the
+  state they vote in. A ZIP code as on the application; abroad, a postal code of up to 12 letters, digits, spaces or
+  dashes. A phone as on the application.
+- **What adding does**, in transactions of 25 rows. The api plans again first, and each transaction reads the
+  addresses again, so one that signed up or was added since the preview is skipped with its reason rather than given a
+  second account; with no bylaws published it answers 409. For each member:
+  - `accounts/{accountId}` with a new UUIDv7, the address as `primaryEmail` (not verified), the preferred or legal name
+    as display name, `addedAt`, `addedBy` and `claimedAt: null`, and no login (`account_identities`);
+  - an Active member record (`memberAddition`): like a test voter persona's (§10.4), the one other first status change
+    that skips the application, ledgered as `member.status_changed` from none to `active` with the admin as actor and
+    their reason, and its history entry. It is on the bylaws version in force, which the member was not shown, so the
+    profile says "Bylaws in force when added". It has the US-vote answer if the admin gave one, the Core Ideals answer
+    "Not asked", and no email opt-ins, which are the member's own to give;
+  - where the deployment sends mail, the welcome email (below).
+
+  From then on they are members like any other: on the Members tab, on rolls approved later, and their details change
+  as §5.2 says. Election notices (§6.8) go only to verified addresses, so they reach an added member once they have
+  signed in.
+- **Setting a password.** `/set-password` ("Set your password", linked from the sign-in page and every welcome email):
+  the member enters their address and gets Identity Platform's emailed sign-in link (§4), which opens the page again
+  and signs them in. That proves the address, and `POST /v1/accounts` links the login to the added account (§4,
+  "First sign-in"). Then they choose a password under the sign-up rules (§4: 15 to 128 characters, refused if Have I
+  Been Pwned knows it), which Identity Platform sets (`updatePassword`) and which ends every other session of that
+  login. From then on they sign in with email and password, and may link other methods (§4). A member who uses Google
+  or Apple with the same address may simply sign in with it, since those providers verify addresses. The page also
+  serves anyone who has forgotten their password. Where two-step verification is required of members (§4), the page
+  then points them to setting up the authenticator app, as the site does for anyone; claiming needs no second factor,
+  since `POST /v1/accounts` answers without one.
+- **Why nobody can take an account by knowing an email address.** The api links an added account only to a sign-in
+  whose ID token says the address is verified (`email_verified`), which Identity Platform sets only when the person
+  opened a link sent to that address or a provider that checks addresses vouches for it. A sign-in that merely names
+  the address (a password sign-up not yet confirmed, or a provider that does not verify addresses) gets 403 and no
+  account of its own, so the membership stays waiting for whoever controls the mailbox; once they confirm the address,
+  the same `POST /v1/accounts` links it. The welcome email carries no sign-in link of ours, only the page's address.
+  An admin's typo hands the membership to whoever owns the mistyped address, as for any email; the profile shows
+  whether the member has signed in.
+- **The welcome email** goes out for each member added, whether or not the deployment sends mail:
+  - Where `MAIL_TRANSPORT` sends mail (`ses`, or the outbox with the emulators), the adding transaction queues
+    `welcome_emails/{accountId}` and the worker's tick sends it (`WelcomeSender`, up to 20 a tick) through the election
+    notices' transport, from the same address: subject "Welcome to the US Transhumanist Party: set your password", a
+    greeting by preferred or legal name, that a Membership Admin added them, a link "Set your password" to
+    `/set-password` and how it works, where to ask (the notice contact, §6.8), and that the party never asks for a
+    password by email (`welcomeMessage` in `ustp-domain`). It goes to the address the admin entered, which is not
+    verified: proving it is what the email leads to. Like a test email it is claimed in a transaction before it goes,
+    a claim never finished is failed as `interrupted`, and one for a member who has signed in meanwhile is not sent
+    (`signed_in`). It is not ledgered; the adding is.
+  - Where it sends none (`MAIL_TRANSPORT=off`, dev today), the api answers `welcome: identity_platform` and the admin's
+    browser asks Identity Platform to email each added address its sign-in link (`sendSignInLinkToEmail`: the email
+    link template, in Identity Platform's wording), which opens `/set-password`. The browser does not remember the
+    address, so the member types it when they open the link. The card counts the links sent, lists any Identity
+    Platform refused (its rate limits may stop a long file) and sends those again on request.
+  - **Again:** the profile of an added member who has not signed in says when they were added, that they have not
+    signed in, and how the welcome went, with "Send the welcome email again" (`POST
+    /v1/admin/members/{accountId}/welcome`): queued again where mail goes (409 while one is on its way), or the address
+    returned for the browser to ask Identity Platform; 409 once the member has signed in.
+- **Members abroad.** `members/{accountId}.country` (ISO 3166-1 alpha-2) records where a member added from abroad
+  lives, with `state` empty unless they gave one; members in the US have no `country`. The application stays US-only
+  (§5.2). The Members tab shows the country by name in the State column, its filter (never mixed up with a state of
+  the same code, as Germany and Delaware) and the CSV export; the profile and the Account page show it; and both the
+  member's and the Membership Admin's details forms have "Lives outside the United States" with a country picker,
+  the state then optional and the postal code free-form (`memberDetailsSchema`, `memberCorrectionSchema`).
+  `member.details_changed` names `country` when it changes.
+- **Separation of duties.** An admin cannot add themselves, since their own address has a login. Adding is one
+  Membership Admin's act, as approving an application is, so a Membership Admin could add an address they control and
+  hold a second membership; every addition is in the ledger with the admin as actor and their reason, for Auditors to
+  review.
+
 ## 6. Elections
 
 ### 6.1 Lifecycle
@@ -2923,6 +3030,8 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed`,
   `navigation.changed`, `home_quote.changed`, `hub.changed`, `analytics.changed`, `notice.sent`, `notice.resend_requested`, `notice.settings_changed`, `anthropic_key.changed`, `api_key.changed`, `position_term.appointed`, `registration_form.changed`, `team.changed`, `team.member_changed`, `forum.moderated`, `room.consent_changed`, `room.assistant_switched`, `room.settings_changed`, `room.door_changed`, `candidacy.changed`, `area_contact.changed`, `email_template.changed` (M5; Auditors only). The authoritative list is `LEDGER_EVENT_TYPES` in
   `ustp-domain`.
+- `identity.linked` with `claimed: true` records a member a Membership Admin added signing in for the first time
+  (§4, §5.13); their addition is a `member.status_changed` from none to `active` with the admin as actor.
 - `account.deleted` (Auditors only) records an account's deletion (§4): payload `{ email, uid, reason }`, actor the
   System Admin, subject the deleted `accountId`, written with an `identity.unlinked` for each login and a `role.revoked`
   for each active role by `POST /v1/admin/accounts/{accountId}/delete`. The first four, among seq 159–167 on dev, were
@@ -3124,7 +3233,7 @@ results page, the CLI and the tests pass it that entry.
 
 | Capability | Membership Admin | Election Admin | Auditor | System Admin |
 |---|:-:|:-:|:-:|:-:|
-| Triage applications and photos; view member profiles; change member status; correct member details; change the registration form's wording (§5.2) | ● | | | |
+| Triage applications and photos; add members, one or from a CSV file (§5.13); view member profiles; change member status; correct member details; change the registration form's wording (§5.2) | ● | | | |
 | Create, rename, archive and restore teams; name and remove their leads; change anything on any team (§5.7) | ● | | | |
 | Moderate the forum: remove and restore posts and comments, lock and pin threads, see and close reports (§5.9) | ● | | | |
 | Put a forum proposal on a draft election's ballot (§5.9) | | ● | | |
@@ -4039,12 +4148,12 @@ Physically, registration collections are top-level and election data lives under
 | Path | Key | Mutability | Notes |
 |---|---|---|---|
 | **registration** | | | |
-| `accounts/{accountId}` | UUIDv7 | mutable; deleted only as §4 says | display name, primary email, state; `preferences` (the daily quote and joke, §4.1) |
+| `accounts/{accountId}` | UUIDv7 | mutable; deleted only as §4 says | display name, primary email, state; `preferences` (the daily quote and joke, §4.1); for a member a Membership Admin added, `addedAt`, `addedBy` and `claimedAt` (null until their first sign-in, §5.13) |
 | `account_identities/{uid}` | Identity Platform uid | create/delete | → `accountId`, provider, linkedAt |
 | `account_factors/{accountId}/factors/{factorId}` | | mutable | mirror of MFA enrollment, no secrets |
 | `sign_in_methods/{method}` | provider ID | mutable | enabled flag (auth switches) |
 | `mfa_policy/current` | `current` | replaced whole, by one System Admin | membersRequired (off by default), version, updatedAt, updatedBy (§4) *(added)* |
-| `members/{accountId}` | accountId | mutable | current status, legal and preferred name, state/district, city + ZIP + phone, email consents, the two membership answers (`usVoteEligible`, giving the class, and `agreesWithCoreIdeals`), bylaws version, memberSince; details change only as §5.2 says |
+| `members/{accountId}` | accountId | mutable | current status, legal and preferred name, state/district, city + ZIP + phone, email consents, the two membership answers (`usVoteEligible`, giving the class, and `agreesWithCoreIdeals`), bylaws version, memberSince; `country` for a member added from abroad (§5.13); details change only as §5.2 says |
 | `member_status_history/{id}` | auto | append-only | from, to, reason, actor, ledger seq |
 | `applications/{applicationId}` | auto | status only | answers (incl. date of birth, attestations and the two membership questions, §5.2), bylaws version + hash, registration form version |
 | `registration_form/current` | `current` | replaced whole, by one Membership Admin | the registration form's wording: the page's heading, intro, both questions and their help, Core Ideals heading and list, bonus link, version, updatedAt, updatedBy (§5.2) *(added)* |
@@ -4096,6 +4205,7 @@ Physically, registration collections are top-level and election data lives under
 | `notice_settings/current` | — | saved whole, versioned | the System Admins' settings for the election emails: each on or off, reminder lead time, contact, subject and opening (§6.8) *(added)* |
 | `notice_outbox/{id}` | auto | create; deleted with its election | a message recorded instead of mailed: emulators, and rehearsals in testing mode (§6.8) *(added)* |
 | `notice_receipts/{receiptId}` | auto | create; deleted with its election | one per send of election email, to the roll or a test: election, kind, test or not, notice and round, delivery, who started it, when, people handled, accepted / failed / skipped, the mail service's message IDs; never an address or a body (§6.8) *(added)* |
+| `welcome_emails/{accountId}` | accountId | pending → sending → done; started over when asked again; deleted with the account | the latest welcome email to a member a Membership Admin added, where mail is sent: who asked, when, outcome code, provider message ID; never the address (§5.13) *(added)* |
 | `notice_tests/{testId}` | auto | pending → sending → done; deleted with its election | an Election Admin's test email to themselves: kind, who asked, the account it goes to (theirs), when, outcome code, receipt; never the address (§6.8) *(added)* |
 | **audit & admin** | | | |
 | `audit_events/{seq}` | zero-padded integer | append-only | ledger entries |
@@ -4150,7 +4260,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 |---|---|---|
 | `GET /healthz` · `GET /v1/health` | P | liveness: `/healthz` for startup probes; `/v1/health` from outside, since Cloud Run's front end reserves some paths ending in "z". `{status, tally, commit}`, never cached: `commit` is the release's (§15), null outside released images, and every response carries it as `X-Build-Commit` |
 | `GET /robots.txt` · `GET /sitemap.xml` | P | for search engines, at the site's root through Hosting (§15): robots.txt opens the site only in prod at its own address; the sitemap lists the public pages, each published bylaws version and each certified result (rehearsals left out). Cached an hour by crawlers, not by Hosting |
-| `GET /me` · `POST /accounts` | M | current account, with where its sign-in needs a second factor; first-sign-in account creation. Both answer without a second factor where one is required (§4) |
+| `GET /me` · `POST /accounts` | M | current account, with where its sign-in needs a second factor; first-sign-in account creation, or the account a Membership Admin added for a verified address (§4, §5.13). Both answer without a second factor where one is required (§4) |
 | `POST /me/identities` · `DELETE /me/identities/{uid}` | M | link / unlink a login method |
 | `PUT /me/preferences` | M | own display choices: the daily quote and joke on or off (§4.1); not ledgered |
 | `GET /bylaws/current` | P | current bylaws version and hash |
@@ -4198,6 +4308,9 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/members` · `GET /admin/members/{accountId}/history` | Membership Admin | member list (paged), status history |
 | `GET /admin/members/{accountId}` · `POST /admin/members/{accountId}/details` | Membership Admin | member profile (record, applications with answers, history, whether the daily quote and joke is on); correct names, state, contact with a reason (§5.2, §4.1) |
 | `POST /admin/members/{accountId}/status` | Membership Admin | status changes |
+| `POST /admin/members` | Membership Admin | add one member, Active at once, with a reason; 400 naming each bad field, 409 for an address already on the site (§5.13) |
+| `POST /admin/member-imports/preview` · `POST /admin/member-imports` | Membership Admin | a CSV file's rows (at most 500) as read in the browser: what importing them would do, row by row, writing nothing; import them with one reason (§5.13) |
+| `POST /admin/members/{accountId}/welcome` | Membership Admin | send an added member's welcome email again before they sign in, or get the address for the browser to ask Identity Platform (§5.13) |
 | `GET /admin/photos` · `GET /admin/photos/{id}/image` · `POST /admin/photos/{id}/decision` | Membership Admin | photo review |
 | `GET /admin/elections` · `GET /admin/elections/{id}` (detail, definition hash, problems) · `GET /admin/proposals` | Election Admin, Auditor | read election setup |
 | `POST /admin/elections` · `PATCH /admin/elections/{id}` · `POST\|PUT\|DELETE …/contests[/{cid}]` · `POST\|DELETE …/contests/{cid}/candidates[/{kid}]` · `PUT …/questions/{cid}` · `PUT …/question-order` · `POST /admin/proposals` | Election Admin | edit drafts; a candidate's optional `accountId` must be an Active member's (§6.5); the ballot builder saves a question whole, under its own IDs, and the order of the questions (§6.5) |
@@ -4278,7 +4391,7 @@ Errors use RFC 9457 problem details. Request bodies are validated against schema
 
 | Endpoint | Trigger | Work |
 |---|---|---|
-| `POST /tasks/tick` | Cloud Scheduler, every minute | Prepare pool keys, open/close elections on time, seal ballots (M3), tally sealed elections into signed provisional results (M4a), destroy pool keys (M4b), send election notices for at most 20 seconds and the test emails Election Admins asked for, keeping a receipt of each send, and record their bounces from SQS (§6.8), delete suggestions a year old and the suggestion limits of days gone (§10.9), delete the members' room's messages (with their votes and reactions), done action items, finished questions and call handshakes past their time, give up on questions waiting 10 minutes and drop pages gone quiet from the call (§5.10), then seal ledger blocks, sign approved rolls and anchor (M2c). Returns what it did |
+| `POST /tasks/tick` | Cloud Scheduler, every minute | Prepare pool keys, open/close elections on time, seal ballots (M3), tally sealed elections into signed provisional results (M4a), destroy pool keys (M4b), send election notices for at most 20 seconds and the test emails Election Admins asked for, keeping a receipt of each send, and record their bounces from SQS (§6.8), send the welcome emails of members a Membership Admin added (§5.13), delete suggestions a year old and the suggestion limits of days gone (§10.9), delete the members' room's messages (with their votes and reactions), done action items, finished questions and call handshakes past their time, give up on questions waiting 10 minutes and drop pages gone quiet from the call (§5.10), then seal ledger blocks, sign approved rolls and anchor (M2c). Returns what it did |
 | `POST /tasks/bylaws-checks` | Cloud Scheduler, every minute (its own job, 300 s deadline) | Run up to three queued bylaws checks with Claude and fail any stuck for 10 minutes (§5.4). Returns `{checked, failed}`; a failed check is recorded on the check, not as a failed task |
 | `POST /tasks/consistency-checks` | Cloud Scheduler, every minute (its own job, 300 s deadline) | Run up to three queued platform consistency checks with Claude and fail any stuck for 10 minutes (§5.5). Returns `{checked, failed}`, as the bylaws checks do |
 | `POST /tasks/election-checks` | Cloud Scheduler, every minute (its own job, 300 s deadline) | Run up to three queued election setup checks with Claude and fail any stuck for 10 minutes (§6.9). Returns `{checked, failed}`, as the others do |

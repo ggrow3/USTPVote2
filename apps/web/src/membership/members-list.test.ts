@@ -9,6 +9,8 @@ import {
   membersCsv,
   membersCsvFileName,
   noOfficeText,
+  placeCellText,
+  placeKey,
   sinceText,
   sortRows,
   statusCounts,
@@ -215,5 +217,25 @@ describe('membersCsv', () => {
 
   it('is named by the date', () => {
     expect(membersCsvFileName(new Date(2026, 9, 6))).toBe('ustp-members-2026-10-06.csv');
+  });
+});
+
+describe('members living abroad', () => {
+  const de = member('a7', 'Grete Abroad', { state: '', country: 'DE' });
+  const delaware = member('a8', 'Del Home', { state: 'DE' });
+  const rows: MemberRow[] = [de, delaware].map((m) => ({ member: m, offices: [] }));
+
+  it('are filtered by country, never mistaken for the state with the same code', () => {
+    expect(placeKey(de)).toBe('country:DE');
+    expect(placeKey(delaware)).toBe('DE');
+    expect(filterRows(rows, { search: '', state: 'country:DE' }).map((r) => r.member.legalName)).toEqual(['Grete Abroad']);
+    expect(filterRows(rows, { search: '', state: 'DE' }).map((r) => r.member.legalName)).toEqual(['Del Home']);
+  });
+
+  it('show and export the country by name', () => {
+    expect(placeCellText(de)).toBe('Germany');
+    expect(placeCellText(delaware)).toBe('DE');
+    expect(sortRows(rows, 'state', false).map((r) => r.member.legalName)).toEqual(['Del Home', 'Grete Abroad']);
+    expect(membersCsv(rows)).toContain('Grete Abroad,a7,,Germany,');
   });
 });
