@@ -336,7 +336,8 @@ describe('the closing-soon reminder', () => {
     await vote(election, voters[0]!.accountId);
     await vote(election, voters[1]!.accountId);
 
-    expect((await worker.tick()).body).toMatchObject({ noticesSent: 4 }); // voting is open, to all four
+    // Voting is open, to all four; and the two who voted are told their ballots were recorded.
+    expect((await worker.tick()).body).toMatchObject({ noticesSent: 6 });
     expect(await reminders(election)).toHaveLength(0);
     expect((await worker.tick()).body).toMatchObject({ noticesSent: 2 }); // the reminder, once that has gone
     await worker.tick();
@@ -452,6 +453,7 @@ describe('send receipts', () => {
     expect(seen.receipts.roll).toEqual([
       { kind: 'voting_open', sends: 2, accepted: 5, failed: 1, skipped: 0, lastSentAt: (await receipts(election))[1]!.finishedAt },
       { kind: 'closing_soon', sends: 0, accepted: 0, failed: 0, skipped: 0, lastSentAt: null },
+      { kind: 'voted', sends: 0, accepted: 0, failed: 0, skipped: 0, lastSentAt: null },
     ]);
     expect(seen.receipts.tests.every((t) => t.sends === 0)).toBe(true);
     expect(JSON.stringify(seen)).not.toContain('@');

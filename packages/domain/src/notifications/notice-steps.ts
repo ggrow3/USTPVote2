@@ -64,7 +64,7 @@ export function noticeSteps(input: {
             : null;
     if (absent) return { kind, status: 'not_reached', notice: null, absent };
     if (election.state === 'draft' || election.state === 'scheduled') return { kind, status: 'upcoming', notice: null, absent: null };
-    const due = kind === 'voting_open' ? isVotingOpen(election, now) : isReminderDue(election, now, hours);
+    const due = kind === 'closing_soon' ? isReminderDue(election, now, hours) : isVotingOpen(election, now);
     if (due) return { kind, status: 'current', notice: null, absent: null };
     return kind === 'closing_soon' && isVotingOpen(election, now)
       ? { kind, status: 'upcoming', notice: null, absent: null }
