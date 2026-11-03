@@ -1,22 +1,27 @@
-import { BadRequestException, ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Transaction } from 'firebase-admin/firestore';
 import {
   ADMIN_PERSONAS,
+  checkCanDeleteTestVoters,
   Collections,
   MAX_TEST_VOTERS,
   PERSONA_KINDS,
+  TEST_VOTER_DELETION_REASON,
   uuidv7,
   voterPersonaLabel,
   type AccountRecord,
   type CreatePersonasInput,
+  type DeleteTestVotersInput,
   type PersonaKind,
   type PersonaRecord,
   type PersonaSummary,
   type RoleAssignmentRecord,
 } from 'ustp-domain';
+import { AccountsService } from '../accounts/accounts.service.js';
 import { requireAccount } from '../auth/decorators.js';
 import { DirectoryService, roleAssignmentId } from '../auth/directory.service.js';
-import type { RequestContext } from '../auth/principal.js';
+import { actorOf, type RequestContext } from '../auth/principal.js';
+import { assertCheck } from '../common/validation.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
@@ -27,10 +32,13 @@ import { MembershipService } from '../membership/membership.service.js';
 /**
  * Test personas (design §10.4): synthetic accounts with no login, one per admin role plus numbered voters, that a
  * System Admin acts as to rehearse an election. Each is created in its own transaction with the same ledger entry its
- * real counterpart would get (`role.granted` or `member.status_changed`), naming the System Admin as the actor.
+ * real counterpart would get (`role.granted` or `member.status_changed`), naming the System Admin as the actor. Test
+ * voters can be deleted again, each as an account is (`AccountsService.erase`).
  */
 @Injectable()
 export class PersonasService {
+  private readonly logger = new Logger(PersonasService.name);
+
   constructor(
     private readonly firebase: Firebase,
     private readonly ledger: LedgerService,
@@ -38,6 +46,7 @@ export class PersonasService {
     private readonly membership: MembershipService,
     private readonly members: MemberDirectory,
     private readonly statusChanges: Members,
+    private readonly accounts: AccountsService,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
@@ -80,6 +89,24 @@ export class PersonasService {
     return this.list();
   }
 
+  /**
+   * Deletes test voters (design §10.4): one System Admin, at once, whatever elections hold them, since their rolls,
+   * ballots and results keep the IDs. Every ID must be a test voter's before any is deleted; then each goes in its own
+   * transaction, ledgered as `account.deleted`, with its persona record, and its activity after. A voter deleted
+   * meanwhile is skipped.
+   */
+  async deleteVoters(ctx: RequestContext, input: DeleteTestVotersInput): Promise<PersonaSummary[]> {
+    this.assertEnabled();
+    const operator = requireAccount(ctx);
+    assertCheck(checkCanDeleteTestVoters(actorOf(ctx, this.config.adminMfaRequired)), ForbiddenException);
+    const db = this.firebase.db;
+    const records = await db.getAll(...input.voters.map((id) => db.collection(Collections.testingPersonas).doc(id)));
+    const others = input.voters.filter((_, i) => (records[i]!.data() as PersonaRecord | undefined)?.kind !== 'voter');
+    if (others.length) throw new NotFoundException(`not a test voter: ${others.join(', ')}`);
+    for (const accountId of input.voters) await this.deleteVoter(operator, accountId);
+    return this.list();
+  }
+
   private assertEnabled(): void {
     if (!this.config.testingMode) throw new NotFoundException('testing mode is off on this deployment');
   }
@@ -118,6 +145,24 @@ export class PersonasService {
       const label = voterPersonaLabel(number);
       await this.statusChanges.admitTestPersona(tx, { accountId, label, actor: operator, bylawsVersion });
       this.writePersona(tx, { accountId, kind: 'voter', label, number, createdBy: operator });
+    });
+  }
+
+  private async deleteVoter(operator: string, accountId: string): Promise<void> {
+    const db = this.firebase.db;
+    const deleted = await db.runTransaction(async (tx) => {
+      const personaRef = db.collection(Collections.testingPersonas).doc(accountId);
+      const [persona, account] = await Promise.all([tx.get(personaRef), tx.get(db.collection(Collections.accounts).doc(accountId))]);
+      if (!persona.exists) return false;
+      // A persona has no login (design §10.4), so there is nothing to delete from Identity Platform.
+      const found = { account: account.data() as AccountRecord, identities: [] };
+      if (account.exists) await this.accounts.erase(tx, found, operator, TEST_VOTER_DELETION_REASON);
+      tx.delete(personaRef);
+      return true;
+    });
+    if (!deleted) return;
+    await this.accounts.forgetActivity(accountId, []).catch((e: unknown) => {
+      this.logger.warn(`test voter ${accountId} deleted, but not all its activity: ${e instanceof Error ? e.message : String(e)}`);
     });
   }
 

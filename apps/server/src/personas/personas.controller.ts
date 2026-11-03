@@ -1,5 +1,5 @@
-import { Body, Controller, Get, Post } from '@nestjs/common';
-import { createPersonasSchema, type CreatePersonasInput } from 'ustp-domain';
+import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
+import { createPersonasSchema, deleteTestVotersSchema, type CreatePersonasInput, type DeleteTestVotersInput } from 'ustp-domain';
 import { Ctx, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { ZodPipe } from '../common/validation.js';
@@ -22,5 +22,12 @@ export class PersonasController {
   @Post()
   create(@Ctx() ctx: RequestContext, @Body(new ZodPipe(createPersonasSchema)) body: CreatePersonasInput) {
     return this.personas.create(ctx, body);
+  }
+
+  /** Deletes test voters at once, whatever elections hold them; answers the personas that remain. */
+  @Post('delete')
+  @HttpCode(200)
+  delete(@Ctx() ctx: RequestContext, @Body(new ZodPipe(deleteTestVotersSchema)) body: DeleteTestVotersInput) {
+    return this.personas.deleteVoters(ctx, body);
   }
 }

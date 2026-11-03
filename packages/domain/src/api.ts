@@ -167,6 +167,16 @@ export const createPersonasSchema = z.strictObject({
 });
 export type CreatePersonasInput = z.infer<typeof createPersonasSchema>;
 
+/** `POST /v1/testing/personas/delete`: deletes these test voters at once, whatever elections hold them (design §10.4). */
+export const deleteTestVotersSchema = z.strictObject({
+  voters: z
+    .array(uuidV7)
+    .min(1, 'choose at least one test voter')
+    .max(MAX_TEST_VOTERS)
+    .refine((ids) => new Set(ids).size === ids.length, 'each test voter once'),
+});
+export type DeleteTestVotersInput = z.infer<typeof deleteTestVotersSchema>;
+
 export const signInMethodsSchema = z
   .strictObject(Object.fromEntries(SIGN_IN_PROVIDERS.map((p) => [p, z.boolean().optional()])) as Record<
     (typeof SIGN_IN_PROVIDERS)[number],
