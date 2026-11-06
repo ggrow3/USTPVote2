@@ -123,8 +123,18 @@ export interface TickResult {
   readonly noticesSent: number;
   /** Test emails sent to the Election Admins who asked for them (design §6.8). */
   readonly testEmailsSent: number;
-  /** Notice recipients the mail provider reported as bounced since the last tick (design §6.8). */
-  readonly bouncesRecorded: number;
+  /** Welcome emails sent (or recorded in the outbox) to members a Membership Admin added (design §5.13). */
+  readonly welcomeEmailsSent: number;
+  /** Delivery reports from the mail provider that changed what is known of a message (design §6.8). */
+  readonly mailEventsRecorded: number;
+  /** Notice rounds whose delivery reports were added up and ledgered as `notice.delivery_reported` (design §6.8). */
+  readonly deliveryReports: number;
+  /** Sends of election email checked against their delivery reports, 30 minutes after each (design §6.8). */
+  readonly sendsVerified: number;
+  /** Whether the email setup check ran (hourly, or when a System Admin asked; design §10.12). */
+  readonly mailChecked: boolean;
+  /** Members' requests done: test emails, and addresses tried again (design §10.12). */
+  readonly memberEmailsSent: number;
   /** Suggestions a year old, and the form's limits for days gone, deleted (design §10.9). */
   readonly suggestionsDeleted: number;
   /** The room's messages, done action items and finished questions past their time, and questions given up on (design §5.10). */

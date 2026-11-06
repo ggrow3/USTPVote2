@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { memberMailFlags } from '../notifications/api.js';
 import { useQuasar } from 'quasar';
 import { computed, onMounted, ref, watch } from 'vue';
 import { adminStatusChanges, countryName, countryOf, DEFAULT_COUNTRY, type MemberRecord, type MemberStatus, type StatusHistoryRecord } from 'ustp-domain';
 import { askReason, attempt } from '../dialogs.js';
 import { offices as fetchOffices } from '../offices/api.js';
 import { session } from '../session.js';
+import AddMembersCard from './AddMembersCard.vue';
 import { changeMemberStatus, memberHistory, members } from './api.js';
 import { stateName } from './member-text.js';
 import {
@@ -12,6 +14,7 @@ import {
   classCellText,
   filterRows,
   initials,
+  mailFlagText,
   memberRows,
   membersCsv,
   membersCsvFileName,
@@ -37,6 +40,8 @@ const all = ref<MemberRow[]>([]);
 /** An empty table only means "no members" once a load has succeeded. */
 const listState = ref<'loading' | 'ready' | 'failed'>('loading');
 const history = ref<{ member: MemberRecord; entries: StatusHistoryRecord[] } | null>(null);
+/** The form and CSV import for adding members (design §5.13) is open. */
+const adding = ref(false);
 
 /** Null once the field's clear button is used. */
 const search = ref<string | null>('');
@@ -45,6 +50,8 @@ const place = ref('');
 /** United States or Allied Members (design §5.2), or those never asked; '' for every class. */
 const memberClass = ref<ClassFilter | ''>('');
 const classOptions = [{ label: 'All classes', value: '' }, ...CLASS_FILTERS];
+/** Members who cannot be emailed (design §10.12), or everyone. */
+const mailFilter = ref<'unreachable' | ''>('');
 const status = ref<MemberStatus | null>(null);
 const sort = ref<{ key: SortKey; descending: boolean }>({ key: 'name', descending: false });
 const page = ref(1);
@@ -55,12 +62,14 @@ async function load() {
   const ok = await attempt(async () => {
     const found: MemberRecord[] = [];
     const offices = fetchOffices();
+    // Membership Admins see who cannot be emailed; anyone else sees the table without it.
+    const flags = memberMailFlags().catch(() => []);
     for (;;) {
       const batch = await members({ status: null, after: found.at(-1)?.accountId, limit: FETCH });
       found.push(...batch);
       if (batch.length < FETCH) break;
     }
-    all.value = memberRows(found, await offices);
+    all.value = memberRows(found, await offices, await flags);
   });
   listState.value = ok ? 'ready' : 'failed';
 }
@@ -76,7 +85,7 @@ const placeOptions = computed(() => [
 ]);
 /** Search, location and class first: the pills count within them. */
 const scoped = computed(() =>
-  filterRows(all.value, { search: search.value ?? '', place: place.value, memberClass: memberClass.value }),
+  filterRows(all.value, { search: search.value ?? '', place: place.value, memberClass: memberClass.value, mail: mailFilter.value }),
 );
 const counts = computed(() => statusCounts(scoped.value));
 const pills = computed(() => statusFilters(counts.value, status.value));
@@ -96,7 +105,12 @@ const showing = computed(() => {
   const range = pages.value > 1 ? `${(page.value - 1) * PAGE + 1}–${(page.value - 1) * PAGE + shown.value.length}` : `${total}`;
   return `Showing ${range} of ${total} ${total === 1 ? 'member' : 'members'}`;
 });
-watch([search, place, memberClass, status, sort], () => (page.value = 1));
+const unreachable = computed(() => all.value.filter((r) => r.mail).length);
+const mailOptions = computed(() => [
+  { label: 'Everyone', value: '' },
+  { label: `Can't be emailed (${unreachable.value})`, value: 'unreachable' },
+]);
+watch([search, place, memberClass, mailFilter, status, sort], () => (page.value = 1));
 watch(pages, (n) => (page.value = Math.min(page.value, n)));
 
 const COLUMNS: readonly { key: SortKey; label: string }[] = [
@@ -196,10 +210,17 @@ onMounted(() => load());
           <template v-else-if="listState === 'loading'">Loading…</template>
         </div>
       </div>
-      <q-btn outline no-caps icon="file_download" class="members-outline" :disable="!exported.rows.length" @click="exportCsv">
-        <template v-if="exported.ticked">Export {{ exported.rows.length }} selected</template>
-        <template v-else>Export CSV<span class="sr-only">: {{ plural(exported.rows.length, 'member') }}</span></template>
-      </q-btn>
+      <div class="members-head-actions">
+        <q-btn v-if="!adding" outline no-caps icon="person_add" class="members-outline" label="Add members" @click="adding = true" />
+        <q-btn outline no-caps icon="file_download" class="members-outline" :disable="!exported.rows.length" @click="exportCsv">
+          <template v-if="exported.ticked">Export {{ exported.rows.length }} selected</template>
+          <template v-else>Export CSV<span class="sr-only">: {{ plural(exported.rows.length, 'member') }}</span></template>
+        </q-btn>
+      </div>
+    </q-card-section>
+
+    <q-card-section v-if="adding">
+      <AddMembersCard @added="load" @close="adding = false" />
     </q-card-section>
 
     <q-card-section class="members-toolbar">
@@ -221,6 +242,10 @@ onMounted(() => load());
       <div class="members-state">
         <label for="members-class" class="members-muted">Class</label>
         <q-select v-model="memberClass" for="members-class" outlined dense emit-value map-options :options="classOptions" />
+      </div>
+      <div class="members-state">
+        <label for="members-email" class="members-muted">Email</label>
+        <q-select v-model="mailFilter" for="members-email" outlined dense emit-value map-options :options="mailOptions" />
       </div>
       <div role="group" aria-label="Status" class="members-pills">
         <button type="button" class="members-pill" :aria-pressed="status === null" @click="status = null">
@@ -266,6 +291,9 @@ onMounted(() => load());
             <div class="members-name">
               <span class="members-avatar" aria-hidden="true">{{ initials(r.member.legalName) }}</span>
               <router-link :to="`/admin/members/${r.member.accountId}`">{{ r.member.legalName }}</router-link>
+              <q-icon v-if="r.mail" name="unsubscribe" color="warning" size="18px" role="img" :aria-label="`Can't be emailed: ${mailFlagText(r.mail)}`">
+                <q-tooltip>Can't be emailed: {{ mailFlagText(r.mail) }}</q-tooltip>
+              </q-icon>
               <q-btn
                 flat
                 dense
@@ -467,6 +495,12 @@ onMounted(() => load());
 /* Neutral outlined buttons (Export CSV, Change status, the pager): Quasar's outline is the text colour itself. */
 .members-outline.q-btn--outline::before {
   border-color: var(--members-control);
+}
+
+.members-head-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .members-toolbar {

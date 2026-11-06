@@ -113,3 +113,51 @@ resource "google_monitoring_alert_policy" "kms_break_glass" {
 
   depends_on = [google_project_iam_audit_config.kms]
 }
+
+# The email setup check (design §10.12) logs each check that starts failing where mail goes through SES, as a
+# structured entry with `alert = "mail"`. This emails the alert addresses through Google, so it still arrives when SES
+# itself is the problem.
+resource "google_monitoring_alert_policy" "mail" {
+  count = length(var.alert_emails) > 0 && var.mail_transport == "ses" ? 1 : 0
+
+  project      = var.project_id
+  display_name = "USTPVote ${var.environment}: email is not set up properly, or did not arrive"
+  combiner     = "OR"
+  severity     = "ERROR"
+
+  conditions {
+    display_name = "Email setup check failing"
+
+    condition_matched_log {
+      filter = <<-EOT
+        resource.type="cloud_run_revision"
+        resource.labels.service_name="worker"
+        jsonPayload.alert="mail"
+      EOT
+      label_extractors = {
+        check = "EXTRACT(jsonPayload.check)"
+      }
+    }
+  }
+
+  alert_strategy {
+    notification_rate_limit {
+      period = "3600s"
+    }
+    auto_close = "604800s"
+  }
+
+  documentation {
+    mime_type = "text/markdown"
+    subject   = "USTPVote ${var.environment}: email setup failing, email held, or email not delivered"
+    content   = <<-EOT
+      The worker's email setup check found something that can keep members from getting their email (design §10.12),
+      election email was held because of it, or a send's emails did not all reach their mail servers within 30 minutes
+      (design §6.8). Admin › Email lists each check, why it fails and the step of the infra README ("Email (Amazon
+      SES)") that fixes it; System Admins can run it again there with "Check now". The election's "Email to voters" card
+      shows a held email and each send's delivery check.
+    EOT
+  }
+
+  notification_channels = [for channel in google_monitoring_notification_channel.email : channel.name]
+}

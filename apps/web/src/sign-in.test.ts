@@ -9,7 +9,7 @@ const firebase = vi.hoisted(() => ({
 }));
 vi.mock('firebase/auth', async (original) => ({ ...(await original<object>()), ...firebase }));
 
-const { changePassword, newPasswordProblem, PasswordRejected, resetPassword, sendPasswordReset } = await import('./sign-in.js');
+const { changePassword, checkNewPassword, PasswordRejected, resetPassword, sendPasswordReset } = await import('./sign-in.js');
 
 const auth = {} as Auth;
 const GOOD = 'violet harbor lantern';
@@ -35,25 +35,29 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-describe('newPasswordProblem (design §4)', () => {
+describe('checkNewPassword (design §4)', () => {
   it('applies the rule first, without asking the breach service', async () => {
     const fetch = pwned();
-    expect(await newPasswordProblem('short', 'ada@example.test')).toBe('Use at least 12 characters (a passphrase works well).');
-    expect(await newPasswordProblem('ada@example.test', 'ada@example.test')).toBe('Don’t use your email address as your password.');
+    await expect(checkNewPassword('short', 'ada@example.test')).rejects.toEqual(
+      new PasswordRejected('Use at least 12 characters (a passphrase works well).'),
+    );
+    await expect(checkNewPassword('ada@example.test', 'ada@example.test')).rejects.toEqual(
+      new PasswordRejected('Don’t use your email address as your password.'),
+    );
     expect(fetch).not.toHaveBeenCalled();
   });
 
   it('then refuses a breached password, sending only the first 5 hex digits of its SHA-1', async () => {
     const fetch = pwned('correct horse battery');
-    expect(await newPasswordProblem('correct horse battery', 'ada@example.test')).toBe(BREACHED);
+    await expect(checkNewPassword('correct horse battery', 'ada@example.test')).rejects.toEqual(new PasswordRejected(BREACHED));
     const hex = createHash('sha1').update('correct horse battery').digest('hex').toUpperCase();
     expect(fetch).toHaveBeenCalledWith(`https://api.pwnedpasswords.com/range/${hex.slice(0, 5)}`, { headers: { 'Add-Padding': 'true' } });
-    expect(await newPasswordProblem(GOOD, 'ada@example.test')).toBeNull();
+    await expect(checkNewPassword(GOOD, 'ada@example.test')).resolves.toBeUndefined();
   });
 
   it('lets a password through when the breach service cannot be reached', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')));
-    expect(await newPasswordProblem(GOOD, 'ada@example.test')).toBeNull();
+    await expect(checkNewPassword(GOOD, 'ada@example.test')).resolves.toBeUndefined();
   });
 });
 

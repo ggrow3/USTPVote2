@@ -100,6 +100,23 @@ resource "google_project_iam_member" "api_seed_deleter" {
 # --- worker ------------------------------------------------------------------------------------------------------------
 
 # Reads tie-break seeds when tallying (design §9, §13) and, later, the email provider's credentials.
+# The email setup check reads how Identity Platform sends its email (design §10.12). No predefined role holds only this:
+# firebaseauth.viewer would also let the worker read every user.
+resource "google_project_iam_custom_role" "auth_config_viewer" {
+  project     = var.project_id
+  role_id     = "ustpAuthConfigViewer"
+  title       = "USTPVote Identity Platform configuration viewer"
+  description = "Read Identity Platform's configuration, not its users (design §10.12)."
+  permissions = ["firebaseauth.configs.get"]
+  depends_on  = [google_project_service.this]
+}
+
+resource "google_project_iam_member" "worker_auth_config_viewer" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.auth_config_viewer.name
+  member  = google_service_account.worker.member
+}
+
 resource "google_project_iam_member" "worker_secret_accessor" {
   project = var.project_id
   role    = "roles/secretmanager.secretAccessor"

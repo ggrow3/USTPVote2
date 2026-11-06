@@ -31,17 +31,21 @@ const input = (text: NoticeMessageInput['text'] = null): NoticeMessageInput => (
 const body = (over: Partial<Record<string, unknown>> = {}) => ({ basedOn: 0, ...DEFAULT_NOTICE_SETTINGS, ...over });
 
 describe('the default settings', () => {
-  it('keep the emails as they were: both on, the reminder a day before, the built-in wording', () => {
+  it('keep the emails as they were: all on, the reminder a day before, the built-in wording', () => {
     expect(DEFAULT_NOTICE_SETTINGS).toEqual({
       kinds: {
         voting_open: { enabled: true, subject: null, intro: null },
         closing_soon: { enabled: true, subject: null, intro: null },
+        voted: { enabled: true, subject: null, intro: null },
       },
+      emails: { welcome: true, electionTests: true, memberTests: true },
       reminderHours: 24,
       contact: null,
     });
     expect(resolveNoticeSettings(undefined)).toEqual(DEFAULT_NOTICE_SETTINGS);
     expect(resolveNoticeSettings({ reminderHours: 48 } as Partial<NoticeSettings>)).toEqual({ ...DEFAULT_NOTICE_SETTINGS, reminderHours: 48 });
+    // Settings saved before the other emails had switches keep them on.
+    expect(resolveNoticeSettings({ emails: { welcome: false } }).emails).toEqual({ welcome: false, electionTests: true, memberTests: true });
   });
 
   it('give the same emails as the built-in wording', () => {
@@ -99,6 +103,9 @@ describe('noticeSettingsSchema', () => {
       contact: 'https://transhumanist-party.org/contact/',
     });
     expect(noticeSettingsSchema.parse(custom)).toEqual(custom);
+    // A page opened before the other emails had switches leaves them out.
+    const { emails: _emails, ...older } = body();
+    expect(noticeSettingsSchema.safeParse(older).success).toBe(true);
   });
 
   it('refuses a lead time out of range, a bad contact, a two-line subject, unknown placeholders and stray fields', () => {
@@ -114,6 +121,8 @@ describe('noticeSettingsSchema', () => {
     expect(fails(kind({ intro: 'Hi {name}' }))).toBe(true);
     expect(fails(kind({ subject: '   ' }))).toBe(true);
     expect(fails(kind({ subject: 'x'.repeat(151) }))).toBe(true);
+    expect(fails(body({ emails: { welcome: false } as never }))).toBe(true);
+    expect(fails(body({ emails: { ...DEFAULT_NOTICE_SETTINGS.emails, newsletter: false } as never }))).toBe(true);
     expect(fails({ ...body(), from: 'me@example.org' })).toBe(true);
     expect(fails({ ...body(), basedOn: undefined })).toBe(true);
   });
@@ -125,13 +134,17 @@ describe('noticeSettingsChanges', () => {
       kinds: {
         voting_open: { enabled: true, subject: 'Vote: {title}', intro: null },
         closing_soon: { enabled: false, subject: null, intro: null },
+        voted: { enabled: true, subject: null, intro: null },
       },
+      emails: { welcome: false, electionTests: true, memberTests: false },
       reminderHours: 48,
       contact: 'elections@example.org',
     };
     expect(noticeSettingsChanges(DEFAULT_NOTICE_SETTINGS, after)).toEqual([
       { field: 'voting_open.subject', from: null, to: 'Vote: {title}' },
       { field: 'closing_soon.enabled', from: true, to: false },
+      { field: 'emails.welcome', from: true, to: false },
+      { field: 'emails.memberTests', from: true, to: false },
       { field: 'reminderHours', from: 24, to: 48 },
       { field: 'contact', from: null, to: 'elections@example.org' },
     ]);

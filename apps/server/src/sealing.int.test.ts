@@ -97,6 +97,8 @@ describe('sealing secret ballots', () => {
       'ballots.sealed',
       'election.sealed',
       'results.computed',
+      // The voters' confirmations finish once voting has closed (design §6.8).
+      'notice.sent',
     ]);
 
     const blocks = (await api.call('GET', `${publicUrl(election)}/sealed-blocks`)).body as SealedBlockRecord[];

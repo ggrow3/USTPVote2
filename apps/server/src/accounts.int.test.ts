@@ -1,4 +1,5 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { EmailVerifiedSync } from './accounts/email-verified-sync.js';
 import { resetEmulators, SA1_EMAIL, SA2_EMAIL, signIn, TestApi } from './testing/emulator.js';
 
 let api: TestApi;
@@ -33,6 +34,7 @@ describe('accounts', () => {
       roles: [],
       mfa: { required: false, everywhere: false, signedInWithMfa: false },
       testing: { enabled: false, operator: null },
+      mail: null,
     });
 
     const first = await api.call('POST', '/v1/accounts', user);
@@ -121,6 +123,37 @@ describe('accounts', () => {
       .update({ revokedAt: new Date().toISOString(), revokedBy: 'someone' });
     await api.call('POST', '/v1/accounts', verified);
     expect((await api.call('GET', '/v1/me', verified)).body.roles).toEqual([]);
+  });
+
+  it('marks the account’s email verified once a password sign-up confirms it, so election email reaches it', async () => {
+    const alex = await api.user('alex@example.test', { emailVerified: false });
+    const { accountId } = (await api.call('POST', '/v1/accounts', alex)).body;
+    const account = async () => (await api.firebase.db.collection('accounts').doc(accountId).get()).data();
+    expect(await account()).toMatchObject({ primaryEmail: 'alex@example.test', emailVerified: false });
+    await api.call('POST', '/v1/accounts', alex); // still unverified: nothing changes
+    expect((await account())!.emailVerified).toBe(false);
+
+    await api.firebase.auth.updateUser(alex.uid, { emailVerified: true });
+    const verified = { ...alex, token: await signIn('alex@example.test') };
+    expect((await api.call('POST', '/v1/accounts', verified)).body).toEqual({ created: false, accountId });
+    expect((await account())!.emailVerified).toBe(true);
+    expect((await api.call('GET', '/v1/me', verified)).body.account).toMatchObject({ emailVerified: true });
+  });
+
+  it('catches up accounts whose login confirmed the address before that, when the api starts', async () => {
+    const make = async (email: string) => {
+      const user = await api.user(email, { emailVerified: false });
+      return { user, accountId: (await api.call('POST', '/v1/accounts', user)).body.accountId as string };
+    };
+    const confirmed = await make('confirmed@example.test');
+    const unconfirmed = await make('unconfirmed@example.test');
+    await api.firebase.auth.updateUser(confirmed.user.uid, { emailVerified: true });
+    const verified = async (accountId: string) => (await api.firebase.db.collection('accounts').doc(accountId).get()).get('emailVerified');
+
+    expect(await api.app.get(EmailVerifiedSync).run()).toBe(1);
+    expect(await verified(confirmed.accountId)).toBe(true);
+    expect(await verified(unconfirmed.accountId)).toBe(false);
+    expect(await api.app.get(EmailVerifiedSync).run()).toBe(0);
   });
 
   it('skips the bootstrap grant while the account already holds two roles, and applies it once it holds one', async () => {

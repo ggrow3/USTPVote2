@@ -4,6 +4,7 @@ import type { SignInProvider } from './identity.js';
 import type { MemberRecord } from './membership/records.js';
 import type { MemberStatus } from './membership/member-status.js';
 import type { PhotoSignals } from './photos.js';
+import type { MyMailState } from './notifications/my-email.js';
 import type { Role } from './roles.js';
 
 /**
@@ -19,6 +20,17 @@ export interface AccountRecord {
   readonly createdAt: string;
   /** The person's own display choices (design §4.1); absent until they make one, so read it with `preferencesOf`. */
   readonly preferences?: AccountPreferences;
+  /**
+   * Set when a Membership Admin added the account as a member (design §5.13), before it had any login: when, and by
+   * whom. Absent on accounts made by signing in.
+   */
+  readonly addedAt?: string;
+  readonly addedBy?: string;
+  /**
+   * When an added account got its first login: someone signed in with a verified address equal to `primaryEmail`
+   * (design §4). Null until then; absent on accounts made by signing in.
+   */
+  readonly claimedAt?: string | null;
 }
 
 /** `account_identities/{uid}` */
@@ -146,6 +158,8 @@ export interface MeResponse {
     /** When this request was made as a persona, the System Admin acting as it; otherwise null. */
     readonly operator: string | null;
   };
+  /** Whether the caller's address can be mailed (design §10.12); null without an account. */
+  readonly mail: MyMailState | null;
 }
 
 /**

@@ -100,6 +100,25 @@ export class ElectionReader {
     return new Set((await participation.select().get()).docs.map((d) => d.id));
   }
 
+  /** How many have voted in the election, counted by Firestore. */
+  async voterCount(electionId: string): Promise<number> {
+    const participation = this.firebase.db.collection(Collections.elections).doc(electionId).collection(ElectionCollections.participation);
+    return (await participation.count().get()).data().count;
+  }
+
+  /** Who has voted since `from`, by the participation records' `castAt` (vote confirmations, design §6.8). */
+  async votedSince(electionId: string, from: string): Promise<string[]> {
+    const participation = this.firebase.db.collection(Collections.elections).doc(electionId).collection(ElectionCollections.participation);
+    return (await participation.where('castAt', '>=', from).select().get()).docs.map((d) => d.id);
+  }
+
+  /** When each of these accounts voted, those who have (vote confirmations say when, never how). */
+  async castTimes(electionId: string, accountIds: readonly string[]): Promise<Map<string, string>> {
+    const participation = this.firebase.db.collection(Collections.elections).doc(electionId).collection(ElectionCollections.participation);
+    const snaps = accountIds.length ? await this.firebase.db.getAll(...accountIds.map((id) => participation.doc(id)), { fieldMask: ['castAt'] }) : [];
+    return new Map(snaps.filter((s) => s.exists).map((s) => [s.id, s.get('castAt') as string]));
+  }
+
   /** The offices the contests fill (design §6.4), for the advisories and the election setup check (§6.9). */
   async positions(contests: readonly { readonly positionId?: string | null }[]): Promise<PositionRecord[]> {
     const db = this.firebase.db;

@@ -1,4 +1,6 @@
 import type { AccountPreferences } from '../daily.js';
+import type { MailStatus } from '../notifications/mail.js';
+import type { WelcomeEmailRecord } from '../notifications/welcome.js';
 import type { MemberStatus } from './member-status.js';
 
 /** Document shapes of the membership context (design §5.1, §5.2, §11). */
@@ -122,4 +124,15 @@ export interface MemberDetail {
   readonly history: readonly StatusHistoryRecord[];
   /** The account's display choices, so a Membership Admin sees whether the daily quote and joke is on (design §4.1). */
   readonly preferences: AccountPreferences;
+  /**
+   * For a member a Membership Admin added (design §5.13): when, by whom, when they first signed in (null until then),
+   * and how their latest welcome email went where the deployment sends mail (null where it sends none). Null for
+   * everyone who registered themselves.
+   */
+  readonly added: {
+    readonly at: string;
+    readonly by: string;
+    readonly signedInAt: string | null;
+    readonly welcome: (Pick<WelcomeEmailRecord, 'status' | 'requestedAt' | 'doneAt' | 'outcome'> & { readonly delivery: MailStatus | null }) | null;
+  } | null;
 }

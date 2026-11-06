@@ -5,6 +5,7 @@ import { focusElement, liveRegions } from '../a11y.js';
 import { acting } from '../acting.js';
 import { APP_NAME } from '../app-name.js';
 import UpdateBanner from '../components/UpdateBanner.vue';
+import MailProblemBanner from '../notifications/MailProblemBanner.vue';
 import { usingEmulators } from '../firebase.js';
 import { navigationState, shown } from '../governance/navigation.js';
 import { MENU_LABELS } from '../governance/navigation-text.js';
@@ -220,6 +221,7 @@ watch(headerShown, (now) => now || (document.documentElement.style.scrollPadding
         Set it up, or sign in with it, on your
         <router-link to="/account" class="text-black">Account page</router-link> to use the rest of the site.
       </q-banner>
+      <MailProblemBanner v-if="!bare" />
       <!-- Keyed by persona, so switching reloads every page's data as the new persona. -->
       <router-view :key="acting.persona?.accountId ?? 'self'" />
     </q-page-container>

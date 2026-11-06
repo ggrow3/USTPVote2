@@ -1,4 +1,15 @@
-import type { NoticeKind, NoticeSettingsInput, NoticeSettingsRecord, NoticesView, NoticeSummary, NoticeTestSummary } from 'ustp-domain';
+import type {
+  MailHealthView,
+  MailRequestKind,
+  MemberMailFlag,
+  MyEmailView,
+  NoticeKind,
+  NoticeSettingsInput,
+  NoticeSettingsRecord,
+  NoticesView,
+  NoticeSummary,
+  NoticeTestSummary,
+} from 'ustp-domain';
 import { api } from '../api.js';
 
 /**
@@ -30,4 +41,30 @@ export function noticeSettings(): Promise<NoticeSettingsRecord> {
 /** Saves them all; refused (409) if someone saved since version `basedOn`. */
 export function saveNoticeSettings(input: NoticeSettingsInput): Promise<NoticeSettingsRecord> {
   return api<NoticeSettingsRecord>('PUT', '/v1/admin/notice-settings', input);
+}
+
+/** The email setup check's last run (design §10.12), and a request still waiting. */
+export function mailHealth(): Promise<MailHealthView> {
+  return api<MailHealthView>('GET', '/v1/admin/mail/health');
+}
+
+/** Asks the worker to run the check on its next tick; refused while one waits (409) or soon after a run (429). */
+export function requestMailCheck(): Promise<MailHealthView> {
+  return api<MailHealthView>('POST', '/v1/admin/mail/health/check');
+}
+
+// --- The member's own email (design §10.12) -----------------------------------------------------------------------
+
+export function myEmail(): Promise<MyEmailView> {
+  return api<MyEmailView>('GET', '/v1/me/email');
+}
+
+/** A test email to oneself, or trying one's address again, on the worker's next tick. */
+export function requestMyEmail(kind: MailRequestKind): Promise<MyEmailView> {
+  return api<MyEmailView>('POST', `/v1/me/email/${kind}`);
+}
+
+/** Membership Admin: members who cannot be emailed, and why. */
+export function memberMailFlags(): Promise<MemberMailFlag[]> {
+  return api<MemberMailFlag[]>('GET', '/v1/admin/mail/members');
 }

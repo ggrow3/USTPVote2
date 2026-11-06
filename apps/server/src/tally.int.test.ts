@@ -95,7 +95,8 @@ describe('tallying', () => {
       certifiedAt: null,
       certifiedLedgerSeq: null,
     });
-    expect((await ledgerTypes(api, election.electionId)).at(-1)).toBe('results.computed');
+    // The same tick finishes the voters' confirmations (design §6.8): `notice.sent`, after the results.
+    expect((await ledgerTypes(api, election.electionId)).filter((t) => !t.startsWith('notice.')).at(-1)).toBe('results.computed');
     const entry = (await api.call('GET', `/v1/public/ledger/entries/${results.ledgerSeq}`)).body;
     expect(entry.entry.payload).toMatchObject({ resultsHash: results.resultsHash, tieBreakSeed: election.tieBreakSeed });
 

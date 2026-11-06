@@ -23,6 +23,7 @@ import {
   type AccountSummary,
   type Actor,
   type IdentityRecord,
+  type LedgerEvent,
   type MeResponse,
   type Role,
   type RoleAssignmentRecord,
@@ -39,6 +40,8 @@ import { LedgerService } from '../ledger/ledger.service.js';
 import { ElectionReader } from '../elections/election-reader.js';
 import { MemberDirectory } from '../membership/member-directory.js';
 import { Members } from '../membership/members.service.js';
+import { MailRecords } from '../notifications/mail-records.js';
+import { EmailVerifiedSync } from './email-verified-sync.js';
 
 /** A second sign-in used to link a login method must be this fresh. */
 const LINK_MAX_AUTH_AGE_SECONDS = 5 * 60;
@@ -67,6 +70,8 @@ export class AccountsService {
     private readonly membership: Members,
     private readonly elections: ElectionReader,
     private readonly mfaPolicy: MfaPolicyService,
+    private readonly mailRecords: MailRecords,
+    private readonly emailSync: EmailVerifiedSync,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
@@ -80,13 +85,14 @@ export class AccountsService {
       const scope = this.config.adminMfaRequired ? secondFactorScope(roles, policy) : 'none';
       return { required: scope !== 'none', everywhere: scope === 'everywhere', signedInWithMfa };
     };
-    if (!accountId) return { account: null, identities: [], member: null, roles: [], mfa: mfa([]), testing };
+    if (!accountId) return { account: null, identities: [], member: null, roles: [], mfa: mfa([]), testing, mail: null };
     const db = this.firebase.db;
-    const [account, identities, member, roles] = await Promise.all([
+    const [account, identities, member, roles, mail] = await Promise.all([
       db.collection(Collections.accounts).doc(accountId).get(),
       db.collection(Collections.accountIdentities).where('accountId', '==', accountId).get(),
       this.members.find(accountId),
       this.directory.activeRoles(accountId),
+      this.mailRecords.state(accountId),
     ]);
     return {
       account: (account.data() as AccountRecord | undefined) ?? null,
@@ -95,6 +101,7 @@ export class AccountsService {
       roles,
       mfa: mfa(roles),
       testing,
+      mail,
     };
   }
 
@@ -259,8 +266,9 @@ export class AccountsService {
   }
 
   /**
-   * A deleted account's sign-ins (by account, and by login for those seen before it had one), page visits, and its
-   * courses' progress, attempts, certificates and messages.
+   * A deleted account's sign-ins (by account, and by login for those seen before it had one), page visits, its
+   * courses' progress, attempts, certificates and messages, the welcome email of an added member (§5.13), and the
+   * records of the email sent to it (§6.8).
    */
   async forgetActivity(accountId: string, uids: readonly string[]): Promise<void> {
     const db = this.firebase.db;
@@ -272,6 +280,7 @@ export class AccountsService {
       Collections.courseCertificates,
       Collections.courseThreads,
       Collections.courseMessages,
+      Collections.welcomeEmails,
     ];
     const found = await Promise.all([
       ...collections.map((c) => db.collection(c).where('accountId', '==', accountId).select().get()),
@@ -281,18 +290,22 @@ export class AccountsService {
     // A sign-in can be found both by account and by login.
     const refs = new Map(found.flatMap((snap) => snap.docs.map((d) => [d.ref.path, d.ref] as const)));
     for (const ref of refs.values()) void writer.delete(ref);
-    await writer.close();
+    await Promise.all([writer.close(), this.mailRecords.forgetAccount(accountId)]);
   }
 
   /**
    * Mints the caller's account on first sign-in. Idempotent: a uid that already has an account gets it back.
-   * Each call also applies the bootstrap System Admin grant once the email is verified (password sign-ups start
-   * unverified), but only to an account that has never held the role, so a revocation is never undone, and only when
-   * the grant keeps to the role rules (design §10.1): an account that is an Auditor or already holds two roles is
-   * left as it is until a System Admin brings it within them.
+   * A first sign-in whose address a Membership Admin added as a member (design §5.13) gets that account instead, once
+   * the address is verified, since that proves the person controls it; until then nothing is minted, so the membership
+   * stays theirs to reach. Each call also applies the bootstrap System Admin grant once the email is verified (password
+   * sign-ups start unverified), but only to an account that has never held the role, so a revocation is never undone,
+   * and only when the grant keeps to the role rules (design §10.1): an account that is an Auditor or already holds two
+   * roles is left as it is until a System Admin brings it within them. A call from a login whose address is now verified
+   * marks the account's primary email verified, if it is that address.
    */
-  async create(ctx: RequestContext): Promise<{ readonly created: boolean; readonly accountId: string }> {
+  async create(ctx: RequestContext): Promise<{ readonly created: boolean; readonly accountId: string; readonly claimed?: true }> {
     const { principal } = ctx;
+    this.emailSync.startOnce();
     const db = this.firebase.db;
     const bootstrapEligible =
       principal.emailVerified && principal.email !== null && this.config.bootstrapSystemAdmins.includes(principal.email);
@@ -300,30 +313,40 @@ export class AccountsService {
     return db.runTransaction(async (tx) => {
       const identityRef = db.collection(Collections.accountIdentities).doc(principal.uid);
       const existing = await tx.get(identityRef);
-      const accountId = existing.exists ? (existing.data() as IdentityRecord).accountId : uuidv7();
+      const added = existing.exists ? null : await this.addedAccount(tx, principal);
+      const accountId = existing.exists ? (existing.data() as IdentityRecord).accountId : (added?.accountId ?? uuidv7());
+      /** The account is already there: this login's, or the one a Membership Admin added. */
+      const known = existing.exists || added !== null;
       const roleRef = db.collection(Collections.roleAssignments).doc(roleAssignmentId(accountId, 'system_admin'));
-      let bootstrap = bootstrapEligible && !(existing.exists && (await tx.get(roleRef)).exists);
-      if (bootstrap && existing.exists) {
+      let bootstrap = bootstrapEligible && !(known && (await tx.get(roleRef)).exists);
+      if (bootstrap && known) {
         const fits = checkRoleChange(await this.directory.activeRoles(accountId, tx), 'grant', 'system_admin');
         if (!fits.ok) {
           this.logger.warn(`bootstrap System Admin grant for account ${accountId} skipped: ${fits.reason}`);
           bootstrap = false;
         }
       }
-      if (existing.exists && !bootstrap) return { created: false, accountId };
+      if (existing.exists && !bootstrap) {
+        await this.confirmEmail(tx, accountId, principal);
+        return { created: false, accountId };
+      }
 
       const now = new Date().toISOString();
-      if (bootstrap) {
-        await this.ledger.record(tx, [
-          {
-            type: 'role.granted',
-            actor: 'bootstrap',
-            subject: accountId,
-            payload: { role: 'system_admin', reason: 'BOOTSTRAP_SYSTEM_ADMIN_EMAILS' },
-          },
-        ]);
+      const events: LedgerEvent[] = [];
+      if (added) {
+        const payload = { uid: principal.uid, provider: principal.provider, claimed: true };
+        events.push({ type: 'identity.linked', actor: accountId, subject: accountId, payload });
       }
-      if (!existing.exists) {
+      if (bootstrap) {
+        const payload = { role: 'system_admin', reason: 'BOOTSTRAP_SYSTEM_ADMIN_EMAILS' };
+        events.push({ type: 'role.granted', actor: 'bootstrap', subject: accountId, payload });
+      }
+      if (events.length) await this.ledger.record(tx, events);
+      if (added) {
+        const claimed: Partial<AccountRecord> = { claimedAt: now, emailVerified: true, displayName: added.displayName ?? principal.name };
+        tx.update(db.collection(Collections.accounts).doc(accountId), claimed);
+        tx.create(identityRef, identityRecord(principal, accountId, now));
+      } else if (!existing.exists) {
         const account: AccountRecord = {
           accountId,
           displayName: principal.name,
@@ -347,8 +370,41 @@ export class AccountsService {
         };
         tx.create(roleRef, role);
       }
-      return { created: !existing.exists, accountId };
+      return added ? { created: false, accountId, claimed: true as const } : { created: !existing.exists, accountId };
     });
+  }
+
+  /**
+   * Marks the account's primary email verified once its login says the address is (design §4): a password sign-up
+   * starts unverified and confirms the address afterwards, and election email goes only to a verified address (§6.8).
+   */
+  private async confirmEmail(tx: Transaction, accountId: string, principal: Principal): Promise<void> {
+    if (!principal.emailVerified || !principal.email) return;
+    const ref = this.firebase.db.collection(Collections.accounts).doc(accountId);
+    const account = (await tx.get(ref)).data() as AccountRecord | undefined;
+    if (account && !account.emailVerified && account.primaryEmail?.toLowerCase() === principal.email.toLowerCase()) {
+      tx.update(ref, { emailVerified: true });
+    }
+  }
+
+  /**
+   * The account a Membership Admin added for the caller's address and nobody has signed in to yet (design §5.13), read
+   * in `tx`. Only a verified address may have it: a sign-in that merely names the address is refused (403) and gets no
+   * account of its own, so the person confirms the address and comes back.
+   */
+  private async addedAccount(tx: Transaction, principal: Principal): Promise<AccountRecord | null> {
+    if (!principal.email) return null;
+    const waiting = await tx.get(
+      this.firebase.db.collection(Collections.accounts).where('primaryEmail', '==', principal.email).where('claimedAt', '==', null).limit(1),
+    );
+    const account = (waiting.docs[0]?.data() as AccountRecord | undefined) ?? null;
+    if (account && !principal.emailVerified) {
+      throw new ForbiddenException(
+        'A Membership Admin has added this email address as a member. Confirm the address first (open the confirmation email, ' +
+          'or sign in with an emailed link), and your membership is yours.',
+      );
+    }
+    return account;
   }
 
   /** Links another login to the caller's account; `idToken` proves the caller controls it right now. */

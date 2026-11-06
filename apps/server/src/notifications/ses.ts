@@ -1,16 +1,18 @@
 import { SendEmailCommand, SESv2Client, type SendEmailCommandInput } from '@aws-sdk/client-sesv2';
 import { DeleteMessageBatchCommand, ReceiveMessageCommand, SQSClient } from '@aws-sdk/client-sqs';
 import type { ServerConfig } from '../config.js';
-import { MailNotSent, type BounceReport, type BounceSource, type MailMessage, type MailTransport } from './mail-transport.js';
+import type { BounceType, MailEvent, MailEventType } from 'ustp-domain';
+import { MailNotSent, type MailEventSource, type MailMessage, type MailTransport } from './mail-transport.js';
 
 /**
- * Amazon SES for election notices (design §6.8): SESv2 `SendEmail`, and bounces from the SQS queue that the
+ * Amazon SES for the app's email (design §6.8): SESv2 `SendEmail`, and delivery reports from the SQS queue that the
  * configuration set's SNS topic feeds. Only the worker builds these, with an access key from Secret Manager that may
- * only send from the agreed address and read that queue (infra README "Election notices").
+ * only send from the agreed address and read that queue (infra README "Email (Amazon SES)").
  */
 
-/** The message tag that names the notice, which SES copies into its bounce reports. */
-export const SES_NOTICE_TAG = 'notice';
+/** The message tags SES copies into its delivery reports: what the message is, and what it belongs to. */
+export const SES_KIND_TAG = 'kind';
+export const SES_REF_TAG = 'ref';
 
 export class SesTransport implements MailTransport {
   readonly delivery = 'mail';
@@ -62,7 +64,7 @@ export class SesTransport implements MailTransport {
   }
 }
 
-/** The `SendEmail` request: plain text and HTML in UTF-8, tagged with the notice so bounce reports name it. */
+/** The `SendEmail` request: plain text and HTML in UTF-8, tagged with what it is so its delivery reports say so. */
 export function sesEmail(message: MailMessage, configurationSet: string | null): SendEmailCommandInput {
   const utf8 = (Data: string) => ({ Data, Charset: 'UTF-8' });
   return {
@@ -71,7 +73,10 @@ export function sesEmail(message: MailMessage, configurationSet: string | null):
     ...(message.replyTo && { ReplyToAddresses: [message.replyTo] }),
     Content: { Simple: { Subject: utf8(message.subject), Body: { Text: utf8(message.text), Html: utf8(message.html) } } },
     ...(configurationSet && { ConfigurationSetName: configurationSet }),
-    EmailTags: [{ Name: SES_NOTICE_TAG, Value: message.tags.noticeId }],
+    EmailTags: [
+      { Name: SES_KIND_TAG, Value: message.meta.kind },
+      ...(message.meta.ref ? [{ Name: SES_REF_TAG, Value: message.meta.ref }] : []),
+    ],
   };
 }
 
@@ -103,50 +108,78 @@ export function sesFailure(e: unknown): 'refused' | 'unavailable' | null {
   return null;
 }
 
+/** SES's names for the reports the worker reads; opens, clicks and subscriptions are not published to it. */
+const EVENT_TYPES: Readonly<Record<string, MailEventType>> = {
+  Send: 'send',
+  Delivery: 'delivery',
+  DeliveryDelay: 'delay',
+  Bounce: 'bounce',
+  Complaint: 'complaint',
+  Reject: 'reject',
+  'Rendering Failure': 'rendering_failure',
+};
+
+const BOUNCE_TYPES: Readonly<Record<string, BounceType>> = { Permanent: 'permanent', Transient: 'transient', Undetermined: 'undetermined' };
+
 /**
- * A permanent bounce from an SQS message body: an SES event (event publishing, `eventType`, or a notification,
- * `notificationType`), raw or inside the SNS envelope. Null for anything else (deliveries, complaints, transient
- * bounces, which SES retries) or anything that is not a notice's.
+ * A delivery report from an SQS message body: an SES event (event publishing, `eventType`, or a notification,
+ * `notificationType`), raw or inside the SNS envelope. Null for anything else, or anything unreadable.
  */
-export function sesBounce(body: string): BounceReport | null {
+export function sesMailEvent(body: string): MailEvent | null {
   try {
     let event = JSON.parse(body) as Record<string, any>;
     if (event?.Type === 'Notification' && typeof event.Message === 'string') event = JSON.parse(event.Message);
-    if ((event?.eventType ?? event?.notificationType) !== 'Bounce' || event.bounce?.bounceType !== 'Permanent') return null;
-    const messageId = event.mail?.messageId;
-    const noticeId = event.mail?.tags?.[SES_NOTICE_TAG]?.[0];
-    return typeof messageId === 'string' && typeof noticeId === 'string' ? { noticeId, messageId } : null;
+    const type = EVENT_TYPES[String(event?.eventType ?? event?.notificationType)];
+    const mail = event?.mail;
+    if (!type || typeof mail?.messageId !== 'string' || typeof mail.timestamp !== 'string') return null;
+    const detail = event[{ send: 'send', delivery: 'delivery', delay: 'deliveryDelay', bounce: 'bounce', complaint: 'complaint', reject: 'reject', rendering_failure: 'failure' }[type]] ?? {};
+    const tag = (name: string): string | null => {
+      const value = mail.tags?.[name]?.[0];
+      return typeof value === 'string' ? value : null;
+    };
+    const recipient =
+      detail.bouncedRecipients?.[0]?.emailAddress ?? detail.complainedRecipients?.[0]?.emailAddress ?? detail.delayedRecipients?.[0]?.emailAddress;
+    const destination = typeof recipient === 'string' ? recipient : typeof mail.destination?.[0] === 'string' ? mail.destination[0] : null;
+    return {
+      type,
+      messageId: mail.messageId,
+      sentAt: mail.timestamp,
+      at: typeof detail.timestamp === 'string' ? detail.timestamp : mail.timestamp,
+      kind: tag(SES_KIND_TAG),
+      ref: tag(SES_REF_TAG),
+      configurationSet: tag('ses:configuration-set'),
+      destination,
+      subject: typeof mail.commonHeaders?.subject === 'string' ? mail.commonHeaders.subject : null,
+      bounce: type === 'bounce' ? { type: BOUNCE_TYPES[String(detail.bounceType)] ?? 'undetermined', subType: String(detail.bounceSubType ?? 'Undetermined') } : null,
+      delay: type === 'delay' ? { type: String(detail.delayType ?? 'Undetermined'), until: typeof detail.expirationTime === 'string' ? detail.expirationTime : null } : null,
+    };
   } catch {
     return null;
   }
 }
 
-/** The SQS queue SES bounce reports arrive on, read by the worker; nothing reaches the api from outside. */
-export class SesBounceQueue implements BounceSource {
+/** The SQS queue SES delivery reports arrive on, read by the worker; nothing reaches the api from outside. */
+export class SesEventQueue implements MailEventSource {
   constructor(
     private readonly client: Pick<SQSClient, 'send'>,
     private readonly queueUrl: string,
   ) {}
 
-  static fromConfig(config: ServerConfig): SesBounceQueue | null {
+  static fromConfig(config: ServerConfig): SesEventQueue | null {
     const { region, accessKeyId, secretAccessKey, eventsQueueUrl } = config.ses;
     if (!eventsQueueUrl) return null;
     const client = new SQSClient({ region: region!, credentials: { accessKeyId: accessKeyId!, secretAccessKey: secretAccessKey! } });
-    return new SesBounceQueue(client, eventsQueueUrl);
+    return new SesEventQueue(client, eventsQueueUrl);
   }
 
-  async receive(): Promise<{ bounces: BounceReport[]; receipts: string[] }> {
+  async receive(): Promise<{ receipt: string; event: MailEvent | null }[]> {
     const out = await this.client.send(
-      new ReceiveMessageCommand({ QueueUrl: this.queueUrl, MaxNumberOfMessages: 10, WaitTimeSeconds: 0, VisibilityTimeout: 60 }),
+      new ReceiveMessageCommand({ QueueUrl: this.queueUrl, MaxNumberOfMessages: 10, WaitTimeSeconds: 1, VisibilityTimeout: 60 }),
     );
-    const messages = out.Messages ?? [];
-    return {
-      bounces: messages.map((m) => sesBounce(m.Body ?? '')).filter((b) => b !== null),
-      receipts: messages.map((m) => m.ReceiptHandle).filter((r): r is string => !!r),
-    };
+    return (out.Messages ?? []).flatMap((m) => (m.ReceiptHandle ? [{ receipt: m.ReceiptHandle, event: sesMailEvent(m.Body ?? '') }] : []));
   }
 
-  /** Removes handled reports; any the queue does not remove come back and are recorded again, to the same effect. */
+  /** Removes handled reports; one not removed comes back, and is recorded again to the same effect. */
   async acknowledge(receipts: readonly string[]): Promise<void> {
     if (!receipts.length) return;
     await this.client.send(

@@ -18,7 +18,7 @@ async function run(task) {
   try {
     const res = await fetch(`http://127.0.0.1:${process.env.PORT}/tasks/${task}`, { method: 'POST' });
     const body = await res.text();
-    const idle = res.ok && Object.values(JSON.parse(body)).every((n) => n === 0);
+    const idle = res.ok && Object.values(JSON.parse(body)).every((n) => !n);
     if (!idle) console.log(`${task} ${res.status} ${body}`);
   } catch (e) {
     console.error(`${task} failed: ${e instanceof Error ? e.message : String(e)}`);

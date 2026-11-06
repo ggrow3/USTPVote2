@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { AccountsAdminController, AccountsController } from '../accounts/accounts.controller.js';
 import { AccountsService } from '../accounts/accounts.service.js';
+import { EmailVerifiedSync } from '../accounts/email-verified-sync.js';
 import {
   ApprovalsController,
   AuditController,
@@ -63,6 +64,8 @@ import { PublicLedgerController } from '../ledger/ledger.controller.js';
 import { MembershipAdminController, RegistrationController } from '../membership/membership.controller.js';
 import { MEMBERSHIP_PROVIDERS } from '../membership/providers.js';
 import { PublicRegistrationFormController, RegistrationFormAdminController } from '../membership/registration-form.js';
+import { MailAdminController } from '../notifications/mail-admin.controller.js';
+import { MyEmailController } from '../notifications/my-email.js';
 import { NoticeSettingsController } from '../notifications/notice-settings.js';
 import { NoticesController } from '../notifications/notices.controller.js';
 import { NOTIFICATION_API_PROVIDERS } from '../notifications/providers.js';
@@ -117,6 +120,8 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     MemberSearchController,
     NoticesController,
     NoticeSettingsController,
+    MailAdminController,
+    MyEmailController,
     VotingController,
     ConsistencyChecksController,
     AdminConsistencyChecksController,
@@ -172,6 +177,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
   ],
   providers: [
     AccountsService,
+    EmailVerifiedSync,
     ...MEMBERSHIP_PROVIDERS,
     ...NOTIFICATION_API_PROVIDERS,
     BylawsChecksService,

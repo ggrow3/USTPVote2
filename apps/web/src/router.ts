@@ -39,6 +39,7 @@ export const router = createRouter({
         // Where the account emails' links lead: password resets are handled here, other links go on (design §4).
         { path: 'email-action', component: () => import('./pages/EmailActionPage.vue') },
         { path: 'register', component: () => import('./membership/RegisterPage.vue') },
+        { path: 'set-password', component: () => import('./membership/SetPasswordPage.vue') },
         { path: 'account', component: () => import('./pages/AccountPage.vue'), meta: { requiresAuth: true } },
         { path: 'ballot', component: () => import('./pages/BallotPage.vue'), meta: { requiresAuth: true } },
         { path: 'ballot/:id', component: () => import('./pages/VotePage.vue'), meta: { requiresAuth: true } },

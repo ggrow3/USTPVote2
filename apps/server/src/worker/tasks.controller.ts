@@ -5,8 +5,6 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
-  NotImplementedException,
-  Param,
   Post,
 } from '@nestjs/common';
 import type { BylawsRunResult, ConsistencyRunResult, ElectionRunResult, TickResult } from 'ustp-domain';
@@ -14,7 +12,12 @@ import { BylawsCheckRunner } from '../bylaws-check/bylaws-check-runner.js';
 import { SuggestionsService } from '../communications/suggestions.service.js';
 import { ConsistencyCheckRunner } from '../consistency-check/consistency-check-runner.js';
 import { ElectionCheckRunner } from '../election-check/election-check-runner.js';
+import { MailEventRecorder } from '../notifications/mail-events.js';
+import { MailHealthChecker } from '../notifications/mail-health.js';
+import { MailRequestSender } from '../notifications/mail-requests.js';
 import { NoticeSender } from '../notifications/notice-sender.js';
+import { SendVerifier } from '../notifications/send-verification.js';
+import { WelcomeSender } from '../notifications/welcome-sender.js';
 import { RoomAssistant } from '../room/room-assistant.js';
 import { RoomRetention } from '../room/room-retention.js';
 import { BallotSealer } from './ballot-sealer.js';
@@ -26,7 +29,7 @@ import { Tallier } from './tallier.js';
  * Worker task endpoints (design §13), invoked by Cloud Scheduler and Cloud Tasks. The worker's Cloud Run service only
  * admits their OIDC tokens (IAM invoker), so these routes have no sign-in of their own.
  */
-export const WORKER_TASKS = ['tick', 'bylaws-checks', 'consistency-checks', 'election-checks', 'room-assistant', 'room-warm', 'email'] as const;
+export const WORKER_TASKS = ['tick', 'bylaws-checks', 'consistency-checks', 'election-checks', 'room-assistant', 'room-warm'] as const;
 export type WorkerTask = (typeof WORKER_TASKS)[number];
 
 @Controller('tasks')
@@ -42,6 +45,11 @@ export class TasksController {
     private readonly consistencyChecks: ConsistencyCheckRunner,
     private readonly electionChecks: ElectionCheckRunner,
     private readonly notices: NoticeSender,
+    private readonly welcomes: WelcomeSender,
+    private readonly mailEvents: MailEventRecorder,
+    private readonly mailHealth: MailHealthChecker,
+    private readonly mailRequests: MailRequestSender,
+    private readonly sendChecks: SendVerifier,
     private readonly suggestions: SuggestionsService,
     private readonly roomRetention: RoomRetention,
     private readonly roomAssistant: RoomAssistant,
@@ -50,7 +58,9 @@ export class TasksController {
   /**
    * Every minute: prepare ballot-pool keys, open and close elections on time, seal ballots, tally elections that are
    * now fully sealed, destroy the pool keys of certified and cancelled elections, send election notices (for at most
-   * 20 seconds) and the test emails Election Admins asked for, and record their bounces, delete suggestions a year old
+   * 20 seconds, vote confirmations first), the test emails Election Admins asked for and the welcome emails of added members (§5.13), record what
+   * the mail provider reported of them and ledger each notice round's reports after three days, check how email is set
+   * up every hour or when a System Admin asks (§10.12), delete suggestions a year old
    * (design §10.9) and the members' room's records past their time (§5.10), then seal new ledger entries (including those) into a signed block, sign approved rolls and anchor
    * new blocks. Each step runs even if an earlier one failed.
    */
@@ -77,7 +87,12 @@ export class TasksController {
       poolKeysDestroyed: await step('destroy pool keys', () => this.clock.destroyPoolKeys(), 0),
       noticesSent: await step('send notices', () => this.notices.sendDue(), 0),
       testEmailsSent: await step('send test emails', () => this.notices.sendTests(), 0),
-      bouncesRecorded: await step('record bounces', () => this.notices.recordBounces(), 0),
+      welcomeEmailsSent: await step('send welcome emails', () => this.welcomes.sendDue(), 0),
+      memberEmailsSent: await step("do members' email requests", () => this.mailRequests.sendDue(), 0),
+      mailEventsRecorded: await step('record mail events', () => this.mailEvents.record(), 0),
+      deliveryReports: await step('report delivery', () => this.notices.reportDelivery(), 0),
+      sendsVerified: await step('verify sends', () => this.sendChecks.verifyDue(), 0),
+      mailChecked: await step('check mail setup', () => this.mailHealth.runDue(), false),
       suggestionsDeleted: await step('delete old suggestions', () => this.suggestions.deleteExpired(), 0),
       roomExpired: await step('expire room records', () => this.roomRetention.run(), 0),
       blocksSealed: (await step('seal blocks', () => this.sealer.sealBlocks(), [])).length,
@@ -138,12 +153,5 @@ export class TasksController {
       this.logger.warn(`room model warm-up failed: ${e instanceof Error ? e.message : e}`);
       return { warmed: false };
     }
-  }
-
-  @Post(':task')
-  @HttpCode(202)
-  run(@Param('task') task: string) {
-    if (!(WORKER_TASKS as readonly string[]).includes(task)) throw new NotFoundException(`unknown task ${task}`);
-    throw new NotImplementedException(`task ${task} is not implemented yet`);
   }
 }

@@ -11,7 +11,6 @@ import {
   noticeTestSummary,
   TEST_NOTE,
   TEST_SUBJECT_PREFIX,
-  testNoticeTag,
   type NoticeMessageInput,
   type NoticeTestRecord,
   type ReceiptCounts,
@@ -90,6 +89,7 @@ describe('noticeReceiptTotals', () => {
     expect(totals.roll).toEqual([
       { kind: 'voting_open', sends: 2, accepted: 237, failed: 1, skipped: 2, lastSentAt: minutesAgo(59) },
       { kind: 'closing_soon', sends: 1, accepted: 12, failed: 0, skipped: 0, lastSentAt: minutesAgo(5) },
+      { kind: 'voted', sends: 0, accepted: 0, failed: 0, skipped: 0, lastSentAt: null },
     ]);
   });
 
@@ -109,8 +109,9 @@ describe('noticeReceiptTotals', () => {
     expect(totals.roll.map((t) => [t.kind, t.sends, t.lastSentAt])).toEqual([
       ['voting_open', 0, null],
       ['closing_soon', 0, null],
+      ['voted', 0, null],
     ]);
-    expect(totals.tests).toHaveLength(2);
+    expect(totals.tests).toHaveLength(3);
   });
 });
 
@@ -143,16 +144,18 @@ describe('test emails', () => {
 
   it('are refused where nothing would be mailed, as the real emails would not be', () => {
     const check = (over: Partial<Parameters<typeof checkNoticeTest>[0]>) =>
-      checkNoticeTest({ delivery: 'mail', contact: 'elections@example.org', theirs: [], now: NOW, ...over });
+      checkNoticeTest({ delivery: 'mail', enabled: true, contact: 'elections@example.org', theirs: [], now: NOW, ...over });
     expect(check({})).toEqual({ ok: true });
     expect(check({ delivery: 'none' })).toMatchObject({ ok: false, reason: expect.stringMatching(/sends no email/) });
+    expect(check({ enabled: false })).toMatchObject({ ok: false, reason: expect.stringMatching(/switched test emails off/) });
+    expect(check({ delivery: 'outbox', enabled: false }).ok).toBe(false);
     expect(check({ contact: null })).toMatchObject({ ok: false, reason: expect.stringMatching(/no contact/) });
     // The outbox is never mailed, so it needs no contact.
     expect(check({ delivery: 'outbox', contact: null })).toEqual({ ok: true });
   });
 
   it('go one at a time, and at most so many a day', () => {
-    const check = (theirs: NoticeTestRecord[]) => checkNoticeTest({ delivery: 'mail', contact: 'x@example.org', theirs, now: NOW });
+    const check = (theirs: NoticeTestRecord[]) => checkNoticeTest({ delivery: 'mail', enabled: true, contact: 'x@example.org', theirs, now: NOW });
     expect(check([test()])).toMatchObject({ ok: false, reason: expect.stringMatching(/not gone yet/) });
     expect(check([test({ status: 'done', doneAt: minutesAgo(29) })])).toEqual({ ok: true });
     // A claim the worker never finished does not hold the next test up.
@@ -171,8 +174,10 @@ describe('test emails', () => {
     expect(Object.keys(noticeTestSummary(test()))).not.toContain('accountId');
   });
 
-  it('carry a tag of their own, so a bounce report never matches a roll member', () => {
-    expect(testNoticeTag('e1', 'voting_open')).toBe('e1_voting_open_test');
+  it('say what the mail service reported of one it took, and nothing of one it did not', () => {
+    expect(noticeTestSummary(test({ status: 'done' }))).toMatchObject({ sent: true, delivery: null });
+    expect(noticeTestSummary(test({ status: 'done', delivery: 'bounced' }))).toMatchObject({ sent: true, delivery: 'bounced' });
+    expect(noticeTestSummary(test({ status: 'done', outcome: 'refused', delivery: 'bounced' }))).toMatchObject({ sent: false, delivery: null });
   });
 });
 

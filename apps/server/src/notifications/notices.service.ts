@@ -7,6 +7,7 @@ import {
   noticeSummary,
   noticeTestRecord,
   noticeTestSummary,
+  noticeVerificationTotals,
   type NoticeDelivery,
   type NoticeKind,
   type NoticeResendPayload,
@@ -21,6 +22,7 @@ import { CONFIG, type ServerConfig } from '../config.js';
 import { ElectionReader } from '../elections/election-reader.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
+import { MailRepository } from './mail.repository.js';
 import { NoticeSettingsService } from './notice-settings.js';
 import { NoticeRepository } from './notice.repository.js';
 
@@ -38,6 +40,7 @@ export class NoticesService {
     private readonly firebase: Firebase,
     private readonly ledger: LedgerService,
     private readonly notices: NoticeRepository,
+    private readonly mail: MailRepository,
     private readonly elections: ElectionReader,
     private readonly settings: NoticeSettingsService,
     @Inject(CONFIG) private readonly config: ServerConfig,
@@ -45,11 +48,13 @@ export class NoticesService {
 
   async view(ctx: RequestContext, electionId: string): Promise<NoticesView> {
     if (!(await this.elections.find(electionId))) throw new NotFoundException('no such election');
-    const [notices, settings, receipts, tests] = await Promise.all([
+    const [notices, settings, receipts, tests, health, verifications] = await Promise.all([
       this.notices.ofElection(electionId),
       this.settings.current(),
       this.notices.receiptCounts(electionId),
       this.notices.testsTo(electionId, testRecipient(ctx)),
+      this.mail.health(),
+      this.notices.verificationsOf(electionId),
     ]);
     const { version: _v, updatedAt: _at, updatedBy: _by, ...current } = settings;
     return {
@@ -59,6 +64,8 @@ export class NoticesService {
       notices: await Promise.all(notices.map(async (n) => noticeSummary(n, await this.notices.counts(n.noticeId)))),
       receipts: noticeReceiptTotals(receipts),
       tests: tests.slice(0, TESTS_SHOWN).map(noticeTestSummary),
+      setup: health?.overall ?? null,
+      verifications: noticeVerificationTotals(verifications),
     };
   }
 
@@ -81,7 +88,9 @@ export class NoticesService {
       }
       const now = new Date();
       const theirs = await this.notices.testsTo(electionId, recipient, tx);
-      assertCheck(checkNoticeTest({ delivery: this.delivery(), contact: settings.contact ?? this.config.noticeContact, theirs, now }));
+      assertCheck(
+        checkNoticeTest({ delivery: this.delivery(), enabled: settings.emails.electionTests, contact: settings.contact ?? this.config.noticeContact, theirs, now }),
+      );
       const record = noticeTestRecord({ testId: ref.id, electionId, kind, caller: { accountId: actor, operator: ctx.operator }, now });
       tx.create(ref, record);
       return record;
@@ -120,9 +129,12 @@ export class NoticesService {
     return noticeSummary(notice, await this.notices.counts(id));
   }
 
-  /** Removes a deleted election's notices, receipts and test emails (design §6.1), after the deletion has committed. */
-  forgetElection(electionId: string): Promise<void> {
-    return this.notices.deleteForElection(electionId);
+  /**
+   * Removes a deleted election's notices, receipts, test emails and the records of their messages (design §6.1), after
+   * the deletion has committed.
+   */
+  async forgetElection(electionId: string): Promise<void> {
+    await Promise.all([this.notices.deleteForElection(electionId), this.mail.forgetElection(electionId)]);
   }
 }
 

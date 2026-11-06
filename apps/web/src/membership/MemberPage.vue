@@ -12,7 +12,11 @@ import MemberOffices from '../offices/MemberOffices.vue';
 import { session } from '../session.js';
 import ApplicationAnswers from './ApplicationAnswers.vue';
 import DetailsFields from './DetailsFields.vue';
-import { changeMemberStatus, correctMemberDetails, member as fetchMember } from './api.js';
+import { auth } from '../firebase.js';
+import { sendWelcomeLink } from '../sign-in.js';
+import { memberMailFlags } from '../notifications/api.js';
+import { FLAG_LABELS } from '../notifications/my-email-text.js';
+import { changeMemberStatus, correctMemberDetails, member as fetchMember, welcomeAgain } from './api.js';
 import { answerText, classOf, consentText, detailsForm, memberClassText, placeFacts, placeInput, type DetailsForm } from './member-text.js';
 
 /** One member as a Membership Admin sees them (design §5.2): details, every application's answers, status history. */
@@ -31,11 +35,16 @@ const date = (iso: string) => new Date(iso).toLocaleDateString();
 const dateTime = (iso: string) => new Date(iso).toLocaleString();
 const NOT_GIVEN = 'Not given';
 
+/** Why this member cannot be emailed (design §10.12); null when they can, or before it is known. */
+const mailProblem = ref<string | null>(null);
+
 async function load() {
   const id = accountId.value;
   try {
-    const found = await fetchMember(id);
+    const [found, flags] = await Promise.all([fetchMember(id), memberMailFlags().catch(() => [])]);
     if (id !== accountId.value) return;
+    const flag = flags.find((f) => f.accountId === id);
+    mailProblem.value = flag ? FLAG_LABELS[flag.state] : null;
     detail.value = found;
     loadState.value = 'ready';
   } catch (e) {
@@ -51,6 +60,48 @@ async function changeStatus(to: MemberStatus) {
   const reason = await askReason(`Change status to ${to}`, `${member.legalName}: ${member.status} → ${to}.`);
   if (reason === null) return;
   if (await attempt(() => changeMemberStatus(accountId.value, { to, reason }), 'Status changed')) await load();
+}
+
+// A member a Membership Admin added (design §5.13): whether they have signed in, and their welcome email.
+const WELCOME_OUTCOMES: Readonly<Record<string, string>> = {
+  refused: 'the mail service refused the address',
+  unavailable: 'the mail service was unavailable',
+  interrupted: 'interrupted; it may or may not have gone',
+  error: 'an error',
+  no_address: 'the account has no address',
+  undeliverable: 'the address bounced before, or was marked as spam',
+  signed_in: 'they had signed in already',
+};
+/** What the mail service reported of a welcome email it took. */
+const WELCOME_DELIVERY: Readonly<Record<string, string>> = {
+  delayed: ', delayed so far',
+  delivered: ', delivered',
+  bounced: ', and it bounced: check the address',
+  complained: ', delivered, and marked as spam',
+  rejected: ', but the mail service did not send it after all',
+};
+const welcomeText = computed(() => {
+  const w = detail.value?.added?.welcome;
+  if (!w) return "Identity Platform's sign-in link, sent from the adding admin's browser";
+  if (w.status === 'pending') return 'Waiting to be sent';
+  if (w.status === 'sending') return 'Being sent';
+  if (w.outcome) return `Not sent: ${WELCOME_OUTCOMES[w.outcome] ?? w.outcome}`;
+  return `Sent ${dateTime(w.doneAt ?? w.requestedAt)}${w.delivery ? (WELCOME_DELIVERY[w.delivery] ?? '') : ''}`;
+});
+const welcoming = ref(false);
+
+async function sendWelcome() {
+  welcoming.value = true;
+  try {
+    const again = await welcomeAgain(accountId.value);
+    if (again.welcome === 'identity_platform') await sendWelcomeLink(auth, again.email);
+    $q.notify({ type: 'positive', message: `Welcome email sent again to ${again.email}` });
+    await load();
+  } catch (e) {
+    $q.notify({ type: 'negative', message: errorMessage(e) });
+  } finally {
+    welcoming.value = false;
+  }
 }
 
 // Correcting details: names, state and contact, never the member's email opt-ins.
@@ -147,6 +198,11 @@ watch(
             <dl class="ustp-facts">
               <dt>Status</dt>
               <dd><q-badge :label="m.status" /></dd>
+              <dt>Email</dt>
+              <dd>
+                <q-chip v-if="mailProblem" dense color="orange-2" text-color="black" icon="unsubscribe" :label="`Can't be emailed: ${mailProblem}`" />
+                <template v-else>Can be emailed</template>
+              </dd>
               <dt>Class</dt>
               <dd :class="{ 'text-grey-7': classOf(m) === null }">{{ memberClassText(m.usVoteEligible) }}</dd>
               <dt>Agrees with the Core Ideals</dt>
@@ -155,10 +211,25 @@ watch(
               <dd>{{ m.memberSince ? date(m.memberSince) : 'Not yet' }}</dd>
               <dt>Status changed</dt>
               <dd>{{ dateTime(m.statusChangedAt) }}</dd>
-              <dt>Bylaws agreed to</dt>
+              <dt>{{ detail.added ? 'Bylaws in force when added' : 'Bylaws agreed to' }}</dt>
               <dd>Version {{ m.bylawsVersion }}</dd>
+              <template v-if="detail.added">
+                <dt>Added</dt>
+                <dd>By a Membership Admin, {{ dateTime(detail.added.at) }}</dd>
+                <dt>Signed in</dt>
+                <dd :class="{ 'text-grey-7': !detail.added.signedInAt }">
+                  {{ detail.added.signedInAt ? `First on ${dateTime(detail.added.signedInAt)}` : 'Not yet: they have not set a password' }}
+                </dd>
+                <template v-if="!detail.added.signedInAt">
+                  <dt>Welcome email</dt>
+                  <dd>{{ welcomeText }}</dd>
+                </template>
+              </template>
             </dl>
           </q-card-section>
+          <q-card-actions v-if="detail.added && !detail.added.signedInAt" class="q-px-md q-pb-md">
+            <q-btn outline no-caps color="primary" icon="mail" label="Send the welcome email again" :loading="welcoming" @click="sendWelcome" />
+          </q-card-actions>
         </q-card>
 
         <MemberOffices :member="m" :is-self="isSelf" />

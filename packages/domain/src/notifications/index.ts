@@ -6,6 +6,9 @@ export {
   NOTICE_OUTCOMES,
   MAX_SEND_ATTEMPTS,
   NOTICE_CLAIM_MINUTES,
+  VOTED_GRACE_HOURS,
+  VOTED_SCAN_OVERLAP_MINUTES,
+  canConfirmVote,
   noticeId,
   isNoticeKind,
   noticeSummary,
@@ -30,8 +33,39 @@ export type {
   NoticeSummary,
   NoticesView,
   NoticeSentPayload,
+  NoticeDeliveryReportedPayload,
   NoticeResendPayload,
 } from './notices.js';
+export {
+  MAIL_KINDS,
+  MAIL_STATUSES,
+  MAIL_EVENT_TYPES,
+  SUPPRESSED_BOUNCE,
+  MAIL_MESSAGE_RETENTION_DAYS,
+  MAIL_SUPPRESSION_DAYS,
+  NOTICE_REPORT_HOURS,
+  mailAddressKey,
+  isMailKind,
+  isNoticeMail,
+  mailMessageRecord,
+  identityMailKind,
+  identityMailRecord,
+  applyMailEvent,
+  recipientStatusOf,
+  nextSuppression,
+} from './mail.js';
+export type {
+  MailKind,
+  MailSender,
+  MailStatus,
+  MailEventType,
+  BounceType,
+  MailEvent,
+  MailMessageRecord,
+  MailSuppressionReason,
+  MailSuppressionRecord,
+  MailEventEffect,
+} from './mail.js';
 export {
   NOTICE_TEST_STATUSES,
   MAX_NOTICE_TESTS_PER_DAY,
@@ -42,7 +76,6 @@ export {
   noticeTestSummary,
   checkNoticeTest,
   noticeTestRecord,
-  testNoticeTag,
 } from './receipts.js';
 export type {
   NoticeReceiptRecord,
@@ -61,15 +94,27 @@ export {
   noticeMessage,
   votingOpenMessage,
   closingSoonMessage,
+  votedMessage,
   votingWindow,
   zoneTime,
   timeLeft,
+  welcomeMessage,
+  memberTestMessage,
 } from './message.js';
 export type { NoticeElection, NoticeMessage, NoticeMessageInput } from './message.js';
+export {
+  WELCOME_STATUSES,
+  WELCOME_OUTCOMES,
+  SET_PASSWORD_PATH,
+  welcomeEmailRecord,
+  isWelcomeInFlight,
+} from './welcome.js';
+export type { WelcomeStatus, WelcomeOutcome, WelcomeEmailRecord } from './welcome.js';
 export { noticeSteps, emailStepStatus } from './notice-steps.js';
 export type { NoticeStep, NoticeAbsence } from './notice-steps.js';
 export {
   NOTICE_PLACEHOLDERS,
+  OTHER_EMAILS,
   DEFAULT_NOTICE_TEXT,
   DEFAULT_NOTICE_SETTINGS,
   MAX_NOTICE_SUBJECT,
@@ -85,6 +130,8 @@ export {
 } from './notice-settings.js';
 export type {
   NoticePlaceholder,
+  OtherEmail,
+  OtherEmailSettings,
   NoticeKindSettings,
   NoticeSettings,
   NoticeSettingsRecord,
@@ -92,3 +139,84 @@ export type {
   NoticeSettingsChange,
   NoticeSettingsChangedPayload,
 } from './notice-settings.js';
+export {
+  MAIL_CHECK_IDS,
+  MAIL_CHECK_STATUSES,
+  MAIL_SETUP_STEPS,
+  PROBE_EXPECTED,
+  MAIL_SIMULATOR_DOMAIN,
+  PROBE_MINUTES,
+  MAIL_CHECK_INTERVAL_MINUTES,
+  MAIL_CHECK_REQUEST_MINUTES,
+  MAIL_RATE_DAYS,
+  MAIL_RATE_MIN_MESSAGES,
+  BOUNCE_RATE,
+  COMPLAINT_RATE,
+  REQUIRED_EVENT_TYPES,
+  TRACKING_EVENT_TYPES,
+  configChecks,
+  accountChecks,
+  identityChecks,
+  identityPlatformCheck,
+  IDENTITY_MAIL_QUIET_DAYS,
+  configurationSetChecks,
+  queueChecks,
+  dnsChecks,
+  rateChecks,
+  probeCheck,
+  overallStatus,
+  skippedChecks,
+  checkMailHealthRequest,
+  fromDomain,
+} from './mail-health.js';
+export type {
+  MailCheckId,
+  MailCheckStatus,
+  MailSetupStep,
+  MailCheck,
+  ProbeAddress,
+  MailProbe,
+  MailHealthRecord,
+  MailHealthRequest,
+  MailHealthView,
+  SesAccountFacts,
+  SesIdentityFacts,
+  IdentityPlatformFacts,
+  SesConfigurationSetFacts,
+  MailQueueFacts,
+  MailDnsFacts,
+  Unread,
+} from './mail-health.js';
+export {
+  MAIL_ADDRESS_STATES,
+  MAIL_REQUEST_KINDS,
+  MAIL_REQUEST_OUTCOMES,
+  MY_EMAIL_DAYS,
+  MY_EMAIL_SHOWN,
+  MAIL_REQUESTS_PER_DAY,
+  MAIL_REQUEST_RETENTION_DAYS,
+  mailAddressState,
+  isMailRequestInFlight,
+  checkMailRequest,
+} from './my-email.js';
+export type {
+  MailAddressState,
+  MyMailState,
+  MyEmailMessage,
+  MailRequestKind,
+  MailRequestOutcome,
+  MailRequestRecord,
+  MyEmailView,
+  MemberMailFlag,
+} from './my-email.js';
+export {
+  NOT_SEND_BLOCKING,
+  SEND_CHECK_MINUTES,
+  SEND_VERIFY_MINUTES,
+  sendGate,
+  pendingVerification,
+  shortOf,
+  verifySend,
+  noticeVerificationTotals,
+} from './send-checks.js';
+export type { SendGate, NoticeHold, SendVerificationRecord, NoticeVerificationTotals } from './send-checks.js';

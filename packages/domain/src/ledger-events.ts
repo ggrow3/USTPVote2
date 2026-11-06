@@ -32,6 +32,7 @@ export const LEDGER_EVENT_TYPES = [
   'results.certified',
   'election.pool_key_destroyed',
   'notice.sent',
+  'notice.delivery_reported',
   'notice.resend_requested',
   'notice.settings_changed',
   'candidacy.changed',

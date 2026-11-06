@@ -13,13 +13,14 @@ import {
   signInWithEmailAndPassword,
   signInWithEmailLink,
   signInWithPopup,
+  signOut,
   updatePassword,
   verifyPasswordResetCode,
   type Auth,
   type AuthProvider,
   type User,
 } from 'firebase/auth';
-import type { SignInProvider } from 'ustp-domain';
+import { SET_PASSWORD_PATH, type SignInProvider } from 'ustp-domain';
 import { passwordProblem } from './password-policy.js';
 
 export { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, PASSWORD_HINT, passwordProblem } from './password-policy.js';
@@ -80,22 +81,22 @@ export async function breachCount(password: string): Promise<number | null> {
 /** The chosen password breaks the policy or is breached, so the form can show the message on the password field. */
 export class PasswordRejected extends Error {}
 
-const BREACHED = 'This password has appeared in a data breach. Choose another (a few unrelated words work well).';
-
 /**
- * What is wrong with a new password for the login `email`, or null: the rule (password-policy.ts), then the breach
- * screen. Signing up, resetting and changing a password all check it (design §4).
+ * Refuses a password that breaks the rule for `email`'s login or has appeared in a breach (design §4), before it
+ * reaches Identity Platform.
  */
-export async function newPasswordProblem(password: string, email: string): Promise<string | null> {
+export async function checkNewPassword(password: string, email: string): Promise<void> {
   const problem = passwordProblem(password, email);
-  if (problem) return problem;
-  return (await breachCount(password)) ? BREACHED : null;
+  if (problem) throw new PasswordRejected(problem);
+  const breaches = await breachCount(password);
+  if (breaches) {
+    throw new PasswordRejected('This password has appeared in a data breach. Choose another (a few unrelated words work well).');
+  }
 }
 
 /** Creates an email/password login and sends the verification email, whose link leads back to registering. */
 export async function signUpWithPassword(auth: Auth, email: string, password: string) {
-  const problem = await newPasswordProblem(password, email);
-  if (problem) throw new PasswordRejected(problem);
+  await checkNewPassword(password, email);
   const credential = await createUserWithEmailAndPassword(auth, email, password);
   await sendEmailVerification(credential.user, { url: `${location.origin}/register` });
   return credential;
@@ -125,8 +126,7 @@ export function passwordResetEmail(auth: Auth, oobCode: string): Promise<string>
 
 /** Sets the password a reset link is for, after the same checks as signing up. Every session of that login ends. */
 export async function resetPassword(auth: Auth, oobCode: string, email: string, password: string): Promise<void> {
-  const problem = await newPasswordProblem(password, email);
-  if (problem) throw new PasswordRejected(problem);
+  await checkNewPassword(password, email);
   await confirmPasswordReset(auth, oobCode, password);
 }
 
@@ -146,8 +146,7 @@ export async function changePassword(
   replacement: string,
   reauthenticate: (password: string, step: 'confirm' | 'renew') => Promise<boolean>,
 ): Promise<PasswordChange> {
-  const problem = await newPasswordProblem(replacement, user.email ?? '');
-  if (problem) throw new PasswordRejected(problem);
+  await checkNewPassword(replacement, user.email ?? '');
   if (!(await reauthenticate(current, 'confirm'))) return 'cancelled';
   const signedInAt = (await user.getIdTokenResult()).authTime;
   await updatePassword(user, replacement);
@@ -161,12 +160,40 @@ export async function changePassword(
 
 const EMAIL_LINK_KEY = 'ustp.emailLinkAddress';
 
-export async function sendEmailLink(auth: Auth, email: string): Promise<void> {
-  await sendSignInLinkToEmail(auth, email, { url: `${location.origin}/signin`, handleCodeInApp: true });
+/** Emails a sign-in link that opens `path` (the sign-in page by default), and remembers the address for when it does. */
+export async function sendEmailLink(auth: Auth, email: string, path = '/signin'): Promise<void> {
+  await sendSignInLinkToEmail(auth, email, { url: `${location.origin}${path}`, handleCodeInApp: true });
   try {
     localStorage.setItem(EMAIL_LINK_KEY, email);
   } catch {
     // Storage unavailable: the user will be asked for their email when they open the link.
+  }
+}
+
+/**
+ * Asks Identity Platform to email an added member its sign-in link, which opens the set-password page (design §5.13):
+ * the welcome where the deployment sends no mail of its own. A Membership Admin's browser sends it for someone else,
+ * so the address is not remembered here, and the member types it when they open the link.
+ */
+export function sendWelcomeLink(auth: Auth, email: string): Promise<void> {
+  return sendSignInLinkToEmail(auth, email, { url: `${location.origin}${SET_PASSWORD_PATH}`, handleCodeInApp: true });
+}
+
+/**
+ * Sets the signed-in person's password, under the same policy and breach check as signing up (design §4). A new
+ * password ends every session of the login, and this one's tokens keep the earlier sign-in time, so the api's
+ * revocation check (admin routes, casting) would refuse them: it signs in again with the new password at once.
+ * Resolves false when that sign-in needs the second step; it has then signed out, and they sign in as usual.
+ */
+export async function setOwnPassword(auth: Auth, user: User, password: string): Promise<boolean> {
+  await checkNewPassword(password, user.email ?? '');
+  await updatePassword(user, password);
+  try {
+    await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email ?? '', password));
+    return true;
+  } catch {
+    await signOut(auth);
+    return false;
   }
 }
 

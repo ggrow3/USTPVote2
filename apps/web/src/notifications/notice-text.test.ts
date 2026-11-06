@@ -8,14 +8,19 @@ import {
 } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
 import {
+  acceptedCount,
+  countRows,
   leadTimeText,
   NO_CONTACT,
   noNoticeText,
   NOT_SET_UP,
+  heldText,
   receiptText,
   testBlocked,
+  TESTS_OFF,
   testReceiptText,
   testStatusText,
+  verificationText,
 } from './notice-text.js';
 
 describe('leadTimeText', () => {
@@ -41,6 +46,8 @@ describe('noNoticeText', () => {
     notices: [],
     receipts: noticeReceiptTotals([]),
     tests: [],
+    setup: null,
+    verifications: [],
   });
   const step = (kind: NoticeStep['kind'], status: NoticeStep['status'], absent: NoticeStep['absent'] = null): NoticeStep => ({
     kind,
@@ -53,7 +60,7 @@ describe('noNoticeText', () => {
     expect(noNoticeText(step('voting_open', 'not_reached', 'not_set_up'), detail, view())).toBe(NOT_SET_UP);
     expect(noNoticeText(step('voting_open', 'not_reached', 'no_contact'), detail, view())).toBe(NO_CONTACT);
     expect(noNoticeText(step('closing_soon', 'not_reached', 'off'), detail, view())).toBe(
-      'A System Admin has switched the reminder off (Admin › Election emails).',
+      'A System Admin has switched the reminder off (Admin › Email).',
     );
     expect(noNoticeText(step('closing_soon', 'not_reached', 'short_window'), detail, view(48))).toBe(
       'Voting is open for 2 days or less, so there is no reminder.',
@@ -106,13 +113,33 @@ describe('the send receipts and test emails', () => {
     doneAt: null,
     outcome: null,
     sent: false,
+    delivery: null,
     ...over,
+  });
+
+  it('count what the mail service took, and say what each count means', () => {
+    const counts = { pending: 1, sent: 2, delivered: 5, complained: 1, failed: 0, bounced: 1, skipped: 0 };
+    expect(acceptedCount(counts)).toBe(8);
+    const rows = countRows('voting_open', counts);
+    expect(rows.map((r) => [r.label, r.value])).toEqual([
+      ['Delivered', 5],
+      ['Sent, no report yet', 2],
+      ['Still to send', 1],
+      ['Failed', 0],
+      ['Bounced', 1],
+      ['Marked as spam', 1],
+      ['Skipped', 0],
+    ]);
+    expect(countRows('closing_soon', counts).at(-1)!.note).toMatch(/voted before it went/);
   });
 
   it('say where the admin’s own test stands', () => {
     expect(testStatusText(test())).toMatch(/^Your test email is queued/);
     expect(testStatusText(test({ status: 'sending', claimedAt: at }))).toBe('Your test email is being sent.');
-    expect(testStatusText(test({ status: 'done', doneAt: at, sent: true }))).toMatch(/^Your test email went to your own address/);
+    expect(testStatusText(test({ status: 'done', doneAt: at, sent: true }))).toMatch(/^Your test email went to your own address.*look in spam\.$/);
+    expect(testStatusText(test({ status: 'done', doneAt: at, sent: true, delivery: 'delivered' }))).toMatch(/Your mail server took it/);
+    expect(testStatusText(test({ status: 'done', doneAt: at, sent: true, delivery: 'bounced' }))).toMatch(/It bounced/);
+    expect(testStatusText(test({ status: 'done', outcome: 'undeliverable' }))).toMatch(/bounced before, or you marked/);
     expect(testStatusText(test({ status: 'done', outcome: 'unverified_address' }))).toBe(
       "Your test email was not sent: your account's email address is not verified.",
     );
@@ -127,12 +154,51 @@ describe('the send receipts and test emails', () => {
       notices: [],
       receipts: noticeReceiptTotals([]),
       tests: [],
+      setup: null,
+      verifications: [],
     };
     expect(testBlocked(null, now)).toBeNull();
     expect(testBlocked(base, now)).toBeNull();
     expect(testBlocked({ ...base, delivery: 'none' }, now)).toBe(NOT_SET_UP);
     expect(testBlocked({ ...base, contact: null }, now)).toBe(NO_CONTACT);
+    const off = { ...base, settings: { ...DEFAULT_NOTICE_SETTINGS, emails: { ...DEFAULT_NOTICE_SETTINGS.emails, electionTests: false } } };
+    expect(testBlocked(off, now)).toBe(TESTS_OFF);
     expect(testBlocked({ ...base, tests: [test()] }, now)).toBe('Your last test email has not gone yet; wait for it first.');
     expect(testBlocked({ ...base, tests: [test({ status: 'done', sent: true })] }, now)).toBeNull();
+  });
+});
+
+describe('each send checked', () => {
+  const totals = (over: Record<string, number | string | null> = {}) => ({
+    kind: 'voting_open' as const,
+    checked: 2,
+    pending: 0,
+    shortSends: 0,
+    messages: 120,
+    delivered: 120,
+    delayed: 0,
+    bounced: 0,
+    rejected: 0,
+    noReport: 0,
+    lastCheckedAt: null,
+    ...over,
+  });
+
+  it('says what the checks after each send found', () => {
+    expect(verificationText(undefined)).toBeNull();
+    expect(verificationText(totals({ checked: 0, messages: 0, delivered: 0 }))).toBeNull();
+    expect(verificationText(totals({ checked: 0, pending: 1, messages: 0, delivered: 0 }))).toBe(
+      'Each send is checked 30 minutes after it finishes. 1 send still to be checked.',
+    );
+    expect(verificationText(totals())).toBe('2 sends checked: all 120 emails reached their mail servers.');
+    expect(verificationText(totals({ shortSends: 1, delivered: 117, bounced: 2, noReport: 1 }))).toBe(
+      '1 of 2 sends fell short: 3 of 120 emails not confirmed delivered after 30 minutes (2 bounced, 1 with no report). The System Admins have been alerted.',
+    );
+  });
+
+  it('says why an email is held, by the checks’ names', () => {
+    expect(heldText({ checks: ['identity', 'dkim'], since: '2026-11-03T12:00:00.000Z' })).toMatch(
+      /while the email setup check fails \(Sender domain verified, DKIM signature\)/,
+    );
   });
 });

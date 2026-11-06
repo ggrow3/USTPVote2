@@ -154,6 +154,18 @@ export const Collections = {
   noticeReceipts: 'notice_receipts',
   /** `notice_tests/{testId}`: an Election Admin's test email to themselves, queued for the worker (design §6.8). */
   noticeTests: 'notice_tests',
+  /** `notice_verifications/{receiptId}`: each send to a roll, checked 30 minutes after it finished (design §6.8). */
+  noticeVerifications: 'notice_verifications',
+  /** `welcome_emails/{accountId}`: the welcome email to a member a Membership Admin added, queued for the worker (§5.13). */
+  welcomeEmails: 'welcome_emails',
+  /** `mail_messages/{messageId}`: each message the mail service took and what its delivery reports said, kept 180 days (§6.8). */
+  mailMessages: 'mail_messages',
+  /** `mail_suppressions/{addressKey}`: addresses not to mail, because they bounced for good or were marked as spam (§6.8). */
+  mailSuppressions: 'mail_suppressions',
+  /** `mail_health/current` and `mail_health/request`: the email setup check's last run, and a System Admin's request (§10.12). */
+  mailHealth: 'mail_health',
+  /** `mail_requests/{requestId}`: a member's request for a test email, or to try their address again, kept 30 days (§10.12). */
+  mailRequests: 'mail_requests',
   // testing mode (design §10.4)
   testingPersonas: 'testing_personas',
 } as const;

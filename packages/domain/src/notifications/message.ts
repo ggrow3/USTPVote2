@@ -2,6 +2,7 @@ import type { ElectionRecord } from '../elections.js';
 import { DEFAULT_NOTICE_TEXT, fillNoticeText, type NoticePlaceholder } from './notice-settings.js';
 import type { NoticeKind } from './notices.js';
 import { TEST_SUBJECT_PREFIX } from './receipts.js';
+import { SET_PASSWORD_PATH } from './welcome.js';
 
 /**
  * The election notices' emails (design §6.8), as plain text and simple HTML with the same content: real text, no
@@ -32,6 +33,8 @@ export interface NoticeMessageInput {
   readonly text?: { readonly subject: string | null; readonly intro: string | null } | null;
   /** A test email to the Election Admin who asked for it: "[TEST]" leads the subject, and a note opens the message. */
   readonly test?: boolean;
+  /** For a vote confirmation, when the ballot was cast; `now` when absent (a test). */
+  readonly castAt?: string;
 }
 
 /** The time zones the window is given in: the US zones members live in, then UTC. Eastern leads. */
@@ -63,7 +66,7 @@ export const TEST_NOTE =
   'get the same email without this note, when it is due.';
 
 export function noticeMessage(kind: NoticeKind, input: NoticeMessageInput): NoticeMessage {
-  return kind === 'closing_soon' ? closingSoonMessage(input) : votingOpenMessage(input);
+  return kind === 'closing_soon' ? closingSoonMessage(input) : kind === 'voted' ? votedMessage(input) : votingOpenMessage(input);
 }
 
 /** "Voting is open": to everyone on the roll, when the election opens. */
@@ -118,6 +121,85 @@ export function closingSoonMessage(input: NoticeMessageInput): NoticeMessage {
     },
     ...footer(input.contact, links.site),
   ]);
+}
+
+/**
+ * "Your vote was recorded": to each voter soon after their ballot was cast (design §6.8), so that someone who did not
+ * vote learns at once that a ballot went in with their account. When it was cast, never how: no choice, commitment or
+ * receipt goes in it.
+ */
+export function votedMessage(input: NoticeMessageInput): NoticeMessage {
+  const { election } = input;
+  const title = oneLine(election.title);
+  const links = linksOf(input);
+  const window = votingWindow(election.opensAt, election.closesAt);
+  const words = wording('voted', input, window[0]!.closes);
+  const cast = zoneTime(input.castAt ?? input.now.toISOString(), NOTICE_TIME_ZONES[0].zone);
+  return render(input, words.subject, words.heading, [
+    greeting(input.name),
+    ...words.intro.map((p) => ({ p })),
+    { strong: `Your ballot was recorded ${cast} (Eastern Time).` },
+    {
+      p:
+        'If you did not vote, someone may have signed in as you: change your password on your Account page, and tell ' +
+        'the party at once (below). A ballot cannot be taken back, but the party can look into it.',
+    },
+    ...checking(links.verify),
+    { hr: true },
+    {
+      small:
+        'You are getting this email because a ballot was cast with your account in this election. It is sent once, and ' +
+        'says only when, never how you voted.',
+    },
+    ...footer(input.contact, links.site),
+  ]);
+}
+
+/**
+ * The welcome email to a member a Membership Admin added (design §5.13), sent where the deployment sends mail. It
+ * leads to the page where they set their password, which first emails them a sign-in link to prove the address is
+ * theirs; this email carries no link that signs anyone in.
+ */
+export function welcomeMessage(input: { readonly origin: string; readonly name: string | null; readonly contact: string | null }): NoticeMessage {
+  const site = `${input.origin}/`;
+  const subject = 'Welcome to the US Transhumanist Party: set your password';
+  const blocks: Block[] = [
+    greeting(input.name),
+    {
+      p:
+        'A Membership Admin has added you as a member of the US Transhumanist Party. To vote in party elections and take ' +
+        "part on the party's site, set your password the first time you come.",
+    },
+    { link: `${input.origin}${SET_PASSWORD_PATH}`, label: 'Set your password', after: '.' },
+    {
+      p:
+        'Enter the address this email came to. We will email you a sign-in link, which shows the address is yours; open ' +
+        'it, then choose your password. Nobody at the party sets it or can see it.',
+    },
+    { hr: true },
+    { small: 'You are getting this email because a Membership Admin added this address to the party’s member list.' },
+    ...footer(input.contact, site, 'your membership'),
+  ];
+  return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
+}
+
+/**
+ * The test email a member asks for on their Account page (design §10.12), to see that email from the party reaches
+ * them. Nothing in it but where to look if it went to spam.
+ */
+export function memberTestMessage(input: { readonly origin: string; readonly name: string | null; readonly contact: string | null }): NoticeMessage {
+  const site = `${input.origin}/`;
+  const subject = 'Your test email from the US Transhumanist Party';
+  const blocks: Block[] = [
+    greeting(input.name),
+    { p: 'You asked for this test email on your Account page. It reached you, so election email from the party should too.' },
+    { p: 'If it was in your spam or junk folder, mark it as not spam, so the next emails from the party land in your inbox.' },
+    { link: `${input.origin}/account`, label: 'Open your Account page', after: ' to see what became of each email the party sent you.' },
+    { hr: true },
+    { small: 'You are getting this email because you asked for it.' },
+    ...footer(input.contact, site),
+  ];
+  return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
 }
 
 /** One row per time zone: the zone's name and when voting opens and closes there, each with its abbreviation. */
@@ -181,7 +263,7 @@ type Block =
   | { closes: Row[] }
   | { hr: true }
   | { small: string }
-  | { contact: string | null }
+  | { contact: string | null; about?: string }
   | { test: string };
 
 function linksOf({ election, origin }: NoticeMessageInput) {
@@ -236,9 +318,9 @@ function checking(verify: string): Block[] {
   ];
 }
 
-function footer(contact: string | null, site: string): Block[] {
+function footer(contact: string | null, site: string, about?: string): Block[] {
   return [
-    { contact },
+    { contact, ...(about && { about }) },
     {
       small:
         'We never ask for your password or a sign-in code by email. If you are unsure about this message, go to ' +
@@ -272,7 +354,7 @@ function asText(block: Block): string {
   if ('hr' in block) return '--';
   if ('test' in block) return block.test;
   if ('contact' in block) {
-    return `Questions about this election? Replies to this email are not read; write to ${block.contact ? oneLine(block.contact) : NOTICE_CONTACT_PLACEHOLDER}.`;
+    return `Questions about ${block.about ?? 'this election'}? Replies to this email are not read; write to ${block.contact ? oneLine(block.contact) : NOTICE_CONTACT_PLACEHOLDER}.`;
   }
   return block.small;
 }
@@ -324,7 +406,7 @@ function asHtml(subject: string, heading: string, blocks: readonly Block[]): str
           : /^https:\/\/[^\s<>"]+$/.test(contact)
             ? a(contact, escapeHtml(contact))
             : escapeHtml(contact);
-      return `<p style="font-size:14px">Questions about this election? Replies to this email are not read; write to ${where}.</p>`;
+      return `<p style="font-size:14px">Questions about ${escapeHtml(block.about ?? 'this election')}? Replies to this email are not read; write to ${where}.</p>`;
     }
     return `<p style="font-size:14px">${escapeHtml(block.small)}</p>`;
   });

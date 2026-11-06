@@ -20,6 +20,7 @@ import {
   RECIPIENT_STATUSES,
   reminderTime,
   timeLeft,
+  votedMessage,
   votingOpenMessage,
   votingWindow,
   zoneTime,
@@ -173,6 +174,29 @@ describe('closingSoonMessage', () => {
   });
 });
 
+describe('votedMessage', () => {
+  const message = votedMessage(input({ castAt: '2026-11-03T15:04:00.000Z' }));
+
+  it('says the ballot was recorded and when, in Eastern Time', () => {
+    expect(message.subject).toBe('Your vote was recorded: Officers 2026');
+    expect(message.text).toContain('Hello Alex Rivera,');
+    expect(message.text).toContain('Your ballot in “Officers 2026”, an election of the US Transhumanist Party, was recorded.');
+    expect(message.text).toContain('Your ballot was recorded Tuesday, November 3, 2026, 10:04 AM EST (Eastern Time).');
+  });
+
+  it('tells someone who did not vote what to do, and how to check a vote afterwards', () => {
+    expect(message.text).toContain('If you did not vote, someone may have signed in as you');
+    expect(message.text).toContain('https://vote.example.org/verify');
+    expect(message.text).toContain('elections@example.org');
+  });
+
+  it('says only when, never how: no choice, commitment or receipt', () => {
+    expect(message.text).not.toMatch(/commitment|chose|choice:/i);
+    expect(message.html).not.toMatch(/<img/i);
+    expect(noticeMessage('voted', input({ castAt: '2026-11-03T15:04:00.000Z' }))).toEqual(message);
+  });
+});
+
 describe('zoneTime and votingWindow', () => {
   it('names daylight time and standard time by their abbreviations', () => {
     expect(zoneTime('2026-07-01T16:00:00Z', 'America/New_York')).toBe('Wednesday, July 1, 2026, 12:00 PM EDT');
@@ -270,12 +294,16 @@ describe('notice rules', () => {
     expect(isReminderDue({ ...open, state: 'scheduled' }, new Date('2026-11-06T05:00:00.000Z'))).toBe(false);
   });
 
+  it('never resends a vote confirmation', () => {
+    expect(checkNoticeResend(open, { status: 'done', kind: 'voted' }, 2, now)).toMatchObject({ ok: false, reason: expect.stringContaining('once') });
+  });
+
   it('allows a resend only while voting is open, after the round, when it failed for someone', () => {
-    expect(checkNoticeResend(open, { status: 'done' }, 2, now)).toEqual({ ok: true });
+    expect(checkNoticeResend(open, { status: 'done', kind: 'voting_open' }, 2, now)).toEqual({ ok: true });
     expect(checkNoticeResend(open, null, 0, now)).toMatchObject({ ok: false, refusal: 'not_found' });
-    expect(checkNoticeResend(open, { status: 'sending' }, 2, now)).toMatchObject({ ok: false, reason: expect.stringContaining('still being sent') });
-    expect(checkNoticeResend(open, { status: 'done' }, 0, now)).toMatchObject({ ok: false, reason: expect.stringContaining('nothing to resend') });
-    expect(checkNoticeResend({ ...open, state: 'closed' }, { status: 'done' }, 2, now)).toMatchObject({
+    expect(checkNoticeResend(open, { status: 'sending', kind: 'voting_open' }, 2, now)).toMatchObject({ ok: false, reason: expect.stringContaining('still being sent') });
+    expect(checkNoticeResend(open, { status: 'done', kind: 'voting_open' }, 0, now)).toMatchObject({ ok: false, reason: expect.stringContaining('nothing to resend') });
+    expect(checkNoticeResend({ ...open, state: 'closed' }, { status: 'done', kind: 'voting_open' }, 2, now)).toMatchObject({
       ok: false,
       reason: expect.stringContaining('not open'),
     });
@@ -301,7 +329,7 @@ describe('notice rules', () => {
       roundStartedAt: '2026-11-02T14:00:00.000Z',
       completedAt: '2026-11-02T14:01:00.000Z',
     };
-    const counts = { pending: 0, sent: 2, failed: 1, bounced: 0, skipped: 0 };
+    const counts = { pending: 0, sent: 1, delivered: 1, complained: 0, failed: 1, bounced: 0, skipped: 0 };
     expect(noticeSummary(record, counts)).toEqual({
       kind: 'voting_open',
       delivery: 'mail',
@@ -312,6 +340,7 @@ describe('notice rules', () => {
       counts,
       createdAt: record.createdAt,
       completedAt: record.completedAt,
+      held: null,
     });
   });
 });
@@ -325,9 +354,10 @@ describe('the emails in the workflow', () => {
     status,
     round: 1,
     recipients: 3,
-    counts: { pending: 0, sent: 3, failed: 0, bounced: 0, skipped: 0 },
+    counts: { pending: 0, sent: 3, delivered: 0, complained: 0, failed: 0, bounced: 0, skipped: 0 },
     createdAt: ELECTION.opensAt,
     completedAt: null,
+    held: null,
   });
   const view = (delivery: NoticesView['delivery'], notices: NoticeSummary[] = [], settings: NoticeSettings = DEFAULT_NOTICE_SETTINGS): NoticesView => ({
     delivery,
@@ -336,6 +366,8 @@ describe('the emails in the workflow', () => {
     notices,
     receipts: noticeReceiptTotals([]),
     tests: [],
+    setup: null,
+    verifications: [],
   });
   const steps = (over: Partial<Parameters<typeof noticeSteps>[0]> = {}) =>
     noticeSteps({ election, rehearsal: false, testingMode: false, view: view('mail'), now: new Date('2026-11-03T12:00:00Z'), ...over }).map(
@@ -344,50 +376,50 @@ describe('the emails in the workflow', () => {
 
   it('follows the notices the worker started: sending, or done', () => {
     const started = view('mail', [summary('voting_open', 'done'), summary('closing_soon', 'sending')]);
-    expect(steps({ view: started })).toEqual(['voting_open:done', 'closing_soon:current']);
+    expect(steps({ view: started })).toEqual(['voting_open:done', 'closing_soon:current', 'voted:current']);
   });
 
   it('says what is due, to come or past before the worker starts one', () => {
-    expect(steps()).toEqual(['voting_open:current', 'closing_soon:upcoming']);
-    expect(steps({ now: new Date('2026-11-06T06:00:00Z') })).toEqual(['voting_open:current', 'closing_soon:current']);
-    expect(steps({ election: { ...election, state: 'scheduled' } })).toEqual(['voting_open:upcoming', 'closing_soon:upcoming']);
-    expect(steps({ election: { ...election, state: 'closed' } })).toEqual(['voting_open:not_reached', 'closing_soon:not_reached']);
+    expect(steps()).toEqual(['voting_open:current', 'closing_soon:upcoming', 'voted:current']);
+    expect(steps({ now: new Date('2026-11-06T06:00:00Z') })).toEqual(['voting_open:current', 'closing_soon:current', 'voted:current']);
+    expect(steps({ election: { ...election, state: 'scheduled' } })).toEqual(['voting_open:upcoming', 'closing_soon:upcoming', 'voted:upcoming']);
+    expect(steps({ election: { ...election, state: 'closed' } })).toEqual(['voting_open:not_reached', 'closing_soon:not_reached', 'voted:not_reached']);
     // Before the view loads, how email goes out is not known yet; it is taken to be set up.
-    expect(steps({ view: null })).toEqual(['voting_open:current', 'closing_soon:upcoming']);
+    expect(steps({ view: null })).toEqual(['voting_open:current', 'closing_soon:upcoming', 'voted:current']);
   });
 
   it('marks what will not come: email not set up, a rehearsal outside testing mode, no reminder in a short window', () => {
-    expect(steps({ view: view('none') })).toEqual(['voting_open:not_reached', 'closing_soon:not_reached']);
-    expect(steps({ rehearsal: true })).toEqual(['voting_open:not_reached', 'closing_soon:not_reached']);
-    expect(steps({ rehearsal: true, testingMode: true, view: view('none') })).toEqual(['voting_open:current', 'closing_soon:upcoming']);
+    expect(steps({ view: view('none') })).toEqual(['voting_open:not_reached', 'closing_soon:not_reached', 'voted:not_reached']);
+    expect(steps({ rehearsal: true })).toEqual(['voting_open:not_reached', 'closing_soon:not_reached', 'voted:not_reached']);
+    expect(steps({ rehearsal: true, testingMode: true, view: view('none') })).toEqual(['voting_open:current', 'closing_soon:upcoming', 'voted:current']);
     const day = { ...election, opensAt: '2026-11-06T04:59:00.000Z' };
-    expect(steps({ election: day, now: new Date('2026-11-06T06:00:00Z') })).toEqual(['voting_open:current', 'closing_soon:not_reached']);
+    expect(steps({ election: day, now: new Date('2026-11-06T06:00:00Z') })).toEqual(['voting_open:current', 'closing_soon:not_reached', 'voted:current']);
   });
 
   it('follows the System Admins: an email switched off, no contact for questions, another lead time', () => {
-    const off = (kind: 'voting_open' | 'closing_soon') => ({
+    const off = (kind: 'voting_open' | 'closing_soon' | 'voted') => ({
       ...DEFAULT_NOTICE_SETTINGS,
       kinds: { ...DEFAULT_NOTICE_SETTINGS.kinds, [kind]: { ...DEFAULT_NOTICE_SETTINGS.kinds[kind], enabled: false } },
     });
-    expect(steps({ view: view('mail', [], off('closing_soon')) })).toEqual(['voting_open:current', 'closing_soon:not_reached']);
-    expect(steps({ view: view('mail', [], off('voting_open')) })).toEqual(['voting_open:not_reached', 'closing_soon:upcoming']);
-    expect(steps({ view: { ...view('mail'), contact: null } })).toEqual(['voting_open:not_reached', 'closing_soon:not_reached']);
+    expect(steps({ view: view('mail', [], off('closing_soon')) })).toEqual(['voting_open:current', 'closing_soon:not_reached', 'voted:current']);
+    expect(steps({ view: view('mail', [], off('voting_open')) })).toEqual(['voting_open:not_reached', 'closing_soon:upcoming', 'voted:current']);
+    expect(steps({ view: { ...view('mail'), contact: null } })).toEqual(['voting_open:not_reached', 'closing_soon:not_reached', 'voted:not_reached']);
     // The outbox needs no contact: it is never mailed.
-    expect(steps({ view: { ...view('outbox'), contact: null } })).toEqual(['voting_open:current', 'closing_soon:upcoming']);
+    expect(steps({ view: { ...view('outbox'), contact: null } })).toEqual(['voting_open:current', 'closing_soon:upcoming', 'voted:current']);
     const twoDays = { ...DEFAULT_NOTICE_SETTINGS, reminderHours: 48 };
-    expect(steps({ view: view('mail', [], twoDays), now: new Date('2026-11-05T05:00:00Z') })).toEqual(['voting_open:current', 'closing_soon:current']);
+    expect(steps({ view: view('mail', [], twoDays), now: new Date('2026-11-05T05:00:00Z') })).toEqual(['voting_open:current', 'closing_soon:current', 'voted:current']);
     const absent = noticeSteps({ election, rehearsal: false, testingMode: false, view: { ...view('mail', [], off('voting_open')), contact: null }, now: new Date('2026-11-03T12:00:00Z') });
-    expect(absent.map((s) => s.absent)).toEqual(['off', 'no_contact']);
+    expect(absent.map((s) => s.absent)).toEqual(['off', 'no_contact', 'no_contact']);
   });
 
   it('says why an email will not come', () => {
     const why = (over: Partial<Parameters<typeof noticeSteps>[0]> = {}) =>
       noticeSteps({ election, rehearsal: false, testingMode: false, view: view('mail'), now: new Date('2026-11-03T12:00:00Z'), ...over }).map((s) => s.absent);
-    expect(why()).toEqual([null, null]);
-    expect(why({ view: view('none') })).toEqual(['not_set_up', 'not_set_up']);
-    expect(why({ rehearsal: true })).toEqual(['rehearsal', 'rehearsal']);
-    expect(why({ election: { ...election, opensAt: '2026-11-06T04:59:00.000Z' } })).toEqual([null, 'short_window']);
-    expect(why({ election: { ...election, state: 'closed' } })).toEqual(['closed', 'closed']);
+    expect(why()).toEqual([null, null, null]);
+    expect(why({ view: view('none') })).toEqual(['not_set_up', 'not_set_up', 'not_set_up']);
+    expect(why({ rehearsal: true })).toEqual(['rehearsal', 'rehearsal', 'rehearsal']);
+    expect(why({ election: { ...election, opensAt: '2026-11-06T04:59:00.000Z' } })).toEqual([null, 'short_window', null]);
+    expect(why({ election: { ...election, state: 'closed' } })).toEqual(['closed', 'closed', 'closed']);
   });
 
   it('sums them up for the list: going, none, to come, or done', () => {

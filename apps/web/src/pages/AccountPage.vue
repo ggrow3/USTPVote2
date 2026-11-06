@@ -16,6 +16,7 @@ import { enrolledFactors, removeFactor } from '../mfa.js';
 import { resign as resignMembership } from '../membership/api.js';
 import { classOf, memberClassText } from '../membership/class-text.js';
 import MyDetailsCard from '../membership/MyDetailsCard.vue';
+import MyEmailCard from '../notifications/MyEmailCard.vue';
 import { refreshMe, secondFactorMissing, session } from '../session.js';
 import { PROVIDER_LABELS, signInWithPassword, signInWithProvider, type FederatedProvider } from '../sign-in.js';
 
@@ -220,6 +221,8 @@ function copyId() {
         <!-- Saving any of these needs the second factor the site requires (design §4), so they wait for it. -->
         <template v-if="!locked">
           <MyDetailsCard />
+
+          <MyEmailCard />
 
           <ProfilePhotoCard v-if="me.member" />
 

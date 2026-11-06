@@ -23,7 +23,7 @@
   "dependencies": {
     "@anthropic-ai/sdk": "^0.133.0",
     "@aws-sdk/client-sesv2": "^3.1149.0",
-    "@aws-sdk/client-sqs": "^3.1156.0",
+    "@aws-sdk/client-sqs": "^3.1161.0",
     "@google-cloud/kms": "^6.3.0",
     "@google-cloud/secret-manager": "^7.2.0",
     "@google-cloud/vision": "^6.2.0",
@@ -43,7 +43,7 @@
   },
   "devDependencies": {
     "@nestjs/testing": "^12.2.0",
-    "firebase-tools": "^15.34.0",
+    "firebase-tools": "^15.34.2",
     "ustp-verify": "^0.1.0"
   }
 }

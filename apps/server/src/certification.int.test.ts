@@ -97,7 +97,8 @@ describe('certification', () => {
     expect((await worker.tick()).body).toMatchObject({ poolKeysDestroyed: 1 });
     expect(await worker.app.get<BallotPoolKeys>(BALLOT_POOL_KEYS).isReady(poolKeyVersion!)).toBe(false);
     expect(((await api.call('GET', publicUrl(election))).body).election.poolKeyDestroyedAt).toEqual(expect.any(String));
-    const types = await ledgerTypes(api, election.electionId);
+    // Email entries left out: the voters' confirmations finish in the tick that tallies (design §6.8).
+    const types = (await ledgerTypes(api, election.electionId)).filter((t) => !t.startsWith('notice.'));
     expect(types.slice(types.indexOf('results.computed'))).toEqual([
       'results.computed',
       'approval.requested',

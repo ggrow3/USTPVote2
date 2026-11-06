@@ -5,10 +5,12 @@ import {
   DEFAULT_COUNTRY,
   MEMBER_STATUSES,
   type MemberClass,
+  type MemberMailFlag,
   type MemberRecord,
   type MemberStatus,
   type PositionsView,
 } from 'ustp-domain';
+import { FLAG_LABELS } from '../notifications/my-email-text.js';
 import { answerText, CLASS_NOT_ASKED, classOf, MEMBER_CLASS_LABELS } from './class-text.js';
 
 /**
@@ -35,6 +37,8 @@ export interface MemberRow {
   readonly member: MemberRecord;
   /** Active terms of office tied to the member's account, by office title. */
   readonly offices: readonly HeldOffice[];
+  /** Why the member cannot be emailed (design §10.12); null when they can. */
+  readonly mail: MemberMailFlag | null;
 }
 
 /**
@@ -53,10 +57,16 @@ export function heldOffices(view: PositionsView): Map<string, HeldOffice[]> {
   return held;
 }
 
-/** Each member with the offices their account holds now. */
-export function memberRows(members: readonly MemberRecord[], view: PositionsView): MemberRow[] {
+/** Each member with the offices their account holds now, and why they cannot be emailed, if they cannot. */
+export function memberRows(members: readonly MemberRecord[], view: PositionsView, flags: readonly MemberMailFlag[] = []): MemberRow[] {
   const held = heldOffices(view);
-  return members.map((member) => ({ member, offices: held.get(member.accountId) ?? [] }));
+  const mail = new Map(flags.map((f) => [f.accountId, f]));
+  return members.map((member) => ({ member, offices: held.get(member.accountId) ?? [], mail: mail.get(member.accountId) ?? null }));
+}
+
+/** Why a member cannot be emailed, in a few words; null when they can. */
+export function mailFlagText(flag: MemberMailFlag | null): string | null {
+  return flag ? FLAG_LABELS[flag.state] : null;
 }
 
 /** What the Position column says for someone with no office: "Member" while they have a membership, else nothing. */
@@ -98,6 +108,8 @@ export interface MemberFilter {
   readonly place: string;
   /** A member class, or '' (or nothing) for every class. */
   readonly memberClass?: ClassFilter | '';
+  /** `unreachable`: only members who cannot be emailed; '' (or nothing) for everyone. */
+  readonly mail?: 'unreachable' | '';
 }
 
 const folded = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
@@ -107,9 +119,10 @@ export function filterRows(rows: readonly MemberRow[], filter: MemberFilter): Me
   const search = folded(filter.search.trim());
   const wanted = filter.memberClass || null;
   return rows.filter(
-    ({ member: m }) =>
+    ({ member: m, mail }) =>
       (!filter.place || placeKey(m) === filter.place) &&
       (!wanted || (classOf(m) ?? 'not_asked') === wanted) &&
+      (!filter.mail || mail !== null) &&
       (!search || folded(m.legalName).includes(search) || (m.preferredName !== null && folded(m.preferredName).includes(search))),
   );
 }
@@ -207,13 +220,14 @@ function localDate(d: Date): string {
 
 /**
  * The rows as CSV for a spreadsheet: the table's own columns (the location as the US state, if any, and the country),
- * the account ID and the answer about the Core Ideals, nothing from the member's contact details. RFC 4180 with CRLF line ends; cells a spreadsheet would read as a formula
+ * the account ID, the answer about the Core Ideals and whether the member can be emailed, nothing from the member's
+ * contact details. RFC 4180 with CRLF line ends; cells a spreadsheet would read as a formula
  * start with `'`. Member since is the reader's own date, as the table shows it.
  */
 export function membersCsv(rows: readonly MemberRow[]): string {
   const lines = [
-    ['Name', 'Account ID', 'Offices', 'State', 'Country', 'Class', 'Agrees with the Core Ideals', 'Status', 'Member since'],
-    ...rows.map(({ member: m, offices }) => {
+    ['Name', 'Account ID', 'Offices', 'State', 'Country', 'Class', 'Agrees with the Core Ideals', 'Status', 'Member since', 'Can be emailed'],
+    ...rows.map(({ member: m, offices, mail }) => {
       const c = classOf(m);
       return [
         m.legalName,
@@ -225,6 +239,7 @@ export function membersCsv(rows: readonly MemberRow[]): string {
         answerText(m.agreesWithCoreIdeals),
         STATUS_LABELS[m.status],
         m.memberSince ? localDate(new Date(m.memberSince)) : '',
+        mail ? `No: ${FLAG_LABELS[mail.state]}` : 'Yes',
       ];
     }),
   ];
