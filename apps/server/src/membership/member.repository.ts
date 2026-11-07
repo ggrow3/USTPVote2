@@ -48,6 +48,12 @@ export class MemberRepository {
     return active.docs.map((d) => d.id);
   }
 
+  /** Every Active member's record, in no particular order. */
+  async active(): Promise<MemberRecord[]> {
+    const active = await this.members().where('status', '==', 'active').get();
+    return active.docs.map((d) => d.data() as MemberRecord);
+  }
+
   /** Every Active member's names and where they live, and nothing else (a projection), in no particular order. */
   async activeNames(): Promise<MemberMatch[]> {
     const active = await this.members().where('status', '==', 'active').select('legalName', 'preferredName', 'country', 'state').get();

@@ -1,4 +1,4 @@
-import { DEFAULT_NOTICE_SETTINGS, type MailStopRow, type MemberMailFlag, type MyEmailView, type NoticeSettingsRecord, type OutboxMessageRecord } from 'ustp-domain';
+import { DEFAULT_NOTICE_SETTINGS, type AdminTestView, type MailStopRow, type MemberMailFlag, type MyEmailView, type NoticeSettingsRecord, type OutboxMessageRecord } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { NoticeSettingsService } from './notifications/notice-settings.js';
 import { seedElection, type SeededElection } from './testing/elections.js';
@@ -302,14 +302,14 @@ describe('a System Admin’s test email', () => {
     const election = await seedElection(api, { voters: [ada.accountId] });
     const asked = await ask(sa1);
     expect(asked.status).toBe(202);
-    expect((asked.body as MyEmailView).requests[0]).toMatchObject({ kind: 'admin_test', status: 'pending' });
+    expect((asked.body as AdminTestView).last).toMatchObject({ status: 'pending' });
 
     await worker.tick();
     await worker.tick(); // its delivery report
     const sent = (await outbox()).filter((m) => m.kind === 'admin_test');
     expect(sent).toHaveLength(1);
     expect(sent[0]!.accountId).toBe(sa1.accountId);
-    expect(sent[0]!.text).toContain('You asked for this test email in Admin › Email');
+    expect(sent[0]!.text).toContain('This test email was asked for in Admin › Email');
     expect(sent[0]!.text).toMatch(/\/unsubscribe\?token=/);
     // Nobody else was mailed.
     expect(await outboxOf(election)).toEqual([]);

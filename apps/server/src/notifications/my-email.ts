@@ -1,10 +1,11 @@
-import { Controller, Get, HttpCode, Inject, Injectable, Post } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, HttpCode, Inject, Injectable, Post } from '@nestjs/common';
 import {
   checkMailRequest,
   mailAddressKey,
   mailAddressState,
   MY_EMAIL_DAYS,
   MY_EMAIL_SHOWN,
+  type AdminTestView,
   type MailRequestKind,
   type MailRequestRecord,
   type MemberMailFlag,
@@ -88,10 +89,43 @@ export class MyEmailService {
     };
   }
 
-  /** Queues a test email, or trying the address again, for the worker; one at a time, a few a day. */
-  async request(ctx: RequestContext, kind: MailRequestKind): Promise<MyEmailView> {
+  /** Who a System Admin's test can go to, the caller first, and how their last one went. */
+  async adminTestView(ctx: RequestContext): Promise<AdminTestView> {
     const accountId = requireAccount(ctx);
-    const [state, settings] = await Promise.all([this.state(accountId), this.settings.current()]);
+    const [holders, requests] = await Promise.all([this.directory.roleHolders('system_admin'), this.mail.requestsOf(accountId)]);
+    const mailboxes = await this.directory.mailboxes(holders.map((h) => h.accountId));
+    const systemAdmins = holders
+      .map((h) => ({ accountId: h.accountId, name: h.name, email: mailboxes.get(h.accountId)?.email ?? null }))
+      .sort((a, b) => Number(b.accountId === accountId) - Number(a.accountId === accountId));
+    const last = requests.find((r) => r.kind === 'admin_test');
+    if (!last) return { systemAdmins, last: null };
+    const to = last.to ?? last.accountId;
+    const message = last.messageId ? await this.mail.message(last.messageId) : null;
+    return {
+      systemAdmins,
+      last: {
+        toName: holders.find((h) => h.accountId === to)?.name ?? null,
+        status: last.status,
+        outcome: last.outcome,
+        doneAt: last.doneAt,
+        delivery: message?.status ?? null,
+      },
+    };
+  }
+
+  /** Queues a System Admin's test for the worker, to them or another System Admin and nobody else (design §10.12). */
+  async requestAdminTest(ctx: RequestContext, to: string | undefined): Promise<AdminTestView> {
+    const recipient = to ?? requireAccount(ctx);
+    const holders = await this.directory.roleHolders('system_admin');
+    if (!holders.some((h) => h.accountId === recipient)) throw new ForbiddenException('a test email goes only to a System Admin');
+    await this.request(ctx, 'admin_test', recipient);
+    return this.adminTestView(ctx);
+  }
+
+  /** Queues a test email, or trying the address again, for the worker; one at a time, a few a day. */
+  async request(ctx: RequestContext, kind: MailRequestKind, to?: string): Promise<MyEmailView> {
+    const accountId = requireAccount(ctx);
+    const [state, settings] = await Promise.all([this.state(to ?? accountId), this.settings.current()]);
     await this.firebase.db.runTransaction(async (tx) => {
       const theirs = await this.mail.requestsOf(accountId, tx);
       const now = new Date();
@@ -109,6 +143,7 @@ export class MyEmailService {
       const record: MailRequestRecord = {
         requestId: ref.id,
         accountId,
+        ...(to && to !== accountId && { to }),
         kind,
         requestedAt: now.toISOString(),
         status: 'pending',

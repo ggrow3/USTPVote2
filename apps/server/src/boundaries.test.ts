@@ -12,8 +12,8 @@ const CONTEXTS: Readonly<Record<string, { readonly collections: readonly string[
     repositories: ['member.repository', 'application.repository'],
   },
   notifications: {
-    collections: ['notices', 'noticeOutbox', 'noticeSettings', 'noticeReceipts', 'noticeTests', 'noticeVerifications', 'mailMessages', 'mailSuppressions', 'mailHealth', 'mailRequests', 'mailPreferences'],
-    repositories: ['notice.repository', 'mail.repository'],
+    collections: ['notices', 'noticeOutbox', 'noticeSettings', 'noticeReceipts', 'noticeTests', 'noticeVerifications', 'mailMessages', 'mailSuppressions', 'mailHealth', 'mailRequests', 'mailPreferences', 'broadcasts', 'broadcastRecipients'],
+    repositories: ['notice.repository', 'mail.repository', 'broadcast.repository'],
   },
   candidacies: {
     collections: ['candidacies'],

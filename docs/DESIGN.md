@@ -158,7 +158,7 @@ this structure one at a time, without changing routes, documents or the ledger.
 | Communications | §10.9 | `news_posts`, `press_kit`, `press_assets`, `share_posts`, `share_counts`, `calendar_items`, `suggestions`, `suggestion_limits`, `bots` |
 | Governance | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `anthropic_key`, `api_keys` |
 | Audit ledger | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` |
-| Notifications | §6.8, §5.13 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests`, `welcome_emails`, `mail_messages`, `mail_suppressions`, `mail_preferences` |
+| Notifications | §6.8, §5.13 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests`, `welcome_emails`, `mail_messages`, `mail_suppressions`, `mail_preferences`, `broadcasts`, `broadcast_recipients` |
 
 **Layers.** Records stay plain data (Firestore stores them, JCS hashes them, the browser reads them), so an aggregate
 is its record types plus pure functions in `ustp-domain`:
@@ -3184,7 +3184,7 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   `approval.requested`, `approval.decided`, `signin_method.changed`. Added since: `mfa_policy.changed`, `photo.decided`, `roll.approved`,
   `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled` (M2–M3a), `ballots.sealed`,
   `election.sealed` (M3b), `results.computed` (M4a), `results.certified`, `election.pool_key_destroyed`,
-  `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed`, `member.email_stopped`,
+  `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed`, `member.email_stopped`, `notice.broadcast_requested`, `notice.broadcast_cancelled`,
   `navigation.changed`, `home_quote.changed`, `hub.changed`, `analytics.changed`, `notice.sent`, `notice.delivery_reported`, `notice.resend_requested`, `notice.settings_changed`, `anthropic_key.changed`, `api_key.changed`, `position_term.appointed`, `registration_form.changed`, `team.changed`, `team.member_changed`, `forum.moderated`, `room.consent_changed`, `room.assistant_switched`, `room.settings_changed`, `room.door_changed`, `candidacy.changed`, `area_contact.changed`, `email_template.changed` (M5; Auditors only). The authoritative list is `LEDGER_EVENT_TYPES` in
   `ustp-domain`.
 - `identity.linked` with `claimed: true` records a member a Membership Admin added signing in for the first time
@@ -4415,11 +4415,35 @@ password reset, confirming an address) stay outside all three: a member asks for
 without the app, and without them they could not sign in. Neither a stop nor unsubscribing is kept once the account is
 deleted; adding the address again starts over.
 
-**A System Admin's test email** *(added 2026-11-06)*. Since email starts off, Admin › Email lets a System Admin send a test
-to their own address and no one else's (`POST /v1/admin/mail/test`, System Admin; queued as an `admin_test` in
-`mail_requests`, ten a day, one at a time, 409 and 429 otherwise), the one thing that goes while all email is off, so they
-can see that email works before switching it on. It still needs a deployment that sends mail and a confirmed address, and
-does not go if they unsubscribed themselves. The card shows what became of it from its delivery report.
+**A System Admin's test email** *(added 2026-11-06; recipient added 2026-11-07)*. Since email starts off, Admin › Email lets
+a System Admin send a test to themselves or another System Admin, chosen from a list, and no one else (`GET|POST
+/v1/admin/mail/test`, System Admin; anyone else as `to` is refused, 403; queued as an `admin_test` in `mail_requests`, ten a
+day, one at a time, 409 and 429 otherwise). It is the one thing that goes while all email is off, so they can see that email
+works before switching it on, and members still get nothing. It needs a deployment that sends mail and a confirmed address,
+and does not go to anyone who unsubscribed. The card shows what became of it from its delivery report. "Check now" on the
+setup check is a different thing: its messages go to SES's simulator and reach nobody.
+
+**An email to members** *(added 2026-11-07, the party's decision)*. Membership and System Admins can write to members from
+Admin › Email, the Email Administration page (`/v1/admin/mail/broadcasts`, `preview`, `member-search`, `…/{id}/cancel`).
+
+- **To whom.** All Active members, Active members in chosen US states or countries, or members picked by hand (at most 500),
+  and among them only those who opted in to the newsletter or announcements (§5.2). Never by other status. Members who
+  unsubscribed or whose email an admin stopped never get one, nor an address that bounced or was marked as spam, one never
+  confirmed, or none. The form shows, as the choice changes, how many it comes to and why the rest are left out.
+- **What.** A subject of one line and plain text, which the HTML escapes, with blank lines making paragraphs. Each email
+  greets the member by name, says why they get it, and ends with the contact for questions and their own unsubscribe link,
+  in the text, the HTML and the headers. No attachments, images, tracking or scheduling.
+- **When.** Refused (409, and the page says why) where this deployment sends no mail, all email is off, no contact is set,
+  nobody in the choice can get it, or another is still going out: one at a time. Sending asks first, with the count.
+  The worker works out who gets it when it starts (`status` preparing, then sending), and sends after any election email due,
+  up to 15 seconds a tick at SES's rate, through `Mailer`, so someone who stops email meanwhile is skipped. While all email
+  is off, the contact is removed or the setup check fails, what is left waits; "Stop sending" leaves the rest unsent for
+  good. Each copy is claimed in a transaction, so it never goes twice; one a worker claimed and never finished is failed as
+  `interrupted`, never sent again.
+- **The record.** Each send is ledgered (`notice.broadcast_requested`: the admin, the subject, a hash of the body, the
+  audience, how many; `notice.broadcast_cancelled`; Auditors only), never naming a member, since the ledger cannot be erased.
+  `broadcasts` keeps the words, and the page shows them with how many were sent, delivered, bounced and marked as spam,
+  never to whom. Each member sees their own copy among their emails on the Account page.
 
 ## 11. Data model (Firestore `(default)` database)
 
@@ -4493,6 +4517,8 @@ Physically, registration collections are top-level and election data lives under
 | `mail_messages/{messageId}` | SES message ID | its status moves on with each delivery report; TTL 180 days after sending; deleted with its account or election | each message SES took: account, kind, what it belongs to, election, sender (`app` or `identity_platform`), delivery, status (sent / delayed / delivered / bounced / complained / rejected), when each happened, bounce type and subtype, whether it counts toward the rates; never the address, subject or body (§6.8) *(added)* |
 | `mail_suppressions/{addressKey}` | SHA-256 of the address | create, renewed by each report; TTL a year after the last; deleted with the account it was found through | an address not to mail: bounced for good or marked as spam, since when, the message that started it, the account if known; never the address (§6.8) *(added)* |
 | `mail_requests/{requestId}` | auto | pending → sending → done; TTL 30 days; deleted with its account | a member's request for a test email to themselves, or to try their address again, or a System Admin's test: kind, when, outcome code, the message's ID; never the address (§10.12) *(added)* |
+| `broadcasts/{broadcastId}` | auto | preparing → sending → done, or cancelled | an email an admin wrote to members: subject, body, the audience, who it came to when prepared, by whom and when (§10.12) *(added 2026-11-07)* |
+| `broadcast_recipients/{broadcastId}_{accountId}` | composite | pending → sending → sent, skipped or failed; TTL 180 days; deleted with its account | one member's copy: status, outcome code, the message's ID; never the address (§10.12) *(added 2026-11-07)* |
 | `mail_preferences/{accountId}` | accountId | made with the account's first email, unsubscribing or stop; deleted with its account | the unsubscribe link's token, when the member unsubscribed, and when and by which admin their email was stopped (§10.12) *(added 2026-11-06)* |
 | `mail_health/{current\|request\|run}` | fixed | replaced by each run | the email setup check's last run (each check's status, detail and fix, the probe), a System Admin's request for a run, and the claim on a run (§10.12) *(added)* |
 | **audit & admin** | | | |

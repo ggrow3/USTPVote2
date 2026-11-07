@@ -168,6 +168,10 @@ export const Collections = {
   mailRequests: 'mail_requests',
   /** `mail_preferences/{accountId}`: whether a member unsubscribed or an admin stopped their email, and their link's token (§10.12). */
   mailPreferences: 'mail_preferences',
+  /** `broadcasts/{broadcastId}`: an email an admin wrote to members, and who it came to in terms of the audience (§10.12). */
+  broadcasts: 'broadcasts',
+  /** `broadcast_recipients/{broadcastId}_{accountId}`: one member's copy of it, kept 180 days (§10.12). */
+  broadcastRecipients: 'broadcast_recipients',
   // testing mode (design §10.4)
   testingPersonas: 'testing_personas',
 } as const;

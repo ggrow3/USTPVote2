@@ -101,6 +101,7 @@ export {
   welcomeMessage,
   memberTestMessage,
   adminTestMessage,
+  broadcastMessage,
 } from './message.js';
 export type { NoticeElection, NoticeMessage, NoticeMessageInput } from './message.js';
 export {
@@ -200,6 +201,7 @@ export {
   mailAddressState,
   isMailRequestInFlight,
   checkMailRequest,
+  adminTestSchema,
 } from './my-email.js';
 export type {
   MailAddressState,
@@ -208,9 +210,40 @@ export type {
   MailRequestKind,
   MailRequestOutcome,
   MailRequestRecord,
+  AdminTestView,
+  AdminTestInput,
   MyEmailView,
   MemberMailFlag,
 } from './my-email.js';
+export {
+  MAX_BROADCAST_SUBJECT,
+  MAX_BROADCAST_BODY,
+  MAX_BROADCAST_PICKED,
+  BROADCAST_STATUSES,
+  BROADCAST_RECIPIENT_STATUSES,
+  BROADCAST_RECIPIENT_RETENTION_DAYS,
+  broadcastAudienceSchema,
+  broadcastPreviewSchema,
+  broadcastSchema,
+  inBroadcastAudience,
+  hasOptedInToEmail,
+  broadcastSkip,
+  broadcastAudienceSummary,
+} from './broadcasts.js';
+export type {
+  BroadcastAudience,
+  BroadcastInput,
+  BroadcastSkip,
+  BroadcastPreview,
+  BroadcastStatus,
+  BroadcastRecord,
+  BroadcastRecipientStatus,
+  BroadcastRecipientRecord,
+  BroadcastCounts,
+  BroadcastSummary,
+  BroadcastsView,
+  BroadcastRequestedPayload,
+} from './broadcasts.js';
 export {
   UNSUBSCRIBE_PATH,
   isUnsubscribeToken,

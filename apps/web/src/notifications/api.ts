@@ -1,5 +1,12 @@
 import type {
+  AdminTestView,
+  BroadcastAudience,
+  BroadcastInput,
+  BroadcastPreview,
+  BroadcastsView,
+  BroadcastSummary,
   MailHealthView,
+  MemberMatch,
   MailRequestKind,
   MailRestoreInput,
   MailStopInput,
@@ -52,9 +59,14 @@ export function mailHealth(): Promise<MailHealthView> {
   return api<MailHealthView>('GET', '/v1/admin/mail/health');
 }
 
-/** A test email to the System Admin's own address, on the worker's next tick, even while all email is off. */
-export function requestAdminTest(): Promise<MyEmailView> {
-  return api<MyEmailView>('POST', '/v1/admin/mail/test');
+/** Who a test email can go to, and how the caller's last one went. */
+export function adminTest(): Promise<AdminTestView> {
+  return api<AdminTestView>('GET', '/v1/admin/mail/test');
+}
+
+/** A test email to a System Admin, on the worker's next tick, even while all email is off. */
+export function requestAdminTest(to: string | null): Promise<AdminTestView> {
+  return api<AdminTestView>('POST', '/v1/admin/mail/test', to ? { to } : {});
 }
 
 /** Asks the worker to run the check on its next tick; refused while one waits (409) or soon after a run (429). */
@@ -81,6 +93,33 @@ export function setMyEmail(on: boolean): Promise<MyEmailView> {
 /** Membership Admin: members who cannot be emailed, and why. */
 export function memberMailFlags(): Promise<MemberMailFlag[]> {
   return api<MemberMailFlag[]>('GET', '/v1/admin/mail/members');
+}
+
+// --- Emails to members (design §10.12) ----------------------------------------------------------------------------
+
+/** Membership or System Admin: the emails sent so far, and whether one can be sent now. */
+export function emailsToMembers(): Promise<BroadcastsView> {
+  return api<BroadcastsView>('GET', '/v1/admin/mail/broadcasts');
+}
+
+/** Who a choice of members comes to, before anything is sent. */
+export function previewEmailToMembers(audience: BroadcastAudience): Promise<BroadcastPreview> {
+  return api<BroadcastPreview>('POST', '/v1/admin/mail/broadcasts/preview', { audience });
+}
+
+/** Queues the email for the worker. */
+export function emailMembers(input: BroadcastInput): Promise<BroadcastSummary> {
+  return api<BroadcastSummary>('POST', '/v1/admin/mail/broadcasts', input);
+}
+
+/** Stops one going out: what has gone has gone. */
+export function cancelEmailToMembers(broadcastId: string): Promise<BroadcastSummary> {
+  return api<BroadcastSummary>('POST', `/v1/admin/mail/broadcasts/${encodeURIComponent(broadcastId)}/cancel`);
+}
+
+/** Active members by name, to pick them by hand. */
+export function searchMembersToEmail(name: string): Promise<MemberMatch[]> {
+  return api<MemberMatch[]>('GET', `/v1/admin/mail/broadcasts/member-search?${new URLSearchParams({ name })}`);
 }
 
 // --- Who gets no email (design §10.12) ----------------------------------------------------------------------------
