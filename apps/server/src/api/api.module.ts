@@ -64,6 +64,7 @@ import { PublicLedgerController } from '../ledger/ledger.controller.js';
 import { MembershipAdminController, RegistrationController } from '../membership/membership.controller.js';
 import { MEMBERSHIP_PROVIDERS } from '../membership/providers.js';
 import { PublicRegistrationFormController, RegistrationFormAdminController } from '../membership/registration-form.js';
+import { BroadcastsController } from '../notifications/broadcasts.js';
 import { MailAdminController } from '../notifications/mail-admin.controller.js';
 import { UnsubscribeController } from '../notifications/mail-preferences.js';
 import { MyEmailController } from '../notifications/my-email.js';
@@ -122,6 +123,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     NoticesController,
     NoticeSettingsController,
     MailAdminController,
+    BroadcastsController,
     MyEmailController,
     UnsubscribeController,
     VotingController,

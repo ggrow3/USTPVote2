@@ -66,7 +66,9 @@ export class MailRequestSender {
 
   /** The address is read here and stored nowhere else. */
   private async deliver(request: MailRequestRecord): Promise<{ messageId: string } | { outcome: MailRequestOutcome }> {
-    const mailbox = (await this.directory.mailboxes([request.accountId])).get(request.accountId);
+    // A System Admin's test may be to another System Admin; everything else goes to who asked.
+    const to = request.to ?? request.accountId;
+    const mailbox = (await this.directory.mailboxes([to])).get(to);
     if (!mailbox?.email) return { outcome: 'no_address' };
     if (request.kind === 'retry') {
       try {
@@ -78,9 +80,9 @@ export class MailRequestSender {
       await this.mail.deleteSuppression(mailAddressKey(mailbox.email));
     }
     const [[member], settings, links] = await Promise.all([
-      this.members.findMany([request.accountId]),
+      this.members.findMany([to]),
       this.settings.current(),
-      this.mailer.links(request.accountId),
+      this.mailer.links(to),
     ]);
     const message = (request.kind === 'admin_test' ? adminTestMessage : memberTestMessage)({
       origin: this.config.webOrigin!,
@@ -94,7 +96,7 @@ export class MailRequestSender {
       replyTo: this.config.mailReplyTo,
       listUnsubscribe: links.oneClick,
       ...message,
-      meta: { kind: request.kind === 'admin_test' ? 'admin_test' : 'member_test', ref: request.requestId, electionId: null, accountId: request.accountId },
+      meta: { kind: request.kind === 'admin_test' ? 'admin_test' : 'member_test', ref: request.requestId, electionId: null, accountId: to },
     });
     return result.status === 'sent' ? { messageId: result.messageId } : { outcome: result.outcome };
   }

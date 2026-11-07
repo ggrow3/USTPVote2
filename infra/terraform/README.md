@@ -616,8 +616,8 @@ Terraform refuses `ses` without the configuration set or the queue.
 
 A System Admin opens Admin › Email. **All email from the site is off until they switch it on** there ("Send email"), so
 setting SES up mails nobody by itself; switching it on starts the voting-open email of any election open at that moment.
-First send yourself a test ("Send me a test email" on that tab), which goes only to your own address, even while email is
-off, and says whether your mail server took it. The same tab has each email on or off, the reminder's lead time (a day by
+First send a test (Setup and test on that tab, "Send test email"), which goes only to the System Admin you choose, even
+while email is off, and says whether their mail server took it. The same tab has each email on or off, the reminder's lead time (a day by
 default), the contact for questions (it overrides `notice_contact`; with neither, nothing is mailed) and each email's
 subject and opening. Changes are ledgered as `notice.settings_changed`. Once it is on, "Send test email" on an election's
 "Email to voters" card sends you that election's email. The card's counts (delivered, no report yet, bounced, marked as

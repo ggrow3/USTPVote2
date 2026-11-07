@@ -157,6 +157,7 @@ change only where a context is being reworked anyway.
 | Member status change | the only way status moves, always ledgered | `member.status_changed` |
 | Member details change, correction | the member's own update, or a Membership Admin's correction with a reason | `member.details_changed` |
 | Email stop | a Membership or System Admin stopping or restoring email to a member, with a reason | `member.email_stopped` |
+| Email to members | an email a Membership or System Admin writes to Active members who opted in | `broadcasts`, `broadcast_recipients`, `notice.broadcast_requested` |
 | Bylaws version, amendment | immutable published text; a line-exact change to one version | `bylaws_versions`, `BylawsAmendment` |
 | Election, draft, definition, definition hash | the ballot being prepared; its canonical object and hash | `elections`, `ElectionDefinition` |
 | Contest: proposal, choose-N, IRV | one question on the ballot | `ContestRecord.spec.kind` |

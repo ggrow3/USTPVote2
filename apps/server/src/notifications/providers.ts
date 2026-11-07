@@ -1,6 +1,9 @@
 import type { Provider } from '@nestjs/common';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
+import { BroadcastRepository } from './broadcast.repository.js';
+import { BroadcastSender } from './broadcast-sender.js';
+import { BroadcastAudienceReader, BroadcastsService } from './broadcasts.js';
 import { MailHealthService } from './mail-admin.controller.js';
 import { MailEventRecorder } from './mail-events.js';
 import { MailRequestSender } from './mail-requests.js';
@@ -33,6 +36,9 @@ export const NOTIFICATION_API_PROVIDERS: Provider[] = [
   MailRepository,
   MailRecords,
   MailPreferences,
+  BroadcastRepository,
+  BroadcastAudienceReader,
+  BroadcastsService,
   MailHealthService,
   MyEmailService,
   NoticeSettingsService,
@@ -46,6 +52,9 @@ export const NOTIFICATION_WORKER_PROVIDERS: Provider[] = [
   NoticeSettingsService,
   MailPreferences,
   Mailer,
+  BroadcastRepository,
+  BroadcastAudienceReader,
+  BroadcastSender,
   MailEventRecorder,
   MailHealthChecker,
   MailRequestSender,

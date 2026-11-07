@@ -238,6 +238,7 @@ export class MailRepository {
       this.firebase.db.collection(Collections.mailSuppressions).where('accountId', '==', accountId),
       this.firebase.db.collection(Collections.mailRequests).where('accountId', '==', accountId),
       this.firebase.db.collection(Collections.mailPreferences).where('accountId', '==', accountId),
+      this.firebase.db.collection(Collections.broadcastRecipients).where('accountId', '==', accountId),
     ]);
   }
 

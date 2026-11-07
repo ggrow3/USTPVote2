@@ -1,8 +1,10 @@
 import { Body, Controller, Get, HttpCode, Injectable, Param, Post } from '@nestjs/common';
 import {
+  adminTestSchema,
   checkMailHealthRequest,
   mailRestoreSchema,
   mailStopSchema,
+  type AdminTestInput,
   type MailCheckStatus,
   type MailHealthView,
   type MailRestoreInput,
@@ -91,11 +93,17 @@ export class MailAdminController {
     return this.preferences.restore(ctx, accountId, body);
   }
 
-  /** A test email to the System Admin's own address, on the worker's next tick, even while all email is off. */
+  /** Who a test email can go to, and how the caller's last one went. */
+  @Get('test')
+  testView(@Ctx() ctx: RequestContext) {
+    return this.email.adminTestView(ctx);
+  }
+
+  /** A test email to a System Admin, the caller by default, on the worker's next tick, even while all email is off. */
   @Post('test')
   @HttpCode(202)
-  test(@Ctx() ctx: RequestContext) {
-    return this.email.request(ctx, 'admin_test');
+  test(@Ctx() ctx: RequestContext, @Body(new ZodPipe(adminTestSchema)) body: AdminTestInput) {
+    return this.email.requestAdminTest(ctx, body?.to);
   }
 
   @Get('health')

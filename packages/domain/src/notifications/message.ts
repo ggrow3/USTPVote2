@@ -217,8 +217,8 @@ export function memberTestMessage(input: {
 }
 
 /**
- * The test email a System Admin asks for in Admin › Email (design §10.12), to see that email from the site reaches them
- * before they switch it on for everyone. It goes only to them, whether or not all email is on.
+ * The test email a System Admin asks for in Admin › Email (design §10.12), to see that email from the site reaches a
+ * System Admin before it is switched on for everyone. It goes only to the one chosen, whether or not all email is on.
  */
 export function adminTestMessage(input: {
   readonly origin: string;
@@ -230,13 +230,37 @@ export function adminTestMessage(input: {
   const subject = 'Test email from the US Transhumanist Party site';
   const blocks: Block[] = [
     greeting(input.name),
-    { p: 'You asked for this test email in Admin › Email. It reached you, so the site can send email.' },
-    { p: 'It went only to you. Whether the site emails anyone else depends on the “Send email” switch on that page.' },
+    { p: 'This test email was asked for in Admin › Email. It reached you, so the site can send email.' },
+    { p: 'It went only to you. Whether the site emails members depends on the “Send email” switch on that page.' },
     { p: 'If it was in your spam or junk folder, mark it as not spam, and check how the sending domain is set up.' },
     { link: `${input.origin}/admin?tab=email`, label: 'Open Admin › Email', after: ' to see what became of it.' },
     { hr: true },
-    { small: 'You are getting this email because you asked for it.' },
+    { small: 'You are getting this email because a System Admin of the site asked for it to be sent to you.' },
     ...footer(input.contact, site, input, 'the site'),
+  ];
+  return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
+}
+
+/**
+ * An email an admin wrote to members (design §10.12): their words, as plain text that the HTML escapes, between the
+ * greeting and the usual end, which says why the member gets it and carries their unsubscribe link.
+ */
+export function broadcastMessage(input: {
+  readonly origin: string;
+  readonly name: string | null;
+  readonly contact: string | null;
+  readonly subject: string;
+  readonly body: string;
+  readonly unsubscribe?: string | null;
+}): NoticeMessage {
+  const site = `${input.origin}/`;
+  const subject = capped(oneLine(input.subject));
+  const blocks: Block[] = [
+    greeting(input.name),
+    ...paragraphs(input.body).map((p) => ({ p })),
+    { hr: true },
+    { small: 'You are getting this email because you chose to get news and announcements from the party. It came from a party administrator, not a member.' },
+    ...footer(input.contact, site, input, 'this email'),
   ];
   return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
 }

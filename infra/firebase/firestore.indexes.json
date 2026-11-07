@@ -316,6 +316,7 @@
     { "collectionGroup": "mail_messages", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
     { "collectionGroup": "mail_suppressions", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
     { "collectionGroup": "mail_requests", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "broadcast_recipients", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
     { "collectionGroup": "page_hits", "fieldPath": "days", "indexes": [] },
     { "collectionGroup": "page_hits", "fieldPath": "signedIn", "indexes": [] },
     { "collectionGroup": "participation", "fieldPath": "parts", "indexes": [] },

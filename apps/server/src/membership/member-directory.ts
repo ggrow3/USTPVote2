@@ -31,6 +31,11 @@ export class MemberDirectory {
     return this.members.activeIds(tx);
   }
 
+  /** Every Active member's record now, for an admin's email to members (design §10.12), in no particular order. */
+  active(): Promise<MemberRecord[]> {
+    return this.members.active();
+  }
+
   /** Active members whose legal or preferred name holds `text`, best matches first (`matchMembers`), at most `limit`. */
   async searchActive(text: string, limit: number): Promise<MemberMatch[]> {
     return matchMembers(await this.members.activeNames(), text, limit);
