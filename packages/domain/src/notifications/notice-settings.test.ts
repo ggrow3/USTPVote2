@@ -31,8 +31,9 @@ const input = (text: NoticeMessageInput['text'] = null): NoticeMessageInput => (
 const body = (over: Partial<Record<string, unknown>> = {}) => ({ basedOn: 0, ...DEFAULT_NOTICE_SETTINGS, ...over });
 
 describe('the default settings', () => {
-  it('keep the emails as they were: all on, the reminder a day before, the built-in wording', () => {
+  it('send nothing until a System Admin switches email on; then each email on, the reminder a day before, the built-in wording', () => {
     expect(DEFAULT_NOTICE_SETTINGS).toEqual({
+      allEmails: false,
       kinds: {
         voting_open: { enabled: true, subject: null, intro: null },
         closing_soon: { enabled: true, subject: null, intro: null },
@@ -131,6 +132,7 @@ describe('noticeSettingsSchema', () => {
 describe('noticeSettingsChanges', () => {
   it('lists every setting that changed, with its old and new value', () => {
     const after: NoticeSettings = {
+      allEmails: true,
       kinds: {
         voting_open: { enabled: true, subject: 'Vote: {title}', intro: null },
         closing_soon: { enabled: false, subject: null, intro: null },
@@ -141,6 +143,7 @@ describe('noticeSettingsChanges', () => {
       contact: 'elections@example.org',
     };
     expect(noticeSettingsChanges(DEFAULT_NOTICE_SETTINGS, after)).toEqual([
+      { field: 'allEmails', from: false, to: true },
       { field: 'voting_open.subject', from: null, to: 'Vote: {title}' },
       { field: 'closing_soon.enabled', from: true, to: false },
       { field: 'emails.welcome', from: true, to: false },

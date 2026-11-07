@@ -166,6 +166,8 @@ export const Collections = {
   mailHealth: 'mail_health',
   /** `mail_requests/{requestId}`: a member's request for a test email, or to try their address again, kept 30 days (§10.12). */
   mailRequests: 'mail_requests',
+  /** `mail_preferences/{accountId}`: whether a member unsubscribed or an admin stopped their email, and their link's token (§10.12). */
+  mailPreferences: 'mail_preferences',
   // testing mode (design §10.4)
   testingPersonas: 'testing_personas',
 } as const;

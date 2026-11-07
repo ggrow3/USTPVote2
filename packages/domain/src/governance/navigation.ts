@@ -81,8 +81,9 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   people: ['system_admin'],
   signin: ['system_admin'],
   claude: ['system_admin'],
-  // The election emails' settings (design §6.8).
-  email: ['system_admin'],
+  // The email settings (design §6.8) and the setup check (§10.12) for System Admins, and who gets no email, which
+  // Membership Admins change too (§10.12).
+  email: ['system_admin', 'membership_admin'],
   audit: ['auditor'],
   // The sign-in log and site analytics (design §10.7): System Admins and Auditors read the log; System Admins set analytics.
   security: ['system_admin', 'auditor'],

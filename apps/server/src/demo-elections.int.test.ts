@@ -134,7 +134,7 @@ describe('a demo election', () => {
     const transport = worker.app.get<MailTransport>(MAIL_TRANSPORT);
     const sent = vi.spyOn(transport, 'send');
     // A reminder an hour before the close, so a two-hour demo gets one.
-    const settings = { ...DEFAULT_NOTICE_SETTINGS, reminderHours: 1 };
+    const settings = { ...DEFAULT_NOTICE_SETTINGS, allEmails: true, reminderHours: 1 };
     expect((await api.call('PUT', '/v1/admin/notice-settings', sa1, { basedOn: 0, ...settings })).status).toBe(200);
     worker.app.get(NoticeSettingsService).invalidate();
 

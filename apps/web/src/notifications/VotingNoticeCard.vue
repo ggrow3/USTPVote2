@@ -21,6 +21,7 @@ import { resendNotice, sendTestNotice } from './api.js';
 import { loadNotices, noticesOf } from './notice-store.js';
 import {
   countRows,
+  ALL_OFF,
   EMAIL_DESCRIPTION,
   heldText,
   NOTICE_TITLES,
@@ -149,6 +150,7 @@ function sendTest(kind: NoticeKind) {
       <h2 id="election-email-heading" class="text-subtitle1">Email to voters</h2>
       <div class="text-caption text-grey-7">{{ EMAIL_DESCRIPTION }}</div>
       <div v-if="testUnavailable && !testWaiting" class="text-caption text-grey-7">No test emails: {{ testUnavailable }}</div>
+      <q-banner v-if="view && !view.settings.allEmails" dense rounded class="bg-orange-2 text-black q-mt-sm">{{ ALL_OFF }}</q-banner>
       <q-banner v-if="setupLine(view?.setup ?? null)" dense rounded class="bg-orange-1 text-black q-mt-sm">{{ setupLine(view?.setup ?? null) }}</q-banner>
     </q-card-section>
     <template v-for="kind in NOTICE_KINDS" :key="kind">

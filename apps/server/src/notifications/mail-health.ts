@@ -137,7 +137,13 @@ export class MailHealthChecker {
     const { configurationSet, eventsQueueUrl, maxSendRate } = this.config.ses;
     const domain = fromDomain(mailFrom);
     const settings = await this.settings.current();
-    const checks: MailCheck[] = configChecks({ transport, webOrigin, contact: settings.contact ?? this.config.noticeContact, queueUrl: eventsQueueUrl });
+    const checks: MailCheck[] = configChecks({
+      transport,
+      webOrigin,
+      contact: settings.contact ?? this.config.noticeContact,
+      queueUrl: eventsQueueUrl,
+      allEmails: settings.allEmails,
+    });
 
     if (transport === 'ses' && this.ses && domain) {
       const [account, identity, set, queue, largestRoll, signIn, lastSeen] = await Promise.all([

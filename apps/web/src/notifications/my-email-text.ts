@@ -11,6 +11,7 @@ export const MAIL_KIND_LABELS: Readonly<Record<MailKind, string>> = {
   welcome: 'Welcome',
   probe: 'Setup check',
   member_test: 'Test email you asked for',
+  admin_test: 'Test email you asked for in Admin › Email',
   sign_in_link: 'Sign-in link',
   address_verification: 'Confirm your email address',
   password_reset: 'Password reset',
@@ -29,7 +30,9 @@ export const MAIL_STATUS_LABELS: Readonly<Record<MailStatus, string>> = {
 
 /** Whether the address can be mailed, as a sentence for its owner. */
 export function addressText(view: Pick<MyEmailView, 'address' | 'state' | 'since'>): string {
-  const since = view.since ? ` since ${new Date(view.since).toLocaleDateString()}` : '';
+  const date = view.since ? new Date(view.since).toLocaleDateString() : null;
+  const since = date ? ` since ${date}` : '';
+  const on = date ? ` on ${date}` : '';
   switch (view.state) {
     case 'ok':
       return `Party email goes to ${view.address}.`;
@@ -41,6 +44,10 @@ export function addressText(view: Pick<MyEmailView, 'address' | 'state' | 'since
       return `${view.address} is not confirmed yet, so election email does not go to it. Open the confirmation link we sent you.`;
     case 'no_address':
       return 'Your account has no email address, so the party cannot email you.';
+    case 'unsubscribed':
+      return `You unsubscribed${on}, so the party sends you no email, election notices and vote confirmations included. Turn it back on to get them.`;
+    case 'email_stopped':
+      return `An administrator stopped email to you${on}, so the party sends you no email, election notices and vote confirmations included. Only an administrator can restore it: ask the party if you think this is a mistake.`;
   }
 }
 
@@ -59,6 +66,8 @@ export const REQUEST_OUTCOMES: Readonly<Record<MailRequestOutcome, string>> = {
   error: 'something went wrong, so whether it went is unknown',
   undeliverable: 'your address is not mailed now',
   no_address: 'your account has no email address',
+  unsubscribed: 'you have unsubscribed from email',
+  email_stopped: 'an administrator has stopped email to you',
 };
 
 /** The Membership Admins' flag: why a member cannot be emailed. */
@@ -67,4 +76,6 @@ export const FLAG_LABELS: Readonly<Record<Exclude<MailAddressState, 'ok'>, strin
   complained: 'Marked email as spam',
   unverified: 'Address not confirmed',
   no_address: 'No email address',
+  unsubscribed: 'Unsubscribed',
+  email_stopped: 'Email stopped by an admin',
 };

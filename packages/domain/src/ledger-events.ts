@@ -2,6 +2,7 @@
 export const LEDGER_EVENT_TYPES = [
   'member.status_changed',
   'member.details_changed',
+  'member.email_stopped',
   'identity.linked',
   'identity.unlinked',
   'account.deleted',

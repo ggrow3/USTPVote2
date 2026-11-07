@@ -391,7 +391,7 @@ describe('a rehearsal roll', () => {
     expect((await view(election)).body).toEqual({
       delivery: 'outbox',
       contact: null,
-      settings: DEFAULT_NOTICE_SETTINGS,
+      settings: { ...DEFAULT_NOTICE_SETTINGS, allEmails: true },
       notices: [],
       receipts: noticeReceiptTotals([]),
       tests: [],

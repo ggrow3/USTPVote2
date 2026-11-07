@@ -11,6 +11,7 @@ import {
   acceptedCount,
   countRows,
   leadTimeText,
+  ALL_OFF,
   NO_CONTACT,
   noNoticeText,
   NOT_SET_UP,
@@ -42,7 +43,7 @@ describe('noNoticeText', () => {
   const view = (reminderHours = 24): NoticesView => ({
     delivery: 'mail',
     contact: 'elections@example.org',
-    settings: { ...DEFAULT_NOTICE_SETTINGS, reminderHours },
+    settings: { ...DEFAULT_NOTICE_SETTINGS, allEmails: true, reminderHours },
     notices: [],
     receipts: noticeReceiptTotals([]),
     tests: [],
@@ -150,18 +151,19 @@ describe('the send receipts and test emails', () => {
     const base: NoticesView = {
       delivery: 'mail',
       contact: 'elections@example.org',
-      settings: DEFAULT_NOTICE_SETTINGS,
+      settings: { ...DEFAULT_NOTICE_SETTINGS, allEmails: true },
       notices: [],
       receipts: noticeReceiptTotals([]),
       tests: [],
       setup: null,
       verifications: [],
     };
+    expect(testBlocked({ ...base, settings: DEFAULT_NOTICE_SETTINGS }, now)).toBe(ALL_OFF);
     expect(testBlocked(null, now)).toBeNull();
     expect(testBlocked(base, now)).toBeNull();
     expect(testBlocked({ ...base, delivery: 'none' }, now)).toBe(NOT_SET_UP);
     expect(testBlocked({ ...base, contact: null }, now)).toBe(NO_CONTACT);
-    const off = { ...base, settings: { ...DEFAULT_NOTICE_SETTINGS, emails: { ...DEFAULT_NOTICE_SETTINGS.emails, electionTests: false } } };
+    const off = { ...base, settings: { ...base.settings, emails: { ...base.settings.emails, electionTests: false } } };
     expect(testBlocked(off, now)).toBe(TESTS_OFF);
     expect(testBlocked({ ...base, tests: [test()] }, now)).toBe('Your last test email has not gone yet; wait for it first.');
     expect(testBlocked({ ...base, tests: [test({ status: 'done', sent: true })] }, now)).toBeNull();

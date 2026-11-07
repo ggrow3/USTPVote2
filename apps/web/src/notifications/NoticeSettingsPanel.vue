@@ -19,18 +19,20 @@ import {
   type NoticeSettingsRecord,
   type OtherEmail,
 } from 'ustp-domain';
-import { attempt } from '../dialogs.js';
+import { attempt, dialog } from '../dialogs.js';
 import { validate } from '../forms.js';
 import { noticeSettings, saveNoticeSettings } from './api.js';
 import { leadTimeText, NOTICE_TITLES } from './notice-text.js';
 
 /**
- * The site's email settings (design §6.8), for System Admins: whether each election email goes, how long before the
- * close the reminder goes, where the emails tell members to ask, each email's subject and opening, and whether the
+ * The site's email settings (design §6.8), for System Admins: whether the site sends any email at all (which takes
+ * effect at once, apart from the rest of the form; §10.12), whether each election email goes, how long before the close
+ * the reminder goes, where the emails tell members to ask, each email's subject and opening, and whether the
  * site's other emails (welcome and test emails) go. The election's details fill themselves in; the From address stays
  * in the deployment's configuration.
  */
 type Draft = {
+  allEmails: boolean;
   kinds: Record<NoticeKind, { enabled: boolean; subject: string; intro: string }>;
   emails: Record<OtherEmail, boolean>;
   reminderHours: number | string;
@@ -38,6 +40,7 @@ type Draft = {
 };
 
 const toDraft = (s: NoticeSettings): Draft => ({
+  allEmails: s.allEmails,
   kinds: Object.fromEntries(
     NOTICE_KINDS.map((k) => [k, { enabled: s.kinds[k].enabled, subject: s.kinds[k].subject ?? '', intro: s.kinds[k].intro ?? '' }]),
   ) as Draft['kinds'],
@@ -47,6 +50,7 @@ const toDraft = (s: NoticeSettings): Draft => ({
 });
 /** Empty text means the built-in wording, or no contact of the app's own. */
 const fromDraft = (d: Draft): NoticeSettings => ({
+  allEmails: d.allEmails,
   kinds: Object.fromEntries(
     NOTICE_KINDS.map((k) => [k, { enabled: d.kinds[k].enabled, subject: d.kinds[k].subject.trim() || null, intro: d.kinds[k].intro.trim() || null }]),
   ) as NoticeSettings['kinds'],
@@ -63,7 +67,8 @@ const checked = computed(() =>
 );
 const errors = computed<Record<string, string>>(() => (checked.value && !checked.value.ok ? checked.value.errors : {}));
 const changes = computed(() => (saved.value && settings.value ? noticeSettingsChanges(saved.value, settings.value) : []));
-const isDefault = computed(() => !!settings.value && noticeSettingsChanges(DEFAULT_NOTICE_SETTINGS, settings.value).length === 0);
+// The site-wide switch has its own place, and restoring the rest leaves it as it is.
+const isDefault = computed(() => !!settings.value && noticeSettingsChanges({ ...DEFAULT_NOTICE_SETTINGS, allEmails: settings.value.allEmails }, settings.value).length === 0);
 const savedAt = computed(() => (saved.value?.updatedAt ? new Date(saved.value.updatedAt).toLocaleString() : null));
 const hours = computed(() => {
   const n = Number(draft.value?.reminderHours);
@@ -87,7 +92,41 @@ async function save() {
 }
 
 function restoreDefaults() {
-  draft.value = toDraft(DEFAULT_NOTICE_SETTINGS);
+  draft.value = { ...toDraft(DEFAULT_NOTICE_SETTINGS), allEmails: draft.value?.allEmails ?? true };
+}
+
+/** Saves the site-wide switch alone, at once: other changes on the page stay unsaved. */
+async function saveAllEmails(on: boolean) {
+  const current = saved.value;
+  if (!current) return;
+  const { version, updatedAt: _at, updatedBy: _by, ...rest } = current;
+  await attempt(
+    async () => {
+      saved.value = await saveNoticeSettings({ ...rest, basedOn: version, allEmails: on });
+      if (draft.value) draft.value.allEmails = on;
+    },
+    on ? 'Email is back on. The worker follows it within a minute.' : 'All email is off. The worker follows it within a minute.',
+  );
+}
+
+function switchAllEmails(on: boolean) {
+  if (on) {
+    dialog({
+      title: 'Switch on all email?',
+      message:
+        'The site will start emailing members straight away. Any election open now sends its voting-open email to everyone on its roll, and reminders and vote confirmations follow. Send yourself a test first if you have not.',
+      cancel: true,
+      ok: { label: 'Switch on', color: 'primary', noCaps: true },
+    }).onOk(() => void saveAllEmails(true));
+    return;
+  }
+  dialog({
+    title: 'Switch off all email?',
+    message:
+      'The site will send no email to members: no election notices, reminders, vote confirmations, welcome or test emails. What comes due waits, and goes if you switch it back on in time. Sign-in and password-reset emails still go, since they come from Identity Platform.',
+    cancel: true,
+    ok: { label: 'Switch off', color: 'negative', noCaps: true },
+  }).onOk(() => void saveAllEmails(false));
 }
 
 /** An election three days from closing, to show the wording with its details filled in. */
@@ -156,8 +195,8 @@ onMounted(load);
     </div>
     <p>
       The worker emails everyone on an election's roll when voting opens and, before it closes, reminds those who have
-      not voted. They are official election notices, sent whatever members' newsletter and announcement choices. Here
-      you choose whether each goes, when the reminder goes, where members ask questions, and each email's subject and
+      not voted. They are official election notices, sent whatever members' newsletter and announcement choices, but not
+      to a member who unsubscribed from all email or whose email an admin stopped. Here you choose whether each goes, when the reminder goes, where members ask questions, and each email's subject and
       opening. The rest of each email (the ballot link, the times in every zone, how to check a vote) fills itself in.
       Below them, the site's welcome and test emails can each be switched off. The From address is set with the
       deployment, since Amazon SES has to verify it. Every change is recorded in the audit ledger.
@@ -169,6 +208,24 @@ onMounted(load);
     </p>
 
     <template v-if="draft">
+      <q-card flat bordered tag="section" aria-labelledby="settings-all">
+        <q-card-section>
+          <h3 id="settings-all" class="text-subtitle2 q-my-none">All email from this site</h3>
+          <div class="text-caption text-grey-7">
+            Email is off until a System Admin switches it on. This switches every email the site sends, at once, without the
+            Save button below. While it is off, what comes due waits, and goes if you switch it on in time. Sign-in and
+            password-reset emails come from Identity Platform, so they still go, and so do the setup check’s messages to
+            Amazon’s simulator and your own test email above.
+          </div>
+        </q-card-section>
+        <q-card-section class="ustp-form">
+          <q-toggle :model-value="saved!.allEmails" label="Send email" color="primary" @update:model-value="switchAllEmails" />
+          <q-banner v-if="!saved!.allEmails" dense rounded class="bg-orange-2 text-black" role="status">
+            All email is off: the site is sending nothing to members.
+          </q-banner>
+        </q-card-section>
+      </q-card>
+
       <q-card v-for="kind in NOTICE_KINDS" :key="kind" flat bordered tag="section" :aria-labelledby="`settings-${kind}`">
         <q-card-section>
           <h3 :id="`settings-${kind}`" class="text-subtitle2 q-my-none">{{ NOTICE_TITLES[kind] }}</h3>

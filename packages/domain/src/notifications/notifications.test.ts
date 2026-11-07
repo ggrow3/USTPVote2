@@ -359,7 +359,9 @@ describe('the emails in the workflow', () => {
     completedAt: null,
     held: null,
   });
-  const view = (delivery: NoticesView['delivery'], notices: NoticeSummary[] = [], settings: NoticeSettings = DEFAULT_NOTICE_SETTINGS): NoticesView => ({
+  /** A site with email switched on, as most of these look at. */
+  const ON: NoticeSettings = { ...DEFAULT_NOTICE_SETTINGS, allEmails: true };
+  const view = (delivery: NoticesView['delivery'], notices: NoticeSummary[] = [], settings: NoticeSettings = ON): NoticesView => ({
     delivery,
     contact: 'elections@example.org',
     settings,
@@ -398,16 +400,24 @@ describe('the emails in the workflow', () => {
 
   it('follows the System Admins: an email switched off, no contact for questions, another lead time', () => {
     const off = (kind: 'voting_open' | 'closing_soon' | 'voted') => ({
-      ...DEFAULT_NOTICE_SETTINGS,
-      kinds: { ...DEFAULT_NOTICE_SETTINGS.kinds, [kind]: { ...DEFAULT_NOTICE_SETTINGS.kinds[kind], enabled: false } },
+      ...ON,
+      kinds: { ...ON.kinds, [kind]: { ...ON.kinds[kind], enabled: false } },
     });
     expect(steps({ view: view('mail', [], off('closing_soon')) })).toEqual(['voting_open:current', 'closing_soon:not_reached', 'voted:current']);
     expect(steps({ view: view('mail', [], off('voting_open')) })).toEqual(['voting_open:not_reached', 'closing_soon:upcoming', 'voted:current']);
     expect(steps({ view: { ...view('mail'), contact: null } })).toEqual(['voting_open:not_reached', 'closing_soon:not_reached', 'voted:not_reached']);
     // The outbox needs no contact: it is never mailed.
     expect(steps({ view: { ...view('outbox'), contact: null } })).toEqual(['voting_open:current', 'closing_soon:upcoming', 'voted:current']);
-    const twoDays = { ...DEFAULT_NOTICE_SETTINGS, reminderHours: 48 };
+    const twoDays = { ...ON, reminderHours: 48 };
     expect(steps({ view: view('mail', [], twoDays), now: new Date('2026-11-05T05:00:00Z') })).toEqual(['voting_open:current', 'closing_soon:current', 'voted:current']);
+    // All email off (the default): none of them comes until it is on, but a rehearsal mails nobody, and before the
+    // settings have loaded nothing is known.
+    const allOff = noticeSteps({ election, rehearsal: false, testingMode: false, view: view('mail', [], DEFAULT_NOTICE_SETTINGS), now: new Date('2026-11-03T12:00:00Z') });
+    expect(allOff.map((s) => s.absent)).toEqual(['all_off', 'all_off', 'all_off']);
+    const rehearsing = noticeSteps({ election, rehearsal: true, testingMode: true, view: view('outbox', [], DEFAULT_NOTICE_SETTINGS), now: new Date('2026-11-03T12:00:00Z') });
+    expect(rehearsing.map((s) => s.absent)).toEqual([null, null, null]);
+    const loading = noticeSteps({ election, rehearsal: false, testingMode: false, view: null, now: new Date('2026-11-03T12:00:00Z') });
+    expect(loading.map((s) => s.absent)).toEqual([null, null, null]);
     const absent = noticeSteps({ election, rehearsal: false, testingMode: false, view: { ...view('mail', [], off('voting_open')), contact: null }, now: new Date('2026-11-03T12:00:00Z') });
     expect(absent.map((s) => s.absent)).toEqual(['off', 'no_contact', 'no_contact']);
   });

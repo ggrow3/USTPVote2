@@ -219,4 +219,19 @@ export async function resetEmulators(): Promise<void> {
     fetch(`http://${AUTH_HOST}/emulator/v1/projects/${PROJECT}/accounts`, { method: 'DELETE' }),
   ]);
   for (const r of responses) if (!r.ok) throw new Error(`emulator reset failed: ${r.status}`);
+  await switchEmailOn();
+}
+
+/**
+ * Email is off until a System Admin switches it on (design §10.12); the tests mostly exercise what it does when on, so a
+ * reset leaves it on. The ones about it being off delete this document. Written directly, as version 0: it is the
+ * starting state, not a System Admin's save, and no ledger entry goes with it.
+ */
+async function switchEmailOn(): Promise<void> {
+  const res = await fetch(`http://${FIRESTORE_HOST}/v1/projects/${PROJECT}/databases/(default)/documents/notice_settings/current`, {
+    method: 'PATCH',
+    headers: { 'content-type': 'application/json', authorization: 'Bearer owner' },
+    body: JSON.stringify({ fields: { allEmails: { booleanValue: true } } }),
+  });
+  if (!res.ok) throw new Error(`could not switch email on: ${res.status}`);
 }
