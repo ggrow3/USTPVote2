@@ -49,6 +49,36 @@ export function secrecyText(secrecy: Secrecy): string {
   return secrecy === 'secret' ? 'Secret ballot' : 'Roll-call: how you vote is published with your name';
 }
 
+/** Voting has closed: the vote is over for the voter, whether or not they took part. */
+export const votingFinished = (e: Pick<VoterElection, 'state'>): boolean => e.state === 'closed' || e.state === 'certified';
+
+/** The voter's elections apart: those still to come or under way as they were, and the finished, latest closed first. */
+export function ballotLists(elections: readonly VoterElection[]): { current: VoterElection[]; finished: VoterElection[] } {
+  return {
+    current: elections.filter((e) => !votingFinished(e)),
+    finished: elections.filter(votingFinished).sort((a, b) => b.closesAt.localeCompare(a.closesAt)),
+  };
+}
+
+const SHOW_FINISHED_KEY = 'ustp-ballots-show-finished';
+
+/** Whether finished votes are shown on the list: hidden until someone shows them, then their choice, kept in this browser. */
+export function finishedVotesShown(): boolean {
+  try {
+    return localStorage.getItem(SHOW_FINISHED_KEY) === 'true';
+  } catch {
+    return false; // storage blocked: the default applies
+  }
+}
+
+export function rememberFinishedVotesShown(shown: boolean): void {
+  try {
+    localStorage.setItem(SHOW_FINISHED_KEY, String(shown));
+  } catch {
+    // storage blocked: the choice lasts until the page is left
+  }
+}
+
 export interface BallotAction {
   readonly label: string;
   readonly to: string;
@@ -71,8 +101,7 @@ export interface BallotCard {
 export function ballotCard(e: VoterElection, options: DateOptions = {}): BallotCard {
   const ballot = `/ballot/${e.electionId}`;
   const results = `/results/${e.electionId}`;
-  const finished = e.state === 'closed' || e.state === 'certified';
-  const actions: BallotAction[] = finished
+  const actions: BallotAction[] = votingFinished(e)
     ? [
         { label: 'See results', to: results, main: false },
         { label: e.castAt ? 'View your ballot' : 'Read the ballot', to: ballot, main: false },

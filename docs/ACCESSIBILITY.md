@@ -373,6 +373,11 @@ election) open with focus on Cancel.
   wide as the card, a ranked row puts its three buttons under the name, and nothing scrolls sideways; the dialog's
   Back and Cast ballot share its width (144 px each at 375 px). Text is 16 px with 14 px captions, in the dialog too.
   Focus order and the announcements are unchanged.
+- **Added 2026-11-06, finished votes shown and hidden on the ballot list** (design §10.5; against the emulators on
+  private ports as v1@example.test; 1100 px and 375 px, dark theme, by pointer): "Show finished votes (3)" is a `switch`
+  named by its label with its state in `aria-checked`, comes before the list in reading order, and measured 48 px tall.
+  At 375 px nothing scrolls sideways. With everything hidden, the page says "Nothing to vote on right now." on the same
+  banner colours as the page's other empty message. Not yet checked: the keyboard, a screen reader, the light theme.
 - **Added 2026-10-28, the matrix without its dashes** (design §10.5; against the emulators on private ports as
   admin1@example.test; 1600 and 320 px, light and dark, by keyboard): cells with nothing to set are no longer a dash
   each. With the Membership columns, the Admin sections row group keeps its `th scope="rowgroup"` and has one row, a
