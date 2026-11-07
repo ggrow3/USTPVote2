@@ -374,10 +374,13 @@ election) open with focus on Cancel.
   Back and Cast ballot share its width (144 px each at 375 px). Text is 16 px with 14 px captions, in the dialog too.
   Focus order and the announcements are unchanged.
 - **Added 2026-11-06, finished votes shown and hidden on the ballot list** (design §10.5; against the emulators on
-  private ports as v1@example.test; 1100 px and 375 px, dark theme, by pointer): "Show finished votes (3)" is a `switch`
-  named by its label with its state in `aria-checked`, comes before the list in reading order, and measured 48 px tall.
-  At 375 px nothing scrolls sideways. With everything hidden, the page says "Nothing to vote on right now." on the same
-  banner colours as the page's other empty message. Not yet checked: the keyboard, a screen reader, the light theme.
+  private ports as v1@example.test; 1100 px dark and light, 375 px dark, by pointer and keyboard): "Show finished votes
+  (3)" is a `switch` named by its label with its state in `aria-checked`, comes before the list in reading order, and
+  measured 48 px tall. Tab reaches it with a visible focus ring and the next Tab goes to the first card's button; Space
+  turns it on and off, focus staying on it and the page not moving. Its label reads 16.86:1 on the dark theme's card and
+  21:1 on the light theme's, read back from the computed styles. At 375 px nothing scrolls sideways. With everything
+  hidden, the page says "Nothing to vote on right now." on the same banner colours as the page's other empty message.
+  A screen reader is still to come (item 12 of the pass below).
 - **Added 2026-10-28, the matrix without its dashes** (design §10.5; against the emulators on private ports as
   admin1@example.test; 1600 and 320 px, light and dark, by keyboard): cells with nothing to set are no longer a dash
   each. With the Membership columns, the Admin sections row group keeps its `th scope="rowgroup"` and has one row, a
@@ -682,3 +685,5 @@ Android if time allows), on staging or the emulators:
 11. The ballot builder: each question read as a section with its heading, the option fields by number, the
     announcements after adding, moving, deleting and undoing, a failed save read once, and the member suggestions
     reached with the down arrow; Preview as voter read as the ballot with its banner first.
+12. The ballot list: "Show finished votes (n)" read as a switch with its state, and the cards it adds or removes found
+    by moving on from it (nothing announces them).
