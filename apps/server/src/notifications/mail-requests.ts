@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { isMailRequestInFlight, mailAddressKey, memberTestMessage, type MailRequestOutcome, type MailRequestRecord } from 'ustp-domain';
+import { adminTestMessage, isMailRequestInFlight, mailAddressKey, memberTestMessage, type MailRequestOutcome, type MailRequestRecord } from 'ustp-domain';
 import { DirectoryService } from '../auth/directory.service.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { MemberDirectory } from '../membership/member-directory.js';
@@ -16,8 +16,9 @@ const REQUESTS_PER_TICK = 10;
 /**
  * Does what members asked for on their Account page (design §10.12), a step of the worker's tick: a test email to
  * their own address, or trying an address that bounced or was marked as spam again, which takes it off SES's
- * suppression list and the app's, then sends the test. Each is claimed in a transaction first, so overlapping ticks
- * never both send it; one a worker claimed and never finished is failed as `interrupted`.
+ * suppression list and the app's, then sends the test; and a System Admin's test to themselves, from Admin › Email. Each
+ * is claimed in a transaction first, so overlapping ticks never both send it; one a worker claimed and never finished is
+ * failed as `interrupted`. While all email is off only System Admins' tests go; the rest wait.
  */
 @Injectable()
 export class MailRequestSender {
@@ -37,7 +38,8 @@ export class MailRequestSender {
   /** Returns how many test emails went. */
   async sendDue(): Promise<number> {
     if (!this.transport || !this.config.webOrigin) return 0;
-    const waiting = await this.mail.unfinishedRequests(REQUESTS_PER_TICK);
+    const { allEmails } = await this.settings.current();
+    const waiting = allEmails ? await this.mail.unfinishedRequests(REQUESTS_PER_TICK) : await this.mail.unfinishedAdminTests();
     let sent = 0;
     for (const request of waiting) {
       if (request.status === 'pending') {
@@ -75,18 +77,24 @@ export class MailRequestSender {
       }
       await this.mail.deleteSuppression(mailAddressKey(mailbox.email));
     }
-    const [[member], settings] = await Promise.all([this.members.findMany([request.accountId]), this.settings.current()]);
-    const message = memberTestMessage({
+    const [[member], settings, links] = await Promise.all([
+      this.members.findMany([request.accountId]),
+      this.settings.current(),
+      this.mailer.links(request.accountId),
+    ]);
+    const message = (request.kind === 'admin_test' ? adminTestMessage : memberTestMessage)({
       origin: this.config.webOrigin!,
       name: member?.preferredName || member?.legalName || null,
       contact: settings.contact ?? this.config.noticeContact,
+      unsubscribe: links.page,
     });
     const result = await this.mailer.send(this.transport!, {
       to: mailbox.email,
       from: this.config.mailFrom,
       replyTo: this.config.mailReplyTo,
+      listUnsubscribe: links.oneClick,
       ...message,
-      meta: { kind: 'member_test', ref: request.requestId, electionId: null, accountId: request.accountId },
+      meta: { kind: request.kind === 'admin_test' ? 'admin_test' : 'member_test', ref: request.requestId, electionId: null, accountId: request.accountId },
     });
     return result.status === 'sent' ? { messageId: result.messageId } : { outcome: result.outcome };
   }

@@ -43,6 +43,7 @@ const settingsOf = (over: Partial<NoticeSettings> & { votingOpen?: Partial<Notic
   const { votingOpen, closingSoon, ...rest } = over;
   return {
     ...DEFAULT_NOTICE_SETTINGS,
+    allEmails: true, // as `resetEmulators` leaves it; these tests are about what each setting does while email is on
     ...rest,
     kinds: {
       voting_open: { ...DEFAULT_NOTICE_SETTINGS.kinds.voting_open, ...votingOpen },
@@ -56,7 +57,8 @@ describe('the election email settings', () => {
   it('are the defaults until a System Admin saves, and only a System Admin may read or change them', async () => {
     const read = await api.call('GET', URL, sa1);
     expect(read.status).toBe(200);
-    expect(read.body).toEqual({ ...DEFAULT_NOTICE_SETTINGS, version: 0, updatedAt: null, updatedBy: null });
+    // `resetEmulators` leaves email on; a new site's is off (mail-preferences.int.test.ts).
+    expect(read.body).toEqual({ ...DEFAULT_NOTICE_SETTINGS, allEmails: true, version: 0, updatedAt: null, updatedBy: null });
     expect((await api.call('GET', URL, electionAdmin)).status).toBe(403);
     expect((await api.call('GET', URL, voters[0]!)).status).toBe(403);
     expect((await save(settingsOf({ reminderHours: 48 }), 0, electionAdmin)).status).toBe(403);
@@ -94,7 +96,7 @@ describe('the election email settings', () => {
     const election = await seedElection(api, { voters: voters.map((v) => v.accountId) });
     expect((await api.call('GET', `/v1/admin/elections/${election.electionId}/notices`, electionAdmin)).body).toMatchObject({
       contact: null,
-      settings: DEFAULT_NOTICE_SETTINGS,
+      settings: { ...DEFAULT_NOTICE_SETTINGS, allEmails: true },
     });
     await save(settingsOf({ contact: 'https://transhumanist-party.org/contact/' }), 0);
     expect((await api.call('GET', `/v1/admin/elections/${election.electionId}/notices`, electionAdmin)).body).toMatchObject({

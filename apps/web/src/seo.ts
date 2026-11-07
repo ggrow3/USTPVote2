@@ -25,8 +25,8 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   '/offices': 'Who holds each U.S. Transhumanist Party office now, and how they came to hold it.',
 };
 
-/** Pages open to everyone that still stay out of search results: signing in, and one person's course certificate. */
-const NOT_LISTED: ReadonlySet<string> = new Set(['/signin', '/course/certificates/:id']);
+/** Pages open to everyone that still stay out of search results: signing in, one person's course certificate, and unsubscribing. */
+const NOT_LISTED: ReadonlySet<string> = new Set(['/signin', '/course/certificates/:id', '/unsubscribe']);
 
 /** The route paths this module names, for its test to find in router.ts. */
 export const DESCRIBED_ROUTES = [...Object.keys(DESCRIPTIONS), ...NOT_LISTED];

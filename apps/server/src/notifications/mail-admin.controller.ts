@@ -1,9 +1,20 @@
-import { Controller, Get, HttpCode, Injectable, Post } from '@nestjs/common';
-import { checkMailHealthRequest, type MailCheckStatus, type MailHealthView, type MemberMailFlag } from 'ustp-domain';
+import { Body, Controller, Get, HttpCode, Injectable, Param, Post } from '@nestjs/common';
+import {
+  checkMailHealthRequest,
+  mailRestoreSchema,
+  mailStopSchema,
+  type MailCheckStatus,
+  type MailHealthView,
+  type MailRestoreInput,
+  type MailStopInput,
+  type MailStopRow,
+  type MemberMailFlag,
+} from 'ustp-domain';
 import { Ctx, requireAccount, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
-import { assertCheck } from '../common/validation.js';
+import { assertCheck, ZodPipe } from '../common/validation.js';
 import { Firebase } from '../infra/firebase.js';
+import { MailPreferences } from './mail-preferences.js';
 import { MailRepository } from './mail.repository.js';
 import { MyEmailService } from './my-email.js';
 
@@ -43,7 +54,7 @@ export class MailHealthService {
 
 /**
  * System Admins see whether email is set up properly, and ask for a check now; Membership Admins see which members
- * cannot be emailed (design §10.12).
+ * cannot be emailed; both see who gets no email, and stop or restore an admin's stop (design §10.12).
  */
 @Controller('v1/admin/mail')
 @Roles('system_admin')
@@ -51,12 +62,40 @@ export class MailAdminController {
   constructor(
     private readonly health: MailHealthService,
     private readonly email: MyEmailService,
+    private readonly preferences: MailPreferences,
   ) {}
 
   @Get('members')
   @Roles('membership_admin')
   members(): Promise<MemberMailFlag[]> {
     return this.email.flags();
+  }
+
+  @Get('stops')
+  @Roles('membership_admin', 'system_admin')
+  stops(): Promise<MailStopRow[]> {
+    return this.preferences.stops();
+  }
+
+  @Post('stops')
+  @HttpCode(204)
+  @Roles('membership_admin', 'system_admin')
+  stop(@Ctx() ctx: RequestContext, @Body(new ZodPipe(mailStopSchema)) body: MailStopInput) {
+    return this.preferences.stop(ctx, body);
+  }
+
+  @Post('stops/:accountId/restore')
+  @HttpCode(204)
+  @Roles('membership_admin', 'system_admin')
+  restore(@Ctx() ctx: RequestContext, @Param('accountId') accountId: string, @Body(new ZodPipe(mailRestoreSchema)) body: MailRestoreInput) {
+    return this.preferences.restore(ctx, accountId, body);
+  }
+
+  /** A test email to the System Admin's own address, on the worker's next tick, even while all email is off. */
+  @Post('test')
+  @HttpCode(202)
+  test(@Ctx() ctx: RequestContext) {
+    return this.email.request(ctx, 'admin_test');
   }
 
   @Get('health')

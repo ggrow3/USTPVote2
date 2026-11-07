@@ -52,6 +52,8 @@ export class WelcomeSender {
       .get();
     if (waiting.empty) return 0;
     const settings = await this.settings.current();
+    // All email switched off: what is waiting goes if it comes back on.
+    if (!settings.allEmails) return 0;
     const contact = settings.contact ?? this.config.noticeContact;
     let sent = 0;
     for (const doc of waiting.docs) {
@@ -85,16 +87,18 @@ export class WelcomeSender {
     const account = (await this.firebase.db.collection(Collections.accounts).doc(accountId).get()).data() as AccountRecord | undefined;
     if (!account?.primaryEmail) return { outcome: 'no_address' };
     if (account.claimedAt) return { outcome: 'signed_in' };
-    const [member] = await this.members.findMany([accountId]);
+    const [[member], links] = await Promise.all([this.members.findMany([accountId]), this.mailer.links(accountId)]);
     const message = welcomeMessage({
       origin: this.config.webOrigin!,
       name: member?.preferredName || member?.legalName || null,
       contact,
+      unsubscribe: links.page,
     });
     const result = await this.mailer.send(this.transport!, {
       to: account.primaryEmail,
       from: this.config.mailFrom,
       replyTo: this.config.mailReplyTo,
+      listUnsubscribe: links.oneClick,
       ...message,
       meta: { kind: 'welcome', ref: accountId, electionId: null, accountId },
     });

@@ -1,4 +1,5 @@
 import type { ElectionRecord } from '../elections.js';
+import { UNSUBSCRIBE_PATH } from './mail-preferences.js';
 import { DEFAULT_NOTICE_TEXT, fillNoticeText, type NoticePlaceholder } from './notice-settings.js';
 import type { NoticeKind } from './notices.js';
 import { TEST_SUBJECT_PREFIX } from './receipts.js';
@@ -35,6 +36,8 @@ export interface NoticeMessageInput {
   readonly test?: boolean;
   /** For a vote confirmation, when the ballot was cast; `now` when absent (a test). */
   readonly castAt?: string;
+  /** The member's own unsubscribe link (design §10.12); absent in a preview, or a rehearsal's message to nobody. */
+  readonly unsubscribe?: string | null;
 }
 
 /** The time zones the window is given in: the US zones members live in, then UTC. Eastern leads. */
@@ -91,9 +94,10 @@ export function votingOpenMessage(input: NoticeMessageInput): NoticeMessage {
     {
       small:
         'You are getting this email because you are on the voter roll of this election. It is an official election ' +
-        'notice, sent once for each election, so it comes whatever your newsletter and announcement choices.',
+        'notice, sent once for each election, so it comes whatever your newsletter and announcement choices, unless you ' +
+        'unsubscribe from all email from the party below.',
     },
-    ...footer(input.contact, links.site),
+    ...footer(input.contact, links.site, input),
   ]);
 }
 
@@ -119,7 +123,7 @@ export function closingSoonMessage(input: NoticeMessageInput): NoticeMessage {
         'You are getting this reminder because you are on the voter roll of this election and had not voted when it ' +
         'was sent. It is sent once. Only whether you had voted was used to send it, never how anyone votes.',
     },
-    ...footer(input.contact, links.site),
+    ...footer(input.contact, links.site, input),
   ]);
 }
 
@@ -151,7 +155,7 @@ export function votedMessage(input: NoticeMessageInput): NoticeMessage {
         'You are getting this email because a ballot was cast with your account in this election. It is sent once, and ' +
         'says only when, never how you voted.',
     },
-    ...footer(input.contact, links.site),
+    ...footer(input.contact, links.site, input),
   ]);
 }
 
@@ -160,7 +164,12 @@ export function votedMessage(input: NoticeMessageInput): NoticeMessage {
  * leads to the page where they set their password, which first emails them a sign-in link to prove the address is
  * theirs; this email carries no link that signs anyone in.
  */
-export function welcomeMessage(input: { readonly origin: string; readonly name: string | null; readonly contact: string | null }): NoticeMessage {
+export function welcomeMessage(input: {
+  readonly origin: string;
+  readonly name: string | null;
+  readonly contact: string | null;
+  readonly unsubscribe?: string | null;
+}): NoticeMessage {
   const site = `${input.origin}/`;
   const subject = 'Welcome to the US Transhumanist Party: set your password';
   const blocks: Block[] = [
@@ -178,7 +187,7 @@ export function welcomeMessage(input: { readonly origin: string; readonly name: 
     },
     { hr: true },
     { small: 'You are getting this email because a Membership Admin added this address to the party’s member list.' },
-    ...footer(input.contact, site, 'your membership'),
+    ...footer(input.contact, site, input, 'your membership'),
   ];
   return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
 }
@@ -187,7 +196,12 @@ export function welcomeMessage(input: { readonly origin: string; readonly name: 
  * The test email a member asks for on their Account page (design §10.12), to see that email from the party reaches
  * them. Nothing in it but where to look if it went to spam.
  */
-export function memberTestMessage(input: { readonly origin: string; readonly name: string | null; readonly contact: string | null }): NoticeMessage {
+export function memberTestMessage(input: {
+  readonly origin: string;
+  readonly name: string | null;
+  readonly contact: string | null;
+  readonly unsubscribe?: string | null;
+}): NoticeMessage {
   const site = `${input.origin}/`;
   const subject = 'Your test email from the US Transhumanist Party';
   const blocks: Block[] = [
@@ -197,7 +211,32 @@ export function memberTestMessage(input: { readonly origin: string; readonly nam
     { link: `${input.origin}/account`, label: 'Open your Account page', after: ' to see what became of each email the party sent you.' },
     { hr: true },
     { small: 'You are getting this email because you asked for it.' },
-    ...footer(input.contact, site),
+    ...footer(input.contact, site, input),
+  ];
+  return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
+}
+
+/**
+ * The test email a System Admin asks for in Admin › Email (design §10.12), to see that email from the site reaches them
+ * before they switch it on for everyone. It goes only to them, whether or not all email is on.
+ */
+export function adminTestMessage(input: {
+  readonly origin: string;
+  readonly name: string | null;
+  readonly contact: string | null;
+  readonly unsubscribe?: string | null;
+}): NoticeMessage {
+  const site = `${input.origin}/`;
+  const subject = 'Test email from the US Transhumanist Party site';
+  const blocks: Block[] = [
+    greeting(input.name),
+    { p: 'You asked for this test email in Admin › Email. It reached you, so the site can send email.' },
+    { p: 'It went only to you. Whether the site emails anyone else depends on the “Send email” switch on that page.' },
+    { p: 'If it was in your spam or junk folder, mark it as not spam, and check how the sending domain is set up.' },
+    { link: `${input.origin}/admin?tab=email`, label: 'Open Admin › Email', after: ' to see what became of it.' },
+    { hr: true },
+    { small: 'You are getting this email because you asked for it.' },
+    ...footer(input.contact, site, input, 'the site'),
   ];
   return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
 }
@@ -318,9 +357,19 @@ function checking(verify: string): Block[] {
   ];
 }
 
-function footer(contact: string | null, site: string, about?: string): Block[] {
+/**
+ * The end of every email: where to ask, how to stop all of it, and what the party never asks for. Without the member's
+ * own link (a preview), the link leads to the page that says how to unsubscribe.
+ */
+function footer(
+  contact: string | null,
+  site: string,
+  link: { readonly origin: string; readonly unsubscribe?: string | null },
+  about?: string,
+): Block[] {
   return [
     { contact, ...(about && { about }) },
+    { link: link.unsubscribe ?? `${link.origin}${UNSUBSCRIBE_PATH}`, label: 'Unsubscribe', after: ' from all email from the party.' },
     {
       small:
         'We never ask for your password or a sign-in code by email. If you are unsure about this message, go to ' +

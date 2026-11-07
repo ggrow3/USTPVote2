@@ -74,6 +74,12 @@ export async function createFastifyApp(
     .getHttpAdapter()
     .getInstance()
     .addContentTypeParser([...VIDEO_UPLOAD.types], { parseAs: 'buffer', bodyLimit: VIDEO_UPLOAD.partBytes }, (_req, body, done) => done(null, body));
+  // A mail client's one-click unsubscribe is a form (RFC 8058; design §10.12), multipart or url-encoded, which Nest already
+  // takes. No route reads a form, so it parses to nothing.
+  app
+    .getHttpAdapter()
+    .getInstance()
+    .addContentTypeParser('multipart/form-data', { parseAs: 'buffer', bodyLimit: 4096 }, (_req, _body, done) => done(null, {}));
   return app;
 }
 

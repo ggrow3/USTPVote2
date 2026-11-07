@@ -18,6 +18,8 @@ export interface MailMessage {
   readonly subject: string;
   readonly text: string;
   readonly html: string;
+  /** Where its `List-Unsubscribe` header points (design §10.12); absent for a message to nobody or to Amazon's simulator. */
+  readonly listUnsubscribe?: string | null;
   readonly meta: MailMeta;
 }
 
@@ -159,6 +161,7 @@ export class OutboxTransport implements MailTransport {
       subject: message.subject,
       text: message.text,
       html: message.html,
+      listUnsubscribe: message.listUnsubscribe ?? null,
       recordedAt,
     };
     await ref.create(record);

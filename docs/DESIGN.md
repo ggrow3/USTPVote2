@@ -158,7 +158,7 @@ this structure one at a time, without changing routes, documents or the ledger.
 | Communications | §10.9 | `news_posts`, `press_kit`, `press_assets`, `share_posts`, `share_counts`, `calendar_items`, `suggestions`, `suggestion_limits`, `bots` |
 | Governance | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `anthropic_key`, `api_keys` |
 | Audit ledger | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` |
-| Notifications | §6.8, §5.13 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests`, `welcome_emails`, `mail_messages`, `mail_suppressions` |
+| Notifications | §6.8, §5.13 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests`, `welcome_emails`, `mail_messages`, `mail_suppressions`, `mail_preferences` |
 
 **Layers.** Records stay plain data (Firestore stores them, JCS hashes them, the browser reads them), so an aggregate
 is its record types plus pure functions in `ustp-domain`:
@@ -2125,7 +2125,7 @@ application has asked since §5.2 took members outside the US); an address that 
   whether the member has signed in.
 - **The welcome email** goes out for each member added, whether or not the deployment sends mail:
   - Where `MAIL_TRANSPORT` sends mail (`ses`, or the outbox with the emulators) and System Admins have welcome emails
-    switched on (Admin › Email, §6.8; on by default), the adding transaction queues
+    switched on (Admin › Email, §6.8; these on by default, though all email starts off, §10.12), the adding transaction queues
     `welcome_emails/{accountId}` and the worker's tick sends it (`WelcomeSender`, up to 20 a tick) through the election
     notices' transport, from the same address: subject "Welcome to the US Transhumanist Party: set your password", a
     greeting by preferred or legal name, that a Membership Admin added them, a link "Set your password" to
@@ -2282,8 +2282,8 @@ The emails to voters (§6.8) go with the steps *(added 2026-10-27)*. In the Open
 with an arrow on to "Vote", and before the close (a day, or the lead time System Admins set) "Sends a reminder" to
 those who have not voted, before it closes voting; an election open no longer than the lead time has no reminder, so
 its lanes leave it out. In the list, after Open for voting, "Email to voters" says what the emails are ("Official
-election notices: they go out whatever members' newsletter and announcement choices. Counts only; who each went to is
-not shown.") and, for each, the line the editor's "Email to voters" card shows: how many of how many it went to, or
+election notices: they go out whatever members' newsletter and announcement choices, but not to a member who
+unsubscribed from all email or whose email an admin stopped. Counts only; who each went to is not shown.") and, for each, the line the editor's "Email to voters" card shows: how many of how many it went to, or
 when it will go, or why it will not. Their status comes from `noticeSteps` in `ustp-domain`, from the notices' counts
 (`GET …/notices`, one request shared with the card, which rereads it while an email is due or going out) and the
 election alone: sending or due now is current, sent is done, and an email that will not come is not reached: switched
@@ -2701,8 +2701,9 @@ no reminder, so it never comes with the notice that voting is open, and a remind
 The *vote confirmation* goes, once, to each person with a participation record, within a minute or so of their
 ballot (below). Each goes to the primary email address of the account, if it is verified; someone with no address, or an unverified
 one, is skipped. Both are official election notices, not marketing: they go out whatever the member's newsletter and
-announcement opt-ins (§5.2), which cover only those two kinds of mail, and there is no opt-out, since there are at
-most three per election the member may vote in. A rehearsal roll (§6.3) gets no email: where testing mode is on, each
+announcement opt-ins (§5.2), which cover only those two kinds of mail. *(Changed 2026-11-06, the party's decision:)*
+every email carries an unsubscribe link, and a member who uses it, or whose email an admin stopped, gets none of them
+(`unsubscribed`, `email_stopped`, counted as skipped; §10.12). A rehearsal roll (§6.3) gets no email: where testing mode is on, each
 test voter's notices are recorded in the outbox instead, addressed to nobody, since test voters have no address; where
 it is off, nothing is recorded. A demo election (§10.4) always has a rehearsal roll, so it mails nobody.
 
@@ -2859,8 +2860,14 @@ way. It is not ledgered: it
 reaches only the person who asked and changes nothing about the election; the receipt records it.
 
 **Settings** *(added 2026-10-27)*. System Admins decide, in Admin › Email (`GET|PUT
-/v1/admin/notice-settings`, System Admin only, enforced by the API), what the emails do; the defaults are the emails as
-described above:
+/v1/admin/notice-settings`, System Admin only, enforced by the API), what the emails do; apart from the first, the
+defaults are the emails as described above:
+- *(added 2026-11-06)* **all email from the site**, off until a System Admin switches it on (`allEmails`; §10.12). The
+  switch saves at once, apart from the rest of the form, after asking. While it is off no notice starts, and one already
+  going out waits; what is left goes if it comes on while voting is open, and any election open at that moment starts
+  its voting-open email straight away. Off also refuses members' and Election Admins' test emails, and welcomes an added
+  member with Identity Platform's sign-in link. Not affected: Identity Platform's own emails, the setup check's messages
+  to SES's simulator, a rehearsal's outbox, and a System Admin's test to themselves (§10.12);
 - each email on or off. Switching one off stops new notices of that kind from starting, and holds one already going
   out (what is left goes if it is switched back on while voting is open);
 - the reminder's lead time, 1 to 168 whole hours before the close (24 by default). An election open no longer than that
@@ -3177,7 +3184,7 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   `approval.requested`, `approval.decided`, `signin_method.changed`. Added since: `mfa_policy.changed`, `photo.decided`, `roll.approved`,
   `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled` (M2–M3a), `ballots.sealed`,
   `election.sealed` (M3b), `results.computed` (M4a), `results.certified`, `election.pool_key_destroyed`,
-  `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed`,
+  `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed`, `member.email_stopped`,
   `navigation.changed`, `home_quote.changed`, `hub.changed`, `analytics.changed`, `notice.sent`, `notice.delivery_reported`, `notice.resend_requested`, `notice.settings_changed`, `anthropic_key.changed`, `api_key.changed`, `position_term.appointed`, `registration_form.changed`, `team.changed`, `team.member_changed`, `forum.moderated`, `room.consent_changed`, `room.assistant_switched`, `room.settings_changed`, `room.door_changed`, `candidacy.changed`, `area_contact.changed`, `email_template.changed` (M5; Auditors only). The authoritative list is `LEDGER_EVENT_TYPES` in
   `ustp-domain`.
 - `identity.linked` with `claimed: true` records a member a Membership Admin added signing in for the first time
@@ -4318,7 +4325,8 @@ help button on every page but the hub) walks each of them through their part pag
 ### 10.12 Email setup check *(added 2026-11-03)*
 
 Whether Amazon SES is set up so that members get their email (§6.8), checked by the worker, which alone holds the AWS
-key, and shown to System Admins under Admin › Email, above the election emails' settings.
+key, and shown to System Admins under Admin › Email, above the election emails' settings. *(Added 2026-11-06:)* with
+it, a System Admin's test email to themselves, the switch for all the site's email, and who gets no email; below.
 
 - **When.** Every hour where the worker sends through SES (`MAIL_TRANSPORT=ses`), before a send of election email
   when the last run is over an hour old (§6.8: a failing check holds the send), and on the next tick after a System
@@ -4375,7 +4383,43 @@ cannot (bounced, or marked as spam) a banner on every page sends them to the Acc
 **Membership Admins** see, in the Members table, which members cannot be emailed and why (an envelope beside the name,
 a filter "Can't be emailed (N)" and a column of the CSV), and the same on a member's profile (`GET
 /v1/admin/mail/members`, Membership Admin): an address that bounced for good or was marked as spam (while it is still
-the member's address), one never confirmed, or none. Never which emails or when: that stays the member's own.
+the member's address), one never confirmed, or none; and *(added 2026-11-06)* one who unsubscribed or whose email an
+admin stopped. Never which emails or when: that stays the member's own.
+
+**Who gets no email** *(added 2026-11-06, the party's decision)*. All of the app's email goes through one gate,
+`Mailer.send`, which holds to three things:
+
+- **The site's switch** (`allEmails`, §6.8), off until a System Admin switches it on, so a new deployment emails nobody.
+  The setup check warns while it is off, and the election editor's card and workflow say so.
+- **Unsubscribing.** Every email carries, in its text and HTML, the member's own link, and in its headers
+  `List-Unsubscribe` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058), so a mail client's own button
+  works. After it the member gets nothing from the worker: no election notice, reminder, vote confirmation, welcome or
+  test email. So they are not told by email if someone votes using their account, and the page and their Account page say
+  so before they choose. The link holds a random 32-byte token (`mail_preferences.token`), made the first time an email
+  goes to the account, never the account's ID, and all it can do is unsubscribe that account. It needs no sign-in and no
+  App Check (`@Public`), since a mail client has neither. A GET never changes anything, since mail scanners
+  open links by themselves: `/unsubscribe?token=…` is a page with an Unsubscribe button (the token in the query, since page
+  visits record the path, §10.7; not listed for search engines, §15), and `GET /v1/public/unsubscribe/{token}` redirects
+  there. `POST` to that address unsubscribes, as the page's button and mail clients do; a token that is no one's gets
+  404, and nothing the routes answer says whose a token is. Only the member can undo it, on their Account page (`POST
+  /v1/me/email/unsubscribe`, `…/resubscribe`), where they can also unsubscribe; no admin can.
+- **An admin's stop.** A Membership or System Admin can stop email to a member, with a written reason, from the member's
+  profile or Admin › Email (`GET|POST /v1/admin/mail/stops`, by address or ID; `POST …/stops/{accountId}/restore`, either
+  role; 409 if already so; not their own, 403). Since it could cut a voter off from election notices, it is ledgered
+  (`member.email_stopped`, the admin, the member and the reason; Auditors only), and the member sees it on their Account
+  page and cannot undo it. It leaves their own unsubscribing, if any, standing. Admin › Email is open to Membership Admins
+  for this alone; its settings and the setup check stay System Admins'.
+
+The election's counts show those members as skipped, never who they are. Identity Platform's emails (a sign-in link, a
+password reset, confirming an address) stay outside all three: a member asks for them themselves, Google sends them
+without the app, and without them they could not sign in. Neither a stop nor unsubscribing is kept once the account is
+deleted; adding the address again starts over.
+
+**A System Admin's test email** *(added 2026-11-06)*. Since email starts off, Admin › Email lets a System Admin send a test
+to their own address and no one else's (`POST /v1/admin/mail/test`, System Admin; queued as an `admin_test` in
+`mail_requests`, ten a day, one at a time, 409 and 429 otherwise), the one thing that goes while all email is off, so they
+can see that email works before switching it on. It still needs a deployment that sends mail and a confirmed address, and
+does not go if they unsubscribed themselves. The card shows what became of it from its delivery report.
 
 ## 11. Data model (Firestore `(default)` database)
 
@@ -4448,7 +4492,8 @@ Physically, registration collections are top-level and election data lives under
 | `notice_tests/{testId}` | auto | pending → sending → done; deleted with its election | an Election Admin's test email to themselves: kind, who asked, the account it goes to (theirs), when, outcome code, receipt, what SES reported of it; never the address (§6.8) *(added)* |
 | `mail_messages/{messageId}` | SES message ID | its status moves on with each delivery report; TTL 180 days after sending; deleted with its account or election | each message SES took: account, kind, what it belongs to, election, sender (`app` or `identity_platform`), delivery, status (sent / delayed / delivered / bounced / complained / rejected), when each happened, bounce type and subtype, whether it counts toward the rates; never the address, subject or body (§6.8) *(added)* |
 | `mail_suppressions/{addressKey}` | SHA-256 of the address | create, renewed by each report; TTL a year after the last; deleted with the account it was found through | an address not to mail: bounced for good or marked as spam, since when, the message that started it, the account if known; never the address (§6.8) *(added)* |
-| `mail_requests/{requestId}` | auto | pending → sending → done; TTL 30 days; deleted with its account | a member's request for a test email to themselves, or to try their address again: kind, when, outcome code, the message's ID; never the address (§10.12) *(added)* |
+| `mail_requests/{requestId}` | auto | pending → sending → done; TTL 30 days; deleted with its account | a member's request for a test email to themselves, or to try their address again, or a System Admin's test: kind, when, outcome code, the message's ID; never the address (§10.12) *(added)* |
+| `mail_preferences/{accountId}` | accountId | made with the account's first email, unsubscribing or stop; deleted with its account | the unsubscribe link's token, when the member unsubscribed, and when and by which admin their email was stopped (§10.12) *(added 2026-11-06)* |
 | `mail_health/{current\|request\|run}` | fixed | replaced by each run | the email setup check's last run (each check's status, detail and fix, the probe), a System Admin's request for a run, and the claim on a run (§10.12) *(added)* |
 | **audit & admin** | | | |
 | `audit_events/{seq}` | zero-padded integer | append-only | ledger entries |

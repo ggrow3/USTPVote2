@@ -154,6 +154,8 @@ export class NoticeSender {
       transport: this.transport?.delivery ?? 'none',
     });
     if (!delivery) return;
+    // All email switched off: nothing starts, and it can still start if it comes on in time. A rehearsal mails nobody.
+    if (!rehearsal && !settings.allEmails) return;
     if (delivery === 'mail' && !this.run!.contact) {
       this.logger.warn(`no notice for ${election.electionId} yet: no contact for election questions is set (NOTICE_CONTACT or the app's setting)`);
       return;
@@ -195,6 +197,7 @@ export class NoticeSender {
       return 0;
     }
     // Switched off by a System Admin, or nowhere for members to ask: what is left waits, and goes if that changes.
+    if (!notice.rehearsal && !this.run!.settings.allEmails) return 0;
     if (!this.run!.settings.kinds[notice.kind].enabled) return 0;
     if (notice.delivery === 'mail' && !this.run!.contact) {
       this.logger.warn(`notice ${notice.noticeId} is waiting: no contact for election questions is set (NOTICE_CONTACT or the app's setting)`);
@@ -406,6 +409,7 @@ export class NoticeSender {
       if (!mailbox.verified) return skip('unverified_address');
     }
     const { settings, contact } = this.run!;
+    const links = notice.rehearsal ? null : await this.mailer.links(recipient.accountId);
     const message = noticeMessage(notice.kind, {
       election,
       origin: this.config.webOrigin!,
@@ -414,11 +418,13 @@ export class NoticeSender {
       now: new Date(),
       text: settings.kinds[notice.kind],
       castAt,
+      unsubscribe: links?.page,
     });
     const result = await this.mailer.send(transport, {
       to: notice.rehearsal ? null : mailbox!.email,
       from: this.config.mailFrom,
       replyTo: this.config.mailReplyTo,
+      listUnsubscribe: links?.oneClick,
       ...message,
       meta: { kind: notice.kind, ref: notice.noticeId, electionId: notice.electionId, accountId: recipient.accountId },
     });
@@ -511,7 +517,7 @@ export class NoticeSender {
     const transport = this.transport;
     const { settings, contact } = this.run!;
     // Email switched off, or the contact removed, since it was asked for: nothing goes, as for the real email.
-    if (!transport || (transport.delivery === 'mail' && !contact)) return { status: 'failed', outcome: 'unavailable' };
+    if (!transport || !settings.allEmails || (transport.delivery === 'mail' && !contact)) return { status: 'failed', outcome: 'unavailable' };
     const mailbox = (await this.directory.mailboxes([test.accountId])).get(test.accountId);
     if (!mailbox?.email) return { status: 'skipped', outcome: 'no_address' };
     if (!mailbox.verified) return { status: 'skipped', outcome: 'unverified_address' };
@@ -520,6 +526,7 @@ export class NoticeSender {
     // The reminder says how long is left: as it will say when it goes, or now, once it is due.
     const hours = settings.reminderHours;
     const at = test.kind === 'closing_soon' && !isReminderDue(election, now, hours) ? reminderTime(election, hours) : now;
+    const links = await this.mailer.links(test.accountId);
     const message = noticeMessage(test.kind, {
       election,
       origin: this.config.webOrigin!,
@@ -528,11 +535,13 @@ export class NoticeSender {
       now: at,
       text: settings.kinds[test.kind],
       test: true,
+      unsubscribe: links.page,
     });
     return this.mailer.send(transport, {
       to: mailbox.email,
       from: this.config.mailFrom,
       replyTo: this.config.mailReplyTo,
+      listUnsubscribe: links.oneClick,
       ...message,
       meta: { kind: 'notice_test', ref: test.testId, electionId: test.electionId, accountId: test.accountId },
     });

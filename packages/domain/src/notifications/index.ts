@@ -100,6 +100,7 @@ export {
   timeLeft,
   welcomeMessage,
   memberTestMessage,
+  adminTestMessage,
 } from './message.js';
 export type { NoticeElection, NoticeMessage, NoticeMessageInput } from './message.js';
 export {
@@ -194,6 +195,7 @@ export {
   MY_EMAIL_DAYS,
   MY_EMAIL_SHOWN,
   MAIL_REQUESTS_PER_DAY,
+  ADMIN_TESTS_PER_DAY,
   MAIL_REQUEST_RETENTION_DAYS,
   mailAddressState,
   isMailRequestInFlight,
@@ -209,6 +211,24 @@ export type {
   MyEmailView,
   MemberMailFlag,
 } from './my-email.js';
+export {
+  UNSUBSCRIBE_PATH,
+  isUnsubscribeToken,
+  mailStop,
+  unsubscribeLinks,
+  mailStopSchema,
+  mailRestoreSchema,
+} from './mail-preferences.js';
+export type {
+  MailPreferenceRecord,
+  MailStop,
+  UnsubscribeLinks,
+  UnsubscribeStatus,
+  MailStopRow,
+  MailStopInput,
+  MailRestoreInput,
+  MemberEmailStoppedPayload,
+} from './mail-preferences.js';
 export {
   NOT_SEND_BLOCKING,
   SEND_CHECK_MINUTES,

@@ -113,6 +113,15 @@ describe('sending through Amazon SES', () => {
     expect(plain).not.toHaveProperty('ConfigurationSetName');
   });
 
+  it('carries the one-click unsubscribe headers mail clients look for (RFC 8058), when it has a link', () => {
+    const link = 'https://vote.example.org/v1/public/unsubscribe/abc';
+    expect(sesEmail({ ...MESSAGE, listUnsubscribe: link }, null).Content?.Simple?.Headers).toEqual([
+      { Name: 'List-Unsubscribe', Value: `<${link}>` },
+      { Name: 'List-Unsubscribe-Post', Value: 'List-Unsubscribe=One-Click' },
+    ]);
+    expect(sesEmail(MESSAGE, null).Content?.Simple).not.toHaveProperty('Headers');
+  });
+
   it('returns the message ID SES gives', async () => {
     const client = fakeClient(() => ({ MessageId: 'ses-1' }));
     const ses = new SesTransport(client, { configurationSet: 'ustp-notices', maxSendRate: 1000 });

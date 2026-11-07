@@ -196,10 +196,13 @@ export function configChecks(input: {
   readonly webOrigin: string | null;
   readonly contact: string | null;
   readonly queueUrl: string | null;
+  /** Whether System Admins have the site's email switched on (Admin › Email). */
+  readonly allEmails: boolean;
 }): MailCheck[] {
   const { transport, webOrigin, contact } = input;
-  const transportCheck =
-    transport === 'ses'
+  const transportCheck = !input.allEmails
+    ? check('transport', 'warn', 'A System Admin has switched all the site’s email off (Admin › Email): nothing is sent to anyone until it is on.', MAIL_SETUP_STEPS.app)
+    : transport === 'ses'
       ? check('transport', 'ok', 'Email goes through Amazon SES.')
       : transport === 'outbox'
         ? check('transport', 'ok', 'Email is recorded in the outbox, as with the emulators; nothing is mailed.')

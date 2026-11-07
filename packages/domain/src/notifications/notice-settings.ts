@@ -54,6 +54,13 @@ export type OtherEmail = (typeof OTHER_EMAILS)[number];
 export type OtherEmailSettings = Readonly<Record<OtherEmail, boolean>>;
 
 export interface NoticeSettings {
+  /**
+   * The site's email as a whole (design §10.12), off until a System Admin switches it on. Off, the worker mails nobody:
+   * what is due waits, and goes if it is switched on in time. Not affected: Identity Platform's emails, the setup check's
+   * messages to Amazon's simulator, and a System Admin's test email to themselves, which is how they see that it works
+   * before switching it on.
+   */
+  readonly allEmails: boolean;
   readonly kinds: Readonly<Record<NoticeKind, NoticeKindSettings>>;
   /** The site's other emails, each on or off. */
   readonly emails: OtherEmailSettings;
@@ -64,6 +71,7 @@ export interface NoticeSettings {
 }
 
 export const DEFAULT_NOTICE_SETTINGS: NoticeSettings = {
+  allEmails: false,
   kinds: {
     voting_open: { enabled: true, subject: null, intro: null },
     closing_soon: { enabled: true, subject: null, intro: null },
@@ -96,6 +104,7 @@ export function resolveNoticeSettings(
     NOTICE_KINDS.map((kind) => [kind, { ...DEFAULT_NOTICE_SETTINGS.kinds[kind], ...stored?.kinds?.[kind] }]),
   ) as Record<NoticeKind, NoticeKindSettings>;
   return {
+    allEmails: stored?.allEmails ?? DEFAULT_NOTICE_SETTINGS.allEmails,
     kinds,
     emails: { ...DEFAULT_NOTICE_SETTINGS.emails, ...stored?.emails },
     reminderHours: stored?.reminderHours ?? DEFAULT_NOTICE_SETTINGS.reminderHours,
@@ -143,6 +152,8 @@ const kindSettings = z.strictObject({
 /** `PUT /v1/admin/notice-settings`: the whole settings, and the version they were edited from. */
 export const noticeSettingsSchema = z.strictObject({
   basedOn: z.number().int().min(0),
+  // The whole site's switch came later too: a page opened before it keeps what was set.
+  allEmails: z.boolean().optional(),
   // Vote confirmations came later: a page opened before them saves without them, and keeps what was set.
   kinds: z.strictObject({ voting_open: kindSettings, closing_soon: kindSettings, voted: kindSettings.optional() }),
   // Likewise the other emails' switches: a page opened before them keeps what was set.
@@ -158,7 +169,7 @@ export const noticeSettingsSchema = z.strictObject({
 });
 export type NoticeSettingsInput = z.infer<typeof noticeSettingsSchema>;
 
-/** One setting that changed: its path (`closing_soon.enabled`, `emails.welcome`, `reminderHours`, `contact`) and its old and new value. */
+/** One setting that changed: its path (`allEmails`, `closing_soon.enabled`, `emails.welcome`, `reminderHours`, `contact`) and its old and new value. */
 export interface NoticeSettingsChange {
   readonly field: string;
   readonly from: string | number | boolean | null;
@@ -173,6 +184,7 @@ export interface NoticeSettingsChangedPayload {
 
 export function noticeSettingsChanges(before: NoticeSettings, after: NoticeSettings): NoticeSettingsChange[] {
   const changes: NoticeSettingsChange[] = [];
+  if (before.allEmails !== after.allEmails) changes.push({ field: 'allEmails', from: before.allEmails, to: after.allEmails });
   for (const kind of NOTICE_KINDS) {
     for (const key of ['enabled', 'subject', 'intro'] as const) {
       const from = before.kinds[kind][key];

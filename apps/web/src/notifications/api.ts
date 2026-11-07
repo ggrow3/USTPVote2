@@ -1,6 +1,9 @@
 import type {
   MailHealthView,
   MailRequestKind,
+  MailRestoreInput,
+  MailStopInput,
+  MailStopRow,
   MemberMailFlag,
   MyEmailView,
   NoticeKind,
@@ -9,6 +12,7 @@ import type {
   NoticesView,
   NoticeSummary,
   NoticeTestSummary,
+  UnsubscribeStatus,
 } from 'ustp-domain';
 import { api } from '../api.js';
 
@@ -48,6 +52,11 @@ export function mailHealth(): Promise<MailHealthView> {
   return api<MailHealthView>('GET', '/v1/admin/mail/health');
 }
 
+/** A test email to the System Admin's own address, on the worker's next tick, even while all email is off. */
+export function requestAdminTest(): Promise<MyEmailView> {
+  return api<MyEmailView>('POST', '/v1/admin/mail/test');
+}
+
 /** Asks the worker to run the check on its next tick; refused while one waits (409) or soon after a run (429). */
 export function requestMailCheck(): Promise<MailHealthView> {
   return api<MailHealthView>('POST', '/v1/admin/mail/health/check');
@@ -64,7 +73,38 @@ export function requestMyEmail(kind: MailRequestKind): Promise<MyEmailView> {
   return api<MyEmailView>('POST', `/v1/me/email/${kind}`);
 }
 
+/** No more email from the party; or email again, unless an admin has stopped it. */
+export function setMyEmail(on: boolean): Promise<MyEmailView> {
+  return api<MyEmailView>('POST', `/v1/me/email/${on ? 'resubscribe' : 'unsubscribe'}`);
+}
+
 /** Membership Admin: members who cannot be emailed, and why. */
 export function memberMailFlags(): Promise<MemberMailFlag[]> {
   return api<MemberMailFlag[]>('GET', '/v1/admin/mail/members');
+}
+
+// --- Who gets no email (design §10.12) ----------------------------------------------------------------------------
+
+/** Membership or System Admin: members who unsubscribed, or whose email an admin stopped. */
+export function mailStops(): Promise<MailStopRow[]> {
+  return api<MailStopRow[]>('GET', '/v1/admin/mail/stops');
+}
+
+/** Membership or System Admin: no more email to this member, by their address or ID, with a written reason. */
+export function stopMemberEmail(input: MailStopInput): Promise<void> {
+  return api<void>('POST', '/v1/admin/mail/stops', input);
+}
+
+export function restoreMemberEmail(accountId: string, input: MailRestoreInput): Promise<void> {
+  return api<void>('POST', `/v1/admin/mail/stops/${encodeURIComponent(accountId)}/restore`, input);
+}
+
+/** Whether an email's unsubscribe link has been used. Needs no sign-in, and changes nothing. */
+export function unsubscribeLinkStatus(token: string): Promise<UnsubscribeStatus> {
+  return api<UnsubscribeStatus>('GET', `/v1/public/unsubscribe/${encodeURIComponent(token)}/status`, undefined, { actAs: null });
+}
+
+/** Unsubscribes the member an email's link was sent to. Needs no sign-in. */
+export function unsubscribeLink(token: string): Promise<UnsubscribeStatus> {
+  return api<UnsubscribeStatus>('POST', `/v1/public/unsubscribe/${encodeURIComponent(token)}`, undefined, { actAs: null });
 }

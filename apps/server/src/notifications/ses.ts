@@ -67,11 +67,18 @@ export class SesTransport implements MailTransport {
 /** The `SendEmail` request: plain text and HTML in UTF-8, tagged with what it is so its delivery reports say so. */
 export function sesEmail(message: MailMessage, configurationSet: string | null): SendEmailCommandInput {
   const utf8 = (Data: string) => ({ Data, Charset: 'UTF-8' });
+  // RFC 8058: the mail client's own Unsubscribe button POSTs to this address, with no page in between.
+  const Headers = message.listUnsubscribe
+    ? [
+        { Name: 'List-Unsubscribe', Value: `<${message.listUnsubscribe}>` },
+        { Name: 'List-Unsubscribe-Post', Value: 'List-Unsubscribe=One-Click' },
+      ]
+    : undefined;
   return {
     FromEmailAddress: message.from,
     Destination: { ToAddresses: [message.to!] },
     ...(message.replyTo && { ReplyToAddresses: [message.replyTo] }),
-    Content: { Simple: { Subject: utf8(message.subject), Body: { Text: utf8(message.text), Html: utf8(message.html) } } },
+    Content: { Simple: { Subject: utf8(message.subject), Body: { Text: utf8(message.text), Html: utf8(message.html) }, ...(Headers && { Headers }) } },
     ...(configurationSet && { ConfigurationSetName: configurationSet }),
     EmailTags: [
       { Name: SES_KIND_TAG, Value: message.meta.kind },

@@ -4,6 +4,7 @@ import {
   Collections,
   MAIL_MESSAGE_RETENTION_DAYS,
   MAIL_SUPPRESSION_DAYS,
+  type MailPreferenceRecord,
   type MailHealthRecord,
   type MailHealthRequest,
   MAIL_REQUEST_RETENTION_DAYS,
@@ -87,6 +88,35 @@ export class MailRepository {
     await this.suppressionRef(addressKey).delete();
   }
 
+  // --- who gets no email (§10.12) -------------------------------------------------------------------------------------
+
+  private preferenceRef(accountId: string): DocumentReference {
+    return this.firebase.db.collection(Collections.mailPreferences).doc(accountId);
+  }
+
+  async preference(accountId: string, tx?: Transaction): Promise<MailPreferenceRecord | null> {
+    const snap = tx ? await tx.get(this.preferenceRef(accountId)) : await this.preferenceRef(accountId).get();
+    return (snap.data() as MailPreferenceRecord | undefined) ?? null;
+  }
+
+  async preferenceByToken(token: string): Promise<MailPreferenceRecord | null> {
+    const snap = await this.firebase.db.collection(Collections.mailPreferences).where('token', '==', token).limit(1).get();
+    return (snap.docs[0]?.data() as MailPreferenceRecord | undefined) ?? null;
+  }
+
+  setPreference(tx: Transaction, record: MailPreferenceRecord): void {
+    tx.set(this.preferenceRef(record.accountId), record);
+  }
+
+  /** Accounts that unsubscribed or that an admin stopped email to. */
+  async stoppedPreferences(): Promise<MailPreferenceRecord[]> {
+    const preferences = this.firebase.db.collection(Collections.mailPreferences);
+    const [unsubscribed, stopped] = await Promise.all([preferences.where('unsubscribedAt', '>', '').get(), preferences.where('stoppedAt', '>', '').get()]);
+    const found = new Map<string, MailPreferenceRecord>();
+    for (const doc of [...unsubscribed.docs, ...stopped.docs]) found.set(doc.id, doc.data() as MailPreferenceRecord);
+    return [...found.values()];
+  }
+
   // --- members' requests (§10.12) -------------------------------------------------------------------------------------
 
   requestRef(requestId?: string): DocumentReference {
@@ -110,6 +140,12 @@ export class MailRepository {
   async unfinishedRequests(limit: number): Promise<MailRequestRecord[]> {
     const snap = await this.firebase.db.collection(Collections.mailRequests).where('status', 'in', ['pending', 'sending']).limit(limit).get();
     return snap.docs.map((d) => withoutExpiry(d.data() as Stored<MailRequestRecord>));
+  }
+
+  /** System Admins' test emails the worker has still to do, or has claimed, which go even while all email is off. */
+  async unfinishedAdminTests(): Promise<MailRequestRecord[]> {
+    const snap = await this.firebase.db.collection(Collections.mailRequests).where('kind', '==', 'admin_test').get();
+    return snap.docs.map((d) => withoutExpiry(d.data() as Stored<MailRequestRecord>)).filter((r) => r.status !== 'done');
   }
 
   /** Moves a request on from `from` in a transaction; false when it is no longer there, as another worker moved it. */
@@ -195,12 +231,13 @@ export class MailRepository {
     await batch.commit();
   }
 
-  /** Deletes an account's messages, the suppressions found through them and its requests (a deleted account, design §4). */
+  /** Deletes an account's messages, the suppressions found through them, its requests and its preference (a deleted account, design §4). */
   async forgetAccount(accountId: string): Promise<void> {
     await this.deleteWhere([
       this.firebase.db.collection(Collections.mailMessages).where('accountId', '==', accountId),
       this.firebase.db.collection(Collections.mailSuppressions).where('accountId', '==', accountId),
       this.firebase.db.collection(Collections.mailRequests).where('accountId', '==', accountId),
+      this.firebase.db.collection(Collections.mailPreferences).where('accountId', '==', accountId),
     ]);
   }
 

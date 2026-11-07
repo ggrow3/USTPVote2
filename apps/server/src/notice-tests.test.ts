@@ -57,7 +57,7 @@ describe('NoticesService.requestTest', () => {
       testsTo: async () => over.theirs ?? [],
     } as unknown as NoticeRepository;
     const settings = {
-      current: async () => ({ ...DEFAULT_NOTICE_SETTINGS, contact: over.contact === undefined ? 'elections@example.org' : over.contact }),
+      current: async () => ({ ...DEFAULT_NOTICE_SETTINGS, allEmails: true, contact: over.contact === undefined ? 'elections@example.org' : over.contact }),
     } as unknown as NoticeSettingsService;
     const config = { mailTransport: over.mailTransport ?? 'ses', noticeContact: null } as unknown as ServerConfig;
     return { created, notices: new NoticesService(firebase, {} as LedgerService, notices, {} as MailRepository, elections, settings, config) };
