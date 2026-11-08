@@ -31,6 +31,10 @@ const CONTEXTS: Readonly<Record<string, { readonly collections: readonly string[
     collections: ['roomConsents', 'roomMessages', 'roomMemory', 'roomJobs', 'roomState'],
     repositories: ['room.repository'],
   },
+  bills: {
+    collections: ['billSettings', 'billWatch', 'billNotes'],
+    repositories: ['bill.repository'],
+  },
   communications: {
     collections: ['newsPosts', 'pressKit', 'pressAssets', 'sharePosts', 'shareCounts', 'calendarItems', 'suggestions', 'suggestionLimits', 'bots'],
     repositories: ['communications.repository'],

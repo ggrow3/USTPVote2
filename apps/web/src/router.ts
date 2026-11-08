@@ -68,6 +68,9 @@ export const router = createRouter({
         { path: 'forum/:postId', component: () => import('./forum/ForumPostPage.vue'), meta: { requiresAuth: true } },
         // The members' room is for Active members who accept its terms; the page is the door (design §5.10).
         { path: 'room', component: () => import('./room/RoomPage.vue'), meta: { requiresAuth: true } },
+        // The legislative team's Bills page: the teams a System Admin names, and System Admins; it says so to anyone else (design §5.14).
+        { path: 'bills', component: () => import('./bills/BillsPage.vue'), meta: { requiresAuth: true } },
+        { path: 'bills/:congress/:type/:number', component: () => import('./bills/BillPage.vue'), meta: { requiresAuth: true } },
         // News, the press kit and the suggestions form are for everyone; the share kit for Active members (design §10.9).
         { path: 'news', component: () => import('./communications/NewsPage.vue') },
         { path: 'news/:slug', component: () => import('./communications/NewsPostPage.vue') },

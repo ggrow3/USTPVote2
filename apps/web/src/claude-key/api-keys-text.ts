@@ -10,6 +10,7 @@ export const KEY_TITLES: Readonly<Record<ApiKeyName, string>> = {
   fec: 'FEC key (api.data.gov)',
   openstates: 'Open States key',
   civic: 'Google Civic Information key',
+  congress: 'Congress.gov and GovInfo key (api.data.gov)',
 };
 
 /** What each key is for, and where a System Admin gets one. */
@@ -29,6 +30,11 @@ export const KEY_USES: Readonly<Record<ApiKeyName, { readonly text: string; read
     where: 'Create a key in Google Cloud with the Civic Information API turned on',
     url: 'https://console.cloud.google.com/apis/library/civicinfo.googleapis.com',
   },
+  congress: {
+    text: 'Bills in Congress, their actions and their text, on the legislative team’s Bills page. Any api.data.gov key works, the FEC’s included.',
+    where: 'Get a free key at api.congress.gov',
+    url: 'https://api.congress.gov/sign-up/',
+  },
 };
 
 /** What the site does with no key at all for the service. */
@@ -36,6 +42,7 @@ const WITHOUT: Readonly<Record<ApiKeyName, string>> = {
   fec: 'the FEC’s shared demo key is used, which allows only a few lookups an hour for the whole site, so candidates can be missing at busy times',
   openstates: 'state legislators are left out of the Your area page',
   civic: 'the ballot’s contests are left out of the Candidates and Your area pages',
+  congress: 'the Bills page uses the FEC key above when one is in use, and otherwise api.data.gov’s shared demo key, which allows only 30 requests an hour for the whole site',
 };
 
 /** What each key looks like, under its field. */
@@ -43,12 +50,17 @@ const SHAPES: Readonly<Record<ApiKeyName, string>> = {
   fec: '40 letters and digits.',
   openstates: '36 characters, like 1b2c3d4e-0000-….',
   civic: 'Starts with AIza.',
+  congress: '40 letters and digits.',
 };
 
 const day = (iso: string, locale?: string) => new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
 
 /** Which key is in use: one added here (by whom, when it is known), the deployment's, or none and what that means. */
 export function apiKeyStatusText(status: ApiKeyStatus, locale?: string): string {
+  if (status.unavailable) {
+    const meanwhile = status.source === 'deployment' ? 'the deployment’s own key is used' : WITHOUT[status.name];
+    return `This key cannot be added here yet: ${status.unavailable.replace(/\.$/, '')}. Meanwhile ${meanwhile}.`;
+  }
   if (status.source === 'deployment') return 'The deployment’s own key is in use (set in Terraform). A key added here takes its place.';
   if (status.source === 'none') return `No key is set, so ${WITHOUT[status.name]}.`;
   const added = status.addedAt ? ` on ${day(status.addedAt, locale)}` : '';

@@ -9,6 +9,7 @@ const status = (fields: Partial<ApiKeyStatus>): ApiKeyStatus => ({
   addedBy: { accountId: 'a1', name: 'Ada Admin' },
   hint: 'wxyz',
   deploymentKey: false,
+  unavailable: null,
   ...fields,
 });
 
@@ -30,5 +31,13 @@ describe('Admin › API keys wording: the public-records keys', () => {
   it('says before removing one what is used instead', () => {
     expect(removeConfirmText(status({ name: 'civic', deploymentKey: true }))).toMatch(/^The deployment’s own key is used again\. The key stays valid/);
     expect(removeConfirmText(status({ name: 'openstates' }))).toMatch(/^Without a key, state legislators are left out/);
+  });
+
+  it('says on its own card when a key cannot be added here yet, and what is used meanwhile', () => {
+    const message = 'this server may not look at the app-congress-api-key secret yet: apply the Terraform that creates it (README "API keys")';
+    expect(apiKeyStatusText(status({ name: 'congress', source: 'none', unavailable: message }))).toBe(
+      `This key cannot be added here yet: ${message}. Meanwhile the Bills page uses the FEC key above when one is in use, and otherwise api.data.gov’s shared demo key, which allows only 30 requests an hour for the whole site.`,
+    );
+    expect(apiKeyStatusText(status({ name: 'civic', source: 'deployment', unavailable: message }))).toMatch(/Meanwhile the deployment’s own key is used\.$/);
   });
 });

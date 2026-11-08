@@ -29,6 +29,12 @@ export const Collections = {
   positionTerms: 'position_terms',
   /** `teams/{teamId}`: working groups members join (design §5.7). */
   teams: 'teams',
+  /** `bill_settings/current`: which teams have the Bills tool (design §5.14). */
+  billSettings: 'bill_settings',
+  /** `bill_watch/{congress}-{type}-{number}`: the legislative team's shared watchlist (design §5.14). */
+  billWatch: 'bill_watch',
+  /** `bill_notes/{noteId}`: the team's notes on watched bills (design §5.14). */
+  billNotes: 'bill_notes',
   /** `team_members/{teamId}_{accountId}`: who is on each team, as a lead or a member. */
   teamMembers: 'team_members',
   /** `team_requests/{teamId}_{accountId}`: each member's latest request to join a team. */

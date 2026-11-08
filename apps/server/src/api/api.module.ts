@@ -93,6 +93,8 @@ import {
   ShareController,
 } from '../communications/communications.controller.js';
 import { TEAMS_PROVIDERS } from '../teams/providers.js';
+import { BillsAdminController, BillsController } from '../bills/bills.controller.js';
+import { BILLS_PROVIDERS } from '../bills/providers.js';
 import { TeamsAdminController, TeamsController } from '../teams/teams.controller.js';
 
 /**
@@ -103,7 +105,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
  * §10.4). M5: who sees which link (design §10.5), the home page hub (§10.6), communications (§10.9), robots.txt and
  * the sitemap (§15); the
  * platform consistency check (design §5.5), the election setup check (§6.9) and the Anthropic API key (design §5.6);
- * candidacies for public office and their districts' map (design §5.8).
+ * candidacies for public office and their districts' map (design §5.8); the legislative team's Bills tool (design §5.14).
  */
 @Module({
   imports: [CoreModule],
@@ -143,6 +145,8 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     EmailTemplatesAdminController,
     TeamsController,
     TeamsAdminController,
+    BillsController,
+    BillsAdminController,
     ForumController,
     ForumAdminController,
     RoomController,
@@ -204,6 +208,7 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     PositionsService,
     ...CANDIDACIES_PROVIDERS,
     ...TEAMS_PROVIDERS,
+    ...BILLS_PROVIDERS,
     ...FORUM_PROVIDERS,
     ...ROOM_PROVIDERS,
     ...COMMUNICATIONS_PROVIDERS,

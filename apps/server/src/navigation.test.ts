@@ -22,6 +22,7 @@ import { PhotoReviewController } from './photos/photos.controller.js';
 import { PositionsController } from './positions/positions.controller.js';
 import { SecurityController } from './security/sign-in-log.js';
 import { TeamsAdminController } from './teams/teams.controller.js';
+import { BillsAdminController } from './bills/bills.controller.js';
 
 type Route = readonly [controller: abstract new (...args: never[]) => object, method: string];
 
@@ -52,6 +53,7 @@ const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
   quote: [HomeQuoteAdminController, 'current'],
   course: [CourseController, 'adminContent'],
   communications: [CommunicationsAdminController, 'allNews'],
+  bills: [BillsAdminController, 'settings'],
 };
 
 function rolesOf([controller, method]: Route): readonly Role[] {
