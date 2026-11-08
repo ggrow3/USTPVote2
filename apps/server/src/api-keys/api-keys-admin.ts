@@ -10,6 +10,7 @@ import {
   NotFoundException,
   Param,
   Put,
+  ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
@@ -101,12 +102,25 @@ export class ApiKeysAdminService {
     return this.status();
   }
 
+  /**
+   * One card. A secret this server may not look at yet (its Terraform not applied) is said on its own card, so a key
+   * added to the list later does not take the other cards down with it.
+   */
   private async one(name: ApiKeyName): Promise<ApiKeyStatus> {
-    const [version, snap] = await Promise.all([this.keys.version(name), this.recordRef(name).get()]);
+    const deploymentKey = this.keys.deployment(name) !== null;
+    const [version, snap] = await Promise.all([
+      this.keys.version(name).catch((e: unknown) => {
+        if (e instanceof ServiceUnavailableException) return { unavailable: e.message } as const;
+        throw e;
+      }),
+      this.recordRef(name).get(),
+    ]);
+    if (version && 'unavailable' in version) {
+      return { name, source: deploymentKey ? 'deployment' : 'none', addedAt: null, addedBy: null, hint: null, deploymentKey, unavailable: version.unavailable };
+    }
     const record = snap.data() as ApiKeyRecord | undefined;
     // Who added it is known only for a key added here; one added with gcloud since is just "added".
     const ours = version && record?.version === version.name ? record : null;
-    const deploymentKey = this.keys.deployment(name) !== null;
     return {
       name,
       source: version ? 'app' : deploymentKey ? 'deployment' : 'none',
@@ -114,6 +128,7 @@ export class ApiKeysAdminService {
       addedBy: ours ? { accountId: ours.addedBy, name: ours.addedByName } : null,
       hint: ours?.hint ?? null,
       deploymentKey,
+      unavailable: null,
     };
   }
 

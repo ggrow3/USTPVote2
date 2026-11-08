@@ -47,6 +47,8 @@ export const TRACKED_PAGES: readonly TrackedPage[] = [
   { id: 'forum', pattern: '/forum', label: 'Forum' },
   { id: 'forum-post', pattern: '/forum/:postId', label: 'A forum post' },
   { id: 'room', pattern: '/room', label: "Members' room" },
+  { id: 'bills', pattern: '/bills', label: 'Bills in Congress' },
+  { id: 'bill', pattern: '/bills/:congress/:type/:number', label: 'A bill in Congress' },
   { id: 'news', pattern: '/news', label: 'News' },
   { id: 'news-post', pattern: '/news/:slug', label: 'A news post' },
   { id: 'press', pattern: '/press', label: 'Press kit' },

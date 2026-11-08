@@ -27,6 +27,8 @@ process.env.BOOTSTRAP_SYSTEM_ADMIN_EMAILS = `${SA1_EMAIL},${SA2_EMAIL}`;
 process.env.DELETABLE_ACCOUNT_EMAILS = DELETABLE_EMAILS.join(',');
 // Candidacies look districts up in a few made-up ones, not the Census Bureau: tests do not reach the internet.
 process.env.DISTRICTS = 'local';
+// The Bills page searches a few fixture bills, not Congress.gov and GovInfo (design §5.14).
+process.env.BILLS = 'local';
 
 export interface Response {
   readonly status: number;

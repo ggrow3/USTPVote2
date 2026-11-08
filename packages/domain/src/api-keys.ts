@@ -3,12 +3,14 @@ import { ANTHROPIC_KEY_HINT_CHARACTERS } from './anthropic-key.js';
 import { deny, OK, type Check } from './check.js';
 
 /**
- * The keys of the public-records services the Candidates and Your area pages ask (design §5.6, §5.12), which a System
- * Admin may add under Admin › API keys beside the Anthropic API key. Each is optional: without one, the deployment's
- * own key is used (set in Terraform), and without that the service is left out (the FEC falls back to its shared
- * DEMO_KEY, which allows few lookups an hour).
+ * The keys of the public-records services the Candidates and Your area pages ask (design §5.6, §5.12), and the Bills
+ * page's Congress.gov and GovInfo key (§5.14), which a System Admin may add under Admin › API keys beside the Anthropic
+ * API key. Each is optional: without one, the deployment's own key is used (set in Terraform), and without that the
+ * service is left out (the FEC falls back to its shared DEMO_KEY, which allows few lookups an hour). The Congress.gov
+ * key has no deployment key of its own: without it the Bills page uses the FEC key in use, since any api.data.gov key
+ * works for every service behind api.data.gov, and then DEMO_KEY.
  */
-export const API_KEY_NAMES = ['fec', 'openstates', 'civic'] as const;
+export const API_KEY_NAMES = ['fec', 'openstates', 'civic', 'congress'] as const;
 export type ApiKeyName = (typeof API_KEY_NAMES)[number];
 
 /**
@@ -20,6 +22,7 @@ export const API_KEY_SECRETS: Readonly<Record<ApiKeyName, string>> = {
   fec: 'app-fec-api-key',
   openstates: 'app-openstates-api-key',
   civic: 'app-civic-api-key',
+  congress: 'app-congress-api-key',
 };
 
 export const apiKeyNameSchema = z.enum(API_KEY_NAMES);
@@ -33,6 +36,7 @@ const SHAPES: Readonly<Record<ApiKeyName, { readonly pattern: RegExp; readonly s
   fec: { pattern: /^[A-Za-z0-9]{40}$/, says: 'api.data.gov keys are 40 letters and digits' },
   openstates: { pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, says: 'Open States keys look like 1b2c3d4e-0000-…, 36 characters' },
   civic: { pattern: /^AIza[0-9A-Za-z_-]{35}$/, says: 'Google API keys start with "AIza" and are 39 characters' },
+  congress: { pattern: /^[A-Za-z0-9]{40}$/, says: 'api.data.gov keys are 40 letters and digits' },
 };
 
 /**
@@ -43,7 +47,7 @@ const SHAPES: Readonly<Record<ApiKeyName, { readonly pattern: RegExp; readonly s
 export function checkApiKey(name: ApiKeyName, key: string): Check {
   if (/\s/.test(key)) return deny('an API key has no spaces or line breaks: paste only the key');
   if (key.startsWith('sk-ant-')) return deny('this is an Anthropic API key, which goes in the Anthropic API key card');
-  if (name === 'fec' && key === 'DEMO_KEY') return deny('this is the FEC’s shared demo key, which is used anyway when no key is set: add your own api.data.gov key');
+  if ((name === 'fec' || name === 'congress') && key === 'DEMO_KEY') return deny('this is api.data.gov’s shared demo key, which is used anyway when no key is set: add your own api.data.gov key');
   const shape = SHAPES[name];
   return shape.pattern.test(key) ? OK : deny(`this does not look like the right key: ${shape.says}`);
 }
@@ -77,6 +81,11 @@ export interface ApiKeyStatus {
   readonly hint: string | null;
   /** Whether the deployment has a key of its own, which is used again once the one added here is removed. */
   readonly deploymentKey: boolean;
+  /**
+   * Why the key added here cannot be looked at, when Secret Manager refuses (Terraform has not created its secret yet):
+   * the card says so and offers no field, and the other cards work as before. Null otherwise.
+   */
+  readonly unavailable: string | null;
 }
 
 export interface ApiKeysStatus {

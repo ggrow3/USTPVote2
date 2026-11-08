@@ -14,6 +14,7 @@ import { hasRole, secondFactorMissing, session, signOut } from '../session.js';
 import { toggleTheme } from '../theme.js';
 import { update } from '../update.js';
 import { linksInRow } from './menu-fit.js';
+import { billsState } from '../bills/access.js';
 
 const TestingBar = defineAsyncComponent(() => import('../components/TestingBar.vue'));
 /** The walkthrough under way (design §10.11), loaded only while there is one. */
@@ -25,10 +26,13 @@ const who = computed(() => acting.persona?.label || session.me?.account?.display
 /**
  * The links the navigation settings give this person (design §10.5), once their account and the settings are known.
  * Each page still explains itself to someone who reaches it without being one it is for. Sign in is the header's button.
+ * Bills is shown only to people who have the tool (design §5.14), which the settings cannot know.
  */
 const links = computed(() =>
   session.ready && navigationState.loaded
-    ? shown.value.menu.filter((link) => link !== 'signin').map((link) => ({ to: link === 'course' ? '/courses' : `/${link}`, label: MENU_LABELS[link] }))
+    ? shown.value.menu
+        .filter((link) => link !== 'signin' && (link !== 'bills' || billsState.access?.allowed === true))
+        .map((link) => ({ to: link === 'course' ? '/courses' : `/${link}`, label: MENU_LABELS[link] }))
     : [],
 );
 
