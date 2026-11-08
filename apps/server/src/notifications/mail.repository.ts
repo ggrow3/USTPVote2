@@ -1,8 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { Timestamp, type DocumentReference, type Query, type Transaction } from 'firebase-admin/firestore';
+import { FieldPath, Timestamp, type DocumentReference, type Query, type Transaction } from 'firebase-admin/firestore';
 import {
   Collections,
+  MAIL_LOG_PAGE,
+  MAIL_LOG_SCAN,
   MAIL_MESSAGE_RETENTION_DAYS,
+  mailLogBounds,
+  mailLogCursor,
+  mailLogIndex,
+  matchesMailLog,
+  type MailLogQuery,
   MAIL_SUPPRESSION_DAYS,
   type MailPreferenceRecord,
   type MailHealthRecord,
@@ -75,6 +82,43 @@ export class MailRepository {
       .limit(limit)
       .get();
     return snap.docs.map((d) => withoutExpiry(d.data() as Stored<MailMessageRecord>));
+  }
+
+  /**
+   * A page of the email log (§10.12), newest first: read in Firestore by the query's most selective field and its days,
+   * the other fields applied to what comes back, until the page is full, the log ends, or `MAIL_LOG_SCAN` records have
+   * been read. `after` is where the last page stopped.
+   */
+  async log(query: MailLogQuery, after: { sentAt: string; messageId: string } | null): Promise<{ records: MailMessageRecord[]; next: string | null; scanLimited: boolean }> {
+    const index = mailLogIndex(query);
+    const value = { accountId: query.account, causedBy: query.causedBy, kind: query.kind, status: query.status };
+    let base: Query = this.firebase.db.collection(Collections.mailMessages);
+    if (index) base = base.where(index, '==', value[index]);
+    const [from, to] = mailLogBounds(query);
+    if (from) base = base.where('sentAt', '>=', from);
+    if (to) base = base.where('sentAt', '<', to);
+    base = base.orderBy('sentAt', 'desc').orderBy(FieldPath.documentId(), 'desc');
+    // Filters beyond the one read by in Firestore can pass few of the records, so read more at a time then.
+    const batch = Object.values(value).filter(Boolean).length > 1 ? MAIL_LOG_PAGE * 4 : MAIL_LOG_PAGE;
+    const records: MailMessageRecord[] = [];
+    let last = after;
+    let scanned = 0;
+    let ended = false;
+    while (records.length < MAIL_LOG_PAGE && scanned < MAIL_LOG_SCAN) {
+      const limit = Math.min(batch, MAIL_LOG_SCAN - scanned);
+      const snap = await (last ? base.startAfter(last.sentAt, last.messageId) : base).limit(limit).get();
+      for (const doc of snap.docs) {
+        scanned++;
+        const record = withoutExpiry(doc.data() as Stored<MailMessageRecord>);
+        last = { sentAt: record.sentAt, messageId: doc.id };
+        if (matchesMailLog(record, query) && records.push(record) === MAIL_LOG_PAGE) break;
+      }
+      if (snap.size < limit) {
+        ended = records.length < MAIL_LOG_PAGE || snap.docs[snap.size - 1]?.id === last?.messageId;
+        break;
+      }
+    }
+    return { records, next: ended || !last ? null : mailLogCursor(last), scanLimited: !ended && records.length < MAIL_LOG_PAGE };
   }
 
   /** Suppressions found through an account's message, for the Membership Admins' flags (§10.12). */

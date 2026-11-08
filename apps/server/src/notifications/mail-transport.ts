@@ -8,6 +8,11 @@ export interface MailMeta {
   readonly ref: string | null;
   readonly electionId: string | null;
   readonly accountId: string | null;
+  /**
+   * Who caused it (the email log, design §10.12): the account that asked for it, or `system` for what the worker sends
+   * by itself. Kept in the message's record; never sent to the provider.
+   */
+  readonly causedBy: string;
 }
 
 /** One email. `to` is null only in the outbox, for a test voter, who has no address. */

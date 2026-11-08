@@ -5,6 +5,7 @@ import { BroadcastRepository } from './broadcast.repository.js';
 import { BroadcastSender } from './broadcast-sender.js';
 import { BroadcastAudienceReader, BroadcastsService } from './broadcasts.js';
 import { MailHealthService } from './mail-admin.controller.js';
+import { MailLogService } from './mail-log.js';
 import { MailEventRecorder } from './mail-events.js';
 import { MailRequestSender } from './mail-requests.js';
 import { DNS_TXT, dnsTxt, IDENTITY_PLATFORM, MailHealthChecker, SES_ACCOUNT } from './mail-health.js';
@@ -40,6 +41,7 @@ export const NOTIFICATION_API_PROVIDERS: Provider[] = [
   BroadcastAudienceReader,
   BroadcastsService,
   MailHealthService,
+  MailLogService,
   MyEmailService,
   NoticeSettingsService,
   NoticesService,

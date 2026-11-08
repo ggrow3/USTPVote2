@@ -71,7 +71,7 @@ export class WelcomeSender {
   private async send(record: WelcomeEmailRecord, contact: string | null): Promise<boolean> {
     const claimedAt = new Date().toISOString();
     if (!(await this.move(record, 'pending', { status: 'sending', claimedAt }))) return false;
-    const result = await this.deliver(record.accountId, contact);
+    const result = await this.deliver(record.accountId, record.requestedBy, contact);
     await this.ref(record.accountId).update({
       status: 'done',
       claimedAt: null,
@@ -83,7 +83,7 @@ export class WelcomeSender {
   }
 
   /** Sends to the account's address, read here and stored nowhere else. */
-  private async deliver(accountId: string, contact: string | null): Promise<{ messageId: string } | { outcome: WelcomeOutcome }> {
+  private async deliver(accountId: string, requestedBy: string, contact: string | null): Promise<{ messageId: string } | { outcome: WelcomeOutcome }> {
     const account = (await this.firebase.db.collection(Collections.accounts).doc(accountId).get()).data() as AccountRecord | undefined;
     if (!account?.primaryEmail) return { outcome: 'no_address' };
     if (account.claimedAt) return { outcome: 'signed_in' };
@@ -100,7 +100,7 @@ export class WelcomeSender {
       replyTo: this.config.mailReplyTo,
       listUnsubscribe: links.oneClick,
       ...message,
-      meta: { kind: 'welcome', ref: accountId, electionId: null, accountId },
+      meta: { kind: 'welcome', ref: accountId, electionId: null, accountId, causedBy: requestedBy },
     });
     if (result.status === 'sent') return { messageId: result.messageId };
     return { outcome: result.outcome };
