@@ -14,6 +14,7 @@ import { ConsistencyCheckRunner } from '../consistency-check/consistency-check-r
 import { ElectionCheckRunner } from '../election-check/election-check-runner.js';
 import { MailEventRecorder } from '../notifications/mail-events.js';
 import { MailHealthChecker } from '../notifications/mail-health.js';
+import { NotificationMailer } from '../inbox/notification-mailer.js';
 import { BroadcastSender } from '../notifications/broadcast-sender.js';
 import { MailRequestSender } from '../notifications/mail-requests.js';
 import { NoticeSender } from '../notifications/notice-sender.js';
@@ -51,6 +52,7 @@ export class TasksController {
     private readonly mailHealth: MailHealthChecker,
     private readonly mailRequests: MailRequestSender,
     private readonly broadcasts: BroadcastSender,
+    private readonly notificationMail: NotificationMailer,
     private readonly sendChecks: SendVerifier,
     private readonly suggestions: SuggestionsService,
     private readonly roomRetention: RoomRetention,
@@ -92,6 +94,7 @@ export class TasksController {
       welcomeEmailsSent: await step('send welcome emails', () => this.welcomes.sendDue(), 0),
       memberEmailsSent: await step("do members' email requests", () => this.mailRequests.sendDue(), 0),
       broadcastEmailsSent: await step("send admins' emails to members", () => this.broadcasts.sendDue(), 0),
+      notificationEmailsSent: await step('email notifications', () => this.notificationMail.sendDue(), 0),
       mailEventsRecorded: await step('record mail events', () => this.mailEvents.record(), 0),
       deliveryReports: await step('report delivery', () => this.notices.reportDelivery(), 0),
       sendsVerified: await step('verify sends', () => this.sendChecks.verifyDue(), 0),

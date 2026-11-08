@@ -114,8 +114,9 @@ export {
   memberTestMessage,
   adminTestMessage,
   broadcastMessage,
+  notificationEmailMessage,
 } from './message.js';
-export type { NoticeElection, NoticeMessage, NoticeMessageInput } from './message.js';
+export type { NoticeElection, NoticeMessage, NoticeMessageInput, NotificationEmailPeriod } from './message.js';
 export {
   WELCOME_STATUSES,
   WELCOME_OUTCOMES,

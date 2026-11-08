@@ -13,7 +13,8 @@ import { NOTICE_KINDS, type NoticeDelivery, type NoticeKind, type RecipientStatu
  * What a message is: an election notice (`NoticeKind`), an Election Admin's test of one, a welcome email to an added
  * member (§5.13), the setup check's message to SES's mailbox simulator (`probe`, §10.12), a test email a member asked for
  * on their Account page (`member_test`, §10.12), a test email a System Admin asked for in Admin › Email (`admin_test`,
- * §10.12), a copy of an email an admin wrote to members (`broadcast`, §10.12), or an email Identity Platform sent about
+ * §10.12), a copy of an email an admin wrote to members (`broadcast`, §10.12), a member's in-app notification by email as
+ * it came (`notification`) or a digest of them (`notification_digest`, §10.13), or an email Identity Platform sent about
  * the account through SES (§4):
  * a sign-in link, an address to confirm, a password reset, or another (`account_email`), which the worker learns of only
  * from its delivery reports.
@@ -26,6 +27,8 @@ export const MAIL_KINDS = [
   'member_test',
   'admin_test',
   'broadcast',
+  'notification',
+  'notification_digest',
   'sign_in_link',
   'address_verification',
   'password_reset',

@@ -41,6 +41,9 @@ export const router = createRouter({
         // Where an email's Unsubscribe link leads, with no sign-in (design §10.12).
         { path: 'unsubscribe', component: () => import('./notifications/UnsubscribePage.vue') },
         { path: 'account', component: () => import('./pages/AccountPage.vue'), meta: { requiresAuth: true } },
+        { path: 'notifications', component: () => import('./inbox/NotificationsPage.vue'), meta: { requiresAuth: true } },
+        { path: 'messages', component: () => import('./inbox/MessagesPage.vue'), meta: { requiresAuth: true } },
+        { path: 'messages/:threadId', component: () => import('./inbox/MessagesPage.vue'), meta: { requiresAuth: true } },
         { path: 'ballot', component: () => import('./pages/BallotPage.vue'), meta: { requiresAuth: true } },
         { path: 'ballot/:id', component: () => import('./pages/VotePage.vue'), meta: { requiresAuth: true } },
         { path: 'verify', component: () => import('./pages/VerifyPage.vue') },
