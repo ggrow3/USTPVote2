@@ -59,7 +59,8 @@ export class NoticeSettingsService {
         ...settings,
         allEmails: settings.allEmails ?? before.allEmails,
         kinds: { ...before.kinds, ...settings.kinds },
-        emails: settings.emails ?? before.emails,
+        // A page opened before a switch existed saves without it, which keeps what was set.
+        emails: { ...before.emails, ...settings.emails },
       });
       const changes = noticeSettingsChanges(before, after);
       if (changes.length === 0) return before;

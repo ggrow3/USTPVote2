@@ -6,6 +6,7 @@ import { acting } from '../acting.js';
 import { APP_NAME } from '../app-name.js';
 import UpdateBanner from '../components/UpdateBanner.vue';
 import MailProblemBanner from '../notifications/MailProblemBanner.vue';
+import NotificationBell from '../inbox/NotificationBell.vue';
 import { usingEmulators } from '../firebase.js';
 import { navigationState, shown } from '../governance/navigation.js';
 import { MENU_LABELS } from '../governance/navigation-text.js';
@@ -153,6 +154,8 @@ watch(headerShown, (now) => now || (document.documentElement.style.scrollPadding
             @click="toggleTheme"
           />
           <template v-if="session.ready">
+            <!-- Notifications and messages (design §10.13), for whoever has an account. -->
+            <NotificationBell v-if="session.user && session.me?.account" />
             <!-- On phones only the icon shows, so the title is not squeezed out (WCAG 1.4.10). -->
             <q-btn-dropdown
               v-if="session.user"
@@ -164,6 +167,7 @@ watch(headerShown, (now) => now || (document.documentElement.style.scrollPadding
             >
               <q-list>
                 <q-item v-close-popup clickable to="/account"><q-item-section>Account</q-item-section></q-item>
+                <q-item v-if="session.me?.account" v-close-popup clickable to="/messages"><q-item-section>Messages</q-item-section></q-item>
                 <q-item v-close-popup clickable @click="onSignOut"><q-item-section>Sign out</q-item-section></q-item>
               </q-list>
             </q-btn-dropdown>

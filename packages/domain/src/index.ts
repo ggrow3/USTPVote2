@@ -133,6 +133,7 @@ export * from './forum/index.js';
 export * from './room/index.js';
 export * from './communications/index.js';
 export * from './notifications/index.js';
+export * from './inbox/index.js';
 export * from './governance/index.js';
 export * from './candidacies/index.js';
 export { diffLines, splitLines } from './text-diff.js';

@@ -174,6 +174,11 @@ const OTHER_EMAIL_TEXT: Readonly<Record<OtherEmail, { label: string; caption: st
     label: 'Election Admins’ test emails',
     caption: '“Send test email” on an election’s email card, to the admin’s own address. Off: the button is refused.',
   },
+  notifications: {
+    label: 'Notifications by email',
+    caption:
+      'Members’ in-app notifications (new messages, for one), for those who chose on their Account page to have them by email as each comes, or in a daily or weekly digest. Off: none goes, and none waits.',
+  },
   memberTests: {
     label: 'Members’ test emails',
     caption:

@@ -47,6 +47,13 @@ export const Collections = {
   forumVotes: 'forum_votes',
   /** `forum_reports/{kind}_{targetId}_{accountId}`: each member's report of a post or comment, for Membership Admins. */
   forumReports: 'forum_reports',
+  // The inbox (design §10.13): in-app notifications, messages between members, and how each wants notifications by email.
+  appNotifications: 'app_notifications',
+  inboxPreferences: 'inbox_preferences',
+  memberThreads: 'member_threads',
+  memberMessages: 'member_messages',
+  memberBlocks: 'member_blocks',
+  messageReports: 'message_reports',
   /** `room_consents/{accountId}`: each member's acceptance of the room's terms, or its withdrawal (design §5.10). */
   roomConsents: 'room_consents',
   /** `room_messages/{messageId}`: the room's messages, the assistant's answers and notices; kept 90 days. */
