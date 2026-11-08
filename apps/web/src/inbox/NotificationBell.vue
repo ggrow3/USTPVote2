@@ -5,7 +5,7 @@ import type { AppNotificationView } from 'ustp-domain';
 import { announce } from '../a11y.js';
 import { myNotifications, readAllNotifications, readNotification } from './api.js';
 import { inbox, refreshUnread, watchUnread } from './inbox-state.js';
-import { badgeText, bellLabel, notificationLine, whenText } from './inbox-text.js';
+import { badgeText, bellLabel, NOTIFICATION_ICONS, notificationLine, whenText } from './inbox-text.js';
 
 /**
  * The bell in the header (design §10.13): how many notifications are unread, and the latest of them in a menu, each
@@ -67,7 +67,7 @@ async function readAll() {
         </q-item>
         <q-item v-for="n in items ?? []" :key="n.notificationId" v-close-popup clickable :class="{ 'text-weight-bold': !n.readAt }" @click="open(n)">
           <q-item-section avatar>
-            <q-icon :name="n.kind === 'message' ? 'mail' : 'flag'" :color="n.readAt ? 'grey-7' : 'primary'" />
+            <q-icon :name="NOTIFICATION_ICONS[n.kind]" :color="n.readAt ? 'grey-7' : 'primary'" />
           </q-item-section>
           <q-item-section>
             <q-item-label>{{ notificationLine(n) }}</q-item-label>

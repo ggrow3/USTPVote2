@@ -242,6 +242,8 @@ export {
   hasOptedInToEmail,
   broadcastSkip,
   broadcastAudienceSummary,
+  broadcastRejectSchema,
+  isBroadcastOpen,
 } from './broadcasts.js';
 export type {
   BroadcastAudience,
@@ -256,6 +258,9 @@ export type {
   BroadcastSummary,
   BroadcastsView,
   BroadcastRequestedPayload,
+  BroadcastApproval,
+  BroadcastRejectInput,
+  BroadcastDecidedPayload,
 } from './broadcasts.js';
 export {
   UNSUBSCRIBE_PATH,

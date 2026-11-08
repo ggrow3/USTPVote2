@@ -40,6 +40,7 @@ describe('the default settings', () => {
         voted: { enabled: true, subject: null, intro: null },
       },
       emails: { welcome: true, electionTests: true, memberTests: true, notifications: true },
+      broadcastApproval: false,
       reminderHours: 24,
       contact: null,
     });
@@ -139,6 +140,7 @@ describe('noticeSettingsChanges', () => {
         voted: { enabled: true, subject: null, intro: null },
       },
       emails: { welcome: false, electionTests: true, memberTests: false, notifications: false },
+      broadcastApproval: true,
       reminderHours: 48,
       contact: 'elections@example.org',
     };
@@ -149,6 +151,7 @@ describe('noticeSettingsChanges', () => {
       { field: 'emails.welcome', from: true, to: false },
       { field: 'emails.memberTests', from: true, to: false },
       { field: 'emails.notifications', from: true, to: false },
+      { field: 'broadcastApproval', from: false, to: true },
       { field: 'reminderHours', from: 24, to: 48 },
       { field: 'contact', from: null, to: 'elections@example.org' },
     ]);

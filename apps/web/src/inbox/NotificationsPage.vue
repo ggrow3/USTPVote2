@@ -6,7 +6,7 @@ import { usePageTitle } from '../a11y.js';
 import { attempt } from '../dialogs.js';
 import { myNotifications, readAllNotifications, readNotification } from './api.js';
 import { inbox, refreshUnread } from './inbox-state.js';
-import { notificationLine, whenText } from './inbox-text.js';
+import { NOTIFICATION_ICONS, notificationLine, whenText } from './inbox-text.js';
 
 /**
  * The signed-in account's notifications (design §10.13), newest first: the last 30, each leading to what it is about.
@@ -60,7 +60,7 @@ onMounted(load);
       <q-list v-if="items?.length" bordered separator class="rounded-borders" aria-label="Your notifications">
         <q-item v-for="n in items" :key="n.notificationId" clickable :class="{ 'text-weight-bold': !n.readAt }" @click="open(n)">
           <q-item-section avatar>
-            <q-icon :name="n.kind === 'message' ? 'mail' : 'flag'" :color="n.readAt ? 'grey-7' : 'primary'" />
+            <q-icon :name="NOTIFICATION_ICONS[n.kind]" :color="n.readAt ? 'grey-7' : 'primary'" />
           </q-item-section>
           <q-item-section>
             <q-item-label>{{ notificationLine(n) }}</q-item-label>

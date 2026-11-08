@@ -65,6 +65,11 @@ export interface NoticeSettings {
   readonly kinds: Readonly<Record<NoticeKind, NoticeKindSettings>>;
   /** The site's other emails, each on or off. */
   readonly emails: OtherEmailSettings;
+  /**
+   * Whether each email an admin writes to members waits for a System Admin's approval before it goes (design §10.12);
+   * off until a System Admin switches it on. Any System Admin may approve, the one who wrote it included.
+   */
+  readonly broadcastApproval: boolean;
   /** How long before voting closes the reminder goes. */
   readonly reminderHours: number;
   /** Where members ask about an election: an email address or an https page; null for the deployment's `NOTICE_CONTACT`. */
@@ -79,6 +84,7 @@ export const DEFAULT_NOTICE_SETTINGS: NoticeSettings = {
     voted: { enabled: true, subject: null, intro: null },
   },
   emails: { welcome: true, electionTests: true, memberTests: true, notifications: true },
+  broadcastApproval: false,
   reminderHours: REMINDER_HOURS_BEFORE_CLOSE,
   contact: null,
 };
@@ -108,6 +114,7 @@ export function resolveNoticeSettings(
     allEmails: stored?.allEmails ?? DEFAULT_NOTICE_SETTINGS.allEmails,
     kinds,
     emails: { ...DEFAULT_NOTICE_SETTINGS.emails, ...stored?.emails },
+    broadcastApproval: stored?.broadcastApproval ?? DEFAULT_NOTICE_SETTINGS.broadcastApproval,
     reminderHours: stored?.reminderHours ?? DEFAULT_NOTICE_SETTINGS.reminderHours,
     contact: stored?.contact ?? DEFAULT_NOTICE_SETTINGS.contact,
   };
@@ -159,6 +166,8 @@ export const noticeSettingsSchema = z.strictObject({
   kinds: z.strictObject({ voting_open: kindSettings, closing_soon: kindSettings, voted: kindSettings.optional() }),
   // Likewise the other emails' switches: a page opened before them keeps what was set.
   emails: z.strictObject({ welcome: z.boolean(), electionTests: z.boolean(), memberTests: z.boolean(), notifications: z.boolean().optional() }).optional(),
+  // Approval of emails to members came later too: a page opened before it keeps what was set.
+  broadcastApproval: z.boolean().optional(),
   reminderHours: z.number().int().min(MIN_REMINDER_HOURS).max(MAX_REMINDER_HOURS),
   contact: z
     .string()
@@ -195,6 +204,9 @@ export function noticeSettingsChanges(before: NoticeSettings, after: NoticeSetti
   }
   for (const key of OTHER_EMAILS) {
     if (before.emails[key] !== after.emails[key]) changes.push({ field: `emails.${key}`, from: before.emails[key], to: after.emails[key] });
+  }
+  if (before.broadcastApproval !== after.broadcastApproval) {
+    changes.push({ field: 'broadcastApproval', from: before.broadcastApproval, to: after.broadcastApproval });
   }
   if (before.reminderHours !== after.reminderHours) changes.push({ field: 'reminderHours', from: before.reminderHours, to: after.reminderHours });
   if (before.contact !== after.contact) changes.push({ field: 'contact', from: before.contact, to: after.contact });
