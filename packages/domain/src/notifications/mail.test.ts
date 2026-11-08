@@ -16,7 +16,7 @@ const SENT = '2026-11-03T12:00:00.000Z';
 const at = (minutes: number) => new Date(Date.parse(SENT) + minutes * 60_000).toISOString();
 
 const sent = (over: Partial<MailMessageRecord> = {}): MailMessageRecord => ({
-  ...mailMessageRecord({ messageId: 'm1', kind: 'voting_open', ref: 'e1_voting_open', electionId: 'e1', accountId: 'a1', delivery: 'mail', at: SENT }),
+  ...mailMessageRecord({ messageId: 'm1', kind: 'voting_open', ref: 'e1_voting_open', electionId: 'e1', accountId: 'a1', causedBy: 'system', delivery: 'mail', at: SENT }),
   ...over,
 });
 
@@ -40,7 +40,7 @@ const permanent = { type: 'permanent' as const, subType: 'General' };
 describe('the record of a message sent', () => {
   it('starts as sent, counted only when really mailed', () => {
     expect(sent()).toMatchObject({ status: 'sent', sender: 'app', counted: true, deliveredAt: null, bounce: null });
-    expect(sent({ ...mailMessageRecord({ messageId: 'm1', kind: 'welcome', ref: 'a1', electionId: null, accountId: 'a1', delivery: 'outbox', at: SENT }) }))
+    expect(sent({ ...mailMessageRecord({ messageId: 'm1', kind: 'welcome', ref: 'a1', electionId: null, accountId: 'a1', causedBy: 'admin-1', delivery: 'outbox', at: SENT }) }))
       .toMatchObject({ counted: false, delivery: 'outbox' });
   });
 

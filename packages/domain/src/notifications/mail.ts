@@ -92,6 +92,13 @@ export interface MailMessageRecord {
   readonly ref: string | null;
   readonly electionId: string | null;
   readonly sender: MailSender;
+  /**
+   * Who caused it to be sent (design §10.12, the email log): the account that asked (an admin who wrote to members,
+   * resent a notice, added a member or asked for a test, or a member who asked for a test), `system` for what the
+   * worker sends by itself (a notice's first round, a vote confirmation, the setup check), or null for Identity
+   * Platform's mail, which the member asked for, and for records made before 2026-11-08.
+   */
+  readonly causedBy?: string | null;
   readonly delivery: NoticeDelivery;
   readonly status: MailStatus;
   /** The first bounce's type and subtype (a code, never the mail server's text). */
@@ -183,10 +190,11 @@ export function mailMessageRecord(input: {
   readonly ref: string | null;
   readonly electionId: string | null;
   readonly accountId: string | null;
+  readonly causedBy: string | null;
   readonly delivery: NoticeDelivery;
   readonly at: string;
 }): MailMessageRecord {
-  const { messageId, kind, ref, electionId, accountId, delivery, at } = input;
+  const { messageId, kind, ref, electionId, accountId, causedBy, delivery, at } = input;
   return {
     messageId,
     accountId,
@@ -194,6 +202,7 @@ export function mailMessageRecord(input: {
     ref,
     electionId,
     sender: 'app',
+    causedBy,
     delivery,
     status: 'sent',
     bounce: null,
@@ -225,7 +234,7 @@ export function identityMailKind(subject: string | null): MailKind {
 export function identityMailRecord(event: MailEvent, accountId: string | null): MailMessageRecord {
   const kind = identityMailKind(event.subject);
   return {
-    ...mailMessageRecord({ messageId: event.messageId, kind, ref: null, electionId: null, accountId, delivery: 'mail', at: event.sentAt }),
+    ...mailMessageRecord({ messageId: event.messageId, kind, ref: null, electionId: null, accountId, causedBy: null, delivery: 'mail', at: event.sentAt }),
     sender: 'identity_platform',
   };
 }

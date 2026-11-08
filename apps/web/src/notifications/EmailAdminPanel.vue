@@ -3,6 +3,7 @@ import { computed, ref } from 'vue';
 import { hasRole } from '../session.js';
 import AdminTestEmail from './AdminTestEmail.vue';
 import MailHealthPanel from './MailHealthPanel.vue';
+import MailLogPanel from './MailLogPanel.vue';
 import MailStopsPanel from './MailStopsPanel.vue';
 import NoticeSettingsPanel from './NoticeSettingsPanel.vue';
 import SendEmailPanel from './SendEmailPanel.vue';
@@ -10,7 +11,7 @@ import SendEmailPanel from './SendEmailPanel.vue';
 /**
  * Admin › Email, the Email Administration page. For System and Membership Admins: an email to members, and the members who
  * get no email (design §10.12). For System Admins too: the settings of all the site's email (§6.8), whether email is set
- * up properly, and a test email to a System Admin (§10.12).
+ * up properly, a test email to a System Admin, and the log of every email the site sent (§10.12).
  */
 const systemAdmin = computed(() => hasRole('system_admin'));
 const tab = ref('send');
@@ -22,6 +23,7 @@ const tab = ref('send');
     <q-tabs v-model="tab" align="left" no-caps dense class="text-primary" aria-label="Email administration">
       <q-tab name="send" label="Email members" />
       <q-tab name="stops" label="Who gets no email" />
+      <q-tab v-if="systemAdmin" name="log" label="Email log" />
       <q-tab v-if="systemAdmin" name="settings" label="Settings" />
       <q-tab v-if="systemAdmin" name="setup" label="Setup and test" />
     </q-tabs>
@@ -29,6 +31,7 @@ const tab = ref('send');
     <q-tab-panels v-model="tab" keep-alive class="bg-transparent">
       <q-tab-panel name="send" class="q-px-none"><SendEmailPanel /></q-tab-panel>
       <q-tab-panel name="stops" class="q-px-none"><MailStopsPanel /></q-tab-panel>
+      <q-tab-panel v-if="systemAdmin" name="log" class="q-px-none"><MailLogPanel /></q-tab-panel>
       <q-tab-panel v-if="systemAdmin" name="settings" class="q-px-none"><NoticeSettingsPanel /></q-tab-panel>
       <q-tab-panel v-if="systemAdmin" name="setup" class="q-px-none">
         <div class="ustp-content">

@@ -96,7 +96,7 @@ export class MailRequestSender {
       replyTo: this.config.mailReplyTo,
       listUnsubscribe: links.oneClick,
       ...message,
-      meta: { kind: request.kind === 'admin_test' ? 'admin_test' : 'member_test', ref: request.requestId, electionId: null, accountId: to },
+      meta: { kind: request.kind === 'admin_test' ? 'admin_test' : 'member_test', ref: request.requestId, electionId: null, accountId: to, causedBy: request.accountId },
     });
     return result.status === 'sent' ? { messageId: result.messageId } : { outcome: result.outcome };
   }

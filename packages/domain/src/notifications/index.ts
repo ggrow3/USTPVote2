@@ -67,6 +67,18 @@ export type {
   MailEventEffect,
 } from './mail.js';
 export {
+  MAIL_LOG_PAGE,
+  MAIL_LOG_SCAN,
+  MAIL_CAUSED_BY_SYSTEM,
+  mailLogQuerySchema,
+  mailLogIndex,
+  matchesMailLog,
+  mailLogBounds,
+  mailLogCursor,
+  parseMailLogCursor,
+} from './mail-log.js';
+export type { MailLogQuery, MailLogRow, MailLogPage, MailLogIndex } from './mail-log.js';
+export {
   NOTICE_TEST_STATUSES,
   MAX_NOTICE_TESTS_PER_DAY,
   TEST_SUBJECT_PREFIX,
