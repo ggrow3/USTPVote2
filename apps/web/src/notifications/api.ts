@@ -115,7 +115,17 @@ export function emailMembers(input: BroadcastInput): Promise<BroadcastSummary> {
   return api<BroadcastSummary>('POST', '/v1/admin/mail/broadcasts', input);
 }
 
-/** Stops one going out: what has gone has gone. */
+/** System Admin: lets an email waiting for approval go out. */
+export function approveEmailToMembers(broadcastId: string): Promise<BroadcastSummary> {
+  return api<BroadcastSummary>('POST', `/v1/admin/mail/broadcasts/${encodeURIComponent(broadcastId)}/approve`);
+}
+
+/** System Admin: an email waiting for approval goes to nobody, with why. */
+export function rejectEmailToMembers(broadcastId: string, reason: string): Promise<BroadcastSummary> {
+  return api<BroadcastSummary>('POST', `/v1/admin/mail/broadcasts/${encodeURIComponent(broadcastId)}/reject`, { reason });
+}
+
+/** Stops one going out, or withdraws one waiting for approval: what has gone has gone. */
 export function cancelEmailToMembers(broadcastId: string): Promise<BroadcastSummary> {
   return api<BroadcastSummary>('POST', `/v1/admin/mail/broadcasts/${encodeURIComponent(broadcastId)}/cancel`);
 }

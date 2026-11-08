@@ -61,6 +61,12 @@ export class InboxNotices {
     );
   }
 
+  /** Marks every account's notifications about one thing read: it was decided, so they ask nothing more. */
+  async readAboutAll(kind: AppNotificationKind, ref: string): Promise<void> {
+    const records = (await this.inbox.notificationsAbout(ref)).filter((n) => n.kind === kind && !n.readAt);
+    if (records.length) await this.inbox.markRead(records, new Date().toISOString());
+  }
+
   /** Marks one thing's notification read, if the account has one unread (they opened what it was about). */
   async readAbout(accountId: string, kind: AppNotificationKind, ref: string): Promise<void> {
     const record = await this.inbox.notification(appNotificationId(accountId, kind, ref));

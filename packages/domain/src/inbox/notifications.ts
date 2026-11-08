@@ -10,8 +10,12 @@ import type { MailAddressState } from '../notifications/my-email.js';
  * goes while all email is off, after they unsubscribed, or while an admin has stopped their email.
  */
 
-/** `message`: a member wrote to them (§10.13). `message_report`: for Membership Admins, a member reported a message. */
-export const APP_NOTIFICATION_KINDS = ['message', 'message_report'] as const;
+/**
+ * `message`: a member wrote to them (§10.13). `message_report`: for Membership Admins, a member reported a message.
+ * `broadcast_approval`: for System Admins, an email to members waits for their approval (§10.12). `broadcast_decided`:
+ * for whoever wrote it, a System Admin approved or rejected it.
+ */
+export const APP_NOTIFICATION_KINDS = ['message', 'message_report', 'broadcast_approval', 'broadcast_decided'] as const;
 export type AppNotificationKind = (typeof APP_NOTIFICATION_KINDS)[number];
 
 /** `app_notifications/{notificationId}`: one account's notification. Kept 90 days after it last changed. */

@@ -62,6 +62,12 @@ export class InboxRepository {
     return snap.docs.map((d) => withoutExpiry(d.data() as Stored<AppNotificationRecord>));
   }
 
+  /** Every account's notifications about one thing. */
+  async notificationsAbout(ref: string): Promise<AppNotificationRecord[]> {
+    const snap = await this.db.collection(Collections.appNotifications).where('ref', '==', ref).get();
+    return snap.docs.map((d) => withoutExpiry(d.data() as Stored<AppNotificationRecord>));
+  }
+
   /** How many of an account's notifications are unread. Counted by Firestore. */
   async unreadCount(accountId: string): Promise<number> {
     const snap = await this.unread(accountId).count().get();

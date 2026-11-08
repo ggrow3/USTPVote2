@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import type { BroadcastCounts, BroadcastPreview } from 'ustp-domain';
-import { audienceText, broadcastStatusText, previewText } from './broadcast-text.js';
+import { approvalText, audienceText, broadcastStatusText, previewText } from './broadcast-text.js';
 
 const NONE = { email_stopped: 0, unsubscribed: 0, not_opted_in: 0, no_address: 0, unverified: 0, undeliverable: 0 };
 const counts = (over: Partial<BroadcastCounts> = {}): BroadcastCounts => ({ pending: 0, sent: 0, skipped: 0, failed: 0, delivered: 0, bounced: 0, complained: 0, ...over });
 const status = (s: 'preparing' | 'sending' | 'done' | 'cancelled', c: Partial<BroadcastCounts> = {}, held: object | null = null) =>
-  broadcastStatusText({ status: s, counts: counts(c), held: held as never, preview: null, completedAt: null });
+  broadcastStatusText({ status: s, counts: counts(c), held: held as never, preview: null, completedAt: null, approval: null });
 
 describe('who an email comes to', () => {
   it('says how many get it, and why the rest do not', () => {
@@ -34,5 +34,25 @@ describe('where an email stands', () => {
     expect(status('cancelled', { sent: 10, pending: 30 })).toBe('Stopped: 10 sent, 30 not sent.');
     expect(status('sending', { sent: 10, pending: 30 }, { checks: ['dkim'], since: 'x' })).toBe('Held: nothing more goes while the email setup check fails. 10 sent so far.');
     expect(status('done', { sent: 2, skipped: 1, failed: 1 })).toBe('Sent to 2 members. 1 could not be sent, 1 skipped, as they had stopped email since.');
+  });
+});
+
+describe('an email that needs approval', () => {
+  const decided = (status: 'approved' | 'rejected', reason: string | null = null) => ({
+    status,
+    decidedByName: 'Sam Admin',
+    decidedAt: '2026-11-08T10:00:00.000Z',
+    reason,
+  });
+
+  it('says it waits, and who decided', () => {
+    const base = { counts: counts(), held: null, preview: null, completedAt: null };
+    expect(broadcastStatusText({ ...base, status: 'awaiting_approval', approval: { status: 'waiting', decidedByName: null, decidedAt: null, reason: null } })).toBe(
+      'Waiting for a System Admin’s approval. Nothing has gone.',
+    );
+    expect(broadcastStatusText({ ...base, status: 'rejected', approval: decided('rejected', 'not now') })).toBe('Not approved by Sam Admin: “not now”. Nobody got it.');
+    expect(approvalText({ approval: decided('approved') })).toMatch(/^Approved by Sam Admin on /);
+    expect(approvalText({ approval: null })).toBeNull();
+    expect(approvalText({ approval: decided('rejected', 'x') })).toBeNull();
   });
 });

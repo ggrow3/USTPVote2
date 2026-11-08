@@ -1,4 +1,4 @@
-import type { NotificationEmailChoice, NotificationEmailView } from 'ustp-domain';
+import type { AppNotificationKind, NotificationEmailChoice, NotificationEmailView } from 'ustp-domain';
 
 /** Wording for notifications and messages (design §10.13). */
 
@@ -7,6 +7,14 @@ export function bellLabel(unread: number): string {
   if (unread === 0) return 'Notifications, none unread';
   return `Notifications, ${unread > 99 ? 'more than 99' : unread} unread`;
 }
+
+/** Each kind's icon, beside its words. */
+export const NOTIFICATION_ICONS: Readonly<Record<AppNotificationKind, string>> = {
+  message: 'mail',
+  message_report: 'flag',
+  broadcast_approval: 'mark_email_unread',
+  broadcast_decided: 'outgoing_mail',
+};
 
 /** The badge on the bell: the count, capped so it fits. */
 export function badgeText(unread: number): string {
