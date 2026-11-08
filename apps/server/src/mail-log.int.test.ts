@@ -68,7 +68,7 @@ describe('the email log', () => {
     const broadcasts = rows.filter((r) => r.kind === 'broadcast');
     expect(broadcasts.map((r) => r.accountId).sort()).toEqual([ada.accountId, bounce.accountId].sort());
     for (const row of broadcasts) expect(row).toMatchObject({ causedBy: membershipAdmin.accountId, sender: 'app', delivery: 'outbox', ref: (sent.body as { broadcastId: string }).broadcastId });
-    expect(broadcasts.find((r) => r.accountId === ada.accountId)).toMatchObject({ status: 'delivered', accountEmail: 'ada@example.test' });
+    expect(broadcasts.find((r) => r.accountId === ada.accountId)).toMatchObject({ status: 'delivered', accountName: 'Ada Brooks', accountEmail: 'ada@example.test' });
     expect(broadcasts.find((r) => r.accountId === bounce.accountId)).toMatchObject({ status: 'bounced', bounce: { type: 'permanent' } });
     expect(rows.find((r) => r.kind === 'admin_test')).toMatchObject({ accountId: sa1.accountId, causedBy: sa1.accountId });
     // Newest first, and nothing that names the words.
