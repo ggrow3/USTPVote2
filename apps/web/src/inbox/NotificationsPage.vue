@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import type { AppNotificationView } from 'ustp-domain';
+import { usePageTitle } from '../a11y.js';
 import { attempt } from '../dialogs.js';
 import { myNotifications, readAllNotifications, readNotification } from './api.js';
 import { inbox, refreshUnread } from './inbox-state.js';
@@ -11,6 +12,7 @@ import { notificationLine, whenText } from './inbox-text.js';
  * The signed-in account's notifications (design §10.13), newest first: the last 30, each leading to what it is about.
  * They are kept 90 days. How they come by email is chosen on the Account page.
  */
+usePageTitle('Notifications');
 const router = useRouter();
 const items = ref<AppNotificationView[] | null>(null);
 

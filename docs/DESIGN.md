@@ -4643,7 +4643,8 @@ newest first, with "Mark all read". Members can also write to each other. All of
   (`inbox_preferences/{accountId}`). *As each comes* is one email for each new thing, and none more about it until it
   is read; one not sent within a day is not sent. A *digest* lists what they have not read that changed since the last
   one (at most 20, and how many more), at 13:00 UTC (8 or 9 in the morning Eastern Time), weekly on Mondays; with
-  nothing unread, none goes. Each email names what happened and links to it on the site, never what a member wrote;
+  nothing unread, none goes. Each email names what happened and links to it on the site (a message, to the Messages
+  page, since a conversation's own address names both accounts), never what a member wrote;
   it says why it came and where to change that, and carries the member's unsubscribe link. The worker sends them, a
   step of each tick after the election emails and admins' emails, for at most 10 seconds, through `Mailer`, so they go
   only while all email is on (§6.8), never to a member who unsubscribed or whose email an admin stopped, nor to an

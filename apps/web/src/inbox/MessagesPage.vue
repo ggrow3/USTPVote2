@@ -2,7 +2,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { MAX_MESSAGE_LENGTH, type MessagePeopleMatch, type MessagePerson, type MessageView, type ThreadSummary } from 'ustp-domain';
-import { announce, focusElement } from '../a11y.js';
+import { announce, focusElement, usePageTitle } from '../a11y.js';
 import { askReason, attempt, dialog } from '../dialogs.js';
 import { blockMember, messagePeople, messagePerson, readThread, reportMessage, sendMessage, thread as loadThread, threads as loadThreads, unblockMember } from './api.js';
 import { refreshUnread } from './inbox-state.js';
@@ -29,6 +29,8 @@ const blocking = ref(false);
 const draft = ref('');
 const sending = ref(false);
 const heading = ref<HTMLElement | null>(null);
+
+usePageTitle(() => (person.value ? `Messages with ${person.value.name}` : 'Messages'));
 
 const canWrite = computed(() => !!person.value?.active && !blocking.value);
 

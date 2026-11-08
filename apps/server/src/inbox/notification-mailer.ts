@@ -111,7 +111,9 @@ export class NotificationMailer {
       contact,
       unsubscribe: links.page,
       period,
-      items: items.map((n) => ({ title: n.title, link: n.link })),
+      // A conversation's address names both accounts in it, so an email, which passes through the mail service and the
+      // member's mail provider, links to the Messages page instead.
+      items: items.map((n) => ({ title: n.title, link: n.kind === 'message' ? '/messages' : n.link })),
       more,
     });
     const result = await this.mailer.send(this.transport!, {

@@ -168,12 +168,15 @@ describe('notifications by email', () => {
 
     expect((await choose(ben, 'each')).body).toMatchObject({ notificationEmail: 'each', digestDueAt: null });
     await api.call('POST', '/v1/me/notifications/read-all', ben);
-    await send(ada, ben, 'Another private word');
+    const { threadId } = (await send(ada, ben, 'Another private word')).body as { threadId: string };
     await send(ada, ben, 'And a third');
     expect((await worker.tick()).body).toMatchObject({ notificationEmailsSent: 1 });
     const [email] = await outbox('notification');
     expect(email).toMatchObject({ to: 'ben@example.test', accountId: ben.accountId, subject: 'Ada Brooks sent you a message' });
     expect(email!.text).not.toContain('private word');
+    // It leads to the Messages page, never to the conversation, whose address names both accounts.
+    expect(email!.text).toContain('/messages');
+    expect(email!.text).not.toContain(threadId);
     expect(email!.listUnsubscribe).toBeTruthy();
     // The email log has it, caused by the site.
     expect((await api.call('GET', '/v1/admin/mail/log?kind=notification', sa1)).body).toMatchObject({ rows: [{ accountId: ben.accountId, causedBy: 'system' }] });
