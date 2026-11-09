@@ -218,22 +218,34 @@ export function memberTestMessage(input: {
 
 /**
  * The test email a System Admin asks for in Admin › Email (design §10.12), to see that email from the site reaches a
- * System Admin before it is switched on for everyone. It goes only to the one chosen, whether or not all email is on.
+ * System Admin, or a member, before it is switched on for everyone. It goes only to the one chosen, whether or not all
+ * email is on. A member who is not a System Admin cannot open that page, so theirs only says what it is.
  */
 export function adminTestMessage(input: {
   readonly origin: string;
   readonly name: string | null;
   readonly contact: string | null;
   readonly unsubscribe?: string | null;
+  /** Whether it goes to a System Admin; true unless said otherwise. */
+  readonly toSystemAdmin?: boolean;
 }): NoticeMessage {
   const site = `${input.origin}/`;
   const subject = 'Test email from the US Transhumanist Party site';
+  const about: Block[] =
+    input.toSystemAdmin === false
+      ? [
+          { p: 'A System Admin of the site sent you this test email, to check that the site’s email reaches members. You do not need to do anything.' },
+          { p: 'If it was in your spam or junk folder, please mark it as not spam, so that the party’s emails reach you.' },
+        ]
+      : [
+          { p: 'This test email was asked for in Admin › Email. It reached you, so the site can send email.' },
+          { p: 'It went only to you. Whether the site emails members depends on the “Send email” switch on that page.' },
+          { p: 'If it was in your spam or junk folder, mark it as not spam, and check how the sending domain is set up.' },
+          { link: `${input.origin}/admin?tab=email`, label: 'Open Admin › Email', after: ' to see what became of it.' },
+        ];
   const blocks: Block[] = [
     greeting(input.name),
-    { p: 'This test email was asked for in Admin › Email. It reached you, so the site can send email.' },
-    { p: 'It went only to you. Whether the site emails members depends on the “Send email” switch on that page.' },
-    { p: 'If it was in your spam or junk folder, mark it as not spam, and check how the sending domain is set up.' },
-    { link: `${input.origin}/admin?tab=email`, label: 'Open Admin › Email', after: ' to see what became of it.' },
+    ...about,
     { hr: true },
     { small: 'You are getting this email because a System Admin of the site asked for it to be sent to you.' },
     ...footer(input.contact, site, input, 'the site'),

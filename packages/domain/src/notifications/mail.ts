@@ -102,6 +102,13 @@ export interface MailMessageRecord {
    * Platform's mail, which the member asked for, and for records made before 2026-11-08.
    */
   readonly causedBy?: string | null;
+  /**
+   * True on a welcome sign-in link that a Membership Admin's browser asked Identity Platform to send (design §5.13),
+   * recorded when the browser said Identity Platform took it. No mail service gave it an ID, so no report reaches it,
+   * unless Identity Platform sends through SES: then its first report takes its place (`asWelcomeLink`). Absent
+   * otherwise.
+   */
+  readonly handOff?: boolean;
   readonly delivery: NoticeDelivery;
   readonly status: MailStatus;
   /** The first bounce's type and subtype (a code, never the mail server's text). */
@@ -240,6 +247,57 @@ export function identityMailRecord(event: MailEvent, accountId: string | null): 
     ...mailMessageRecord({ messageId: event.messageId, kind, ref: null, electionId: null, accountId, causedBy: null, delivery: 'mail', at: event.sentAt }),
     sender: 'identity_platform',
   };
+}
+
+/**
+ * Welcome sign-in links (design §5.13): where the site sends no welcome email of its own, the adding Membership Admin's
+ * browser asks Identity Platform to send its sign-in link, then tells the api, which records it in the email log as the
+ * admin's (`welcomeLinkRecord`). When Identity Platform sends through SES, the same email also has a report of its own:
+ * whichever of the two comes second is matched to the first, within this many minutes, so the log shows it once, as the
+ * welcome it is, caused by the admin, with what its reports said.
+ */
+export const WELCOME_LINK_MATCH_MINUTES = 15;
+
+/** The log's record of a welcome sign-in link the admin's browser says Identity Platform took. */
+export function welcomeLinkRecord(input: { readonly messageId: string; readonly accountId: string; readonly causedBy: string; readonly at: string }): MailMessageRecord {
+  const { messageId, accountId, causedBy, at } = input;
+  return {
+    ...mailMessageRecord({ messageId, kind: 'welcome', ref: accountId, electionId: null, accountId, causedBy, delivery: 'mail', at }),
+    sender: 'identity_platform',
+    handOff: true,
+    // Not a message of this deployment's SES configuration set: its rates count only those.
+    counted: false,
+  };
+}
+
+/** A welcome link the browser reported, not yet matched to a report. */
+export function isUnmatchedWelcomeLink(record: MailMessageRecord): boolean {
+  return record.handOff === true && record.kind === 'welcome';
+}
+
+/** A sign-in link Identity Platform sent through SES, not yet known to be anyone's welcome. */
+export function isUnclaimedSignInLink(record: MailMessageRecord): boolean {
+  return record.sender === 'identity_platform' && record.kind === 'sign_in_link' && !record.causedBy && !record.handOff;
+}
+
+/** Of these records (one account's), the one sent nearest `at`, within `WELCOME_LINK_MATCH_MINUTES` either side; else null. */
+export function nearestWelcomeLink(records: readonly MailMessageRecord[], at: string): MailMessageRecord | null {
+  const t = Date.parse(at);
+  let best: { record: MailMessageRecord; gap: number } | null = null;
+  for (const record of records) {
+    const gap = Math.abs(Date.parse(record.sentAt) - t);
+    if (gap <= WELCOME_LINK_MATCH_MINUTES * 60_000 && (!best || gap < best.gap)) best = { record, gap };
+  }
+  return best?.record ?? null;
+}
+
+/**
+ * Identity Platform's record of a sign-in link (from its report) as the welcome an admin's browser asked for: the
+ * report's message, status and times, the welcome's kind, member and admin.
+ */
+export function asWelcomeLink(record: MailMessageRecord, link: { readonly accountId: string; readonly causedBy: string | null | undefined }): MailMessageRecord {
+  const { handOff: _, ...reported } = record;
+  return { ...reported, kind: 'welcome', ref: link.accountId, accountId: link.accountId, causedBy: link.causedBy ?? null };
 }
 
 /** What one report does: the message's record after it, whether that changed, and whether to stop mailing the address. */

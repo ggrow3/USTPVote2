@@ -18,6 +18,7 @@ import {
   type MailMessageRecord,
   type MailRequestRecord,
   type MailSuppressionRecord,
+  WELCOME_LINK_MATCH_MINUTES,
 } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 
@@ -82,6 +83,18 @@ export class MailRepository {
       .limit(limit)
       .get();
     return snap.docs.map((d) => withoutExpiry(d.data() as Stored<MailMessageRecord>));
+  }
+
+  /**
+   * An account's messages sent from `WELCOME_LINK_MATCH_MINUTES` before `at` on, for matching a welcome sign-in link to
+   * Identity Platform's report of it (§5.13); the caller keeps those near enough (`nearestWelcomeLink`).
+   */
+  messagesNear(accountId: string, at: string): Promise<MailMessageRecord[]> {
+    return this.messagesOf(accountId, new Date(Date.parse(at) - WELCOME_LINK_MATCH_MINUTES * 60_000).toISOString(), 20);
+  }
+
+  deleteMessage(tx: Transaction, messageId: string): void {
+    tx.delete(this.messageRef(messageId));
   }
 
   /**

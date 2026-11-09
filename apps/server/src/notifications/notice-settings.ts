@@ -23,8 +23,8 @@ function record(data: Partial<NoticeSettingsRecord> | undefined): NoticeSettings
 
 /**
  * What System Admins set about the election emails (design §6.8): each email on or off, the reminder's lead time, the
- * contact line and the wording. The worker reads them every tick and the editor with each election's counts, so they
- * are cached briefly; another instance picks up a change within a minute.
+ * contact line, the wording and the name all the site's email comes from. The worker reads them every tick and the
+ * editor with each election's counts, so they are cached briefly; another instance picks up a change within a minute.
  */
 @Injectable()
 export class NoticeSettingsService {
@@ -62,6 +62,7 @@ export class NoticeSettingsService {
         kinds: { ...before.kinds, ...settings.kinds },
         // A page opened before a switch existed saves without it, which keeps what was set.
         emails: { ...before.emails, ...settings.emails },
+        senderName: settings.senderName === undefined ? before.senderName : settings.senderName,
       });
       const changes = noticeSettingsChanges(before, after);
       if (changes.length === 0) return before;
