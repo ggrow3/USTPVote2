@@ -1,6 +1,6 @@
 import type { AccountPreferences } from '../daily.js';
 import type { MailStatus } from '../notifications/mail.js';
-import type { WelcomeEmailRecord } from '../notifications/welcome.js';
+import type { WelcomeEmailRecord, WelcomeVia } from '../notifications/welcome.js';
 import type { MemberStatus } from './member-status.js';
 
 /** Document shapes of the membership context (design §5.1, §5.2, §11). */
@@ -126,13 +126,15 @@ export interface MemberDetail {
   readonly preferences: AccountPreferences;
   /**
    * For a member a Membership Admin added (design §5.13): when, by whom, when they first signed in (null until then),
-   * and how their latest welcome email went where the deployment sends mail (null where it sends none). Null for
-   * everyone who registered themselves.
+   * and how their latest welcome email went: the site's own, or Identity Platform's sign-in link (`via`), which is
+   * recorded only since 2026-11-08 (null when none is). Null for everyone who registered themselves.
    */
   readonly added: {
     readonly at: string;
     readonly by: string;
     readonly signedInAt: string | null;
-    readonly welcome: (Pick<WelcomeEmailRecord, 'status' | 'requestedAt' | 'doneAt' | 'outcome'> & { readonly delivery: MailStatus | null }) | null;
+    readonly welcome:
+      | (Pick<WelcomeEmailRecord, 'status' | 'requestedAt' | 'doneAt' | 'outcome'> & { readonly delivery: MailStatus | null; readonly via: WelcomeVia })
+      | null;
   } | null;
 }

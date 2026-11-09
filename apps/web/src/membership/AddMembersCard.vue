@@ -18,7 +18,7 @@ import { auth } from '../firebase.js';
 import { apiFieldErrors, type FieldErrors } from '../forms.js';
 import { sendWelcomeLink } from '../sign-in.js';
 import DetailsFields from './DetailsFields.vue';
-import { addMember, importMembers, previewMemberImport } from './api.js';
+import { addMember, importMembers, previewMemberImport, welcomeLinkSent } from './api.js';
 import { plural, sentence, skippedText } from './import-text.js';
 import type { DetailsForm } from './member-text.js';
 
@@ -159,32 +159,39 @@ interface Outcome {
   readonly result: MemberImportResult;
   /** The file's name, for an import; null for one member added on the form. */
   readonly from: string | null;
-  /** Identity Platform's links this browser has sent so far, and those it could not. */
+  /** Identity Platform's links this browser has sent so far, those it could not, and those sent but not recorded. */
   sent: number;
-  failed: { email: string; why: string }[];
+  failed: { email: string; accountId: string; why: string }[];
+  unlogged: string[];
   sending: boolean;
 }
 const outcome = ref<Outcome | null>(null);
 
 async function finished(result: MemberImportResult, from: string | null = null) {
-  outcome.value = { result, from, sent: 0, failed: [], sending: false };
+  outcome.value = { result, from, sent: 0, failed: [], unlogged: [], sending: false };
   if (result.added.length) emit('added');
-  if (result.welcome === 'identity_platform') await sendLinks(result.added.map((a) => a.email));
+  if (result.welcome === 'identity_platform') await sendLinks(result.added);
 }
 
-/** Asks Identity Platform for each address's sign-in link, one after another. */
-async function sendLinks(emails: readonly string[]) {
+/**
+ * Asks Identity Platform for each address's sign-in link, one after another, and tells the site of each it took, for
+ * the email log.
+ */
+async function sendLinks(members: readonly { email: string; accountId: string }[]) {
   const o = outcome.value;
-  if (!o || !emails.length) return;
+  if (!o || !members.length) return;
   o.sending = true;
-  o.failed = o.failed.filter((f) => !emails.includes(f.email));
-  for (const email of emails) {
+  o.failed = o.failed.filter((f) => !members.some((m) => m.accountId === f.accountId));
+  for (const { email, accountId } of members) {
     try {
       await sendWelcomeLink(auth, email);
-      o.sent++;
     } catch (e) {
-      o.failed.push({ email, why: errorMessage(e) });
+      o.failed.push({ email, accountId, why: errorMessage(e) });
+      continue;
     }
+    o.sent++;
+    // The link went: only the log's record of it can still fail.
+    await welcomeLinkSent(accountId).catch(() => o.unlogged.push(email));
   }
   o.sending = false;
 }
@@ -369,9 +376,12 @@ async function sendLinks(emails: readonly string[]) {
             Identity Platform did not send {{ plural(outcome.failed.length, 'link') }}:
             {{ outcome.failed.map((f) => `${f.email} (${f.why})`).join(', ') }}.
             <template #action>
-              <q-btn flat no-caps label="Send again" @click="sendLinks(outcome.failed.map((f) => f.email))" />
+              <q-btn flat no-caps label="Send again" @click="sendLinks(outcome.failed)" />
             </template>
           </q-banner>
+        </div>
+        <div v-if="outcome.unlogged.length && !outcome.sending" class="text-caption">
+          Sent, but not recorded in the email log: {{ outcome.unlogged.join(', ') }}.
         </div>
         <div class="text-caption text-grey-7">
           You can also tell them yourself: they go to <code>{{ setPasswordUrl }}</code> and enter their email address.

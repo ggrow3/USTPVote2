@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Transaction } from 'firebase-admin/firestore';
-import { Collections, SITE_ADMIN_ROLES, type AccountRecord, type IdentityRecord, type Role, type RoleAssignmentRecord } from 'ustp-domain';
+import { Collections, SITE_ADMIN_ROLES, type AccountRecord, type IdentityRecord, type Role, type RoleAssignmentRecord, type SiteAdminRole } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 
 /** Lookups every request needs: which account a login belongs to and which roles that account holds. */
@@ -82,13 +82,16 @@ export class DirectoryService {
     return found;
   }
 
-  /** Who holds a role now, by name (or email, for an account without one), in name order. */
-  /** System and Site Admins, by name: who approves group emails and gets admins' test emails (design §10.12). */
-  async siteAdministrators(): Promise<{ accountId: string; name: string }[]> {
-    const lists = await Promise.all(SITE_ADMIN_ROLES.map((r) => this.roleHolders(r)));
+  /**
+   * System and Site Admins, by name, each with which of the two they are: who approves emails to members and can get an
+   * admin's test email (design §10.12).
+   */
+  async siteAdministrators(): Promise<{ accountId: string; name: string; role: SiteAdminRole }[]> {
+    const lists = await Promise.all(SITE_ADMIN_ROLES.map(async (role) => (await this.roleHolders(role)).map((h) => ({ ...h, role }))));
     return lists.flat().sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  /** Who holds a role now, by name (or email, for an account without one), in name order. */
   async roleHolders(role: Role): Promise<{ accountId: string; name: string }[]> {
     const db = this.firebase.db;
     const snap = await db.collection(Collections.roleAssignments).where('role', '==', role).where('revokedAt', '==', null).get();

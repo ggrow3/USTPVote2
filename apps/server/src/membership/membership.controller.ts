@@ -150,6 +150,13 @@ export class MembershipAdminController {
     return this.additions.welcomeAgain(ctx, accountId);
   }
 
+  /** Records the welcome sign-in link this admin's browser just had Identity Platform send, for the email log. */
+  @Post('members/:accountId/welcome-link')
+  @HttpCode(204)
+  async welcomeLinkSent(@Ctx() ctx: RequestContext, @Param('accountId') accountId: string): Promise<void> {
+    await this.additions.welcomeLinkSent(ctx, accountId);
+  }
+
   @Post('members/:accountId/status')
   setStatus(
     @Ctx() ctx: RequestContext,

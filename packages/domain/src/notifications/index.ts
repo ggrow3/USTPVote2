@@ -50,6 +50,12 @@ export {
   mailMessageRecord,
   identityMailKind,
   identityMailRecord,
+  WELCOME_LINK_MATCH_MINUTES,
+  welcomeLinkRecord,
+  isUnmatchedWelcomeLink,
+  isUnclaimedSignInLink,
+  nearestWelcomeLink,
+  asWelcomeLink,
   applyMailEvent,
   recipientStatusOf,
   nextSuppression,
@@ -122,9 +128,10 @@ export {
   WELCOME_OUTCOMES,
   SET_PASSWORD_PATH,
   welcomeEmailRecord,
+  welcomeLinkSent,
   isWelcomeInFlight,
 } from './welcome.js';
-export type { WelcomeStatus, WelcomeOutcome, WelcomeEmailRecord } from './welcome.js';
+export type { WelcomeStatus, WelcomeOutcome, WelcomeEmailRecord, WelcomeVia } from './welcome.js';
 export { noticeSteps, emailStepStatus } from './notice-steps.js';
 export type { NoticeStep, NoticeAbsence } from './notice-steps.js';
 export {
@@ -135,9 +142,13 @@ export {
   MAX_NOTICE_SUBJECT,
   MAX_NOTICE_INTRO,
   MAX_NOTICE_CONTACT,
+  MAX_SENDER_NAME,
   MIN_REMINDER_HOURS,
   MAX_REMINDER_HOURS,
   resolveNoticeSettings,
+  fromParts,
+  fromHeader,
+  shownFrom,
   noticeTemplateProblems,
   fillNoticeText,
   noticeSettingsSchema,
@@ -215,6 +226,9 @@ export {
   isMailRequestInFlight,
   checkMailRequest,
   adminTestSchema,
+  TEST_RECIPIENT_STATUSES,
+  TEST_RECIPIENT_SEARCH_LIMIT,
+  mayGetAdminTest,
 } from './my-email.js';
 export type {
   MailAddressState,
@@ -224,6 +238,7 @@ export type {
   MailRequestOutcome,
   MailRequestRecord,
   AdminTestView,
+  TestRecipient,
   AdminTestInput,
   MyEmailView,
   MemberMailFlag,

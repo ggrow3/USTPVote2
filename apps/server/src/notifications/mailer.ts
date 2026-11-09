@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { mailAddressKey, mailMessageRecord, mailStop, unsubscribeLinks, type MailStop, type UnsubscribeLinks } from 'ustp-domain';
+import { fromHeader, mailAddressKey, mailMessageRecord, mailStop, unsubscribeLinks, type MailStop, type UnsubscribeLinks } from 'ustp-domain';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { MailPreferences } from './mail-preferences.js';
 import { MailNotSent, type MailMessage, type MailTransport } from './mail-transport.js';
@@ -19,7 +19,8 @@ export type MailResult =
  * transport, keeping a record of each message the provider took so its delivery reports have somewhere to go. The address
  * is used for the send only: it is in neither the record nor the logs. A message to nobody (a rehearsal's) and the setup
  * check's to Amazon's simulator reach no one, so they go regardless; and a System Admin's test to themselves goes while
- * email is off, since that is how they see that it works before switching it on.
+ * email is off, since that is how they see that it works before switching it on. Every message comes from the
+ * deployment's address (`MAIL_FROM`), under the name a System Admin set, if any.
  */
 @Injectable()
 export class Mailer {
@@ -37,17 +38,18 @@ export class Mailer {
     return unsubscribeLinks(this.config.webOrigin!, await this.preferences.token(accountId));
   }
 
-  async send(transport: MailTransport, message: MailMessage): Promise<MailResult> {
+  async send(transport: MailTransport, message: Omit<MailMessage, 'from'>): Promise<MailResult> {
     const { kind, ref, electionId, accountId, causedBy } = message.meta;
+    const settings = await this.settings.current();
     if (message.to && kind !== 'probe') {
-      if (kind !== 'admin_test' && !(await this.settings.current()).allEmails) return { status: 'failed', outcome: 'unavailable' };
+      if (kind !== 'admin_test' && !settings.allEmails) return { status: 'failed', outcome: 'unavailable' };
       const stop = accountId ? mailStop(await this.preferences.find(accountId)) : null;
       if (stop) return { status: 'skipped', outcome: stop };
     }
     if (message.to && (await this.mail.suppression(mailAddressKey(message.to)))) return { status: 'skipped', outcome: 'undeliverable' };
     let messageId: string;
     try {
-      ({ messageId } = await transport.send(message));
+      ({ messageId } = await transport.send({ ...message, from: fromHeader(this.config.mailFrom, settings.senderName) }));
     } catch (e) {
       const outcome = e instanceof MailNotSent ? e.outcome : 'error';
       // Never the error's text, which can quote the address.

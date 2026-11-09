@@ -7,9 +7,12 @@ import {
   MAX_NOTICE_INTRO,
   MAX_NOTICE_SUBJECT,
   MAX_REMINDER_HOURS,
+  MAX_SENDER_NAME,
   MIN_REMINDER_HOURS,
   NOTICE_KINDS,
   OTHER_EMAILS,
+  fromParts,
+  shownFrom,
   noticeMessage,
   noticeSettingsChanges,
   noticeSettingsSchema,
@@ -21,15 +24,15 @@ import {
 } from 'ustp-domain';
 import { attempt, dialog } from '../dialogs.js';
 import { validate } from '../forms.js';
-import { noticeSettings, saveNoticeSettings } from './api.js';
+import { mailHealth, noticeSettings, saveNoticeSettings } from './api.js';
 import { leadTimeText, NOTICE_TITLES } from './notice-text.js';
 
 /**
  * The site's email settings (design §6.8), for System Admins: whether the site sends any email at all (which takes
- * effect at once, apart from the rest of the form; §10.12), whether each election email goes, how long before the close
- * the reminder goes, where the emails tell members to ask, each email's subject and opening, and whether the
- * site's other emails (welcome and test emails) go. The election's details fill themselves in; the From address stays
- * in the deployment's configuration.
+ * effect at once, apart from the rest of the form; §10.12), the name the emails come from, whether each election email
+ * goes, how long before the close the reminder goes, where the emails tell members to ask, each email's subject and
+ * opening, and whether the site's other emails (welcome and test emails) go. The election's details fill themselves in;
+ * the From address itself stays in the deployment's configuration.
  */
 type Draft = {
   allEmails: boolean;
@@ -38,6 +41,7 @@ type Draft = {
   broadcastApproval: boolean;
   reminderHours: number | string;
   contact: string;
+  senderName: string;
 };
 
 const toDraft = (s: NoticeSettings): Draft => ({
@@ -49,8 +53,9 @@ const toDraft = (s: NoticeSettings): Draft => ({
   broadcastApproval: s.broadcastApproval,
   reminderHours: s.reminderHours,
   contact: s.contact ?? '',
+  senderName: s.senderName ?? '',
 });
-/** Empty text means the built-in wording, or no contact of the app's own. */
+/** Empty text means the built-in wording, no contact of the app's own, or the deployment's sender name. */
 const fromDraft = (d: Draft): NoticeSettings => ({
   allEmails: d.allEmails,
   kinds: Object.fromEntries(
@@ -60,6 +65,7 @@ const fromDraft = (d: Draft): NoticeSettings => ({
   broadcastApproval: d.broadcastApproval,
   reminderHours: Number(d.reminderHours),
   contact: d.contact.trim() || null,
+  senderName: d.senderName.trim() || null,
 });
 
 const saved = ref<NoticeSettingsRecord | null>(null);
@@ -78,7 +84,19 @@ const hours = computed(() => {
   return Number.isInteger(n) && n >= MIN_REMINDER_HOURS && n <= MAX_REMINDER_HOURS ? n : null;
 });
 
+/** The deployment's From header, which only the worker has: the last email setup check recorded it. */
+const deploymentFrom = ref<string | null>(null);
+const fromHint = computed(() => {
+  if (!deploymentFrom.value) return 'Empty: the name set with the deployment.';
+  const name = errors.value.senderName ? (saved.value?.senderName ?? null) : (settings.value?.senderName ?? null);
+  return `Emails will come from: ${shownFrom(deploymentFrom.value, name)}`;
+});
+
 async function load() {
+  // The page works without it, so a failure here is not worth a message.
+  void mailHealth()
+    .then((view) => (deploymentFrom.value = view.health?.from ?? null))
+    .catch(() => undefined);
   await attempt(async () => {
     saved.value = await noticeSettings();
     draft.value = toDraft(saved.value);
@@ -206,8 +224,9 @@ onMounted(load);
       not voted. They are official election notices, sent whatever members' newsletter and announcement choices, but not
       to a member who unsubscribed from all email or whose email an admin stopped. Here you choose whether each goes, when the reminder goes, where members ask questions, and each email's subject and
       opening. The rest of each email (the ballot link, the times in every zone, how to check a vote) fills itself in.
-      Below them, the site's welcome and test emails can each be switched off. The From address is set with the
-      deployment, since Amazon SES has to verify it. Every change is recorded in the audit ledger.
+      Below them, the site's welcome and test emails can each be switched off. You can also change the name the site's
+      email comes from; the address is set with the deployment, since Amazon SES has to verify it. Every change is
+      recorded in the audit ledger.
     </p>
     <p class="text-caption">
       In a subject or opening, <code>{title}</code> is the election's title, <code>{closes}</code> when voting closes
@@ -231,6 +250,31 @@ onMounted(load);
           <q-banner v-if="!saved!.allEmails" dense rounded class="bg-orange-2 text-black" role="status">
             All email is off: the site is sending nothing to members.
           </q-banner>
+        </q-card-section>
+      </q-card>
+
+      <q-card flat bordered tag="section" aria-labelledby="settings-sender">
+        <q-card-section>
+          <h3 id="settings-sender" class="text-subtitle2 q-my-none">Who the emails come from</h3>
+          <div class="text-caption text-grey-7">
+            The name members see beside the site's address, on every email the site sends. Sign-in and password-reset
+            emails come from Identity Platform, so they keep their own. The address is set with the deployment, since
+            Amazon SES has to verify it.
+          </div>
+        </q-card-section>
+        <q-card-section class="ustp-form">
+          <q-input
+            v-model="draft.senderName"
+            outlined
+            dense
+            label="Sender name"
+            :maxlength="MAX_SENDER_NAME"
+            counter
+            :placeholder="deploymentFrom ? (fromParts(deploymentFrom).name ?? undefined) : undefined"
+            :hint="fromHint"
+            :error="!!errors.senderName"
+            :error-message="errors.senderName"
+          />
         </q-card-section>
       </q-card>
 

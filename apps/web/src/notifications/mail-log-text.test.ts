@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { MAIL_KINDS, MAIL_STATUSES } from 'ustp-domain';
-import { LOG_KIND_LABELS, LOG_STATUS_COLOURS, LOG_STATUS_LABELS, logBounce, logCause, logRecipient } from './mail-log-text.js';
+import { LOG_KIND_LABELS, LOG_STATUS_COLOURS, LOG_STATUS_LABELS, logBounce, logCause, logKind, logRecipient, logStatus } from './mail-log-text.js';
 
 describe('the email log’s wording', () => {
   it('names every kind and status', () => {
@@ -25,6 +25,17 @@ describe('the email log’s wording', () => {
     expect(logCause({ sender: 'app', causedBy: 'a2', causedByName: null })).toBe('A deleted account');
     expect(logCause({ sender: 'app', causedBy: null, causedByName: null })).toBe('Not recorded');
     expect(logCause({ sender: 'identity_platform', causedBy: null, causedByName: null })).toMatch(/Identity Platform/);
+    // A welcome link an admin's browser asked Identity Platform for is the admin's.
+    expect(logCause({ sender: 'identity_platform', causedBy: 'a2', causedByName: 'Ben Cruz' })).toBe('Ben Cruz');
+  });
+
+  it('says when a welcome was Identity Platform’s sign-in link, and that no report reaches one sent by Google', () => {
+    expect(logKind({ kind: 'welcome', sender: 'app' })).toBe('Welcome to an added member');
+    expect(logKind({ kind: 'welcome', sender: 'identity_platform' })).toBe('Welcome to an added member (Identity Platform’s sign-in link)');
+    expect(logKind({ kind: 'sign_in_link', sender: 'identity_platform' })).toBe('Sign-in link (Identity Platform)');
+    expect(logStatus({ status: 'sent', handOff: true })).toBe('Sent by Identity Platform, no reports');
+    expect(logStatus({ status: 'sent', handOff: false })).toBe('Sent, no report yet');
+    expect(logStatus({ status: 'delivered', handOff: false })).toBe('Delivered');
   });
 
   it('describes a bounce', () => {

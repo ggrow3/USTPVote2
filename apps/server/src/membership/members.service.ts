@@ -108,6 +108,7 @@ export class Members {
               doneAt: welcome.doneAt,
               outcome: welcome.outcome,
               delivery: welcome.delivery ?? null,
+              via: welcome.via ?? 'mail',
             },
           }
         : null;

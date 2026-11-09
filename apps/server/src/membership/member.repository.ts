@@ -65,6 +65,18 @@ export class MemberRepository {
     }));
   }
 
+  /** The names, place and status of every member in one of `statuses`, for a search by name. */
+  async namesIn(statuses: readonly MemberStatus[]): Promise<(MemberMatch & { status: MemberStatus })[]> {
+    const snap = await this.members().where('status', 'in', [...statuses]).select('legalName', 'preferredName', 'country', 'state', 'status').get();
+    return snap.docs.map((d) => ({
+      accountId: d.id,
+      legalName: (d.get('legalName') as string | undefined) ?? '',
+      preferredName: (d.get('preferredName') as string | null | undefined) ?? null,
+      state: placeText({ country: d.get('country') as string | undefined, state: (d.get('state') as string | null | undefined) ?? null }),
+      status: d.get('status') as MemberStatus,
+    }));
+  }
+
   async list(status: MemberStatus | undefined, after: string | undefined, limit: number): Promise<MemberRecord[]> {
     let query = this.members().orderBy(FieldPath.documentId()).limit(limit);
     if (status) query = query.where('status', '==', status);

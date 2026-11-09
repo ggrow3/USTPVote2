@@ -1,10 +1,19 @@
-import type { AdminTestView, BroadcastAudience, BroadcastPreview, BroadcastsView, BroadcastSummary, NoticeSettingsRecord, OutboxMessageRecord } from 'ustp-domain';
+import type {
+  AdminTestView,
+  BroadcastAudience,
+  BroadcastPreview,
+  BroadcastsView,
+  BroadcastSummary,
+  NoticeSettingsRecord,
+  OutboxMessageRecord,
+  TestRecipient,
+} from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { NoticeSettingsService } from './notifications/notice-settings.js';
 import { resetEmulators, TestApi, TestWorker, type User } from './testing/emulator.js';
 
 /**
- * An email an admin writes to members, and a System Admin's test to another System Admin (design §10.12), with the outbox
+ * An email an admin writes to members, and a System Admin's test to another System Admin or a member (design §10.12), with the outbox
  * standing in for SES.
  */
 
@@ -290,16 +299,49 @@ describe('a test email', () => {
     expect(mine.messages.map((m) => m.kind)).toContain('admin_test');
   });
 
-  it('goes to the one who asked by default, and never to anyone but a System Admin', async () => {
-    const ada = await member('ada@example.test');
-    expect((await test(sa1, ada.accountId)).status).toBe(403);
-    expect((await test(sa1, membershipAdmin.accountId)).status).toBe(403);
-    expect((await test(sa1, 'nobody')).status).toBe(403);
-    expect(await tests()).toEqual([]);
-
+  it('goes to the one who asked by default', async () => {
     expect((await test(sa1)).status).toBe(202);
     await worker.tick();
     expect((await tests()).map((m) => m.accountId)).toEqual([sa1.accountId]);
+  });
+
+  it('can go to a member while all email is off, in words for a member, and to nobody who left, was refused or is no member', async () => {
+    await saveSettings({ allEmails: false });
+    const ada = await member('ada@example.test');
+    const lee = await member('lee@example.test', { status: 'lapsed' });
+    const resigned = await member('rae@example.test', { status: 'resigned' });
+    const rejected = await member('rex@example.test', { status: 'rejected' });
+    for (const to of [resigned.accountId, rejected.accountId, membershipAdmin.accountId, 'nobody']) expect((await test(sa1, to)).status).toBe(403);
+    expect(await tests()).toEqual([]);
+
+    expect((await test(sa1, ada.accountId)).status).toBe(202);
+    await worker.tick();
+    const [sent] = await tests();
+    expect(sent).toMatchObject({ accountId: ada.accountId });
+    expect(sent!.text).toContain('An administrator of the site sent you this test email');
+    expect(sent!.text).not.toContain('Admin › Email');
+    expect((await testView()).last).toMatchObject({ toName: 'ada', status: 'done', outcome: null });
+
+    // A lapsed member too, and only the one chosen each time.
+    expect((await test(sa1, lee.accountId)).status).toBe(202);
+    await worker.tick();
+    expect((await tests()).map((m) => m.accountId).sort()).toEqual([ada.accountId, lee.accountId].sort());
+  });
+
+  it('finds System Admins and members by name or by email address, for System Admins alone', async () => {
+    const ada = await member('ada@example.test');
+    await member('adam@example.test', { status: 'resigned' });
+    const search = (q: string, as: User = sa1) => api.call('GET', `/v1/admin/mail/test/recipients?${new URLSearchParams({ q })}`, as);
+
+    const byName = (await search('ada')).body as TestRecipient[];
+    expect(byName).toEqual([{ accountId: ada.accountId, name: 'ada', email: 'ada@example.test', systemAdmin: false, adminRole: null, memberStatus: 'active', place: 'NY' }]);
+    expect(((await search(' ADA@Example.test ')).body as TestRecipient[]).map((r) => r.accountId)).toEqual([ada.accountId]);
+    // The System Admins, by part of their address; they need no member record.
+    const admins = (await search('sa2@')).body as TestRecipient[];
+    expect(admins).toEqual([expect.objectContaining({ accountId: sa2.accountId, systemAdmin: true, adminRole: 'system_admin', memberStatus: null })]);
+
+    expect((await search('ada', membershipAdmin)).status).toBe(403);
+    expect((await search('  ')).status).toBe(400);
   });
 
   it('is for System Admins, and refused to a System Admin who gets no email', async () => {

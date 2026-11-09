@@ -181,6 +181,7 @@ export class MailHealthChecker {
       requestedBy: asked?.requestedBy ?? null,
       transport,
       domain,
+      from: mailFrom,
       overall: overallStatus(checks),
       checks,
       probe,
@@ -214,7 +215,6 @@ export class MailHealthChecker {
       addresses.map(async (address) => {
         const result = await this.mailer.send(this.transport!, {
           to: `${address}+${probeId}@${MAIL_SIMULATOR_DOMAIN}`,
-          from: this.config.mailFrom,
           replyTo: null,
           subject: 'USTP email setup check',
           text: "This message goes to Amazon SES's mailbox simulator and reaches nobody. It checks that delivery reports come back.",

@@ -19,6 +19,7 @@ export type Role = (typeof ROLES)[number];
 
 /** The roles that run the site: System Admins, and Site Admins with most of their powers (design §10.1). */
 export const SITE_ADMIN_ROLES = ['system_admin', 'site_admin'] as const satisfies readonly Role[];
+export type SiteAdminRole = (typeof SITE_ADMIN_ROLES)[number];
 
 /** Whether these roles include System Admin or Site Admin. */
 export function administersSite(roles: readonly Role[]): boolean {
