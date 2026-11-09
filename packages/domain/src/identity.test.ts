@@ -14,20 +14,29 @@ describe('sign-in providers', () => {
 
 describe('two-step verification policy', () => {
   const off = DEFAULT_MFA_POLICY;
-  const on = { membersRequired: true };
+  const on = { ...DEFAULT_MFA_POLICY, membersRequired: true };
 
-  it('is off for members by default', () => {
-    expect(DEFAULT_MFA_POLICY).toEqual({ membersRequired: false });
+  it('is off for members and on for Site Admins by default', () => {
+    expect(DEFAULT_MFA_POLICY).toEqual({ membersRequired: false, siteAdminsRequired: true });
     expect(secondFactorScope([], off)).toBe('none');
   });
 
-  it('always requires System and Site Admins to use a second factor everywhere, whatever the setting says', () => {
+  it('always requires System Admins to use a second factor everywhere, and Site Admins while their setting is on', () => {
     for (const policy of [off, on]) {
       expect(secondFactorScope(['system_admin'], policy)).toBe('everywhere');
       expect(secondFactorScope(['membership_admin', 'system_admin'], policy)).toBe('everywhere');
       expect(secondFactorScope(['site_admin'], policy)).toBe('everywhere');
       expect(secondFactorScope(['site_admin', 'course_admin'], policy)).toBe('everywhere');
     }
+  });
+
+  it('asks a Site Admin for nothing with their setting off, but for what their other roles and the member setting ask', () => {
+    const relaxed = { ...off, siteAdminsRequired: false };
+    expect(secondFactorScope(['site_admin'], relaxed)).toBe('none');
+    expect(secondFactorScope(['site_admin', 'membership_admin'], relaxed)).toBe('admin');
+    expect(secondFactorScope(['site_admin'], { ...relaxed, membersRequired: true })).toBe('everywhere');
+    expect(secondFactorScope(['system_admin'], relaxed)).toBe('everywhere');
+    expect(secondFactorScope(['election_admin'], relaxed)).toBe('admin');
   });
 
   it('keeps every other admin role to a second factor for the admin tools while the setting is off', () => {
@@ -42,8 +51,14 @@ describe('two-step verification policy', () => {
     for (const roles of everyone) expect(secondFactorScope(roles, on)).toBe('everywhere');
   });
 
-  it('saves the setting only with the version it was edited from', () => {
+  it('saves the settings only with the version they were edited from, the Site Admins’ left out by an older page', () => {
     expect(mfaPolicySchema.parse({ basedOn: 0, membersRequired: true })).toEqual({ basedOn: 0, membersRequired: true });
+    expect(mfaPolicySchema.parse({ basedOn: 2, membersRequired: false, siteAdminsRequired: false })).toEqual({
+      basedOn: 2,
+      membersRequired: false,
+      siteAdminsRequired: false,
+    });
+    expect(mfaPolicySchema.safeParse({ basedOn: 0, membersRequired: true, siteAdminsRequired: 'no' }).success).toBe(false);
     expect(mfaPolicySchema.safeParse({ membersRequired: true }).success).toBe(false);
     expect(mfaPolicySchema.safeParse({ basedOn: -1, membersRequired: true }).success).toBe(false);
     expect(mfaPolicySchema.safeParse({ basedOn: 0, membersRequired: 'yes' }).success).toBe(false);

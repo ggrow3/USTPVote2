@@ -41,8 +41,8 @@ const mfaNotice = computed(() => {
     : me.value?.roles.includes('system_admin')
       ? 'System Admins must use two-step verification on every page.'
       : me.value?.roles.includes('site_admin')
-        ? 'Site Admins must use two-step verification on every page.'
-      : 'This site requires two-step verification of everyone.';
+        ? 'You need two-step verification on every page.'
+        : 'This site requires two-step verification of everyone.';
   return factors.value.length
     ? `${why} Enter a code from your authenticator app to continue.`
     : `${why} Set up an authenticator app here first.`;

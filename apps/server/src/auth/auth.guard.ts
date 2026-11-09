@@ -77,25 +77,30 @@ export class AuthGuard implements CanActivate {
     const operator = personaId === undefined ? null : await this.operatorFor(request, principal, ownAccountId, personaId);
     const accountId = personaId === undefined ? ownAccountId : personaId;
     let roles: Role[] = [];
+    let secondFactorWaived = false;
     if (required.length > 0) {
       if (!accountId) throw new ForbiddenException('no account');
-      if (this.config.adminMfaRequired && !principal.mfa) {
-        throw new ForbiddenException({ message: 'admin actions require multi-factor sign-in', type: PROBLEM_TYPES.mfaRequired });
-      }
       roles = await this.directory.activeRoles(accountId);
+      if (this.config.adminMfaRequired && !principal.mfa) {
+        // Only a Site Admin whose role asks for no second factor, and who holds no admin role that does (design §4).
+        secondFactorWaived = roles.includes('site_admin') && secondFactorScope(roles, await this.mfaPolicy.current()) === 'none';
+        if (!secondFactorWaived) {
+          throw new ForbiddenException({ message: 'admin actions require multi-factor sign-in', type: PROBLEM_TYPES.mfaRequired });
+        }
+      }
       if (!required.some((r) => roles.includes(r))) throw new ForbiddenException(`requires role ${required.join(' or ')}`);
     } else if (this.config.adminMfaRequired && !principal.mfa && !this.reflector.getAllAndOverride<boolean>(MFA_EXEMPT_KEY, targets)) {
       await this.requireSecondFactorWhereDue(ownAccountId);
     }
 
-    const ctx: RequestContext = { principal, accountId, roles, operator };
+    const ctx: RequestContext = { principal, accountId, roles, operator, ...(secondFactorWaived && { secondFactorWaived }) };
     request.ctx = ctx;
     return true;
   }
 
   /**
-   * A sign-in without a second factor, on a route that is neither an admin route nor exempt: refused for a System or
-   * Site Admin always, and for everyone while the member requirement is on (design §4). The roles are read fresh, and only when the
+   * A sign-in without a second factor, on a route that is neither an admin route nor exempt: refused for a System Admin
+   * always, a Site Admin while the Site Admins' setting is on, and everyone while the member requirement is on (design §4). The roles are read fresh, and only when the
    * requirement is off, so a new System Admin is held to it at once. Someone acting as a test persona already signed in
    * with a second factor (operatorFor), so the login's own account is the one that counts.
    */
@@ -105,7 +110,7 @@ export class AuthGuard implements CanActivate {
     if (secondFactorScope(roles, policy) !== 'everywhere') return;
     const message = roles.includes('system_admin')
       ? 'System Admins must sign in with two-step verification'
-      : roles.includes('site_admin')
+      : roles.includes('site_admin') && policy.siteAdminsRequired
         ? 'Site Admins must sign in with two-step verification'
         : 'this site requires two-step verification; set it up on your account page';
     throw new ForbiddenException({ message, type: PROBLEM_TYPES.mfaRequired });

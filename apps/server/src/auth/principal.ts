@@ -39,6 +39,11 @@ export interface RequestContext {
    * and `roles` are then the persona's. Null otherwise.
    */
   readonly operator: string | null;
+  /**
+   * An admin route let a sign-in without a second factor through, because the caller is a Site Admin whose role asks for
+   * none (the Site Admins' setting off, design §4); the checks that ask for a multi-factor sign-in treat it as one.
+   */
+  readonly secondFactorWaived?: boolean;
 }
 
 /** The caller as the two-person rule sees them (ustp-domain). */
@@ -46,8 +51,8 @@ export function actorOf(ctx: RequestContext, adminMfaRequired: boolean, nowMs: n
   return {
     accountId: ctx.accountId ?? '',
     roles: ctx.roles,
-    // With the MFA requirement switched off (emulators only), treat the sign-in as multi-factor.
-    mfa: ctx.principal.mfa || !adminMfaRequired,
+    // With the MFA requirement switched off (emulators only), or waived for this Site Admin, treat the sign-in as multi-factor.
+    mfa: ctx.principal.mfa || !adminMfaRequired || ctx.secondFactorWaived === true,
     authAgeSeconds: Math.max(0, Math.floor(nowMs / 1000) - ctx.principal.authTime),
   };
 }

@@ -24,7 +24,7 @@ describe('People list route (GET /v1/admin/accounts)', () => {
       loadConfig({ ...emulators, APP_CHECK_ENFORCED: 'false', ADMIN_MFA_REQUIRED: 'true' }),
       { isEnabled: async () => true } as unknown as SignInMethodsService,
       { accountIdForUid: async () => 'a1', activeRoles: async () => roles } as unknown as DirectoryService,
-      { current: async () => ({ membersRequired: false }) } as unknown as MfaPolicyService,
+      { current: async () => ({ membersRequired: false, siteAdminsRequired: true }) } as unknown as MfaPolicyService,
     );
     const context = {
       getHandler: () => handler,
