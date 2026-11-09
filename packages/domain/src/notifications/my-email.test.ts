@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { checkMailRequest, isMailRequestInFlight, mailAddressState, memberTestMessage, type MailRequestRecord } from '../index.js';
+import {
+  adminTestMessage,
+  checkMailRequest,
+  isMailRequestInFlight,
+  mailAddressState,
+  mayGetAdminTest,
+  memberTestMessage,
+  type MailRequestRecord,
+} from '../index.js';
 
 const NOW = new Date('2026-11-03T12:00:00.000Z');
 const minutesAgo = (m: number) => new Date(NOW.getTime() - m * 60_000).toISOString();
@@ -56,5 +64,32 @@ describe('a member’s own email', () => {
     expect(message.text).toContain('Hello Ada,');
     expect(message.text).toContain('https://vote.example.org/account');
     expect(message.html).not.toMatch(/<img/i);
+  });
+});
+
+describe('a System Admin’s test email', () => {
+  it('goes to a System Admin, or to a member who has not left or been refused', () => {
+    expect(mayGetAdminTest({ systemAdmin: true, memberStatus: null })).toBe(true);
+    expect(mayGetAdminTest({ systemAdmin: true, memberStatus: 'resigned' })).toBe(true);
+    for (const status of ['applicant', 'active', 'lapsed', 'suspended'] as const) {
+      expect(mayGetAdminTest({ systemAdmin: false, memberStatus: status })).toBe(true);
+    }
+    expect(mayGetAdminTest({ systemAdmin: false, memberStatus: 'resigned' })).toBe(false);
+    expect(mayGetAdminTest({ systemAdmin: false, memberStatus: 'rejected' })).toBe(false);
+    expect(mayGetAdminTest({ systemAdmin: false, memberStatus: null })).toBe(false);
+  });
+
+  it('tells a member what it is, without sending them to a page only System Admins can open', () => {
+    const input = { origin: 'https://vote.example.org', name: 'Ada', contact: 'elections@example.org' };
+    const admin = adminTestMessage(input);
+    expect(admin.text).toContain('This test email was asked for in Admin › Email');
+    expect(admin.text).toContain('https://vote.example.org/admin?tab=email');
+    const member = adminTestMessage({ ...input, toSystemAdmin: false });
+    expect(member.subject).toBe(admin.subject);
+    expect(member.text).toContain('Hello Ada,');
+    expect(member.text).toContain('A System Admin of the site sent you this test email, to check that the site’s email reaches members.');
+    expect(member.text).not.toContain('Admin › Email');
+    expect(member.text).not.toContain('/admin');
+    expect(member.html).not.toContain('/admin');
   });
 });

@@ -2867,7 +2867,7 @@ defaults are the emails as described above:
   going out waits; what is left goes if it comes on while voting is open, and any election open at that moment starts
   its voting-open email straight away. Off also refuses members' and Election Admins' test emails, and welcomes an added
   member with Identity Platform's sign-in link. Not affected: Identity Platform's own emails, the setup check's messages
-  to SES's simulator, a rehearsal's outbox, and a System Admin's test to themselves (§10.12);
+  to SES's simulator, a rehearsal's outbox, and a System Admin's test to the one person they choose (§10.12);
 - each email on or off. Switching one off stops new notices of that kind from starting, and holds one already going
   out (what is left goes if it is switched back on while voting is open);
 - the reminder's lead time, 1 to 168 whole hours before the close (24 by default). An election open no longer than that
@@ -4330,7 +4330,8 @@ help button on every page but the hub) walks each of them through their part pag
 
 Whether Amazon SES is set up so that members get their email (§6.8), checked by the worker, which alone holds the AWS
 key, and shown to System Admins under Admin › Email, above the election emails' settings. *(Added 2026-11-06:)* with
-it, a System Admin's test email to themselves, the switch for all the site's email, and who gets no email; below.
+it, a System Admin's test email to themselves, another System Admin or a member, the switch for all the site's email,
+and who gets no email; below.
 
 - **When.** Every hour where the worker sends through SES (`MAIL_TRANSPORT=ses`), before a send of election email
   when the last run is over an hour old (§6.8: a failing check holds the send), and on the next tick after a System
@@ -4419,12 +4420,19 @@ password reset, confirming an address) stay outside all three: a member asks for
 without the app, and without them they could not sign in. Neither a stop nor unsubscribing is kept once the account is
 deleted; adding the address again starts over.
 
-**A System Admin's test email** *(added 2026-11-06; recipient added 2026-11-07)*. Since email starts off, Admin › Email lets
-a System Admin send a test to themselves or another System Admin, chosen from a list, and no one else (`GET|POST
-/v1/admin/mail/test`, System Admin; anyone else as `to` is refused, 403; queued as an `admin_test` in `mail_requests`, ten a
-day, one at a time, 409 and 429 otherwise). It is the one thing that goes while all email is off, so they can see that email
-works before switching it on, and members still get nothing. It needs a deployment that sends mail and a confirmed address,
-and does not go to anyone who unsubscribed. The card shows what became of it from its delivery report. "Check now" on the
+**A System Admin's test email** *(added 2026-11-06; recipient added 2026-11-07; members added 2026-11-07, the party's
+decision)*. Since email starts off, Admin › Email lets a System Admin send a test to themselves, another System Admin or a
+member, and no one else (`GET|POST /v1/admin/mail/test`, System Admin; queued as an `admin_test` in `mail_requests`, ten a
+day, one at a time, 409 and 429 otherwise). A member here is anyone with a member record who is an applicant, Active,
+lapsed or suspended; someone who resigned or was rejected, or an account with no member record that holds no System
+Admin role, is refused as `to` (403). The System Admins are listed; members are found by typing part of a name, or a
+whole email address (`GET /v1/admin/mail/test/recipients?q=`, System Admin: System Admins whose name or address holds
+the text, then members by name as the member search ranks them, at most ten, each with their address so the System
+Admin sees where it goes). It is the one thing that goes while all email is off, so they can see that email works
+before switching it on, and nobody but the one chosen gets anything. It needs a deployment that sends mail and a
+confirmed address, and does not go to anyone who unsubscribed or whose email an admin stopped. A member who is not a
+System Admin gets it in their own words: what it is, that they need do nothing, and to mark it as not spam, without the
+link to Admin › Email. The card shows what became of it from its delivery report. "Check now" on the
 setup check is a different thing: its messages go to SES's simulator and reach nobody.
 
 **An email to members** *(added 2026-11-07, the party's decision)*. Membership and System Admins can write to members from

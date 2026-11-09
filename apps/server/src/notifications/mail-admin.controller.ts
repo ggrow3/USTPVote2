@@ -1,4 +1,5 @@
-import { Body, Controller, Get, HttpCode, Injectable, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Injectable, Param, Post, Query } from '@nestjs/common';
+import { z } from 'zod';
 import {
   adminTestSchema,
   checkMailHealthRequest,
@@ -14,7 +15,7 @@ import {
 } from 'ustp-domain';
 import { Ctx, requireAccount, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
-import { assertCheck, ZodPipe } from '../common/validation.js';
+import { assertCheck, parseQuery, ZodPipe } from '../common/validation.js';
 import { Firebase } from '../infra/firebase.js';
 import { MailPreferences } from './mail-preferences.js';
 import { MailRepository } from './mail.repository.js';
@@ -99,7 +100,13 @@ export class MailAdminController {
     return this.email.adminTestView(ctx);
   }
 
-  /** A test email to a System Admin, the caller by default, on the worker's next tick, even while all email is off. */
+  /** System Admins and members a test email can go to, by name or by email address. */
+  @Get('test/recipients')
+  testRecipients(@Query('q') q?: string) {
+    return this.email.adminTestRecipients(parseQuery(z.string().trim().min(1).max(200), q, 'q'));
+  }
+
+  /** A test email to a System Admin or a member, the caller by default, on the worker's next tick, even while all email is off. */
   @Post('test')
   @HttpCode(202)
   test(@Ctx() ctx: RequestContext, @Body(new ZodPipe(adminTestSchema)) body: AdminTestInput) {

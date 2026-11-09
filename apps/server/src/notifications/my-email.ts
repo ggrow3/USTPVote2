@@ -1,16 +1,23 @@
 import { Controller, ForbiddenException, Get, HttpCode, Inject, Injectable, Post } from '@nestjs/common';
 import {
   checkMailRequest,
+  foldName,
   mailAddressKey,
   mailAddressState,
+  mayGetAdminTest,
   MY_EMAIL_DAYS,
   MY_EMAIL_SHOWN,
+  TEST_RECIPIENT_SEARCH_LIMIT,
+  TEST_RECIPIENT_STATUSES,
   type AdminTestView,
   type MailRequestKind,
   type MailRequestRecord,
   type MemberMailFlag,
   type MyEmailView,
   type MyMailState,
+  type TestRecipient,
+  placeText,
+  type MemberRecord,
 } from 'ustp-domain';
 import { Ctx, requireAccount } from '../auth/decorators.js';
 import { DirectoryService } from '../auth/directory.service.js';
@@ -89,37 +96,89 @@ export class MyEmailService {
     };
   }
 
-  /** Who a System Admin's test can go to, the caller first, and how their last one went. */
+  /** Who a System Admin's test can go to without searching (the System Admins, the caller first), and how their last one went. */
   async adminTestView(ctx: RequestContext): Promise<AdminTestView> {
     const accountId = requireAccount(ctx);
-    const [holders, requests] = await Promise.all([this.directory.roleHolders('system_admin'), this.mail.requestsOf(accountId)]);
-    const mailboxes = await this.directory.mailboxes(holders.map((h) => h.accountId));
-    const systemAdmins = holders
-      .map((h) => ({ accountId: h.accountId, name: h.name, email: mailboxes.get(h.accountId)?.email ?? null }))
-      .sort((a, b) => Number(b.accountId === accountId) - Number(a.accountId === accountId));
+    const [admins, requests] = await Promise.all([this.systemAdmins(), this.mail.requestsOf(accountId)]);
+    const systemAdmins = [...admins].sort((a, b) => Number(b.accountId === accountId) - Number(a.accountId === accountId));
     const last = requests.find((r) => r.kind === 'admin_test');
     if (!last) return { systemAdmins, last: null };
     const to = last.to ?? last.accountId;
-    const message = last.messageId ? await this.mail.message(last.messageId) : null;
+    const [message, toName] = await Promise.all([last.messageId ? this.mail.message(last.messageId) : null, this.nameOf(to, admins)]);
     return {
       systemAdmins,
-      last: {
-        toName: holders.find((h) => h.accountId === to)?.name ?? null,
-        status: last.status,
-        outcome: last.outcome,
-        doneAt: last.doneAt,
-        delivery: message?.status ?? null,
-      },
+      last: { toName, status: last.status, outcome: last.outcome, doneAt: last.doneAt, delivery: message?.status ?? null },
     };
   }
 
-  /** Queues a System Admin's test for the worker, to them or another System Admin and nobody else (design §10.12). */
+  /**
+   * Who a test can go to whose name holds `text`, or whose email address it is (design §10.12): System Admins whose
+   * name or address holds it first, then members, best matches first. Addresses are shown, since this is for System
+   * Admins checking where the test goes.
+   */
+  async adminTestRecipients(text: string): Promise<TestRecipient[]> {
+    const query = foldName(text.trim());
+    const [admins, matches, owner] = await Promise.all([
+      this.systemAdmins(),
+      this.members.searchIn(TEST_RECIPIENT_STATUSES, text, TEST_RECIPIENT_SEARCH_LIMIT),
+      text.includes('@') ? this.directory.accountWithEmail(text) : Promise.resolve(null),
+    ]);
+    const adminIds = new Set(admins.map((a) => a.accountId));
+    const [ownerMember] = owner ? await this.members.findMany([owner]) : [null];
+    const ids = [...new Set([...(owner ? [owner] : []), ...matches.map((m) => m.accountId)])];
+    const [mailboxes, records] = await Promise.all([this.directory.mailboxes(ids), this.members.findMany(ids)]);
+    const members = new Map(records.flatMap((r) => (r ? [[r.accountId, r] as const] : [])));
+    const found = new Map<string, TestRecipient>();
+    for (const a of admins) {
+      if (a.accountId === owner || foldName(a.name).includes(query) || (a.email && foldName(a.email).includes(query))) found.set(a.accountId, a);
+    }
+    if (owner && !found.has(owner) && ownerMember && mayGetAdminTest({ systemAdmin: false, memberStatus: ownerMember.status })) {
+      found.set(owner, this.recipient(owner, ownerMember, mailboxes.get(owner)?.email ?? null, false));
+    }
+    for (const m of matches) {
+      if (found.has(m.accountId)) continue;
+      const record = members.get(m.accountId);
+      if (record) found.set(m.accountId, this.recipient(m.accountId, record, mailboxes.get(m.accountId)?.email ?? null, adminIds.has(m.accountId)));
+    }
+    return [...found.values()].slice(0, TEST_RECIPIENT_SEARCH_LIMIT);
+  }
+
+  /** Queues a System Admin's test for the worker, to them, another System Admin or a member, and nobody else (design §10.12). */
   async requestAdminTest(ctx: RequestContext, to: string | undefined): Promise<AdminTestView> {
     const recipient = to ?? requireAccount(ctx);
-    const holders = await this.directory.roleHolders('system_admin');
-    if (!holders.some((h) => h.accountId === recipient)) throw new ForbiddenException('a test email goes only to a System Admin');
+    const [admins, [member]] = await Promise.all([this.systemAdmins(), this.members.findMany([recipient])]);
+    if (!mayGetAdminTest({ systemAdmin: admins.some((a) => a.accountId === recipient), memberStatus: member?.status ?? null })) {
+      throw new ForbiddenException('a test email goes only to a System Admin or a member');
+    }
     await this.request(ctx, 'admin_test', recipient);
     return this.adminTestView(ctx);
+  }
+
+  /** The System Admins, each as someone a test can go to. */
+  private async systemAdmins(): Promise<TestRecipient[]> {
+    const holders = await this.directory.roleHolders('system_admin');
+    const ids = holders.map((h) => h.accountId);
+    const [mailboxes, records] = await Promise.all([this.directory.mailboxes(ids), this.members.findMany(ids)]);
+    return holders.map((h, i) => ({
+      accountId: h.accountId,
+      name: h.name,
+      email: mailboxes.get(h.accountId)?.email ?? null,
+      systemAdmin: true,
+      memberStatus: records[i]?.status ?? null,
+      place: (records[i] && placeText(records[i]!)) || null,
+    }));
+  }
+
+  private recipient(accountId: string, member: MemberRecord, email: string | null, systemAdmin: boolean): TestRecipient {
+    return { accountId, name: member.preferredName || member.legalName, email, systemAdmin, memberStatus: member.status, place: placeText(member) || null };
+  }
+
+  /** The name of the one a test went to: as a System Admin, else as a member. */
+  private async nameOf(accountId: string, admins: readonly TestRecipient[]): Promise<string | null> {
+    const admin = admins.find((a) => a.accountId === accountId);
+    if (admin) return admin.name;
+    const [member] = await this.members.findMany([accountId]);
+    return member ? member.preferredName || member.legalName : null;
   }
 
   /** Queues a test email, or trying the address again, for the worker; one at a time, a few a day. */
