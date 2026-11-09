@@ -1,3 +1,4 @@
+import type { User } from 'firebase/auth';
 import { Dialog, Notify, type QDialogOptions } from 'quasar';
 import { PROBLEM_TYPES } from 'ustp-domain';
 import { ApiError, errorMessage } from './api.js';
@@ -44,34 +45,44 @@ export async function confirmIdentity(): Promise<boolean> {
   if (!user) return false;
   const provider = (await user.getIdTokenResult()).signInProvider ?? '';
   try {
-    try {
-      if (isFederatedProvider(provider)) {
-        await reauthenticate(user, { provider });
-      } else if (provider === 'password') {
-        const password = await ask(
-          'Confirm it is you',
-          `Enter the password for ${user.email}. (If you sign in with email links, sign out and sign in again instead.)`,
-          'Password',
-          'password',
-          (v) => v.length > 0,
-        );
-        if (password === null) return false;
-        await reauthenticate(user, { password });
-      } else {
-        throw new Error('Sign out and sign in again to continue.');
-      }
-    } catch (e) {
-      if (!isSecondFactorChallenge(e)) throw e;
-      const code = await askCode();
-      if (code === null) return false;
-      await resolveWithAuthenticator(auth, e, code);
-    }
-    await user.getIdToken(true);
-    return true;
+    if (isFederatedProvider(provider)) return await withAuthenticatorCode(user, () => reauthenticate(user, { provider }));
+    if (provider !== 'password') throw new Error('Sign out and sign in again to continue.');
+    const password = await ask(
+      'Confirm it is you',
+      `Enter the password for ${user.email}. (If you sign in with email links, sign out and sign in again instead.)`,
+      'Password',
+      'password',
+      (v) => v.length > 0,
+    );
+    if (password === null) return false;
+    return await withAuthenticatorCode(user, () => reauthenticate(user, { password }));
   } catch (e) {
     Notify.create({ type: 'negative', message: errorMessage(e) });
     return false;
   }
+}
+
+/**
+ * Re-authenticates the signed-in user with a password they typed in a form of their own (changing it, design §4), then
+ * the authenticator code if they have one, asked for with `codeMessage`. Resolves false if the code was not given;
+ * throws if either is wrong.
+ */
+export function confirmPassword(user: User, password: string, codeMessage?: string): Promise<boolean> {
+  return withAuthenticatorCode(user, () => reauthenticate(user, { password }), codeMessage);
+}
+
+/** Runs the first step of a re-authentication, asks for the authenticator code if it needs one, then refreshes the token. */
+async function withAuthenticatorCode(user: User, firstStep: () => Promise<unknown>, codeMessage?: string): Promise<boolean> {
+  try {
+    await firstStep();
+  } catch (e) {
+    if (!isSecondFactorChallenge(e)) throw e;
+    const code = await askCode(codeMessage);
+    if (code === null) return false;
+    await resolveWithAuthenticator(auth, e, code);
+  }
+  await user.getIdToken(true);
+  return true;
 }
 
 /**

@@ -8,6 +8,7 @@ describe('trackedPage (design §10.7)', () => {
     ['/', 'hub'],
     ['/vote', 'vote'],
     ['/signin', 'signin'],
+    ['/email-action', 'email-action'],
     ['/account', 'account'],
     ['/admin', 'admin'],
     ['/courses', 'courses'],

@@ -6,6 +6,7 @@ import type { IdentityRecord, SignInProvider } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { api, errorMessage } from '../api.js';
 import AuthenticatorSetupDialog from '../components/AuthenticatorSetupDialog.vue';
+import ChangePasswordDialog from '../components/ChangePasswordDialog.vue';
 import PageShell from '../components/PageShell.vue';
 import ProfilePhotoCard from '../components/ProfilePhotoCard.vue';
 import DailyQuoteSettings from '../daily/DailyQuoteSettings.vue';
@@ -26,6 +27,7 @@ const enabled = ref<Record<SignInProvider, boolean> | null>(null);
 const busy = ref(false);
 const factors = shallowRef<MultiFactorInfo[]>(enrolledFactors(auth.currentUser));
 const settingUp = ref(false);
+const changingPassword = ref(false);
 const mfa = computed(() => session.me?.mfa);
 
 const me = computed(() => session.me);
@@ -51,6 +53,9 @@ const linkable = computed(() =>
     (p) => enabled.value?.[p] && !identities.value.some((i) => i.provider === p),
   ),
 );
+/** The email login they are signed in with, whose password they can change here (design §4). */
+const isCurrentPasswordLogin = (identity: IdentityRecord) =>
+  identity.provider === 'password' && identity.uid === session.user?.uid;
 const canResign = computed(() => ['active', 'lapsed', 'suspended'].includes(me.value?.member?.status ?? ''));
 
 onMounted(async () => {
@@ -155,6 +160,20 @@ function removeDevice(factor: MultiFactorInfo) {
       factors.value = enrolledFactors(auth.currentUser);
     }, 'Two-step device removed'),
   );
+}
+
+async function onPasswordChanged(signInAgain: boolean) {
+  await refreshMe().catch(() => undefined);
+  if (!signInAgain) {
+    $q.notify({ type: 'positive', message: 'Password changed. This login is signed out everywhere else.' });
+    return;
+  }
+  $q.notify({
+    type: 'warning',
+    timeout: 0,
+    message: 'Password changed. Sign out and in again with it before you vote or use the admin tools.',
+    actions: [{ label: 'Dismiss', color: 'black' }],
+  });
 }
 
 function copyId() {
@@ -267,6 +286,9 @@ function copyId() {
                 <q-item-label>{{ PROVIDER_LABELS[i.provider] }}</q-item-label>
                 <q-item-label caption>{{ i.email ?? i.uid }} · linked {{ new Date(i.linkedAt).toLocaleDateString() }}</q-item-label>
               </q-item-section>
+              <q-item-section v-if="isCurrentPasswordLogin(i)" side>
+                <q-btn flat dense no-caps color="primary" label="Change password" :disable="busy" @click="changingPassword = true" />
+              </q-item-section>
               <q-item-section side>
                 <q-btn flat dense color="negative" label="Remove" :disable="busy || identities.length <= 1" @click="unlink(i)">
                   <span class="sr-only">&nbsp;{{ PROVIDER_LABELS[i.provider] }} login {{ i.email ?? '' }}</span>
@@ -288,6 +310,7 @@ function copyId() {
             <q-btn v-if="enabled?.password" outline no-caps color="primary" :disable="busy" label="Link email & password" @click="linkPassword" />
           </q-card-section>
         </q-card>
+        <ChangePasswordDialog v-model="changingPassword" @changed="onPasswordChanged" />
       </template>
     </div>
   </PageShell>

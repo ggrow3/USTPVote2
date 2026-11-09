@@ -11,6 +11,7 @@ import {
   pendingEmailLink,
   PROVIDER_LABELS,
   sendEmailLink,
+  sendPasswordReset,
   signInWithPassword,
   signInWithProvider,
   type FederatedProvider,
@@ -67,6 +68,22 @@ function submitEmail() {
   return signIn(async () => {
     await sendEmailLink(auth, email.value);
     notice.value = `We sent a sign-in link to ${email.value}. Open it in this browser.`;
+  });
+}
+
+/** Emails a link to choose a new password (design §4); the answer is the same whether or not the address has a login. */
+function forgotPassword() {
+  const address = email.value.trim();
+  if (!address) {
+    notice.value = null;
+    error.value = 'Enter your email address, then choose “Forgot password?”.';
+    return;
+  }
+  return signIn(async () => {
+    await sendPasswordReset(auth, address);
+    notice.value =
+      `If ${address} has a login here, we have emailed it a link to choose a new password. ` +
+      'The link works once, for an hour.';
   });
 }
 </script>
@@ -132,6 +149,15 @@ function submitEmail() {
             />
             <div class="ustp-actions">
               <q-btn type="submit" color="primary" :loading="busy" :label="mode === 'signin' ? 'Sign in' : 'Send link'" />
+              <q-btn
+                v-if="mode === 'signin'"
+                flat
+                no-caps
+                color="primary"
+                label="Forgot password?"
+                :disable="busy"
+                @click="forgotPassword"
+              />
             </div>
           </q-form>
         </template>
