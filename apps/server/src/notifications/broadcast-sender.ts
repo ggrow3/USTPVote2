@@ -126,7 +126,7 @@ export class BroadcastSender {
       replyTo: this.config.mailReplyTo,
       listUnsubscribe: links.oneClick,
       ...message,
-      meta: { kind: 'broadcast', ref: id, electionId: null, accountId },
+      meta: { kind: 'broadcast', ref: id, electionId: null, accountId, causedBy: broadcast.createdBy },
     });
     if (result.status === 'sent') {
       await finish({ status: 'sent', messageId: result.messageId, outcome: null });

@@ -67,6 +67,18 @@ export type {
   MailEventEffect,
 } from './mail.js';
 export {
+  MAIL_LOG_PAGE,
+  MAIL_LOG_SCAN,
+  MAIL_CAUSED_BY_SYSTEM,
+  mailLogQuerySchema,
+  mailLogIndex,
+  matchesMailLog,
+  mailLogBounds,
+  mailLogCursor,
+  parseMailLogCursor,
+} from './mail-log.js';
+export type { MailLogQuery, MailLogRow, MailLogPage, MailLogIndex } from './mail-log.js';
+export {
   NOTICE_TEST_STATUSES,
   MAX_NOTICE_TESTS_PER_DAY,
   TEST_SUBJECT_PREFIX,
@@ -102,8 +114,9 @@ export {
   memberTestMessage,
   adminTestMessage,
   broadcastMessage,
+  notificationEmailMessage,
 } from './message.js';
-export type { NoticeElection, NoticeMessage, NoticeMessageInput } from './message.js';
+export type { NoticeElection, NoticeMessage, NoticeMessageInput, NotificationEmailPeriod } from './message.js';
 export {
   WELCOME_STATUSES,
   WELCOME_OUTCOMES,
@@ -233,6 +246,8 @@ export {
   hasOptedInToEmail,
   broadcastSkip,
   broadcastAudienceSummary,
+  broadcastRejectSchema,
+  isBroadcastOpen,
 } from './broadcasts.js';
 export type {
   BroadcastAudience,
@@ -247,6 +262,9 @@ export type {
   BroadcastSummary,
   BroadcastsView,
   BroadcastRequestedPayload,
+  BroadcastApproval,
+  BroadcastRejectInput,
+  BroadcastDecidedPayload,
 } from './broadcasts.js';
 export {
   UNSUBSCRIBE_PATH,

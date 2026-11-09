@@ -425,7 +425,7 @@ export class NoticeSender {
       replyTo: this.config.mailReplyTo,
       listUnsubscribe: links?.oneClick,
       ...message,
-      meta: { kind: notice.kind, ref: notice.noticeId, electionId: notice.electionId, accountId: recipient.accountId },
+      meta: { kind: notice.kind, ref: notice.noticeId, electionId: notice.electionId, accountId: recipient.accountId, causedBy: notice.roundRequestedBy },
     });
     if (result.status === 'sent') {
       await finish({ status: 'sent', sentAt: new Date().toISOString(), messageId: result.messageId, outcome: null });
@@ -541,7 +541,7 @@ export class NoticeSender {
       replyTo: this.config.mailReplyTo,
       listUnsubscribe: links.oneClick,
       ...message,
-      meta: { kind: 'notice_test', ref: test.testId, electionId: test.electionId, accountId: test.accountId },
+      meta: { kind: 'notice_test', ref: test.testId, electionId: test.electionId, accountId: test.accountId, causedBy: test.requestedBy },
     });
   }
 

@@ -58,8 +58,10 @@ export class NoticeSettingsService {
       const after = resolveNoticeSettings({
         ...settings,
         allEmails: settings.allEmails ?? before.allEmails,
+        broadcastApproval: settings.broadcastApproval ?? before.broadcastApproval,
         kinds: { ...before.kinds, ...settings.kinds },
-        emails: settings.emails ?? before.emails,
+        // A page opened before a switch existed saves without it, which keeps what was set.
+        emails: { ...before.emails, ...settings.emails },
         senderName: settings.senderName === undefined ? before.senderName : settings.senderName,
       });
       const changes = noticeSettingsChanges(before, after);

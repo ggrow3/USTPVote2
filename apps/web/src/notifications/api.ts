@@ -5,7 +5,10 @@ import type {
   BroadcastPreview,
   BroadcastsView,
   BroadcastSummary,
+  AccountSummary,
   MailHealthView,
+  MailLogPage,
+  MailLogQuery,
   MemberMatch,
   MailRequestKind,
   MailRestoreInput,
@@ -112,7 +115,17 @@ export function emailMembers(input: BroadcastInput): Promise<BroadcastSummary> {
   return api<BroadcastSummary>('POST', '/v1/admin/mail/broadcasts', input);
 }
 
-/** Stops one going out: what has gone has gone. */
+/** System Admin: lets an email waiting for approval go out. */
+export function approveEmailToMembers(broadcastId: string): Promise<BroadcastSummary> {
+  return api<BroadcastSummary>('POST', `/v1/admin/mail/broadcasts/${encodeURIComponent(broadcastId)}/approve`);
+}
+
+/** System Admin: an email waiting for approval goes to nobody, with why. */
+export function rejectEmailToMembers(broadcastId: string, reason: string): Promise<BroadcastSummary> {
+  return api<BroadcastSummary>('POST', `/v1/admin/mail/broadcasts/${encodeURIComponent(broadcastId)}/reject`, { reason });
+}
+
+/** Stops one going out, or withdraws one waiting for approval: what has gone has gone. */
 export function cancelEmailToMembers(broadcastId: string): Promise<BroadcastSummary> {
   return api<BroadcastSummary>('POST', `/v1/admin/mail/broadcasts/${encodeURIComponent(broadcastId)}/cancel`);
 }
@@ -120,6 +133,20 @@ export function cancelEmailToMembers(broadcastId: string): Promise<BroadcastSumm
 /** Active members by name, to pick them by hand. */
 export function searchMembersToEmail(name: string): Promise<MemberMatch[]> {
   return api<MemberMatch[]>('GET', `/v1/admin/mail/broadcasts/member-search?${new URLSearchParams({ name })}`);
+}
+
+// --- The email log (design §10.12) -------------------------------------------------------------------------------
+
+/** System Admin: a page of every email the site sent, newest first. */
+export function mailLog(query: MailLogQuery): Promise<MailLogPage> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) if (value) params.set(key, String(value));
+  return api<MailLogPage>('GET', `/v1/admin/mail/log?${params}`);
+}
+
+/** System Admin: accounts whose address starts with this, to find someone in the log by address. */
+export function accountsByEmail(email: string): Promise<AccountSummary[]> {
+  return api<AccountSummary[]>('GET', `/v1/admin/accounts?${new URLSearchParams({ email, limit: '10' })}`);
 }
 
 // --- Who gets no email (design §10.12) ----------------------------------------------------------------------------

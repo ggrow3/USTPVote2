@@ -38,6 +38,12 @@ describe('trackedPage (design §10.7)', () => {
     expect(trackedPage('/candidates/c1/')).toEqual({ page: trackedPageById('candidate'), path: '/candidates/c1' });
   });
 
+  it('records a conversation as Messages, never its address, which names the two accounts in it', () => {
+    expect(trackedPage('/messages/a1_a2')).toEqual({ page: trackedPageById('messages-conversation'), path: '/messages' });
+    expect(trackedPage('/messages')).toEqual({ page: trackedPageById('messages'), path: '/messages' });
+    expect(trackedPage('/notifications')?.path).toBe('/notifications');
+  });
+
   it('refuses paths the app has no page for, and anything that is not a plain path', () => {
     for (const path of [
       '/nowhere',

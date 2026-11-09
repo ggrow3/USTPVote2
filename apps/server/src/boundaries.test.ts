@@ -15,6 +15,10 @@ const CONTEXTS: Readonly<Record<string, { readonly collections: readonly string[
     collections: ['notices', 'noticeOutbox', 'noticeSettings', 'noticeReceipts', 'noticeTests', 'noticeVerifications', 'mailMessages', 'mailSuppressions', 'mailHealth', 'mailRequests', 'mailPreferences', 'broadcasts', 'broadcastRecipients'],
     repositories: ['notice.repository', 'mail.repository', 'broadcast.repository'],
   },
+  inbox: {
+    collections: ['appNotifications', 'inboxPreferences', 'memberThreads', 'memberMessages', 'memberBlocks', 'messageReports'],
+    repositories: ['inbox.repository'],
+  },
   candidacies: {
     collections: ['candidacies'],
     repositories: ['candidacy.repository'],
@@ -30,6 +34,10 @@ const CONTEXTS: Readonly<Record<string, { readonly collections: readonly string[
   room: {
     collections: ['roomConsents', 'roomMessages', 'roomMemory', 'roomJobs', 'roomState'],
     repositories: ['room.repository'],
+  },
+  bills: {
+    collections: ['billSettings', 'billWatch', 'billNotes'],
+    repositories: ['bill.repository'],
   },
   communications: {
     collections: ['newsPosts', 'pressKit', 'pressAssets', 'sharePosts', 'shareCounts', 'calendarItems', 'suggestions', 'suggestionLimits', 'bots'],

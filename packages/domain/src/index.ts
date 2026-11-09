@@ -126,12 +126,14 @@ export type {
 } from './course-package.js';
 export * from './membership/index.js';
 export * from './teams/index.js';
+export * from './bills/index.js';
 export { voteSchema, NO_VOTES, changeVote } from './votes.js';
 export type { VoteValue, VoteTally } from './votes.js';
 export * from './forum/index.js';
 export * from './room/index.js';
 export * from './communications/index.js';
 export * from './notifications/index.js';
+export * from './inbox/index.js';
 export * from './governance/index.js';
 export * from './candidacies/index.js';
 export { diffLines, splitLines } from './text-diff.js';

@@ -265,6 +265,52 @@ export function broadcastMessage(input: {
   return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
 }
 
+/** How often a member has their in-app notifications by email (§10.13). */
+export type NotificationEmailPeriod = 'each' | 'daily' | 'weekly';
+
+/**
+ * A member's in-app notifications by email (design §10.13): one as it came, or a digest of those unread. Each names what
+ * happened and links to it on the site; a message's words are never in it, only who wrote. It says why they get it and
+ * where to change that.
+ */
+export function notificationEmailMessage(input: {
+  readonly origin: string;
+  readonly name: string | null;
+  readonly contact: string | null;
+  readonly unsubscribe?: string | null;
+  readonly period: NotificationEmailPeriod;
+  /** Newest first: each one's line and its path in the app. */
+  readonly items: readonly { readonly title: string; readonly link: string }[];
+  /** How many more unread there are than the items listed. */
+  readonly more?: number;
+}): NoticeMessage {
+  const site = `${input.origin}/`;
+  const first = input.items[0];
+  const subject =
+    input.period === 'each' && first
+      ? capped(oneLine(first.title))
+      : `Your ${input.period === 'daily' ? 'daily' : 'weekly'} notifications from the US Transhumanist Party`;
+  const how = { each: 'as each comes', daily: 'once a day', weekly: 'once a week' }[input.period];
+  const listed: Block[] =
+    input.period === 'each' && first
+      ? [{ p: `${oneLine(first.title)}.` }, { link: `${input.origin}${first.link}`, label: 'Open it on the site', after: ' (you will be asked to sign in).' }]
+      : [
+          { p: input.items.length === 1 ? 'You have one notification you have not read:' : `You have ${input.items.length + (input.more ?? 0)} notifications you have not read:` },
+          ...input.items.map((item): Block => ({ link: `${input.origin}${item.link}`, label: oneLine(item.title), after: '' })),
+          ...(input.more ? [{ link: `${input.origin}/notifications`, label: `And ${input.more} more`, after: '.' } satisfies Block] : []),
+        ];
+  const blocks: Block[] = [
+    greeting(input.name),
+    ...listed,
+    { p: 'What a member wrote is never in these emails: read it on the site.' },
+    { hr: true },
+    { small: `You are getting this email because you chose, on your Account page, to have your notifications by email ${how}.` },
+    { link: `${input.origin}/account`, label: 'Change that on your Account page', after: '.' },
+    ...footer(input.contact, site, input, 'your notifications'),
+  ];
+  return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
+}
+
 /** One row per time zone: the zone's name and when voting opens and closes there, each with its abbreviation. */
 export function votingWindow(opensAt: string, closesAt: string): { name: string; opens: string; closes: string }[] {
   return NOTICE_TIME_ZONES.map(({ zone, name }) => ({ name, opens: zoneTime(opensAt, zone), closes: zoneTime(closesAt, zone) }));

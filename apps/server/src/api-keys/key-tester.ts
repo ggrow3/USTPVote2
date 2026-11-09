@@ -12,12 +12,18 @@ const TIMEOUT_MS = 15_000;
 
 /**
  * One small request each service answers for any working key, with the key in a header (so it is in no address): the
- * FEC's first candidate, Open States' first state, Google's list of elections. What the service says is not passed on:
+ * FEC's first candidate, Open States' first state, Google's list of elections, Congress.gov's current Congress. What the service says is not passed on:
  * the panel says what to do.
  */
 const TRIALS: Readonly<Record<ApiKeyName, { readonly url: string; readonly header: string; readonly service: string; readonly refused: (status: number, body: string) => boolean }>> = {
   fec: { url: 'https://api.open.fec.gov/v1/candidates/?per_page=1', header: 'X-Api-Key', service: 'api.data.gov', refused: (s) => s === 401 || s === 403 },
   openstates: { url: 'https://v3.openstates.org/jurisdictions?classification=state&per_page=1', header: 'X-API-KEY', service: 'Open States', refused: (s) => s === 401 || s === 403 },
+  congress: {
+    url: 'https://api.congress.gov/v3/congress/current?format=json',
+    header: 'X-Api-Key',
+    service: 'api.data.gov',
+    refused: (s) => s === 401 || s === 403,
+  },
   civic: {
     url: 'https://www.googleapis.com/civicinfo/v2/elections',
     header: 'x-goog-api-key',

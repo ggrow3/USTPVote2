@@ -25,6 +25,7 @@ import { Firebase } from '../infra/firebase.js';
 import { secretStoreProvider } from '../infra/secret-store.js';
 import { MEMBER_DIRECTORY_PROVIDERS } from '../membership/providers.js';
 import { NOTIFICATION_WORKER_PROVIDERS } from '../notifications/providers.js';
+import { INBOX_WORKER_PROVIDERS } from '../inbox/providers.js';
 import { ROOM_WORKER_PROVIDERS } from '../room/providers.js';
 import { BallotSealer } from './ballot-sealer.js';
 import { ElectionClock } from './election-clock.js';
@@ -52,6 +53,7 @@ import { TasksController } from './tasks.controller.js';
     // Election notices greet roll members by name (design §6.8).
     ...MEMBER_DIRECTORY_PROVIDERS,
     ...NOTIFICATION_WORKER_PROVIDERS,
+    ...INBOX_WORKER_PROVIDERS,
     // Suggestions are deleted a year after they arrive (design §10.9).
     ...COMMUNICATIONS_WORKER_PROVIDERS,
     // The members' room: questions for its assistant, and its retention (design §5.10).

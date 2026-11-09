@@ -39,7 +39,7 @@ export class Mailer {
   }
 
   async send(transport: MailTransport, message: Omit<MailMessage, 'from'>): Promise<MailResult> {
-    const { kind, ref, electionId, accountId } = message.meta;
+    const { kind, ref, electionId, accountId, causedBy } = message.meta;
     const settings = await this.settings.current();
     if (message.to && kind !== 'probe') {
       if (kind !== 'admin_test' && !settings.allEmails) return { status: 'failed', outcome: 'unavailable' };
@@ -58,7 +58,7 @@ export class Mailer {
       else this.logger.error(line);
       return { status: 'failed', outcome };
     }
-    const record = mailMessageRecord({ messageId, kind, ref, electionId, accountId, delivery: transport.delivery, at: new Date().toISOString() });
+    const record = mailMessageRecord({ messageId, kind, ref, electionId, accountId, causedBy, delivery: transport.delivery, at: new Date().toISOString() });
     await this.mail.create(record).catch((e: unknown) => {
       // The message went; only what its reports say of it is lost.
       this.logger.error(`${kind} email ${messageId} sent, but not recorded: ${errorName(e)}`);

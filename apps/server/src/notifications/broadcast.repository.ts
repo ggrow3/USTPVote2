@@ -37,6 +37,13 @@ export class BroadcastRepository {
     return snap.docs.map((d) => d.data() as BroadcastRecord);
   }
 
+  /** Those waiting for a System Admin's approval, or still to prepare or send: one at a time (design §10.12). */
+  async open(tx?: Transaction): Promise<BroadcastRecord[]> {
+    const query = this.firebase.db.collection(Collections.broadcasts).where('status', 'in', ['awaiting_approval', 'preparing', 'sending']);
+    const snap = tx ? await tx.get(query) : await query.get();
+    return snap.docs.map((d) => d.data() as BroadcastRecord);
+  }
+
   async latest(limit: number): Promise<BroadcastRecord[]> {
     const snap = await this.firebase.db.collection(Collections.broadcasts).orderBy('createdAt', 'desc').limit(limit).get();
     return snap.docs.map((d) => d.data() as BroadcastRecord);

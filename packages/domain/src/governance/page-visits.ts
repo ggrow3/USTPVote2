@@ -19,6 +19,11 @@ export interface TrackedPage {
   /** The route, as the web app's router writes it: `:name` is one segment, `:name?` an optional last one. */
   readonly pattern: string;
   readonly label: string;
+  /**
+   * The path recorded for every visit to it, in place of the path opened, for a page whose address says too much: a
+   * conversation's names the two accounts in it (design §10.13), so its visits are recorded as `/messages`.
+   */
+  readonly recordAs?: string;
 }
 
 /** Every page the web app's router has but the untracked ones, more specific routes first. */
@@ -30,6 +35,9 @@ export const TRACKED_PAGES: readonly TrackedPage[] = [
   { id: 'set-password', pattern: '/set-password', label: 'Set your password' },
   { id: 'unsubscribe', pattern: '/unsubscribe', label: 'Unsubscribe' },
   { id: 'account', pattern: '/account', label: 'Account' },
+  { id: 'notifications', pattern: '/notifications', label: 'Notifications' },
+  { id: 'messages-conversation', pattern: '/messages/:threadId', label: 'A conversation (recorded as Messages)', recordAs: '/messages' },
+  { id: 'messages', pattern: '/messages', label: 'Messages' },
   { id: 'guide', pattern: '/guide', label: 'Guide' },
   { id: 'courses', pattern: '/courses', label: 'Courses' },
   { id: 'course-certificate', pattern: '/course/certificates/:id', label: 'A course certificate' },
@@ -47,6 +55,8 @@ export const TRACKED_PAGES: readonly TrackedPage[] = [
   { id: 'forum', pattern: '/forum', label: 'Forum' },
   { id: 'forum-post', pattern: '/forum/:postId', label: 'A forum post' },
   { id: 'room', pattern: '/room', label: "Members' room" },
+  { id: 'bills', pattern: '/bills', label: 'Bills in Congress' },
+  { id: 'bill', pattern: '/bills/:congress/:type/:number', label: 'A bill in Congress' },
   { id: 'news', pattern: '/news', label: 'News' },
   { id: 'news-post', pattern: '/news/:slug', label: 'A news post' },
   { id: 'press', pattern: '/press', label: 'Press kit' },
@@ -91,7 +101,7 @@ export function trackedPage(path: string): { readonly page: TrackedPage; readonl
   const tidy = path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
   if (PAGE_VISITS_UNTRACKED.some((p) => tidy === p || tidy.startsWith(`${p}/`))) return null;
   const match = MATCHERS.find((m) => m.regex.test(tidy));
-  return match ? { page: match.page, path: tidy } : null;
+  return match ? { page: match.page, path: match.page.recordAs ?? tidy } : null;
 }
 
 /** `POST /v1/page-visits` and `POST /v1/public/page-visits`: the path of the page opened. */
