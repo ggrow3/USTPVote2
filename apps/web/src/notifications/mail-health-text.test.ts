@@ -27,7 +27,7 @@ describe('the email setup check’s wording', () => {
     const when = new Date(at).toLocaleString();
     expect(healthSummary(run([check('dkim', 'ok')]))).toBe(`Checked ${when}, on its hourly run. Email is set up properly.`);
     expect(healthSummary(run([check('dkim', 'fail'), check('spf', 'fail'), check('dmarc', 'warn')], { overall: 'fail', trigger: 'request' }))).toBe(
-      `Checked ${when}, when a System Admin asked. 2 checks failing: members may not get their email.`,
+      `Checked ${when}, when a System or Site Admin asked. 2 checks failing: members may not get their email.`,
     );
     expect(healthSummary(run([check('dmarc', 'warn')], { overall: 'warn' }))).toMatch(/No check is failing; 1 warning\.$/);
     expect(healthSummary(run([check('dkim', 'ok')], { trigger: 'send' }))).toMatch(/, before election email went out\./);

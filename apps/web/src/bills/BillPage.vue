@@ -186,8 +186,8 @@ watch(
       </div>
 
       <q-banner v-if="refused" class="bg-blue-1 text-black" rounded>
-        The Bills page is for the party's legislative team: the teams a System Admin names under Admin › Bills, and System
-        Admins.
+        The Bills page is for the party's legislative team: the teams a System or Site Admin names under Admin › Bills, and
+        System and Site Admins.
       </q-banner>
       <q-banner v-else-if="error" class="bg-orange-1 text-black" rounded>{{ error }}</q-banner>
       <div v-else-if="!bill" class="text-grey-7">Loading the bill from Congress.gov…</div>

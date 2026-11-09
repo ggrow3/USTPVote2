@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { Role } from './roles.js';
+import { administersSite, type Role } from './roles.js';
 
 /**
  * Identity Platform providers the system accepts, by the ID token's `firebase.sign_in_provider` claim
@@ -47,13 +47,13 @@ export interface MfaPolicyChangedPayload {
 /**
  * Where someone needs a sign-in with a second factor (design §4):
  * - `everywhere`: every signed-in route but seeing and creating their own account, which they need to set one up.
- *   System Admins always, whatever the setting says; everyone else while the member requirement is on.
+ *   System Admins and Site Admins always, whatever the setting says; everyone else while the member requirement is on.
  * - `admin`: the admin routes only, as for every other admin role.
  * - `none`: nowhere, for members without a role while the requirement is off.
  */
 export type SecondFactorScope = 'everywhere' | 'admin' | 'none';
 
 export function secondFactorScope(roles: readonly Role[], policy: MfaPolicy): SecondFactorScope {
-  if (roles.includes('system_admin') || policy.membersRequired) return 'everywhere';
+  if (administersSite(roles) || policy.membersRequired) return 'everywhere';
   return roles.length > 0 ? 'admin' : 'none';
 }

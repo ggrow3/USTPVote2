@@ -208,7 +208,7 @@ export class PageVisitsAdminController {
   constructor(private readonly visits: PageVisitsService) {}
 
   @Get()
-  @Roles('system_admin', 'auditor')
+  @Roles('system_admin', 'site_admin', 'auditor')
   report(@Query('days') days?: string): Promise<PageVisitReport> {
     const n = Number(days);
     return this.visits.report((PAGE_VISIT_PERIODS as readonly number[]).includes(n) ? n : 30);

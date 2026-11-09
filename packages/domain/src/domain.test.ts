@@ -13,7 +13,7 @@ import { electionDocPath, sequenceId } from './collections.js';
 import { checkElectionDeletable, electionTransitionAuthority, isTerminal } from './election-state.js';
 import { isUuidV7, uuidv7, uuidv7Timestamp } from './ids.js';
 import { checkStatusChange, mayApply, type MemberStatus } from './membership/member-status.js';
-import { checkRoleChange, conflictingRoles, MAX_ROLES_PER_ACCOUNT, ROLES } from './roles.js';
+import { administersSite, checkRoleChange, conflictingRoles, MAX_ROLES_PER_ACCOUNT, ROLES } from './roles.js';
 import { ADMIN_PERSONAS, MAX_TEST_VOTERS } from './testing.js';
 
 describe('uuidv7', () => {
@@ -151,8 +151,26 @@ describe('roles', () => {
     expect(checkRoleChange(three, 'grant', 'auditor').ok).toBe(false);
   });
 
-  it('has a test persona for every role but System Admin', () => {
-    expect(ADMIN_PERSONAS.map((p) => p.kind)).toEqual(ROLES.filter((r) => r !== 'system_admin'));
+  it('keeps the Site Admin apart from the Auditor and the System Admin, and within the two-role limit', () => {
+    expect(conflictingRoles(['auditor'], 'site_admin')).toEqual(['auditor']);
+    expect(conflictingRoles(['site_admin'], 'auditor')).toEqual(['site_admin']);
+    expect(checkRoleChange(['system_admin'], 'grant', 'site_admin')).toMatchObject({
+      ok: false,
+      reason: 'site_admin cannot be held together with system_admin',
+    });
+    expect(checkRoleChange(['site_admin'], 'grant', 'system_admin')).toMatchObject({ ok: false, reason: /cannot be held together/ });
+    expect(checkRoleChange(['site_admin'], 'grant', 'membership_admin').ok).toBe(true);
+    expect(checkRoleChange(['site_admin', 'election_admin'], 'grant', 'course_admin')).toMatchObject({ ok: false, reason: /at most 2 roles/ });
+  });
+
+  it('counts System and Site Admins, and nobody else, as running the site', () => {
+    expect(ROLES.filter((r) => administersSite([r]))).toEqual(['system_admin', 'site_admin']);
+    expect(administersSite(['membership_admin', 'site_admin'])).toBe(true);
+    expect(administersSite([])).toBe(false);
+  });
+
+  it('has a test persona for every role but System Admin and Site Admin', () => {
+    expect(ADMIN_PERSONAS.map((p) => p.kind)).toEqual(ROLES.filter((r) => r !== 'system_admin' && r !== 'site_admin'));
   });
 });
 
@@ -239,6 +257,41 @@ describe('role changes (one System Admin)', () => {
   });
 });
 
+describe('role changes by a Site Admin', () => {
+  const site: Actor = { accountId: 'site', roles: ['site_admin'], mfa: true, authAgeSeconds: 10 };
+  const pat = { accountId: 'pat', roles: [] as const };
+
+  it('lets a Site Admin change every role but System Admin, Site Admin and Auditor included', () => {
+    expect(checkCanChangeRole(site, pat, 'grant', 'membership_admin').ok).toBe(true);
+    expect(checkCanChangeRole(site, pat, 'grant', 'auditor').ok).toBe(true);
+    expect(checkCanChangeRole(site, pat, 'grant', 'site_admin').ok).toBe(true);
+    expect(checkCanChangeRole(site, { accountId: 'other', roles: ['site_admin'] }, 'revoke', 'site_admin').ok).toBe(true);
+    expect(checkCanChangeRole({ ...site, roles: ['site_admin', 'membership_admin'] }, pat, 'grant', 'course_admin').ok).toBe(true);
+  });
+
+  it('refuses System Admin, and a System Admin’s roles, as forbidden', () => {
+    expect(checkCanChangeRole(site, pat, 'grant', 'system_admin')).toEqual({
+      ok: false,
+      reason: 'system_admin is granted and revoked only by a system_admin',
+      refusal: 'forbidden',
+    });
+    expect(checkCanChangeRole(site, { accountId: 'sa1', roles: null }, 'revoke', 'system_admin')).toMatchObject({ refusal: 'forbidden' });
+    expect(checkCanChangeRole(site, { accountId: 'sa1', roles: ['system_admin'] }, 'grant', 'membership_admin')).toEqual({
+      ok: false,
+      reason: 'the roles of a system_admin are changed only by a system_admin',
+      refusal: 'forbidden',
+    });
+    // An account ID typed in: the API checks again with the roles it holds.
+    expect(checkCanChangeRole(site, { accountId: 'sa1', roles: null }, 'grant', 'membership_admin').ok).toBe(true);
+  });
+
+  it('refuses their own account, a stale sign-in and a sign-in without MFA, as for System Admins', () => {
+    expect(checkCanChangeRole(site, { accountId: 'site', roles: ['site_admin'] }, 'revoke', 'site_admin')).toMatchObject({ reason: /own account/ });
+    expect(checkCanChangeRole({ ...site, mfa: false }, pat, 'grant', 'election_admin')).toMatchObject({ code: 'mfaRequired' });
+    expect(checkCanChangeRole({ ...site, authAgeSeconds: 3600 }, pat, 'grant', 'election_admin')).toMatchObject({ code: 'reauthRequired' });
+  });
+});
+
 describe('deleting an account (one System Admin)', () => {
   const sa1: Actor = { accountId: 'sa1', roles: ['system_admin'], mfa: true, authAgeSeconds: 10 };
   const listed = { accountId: 'demo', onDeletionList: true, inElections: false };
@@ -250,6 +303,11 @@ describe('deleting an account (one System Admin)', () => {
   it('refuses in the order the API checks, with its reasons', () => {
     expect(checkCanDeleteAccount({ ...sa1, mfa: false }, listed)).toMatchObject({ code: 'mfaRequired' });
     expect(checkCanDeleteAccount({ ...sa1, roles: ['membership_admin'] }, listed)).toMatchObject({ reason: /system_admin/ });
+    expect(checkCanDeleteAccount({ ...sa1, roles: ['site_admin'] }, listed)).toEqual({
+      ok: false,
+      reason: 'accounts are deleted by system_admin',
+      refusal: 'forbidden',
+    });
     expect(checkCanDeleteAccount(sa1, { ...listed, accountId: 'sa1' })).toMatchObject({ reason: /own account/ });
     expect(checkCanDeleteAccount(sa1, { ...listed, onDeletionList: false })).toMatchObject({ reason: /deletion list/ });
     expect(checkCanDeleteAccount(sa1, { ...listed, inElections: true })).toMatchObject({ reason: /election roll/ });
@@ -267,6 +325,7 @@ describe('deleting test voters (one System Admin, testing mode)', () => {
   it('refuses without MFA, to anyone but a System Admin, and after 15 minutes without signing in', () => {
     expect(checkCanDeleteTestVoters({ ...sa1, mfa: false })).toMatchObject({ code: 'mfaRequired' });
     expect(checkCanDeleteTestVoters({ ...sa1, roles: ['membership_admin', 'election_admin'] })).toMatchObject({ reason: /system_admin/ });
+    expect(checkCanDeleteTestVoters({ ...sa1, roles: ['site_admin'] })).toMatchObject({ refusal: 'forbidden', reason: /system_admin/ });
     expect(checkCanDeleteTestVoters({ ...sa1, authAgeSeconds: 15 * 60 }).ok).toBe(true);
     expect(checkCanDeleteTestVoters({ ...sa1, authAgeSeconds: 15 * 60 + 1 })).toMatchObject({ code: 'reauthRequired' });
   });

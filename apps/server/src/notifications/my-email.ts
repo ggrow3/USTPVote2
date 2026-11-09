@@ -89,10 +89,10 @@ export class MyEmailService {
     };
   }
 
-  /** Who a System Admin's test can go to, the caller first, and how their last one went. */
+  /** Who a System or Site Admin's test can go to, the caller first, and how their last one went. */
   async adminTestView(ctx: RequestContext): Promise<AdminTestView> {
     const accountId = requireAccount(ctx);
-    const [holders, requests] = await Promise.all([this.directory.roleHolders('system_admin'), this.mail.requestsOf(accountId)]);
+    const [holders, requests] = await Promise.all([this.directory.siteAdministrators(), this.mail.requestsOf(accountId)]);
     const mailboxes = await this.directory.mailboxes(holders.map((h) => h.accountId));
     const systemAdmins = holders
       .map((h) => ({ accountId: h.accountId, name: h.name, email: mailboxes.get(h.accountId)?.email ?? null }))
@@ -113,11 +113,11 @@ export class MyEmailService {
     };
   }
 
-  /** Queues a System Admin's test for the worker, to them or another System Admin and nobody else (design §10.12). */
+  /** Queues a System or Site Admin's test for the worker, to them or another System or Site Admin and nobody else (design §10.12). */
   async requestAdminTest(ctx: RequestContext, to: string | undefined): Promise<AdminTestView> {
     const recipient = to ?? requireAccount(ctx);
-    const holders = await this.directory.roleHolders('system_admin');
-    if (!holders.some((h) => h.accountId === recipient)) throw new ForbiddenException('a test email goes only to a System Admin');
+    const holders = await this.directory.siteAdministrators();
+    if (!holders.some((h) => h.accountId === recipient)) throw new ForbiddenException('a test email goes only to a System or Site Admin');
     await this.request(ctx, 'admin_test', recipient);
     return this.adminTestView(ctx);
   }

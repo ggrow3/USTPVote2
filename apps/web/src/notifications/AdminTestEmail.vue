@@ -56,7 +56,7 @@ onUnmounted(() => clearInterval(timer));
     <q-card-section>
       <h2 id="admin-test-email" class="text-subtitle1">Send a test email</h2>
       <p class="q-mt-sm q-mb-none">
-        Check that the site can send email before switching it on for everyone. It goes only to the System Admin you choose,
+        Check that the site can send email before switching it on for everyone. It goes only to the System or Site Admin you choose,
         even while all email is off; members get nothing.
       </p>
     </q-card-section>

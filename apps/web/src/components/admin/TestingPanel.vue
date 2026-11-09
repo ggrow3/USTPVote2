@@ -83,7 +83,7 @@ onMounted(load);
         <h2 class="text-subtitle1">Test personas</h2>
         <p class="q-mt-sm q-mb-none">
           This deployment lets System Admins rehearse elections and try every admin role. Test personas are accounts
-          with no login: one for each admin role but System Admin, and as many voters as you need. Act as one and the app shows and does exactly what that person
+          with no login: one for each admin role but System Admin and Site Admin, and as many voters as you need. Act as one and the app shows and does exactly what that person
           could, so every two-person step is still done by two different accounts. Actions are recorded under the
           persona; the server log records that you were acting. Open another browser tab to be a second persona at the
           same time.

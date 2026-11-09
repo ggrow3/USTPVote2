@@ -240,8 +240,8 @@ const stageChip = (stage: string | null) => (stage ? STAGE_LABELS[stage as keyof
 
       <div v-if="!billsState.loadedFor" class="text-grey-7">Loading…</div>
       <q-banner v-else-if="!allowed || refused" class="bg-blue-1 text-black" rounded>
-        The Bills page is for the party's legislative team: the teams a System Admin names under Admin › Bills, and System
-        Admins. To use it, ask a lead of the legislative team to add you.
+        The Bills page is for the party's legislative team: the teams a System or Site Admin names under Admin › Bills, and
+        System and Site Admins. To use it, ask a lead of the legislative team to add you.
       </q-banner>
 
       <template v-else>

@@ -10,10 +10,10 @@ import SendEmailPanel from './SendEmailPanel.vue';
 
 /**
  * Admin › Email, the Email Administration page. For System and Membership Admins: an email to members, and the members who
- * get no email (design §10.12). For System Admins too: the settings of all the site's email (§6.8), whether email is set
- * up properly, a test email to a System Admin, and the log of every email the site sent (§10.12).
+ * get no email (design §10.12). For System and Site Admins too: the settings of all the site's email (§6.8), whether
+ * email is set up properly, a test email to a System or Site Admin, and the log of every email the site sent (§10.12).
  */
-const systemAdmin = computed(() => hasRole('system_admin'));
+const systemAdmin = computed(() => hasRole('system_admin', 'site_admin'));
 const tab = ref('send');
 </script>
 

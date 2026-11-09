@@ -21,15 +21,17 @@ describe('two-step verification policy', () => {
     expect(secondFactorScope([], off)).toBe('none');
   });
 
-  it('always requires System Admins to use a second factor everywhere, whatever the setting says', () => {
+  it('always requires System and Site Admins to use a second factor everywhere, whatever the setting says', () => {
     for (const policy of [off, on]) {
       expect(secondFactorScope(['system_admin'], policy)).toBe('everywhere');
       expect(secondFactorScope(['membership_admin', 'system_admin'], policy)).toBe('everywhere');
+      expect(secondFactorScope(['site_admin'], policy)).toBe('everywhere');
+      expect(secondFactorScope(['site_admin', 'course_admin'], policy)).toBe('everywhere');
     }
   });
 
   it('keeps every other admin role to a second factor for the admin tools while the setting is off', () => {
-    for (const role of ROLES.filter((r) => r !== 'system_admin')) {
+    for (const role of ROLES.filter((r) => r !== 'system_admin' && r !== 'site_admin')) {
       expect(secondFactorScope([role], off)).toBe('admin');
     }
     expect(secondFactorScope(['membership_admin', 'election_admin'], off)).toBe('admin');

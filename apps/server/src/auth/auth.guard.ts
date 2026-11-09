@@ -94,8 +94,8 @@ export class AuthGuard implements CanActivate {
   }
 
   /**
-   * A sign-in without a second factor, on a route that is neither an admin route nor exempt: refused for a System Admin
-   * always, and for everyone while the member requirement is on (design §4). The roles are read fresh, and only when the
+   * A sign-in without a second factor, on a route that is neither an admin route nor exempt: refused for a System or
+   * Site Admin always, and for everyone while the member requirement is on (design §4). The roles are read fresh, and only when the
    * requirement is off, so a new System Admin is held to it at once. Someone acting as a test persona already signed in
    * with a second factor (operatorFor), so the login's own account is the one that counts.
    */
@@ -105,7 +105,9 @@ export class AuthGuard implements CanActivate {
     if (secondFactorScope(roles, policy) !== 'everywhere') return;
     const message = roles.includes('system_admin')
       ? 'System Admins must sign in with two-step verification'
-      : 'this site requires two-step verification; set it up on your account page';
+      : roles.includes('site_admin')
+        ? 'Site Admins must sign in with two-step verification'
+        : 'this site requires two-step verification; set it up on your account page';
     throw new ForbiddenException({ message, type: PROBLEM_TYPES.mfaRequired });
   }
 

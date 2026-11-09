@@ -82,7 +82,7 @@ export class NoticeSettingsService {
 
 /** System Admins set the election emails (design §6.8). */
 @Controller('v1/admin/notice-settings')
-@Roles('system_admin')
+@Roles('system_admin', 'site_admin')
 export class NoticeSettingsController {
   constructor(private readonly settings: NoticeSettingsService) {}
 

@@ -8,7 +8,7 @@ import { roleLabel } from '../../approval-text.js';
 import { askReason, attempt } from '../../dialogs.js';
 import { heldOffices, type HeldOffice } from '../../membership/members-list.js';
 import { offices as fetchOffices } from '../../offices/api.js';
-import { session } from '../../session.js';
+import { hasRole, session } from '../../session.js';
 import RoleChangeForm from './RoleChangeForm.vue';
 
 const PAGE = 50;
@@ -23,6 +23,8 @@ const more = ref(false);
 /** An empty table only means "nobody found" once a load has succeeded. */
 const listState = ref<'loading' | 'ready' | 'failed'>('loading');
 const me = computed(() => session.me?.account?.accountId);
+/** Only System Admins delete accounts and change System Admins' roles; Site Admins do neither (design §10.2, §10.3). */
+const systemAdmin = computed(() => hasRole('system_admin'));
 /** Only the latest search may fill the table; typing can overtake a slow response. */
 let latest = 0;
 
@@ -57,10 +59,13 @@ function copy(text: string) {
 const nameOf = (a: AccountSummary) => a.displayName ?? a.primaryEmail ?? a.accountId;
 
 /**
- * Only an account on the deployment's deletion list, never your own (design §4); the API also refuses one an election
- * has on its roll or among those who voted, and says so.
+ * Only an account on the deployment's deletion list, never your own, and only by a System Admin (design §4); the API
+ * also refuses one an election has on its roll or among those who voted, and says so.
  */
-const deletable = (a: AccountSummary) => a.onDeletionList && a.accountId !== me.value;
+const deletable = (a: AccountSummary) => systemAdmin.value && a.onDeletionList && a.accountId !== me.value;
+
+/** Not your own; a Site Admin leaves a System Admin's roles to System Admins. */
+const changeable = (a: AccountSummary) => a.accountId !== me.value && (systemAdmin.value || !a.roles.includes('system_admin'));
 
 /** One System Admin's word is enough, so the dialog says plainly what is about to happen before it does. */
 async function remove(a: AccountSummary) {
@@ -96,7 +101,7 @@ onMounted(() => {
   <div class="ustp-content">
     <p class="text-grey-7">
       Everyone with an account, the roles they hold and the offices they hold now. A role change below takes effect at
-      once; it needs no second admin.
+      once; it needs no second admin.<template v-if="!systemAdmin"> Only System Admins delete accounts.</template>
     </p>
     <div class="ustp-toolbar">
       <q-input
@@ -160,7 +165,7 @@ onMounted(() => {
           <td>{{ new Date(a.createdAt).toLocaleDateString() }}</td>
           <td class="text-right text-no-wrap">
             <q-btn flat dense round size="sm" icon="content_copy" :aria-label="`Copy account ID of ${nameOf(a)}`" @click="copy(a.accountId)" />
-            <q-btn v-if="a.accountId !== me" flat dense no-caps label="Change roles" @click="form?.choose(a)">
+            <q-btn v-if="changeable(a)" flat dense no-caps label="Change roles" @click="form?.choose(a)">
               <span class="sr-only">&nbsp;of {{ nameOf(a) }}</span>
             </q-btn>
             <q-btn v-if="deletable(a)" flat dense no-caps color="negative" label="Delete account" @click="remove(a)">

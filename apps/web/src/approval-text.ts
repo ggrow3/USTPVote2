@@ -6,6 +6,7 @@ const ROLE_LABELS: Record<Role, string> = {
   election_admin: 'Election Admin',
   auditor: 'Auditor',
   system_admin: 'System Admin',
+  site_admin: 'Site Admin',
   course_admin: 'Course Administrator',
   communications_admin: 'Communications Admin',
 };

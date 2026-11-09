@@ -39,6 +39,7 @@ export const AUDIENCE_CAPTIONS: Readonly<Record<Audience, string>> = {
   election_admin: 'Elections, offices',
   auditor: 'Approvals, the ledger',
   system_admin: 'Roles, settings',
+  site_admin: 'Roles, most settings',
   course_admin: 'Course content',
   communications_admin: 'News, press, social',
 };
@@ -68,7 +69,7 @@ export const MENU_CAPTIONS: Readonly<Record<MenuLink, string>> = {
   teams: 'Join a team, see who is on each; leads run theirs (Active members only)',
   forum: 'Discuss and propose, vote posts up or down (Active members only)',
   room: 'The members’ chat room and its assistant, after accepting its terms (Active members only)',
-  bills: 'Bills in Congress: search, read and the watchlist (only for the teams Admin › Bills names, and System Admins)',
+  bills: 'Bills in Congress: search, read and the watchlist (only for the teams Admin › Bills names, and System and Site Admins)',
   news: 'News and press releases, the press kit, the share kit and the suggestions form',
   course: 'The course map: public lessons, quizzes and a certificate for each course',
   admin: 'The admin console',

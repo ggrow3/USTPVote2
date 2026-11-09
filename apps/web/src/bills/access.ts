@@ -1,5 +1,5 @@
 import { reactive, readonly, watch } from 'vue';
-import type { BillsAccess } from 'ustp-domain';
+import { administersSite, type BillsAccess } from 'ustp-domain';
 import { session } from '../session.js';
 import { billsAccess } from './api.js';
 
@@ -19,8 +19,8 @@ async function load(key: string | null): Promise<void> {
     Object.assign(state, { access: null, loadedFor: null });
     return;
   }
-  // Only Active members and System Admins can have it; nobody else is asked.
-  const maybe = session.me?.member?.status === 'active' || (session.me?.roles ?? []).includes('system_admin');
+  // Only Active members and System and Site Admins can have it; nobody else is asked.
+  const maybe = session.me?.member?.status === 'active' || administersSite(session.me?.roles ?? []);
   if (!maybe) {
     Object.assign(state, { access: null, loadedFor: key });
     return;
