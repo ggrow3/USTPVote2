@@ -52,6 +52,7 @@ export const MENU_LABELS: Readonly<Record<MenuLink, string>> = {
   teams: 'Teams',
   forum: 'Forum',
   room: 'Room',
+  bills: 'Bills',
   news: 'News',
   course: 'Courses',
   admin: 'Admin',
@@ -67,6 +68,7 @@ export const MENU_CAPTIONS: Readonly<Record<MenuLink, string>> = {
   teams: 'Join a team, see who is on each; leads run theirs (Active members only)',
   forum: 'Discuss and propose, vote posts up or down (Active members only)',
   room: 'The members’ chat room and its assistant, after accepting its terms (Active members only)',
+  bills: 'Bills in Congress: search, read and the watchlist (only for the teams Admin › Bills names, and System Admins)',
   news: 'News and press releases, the press kit, the share kit and the suggestions form',
   course: 'The course map: public lessons, quizzes and a certificate for each course',
   admin: 'The admin console',
@@ -99,6 +101,7 @@ export const SECTION_LABELS: Readonly<Record<AdminSection, string>> = {
   communications: 'Communications',
   quote: 'Home page quote',
   course: 'Course administration',
+  bills: 'Bills',
 };
 
 export const SECTION_CAPTIONS: Readonly<Record<AdminSection, string>> = {
@@ -116,7 +119,7 @@ export const SECTION_CAPTIONS: Readonly<Record<AdminSection, string>> = {
   approvals: 'Two-person requests waiting for a decision',
   people: 'Accounts and their roles; change roles',
   signin: 'Switch sign-in methods on or off; require two-step verification',
-  claude: 'The Anthropic API key for the Claude checks, and the FEC, Open States and Google Civic keys',
+  claude: 'The Anthropic API key for the Claude checks, and the FEC, Open States, Google Civic and Congress.gov keys',
   email: 'Whether email is set up properly; which emails go to voters, when, and their wording',
   audit: 'Read and verify the audit ledger',
   security: 'Sign-ins with their addresses; Google Analytics',
@@ -126,6 +129,7 @@ export const SECTION_CAPTIONS: Readonly<Record<AdminSection, string>> = {
   communications: 'News, the share kit, the social media calendar, suggestions, the press kit and bots',
   quote: 'Change the quote on the home page, or switch it off',
   course: 'Add courses and place them on the map; write and publish their lessons, quizzes and profiles; see how students stand and switch their messages',
+  bills: 'Which teams have the Bills page, the legislative team’s search of bills in Congress',
 };
 
 /** "Ballot", "Admin › Elections". */

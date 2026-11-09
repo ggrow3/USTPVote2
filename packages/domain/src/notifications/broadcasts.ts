@@ -91,7 +91,11 @@ export interface BroadcastPreview {
   readonly skipped: Readonly<Record<BroadcastSkip, number>>;
 }
 
-export const BROADCAST_STATUSES = ['preparing', 'sending', 'done', 'cancelled'] as const;
+/**
+ * `awaiting_approval`: System Admins have approval switched on (design §10.12), and none has approved it yet. `rejected`:
+ * a System Admin would not send it. Then `preparing` and `sending` by the worker, and `done`; `cancelled` when stopped.
+ */
+export const BROADCAST_STATUSES = ['awaiting_approval', 'preparing', 'sending', 'done', 'cancelled', 'rejected'] as const;
 export type BroadcastStatus = (typeof BROADCAST_STATUSES)[number];
 
 /** `broadcasts/{broadcastId}`: what was written, and to whom in terms of the audience, kept for the record. */
@@ -108,6 +112,26 @@ export interface BroadcastRecord {
   readonly completedAt: string | null;
   /** Why nothing more goes for now: the email setup check is failing. */
   readonly held?: NoticeHold | null;
+  /** Whether it needed a System Admin's approval, and what became of that; absent or null when it did not. */
+  readonly approval?: BroadcastApproval | null;
+}
+
+/** A System Admin's decision on an email that needed one (design §10.12). Any System Admin decides, the sender included. */
+export interface BroadcastApproval {
+  readonly status: 'waiting' | 'approved' | 'rejected';
+  readonly decidedBy: string | null;
+  readonly decidedAt: string | null;
+  /** Why it was rejected, in the System Admin's words; null when approved. */
+  readonly reason: string | null;
+}
+
+/** `POST /v1/admin/mail/broadcasts/{id}/reject`: why, for whoever wrote it. */
+export const broadcastRejectSchema = z.strictObject({ reason: z.string().trim().min(1, 'say why').max(500) });
+export type BroadcastRejectInput = z.infer<typeof broadcastRejectSchema>;
+
+/** Waiting for a System Admin, or about to go or going: only one at a time. */
+export function isBroadcastOpen(record: Pick<BroadcastRecord, 'status'>): boolean {
+  return record.status === 'awaiting_approval' || record.status === 'preparing' || record.status === 'sending';
 }
 
 export const BROADCAST_RECIPIENT_STATUSES = ['pending', 'sending', 'sent', 'skipped', 'failed'] as const;
@@ -139,11 +163,17 @@ export interface BroadcastCounts {
 }
 
 /** `GET /v1/admin/mail/broadcasts`: never who it went to, only how many. */
-export interface BroadcastSummary extends Omit<BroadcastRecord, 'audience' | 'createdBy'> {
+export interface BroadcastSummary extends Omit<BroadcastRecord, 'audience' | 'createdBy' | 'approval'> {
   /** For hand-picked members, how many rather than who. */
   readonly audience: { readonly kind: 'all_active' } | { readonly kind: 'place'; readonly countries: readonly string[]; readonly states: readonly string[] } | { readonly kind: 'picked'; readonly count: number };
   readonly createdByName: string | null;
   readonly counts: BroadcastCounts;
+  /** The approval with who decided by name; null when none was needed. */
+  readonly approval: (Omit<BroadcastApproval, 'decidedBy'> & { readonly decidedByName: string | null }) | null;
+  /** Whether the caller wrote it, so may withdraw it while it waits. */
+  readonly mine: boolean;
+  /** For an email waiting for approval: how many it would come to now. */
+  readonly willGetNow: number | null;
 }
 
 /** `GET /v1/admin/mail/broadcasts`. */
@@ -152,6 +182,10 @@ export interface BroadcastsView {
   readonly blocked: string | null;
   /** The contact the emails give, for the preview. */
   readonly contact: string | null;
+  /** Whether a System Admin must approve each email before it goes (Admin › Email › Settings). */
+  readonly approvalRequired: boolean;
+  /** Whether the caller may approve or reject: a System Admin. */
+  readonly canApprove: boolean;
   /** Newest first, the last few. */
   readonly broadcasts: readonly BroadcastSummary[];
 }
@@ -163,6 +197,15 @@ export interface BroadcastRequestedPayload {
   readonly bodyHash: string;
   readonly audience: BroadcastSummary['audience'];
   readonly willGet: number;
+  /** It waits for a System Admin's approval. Absent before approval existed. */
+  readonly approvalRequired?: boolean;
+}
+
+/** `notice.broadcast_approved` / `notice.broadcast_rejected`: which email, and for a rejection why. */
+export interface BroadcastDecidedPayload {
+  readonly broadcastId: string;
+  readonly subject: string;
+  readonly reason?: string;
 }
 
 export function broadcastAudienceSummary(audience: BroadcastAudience): BroadcastSummary['audience'] {

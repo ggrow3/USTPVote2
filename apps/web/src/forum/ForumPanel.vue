@@ -5,6 +5,7 @@ import { askReason, attempt } from '../dialogs.js';
 import { hasRole } from '../session.js';
 import { dismissReports, listPosts, listReports, moderateComment, moderatePost } from './api.js';
 import { ago, REPORT_REASON_LABELS } from './forum-text.js';
+import MessageReportsPanel from '../inbox/MessageReportsPanel.vue';
 import PostCard from './PostCard.vue';
 
 /**
@@ -98,6 +99,9 @@ async function dismiss(g: ForumReportGroup) {
         </q-item>
       </q-list>
     </section>
+
+    <!-- Messages between members that one reported (design §10.13): moderation, so here with the forum's. -->
+    <MessageReportsPanel v-if="moderator" />
 
     <section v-if="electionAdmin" class="ustp-stack">
       <h2 class="text-subtitle1">Proposals, most supported first</h2>

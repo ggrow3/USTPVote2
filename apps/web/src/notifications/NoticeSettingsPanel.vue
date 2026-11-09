@@ -35,6 +35,7 @@ type Draft = {
   allEmails: boolean;
   kinds: Record<NoticeKind, { enabled: boolean; subject: string; intro: string }>;
   emails: Record<OtherEmail, boolean>;
+  broadcastApproval: boolean;
   reminderHours: number | string;
   contact: string;
 };
@@ -45,6 +46,7 @@ const toDraft = (s: NoticeSettings): Draft => ({
     NOTICE_KINDS.map((k) => [k, { enabled: s.kinds[k].enabled, subject: s.kinds[k].subject ?? '', intro: s.kinds[k].intro ?? '' }]),
   ) as Draft['kinds'],
   emails: { ...s.emails },
+  broadcastApproval: s.broadcastApproval,
   reminderHours: s.reminderHours,
   contact: s.contact ?? '',
 });
@@ -55,6 +57,7 @@ const fromDraft = (d: Draft): NoticeSettings => ({
     NOTICE_KINDS.map((k) => [k, { enabled: d.kinds[k].enabled, subject: d.kinds[k].subject.trim() || null, intro: d.kinds[k].intro.trim() || null }]),
   ) as NoticeSettings['kinds'],
   emails: { ...d.emails },
+  broadcastApproval: d.broadcastApproval,
   reminderHours: Number(d.reminderHours),
   contact: d.contact.trim() || null,
 });
@@ -173,6 +176,11 @@ const OTHER_EMAIL_TEXT: Readonly<Record<OtherEmail, { label: string; caption: st
   electionTests: {
     label: 'Election Admins’ test emails',
     caption: '“Send test email” on an election’s email card, to the admin’s own address. Off: the button is refused.',
+  },
+  notifications: {
+    label: 'Notifications by email',
+    caption:
+      'Members’ in-app notifications (new messages, for one), for those who chose on their Account page to have them by email as each comes, or in a daily or weekly digest. Off: none goes, and none waits.',
   },
   memberTests: {
     label: 'Members’ test emails',
@@ -307,6 +315,23 @@ onMounted(load);
           <div v-for="key in OTHER_EMAILS" :key="key">
             <q-toggle v-model="draft!.emails[key]" :label="OTHER_EMAIL_TEXT[key].label" />
             <div class="text-caption text-grey-7 q-pl-xl">{{ OTHER_EMAIL_TEXT[key].caption }}</div>
+          </div>
+        </q-card-section>
+      </q-card>
+
+      <q-card flat bordered tag="section" aria-labelledby="settings-approval">
+        <q-card-section>
+          <h3 id="settings-approval" class="text-subtitle2 q-my-none">Emails to members</h3>
+        </q-card-section>
+        <q-card-section class="ustp-form q-pt-none">
+          <div>
+            <q-toggle v-model="draft!.broadcastApproval" label="A System Admin approves each email to members before it goes" />
+            <div class="text-caption text-grey-7 q-pl-xl">
+              On: an email a Membership or System Admin writes under Email members waits, and every System Admin is
+              notified (under the bell). Any System Admin may approve it, the one who wrote it included, or reject it
+              with a reason. Each decision is recorded in the audit ledger. An email already waiting still waits if you
+              switch this off.
+            </div>
           </div>
         </q-card-section>
       </q-card>

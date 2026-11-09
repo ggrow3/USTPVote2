@@ -14,10 +14,10 @@ import {
   type BroadcastSummary,
   type MemberMatch,
 } from 'ustp-domain';
-import { attempt, dialog } from '../dialogs.js';
+import { askReason, attempt, dialog } from '../dialogs.js';
 import MemberPicker from '../offices/MemberPicker.vue';
-import { cancelEmailToMembers, emailMembers, emailsToMembers, previewEmailToMembers, searchMembersToEmail } from './api.js';
-import { audienceText, broadcastStatusText, previewText, RECIPIENT_RULE } from './broadcast-text.js';
+import { approveEmailToMembers, cancelEmailToMembers, emailMembers, emailsToMembers, previewEmailToMembers, rejectEmailToMembers, searchMembersToEmail } from './api.js';
+import { approvalText, audienceText, broadcastStatusText, previewText, RECIPIENT_RULE } from './broadcast-text.js';
 
 /**
  * An email an admin writes to members (design §10.12), for Membership and System Admins: who it goes to, with a live count
@@ -109,18 +109,56 @@ function send() {
   const count = preview.value?.willGet ?? 0;
   if (!audience.value || !count) return;
   const chosen = audience.value;
+  const approval = !!view.value?.approvalRequired;
   dialog({
-    title: `Send this email to ${count} ${count === 1 ? 'member' : 'members'}?`,
-    message: `“${subject.value.trim()}” goes out straight away, and is recorded in the audit ledger. You can stop what has not gone yet, but not take back what has.`,
+    title: approval ? `Ask to send this email to ${count} ${count === 1 ? 'member' : 'members'}?` : `Send this email to ${count} ${count === 1 ? 'member' : 'members'}?`,
+    message: approval
+      ? `“${subject.value.trim()}” waits for a System Admin’s approval, and they are notified. Nothing goes until one approves it. It is recorded in the audit ledger.`
+      : `“${subject.value.trim()}” goes out straight away, and is recorded in the audit ledger. You can stop what has not gone yet, but not take back what has.`,
     cancel: true,
-    ok: { label: `Send to ${count}`, color: 'primary', noCaps: true },
+    ok: { label: approval ? 'Send for approval' : `Send to ${count}`, color: 'primary', noCaps: true },
   }).onOk(() => {
     void attempt(async () => {
       await emailMembers({ subject: subject.value.trim(), body: body.value.trim(), audience: chosen });
       subject.value = '';
       body.value = '';
       await load();
-    }, 'Queued: it starts going out within a minute.');
+    }, approval ? 'Sent for approval: the System Admins are notified.' : 'Queued: it starts going out within a minute.');
+  });
+}
+
+function approve(broadcast: BroadcastSummary) {
+  const n = broadcast.willGetNow ?? 0;
+  dialog({
+    title: 'Approve this email?',
+    message: `“${broadcast.subject}” goes out to ${n} ${n === 1 ? 'member' : 'members'} straight away. Your approval is recorded in the audit ledger.`,
+    cancel: true,
+    ok: { label: `Approve and send to ${n}`, color: 'primary', noCaps: true },
+  }).onOk(() => {
+    void attempt(async () => {
+      await approveEmailToMembers(broadcast.broadcastId);
+      await load();
+    }, 'Approved: it starts going out within a minute.');
+  });
+}
+
+async function reject(broadcast: BroadcastSummary) {
+  const reason = await askReason('Reject this email', `Nobody gets “${broadcast.subject}”. Say why, for whoever wrote it; it is recorded in the audit ledger.`);
+  if (reason === null) return;
+  if (await attempt(() => rejectEmailToMembers(broadcast.broadcastId, reason), 'Rejected.')) await load();
+}
+
+function withdraw(broadcast: BroadcastSummary) {
+  dialog({
+    title: 'Withdraw this email?',
+    message: `Nobody gets “${broadcast.subject}”, and it cannot be sent again; write it again to ask anew.`,
+    cancel: true,
+    ok: { label: 'Withdraw', color: 'negative', noCaps: true },
+  }).onOk(() => {
+    void attempt(async () => {
+      await cancelEmailToMembers(broadcast.broadcastId);
+      await load();
+    }, 'Withdrawn.');
   });
 }
 
@@ -139,6 +177,8 @@ function stop(broadcast: BroadcastSummary) {
 }
 
 const going = (b: BroadcastSummary) => b.status === 'preparing' || b.status === 'sending';
+const waiting = (b: BroadcastSummary) => b.status === 'awaiting_approval';
+const waitingForMe = computed(() => (view.value?.canApprove ? (view.value.broadcasts.filter(waiting) ?? []) : []));
 /** Delivery reports go on arriving for a while after the last copy went. */
 const REPORTS_MS = 10 * 60_000;
 const reporting = (b: BroadcastSummary) => !!b.completedAt && Date.now() - Date.parse(b.completedAt) < REPORTS_MS;
@@ -148,7 +188,7 @@ let timer: ReturnType<typeof setInterval> | undefined;
 onMounted(async () => {
   await load();
   timer = setInterval(() => {
-    if (view.value?.broadcasts.some((b) => going(b) || reporting(b))) void load();
+    if (view.value?.broadcasts.some((b) => going(b) || reporting(b) || waiting(b))) void load();
   }, 15_000);
 });
 // The page keeps this tab's draft while another tab is open, where a System Admin may switch email on or set the contact.
@@ -162,7 +202,14 @@ onUnmounted(() => clearInterval(timer));
       <h2 class="text-subtitle1">Email members</h2>
       <p class="q-mb-none">{{ RECIPIENT_RULE }}</p>
     </div>
+    <q-banner v-if="waitingForMe.length" dense rounded class="bg-blue-1 text-black" role="status">
+      {{ waitingForMe.length === 1 ? 'An email to members waits' : `${waitingForMe.length} emails to members wait` }} for a System Admin’s approval:
+      see “Emails” below, where you can read it, then approve or reject it.
+    </q-banner>
     <q-banner v-if="view?.blocked" dense rounded class="bg-orange-2 text-black" role="status">Nothing can be sent just now: {{ view.blocked }}.</q-banner>
+    <p v-else-if="view?.approvalRequired" class="q-my-none text-grey-8">
+      Each email waits for a System Admin’s approval before it goes out; they are notified when you send one.
+    </p>
 
     <q-card flat bordered tag="section" aria-labelledby="send-who">
       <q-card-section>
@@ -212,13 +259,20 @@ onUnmounted(() => clearInterval(timer));
     </q-card>
 
     <div class="ustp-actions">
-      <q-btn color="primary" no-caps icon="send" :label="preview?.willGet ? `Send to ${preview.willGet}` : 'Send'" :disable="!ready" @click="send" />
+      <q-btn
+        color="primary"
+        no-caps
+        icon="send"
+        :label="view?.approvalRequired ? 'Send for approval' : preview?.willGet ? `Send to ${preview.willGet}` : 'Send'"
+        :disable="!ready"
+        @click="send"
+      />
       <span v-if="hint" class="text-caption">{{ hint }}</span>
       <span class="text-caption text-grey-7">To try it first, pick yourself under “Members I pick”, if you are an Active member who opted in.</span>
     </div>
 
     <template v-if="view?.broadcasts.length">
-      <h3 class="text-subtitle2 q-mb-none">Emails sent</h3>
+      <h3 class="text-subtitle2 q-mb-none">Emails</h3>
       <q-list separator bordered class="rounded-borders">
         <q-expansion-item v-for="b in view.broadcasts" :key="b.broadcastId" dense>
           <template #header>
@@ -226,9 +280,18 @@ onUnmounted(() => clearInterval(timer));
               <q-item-label>{{ b.subject }}</q-item-label>
               <q-item-label caption>{{ when(b.createdAt) }}<template v-if="b.createdByName">, by {{ b.createdByName }}</template>. {{ audienceText(b.audience) }}.</q-item-label>
               <q-item-label caption>{{ broadcastStatusText(b) }}</q-item-label>
+              <q-item-label v-if="approvalText(b)" caption>{{ approvalText(b) }}</q-item-label>
+              <q-item-label v-if="waiting(b) && b.willGetNow !== null" caption>It would go to {{ b.willGetNow }} {{ b.willGetNow === 1 ? 'member' : 'members' }} now. Open it to read it.</q-item-label>
             </q-item-section>
             <q-item-section v-if="going(b)" side>
               <q-btn flat no-caps color="negative" label="Stop sending" @click.stop="stop(b)" />
+            </q-item-section>
+            <q-item-section v-else-if="waiting(b)" side>
+              <div class="ustp-actions">
+                <q-btn v-if="view.canApprove" unelevated no-caps color="primary" label="Approve" @click.stop="approve(b)" />
+                <q-btn v-if="view.canApprove" flat no-caps color="negative" label="Reject" @click.stop="reject(b)" />
+                <q-btn v-if="b.mine || !view.canApprove" flat no-caps label="Withdraw" @click.stop="withdraw(b)" />
+              </div>
             </q-item-section>
           </template>
           <q-card-section>

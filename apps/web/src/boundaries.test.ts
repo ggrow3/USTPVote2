@@ -33,6 +33,7 @@ const CONTEXTS: Readonly<Record<string, readonly string[]>> = {
     '/v1/public/maps',
   ],
   teams: ['/v1/teams', '/v1/admin/teams'],
+  bills: ['/v1/bills', '/v1/admin/bills'],
   forum: ['/v1/forum', '/v1/admin/forum'],
   room: ['/v1/room', '/v1/admin/room', 'room/messages', 'room/actions', 'room/memory'],
   communications: ['/v1/news', '/v1/press', '/v1/share', '/v1/suggestions', '/v1/admin/communications'],

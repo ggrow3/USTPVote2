@@ -1,15 +1,16 @@
 # The public-records services' keys a System Admin adds in the app, under Admin › API keys (design §5.6), beside the
-# Anthropic API key: the FEC's (api.data.gov), Open States' and Google Civic Information's. Each is optional. Terraform
+# Anthropic API key: the FEC's (api.data.gov), Open States' and Google Civic Information's, and the Bills page's
+# Congress.gov and GovInfo key (design §5.14; without it the Bills page uses the FEC key). Each is optional. Terraform
 # creates the secrets empty, so a key added in the app never passes through Terraform or its state; the app keeps it
 # as the secret's only live version. A key added there is used in place of the deployment's own (fec_api_key,
 # openstates_api_key, and civic.tf's generated key), which is used again once it is removed.
 #
-# Unlike the Anthropic key, the api reads these itself: it is the api that asks the services. So on these three
+# Unlike the Anthropic key, the api reads these itself: it is the api that asks the services. So on these four
 # secrets alone it may read the newest version (secretAccessor) as well as add and destroy versions
 # (secretVersionManager). It reads them while running, about once a minute, so a change counts without a release.
 
 locals {
-  app_api_key_secrets = toset(["app-fec-api-key", "app-openstates-api-key", "app-civic-api-key"])
+  app_api_key_secrets = toset(["app-fec-api-key", "app-openstates-api-key", "app-civic-api-key", "app-congress-api-key"])
 }
 
 resource "google_secret_manager_secret" "app_api_key" {

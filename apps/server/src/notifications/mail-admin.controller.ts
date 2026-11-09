@@ -3,11 +3,13 @@ import { z } from 'zod';
 import {
   adminTestSchema,
   checkMailHealthRequest,
+  mailLogQuerySchema,
   mailRestoreSchema,
   mailStopSchema,
   type AdminTestInput,
   type MailCheckStatus,
   type MailHealthView,
+  type MailLogQuery,
   type MailRestoreInput,
   type MailStopInput,
   type MailStopRow,
@@ -17,6 +19,7 @@ import { Ctx, requireAccount, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { assertCheck, parseQuery, ZodPipe } from '../common/validation.js';
 import { Firebase } from '../infra/firebase.js';
+import { MailLogService } from './mail-log.js';
 import { MailPreferences } from './mail-preferences.js';
 import { MailRepository } from './mail.repository.js';
 import { MyEmailService } from './my-email.js';
@@ -56,7 +59,7 @@ export class MailHealthService {
 }
 
 /**
- * System Admins see whether email is set up properly, and ask for a check now; Membership Admins see which members
+ * System Admins see whether email is set up properly, ask for a check now, and read the log of every email sent; Membership Admins see which members
  * cannot be emailed; both see who gets no email, and stop or restore an admin's stop (design §10.12).
  */
 @Controller('v1/admin/mail')
@@ -66,7 +69,14 @@ export class MailAdminController {
     private readonly health: MailHealthService,
     private readonly email: MyEmailService,
     private readonly preferences: MailPreferences,
+    private readonly log: MailLogService,
   ) {}
+
+  /** The email log: every email the site sent, newest first, a page at a time (design §10.12). */
+  @Get('log')
+  logPage(@Query(new ZodPipe(mailLogQuerySchema)) query: MailLogQuery) {
+    return this.log.page(query);
+  }
 
   @Get('members')
   @Roles('membership_admin')

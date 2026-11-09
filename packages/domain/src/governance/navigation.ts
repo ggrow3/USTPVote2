@@ -10,7 +10,7 @@ import { ROLES, type Role } from '../roles.js';
  */
 
 /** The menu bar's links in menu order, then the header's Sign in button (which only signed-out visitors can use). */
-export const MENU_LINKS = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'news', 'course', 'admin', 'signin'] as const;
+export const MENU_LINKS = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'bills', 'news', 'course', 'admin', 'signin'] as const;
 export type MenuLink = (typeof MENU_LINKS)[number];
 
 /** The admin console's sections (tabs), in tab order. */
@@ -39,6 +39,7 @@ export const ADMIN_SECTIONS = [
   'hub',
   'quote',
   'course',
+  'bills',
 ] as const;
 export type AdminSection = (typeof ADMIN_SECTIONS)[number];
 
@@ -95,6 +96,8 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   communications: ['communications_admin'],
   quote: ['system_admin'],
   course: ['course_admin'],
+  // Which teams have the legislative team's Bills tool (design §5.14).
+  bills: ['system_admin'],
 };
 
 /** Links that lead a signed-out visitor to sign in: Sign in itself, Register (its first step), and Ballot and Admin. */
@@ -119,6 +122,7 @@ export const START_PAGES: readonly StartPage[] = [
   'teams',
   'forum',
   'room',
+  'bills',
   'news',
   'course',
   ...ADMIN_SECTIONS.map((s) => `admin/${s}` as const),
@@ -192,17 +196,19 @@ function defaultSection(role: Role, section: AdminSection): boolean {
  * office, design §5.8). Roles add Ballot, Verify, Offices and Candidates, so a staff member with no membership keeps
  * them, and Admin (from their sections). Signing in lands on Register with no membership, as it did, and on the home
  * page otherwise. Teams, the forum and the members' room are for Active members only (design §5.7, §5.9, §5.10); News is for everyone (design §10.9).
+ * Bills (design §5.14) is for Active members and System Admins, and the web app shows it only to people who have the
+ * tool: those on a team its setting names, and System Admins.
  */
 export const DEFAULT_NAVIGATION: NavigationSettings = {
   menu: Object.fromEntries(
     AUDIENCES.map((a) => [
       a,
       isRole(a)
-        ? links('ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin')
+        ? links('ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin', ...(a === 'system_admin' ? (['bills'] as const) : []))
         : a === 'signed_out'
           ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin', 'signin')
           : a === 'active'
-            ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'news', 'course', 'admin')
+            ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'bills', 'news', 'course', 'admin')
             : links('register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin'),
     ]),
   ) as Record<Audience, Record<MenuLink, boolean>>,

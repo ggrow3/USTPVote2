@@ -10,6 +10,7 @@ import ElectionsPanel from '../components/admin/ElectionsPanel.vue';
 import OfficesPanel from '../offices/OfficesPanel.vue';
 import CandidaciesPanel from '../candidacies/CandidaciesPanel.vue';
 import TeamsPanel from '../teams/TeamsPanel.vue';
+import BillsPanel from '../bills/BillsPanel.vue';
 import CommunicationsPanel from '../communications/CommunicationsPanel.vue';
 import ForumPanel from '../forum/ForumPanel.vue';
 import RoomPanel from '../room/RoomPanel.vue';
@@ -60,6 +61,7 @@ const PANELS: Record<AdminSection, Component> = {
   communications: CommunicationsPanel,
   quote: HomeQuotePanel,
   course: CoursePanel,
+  bills: BillsPanel,
 };
 
 usePageTitle('Administration');

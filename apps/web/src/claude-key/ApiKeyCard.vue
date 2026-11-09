@@ -79,11 +79,11 @@ function remove() {
 
     <q-card-section class="q-pt-none">
       <p :id="statusId" tabindex="-1" class="api-key-status">
-        <q-icon :name="set ? 'key' : 'key_off'" size="20px" aria-hidden="true" class="q-mr-xs" />{{ apiKeyStatusText(status) }}
+        <q-icon :name="status.unavailable ? 'warning' : set ? 'key' : 'key_off'" size="20px" aria-hidden="true" class="q-mr-xs" />{{ apiKeyStatusText(status) }}
       </p>
     </q-card-section>
 
-    <q-card-section class="q-pt-none">
+    <q-card-section v-if="!status.unavailable" class="q-pt-none">
       <form class="ustp-form" novalidate @submit.prevent="save">
         <q-input
           v-model="key"

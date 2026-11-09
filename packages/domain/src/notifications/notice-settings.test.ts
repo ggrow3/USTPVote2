@@ -39,14 +39,15 @@ describe('the default settings', () => {
         closing_soon: { enabled: true, subject: null, intro: null },
         voted: { enabled: true, subject: null, intro: null },
       },
-      emails: { welcome: true, electionTests: true, memberTests: true },
+      emails: { welcome: true, electionTests: true, memberTests: true, notifications: true },
+      broadcastApproval: false,
       reminderHours: 24,
       contact: null,
     });
     expect(resolveNoticeSettings(undefined)).toEqual(DEFAULT_NOTICE_SETTINGS);
     expect(resolveNoticeSettings({ reminderHours: 48 } as Partial<NoticeSettings>)).toEqual({ ...DEFAULT_NOTICE_SETTINGS, reminderHours: 48 });
     // Settings saved before the other emails had switches keep them on.
-    expect(resolveNoticeSettings({ emails: { welcome: false } }).emails).toEqual({ welcome: false, electionTests: true, memberTests: true });
+    expect(resolveNoticeSettings({ emails: { welcome: false } }).emails).toEqual({ welcome: false, electionTests: true, memberTests: true, notifications: true });
   });
 
   it('give the same emails as the built-in wording', () => {
@@ -138,7 +139,8 @@ describe('noticeSettingsChanges', () => {
         closing_soon: { enabled: false, subject: null, intro: null },
         voted: { enabled: true, subject: null, intro: null },
       },
-      emails: { welcome: false, electionTests: true, memberTests: false },
+      emails: { welcome: false, electionTests: true, memberTests: false, notifications: false },
+      broadcastApproval: true,
       reminderHours: 48,
       contact: 'elections@example.org',
     };
@@ -148,6 +150,8 @@ describe('noticeSettingsChanges', () => {
       { field: 'closing_soon.enabled', from: true, to: false },
       { field: 'emails.welcome', from: true, to: false },
       { field: 'emails.memberTests', from: true, to: false },
+      { field: 'emails.notifications', from: true, to: false },
+      { field: 'broadcastApproval', from: false, to: true },
       { field: 'reminderHours', from: 24, to: 48 },
       { field: 'contact', from: null, to: 'elections@example.org' },
     ]);

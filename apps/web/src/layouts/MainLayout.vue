@@ -6,6 +6,7 @@ import { acting } from '../acting.js';
 import { APP_NAME } from '../app-name.js';
 import UpdateBanner from '../components/UpdateBanner.vue';
 import MailProblemBanner from '../notifications/MailProblemBanner.vue';
+import NotificationBell from '../inbox/NotificationBell.vue';
 import { usingEmulators } from '../firebase.js';
 import { navigationState, shown } from '../governance/navigation.js';
 import { MENU_LABELS } from '../governance/navigation-text.js';
@@ -14,6 +15,7 @@ import { hasRole, secondFactorMissing, session, signOut } from '../session.js';
 import { toggleTheme } from '../theme.js';
 import { update } from '../update.js';
 import { linksInRow } from './menu-fit.js';
+import { billsState } from '../bills/access.js';
 
 const TestingBar = defineAsyncComponent(() => import('../components/TestingBar.vue'));
 /** The walkthrough under way (design §10.11), loaded only while there is one. */
@@ -25,10 +27,13 @@ const who = computed(() => acting.persona?.label || session.me?.account?.display
 /**
  * The links the navigation settings give this person (design §10.5), once their account and the settings are known.
  * Each page still explains itself to someone who reaches it without being one it is for. Sign in is the header's button.
+ * Bills is shown only to people who have the tool (design §5.14), which the settings cannot know.
  */
 const links = computed(() =>
   session.ready && navigationState.loaded
-    ? shown.value.menu.filter((link) => link !== 'signin').map((link) => ({ to: link === 'course' ? '/courses' : `/${link}`, label: MENU_LABELS[link] }))
+    ? shown.value.menu
+        .filter((link) => link !== 'signin' && (link !== 'bills' || billsState.access?.allowed === true))
+        .map((link) => ({ to: link === 'course' ? '/courses' : `/${link}`, label: MENU_LABELS[link] }))
     : [],
 );
 
@@ -149,6 +154,8 @@ watch(headerShown, (now) => now || (document.documentElement.style.scrollPadding
             @click="toggleTheme"
           />
           <template v-if="session.ready">
+            <!-- Notifications and messages (design §10.13), for whoever has an account. -->
+            <NotificationBell v-if="session.user && session.me?.account" />
             <!-- On phones only the icon shows, so the title is not squeezed out (WCAG 1.4.10). -->
             <q-btn-dropdown
               v-if="session.user"
@@ -160,6 +167,7 @@ watch(headerShown, (now) => now || (document.documentElement.style.scrollPadding
             >
               <q-list>
                 <q-item v-close-popup clickable to="/account"><q-item-section>Account</q-item-section></q-item>
+                <q-item v-if="session.me?.account" v-close-popup clickable to="/messages"><q-item-section>Messages</q-item-section></q-item>
                 <q-item v-close-popup clickable @click="onSignOut"><q-item-section>Sign out</q-item-section></q-item>
               </q-list>
             </q-btn-dropdown>
