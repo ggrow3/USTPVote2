@@ -107,7 +107,7 @@ export class MemberAdditions {
     await db.runTransaction(async (tx) => {
       const account = (await tx.get(db.collection(Collections.accounts).doc(accountId))).data() as AccountRecord | undefined;
       if (!account?.addedAt) throw new NotFoundException('no member added by a Membership Admin has this account');
-      await this.welcomes.recordLink(tx, accountId, actor, at, reported);
+      await this.welcomes.recordLink(tx, accountId, account.primaryEmail ?? null, actor, at, reported);
     });
   }
 

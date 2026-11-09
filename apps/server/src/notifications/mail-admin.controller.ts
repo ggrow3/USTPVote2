@@ -3,11 +3,17 @@ import { z } from 'zod';
 import {
   adminTestSchema,
   checkMailHealthRequest,
+  mailDayQuerySchema,
+  mailDaysQuerySchema,
   mailLogQuerySchema,
   mailRestoreSchema,
   mailStopSchema,
   type AdminTestInput,
   type MailCheckStatus,
+  type MailDayQuery,
+  type MailDaysQuery,
+  type MailDaysView,
+  type MailDayView,
   type MailHealthView,
   type MailLogQuery,
   type MailRestoreInput,
@@ -76,6 +82,18 @@ export class MailAdminController {
   @Get('log')
   logPage(@Query(new ZodPipe(mailLogQuerySchema)) query: MailLogQuery) {
     return this.log.page(query);
+  }
+
+  /** How many emails the site sent each of the last days, in the admin's time zone (design §10.12). */
+  @Get('days')
+  days(@Query(new ZodPipe(mailDaysQuerySchema)) query: MailDaysQuery): Promise<MailDaysView> {
+    return this.log.days(query);
+  }
+
+  /** One day's emails: how many in all, by kind, by what became of them, and to each person and address (§10.12). */
+  @Get('day')
+  day(@Query(new ZodPipe(mailDayQuerySchema)) query: MailDayQuery): Promise<MailDayView> {
+    return this.log.day(query);
   }
 
   /**

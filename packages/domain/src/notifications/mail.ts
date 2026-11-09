@@ -3,8 +3,8 @@ import { NOTICE_KINDS, type NoticeDelivery, type NoticeKind, type RecipientStatu
 
 /**
  * Delivery reports (design §6.8): what the mail service says became of each message after it took it. The worker keeps
- * one record per message the service took, without the address, the subject or the body, and moves it on as reports
- * arrive (delivered, delayed, bounced, marked as spam, rejected). It never learns whether a message was opened or a link
+ * one record per message the service took, with the address it went to (since 2026-11-09, for the email log) but never
+ * the subject or the body, and moves it on as reports arrive (delivered, delayed, bounced, marked as spam, rejected). It never learns whether a message was opened or a link
  * clicked: the emails carry no tracking image and their links go straight to the site. An address that bounced for good
  * or whose owner marked an email as spam is not mailed again (`mail_suppressions`), until its owner asks to try again.
  */
@@ -76,8 +76,8 @@ export interface MailEvent {
   /** The configuration set that published it, so one deployment never acts on another's reports. */
   readonly configurationSet: string | null;
   /**
-   * The recipient's address, as the report names it. Used only to find whose it is and which address to stop mailing;
-   * never stored or logged.
+   * The recipient's address, as the report names it: used to find whose it is and which address to stop mailing, and
+   * kept as the address an email of Identity Platform's went to (`MailMessageRecord.to`); never logged.
    */
   readonly destination: string | null;
   /** The subject, used only to tell Identity Platform's emails apart (`identityMailKind`); never stored or logged. */
@@ -91,6 +91,11 @@ export interface MailMessageRecord {
   readonly messageId: string;
   /** Whose it is; null when Identity Platform mailed an address no account has. */
   readonly accountId: string | null;
+  /**
+   * The address it went to, as it was then (design §10.12, the email log, the party's decision of 2026-11-09): an
+   * account's address can change after. Null for a message to nobody (a rehearsal's); absent on records made before.
+   */
+  readonly to?: string | null;
   readonly kind: MailKind;
   /** What it belongs to: the notice, the test email or the added member; null for Identity Platform's mail. */
   readonly ref: string | null;
@@ -201,6 +206,8 @@ export function mailMessageRecord(input: {
   readonly ref: string | null;
   readonly electionId: string | null;
   readonly accountId: string | null;
+  /** The address it went to. */
+  readonly to?: string | null;
   readonly causedBy: string | null;
   readonly delivery: NoticeDelivery;
   readonly at: string;
@@ -209,6 +216,7 @@ export function mailMessageRecord(input: {
   return {
     messageId,
     accountId,
+    to: input.to || null,
     kind,
     ref,
     electionId,
@@ -244,8 +252,9 @@ export function identityMailKind(subject: string | null): MailKind {
 /** The record of a message Identity Platform sent, from its first report; `accountId` is whose address it went to. */
 export function identityMailRecord(event: MailEvent, accountId: string | null): MailMessageRecord {
   const kind = identityMailKind(event.subject);
+  const to = event.destination;
   return {
-    ...mailMessageRecord({ messageId: event.messageId, kind, ref: null, electionId: null, accountId, causedBy: null, delivery: 'mail', at: event.sentAt }),
+    ...mailMessageRecord({ messageId: event.messageId, kind, ref: null, electionId: null, accountId, to, causedBy: null, delivery: 'mail', at: event.sentAt }),
     sender: 'identity_platform',
   };
 }
@@ -260,10 +269,17 @@ export function identityMailRecord(event: MailEvent, accountId: string | null): 
 export const WELCOME_LINK_MATCH_MINUTES = 15;
 
 /** The log's record of a welcome sign-in link the admin's browser says Identity Platform took. */
-export function welcomeLinkRecord(input: { readonly messageId: string; readonly accountId: string; readonly causedBy: string; readonly at: string }): MailMessageRecord {
-  const { messageId, accountId, causedBy, at } = input;
+export function welcomeLinkRecord(input: {
+  readonly messageId: string;
+  readonly accountId: string;
+  /** The address the admin's browser asked Identity Platform to send the link to. */
+  readonly to: string | null;
+  readonly causedBy: string;
+  readonly at: string;
+}): MailMessageRecord {
+  const { messageId, accountId, to, causedBy, at } = input;
   return {
-    ...mailMessageRecord({ messageId, kind: 'welcome', ref: accountId, electionId: null, accountId, causedBy, delivery: 'mail', at }),
+    ...mailMessageRecord({ messageId, kind: 'welcome', ref: accountId, electionId: null, accountId, to, causedBy, delivery: 'mail', at }),
     sender: 'identity_platform',
     handOff: true,
     // Not a message of this deployment's SES configuration set: its rates count only those.

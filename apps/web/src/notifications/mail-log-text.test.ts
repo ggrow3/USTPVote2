@@ -1,6 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { MAIL_KINDS, MAIL_STATUSES } from 'ustp-domain';
-import { LOG_KIND_LABELS, LOG_STATUS_COLOURS, LOG_STATUS_LABELS, logBounce, logCause, logKind, logRecipient, logStatus } from './mail-log-text.js';
+import {
+  dayPersonAddresses,
+  dayPersonName,
+  emailCount,
+  kindCounts,
+  LOG_KIND_LABELS,
+  LOG_STATUS_COLOURS,
+  LOG_STATUS_LABELS,
+  logBounce,
+  logCause,
+  logKind,
+  logRecipient,
+  logStatus,
+} from './mail-log-text.js';
 
 describe('the email log’s wording', () => {
   it('names every kind and status', () => {
@@ -11,12 +24,37 @@ describe('the email log’s wording', () => {
     }
   });
 
-  it('says whom an email went to', () => {
-    expect(logRecipient({ kind: 'broadcast', accountId: 'a1', accountName: 'Ada Brooks', accountEmail: 'ada@example.test' })).toBe('Ada Brooks (ada@example.test)');
-    expect(logRecipient({ kind: 'broadcast', accountId: 'a1', accountName: 'ada@example.test', accountEmail: 'ada@example.test' })).toBe('ada@example.test');
-    expect(logRecipient({ kind: 'welcome', accountId: 'a1', accountName: null, accountEmail: null })).toBe('An account with no name');
-    expect(logRecipient({ kind: 'probe', accountId: null, accountName: null, accountEmail: null })).toMatch(/simulator/);
-    expect(logRecipient({ kind: 'account_email', accountId: null, accountName: null, accountEmail: null })).toBe('An address no account has');
+  it('says whom an email went to, and the address it went to', () => {
+    const ada = { kind: 'broadcast', accountId: 'a1', accountName: 'Ada Brooks', accountEmail: 'ada@example.test', to: 'ada@example.test' } as const;
+    expect(logRecipient(ada)).toBe('Ada Brooks (ada@example.test)');
+    // She has changed her address since: the one it went to.
+    expect(logRecipient({ ...ada, accountEmail: 'ada@new.test' })).toBe('Ada Brooks (ada@example.test)');
+    expect(logRecipient({ ...ada, accountName: 'ada@example.test' })).toBe('ada@example.test');
+    expect(logRecipient({ kind: 'welcome', accountId: 'a1', accountName: null, accountEmail: null, to: null })).toBe('An account with no name');
+    expect(logRecipient({ kind: 'probe', accountId: null, accountName: null, accountEmail: null, to: 'success@simulator.amazonses.com' })).toMatch(/simulator/);
+    expect(logRecipient({ kind: 'account_email', accountId: null, accountName: null, accountEmail: null, to: 'stranger@example.test' })).toBe(
+      'stranger@example.test (no account has this address)',
+    );
+    expect(logRecipient({ kind: 'account_email', accountId: null, accountName: null, accountEmail: null, to: null })).toBe('An address no account has');
+  });
+
+  it('says so when an email was sent before addresses were kept', () => {
+    expect(logRecipient({ kind: 'broadcast', accountId: 'a1', accountName: 'Ada Brooks', accountEmail: 'ada@example.test', to: null })).toBe(
+      'Ada Brooks (address now: ada@example.test)',
+    );
+  });
+
+  it('words a day’s person, their addresses and what they were sent', () => {
+    const person = { accountId: 'a1', name: 'Ada Brooks', addresses: ['ada@example.test'], addressNow: null, kinds: [{ kind: 'voted', count: 2 }, { kind: 'broadcast', count: 1 }] } as const;
+    expect(dayPersonName(person)).toBe('Ada Brooks');
+    expect(dayPersonAddresses(person)).toBe('ada@example.test');
+    expect(dayPersonAddresses({ addresses: [], addressNow: 'ada@example.test' })).toMatch(/^ada@example\.test \(the address now/);
+    expect(dayPersonAddresses({ addresses: [], addressNow: null })).toBe('Address not kept');
+    expect(kindCounts(person.kinds)).toBe('2 × Vote confirmation, Email to members');
+    expect(dayPersonName({ accountId: null, name: null, addresses: ['x@example.test'], kinds: [{ kind: 'sign_in_link', count: 1 }] })).toBe('No account has this address');
+    expect(dayPersonName({ accountId: null, name: null, addresses: ['success@simulator.amazonses.com'], kinds: [{ kind: 'probe', count: 3 }] })).toMatch(/simulator/);
+    expect(emailCount(1)).toBe('1 email');
+    expect(emailCount(1234)).toMatch(/^1.?234 emails$/);
   });
 
   it('says who caused it', () => {

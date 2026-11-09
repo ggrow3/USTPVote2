@@ -16,8 +16,8 @@ export type MailResult =
  * Sends one of the app's emails (design §6.8), the one way they all go: nothing to anyone while all email is off, which
  * it is until a System Admin switches it on, nothing to a member who unsubscribed or whose email an admin stopped
  * (§10.12), and not to an address that bounced for good or was marked as spam (`undeliverable`); else through the
- * transport, keeping a record of each message the provider took so its delivery reports have somewhere to go. The address
- * is used for the send only: it is in neither the record nor the logs. A message to nobody (a rehearsal's) and the setup
+ * transport, keeping a record of each message the provider took so its delivery reports have somewhere to go. The record
+ * keeps the address it went to, for the email log (§10.12, the party's decision of 2026-11-09); the logs never have it. A message to nobody (a rehearsal's) and the setup
  * check's to Amazon's simulator reach no one, so they go regardless; and a System Admin's test to themselves goes while
  * email is off, since that is how they see that it works before switching it on. Every message comes from the
  * deployment's address (`MAIL_FROM`), under the name a System Admin set, if any.
@@ -58,7 +58,8 @@ export class Mailer {
       else this.logger.error(line);
       return { status: 'failed', outcome };
     }
-    const record = mailMessageRecord({ messageId, kind, ref, electionId, accountId, causedBy, delivery: transport.delivery, at: new Date().toISOString() });
+    const at = new Date().toISOString();
+    const record = mailMessageRecord({ messageId, kind, ref, electionId, accountId, to: message.to, causedBy, delivery: transport.delivery, at });
     await this.mail.create(record).catch((e: unknown) => {
       // The message went; only what its reports say of it is lost.
       this.logger.error(`${kind} email ${messageId} sent, but not recorded: ${errorName(e)}`);

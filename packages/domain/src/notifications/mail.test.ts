@@ -45,13 +45,16 @@ const permanent = { type: 'permanent' as const, subType: 'General' };
 describe('the record of a message sent', () => {
   it('starts as sent, counted only when really mailed', () => {
     expect(sent()).toMatchObject({ status: 'sent', sender: 'app', counted: true, deliveredAt: null, bounce: null });
+    expect(mailMessageRecord({ messageId: 'm1', kind: 'welcome', ref: 'a1', electionId: null, accountId: 'a1', to: 'ada@example.org', causedBy: null, delivery: 'mail', at: SENT }).to).toBe('ada@example.org');
+    // A message to nobody (a rehearsal's) keeps no address.
+    expect(mailMessageRecord({ messageId: 'm1', kind: 'voting_open', ref: 'n1', electionId: 'e1', accountId: null, to: '', causedBy: null, delivery: 'outbox', at: SENT }).to).toBeNull();
     expect(sent({ ...mailMessageRecord({ messageId: 'm1', kind: 'welcome', ref: 'a1', electionId: null, accountId: 'a1', causedBy: 'admin-1', delivery: 'outbox', at: SENT }) }))
       .toMatchObject({ counted: false, delivery: 'outbox' });
   });
 
   it('of mail Identity Platform sent is made from its first report', () => {
     const record = identityMailRecord(event('send', 0, { kind: null, ref: null }), 'a7');
-    expect(record).toMatchObject({ messageId: 'm1', accountId: 'a7', kind: 'account_email', sender: 'identity_platform', status: 'sent', sentAt: SENT });
+    expect(record).toMatchObject({ messageId: 'm1', accountId: 'a7', to: 'ada@example.org', kind: 'account_email', sender: 'identity_platform', status: 'sent', sentAt: SENT });
     expect(identityMailRecord(event('send', 0, { kind: null, subject: 'Sign in to USTP Vote requested at 10:04' }), null).kind).toBe('sign_in_link');
   });
 
@@ -67,10 +70,10 @@ describe('the record of a message sent', () => {
 });
 
 describe('a welcome sign-in link an admin’s browser asked Identity Platform for', () => {
-  const link = welcomeLinkRecord({ messageId: 'welcome-link-1', accountId: 'a7', causedBy: 'admin1', at: SENT });
+  const link = welcomeLinkRecord({ messageId: 'welcome-link-1', accountId: 'a7', to: 'ada@example.org', causedBy: 'admin1', at: SENT });
 
   it('is logged as the admin’s welcome to the member, apart from the deployment’s own rates', () => {
-    expect(link).toMatchObject({ kind: 'welcome', ref: 'a7', accountId: 'a7', causedBy: 'admin1', sender: 'identity_platform', handOff: true, status: 'sent', counted: false, sentAt: SENT });
+    expect(link).toMatchObject({ kind: 'welcome', ref: 'a7', accountId: 'a7', to: 'ada@example.org', causedBy: 'admin1', sender: 'identity_platform', handOff: true, status: 'sent', counted: false, sentAt: SENT });
     expect(isUnmatchedWelcomeLink(link)).toBe(true);
     expect(isUnclaimedSignInLink(link)).toBe(false);
   });

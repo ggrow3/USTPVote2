@@ -2956,7 +2956,8 @@ clicks: the emails carry no tracking image and their links go straight to the si
 queue (`SES_EVENTS_QUEUE_URL`). The worker keeps a record of each message SES took, `mail_messages/{messageId}`: whose
 it is, what it is and what it belongs to, who caused it *(added 2026-11-08, for the email log, §10.12)*, and its status, which only moves on (`sent`, `delayed`, `delivered`,
 `bounced`, `complained` (marked as spam), `rejected`), with when each happened and a bounce's type and subtype as
-codes. Never the address, the subject, the body or the mail server's text. Every tick it reads the queue for up to ten
+codes, and the address it went to *(added 2026-11-09, the party's decision, for the email log, §10.12)*. Never the
+subject, the body or the mail server's text, and the logs never name an address. Every tick it reads the queue for up to ten
 seconds and applies each report: to the message's record; to the notice recipient it was, which becomes `delivered`,
 `complained` or `bounced` (a soft bounce once SES stopped trying, or a message SES rejected, counts as bounced); to
 the test email it was, so an Election Admin sees whether their own test arrived; and to the welcome email it was. A
@@ -2971,7 +2972,8 @@ applies to whoever has it, and lapses a year after its last report. Every sender
 address (`undeliverable`); SES's own account-level suppression list does the same for bounces (§14). Soft bounces and
 rejections suppress nothing. Mail Identity Platform sends about an account (§4) reaches the same queue without this
 app's tags: its first report makes its record (sender `identity_platform`), found to be an account's by the address
-it went to, which the worker looks up and does not keep, and named from the subject, which it does not keep either: a
+it went to, which the worker looks up and, since 2026-11-09, keeps as the address it went to, and named from the
+subject, which it does not keep: a
 sign-in link, an address confirmation, a password reset, or another account email.
 
 Receipts (below) say what each send did and never change; the counts in the editor are read live, so a bounce three
@@ -4654,8 +4656,9 @@ setup check is a different thing: its messages go to SES's simulator and reach n
 **The email log** *(added 2026-11-08, the party's decision)*. System and Site Admins can see every email the site sent under
 Admin › Email › Email log (`GET /v1/admin/mail/log`): the records the worker already keeps of each message the mail
 service took (`mail_messages`, §6.8), this app's and Identity Platform's, newest first, fifty at a time. Each row says
-what the email was (and the election, for an election email), whom it went to (the account's name and the address the
-account has now), who caused it, when it was sent, and what its delivery reports said (delivered, delayed, bounced and
+what the email was (and the election, for an election email), whom it went to (the account's name and the address it
+went to, *added 2026-11-09*; an email sent before then kept no address, so its row shows the address the account has
+now, said so), who caused it, when it was sent, and what its delivery reports said (delivered, delayed, bounced and
 how, marked as spam). *Who caused it* is the account that asked: the admin who wrote to members, resent a notice, added a
 member or asked for a test, or the member who asked for a test; `system` for what the worker sends by itself (a notice's
 first round, vote confirmations, the setup check's probe); none for Identity Platform's mail, which the member asked for
@@ -4664,14 +4667,25 @@ adding admin's browser asked Identity Platform for and reported to the api *(add
 named "Welcome to an added member (Identity Platform's sign-in link)", and where Identity Platform sends through
 Google's own mail rather than SES it shows "Sent by Identity Platform, no reports" (§5.13). The log is narrowed by recipient (a member found by name or an
 account by the start of its address), by who caused it, by kind, by status and by days, and a name in a row narrows it
-to that person.
+to that person. Days are the admin's own: the browser names its time zone (`tz`, an IANA name; UTC when none), and a day
+runs from midnight to midnight there *(added 2026-11-09)*.
 
-- **Metadata only.** The party chose to keep no email's words in it: the records hold no address, subject or body, as
-  before; an email to members keeps its words in its own record (`broadcasts`, below). An email the site did not send
+- **Metadata only.** The party chose to keep no email's words in it: the records hold no subject or body, as before;
+  an email to members keeps its words in its own record (`broadcasts`, below). The address each went to is kept since
+  2026-11-09, when the party asked to see it *(the party's decision then)*: it is personal data like the account's own
+  address, seen by the same admins, kept as long as the record and deleted with its account. An email the site did not send
   (switched off, unsubscribed, stopped, no confirmed address) has no record and is not in the log; the election card,
   the email to members and the member's own requests count those.
 - **Kept 180 days**, the records' own life (Firestore TTL), and deleted with their account (§4) or election (§6.1). Not
   ledgered: it changes nothing.
+- **Daily counts** *(added 2026-11-09, asked by the party to keep track of email)*. Admin › Email › Daily counts shows how
+  many emails the site sent each of the last 7, 30 or 90 days, a column a day (`GET /v1/admin/mail/days`, counted by
+  Firestore, no record read), and for a chosen day (`GET /v1/admin/mail/day`): how many in all, to how many people and
+  addresses, by what became of them and by kind, and each person's count with the addresses theirs went to, what they
+  were and what became of them, the most first. An address no account has (Identity Platform's mail to it, the setup
+  check's to the simulator) is a line of its own. A day's breakdown reads at most 20,000 records and lists at most 1,000
+  people, saying so when it stops short; the day's total counts them all. "See them in the log" opens the log narrowed
+  to that person and day. Days are the admin's own, as in the log.
 - **Reading it.** Firestore reads the records by the most selective filter given (recipient, then who caused it, then
   kind, then status) and the days; the rest are applied to what comes back. One page reads at most 1,000 records, so a
   filter that matches little says when it stopped short and the next page goes further back.
@@ -4882,7 +4896,7 @@ Physically, registration collections are top-level and election data lives under
 | `welcome_emails/{accountId}` | accountId | pending → sending → done; started over when asked again; deleted with the account | the latest welcome email to a member a Membership Admin added, where mail is sent: who asked, when, outcome code, provider message ID; never the address (§5.13) *(added)* |
 | `notice_verifications/{receiptId}` | the send's receipt | pending → ok / short, once, 30 minutes after the send; deleted with its election | each send to a roll checked against its delivery reports: election, kind, notice, round, when it finished and is due, messages, delivered, marked as spam, delayed, bounced, rejected, no report; never who (§6.8) *(added)* |
 | `notice_tests/{testId}` | auto | pending → sending → done; deleted with its election | an Election Admin's test email to themselves: kind, who asked, the account it goes to (theirs), when, outcome code, receipt, what SES reported of it; never the address (§6.8) *(added)* |
-| `mail_messages/{messageId}` | SES message ID | its status moves on with each delivery report; TTL 180 days after sending; deleted with its account or election | each message SES took: account, kind, what it belongs to, election, sender (`app` or `identity_platform`), who caused it (an account, `system`, or null for Identity Platform's and older records; §10.12), delivery, status (sent / delayed / delivered / bounced / complained / rejected), when each happened, bounce type and subtype, whether it counts toward the rates; never the address, subject or body (§6.8) *(added)* |
+| `mail_messages/{messageId}` | SES message ID | its status moves on with each delivery report; TTL 180 days after sending; deleted with its account or election | each message SES took: account, kind, what it belongs to, election, sender (`app` or `identity_platform`), who caused it (an account, `system`, or null for Identity Platform's and older records; §10.12), delivery, status (sent / delayed / delivered / bounced / complained / rejected), when each happened, bounce type and subtype, whether it counts toward the rates, the address it went to (since 2026-11-09, §10.12); never the subject or body (§6.8) *(added)* |
 | `mail_suppressions/{addressKey}` | SHA-256 of the address | create, renewed by each report; TTL a year after the last; deleted with the account it was found through | an address not to mail: bounced for good or marked as spam, since when, the message that started it, the account if known; never the address (§6.8) *(added)* |
 | `mail_requests/{requestId}` | auto | pending → sending → done; TTL 30 days; deleted with its account | a member's request for a test email to themselves, or to try their address again, or a System Admin's test: kind, when, outcome code, the message's ID; never the address (§10.12) *(added)* |
 | `broadcasts/{broadcastId}` | auto | (awaiting_approval →) preparing → sending → done, or cancelled, or rejected | an email an admin wrote to members: subject, body, the audience, who it came to when prepared, by whom and when, and with approval switched on who approved or rejected it, when and why (§10.12) *(added 2026-11-07; approval 2026-11-08)* |
@@ -5077,7 +5091,9 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/mail/members` | Membership Admin | members who cannot be emailed, and why: bounced, marked as spam, unconfirmed, no address (§10.12) |
 | `GET /admin/mail/health` | System Admin, Site Admin | the email setup check's last run and a request still waiting (§10.12) |
 | `POST /admin/mail/broadcasts/{id}/approve` · `…/reject` | System Admin, Site Admin | with approval switched on, lets an email to members go, or rejects it with a reason; 409 when it is not waiting, or could not go now; ledgered (§10.12) |
-| `GET /admin/mail/log` | System Admin, Site Admin | the email log: every email sent in 180 days, newest first, 50 a page (`after`), narrowed by recipient (`account`), `causedBy`, `kind`, `status` and days (`from`, `to`); never an address it went to, a subject or a body (§10.12) |
+| `GET /admin/mail/log` | System Admin, Site Admin | the email log: every email sent in 180 days, newest first, 50 a page (`after`), narrowed by recipient (`account`), `causedBy`, `kind`, `status` and days (`from`, `to`, in time zone `tz`); the address each went to (since 2026-11-09), never a subject or a body (§10.12) |
+| `GET /admin/mail/days` | System Admin, Site Admin | how many emails were sent each of the last `days` days (1–90, 30 by default) in time zone `tz`, today last (§10.12) *(added 2026-11-09)* |
+| `GET /admin/mail/day` | System Admin, Site Admin | one `day`'s emails in time zone `tz`: in all, by kind, by status, and by person with the addresses each went to, the most first (§10.12) *(added 2026-11-09)* |
 | `POST /admin/mail/health/check` | System Admin, Site Admin | asks the worker to run the check on its next tick; 202, 409 while one waits, 429 within five minutes of the last run (§10.12) |
 | `GET\|PUT /admin/notice-settings` | System Admin, Site Admin | the election emails' settings: each on or off, the reminder's lead time, the contact, each subject and opening, and the name all the site's email comes from; saved whole against the version read (409 if stale, 400 for unknown placeholders); ledgered (§6.8) |
 | `POST /admin/elections/{id}/notices/{kind}/resend` | Election Admin | send the notice again to those it failed for, while voting is open and once its last round has finished (409 otherwise; §6.8) |

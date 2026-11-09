@@ -251,7 +251,8 @@ describe('without mail', () => {
       expect((await quiet.call('POST', `/v1/admin/members/${accountId}/welcome-link`, admin)).status).toBe(204);
       const [logged] = await messagesTo(accountId);
       expect(logged).toMatchObject({ kind: 'welcome', sender: 'identity_platform', handOff: true, causedBy: admin.accountId, ref: accountId, status: 'sent', counted: false });
-      expect(JSON.stringify(logged)).not.toContain('@');
+      // The address the link went to, kept for the email log (design §10.12).
+      expect(logged!.to).toMatch(/^ada@example\.test$/i);
       expect(await welcome(accountId)).toMatchObject({ via: 'identity_platform', status: 'done', outcome: null, requestedBy: admin.accountId, messageId: logged!.messageId, delivery: null });
 
       const log = await quiet.call('GET', `/v1/admin/mail/log?account=${accountId}`, systemAdmin);
