@@ -3,6 +3,7 @@ import { deny, OK, refuse, type Check } from '../check.js';
 import { NOTICE_CLAIM_MINUTES } from './notices.js';
 import type { MailKind, MailStatus, MailSuppressionReason } from './mail.js';
 import { mailStop, type MailPreferenceRecord } from './mail-preferences.js';
+import type { MemberStatus } from '../membership/member-status.js';
 
 /**
  * A member's own email (design §10.12): what was sent to them and what became of it, whether their address can be
@@ -152,14 +153,39 @@ export function checkMailRequest(input: {
   return OK;
 }
 
-/** `POST /v1/admin/mail/test`: which System Admin it goes to; the caller when left out. */
+/** `POST /v1/admin/mail/test`: which System Admin or member it goes to; the caller when left out. */
 export const adminTestSchema = z.strictObject({ to: z.string().min(1).max(64).optional() }).optional();
 export type AdminTestInput = z.infer<typeof adminTestSchema>;
 
-/** `GET /v1/admin/mail/test`: who a System Admin's test can go to, and how their last one went. */
+/**
+ * The members a System Admin's test may go to, besides System Admins (design §10.12): anyone with a member record but
+ * those who resigned or were rejected, who have left the party or never joined it.
+ */
+export const TEST_RECIPIENT_STATUSES = ['applicant', 'active', 'lapsed', 'suspended'] as const satisfies readonly MemberStatus[];
+
+export function mayGetAdminTest(input: { readonly systemAdmin: boolean; readonly memberStatus: MemberStatus | null }): boolean {
+  return input.systemAdmin || (TEST_RECIPIENT_STATUSES as readonly string[]).includes(input.memberStatus ?? '');
+}
+
+/** Someone a System Admin's test can go to: a System Admin, a member, or both. */
+export interface TestRecipient {
+  readonly accountId: string;
+  readonly name: string;
+  readonly email: string | null;
+  readonly systemAdmin: boolean;
+  /** Their member status; null for a System Admin with no member record. */
+  readonly memberStatus: MemberStatus | null;
+  /** Where they live, as the member search gives it ("NY", "Canada"); null without a member record. */
+  readonly place: string | null;
+}
+
+/** At most this many matches for one search of who a test can go to. */
+export const TEST_RECIPIENT_SEARCH_LIMIT = 10;
+
+/** `GET /v1/admin/mail/test`: who a System Admin's test can go to without searching, and how their last one went. */
 export interface AdminTestView {
-  /** Those who hold the role now, the caller first. */
-  readonly systemAdmins: readonly { readonly accountId: string; readonly name: string; readonly email: string | null }[];
+  /** Those who hold the role now, the caller first; members are found with `GET /v1/admin/mail/test/recipients`. */
+  readonly systemAdmins: readonly TestRecipient[];
   readonly last: {
     readonly toName: string | null;
     readonly status: MailRequestRecord['status'];

@@ -125,6 +125,15 @@ test. Keep it current when pages change.
   checks refuse (one with an address in it) is said under the field in the error colour and Save stays disabled. The
   hint reads 4.61:1 on the light theme's card and about 8.8:1 on the dark theme's (`rgba(255,255,255,.7)` on
   `#1d1d1d`), read back from the computed styles; at 375 px it wraps and nothing scrolls sideways.
+- **Added 2026-11-07, choosing who gets a test email in Admin › Email › Setup and test** (design §10.12; against the
+  emulators on private ports as admin1@example.test; 1100 px dark, 375 px dark and light, by pointer and keyboard): "Send
+  it to" is a combobox named by its label, described by the line under it, which says who it goes to ("Goes to Ben Cruz
+  (v2@example.test), a member.") or how to choose. With nothing typed it lists the System Admins; typing searches once
+  typing pauses and, as the member picker does, announces how many match (from the code; no screen reader was used). Each option is the name and address, with a caption of System Admin,
+  member status and place. By keyboard alone, typing an address, Down and Enter chose the member, focus stayed in the
+  field and "Send test email" came on; typing anything else clears the choice and turns the button off again. The line
+  under the field reads 7.8:1 on the dark theme's card (`#b0b0b0` on `#1d1d1d`) and 4.61:1 on the light theme's, read
+  back from the computed styles; at 375 px the field is 40 px tall and nothing scrolls sideways.
 - **Added 2026-10-27, the emails in the election workflow** (against the emulators as elections@example.test: an open
   election with its reminder to come, then due, then sent; a scheduled one-day election with email switched off; light
   at desktop width, dark at 375 px): the list has an "Email to voters" item after Open for voting, with its status in

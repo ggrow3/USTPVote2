@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Transaction } from 'firebase-admin/firestore';
-import { matchMembers, type MemberMatch, type MemberRecord } from 'ustp-domain';
+import { matchMembers, type MemberMatch, type MemberRecord, type MemberStatus } from 'ustp-domain';
 import { MemberRepository } from './member.repository.js';
 
 /**
@@ -39,5 +39,10 @@ export class MemberDirectory {
   /** Active members whose legal or preferred name holds `text`, best matches first (`matchMembers`), at most `limit`. */
   async searchActive(text: string, limit: number): Promise<MemberMatch[]> {
     return matchMembers(await this.members.activeNames(), text, limit);
+  }
+
+  /** Members in one of `statuses` whose legal or preferred name holds `text`, best matches first, at most `limit`. */
+  async searchIn(statuses: readonly MemberStatus[], text: string, limit: number): Promise<(MemberMatch & { status: MemberStatus })[]> {
+    return matchMembers(await this.members.namesIn(statuses), text, limit);
   }
 }

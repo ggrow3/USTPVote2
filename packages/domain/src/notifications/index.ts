@@ -226,6 +226,9 @@ export {
   isMailRequestInFlight,
   checkMailRequest,
   adminTestSchema,
+  TEST_RECIPIENT_STATUSES,
+  TEST_RECIPIENT_SEARCH_LIMIT,
+  mayGetAdminTest,
 } from './my-email.js';
 export type {
   MailAddressState,
@@ -235,6 +238,7 @@ export type {
   MailRequestOutcome,
   MailRequestRecord,
   AdminTestView,
+  TestRecipient,
   AdminTestInput,
   MyEmailView,
   MemberMailFlag,

@@ -1,5 +1,6 @@
 import type {
   AdminTestView,
+  TestRecipient,
   BroadcastAudience,
   BroadcastInput,
   BroadcastPreview,
@@ -67,7 +68,12 @@ export function adminTest(): Promise<AdminTestView> {
   return api<AdminTestView>('GET', '/v1/admin/mail/test');
 }
 
-/** A test email to a System Admin, on the worker's next tick, even while all email is off. */
+/** System Admins and members a test email can go to, by name or by email address. */
+export function searchTestRecipients(q: string): Promise<TestRecipient[]> {
+  return api<TestRecipient[]>('GET', `/v1/admin/mail/test/recipients?${new URLSearchParams({ q })}`);
+}
+
+/** A test email to a System Admin or a member, on the worker's next tick, even while all email is off. */
 export function requestAdminTest(to: string | null): Promise<AdminTestView> {
   return api<AdminTestView>('POST', '/v1/admin/mail/test', to ? { to } : {});
 }
