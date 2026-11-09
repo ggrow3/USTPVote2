@@ -3,7 +3,8 @@
   "compilerOptions": {
     "rootDir": "src",
     "outDir": "dist",
-    // Web Crypto's getRandomValues (UUIDv7) is the only platform API used.
+    // The platform APIs used are Web Crypto's getRandomValues (UUIDv7), and TextEncoder and btoa (From headers), all in
+    // both browsers and Node.
     "lib": ["es2024", "dom"]
   },
   "include": ["src"]

@@ -225,6 +225,32 @@ describe('the worker', () => {
     expect(message!.from).toBe('USTP Elections <noreply@transhumanist-party.org>');
   });
 
+  it('sends from the name the System Admins set, at the deployment’s address, and keeps it when a page that predates it saves', async () => {
+    const named = await save(settingsOf({ senderName: 'U.S. Transhumanist Party, Elections' }), 0);
+    expect(named.body).toMatchObject({ version: 1, senderName: 'U.S. Transhumanist Party, Elections' });
+    const entries = (await api.firebase.db.collection('audit_events').where('type', '==', 'notice.settings_changed').get()).docs.map((d) => d.data());
+    expect(entries[0]!.payload.changes).toEqual([{ field: 'senderName', from: null, to: 'U.S. Transhumanist Party, Elections' }]);
+    expect((await save(settingsOf({ senderName: 'Elections <boss@example.org>' }), 1)).status).toBe(400);
+    const { senderName: _name, ...older } = settingsOf({ reminderHours: 36 });
+    expect((await api.call('PUT', URL, sa1, { basedOn: 1, ...older })).body).toMatchObject({ version: 2, senderName: 'U.S. Transhumanist Party, Elections' });
+
+    workerSees();
+    const election = await seedElection(api, { voters: voters.map((v) => v.accountId) });
+    await worker.tick();
+    const messages = await outbox(election);
+    expect(messages).toHaveLength(3);
+    for (const m of messages) expect(m.from).toBe('"U.S. Transhumanist Party, Elections" <noreply@transhumanist-party.org>');
+
+    // Emptied, the deployment's name is back.
+    await save({ ...settingsOf({ reminderHours: 36 }), senderName: null }, 2);
+    workerSees();
+    const ada = await api.member('ada@example.test');
+    expect((await api.call('POST', '/v1/me/email/test', ada)).status).toBe(202);
+    await worker.tick();
+    const test = (await api.firebase.db.collection('notice_outbox').where('accountId', '==', ada.accountId).get()).docs.map((d) => d.data() as OutboxMessageRecord);
+    expect(test.map((m) => m.from)).toEqual(['USTP Elections <noreply@transhumanist-party.org>']);
+  });
+
   it('reminds as long before the close as the System Admins set', async () => {
     await save(settingsOf({ reminderHours: 48 }), 0);
     workerSees();
