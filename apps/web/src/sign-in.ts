@@ -1,4 +1,5 @@
 import {
+  confirmPasswordReset,
   createUserWithEmailAndPassword,
   EmailAuthProvider,
   GoogleAuthProvider,
@@ -7,12 +8,14 @@ import {
   reauthenticateWithCredential,
   reauthenticateWithPopup,
   sendEmailVerification,
+  sendPasswordResetEmail,
   sendSignInLinkToEmail,
   signInWithEmailAndPassword,
   signInWithEmailLink,
   signInWithPopup,
   signOut,
   updatePassword,
+  verifyPasswordResetCode,
   type Auth,
   type AuthProvider,
   type User,
@@ -82,7 +85,7 @@ export class PasswordRejected extends Error {}
  * Refuses a password that breaks the rule for `email`'s login or has appeared in a breach (design §4), before it
  * reaches Identity Platform.
  */
-async function checkNewPassword(password: string, email: string): Promise<void> {
+export async function checkNewPassword(password: string, email: string): Promise<void> {
   const problem = passwordProblem(password, email);
   if (problem) throw new PasswordRejected(problem);
   const breaches = await breachCount(password);
@@ -101,6 +104,58 @@ export async function signUpWithPassword(auth: Auth, email: string, password: st
 
 export function signInWithPassword(auth: Auth, email: string, password: string) {
   return signInWithEmailAndPassword(auth, email, password);
+}
+
+/**
+ * Emails a link to choose a new password (design §4), which opens the email-action page. Email-enumeration protection
+ * answers the same whether or not the address has a login; where it is off (the Auth emulator), an unknown address is
+ * treated as sent too, so the form never tells.
+ */
+export async function sendPasswordReset(auth: Auth, email: string): Promise<void> {
+  try {
+    await sendPasswordResetEmail(auth, email, { url: `${location.origin}/signin` });
+  } catch (e) {
+    if ((e as { code?: unknown } | null)?.code !== 'auth/user-not-found') throw e;
+  }
+}
+
+/** The email address a password-reset link is for; rejects if the link has expired or has been used. */
+export function passwordResetEmail(auth: Auth, oobCode: string): Promise<string> {
+  return verifyPasswordResetCode(auth, oobCode);
+}
+
+/** Sets the password a reset link is for, after the same checks as signing up. Every session of that login ends. */
+export async function resetPassword(auth: Auth, oobCode: string, email: string, password: string): Promise<void> {
+  await checkNewPassword(password, email);
+  await confirmPasswordReset(auth, oobCode, password);
+}
+
+/** How a password change ended: not made, made, or made with this session still to sign in again (see below). */
+export type PasswordChange = 'cancelled' | 'changed' | 'sign-in-again';
+
+/**
+ * Changes the signed-in login's password (design §4): the same checks as signing up, then `reauthenticate` with the
+ * current password (and the authenticator code if there is one), then the change. Identity Platform revokes the login's
+ * sessions as it changes it, and the Auth emulator hands this one back a token with its old sign-in time, which the
+ * routes that check revocation (admin routes, casting) refuse; so when the sign-in time has not moved, this session
+ * re-authenticates with the new password too.
+ */
+export async function changePassword(
+  user: User,
+  current: string,
+  replacement: string,
+  reauthenticate: (password: string, step: 'confirm' | 'renew') => Promise<boolean>,
+): Promise<PasswordChange> {
+  await checkNewPassword(replacement, user.email ?? '');
+  if (!(await reauthenticate(current, 'confirm'))) return 'cancelled';
+  const signedInAt = (await user.getIdTokenResult()).authTime;
+  await updatePassword(user, replacement);
+  if ((await user.getIdTokenResult()).authTime !== signedInAt) return 'changed';
+  try {
+    return (await reauthenticate(replacement, 'renew')) ? 'changed' : 'sign-in-again';
+  } catch {
+    return 'sign-in-again';
+  }
 }
 
 const EMAIL_LINK_KEY = 'ustp.emailLinkAddress';

@@ -6,8 +6,8 @@ buckets (§5.3, §8.4, §10.10), Firestore, both Cloud Run services, the Cloud S
 queue (§13), Binary Authorization (§14), the release workflow's identity, KMS audit logs and a break-glass alert.
 Design open question Q13 (Terraform) and Q16 (`us-central1`) are assumed.
 
-Not managed here, and described [below](#manual-steps): Identity Platform (providers, MFA, password policy), adding
-Firebase to the project and the App Check web registration. Firestore rules and indexes and the web app on Firebase
+Not managed here, and described [below](#manual-steps): Identity Platform (providers, MFA, password policy, the email
+action URL), adding Firebase to the project and the App Check web registration. Firestore rules and indexes and the web app on Firebase
 Hosting are deployed by the [release workflow](#release-workflow), with the server, from the same commit.
 
 ## Layout
@@ -341,6 +341,20 @@ factors with `adjacentIntervals: 5` and no SMS (design §4), and the authorized 
 - **Google, Microsoft and Apple sign-in** (§4): each needs an OAuth client registered with that company. Google's is
   one click in the Firebase console (Authentication → Sign-in method → Google), which creates the client. The admin
   sign-in switches turn a provider off in the api without touching this configuration.
+- **Password-reset links** (§4): point the email templates' action URL at the web app's `/email-action` page, so a new
+  password gets the same checks as at sign-up (Firebase's own page skips the breach screen). Identity Platform has one
+  action URL for every template (`notification.sendEmail.callbackUri`), so address-verification and email sign-in
+  links go there too; the page sends those on to Identity Platform's own page, where they work as before. Release a
+  web app that has the page first: before that, the address opens the link hub and the link is lost. Then, with an
+  Owner's credentials (for prod, the site's own address once it has one):
+
+  ```bash
+  curl -X PATCH "https://identitytoolkit.googleapis.com/admin/v2/projects/ustpvote2-dev/config?updateMask=notification.sendEmail.callbackUri" -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "x-goog-user-project: ustpvote2-dev" -H "Content-Type: application/json" -d '{"notification":{"sendEmail":{"callbackUri":"https://ustpvote2-dev.web.app/email-action"}}}'
+  ```
+
+  The Firebase console sets the same thing (Authentication → Templates → edit any template → Customize action URL).
+  To back out, set it to the default, `https://ustpvote2-<env>.firebaseapp.com/__/auth/action`. Check it by asking for
+  a reset from the sign-in page: the email's link should start with the new address.
 - **Email sender** and templates once the sender domain is decided (Q15). Sending them through Amazon SES from the
   environment's own domain is "Email (Amazon SES)" › "SES sign-in mail".
 
