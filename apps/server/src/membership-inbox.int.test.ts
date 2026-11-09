@@ -16,6 +16,7 @@ afterAll(() => Promise.all([api.close(), worker.close()]));
 
 type Member = User & { accountId: string };
 let sa1: Member;
+let sa2: Member;
 let ma: Member;
 let mb: Member;
 let ada: Member;
@@ -39,7 +40,7 @@ async function member(email: string, legalName: string, status = 'active'): Prom
 beforeEach(async () => {
   await resetEmulators();
   for (const app of [api.app, worker.app]) app.get(NoticeSettingsService).invalidate();
-  [sa1] = (await api.systemAdmins()) as [Member, Member];
+  [sa1, sa2] = (await api.systemAdmins()) as [Member, Member];
   ma = await member('ma@example.test', 'Mo Admin');
   mb = await member('mb@example.test', 'Mia Bell');
   await api.grant(ma.accountId, 'membership_admin', sa1);
@@ -222,6 +223,13 @@ describe('the team’s own tools', () => {
     // Not to themselves, and only to someone with a member record.
     expect((await teamWrites(ma, ma.accountId)).status).toBe(409);
     expect((await teamWrites(ma, sa1.accountId)).status).toBe(404);
+  });
+
+  it('names a Membership Admin with no member record by their account', async () => {
+    await api.grant(sa2.accountId, 'membership_admin', sa1);
+    const view = (await teamWrites(sa2, ada.accountId)).body as InboxThreadView;
+    expect(view.messages[0]!.authorName).not.toBe('A former admin');
+    expect(view.messages[0]!.authorName.length).toBeGreaterThan(0);
   });
 
   it('lists one member’s conversations for their record', async () => {

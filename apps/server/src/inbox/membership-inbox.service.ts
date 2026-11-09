@@ -59,14 +59,19 @@ export class MembershipInboxService {
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
-  /** Each account's name now: a member's own, else the account's display name. */
+  /**
+   * Each account's name now, for the team: a member's own, else the account's display name, else its address (an admin
+   * with no member record and no display name), as the email log and the list of Membership Admins name them.
+   */
   private async names(accountIds: readonly (string | null)[]): Promise<Map<string, string>> {
     const ids = [...new Set(accountIds.filter((id): id is string => !!id))];
-    const [records, names] = await Promise.all([this.members.findMany(ids), this.directory.displayNames(ids)]);
-    return new Map(ids.flatMap((id, i) => {
-      const name = nameOf(records[i]) ?? names.get(id);
-      return name ? [[id, name] as const] : [];
-    }));
+    const [records, names, mailboxes] = await Promise.all([this.members.findMany(ids), this.directory.displayNames(ids), this.directory.mailboxes(ids)]);
+    return new Map(
+      ids.flatMap((id, i) => {
+        const name = nameOf(records[i]) ?? names.get(id) ?? mailboxes.get(id)?.email;
+        return name ? [[id, name] as const] : [];
+      }),
+    );
   }
 
   private summary(thread: MembershipThreadRecord, names: Map<string, string>): InboxThreadSummary {
