@@ -94,6 +94,23 @@ export class MemberAdditions {
     });
   }
 
+  /**
+   * Records that Identity Platform took an added member's welcome sign-in link, as the admin's browser says once it has
+   * asked (design §5.13), so it is in the email log as theirs and on the member's page. Also after the member has signed
+   * in, since the link went all the same.
+   */
+  async welcomeLinkSent(ctx: RequestContext, accountId: string): Promise<void> {
+    const actor = requireAccount(ctx);
+    const db = this.firebase.db;
+    const at = new Date().toISOString();
+    const reported = await this.welcomes.reportedLink(accountId, at);
+    await db.runTransaction(async (tx) => {
+      const account = (await tx.get(db.collection(Collections.accounts).doc(accountId))).data() as AccountRecord | undefined;
+      if (!account?.addedAt) throw new NotFoundException('no member added by a Membership Admin has this account');
+      await this.welcomes.recordLink(tx, accountId, actor, at, reported);
+    });
+  }
+
   private async add(ctx: RequestContext, rows: readonly MemberImportRow[], reason: string): Promise<MemberImportResult> {
     const actor = requireAccount(ctx);
     const plan = await this.preview(rows);

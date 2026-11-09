@@ -50,6 +50,12 @@ export {
   mailMessageRecord,
   identityMailKind,
   identityMailRecord,
+  WELCOME_LINK_MATCH_MINUTES,
+  welcomeLinkRecord,
+  isUnmatchedWelcomeLink,
+  isUnclaimedSignInLink,
+  nearestWelcomeLink,
+  asWelcomeLink,
   applyMailEvent,
   recipientStatusOf,
   nextSuppression,
@@ -122,9 +128,10 @@ export {
   WELCOME_OUTCOMES,
   SET_PASSWORD_PATH,
   welcomeEmailRecord,
+  welcomeLinkSent,
   isWelcomeInFlight,
 } from './welcome.js';
-export type { WelcomeStatus, WelcomeOutcome, WelcomeEmailRecord } from './welcome.js';
+export type { WelcomeStatus, WelcomeOutcome, WelcomeEmailRecord, WelcomeVia } from './welcome.js';
 export { noticeSteps, emailStepStatus } from './notice-steps.js';
 export type { NoticeStep, NoticeAbsence } from './notice-steps.js';
 export {
