@@ -29,8 +29,9 @@ export class ApprovalsController {
     private readonly roles: RoleChanges,
   ) {}
 
+  /** System Admins change any role; Site Admins every role but System Admin, on anyone not a System Admin. */
   @Post('roles')
-  @Roles('system_admin')
+  @Roles('system_admin', 'site_admin')
   changeRole(@Ctx() ctx: RequestContext, @Body(new ZodPipe(roleChangeSchema)) body: RoleChangeInput) {
     return this.roles.change(ctx, body);
   }

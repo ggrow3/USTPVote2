@@ -332,7 +332,7 @@ export class PublicHubController {
  * §10.9): its links are the party's social accounts.
  */
 @Controller('v1/admin/hub')
-@Roles('system_admin', 'communications_admin')
+@Roles('system_admin', 'site_admin', 'communications_admin')
 export class HubAdminController {
   constructor(private readonly hub: HubService) {}
 

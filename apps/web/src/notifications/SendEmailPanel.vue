@@ -113,7 +113,7 @@ function send() {
   dialog({
     title: approval ? `Ask to send this email to ${count} ${count === 1 ? 'member' : 'members'}?` : `Send this email to ${count} ${count === 1 ? 'member' : 'members'}?`,
     message: approval
-      ? `“${subject.value.trim()}” waits for a System Admin’s approval, and they are notified. Nothing goes until one approves it. It is recorded in the audit ledger.`
+      ? `“${subject.value.trim()}” waits for a System or Site Admin’s approval, and they are notified. Nothing goes until one approves it. It is recorded in the audit ledger.`
       : `“${subject.value.trim()}” goes out straight away, and is recorded in the audit ledger. You can stop what has not gone yet, but not take back what has.`,
     cancel: true,
     ok: { label: approval ? 'Send for approval' : `Send to ${count}`, color: 'primary', noCaps: true },
@@ -123,7 +123,7 @@ function send() {
       subject.value = '';
       body.value = '';
       await load();
-    }, approval ? 'Sent for approval: the System Admins are notified.' : 'Queued: it starts going out within a minute.');
+    }, approval ? 'Sent for approval: the System and Site Admins are notified.' : 'Queued: it starts going out within a minute.');
   });
 }
 
@@ -203,12 +203,12 @@ onUnmounted(() => clearInterval(timer));
       <p class="q-mb-none">{{ RECIPIENT_RULE }}</p>
     </div>
     <q-banner v-if="waitingForMe.length" dense rounded class="bg-blue-1 text-black" role="status">
-      {{ waitingForMe.length === 1 ? 'An email to members waits' : `${waitingForMe.length} emails to members wait` }} for a System Admin’s approval:
+      {{ waitingForMe.length === 1 ? 'An email to members waits' : `${waitingForMe.length} emails to members wait` }} for a System or Site Admin’s approval:
       see “Emails” below, where you can read it, then approve or reject it.
     </q-banner>
     <q-banner v-if="view?.blocked" dense rounded class="bg-orange-2 text-black" role="status">Nothing can be sent just now: {{ view.blocked }}.</q-banner>
     <p v-else-if="view?.approvalRequired" class="q-my-none text-grey-8">
-      Each email waits for a System Admin’s approval before it goes out; they are notified when you send one.
+      Each email waits for a System or Site Admin’s approval before it goes out; they are notified when you send one.
     </p>
 
     <q-card flat bordered tag="section" aria-labelledby="send-who">

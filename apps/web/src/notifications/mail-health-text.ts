@@ -41,7 +41,7 @@ export const MAIL_CHECK_LOOK: Readonly<Record<MailCheckStatus, { word: string; i
 export function healthSummary(health: MailHealthRecord | null): string {
   if (!health) return 'The check has not run yet. Where email goes through Amazon SES it runs every hour by itself.';
   const when = new Date(health.checkedAt).toLocaleString();
-  const how = { request: 'when a System Admin asked', send: 'before election email went out', schedule: 'on its hourly run' }[health.trigger];
+  const how = { request: 'when a System or Site Admin asked', send: 'before election email went out', schedule: 'on its hourly run' }[health.trigger];
   const failing = health.checks.filter((c) => c.status === 'fail').length;
   const warning = health.checks.filter((c) => c.status === 'warn').length;
   const verdict =
@@ -59,7 +59,7 @@ export function healthSummary(health: MailHealthRecord | null): string {
 
 /** One line for the election editor's email card, from the last run's overall status; null when there is nothing to say. */
 export function setupLine(setup: MailCheckStatus | null): string | null {
-  if (setup === 'fail') return 'Email setup: a check is failing, so some members may not get this email. A System Admin can see why under Admin › Email.';
-  if (setup === 'warn') return 'Email setup: there are warnings for a System Admin to look at (Admin › Email).';
+  if (setup === 'fail') return 'Email setup: a check is failing, so some members may not get this email. A System or Site Admin can see why under Admin › Email.';
+  if (setup === 'warn') return 'Email setup: there are warnings for a System or Site Admin to look at (Admin › Email).';
   return null;
 }

@@ -201,14 +201,14 @@ export class RoomAdminController {
    * doing. These act on the room from the console, so the admin need not be in it.
    */
   @Get('settings')
-  @Roles('membership_admin', 'system_admin')
+  @Roles('membership_admin', 'system_admin', 'site_admin')
   settings(@Ctx() ctx: RequestContext) {
     return this.room.settings(moderator(ctx));
   }
 
   /** Opens or closes the room for everyone, ledgered. */
   @Put('settings/open')
-  @Roles('membership_admin', 'system_admin')
+  @Roles('membership_admin', 'system_admin', 'site_admin')
   setOpen(@Ctx() ctx: RequestContext, @Body(new ZodPipe(roomAssistantSchema)) body: RoomAssistantInput) {
     return this.room.changeSetting(moderator(ctx), 'open', body.on);
   }
@@ -218,7 +218,7 @@ export class RoomAdminController {
    * to accept them. Ledgered.
    */
   @Put('door')
-  @Roles('membership_admin', 'system_admin')
+  @Roles('membership_admin', 'system_admin', 'site_admin')
   saveDoor(@Ctx() ctx: RequestContext, @Body(new ZodPipe(roomDoorSchema)) body: RoomDoorInput) {
     return this.room.saveDoor(moderator(ctx), body);
   }

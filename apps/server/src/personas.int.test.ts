@@ -252,6 +252,10 @@ describe('deleting test voters (POST /v1/testing/personas/delete)', () => {
     }
     for (const voters of [[], [voter, voter], ['nobody']]) expect((await remove(voters)).status, JSON.stringify(voters)).toBe(400);
     expect((await remove([voter], pat)).status).toBe(403);
+    // A Site Admin deletes no test voter, and cannot act as a persona that might (design §10.1).
+    await api.grant(pat.accountId, 'site_admin', sa1);
+    expect(await remove([voter], pat)).toMatchObject({ status: 403, body: { detail: 'requires role system_admin' } });
+    expect(await remove([voter], pat, as(auditor))).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/only System Admins/) } });
     expect((await remove([voter], sa1, as(auditor))).status).toBe(403);
     for (const id of [voter, auditor, pat.accountId]) expect((await db().collection('accounts').doc(id).get()).exists).toBe(true);
     expect((await db().collection('testing_personas').doc(voter).get()).exists).toBe(true);

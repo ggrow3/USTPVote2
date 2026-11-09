@@ -318,7 +318,7 @@ describe('a test email', () => {
     await worker.tick();
     const [sent] = await tests();
     expect(sent).toMatchObject({ accountId: ada.accountId });
-    expect(sent!.text).toContain('A System Admin of the site sent you this test email');
+    expect(sent!.text).toContain('An administrator of the site sent you this test email');
     expect(sent!.text).not.toContain('Admin › Email');
     expect((await testView()).last).toMatchObject({ toName: 'ada', status: 'done', outcome: null });
 
@@ -334,11 +334,11 @@ describe('a test email', () => {
     const search = (q: string, as: User = sa1) => api.call('GET', `/v1/admin/mail/test/recipients?${new URLSearchParams({ q })}`, as);
 
     const byName = (await search('ada')).body as TestRecipient[];
-    expect(byName).toEqual([{ accountId: ada.accountId, name: 'ada', email: 'ada@example.test', systemAdmin: false, memberStatus: 'active', place: 'NY' }]);
+    expect(byName).toEqual([{ accountId: ada.accountId, name: 'ada', email: 'ada@example.test', systemAdmin: false, adminRole: null, memberStatus: 'active', place: 'NY' }]);
     expect(((await search(' ADA@Example.test ')).body as TestRecipient[]).map((r) => r.accountId)).toEqual([ada.accountId]);
     // The System Admins, by part of their address; they need no member record.
     const admins = (await search('sa2@')).body as TestRecipient[];
-    expect(admins).toEqual([expect.objectContaining({ accountId: sa2.accountId, systemAdmin: true, memberStatus: null })]);
+    expect(admins).toEqual([expect.objectContaining({ accountId: sa2.accountId, systemAdmin: true, adminRole: 'system_admin', memberStatus: null })]);
 
     expect((await search('ada', membershipAdmin)).status).toBe(403);
     expect((await search('  ')).status).toBe(400);

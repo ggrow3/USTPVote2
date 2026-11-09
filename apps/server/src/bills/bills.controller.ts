@@ -94,7 +94,7 @@ export class BillsController {
 
 /** Admin › Bills (design §5.14): which teams have the tool, and which key it uses. */
 @Controller('v1/admin/bills')
-@Roles('system_admin')
+@Roles('system_admin', 'site_admin')
 export class BillsAdminController {
   constructor(private readonly bills: BillsService) {}
 

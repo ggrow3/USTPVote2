@@ -63,7 +63,7 @@ export class MailHealthService {
  * cannot be emailed; both see who gets no email, and stop or restore an admin's stop (design §10.12).
  */
 @Controller('v1/admin/mail')
-@Roles('system_admin')
+@Roles('system_admin', 'site_admin')
 export class MailAdminController {
   constructor(
     private readonly health: MailHealthService,
@@ -80,10 +80,10 @@ export class MailAdminController {
 
   /**
    * One member's emails, for their record (design §10.13): what the email log has of them, for the Membership Admins who
-   * write to them as well as System Admins.
+   * write to them as well as System and Site Admins.
    */
   @Get('log/members/:accountId')
-  @Roles('membership_admin', 'system_admin')
+  @Roles('membership_admin', 'system_admin', 'site_admin')
   memberLog(@Param('accountId') accountId: string, @Query('after') after?: string) {
     return this.log.page({
       account: parseQuery(z.string().trim().min(1).max(64), accountId, 'accountId'),
@@ -98,21 +98,21 @@ export class MailAdminController {
   }
 
   @Get('stops')
-  @Roles('membership_admin', 'system_admin')
+  @Roles('membership_admin', 'system_admin', 'site_admin')
   stops(): Promise<MailStopRow[]> {
     return this.preferences.stops();
   }
 
   @Post('stops')
   @HttpCode(204)
-  @Roles('membership_admin', 'system_admin')
+  @Roles('membership_admin', 'system_admin', 'site_admin')
   stop(@Ctx() ctx: RequestContext, @Body(new ZodPipe(mailStopSchema)) body: MailStopInput) {
     return this.preferences.stop(ctx, body);
   }
 
   @Post('stops/:accountId/restore')
   @HttpCode(204)
-  @Roles('membership_admin', 'system_admin')
+  @Roles('membership_admin', 'system_admin', 'site_admin')
   restore(@Ctx() ctx: RequestContext, @Param('accountId') accountId: string, @Body(new ZodPipe(mailRestoreSchema)) body: MailRestoreInput) {
     return this.preferences.restore(ctx, accountId, body);
   }

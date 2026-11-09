@@ -4,6 +4,7 @@ import { NOTICE_CLAIM_MINUTES } from './notices.js';
 import type { MailKind, MailStatus, MailSuppressionReason } from './mail.js';
 import { mailStop, type MailPreferenceRecord } from './mail-preferences.js';
 import type { MemberStatus } from '../membership/member-status.js';
+import type { SiteAdminRole } from '../roles.js';
 
 /**
  * A member's own email (design §10.12): what was sent to them and what became of it, whether their address can be
@@ -167,13 +168,16 @@ export function mayGetAdminTest(input: { readonly systemAdmin: boolean; readonly
   return input.systemAdmin || (TEST_RECIPIENT_STATUSES as readonly string[]).includes(input.memberStatus ?? '');
 }
 
-/** Someone a System Admin's test can go to: a System Admin, a member, or both. */
+/** Someone a System or Site Admin's test can go to: a System or Site Admin, a member, or both. */
 export interface TestRecipient {
   readonly accountId: string;
   readonly name: string;
   readonly email: string | null;
+  /** A System Admin or a Site Admin, either of whom can always get a test. */
   readonly systemAdmin: boolean;
-  /** Their member status; null for a System Admin with no member record. */
+  /** Which of the two, for the label; null for a member who is neither. */
+  readonly adminRole: SiteAdminRole | null;
+  /** Their member status; null for a System or Site Admin with no member record. */
   readonly memberStatus: MemberStatus | null;
   /** Where they live, as the member search gives it ("NY", "Canada"); null without a member record. */
   readonly place: string | null;

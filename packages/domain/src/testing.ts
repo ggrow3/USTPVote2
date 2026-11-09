@@ -17,7 +17,7 @@ export const PERSONA_KINDS = [
   'course_admin',
   'communications_admin',
   'voter',
-] as const satisfies readonly (Exclude<Role, 'system_admin'> | 'voter')[];
+] as const satisfies readonly (Exclude<Role, 'system_admin' | 'site_admin'> | 'voter')[];
 export type PersonaKind = (typeof PERSONA_KINDS)[number];
 
 /**

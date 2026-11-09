@@ -2,15 +2,16 @@
 import { computed, onBeforeUnmount, onMounted, onUnmounted, ref, useId } from 'vue';
 import type { AdminTestView, TestRecipient } from 'ustp-domain';
 import { announce } from '../a11y.js';
+import { roleLabel } from '../approval-text.js';
 import { attempt } from '../dialogs.js';
 import { STATUS_LABELS } from '../membership/members-list.js';
 import { adminTest, requestAdminTest, searchTestRecipients } from './api.js';
 import { MAIL_STATUS_LABELS, REQUEST_OUTCOMES } from './my-email-text.js';
 
 /**
- * A System Admin's test email (design §10.12), in Admin › Email, to themselves, another System Admin or a member, and
+ * A System or Site Admin's test email (design §10.12), in Admin › Email, to themselves, another System or Site Admin or a member, and
  * nobody else. It goes even while all email is off, so they can see that email works before switching it on for
- * everyone. The System Admins are listed; members are found by typing a name or an email address. Polls while it waits
+ * everyone. The System and Site Admins are listed; members are found by typing a name or an email address. Polls while it waits
  * for the worker, and then for its delivery report.
  */
 const view = ref<AdminTestView | null>(null);
@@ -24,7 +25,7 @@ const reporting = computed(() => last.value?.status === 'done' && !last.value.ou
 
 const label = (r: TestRecipient) => (r.email && r.email !== r.name ? `${r.name} (${r.email})` : r.name);
 const caption = (r: TestRecipient) =>
-  [r.systemAdmin ? 'System Admin' : null, r.memberStatus ? `${STATUS_LABELS[r.memberStatus]} member` : null, r.place, r.email ? null : 'no email address']
+  [r.adminRole ? roleLabel(r.adminRole) : null, r.memberStatus ? `${STATUS_LABELS[r.memberStatus]} member` : null, r.place, r.email ? null : 'no email address']
     .filter(Boolean)
     .join(' · ');
 
@@ -57,7 +58,7 @@ const SEARCH_DELAY_MS = 300;
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
 onBeforeUnmount(() => clearTimeout(searchTimer));
 
-/** Quasar's filter: the System Admins with nothing typed, else a search once typing pauses. */
+/** Quasar's filter: the System and Site Admins with nothing typed, else a search once typing pauses. */
 function search(text: string, update: (fn: () => void) => void, abort: () => void) {
   clearTimeout(searchTimer);
   const q = text.trim();
@@ -103,7 +104,7 @@ onUnmounted(() => clearInterval(timer));
       <h2 id="admin-test-email" class="text-subtitle1">Send a test email</h2>
       <p class="q-mt-sm q-mb-none">
         Check that the site can send email before switching it on for everyone. It goes only to the person you choose, a
-        System Admin or a member, even while all email is off; nobody else gets anything. It is refused for anyone who
+        System or Site Admin or a member, even while all email is off; nobody else gets anything. It is refused for anyone who
         unsubscribed, whose email an admin stopped, or whose address is not confirmed.
       </p>
     </q-card-section>
@@ -138,13 +139,13 @@ onUnmounted(() => clearInterval(timer));
           <template #no-option="scope">
             <q-item>
               <q-item-section class="text-grey-7">
-                {{ scope.inputValue.trim() ? 'No System Admin or member matches.' : 'Type a member’s name or email address.' }}
+                {{ scope.inputValue.trim() ? 'No System or Site Admin or member matches.' : 'Type a member’s name or email address.' }}
               </q-item-section>
             </q-item>
           </template>
         </q-select>
         <div :id="hintId" class="ustp-message text-grey-7">
-          {{ to ? `Goes to ${label(to)}${to.systemAdmin ? '' : ', a member'}.` : 'Type a member’s name or email address and choose them, or pick a System Admin from the list.' }}
+          {{ to ? `Goes to ${label(to)}${to.systemAdmin ? '' : ', a member'}.` : 'Type a member’s name or email address and choose them, or pick a System or Site Admin from the list.' }}
         </div>
       </div>
       <div class="ustp-actions">

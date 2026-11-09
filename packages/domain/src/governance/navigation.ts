@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { deny, OK, refuse, type Check } from '../check.js';
 import { MEMBER_STATUSES, type MemberStatus } from '../membership/member-status.js';
-import { ROLES, type Role } from '../roles.js';
+import { administersSite, ROLES, type Role } from '../roles.js';
 
 /**
  * What the web app shows each person (design §10.5): the main-menu links and admin console sections each membership
@@ -58,7 +58,8 @@ export const SIGNED_IN_AUDIENCES = AUDIENCES.filter((a): a is SignedInAudience =
 
 /**
  * The roles the API lets use each section (its `@Roles` on the routes the section calls; design §10.1, §12). A section
- * is never shown to another role: those cells are locked off.
+ * is never shown to another role: those cells are locked off. Site Admins have System Admins' sections but Sign-in
+ * methods, API keys and Testing.
  */
 export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   applications: ['membership_admin'],
@@ -78,29 +79,33 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   teams: ['membership_admin'],
   // Moderating the forum, and reading it to put proposals on ballots (design §5.9).
   forum: ['membership_admin', 'election_admin'],
-  // The members' room's switches: open or closed (Membership and System Admins), its model server on or off (System
-  // Admins; design §5.10).
-  room: ['membership_admin', 'system_admin'],
+  // The members' room's switches: open or closed (Membership, System and Site Admins), its model server on or off
+  // (System Admins; design §5.10).
+  room: ['membership_admin', 'system_admin', 'site_admin'],
   approvals: ROLES,
-  people: ['system_admin'],
+  // Who holds which role, and changing them; only System Admins delete accounts (design §10.3).
+  people: ['system_admin', 'site_admin'],
+  // The sign-in switches and the two-step requirement for members (design §4).
   signin: ['system_admin'],
+  // The API keys (design §5.6).
   claude: ['system_admin'],
-  // The email settings (design §6.8) and the setup check (§10.12) for System Admins, and who gets no email, which
-  // Membership Admins change too (§10.12).
-  email: ['system_admin', 'membership_admin'],
+  // The email settings (design §6.8) and the setup check (§10.12) for System and Site Admins, and who gets no email,
+  // which Membership Admins change too (§10.12).
+  email: ['system_admin', 'site_admin', 'membership_admin'],
   audit: ['auditor'],
-  // The sign-in log and site analytics (design §10.7): System Admins and Auditors read the log; System Admins set analytics.
-  security: ['system_admin', 'auditor'],
+  // The sign-in log and site analytics (design §10.7): System Admins, Site Admins and Auditors read the log; System and
+  // Site Admins set analytics.
+  security: ['system_admin', 'site_admin', 'auditor'],
   testing: ['system_admin'],
-  navigation: ['system_admin'],
-  // The home page hub: System Admins, and Communications Admins, since its links are the party's social accounts.
-  hub: ['system_admin', 'communications_admin'],
+  navigation: ['system_admin', 'site_admin'],
+  // The home page hub: System and Site Admins, and Communications Admins, since its links are the party's social accounts.
+  hub: ['system_admin', 'site_admin', 'communications_admin'],
   // News, the press kit, the share kit, the social media calendar, suggestions and bots (design §10.9).
   communications: ['communications_admin'],
-  quote: ['system_admin'],
+  quote: ['system_admin', 'site_admin'],
   course: ['course_admin'],
   // Which teams have the legislative team's Bills tool (design §5.14).
-  bills: ['system_admin'],
+  bills: ['system_admin', 'site_admin'],
 };
 
 /** Links that lead a signed-out visitor to sign in: Sign in itself, Register (its first step), and Ballot and Admin. */
@@ -182,14 +187,14 @@ const sectionsOf = (role: Role) =>
   Object.fromEntries(ADMIN_SECTIONS.map((s) => [s, defaultSection(role, s)])) as Record<AdminSection, boolean>;
 
 /**
- * Today's console: each role sees what it may use, except Offices for System Admins (they may read it, not change it),
- * only Course for Course Admins, and only Communications and the Link hub for Communications Admins (both may read
- * Offices and Approvals, but have nothing to do there).
+ * Today's console: each role sees what it may use, except Offices for System and Site Admins (they may read it, not
+ * change it), only Course for Course Admins, and only Communications and the Link hub for Communications Admins (both
+ * may read Offices and Approvals, but have nothing to do there).
  */
 function defaultSection(role: Role, section: AdminSection): boolean {
   if (role === 'course_admin') return section === 'course';
   if (role === 'communications_admin') return section === 'communications' || section === 'hub';
-  return SECTION_ROLES[section].includes(role) && !(section === 'offices' && role === 'system_admin');
+  return SECTION_ROLES[section].includes(role) && !(section === 'offices' && administersSite([role]));
 }
 
 /**
@@ -199,15 +204,15 @@ function defaultSection(role: Role, section: AdminSection): boolean {
  * office, design §5.8). Roles add Ballot, Verify, Offices and Candidates, so a staff member with no membership keeps
  * them, and Admin (from their sections). Signing in lands on Register with no membership, as it did, and on the home
  * page otherwise. Teams, the forum and the members' room are for Active members only (design §5.7, §5.9, §5.10); News is for everyone (design §10.9).
- * Bills (design §5.14) is for Active members and System Admins, and the web app shows it only to people who have the
- * tool: those on a team its setting names, and System Admins.
+ * Bills (design §5.14) is for Active members and System and Site Admins, and the web app shows it only to people who
+ * have the tool: those on a team its setting names, and System and Site Admins.
  */
 export const DEFAULT_NAVIGATION: NavigationSettings = {
   menu: Object.fromEntries(
     AUDIENCES.map((a) => [
       a,
       isRole(a)
-        ? links('ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin', ...(a === 'system_admin' ? (['bills'] as const) : []))
+        ? links('ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin', ...(administersSite([a]) ? (['bills'] as const) : []))
         : a === 'signed_out'
           ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin', 'signin')
           : a === 'active'
@@ -374,9 +379,9 @@ export function shownTo(settings: NavigationSettings, viewer: Viewer): { menu: M
 
 /**
  * Where a viewer starts: the start page of the first role they hold, in the order Membership Admin, Election Admin,
- * Auditor, System Admin, Course Admin, Communications Admin (staff come for their tools, and System Admin's are the
- * occasional ones); with no role, their membership state's. Signed-out visitors, and anyone whose page is not shown
- * to them, start on home.
+ * Auditor, System Admin, Site Admin, Course Admin, Communications Admin (staff come for their tools, and System and Site
+ * Admins' are the occasional ones); with no role, their membership state's. Signed-out visitors, and anyone whose page
+ * is not shown to them, start on home.
  */
 export function startPageFor(settings: NavigationSettings, viewer: Viewer): StartPage {
   if (viewer.membership === 'signed_out') return 'home';
