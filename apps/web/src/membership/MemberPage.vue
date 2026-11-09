@@ -16,7 +16,7 @@ import { auth } from '../firebase.js';
 import { sendWelcomeLink } from '../sign-in.js';
 import { memberMailFlags, restoreMemberEmail, stopMemberEmail } from '../notifications/api.js';
 import { FLAG_LABELS } from '../notifications/my-email-text.js';
-import { changeMemberStatus, correctMemberDetails, member as fetchMember, welcomeAgain } from './api.js';
+import { changeMemberStatus, correctMemberDetails, member as fetchMember, welcomeAgain, welcomeLinkSent } from './api.js';
 import { answerText, classOf, consentText, detailsForm, memberClassText, placeFacts, placeInput, type DetailsForm } from './member-text.js';
 
 /** One member as a Membership Admin sees them (design §5.2): details, every application's answers, status history. */
@@ -106,7 +106,9 @@ const welcomeText = computed(() => {
   if (w.status === 'pending') return 'Waiting to be sent';
   if (w.status === 'sending') return 'Being sent';
   if (w.outcome) return `Not sent: ${WELCOME_OUTCOMES[w.outcome] ?? w.outcome}`;
-  return `Sent ${dateTime(w.doneAt ?? w.requestedAt)}${w.delivery ? (WELCOME_DELIVERY[w.delivery] ?? '') : ''}`;
+  const delivery = w.delivery ? (WELCOME_DELIVERY[w.delivery] ?? '') : '';
+  if (w.via === 'identity_platform') return `Identity Platform's sign-in link, sent ${dateTime(w.doneAt ?? w.requestedAt)} from an admin's browser${delivery}`;
+  return `Sent ${dateTime(w.doneAt ?? w.requestedAt)}${delivery}`;
 });
 const welcoming = ref(false);
 
@@ -114,8 +116,19 @@ async function sendWelcome() {
   welcoming.value = true;
   try {
     const again = await welcomeAgain(accountId.value);
-    if (again.welcome === 'identity_platform') await sendWelcomeLink(auth, again.email);
-    $q.notify({ type: 'positive', message: `Welcome email sent again to ${again.email}` });
+    let logged = true;
+    if (again.welcome === 'identity_platform') {
+      await sendWelcomeLink(auth, again.email);
+      // The link went: only the email log's record of it can still fail.
+      logged = await welcomeLinkSent(accountId.value).then(
+        () => true,
+        () => false,
+      );
+    }
+    $q.notify({
+      type: logged ? 'positive' : 'warning',
+      message: logged ? `Welcome email sent again to ${again.email}` : `Welcome email sent again to ${again.email}, but not recorded in the email log`,
+    });
     await load();
   } catch (e) {
     $q.notify({ type: 'negative', message: errorMessage(e) });
