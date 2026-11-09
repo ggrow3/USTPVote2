@@ -54,6 +54,9 @@ export const Collections = {
   memberMessages: 'member_messages',
   memberBlocks: 'member_blocks',
   messageReports: 'message_reports',
+  // The membership inbox (design §10.13): conversations between the membership team and each member.
+  membershipThreads: 'membership_threads',
+  membershipMessages: 'membership_messages',
   /** `room_consents/{accountId}`: each member's acceptance of the room's terms, or its withdrawal (design §5.10). */
   roomConsents: 'room_consents',
   /** `room_messages/{messageId}`: the room's messages, the assistant's answers and notices; kept 90 days. */

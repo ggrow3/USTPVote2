@@ -7,6 +7,8 @@ import { askReason, attempt, dialog } from '../dialogs.js';
 import { blockMember, messagePeople, messagePerson, readThread, reportMessage, sendMessage, thread as loadThread, threads as loadThreads, unblockMember } from './api.js';
 import { refreshUnread } from './inbox-state.js';
 import { whenText } from './inbox-text.js';
+import { session } from '../session.js';
+import TeamConversations from './TeamConversations.vue';
 
 /**
  * Messages between members (design §10.13): any Active member can write to any other, one to one. The list of
@@ -223,6 +225,7 @@ const time = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyl
       </p>
       <div class="messages" :class="{ 'messages--open': !!person }">
         <section class="messages__list" aria-labelledby="conversations">
+          <TeamConversations v-if="session.me?.member" />
           <h2 id="conversations" class="text-subtitle1 q-mt-none">Conversations</h2>
           <q-select
             v-model="choosing"

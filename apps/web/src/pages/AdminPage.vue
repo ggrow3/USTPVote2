@@ -28,6 +28,7 @@ import { SECTION_LABELS } from '../governance/navigation-text.js';
 import { guide } from '../guide/tour.js';
 import ApplicationsPanel from '../membership/ApplicationsPanel.vue';
 import MembersPanel from '../membership/MembersPanel.vue';
+import MembershipInboxPanel from '../inbox/MembershipInboxPanel.vue';
 import RegistrationFormPanel from '../membership/RegistrationFormPanel.vue';
 import SecurityPanel from '../security/SecurityPanel.vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -39,6 +40,7 @@ import { session } from '../session.js';
 const PANELS: Record<AdminSection, Component> = {
   applications: ApplicationsPanel,
   members: MembersPanel,
+  inbox: MembershipInboxPanel,
   photos: PhotosPanel,
   bylaws: BylawsPanel,
   registration: RegistrationFormPanel,

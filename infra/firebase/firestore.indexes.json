@@ -384,6 +384,73 @@
         { "fieldPath": "from", "order": "ASCENDING" },
         { "fieldPath": "sentAt", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "membership_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "lastMessageAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "membership_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "assignedTo", "order": "ASCENDING" },
+        { "fieldPath": "lastMessageAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "membership_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "assignedTo", "order": "ASCENDING" },
+        { "fieldPath": "lastMessageAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "membership_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountId", "order": "ASCENDING" },
+        { "fieldPath": "lastMessageAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "membership_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "createdBy", "order": "ASCENDING" },
+        { "fieldPath": "startedBy", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "membership_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "threadId", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "membership_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "authorId", "order": "ASCENDING" },
+        { "fieldPath": "from", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "membership_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "emailPending", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -428,6 +495,9 @@
     { "collectionGroup": "member_messages", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
     { "collectionGroup": "message_reports", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
     { "collectionGroup": "member_messages", "fieldPath": "body", "indexes": [] },
-    { "collectionGroup": "message_reports", "fieldPath": "body", "indexes": [] }
+    { "collectionGroup": "message_reports", "fieldPath": "body", "indexes": [] },
+    { "collectionGroup": "membership_threads", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "membership_messages", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "membership_messages", "fieldPath": "body", "indexes": [] }
   ]
 }

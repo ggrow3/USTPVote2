@@ -13,10 +13,24 @@ import type { MailAddressState } from '../notifications/my-email.js';
 /**
  * `message`: a member wrote to them (§10.13). `message_report`: for Membership Admins, a member reported a message.
  * `broadcast_approval`: for System Admins, an email to members waits for their approval (§10.12). `broadcast_decided`:
- * for whoever wrote it, a System Admin approved or rejected it.
+ * for whoever wrote it, a System Admin approved or rejected it. `membership_message`: the membership team wrote to the
+ * member. `membership_inbox`: for Membership Admins, a member wrote to the team, or a conversation was assigned to them.
  */
-export const APP_NOTIFICATION_KINDS = ['message', 'message_report', 'broadcast_approval', 'broadcast_decided'] as const;
+export const APP_NOTIFICATION_KINDS = [
+  'message',
+  'message_report',
+  'broadcast_approval',
+  'broadcast_decided',
+  'membership_message',
+  'membership_inbox',
+] as const;
 export type AppNotificationKind = (typeof APP_NOTIFICATION_KINDS)[number];
+
+/**
+ * Kinds whose news reaches the member by an email of its own (the membership team's message is itself emailed), so an
+ * email as each comes would only repeat it. A digest still lists them while unread.
+ */
+export const EMAILED_ON_THEIR_OWN: readonly AppNotificationKind[] = ['membership_message'];
 
 /** `app_notifications/{notificationId}`: one account's notification. Kept 90 days after it last changed. */
 export interface AppNotificationRecord {
@@ -75,7 +89,7 @@ export function nextAppNotification(
     createdAt: input.at,
     updatedAt: input.at,
     readAt: null,
-    emailPending: true,
+    emailPending: !EMAILED_ON_THEIR_OWN.includes(input.kind),
     emailedAt: null,
   };
 }

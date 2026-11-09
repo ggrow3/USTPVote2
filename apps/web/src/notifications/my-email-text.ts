@@ -13,6 +13,7 @@ export const MAIL_KIND_LABELS: Readonly<Record<MailKind, string>> = {
   member_test: 'Test email you asked for',
   admin_test: 'Test email from Admin › Email',
   broadcast: 'Email from the party',
+  membership_message: 'A message from the membership team',
   notification: 'A notification, as it came',
   notification_digest: 'Your notifications, collected',
   sign_in_link: 'Sign-in link',

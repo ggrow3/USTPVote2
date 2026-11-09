@@ -277,6 +277,41 @@ export function broadcastMessage(input: {
   return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
 }
 
+/**
+ * The membership team's message to a member (design §10.13): its words, as plain text that the HTML escapes, signed by
+ * the team rather than the admin who wrote it, with a link to the conversation on the site, where the member answers.
+ * It goes as membership business, whether or not the member chose to get news and announcements, and says so.
+ */
+export function membershipMessageEmail(input: {
+  readonly origin: string;
+  readonly name: string | null;
+  readonly contact: string | null;
+  /** The conversation's subject; "Re: " leads it after the first message. */
+  readonly subject: string;
+  readonly reply: boolean;
+  readonly body: string;
+  /** The conversation's path in the app, e.g. `/messages/team/{threadId}`. */
+  readonly link: string;
+  readonly unsubscribe?: string | null;
+}): NoticeMessage {
+  const site = `${input.origin}/`;
+  const subject = capped(`${input.reply ? 'Re: ' : ''}${oneLine(input.subject)}`);
+  const blocks: Block[] = [
+    greeting(input.name),
+    ...paragraphs(input.body).map((p) => ({ p })),
+    { p: 'The membership team' },
+    { link: `${input.origin}${input.link}`, label: 'Answer on the site', after: ' (you will be asked to sign in), where the whole conversation is.' },
+    { hr: true },
+    {
+      small:
+        'You are getting this email because the party’s membership team wrote to you about your membership. Such emails go to ' +
+        'members whether or not they chose to get news and announcements.',
+    },
+    ...footer(input.contact, site, input, 'anything else'),
+  ];
+  return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
+}
+
 /** How often a member has their in-app notifications by email (§10.13). */
 export type NotificationEmailPeriod = 'each' | 'daily' | 'weekly';
 

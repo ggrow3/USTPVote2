@@ -27,6 +27,7 @@ export const MAIL_KINDS = [
   'member_test',
   'admin_test',
   'broadcast',
+  'membership_message',
   'notification',
   'notification_digest',
   'sign_in_link',
