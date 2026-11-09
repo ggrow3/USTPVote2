@@ -17,6 +17,7 @@ export type MenuLink = (typeof MENU_LINKS)[number];
 export const ADMIN_SECTIONS = [
   'applications',
   'members',
+  'inbox',
   'photos',
   'bylaws',
   'registration',
@@ -62,6 +63,8 @@ export const SIGNED_IN_AUDIENCES = AUDIENCES.filter((a): a is SignedInAudience =
 export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   applications: ['membership_admin'],
   members: ['membership_admin'],
+  // The membership inbox: conversations between the membership team and each member (design §10.13).
+  inbox: ['membership_admin'],
   photos: ['membership_admin'],
   bylaws: ['membership_admin'],
   // The registration form's wording: its intro and questions (design §5.2).

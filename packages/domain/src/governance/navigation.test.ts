@@ -55,7 +55,7 @@ describe('defaults', () => {
 
   it('give each role the console tabs it had, System Admins the link hub, the home page quote and Bills, and Security to both', () => {
     const tabs = (role: Role) => shownTo(DEFAULT_NAVIGATION, viewer('active', role)).sections;
-    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'registration', 'offices', 'candidacies', 'teams', 'forum', 'room', 'approvals', 'email']);
+    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'inbox', 'photos', 'bylaws', 'registration', 'offices', 'candidacies', 'teams', 'forum', 'room', 'approvals', 'email']);
     expect(tabs('election_admin')).toEqual(['elections', 'offices', 'forum', 'approvals']);
     expect(tabs('auditor')).toEqual(['elections', 'offices', 'approvals', 'audit', 'security']);
     expect(tabs('system_admin')).toEqual(['room', 'approvals', 'people', 'signin', 'claude', 'email', 'security', 'testing', 'navigation', 'hub', 'quote', 'bills']);
@@ -262,6 +262,7 @@ describe('what a person sees', () => {
     expect(shownTo(resolved, viewer('applicant', 'membership_admin', 'election_admin')).sections).toEqual([
       'applications',
       'members',
+      'inbox',
       'photos',
       'bylaws',
       'registration',

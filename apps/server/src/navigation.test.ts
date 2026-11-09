@@ -16,6 +16,7 @@ import { ForumAdminController } from './forum/forum.controller.js';
 import { RoomAdminController } from './room/room.controller.js';
 import { MembershipAdminController } from './membership/membership.controller.js';
 import { RegistrationFormAdminController } from './membership/registration-form.js';
+import { TeamInboxController } from './inbox/membership-inbox.controller.js';
 import { MailAdminController } from './notifications/mail-admin.controller.js';
 import { PersonasController } from './personas/personas.controller.js';
 import { PhotoReviewController } from './photos/photos.controller.js';
@@ -30,6 +31,7 @@ type Route = readonly [controller: abstract new (...args: never[]) => object, me
 const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
   applications: [MembershipAdminController, 'listApplications'],
   members: [MembershipAdminController, 'listMembers'],
+  inbox: [TeamInboxController, 'page'],
   photos: [PhotoReviewController, 'list'],
   bylaws: [MembershipAdminController, 'publishBylaws'],
   registration: [RegistrationFormAdminController, 'current'],

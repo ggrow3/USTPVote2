@@ -114,6 +114,7 @@ export {
   memberTestMessage,
   adminTestMessage,
   broadcastMessage,
+  membershipMessageEmail,
   notificationEmailMessage,
 } from './message.js';
 export type { NoticeElection, NoticeMessage, NoticeMessageInput, NotificationEmailPeriod } from './message.js';

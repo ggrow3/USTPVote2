@@ -139,6 +139,8 @@ export interface TickResult {
   readonly broadcastEmailsSent: number;
   /** Notifications emailed as they came, and digests (design §10.13). */
   readonly notificationEmailsSent: number;
+  /** The membership team's messages emailed to members (design §10.13). */
+  readonly membershipEmailsSent: number;
   /** Suggestions a year old, and the form's limits for days gone, deleted (design §10.9). */
   readonly suggestionsDeleted: number;
   /** The room's messages, done action items and finished questions past their time, and questions given up on (design §5.10). */

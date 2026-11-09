@@ -1,4 +1,5 @@
 import { Body, Controller, Get, HttpCode, Injectable, Param, Post, Query } from '@nestjs/common';
+import { z } from 'zod';
 import {
   adminTestSchema,
   checkMailHealthRequest,
@@ -16,7 +17,7 @@ import {
 } from 'ustp-domain';
 import { Ctx, requireAccount, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
-import { assertCheck, ZodPipe } from '../common/validation.js';
+import { assertCheck, parseQuery, ZodPipe } from '../common/validation.js';
 import { Firebase } from '../infra/firebase.js';
 import { MailLogService } from './mail-log.js';
 import { MailPreferences } from './mail-preferences.js';
@@ -75,6 +76,19 @@ export class MailAdminController {
   @Get('log')
   logPage(@Query(new ZodPipe(mailLogQuerySchema)) query: MailLogQuery) {
     return this.log.page(query);
+  }
+
+  /**
+   * One member's emails, for their record (design §10.13): what the email log has of them, for the Membership Admins who
+   * write to them as well as System Admins.
+   */
+  @Get('log/members/:accountId')
+  @Roles('membership_admin', 'system_admin')
+  memberLog(@Param('accountId') accountId: string, @Query('after') after?: string) {
+    return this.log.page({
+      account: parseQuery(z.string().trim().min(1).max(64), accountId, 'accountId'),
+      after: parseQuery(z.string().trim().min(1).max(200).optional(), after, 'after'),
+    });
   }
 
   @Get('members')

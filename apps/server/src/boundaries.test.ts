@@ -16,8 +16,8 @@ const CONTEXTS: Readonly<Record<string, { readonly collections: readonly string[
     repositories: ['notice.repository', 'mail.repository', 'broadcast.repository'],
   },
   inbox: {
-    collections: ['appNotifications', 'inboxPreferences', 'memberThreads', 'memberMessages', 'memberBlocks', 'messageReports'],
-    repositories: ['inbox.repository'],
+    collections: ['appNotifications', 'inboxPreferences', 'memberThreads', 'memberMessages', 'memberBlocks', 'messageReports', 'membershipThreads', 'membershipMessages'],
+    repositories: ['inbox.repository', 'membership-inbox.repository'],
   },
   candidacies: {
     collections: ['candidacies'],
