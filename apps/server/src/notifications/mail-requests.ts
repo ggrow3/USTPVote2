@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { adminTestMessage, isMailRequestInFlight, mailAddressKey, memberTestMessage, type MailRequestOutcome, type MailRequestRecord } from 'ustp-domain';
+import { administersSite, adminTestMessage, isMailRequestInFlight, mailAddressKey, memberTestMessage, type MailRequestOutcome, type MailRequestRecord } from 'ustp-domain';
 import { DirectoryService } from '../auth/directory.service.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { MemberDirectory } from '../membership/member-directory.js';
@@ -90,7 +90,7 @@ export class MailRequestSender {
       name: member?.preferredName || member?.legalName || null,
       contact: settings.contact ?? this.config.noticeContact,
       unsubscribe: links.page,
-      toSystemAdmin: roles.includes('system_admin'),
+      toSystemAdmin: administersSite(roles),
     });
     const result = await this.mailer.send(this.transport!, {
       to: mailbox.email,

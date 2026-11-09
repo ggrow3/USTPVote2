@@ -55,7 +55,7 @@ What is not domain-centred:
 | **Governance** (roles, two-person rule, testing mode, who sees which link, the voting home's quote, the home page hub, the Anthropic API key) | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `home_quote`, `hub`, `hub_logos`, `hub_covers`, `hub_backgrounds`, `hub_clicks`, `anthropic_key` | core rule, generic mechanism |
 | **Audit ledger** | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` | shared kernel |
 | **Notifications** (election notices by email) | §6.8 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests` | supporting |
-| **Inbox** (in-app notifications, messages between members, notifications by email) | §10.13 | `app_notifications`, `inbox_preferences`, `member_threads`, `member_messages`, `member_blocks`, `message_reports` | supporting |
+| **Inbox** (in-app notifications, messages between members, notifications by email, the membership inbox) | §10.13 | `app_notifications`, `inbox_preferences`, `member_threads`, `member_messages`, `member_blocks`, `message_reports`, `membership_threads`, `membership_messages` | supporting |
 | **Verification** (`ustp-verify`, `/verify`, receipt and results checks) | §7.5, §16 | — (reads the public record) | conformist |
 
 `ustp-tally` (counting) and `ustp-audit` (JCS, hashes, Merkle, signatures) are generic subdomains and stay as they are.

@@ -6,11 +6,15 @@ import { api } from '../../api.js';
 import { roleLabel } from '../../approval-text.js';
 import { attempt, dialog } from '../../dialogs.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../../forms.js';
-import { session } from '../../session.js';
+import { hasRole, session } from '../../session.js';
 
 const emit = defineEmits<{ changed: [] }>();
 
-const ROLE_OPTIONS = ROLES.map((r) => ({ label: roleLabel(r), value: r }));
+/** A Site Admin grants and revokes every role but System Admin (design §10.2), so it is not offered to them. */
+const systemAdmin = computed(() => hasRole('system_admin'));
+const roleOptions = computed(() =>
+  ROLES.filter((r) => systemAdmin.value || r !== 'system_admin').map((r) => ({ label: roleLabel(r), value: r })),
+);
 
 const request = reactive({ accountId: '', role: 'membership_admin' as Role, change: 'grant' as 'grant' | 'revoke', reason: '' });
 const errors = ref<FieldErrors>({});
@@ -120,7 +124,10 @@ async function submit() {
       <h2 id="role-change-title" class="text-subtitle1">Change a role</h2>
       <div class="text-caption text-grey-7">
         Takes effect as soon as you confirm; no second admin approves it. The change is recorded in the audit ledger.
-        A person may hold at most two roles, and an Auditor holds no other role.
+        A person may hold at most two roles, an Auditor holds no other role, and a System Admin is not also a Site Admin.
+        <template v-if="!systemAdmin">
+          As a Site Admin you change every role but System Admin, for anyone who is not a System Admin.
+        </template>
       </div>
     </q-card-section>
     <q-card-section>
@@ -200,7 +207,7 @@ async function submit() {
             emit-value
             map-options
             label="Role"
-            :options="ROLE_OPTIONS"
+            :options="roleOptions"
           />
         </div>
         <q-input

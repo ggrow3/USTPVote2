@@ -37,7 +37,7 @@ export function audienceText(audience: BroadcastSummary['audience']): string {
 export function approvalText(b: Pick<BroadcastSummary, 'approval'>): string | null {
   if (b.approval?.status !== 'approved') return null;
   const when = b.approval.decidedAt ? ` on ${new Date(b.approval.decidedAt).toLocaleString()}` : '';
-  return `Approved by ${b.approval.decidedByName ?? 'a System Admin'}${when}.`;
+  return `Approved by ${b.approval.decidedByName ?? 'a System or Site Admin'}${when}.`;
 }
 
 /** Where an email stands: its copies, and what the mail service has said of them. */
@@ -54,7 +54,7 @@ export function broadcastStatusText(b: Pick<BroadcastSummary, 'status' | 'counts
   if (b.held) return `Held: nothing more goes while the email setup check fails. ${counts.sent} sent so far.${detail}`;
   switch (b.status) {
     case 'awaiting_approval':
-      return 'Waiting for a System Admin’s approval. Nothing has gone.';
+      return 'Waiting for a System or Site Admin’s approval. Nothing has gone.';
     case 'rejected':
       return `Not approved${b.approval?.decidedByName ? ` by ${b.approval.decidedByName}` : ''}${b.approval?.reason ? `: “${b.approval.reason}”` : ''}. Nobody got it.`;
     case 'preparing':

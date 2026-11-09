@@ -28,6 +28,7 @@ import { SECTION_LABELS } from '../governance/navigation-text.js';
 import { guide } from '../guide/tour.js';
 import ApplicationsPanel from '../membership/ApplicationsPanel.vue';
 import MembersPanel from '../membership/MembersPanel.vue';
+import MembershipInboxPanel from '../inbox/MembershipInboxPanel.vue';
 import RegistrationFormPanel from '../membership/RegistrationFormPanel.vue';
 import SecurityPanel from '../security/SecurityPanel.vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -39,6 +40,7 @@ import { session } from '../session.js';
 const PANELS: Record<AdminSection, Component> = {
   applications: ApplicationsPanel,
   members: MembersPanel,
+  inbox: MembershipInboxPanel,
   photos: PhotosPanel,
   bylaws: BylawsPanel,
   registration: RegistrationFormPanel,
@@ -106,12 +108,11 @@ onUnmounted(() => (guide.openTab = null));
       </p>
       <template v-else>
         <p>
-          The admin console is for party officers: Membership Admins, Election Admins, Auditors, System Admins, Course Administrators and
-          Communications Admins. Your
-          account holds none of these roles.
+          The admin console is for party officers: Membership Admins, Election Admins, Auditors, System Admins, Site
+          Admins, Course Administrators and Communications Admins. Your account holds none of these roles.
         </p>
         <p>
-          A System Admin grants roles. If you have been chosen for one, ask a System Admin to grant it to the account you
+          A System or Site Admin grants roles. If you have been chosen for one, ask one of them to grant it to the account you
           sign in with<template v-if="email">, {{ email }}</template>. Every admin role needs two-step verification,
           which you can set up beforehand on your <router-link to="/account">Account page</router-link>.
         </p>
@@ -123,7 +124,7 @@ onUnmounted(() => (guide.openTab = null));
         <router-link to="/account">Account page</router-link>, then sign out and sign back in with its code.
       </q-banner>
       <p v-if="!tabs.length">
-        A System Admin has hidden every section of the console from your roles. Ask them if you need one back.
+        A System or Site Admin has hidden every section of the console from your roles. Ask them if you need one back.
       </p>
       <!-- Arrows beside the tabs rather than over the first and last when they do not all fit in the card. -->
       <q-tabs v-model="tab" dense align="left" class="text-primary" no-caps outside-arrows>

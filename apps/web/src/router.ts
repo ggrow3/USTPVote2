@@ -45,6 +45,7 @@ export const router = createRouter({
         { path: 'account', component: () => import('./pages/AccountPage.vue'), meta: { requiresAuth: true } },
         { path: 'notifications', component: () => import('./inbox/NotificationsPage.vue'), meta: { requiresAuth: true } },
         { path: 'messages', component: () => import('./inbox/MessagesPage.vue'), meta: { requiresAuth: true } },
+        { path: 'messages/team/:threadId', component: () => import('./inbox/TeamThreadPage.vue'), meta: { requiresAuth: true } },
         { path: 'messages/:threadId', component: () => import('./inbox/MessagesPage.vue'), meta: { requiresAuth: true } },
         { path: 'ballot', component: () => import('./pages/BallotPage.vue'), meta: { requiresAuth: true } },
         { path: 'ballot/:id', component: () => import('./pages/VotePage.vue'), meta: { requiresAuth: true } },
@@ -84,6 +85,12 @@ export const router = createRouter({
         { path: 'share', component: () => import('./communications/SharePage.vue'), meta: { requiresAuth: true } },
         // Open to anyone signed in: the page tells people without an admin role who it is for.
         { path: 'admin', component: () => import('./pages/AdminPage.vue'), meta: { requiresAuth: true } },
+        // A conversation in the membership inbox (design §10.13).
+        {
+          path: 'admin/inbox/:threadId',
+          component: () => import('./inbox/InboxThreadPage.vue'),
+          meta: { requiresAuth: true, roles: ['membership_admin'] },
+        },
         {
           path: 'admin/members/:accountId',
           component: () => import('./membership/MemberPage.vue'),

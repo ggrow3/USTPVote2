@@ -87,7 +87,7 @@ describe('a System Admin’s test email', () => {
     const member = adminTestMessage({ ...input, toSystemAdmin: false });
     expect(member.subject).toBe(admin.subject);
     expect(member.text).toContain('Hello Ada,');
-    expect(member.text).toContain('A System Admin of the site sent you this test email, to check that the site’s email reaches members.');
+    expect(member.text).toContain('An administrator of the site sent you this test email, to check that the site’s email reaches members.');
     expect(member.text).not.toContain('Admin › Email');
     expect(member.text).not.toContain('/admin');
     expect(member.html).not.toContain('/admin');

@@ -62,17 +62,18 @@ export class AccountsController {
 }
 
 /**
- * The People list (design §10.3), so System Admins can see who holds which role and pick whose to change, and deleting
- * an account on the deployment's deletion list (§4).
+ * The People list (design §10.3), so System and Site Admins can see who holds which role and pick whose to change, and
+ * deleting an account on the deployment's deletion list (§4), which only System Admins do.
  */
 @Controller('v1/admin/accounts')
-@Roles('system_admin')
+@Roles('system_admin', 'site_admin')
 export class AccountsAdminController {
   constructor(private readonly accounts: AccountsService) {}
 
   /** Permanently deletes the account and its logins; the ledger keeps its entries and records the deletion. */
   @Post(':accountId/delete')
   @HttpCode(204)
+  @Roles('system_admin')
   async delete(@Ctx() ctx: RequestContext, @Param('accountId') accountId: string, @Body(new ZodPipe(reasonInputSchema)) body: ReasonInput) {
     await this.accounts.delete(ctx, accountId, body.reason);
   }

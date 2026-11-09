@@ -143,6 +143,12 @@ export function searchMembersToEmail(name: string): Promise<MemberMatch[]> {
 
 // --- The email log (design §10.12) -------------------------------------------------------------------------------
 
+/** Membership Admin (or System Admin): one member's emails, from the email log, for their record (design §10.13). */
+export function memberEmails(accountId: string, after?: string): Promise<MailLogPage> {
+  const query = after ? `?${new URLSearchParams({ after })}` : '';
+  return api<MailLogPage>('GET', `/v1/admin/mail/log/members/${encodeURIComponent(accountId)}${query}`);
+}
+
 /** System Admin: a page of every email the site sent, newest first. */
 export function mailLog(query: MailLogQuery): Promise<MailLogPage> {
   const params = new URLSearchParams();

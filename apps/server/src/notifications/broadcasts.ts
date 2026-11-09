@@ -21,6 +21,7 @@ import {
   type BroadcastSummary,
   type BroadcastsView,
   type MemberMatch,
+  administersSite,
 } from 'ustp-domain';
 import { Ctx, requireAccount, Roles } from '../auth/decorators.js';
 import { DirectoryService } from '../auth/directory.service.js';
@@ -106,8 +107,8 @@ export class BroadcastsService {
   private async blocked(except?: string): Promise<string | null> {
     if (this.config.mailTransport === 'off') return 'this deployment sends no email';
     const settings = await this.settings.current();
-    if (!settings.allEmails) return 'all email is switched off, which a System Admin can change under Settings on this page';
-    if (!(settings.contact ?? this.config.noticeContact)) return 'no contact for questions is set, which a System Admin can do under Settings on this page';
+    if (!settings.allEmails) return 'all email is switched off, which a System or Site Admin can change under Settings on this page';
+    if (!(settings.contact ?? this.config.noticeContact)) return 'no contact for questions is set, which a System or Site Admin can do under Settings on this page';
     return openText((await this.broadcasts.open()).filter((b) => b.broadcastId !== except));
   }
 
@@ -121,7 +122,7 @@ export class BroadcastsService {
     if (blocked) throw new ConflictException(blocked);
     const { preview } = await this.audience.resolve(input.audience);
     if (!preview.willGet) throw new ConflictException('nobody in that choice can get this email');
-    // With approval switched on (design §10.12), it waits for a System Admin, who may be the one who wrote it.
+    // With approval switched on (design §10.12), it waits for a System or Site Admin, who may be the one who wrote it.
     const approvalRequired = (await this.settings.current()).broadcastApproval;
     const ref = this.broadcasts.ref();
     const record: BroadcastRecord = {
@@ -151,18 +152,18 @@ export class BroadcastsService {
       tx.create(ref, record);
     });
     if (approvalRequired) {
-      const [admins, names] = await Promise.all([this.directory.roleHolders('system_admin'), this.namesOf([actor])]);
+      const [admins, names] = await Promise.all([this.directory.siteAdministrators(), this.namesOf([actor])]);
       const who = names.get(actor) ?? 'An admin';
       await this.notices.notify(
         admins.map((a) => a.accountId).filter((id) => id !== actor),
-        { kind: 'broadcast_approval', ref: ref.id, title: `${who} wants to email ${preview.willGet} ${preview.willGet === 1 ? 'member' : 'members'}: “${input.subject}”. It waits for a System Admin’s approval.`, link: '/admin?tab=email' },
+        { kind: 'broadcast_approval', ref: ref.id, title: `${who} wants to email ${preview.willGet} ${preview.willGet === 1 ? 'member' : 'members'}: “${input.subject}”. It waits for a System or Site Admin’s approval.`, link: '/admin?tab=email' },
       );
     }
     return this.summary(record, new Map(), ctx);
   }
 
   /**
-   * A System Admin approves an email waiting for it, the one who wrote it included: it goes out as any other, once it
+   * A System or Site Admin approves an email waiting for it, the one who wrote it included: it goes out as any other, once it
    * still could (email on, a contact, no other going out). Ledgered; whoever wrote it is told.
    */
   async approve(ctx: RequestContext, broadcastId: string): Promise<BroadcastSummary> {
@@ -185,7 +186,7 @@ export class BroadcastsService {
     return this.summary(record, await this.namesOf([record.createdBy, actor]), ctx);
   }
 
-  /** A System Admin rejects an email waiting for approval, saying why: nobody gets it. Ledgered; whoever wrote it is told. */
+  /** A System or Site Admin rejects an email waiting for approval, saying why: nobody gets it. Ledgered; whoever wrote it is told. */
   async reject(ctx: RequestContext, broadcastId: string, reason: string): Promise<BroadcastSummary> {
     const actor = requireAccount(ctx);
     const record = await this.decide(
@@ -223,7 +224,7 @@ export class BroadcastsService {
       tx.set(this.broadcasts.ref(broadcastId), decided);
       return decided;
     });
-    // Decided: the other System Admins' notifications about it have nothing left to ask.
+    // Decided: the other System and Site Admins' notifications about it have nothing left to ask.
     await this.notices.readAboutAll('broadcast_approval', broadcastId);
     return record;
   }
@@ -251,7 +252,7 @@ export class BroadcastsService {
       blocked,
       contact: settings.contact ?? this.config.noticeContact,
       approvalRequired: settings.broadcastApproval,
-      canApprove: ctx.roles.includes('system_admin'),
+      canApprove: administersSite(ctx.roles),
       broadcasts,
     };
   }
@@ -294,14 +295,14 @@ export class BroadcastsService {
 
 /** Why another email keeps a new one from going: one waits for approval, or one is going out. Null when none does. */
 function openText(open: readonly BroadcastRecord[]): string | null {
-  if (open.some((b) => b.status === 'awaiting_approval')) return 'another email is waiting for a System Admin’s approval; wait for the decision, or withdraw it';
+  if (open.some((b) => b.status === 'awaiting_approval')) return 'another email is waiting for a System or Site Admin’s approval; wait for the decision, or withdraw it';
   if (open.length) return 'another email is still going out; wait for it, or stop it';
   return null;
 }
 
 /** Emails to members, from Admin › Email (design §10.12). */
 @Controller('v1/admin/mail/broadcasts')
-@Roles('membership_admin', 'system_admin')
+@Roles('membership_admin', 'system_admin', 'site_admin')
 export class BroadcastsController {
   constructor(private readonly broadcasts: BroadcastsService) {}
 
@@ -335,17 +336,17 @@ export class BroadcastsController {
     return this.broadcasts.cancel(ctx, broadcastId);
   }
 
-  /** With approval switched on, a System Admin lets one go (design §10.12). */
+  /** With approval switched on, a System or Site Admin lets one go (design §10.12). */
   @Post(':broadcastId/approve')
   @HttpCode(200)
-  @Roles('system_admin')
+  @Roles('system_admin', 'site_admin')
   approve(@Ctx() ctx: RequestContext, @Param('broadcastId') broadcastId: string) {
     return this.broadcasts.approve(ctx, broadcastId);
   }
 
   @Post(':broadcastId/reject')
   @HttpCode(200)
-  @Roles('system_admin')
+  @Roles('system_admin', 'site_admin')
   reject(@Ctx() ctx: RequestContext, @Param('broadcastId') broadcastId: string, @Body(new ZodPipe(broadcastRejectSchema)) body: BroadcastRejectInput) {
     return this.broadcasts.reject(ctx, broadcastId, body.reason);
   }

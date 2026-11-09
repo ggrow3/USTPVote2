@@ -160,7 +160,7 @@ this structure one at a time, without changing routes, documents or the ledger.
 | Governance | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `anthropic_key`, `api_keys` |
 | Audit ledger | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` |
 | Notifications | §6.8, §5.13 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests`, `welcome_emails`, `mail_messages`, `mail_suppressions`, `mail_preferences`, `broadcasts`, `broadcast_recipients` |
-| Inbox | §10.13 | `app_notifications`, `inbox_preferences`, `member_threads`, `member_messages`, `member_blocks`, `message_reports` |
+| Inbox | §10.13 | `app_notifications`, `inbox_preferences`, `member_threads`, `member_messages`, `member_blocks`, `message_reports`, `membership_threads`, `membership_messages` |
 
 **Layers.** Records stay plain data (Firestore stores them, JCS hashes them, the browser reads them), so an aggregate
 is its record types plus pure functions in `ustp-domain`:
@@ -316,7 +316,7 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
 - **Deleting an account** *(added)*. Only accounts the deployment names can be deleted: `DELETABLE_ACCOUNT_EMAILS`
   (Terraform `deletable_account_emails`, empty by default) lists primary emails, set per environment like the bootstrap
   list because they are people's addresses. On dev it names one demo admin's address, the one account the owner wants
-  removable from the console. A **System Admin** deletes one from the People tab ("Delete account", §10.3;
+  removable from the console. A **System Admin** deletes one, never a Site Admin (403; §10.1), from the People tab ("Delete account", §10.3;
   `POST /v1/admin/accounts/{accountId}/delete` with a written reason), at once, with no second admin, under the role
   changes' rules (`checkCanDeleteAccount` in `ustp-domain`): signed in with MFA within 15 minutes, never their own
   account, and never an account on any election's roll or among those who voted in one (a roll snapshot that was not
@@ -406,7 +406,8 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
   (problem type `/problems/mfa-required`), and approvals additionally require `auth_time` within the last 15 minutes
   (`/problems/reauth-required`; the web app re-authenticates and retries once).
   - **Who needs it where** *(added)* (`secondFactorScope` in `ustp-domain`): **System Admins on every signed-in
-    route**, always, whatever the setting below says, since they change roles, the sign-in switches and this setting;
+    route**, always, whatever the setting below says, since they change roles, the sign-in switches and this setting, and
+    **Site Admins** likewise, since they change roles too (`Site Admins must sign in with two-step verification`);
     **every other admin role** on the admin routes; **members without a role** nowhere, unless a System Admin turns on
     the **member requirement**, which then holds everyone to it on every route. Two routes answer a sign-in without a
     second factor (`@MfaExempt()`), so anyone can see where they stand and set one up: `GET /v1/me` and
@@ -3576,21 +3577,25 @@ results page, the CLI and the tests pass it that entry.
 
 ### 10.1 Roles (spec §5)
 
-| Capability | Membership Admin | Election Admin | Auditor | System Admin |
-|---|:-:|:-:|:-:|:-:|
-| Triage applications and photos; add members, one or from a CSV file (§5.13); view member profiles; change member status; correct member details; change the registration form's wording (§5.2) | ● | | | |
-| Create, rename, archive and restore teams; name and remove their leads; change anything on any team (§5.7) | ● | | | |
-| Moderate the forum: remove and restore posts and comments, lock and pin threads, see and close reports (§5.9) | ● | | | |
-| Put a forum proposal on a draft election's ballot (§5.9) | | ● | | |
-| In the members' room, having accepted its terms: delete any message or memory item, change any action item, switch the assistant off and on (§5.10) | ● | | | |
-| Open or close the members' room for everyone (Admin › Members' room; §5.10) | ● | | | ● |
-| Switch the members' room's model server on or off, which decides its GPU cost (§5.10) | | | | ● |
-| Create/edit draft elections, contests, proposals; delete a cancelled election nobody voted in, or a finished rehearsal in testing mode (at once; §6.1) | | ● | | |
-| Request roll snapshot, scheduling, certification, cancellation | | ● | | |
-| Define or change offices (at once; §6.4); request an appointment to an office or the end of a term (§6.4) | ● | ● | | |
-| Approve roll, scheduling, certification, cancellation, an appointment to an office, ending a term of office | | | ● | |
-| Read full ledger, run verifications | | | ● | |
-| Grant/revoke roles (one System Admin, at once; §10.2), see who holds them (§10.3), delete an account the deployment lists (at once; §4) or, in testing mode, test voters (at once; §10.4), sign-in switches and the two-step requirement for members (§4), the Anthropic API key (§5.6), which teams have the Bills tool (§5.14), operations | | | | ● |
+| Capability | Membership Admin | Election Admin | Auditor | System Admin | Site Admin |
+|---|:-:|:-:|:-:|:-:|:-:|
+| Triage applications and photos; add members, one or from a CSV file (§5.13); view member profiles; change member status; correct member details; change the registration form's wording (§5.2) | ● | | | | |
+| Write to members and answer them as the membership team, in the membership inbox, giving, noting and closing its conversations; see the emails the site sent a member, on their record (§10.13) | ● | | | | |
+| Create, rename, archive and restore teams; name and remove their leads; change anything on any team (§5.7) | ● | | | | |
+| Moderate the forum: remove and restore posts and comments, lock and pin threads, see and close reports (§5.9) | ● | | | | |
+| Put a forum proposal on a draft election's ballot (§5.9) | | ● | | | |
+| In the members' room, having accepted its terms: delete any message or memory item, change any action item, switch the assistant off and on (§5.10) | ● | | | | |
+| Open or close the members' room for everyone (Admin › Members' room; §5.10) | ● | | | ● | ● |
+| Switch the members' room's model server on or off, which decides its GPU cost (§5.10) | | | | ● | |
+| Create/edit draft elections, contests, proposals; delete a cancelled election nobody voted in, or a finished rehearsal in testing mode (at once; §6.1) | | ● | | | |
+| Request roll snapshot, scheduling, certification, cancellation | | ● | | | |
+| Define or change offices (at once; §6.4); request an appointment to an office or the end of a term (§6.4) | ● | ● | | | |
+| Approve roll, scheduling, certification, cancellation, an appointment to an office, ending a term of office | | | ● | | |
+| Read full ledger, run verifications | | | ● | | |
+| Grant/revoke roles (one admin, at once; §10.2) and see who holds them (§10.3) | | | | ● | ● (every role but System Admin, never a System Admin's) |
+| Delete an account the deployment lists (at once; §4); in testing mode, delete test voters (at once) and use the other testing tools: personas, acting as them, demo elections (§10.4) | | | | ● | |
+| Sign-in switches and the two-step requirement for members (§4), the API keys (§5.6) | | | | ● | |
+| The navigation settings (§10.5), the link hub and the home page quote (§10.5, §10.6), the email settings, setup check, email log, test emails and approving emails to members (§6.8, §10.12), the sign-in log and site analytics (§10.7), which teams have the Bills tool (§5.14), operations | | | | ● | ● |
 
 **Content roles** *(added)*: Course Administrators run the courses: they add courses and place them on the course
 map, publish them, see how each student stands and turn each student's messages with the instructors on or off, the
@@ -3598,19 +3603,31 @@ instructors being themselves (§10.8). **Communications Admins** publish the par
 plan its social media and read suggestions from the public, and also edit the Link hub (§10.9). Neither has any
 membership, election, ballot or audit power, and Course Administrators see no learner's email.
 
-**Incompatible role pairs:** Auditor with any other role. **At most two roles per person** *(added)*
-(`MAX_ROLES_PER_ACCOUNT`): one person may combine two of Membership Admin, Election Admin and System Admin, never all
-three, so no one person both runs the membership, runs elections and controls who holds roles. `checkRoleChange` in
+**Site Admins** *(added 2026-11-08, the owner's decisions)* have most of what System Admins have, as the last four rows
+of the table show, and wherever this document gives System Admins a power those rows do not keep for them alone, Site
+Admins have it too (`SITE_ADMIN_ROLES`, `administersSite` in `ustp-domain`). They delete no account and no test voter:
+the API answers them 403 on both routes (§4, §10.4). They grant and revoke every role but System Admin, Site Admin
+included, and never change the roles of a System Admin's account, so a Site Admin can neither make a System Admin nor
+weaken one (403; §10.2). The owner kept the testing tools with System Admins; the sign-in settings, the API keys and the
+room's model server stay with System Admins too, as recommended when the owner stated no preference on those, and Site
+Admins approve emails to members like System Admins (§10.12). Like System Admins they sign in with two-step
+verification on every page (§4), have the Bills tool (§5.14), get no test persona (§10.4), and are never made by the
+bootstrap (§4).
+
+**Incompatible role pairs:** Auditor with any other role, and System Admin with Site Admin, which would add nothing.
+**At most two roles per person** *(added)* (`MAX_ROLES_PER_ACCOUNT`): one person may combine two of Membership Admin,
+Election Admin, System Admin and Site Admin, never three, so no one person both runs the membership, runs elections and
+controls who holds roles. `checkRoleChange` in
 `ustp-domain` applies both rules to every grant (a conflict is named first when a grant breaks both); a revocation is
 always allowed, so an account granted more before the limit can be brought within it. The role-change form shows the
 refusal in words before sending, and the API refuses the grant (409). An Election Admin who is a candidate in an election may not
-act on that election (Q12; enforced on every edit, and nobody can add themselves as a candidate). All admin roles require MFA for the admin tools, and System Admins on every page (§4). The first System Admin is bootstrapped once from deployment
+act on that election (Q12; enforced on every edit, and nobody can add themselves as a candidate). All admin roles require MFA for the admin tools, and System and Site Admins on every page (§4). The first System Admin is bootstrapped once from deployment
 configuration and ledgered; the bootstrap grant keeps to the same rules, so an account that is an Auditor or already
 holds two roles is left as it is (logged) and becomes System Admin at a later sign-in once it holds one role.
 
 The admin console is in the web app's menu for whoever the navigation settings show it to: by default everyone
 (§5.2, §10.5). Signed out, it leads to sign-in and back; signed in with no role, to a page saying it is for party
-officers and that a System Admin grants roles (§10.2). Each officer sees the tabs the settings give their roles, which
+officers and that a System or Site Admin grants roles (§10.2). Each officer sees the tabs the settings give their roles, which
 are never more than the roles allow, and a page their roles do not cover (an election, for a Membership Admin) returns
 to the console.
 
@@ -3651,6 +3668,13 @@ roles it holds now (no duplicate grant, no revoking a role it does not hold, the
 change is ledgered as `role.granted` / `role.revoked` with that admin as actor and the reason in the payload, in the
 same transaction as the `role_assignments` write.
 
+**A Site Admin** *(added 2026-11-08)* changes roles the same way, under the same checks, for every role but System
+Admin, Site Admin included, and never on an account that holds System Admin: `checkCanChangeRole` refuses both as
+forbidden (403: "system_admin is granted and revoked only by a system_admin", "the roles of a system_admin are changed
+only by a system_admin"). The API checks before the change with the roles unknown and again inside its transaction with
+the roles the account holds then, so an account ID typed in gets the same answer. The role-change form offers a Site
+Admin no System Admin and no "Change roles" on a System Admin's row.
+
 This replaced a two-person rule for role changes (`role.grant` / `role.revoke`, approved by another System Admin).
 What it gives up: a single System Admin account, if compromised or misused, can take over role management and lock the
 other admins out, and the ledger records it only after the fact. Requests made under the old rule stay decidable
@@ -3659,8 +3683,8 @@ creates new ones.
 
 ### 10.3 People list
 
-System Admins need to see who holds which role, and to name the person a role change is about, without asking them
-for their account ID. `GET /v1/admin/accounts` (System Admin, so MFA and the revocation check apply like any admin
+System and Site Admins need to see who holds which role, and to name the person a role change is about, without asking
+them for their account ID. `GET /v1/admin/accounts` (System or Site Admin, so MFA and the revocation check apply like any admin
 route) lists accounts with only what that needs: accountId, display name, primary email and whether it is verified,
 when the account was created, the member status if there is a member record, and the active roles from
 `role_assignments`. It shows no legal name, state, statement, logins or photo; those stay with the Membership Admin
@@ -3671,7 +3695,7 @@ when the account was created, the member status if there is a member record, and
   the admins never means paging through every member. Pages hold up to 100 rows.
 - Roles come from one query for every unrevoked assignment: role holders are few, and the list and the role filter
   both need all of them. The query needs only single-field indexes.
-- The web app's People tab (System Admin) shows the list with role chips and an Offices column *(added)*: the offices
+- The web app's People tab (System and Site Admins) shows the list with role chips and an Offices column *(added)*: the offices
   each account holds now, from the offices list (`GET /v1/admin/positions`, readable by every role; §6.4), as the
   Members tab shows them (§5.2), so an admin sees roles and offices side by side. The role-change form picks the person from
   the same list, typing an account ID stays as a fallback, and the form explains a refusal before sending it with the
@@ -3679,8 +3703,8 @@ when the account was created, the member status if there is a member record, and
   The form sits in the People tab, under the list ("Change roles" on a row fills it in), and asks for confirmation
   before sending, because the change takes effect at once. The API still decides.
 - **Delete account** *(added)*: each row says whether the deployment lists the account for deletion
-  (`onDeletionList`, from `DELETABLE_ACCOUNT_EMAILS`; §4), and a row that is listed and not your own, member or not, gets
-  a "Delete account" button; the API refuses, with its reason, an account an election has on its roll or among those
+  (`onDeletionList`, from `DELETABLE_ACCOUNT_EMAILS`; §4), and for a System Admin a row that is listed and not their own,
+  member or not, gets a "Delete account" button (a Site Admin sees none, and the API answers them 403); the API refuses, with its reason, an account an election has on its roll or among those
   who voted. It asks for a written reason in a dialog that says the deletion happens at once, cannot be undone and
   needs no other admin, that a member's membership, its history and applications go too, and that the ledger keeps its
   entries; then it reloads the list. On a deployment
@@ -3696,13 +3720,14 @@ different account on each side. Testing mode lets one System Admin do that alone
   Dev has it on.
 - **Personas:** `POST /v1/testing/personas` (System Admin) creates whichever admin persona is missing (Test
   Membership Admin, Test Election Admin, Test Auditor, Test Course Admin, Test Communications Admin: one per role but
-  System Admin, so a role added later gets its persona the next time this runs) and adds the requested number of
+  System Admin and Site Admin, so a role added later gets its persona the next time this runs) and adds the requested number of
   numbered test voters, at most 50 per deployment. A persona is an ordinary account with no login (no email, no `account_identities`) plus a
   `testing_personas` record. Admin personas get their role directly; voters become Active members on the current
   bylaws (409 while none is published). Each persona is created in its own transaction with the ledger entry its real
   counterpart gets (`role.granted` or `member.status_changed`, reason `test persona`), naming the System Admin as the
-  actor. There is no System Admin persona: role changes stay with real System Admins, recorded under their own
-  names.
+  actor. There is no System Admin or Site Admin persona: role changes stay with real System and Site Admins, recorded
+  under their own names. The testing tools are System Admins' alone; a Site Admin gets 403 on every `/v1/testing` route
+  and on `X-Act-As`.
 - **Acting:** a request with `X-Act-As: <persona accountId>` runs as that persona. The guard checks that testing mode
   is on, that the caller is a System Admin signed in with MFA whose token is not revoked, and that the target is a
   persona; the request's account and roles are then the persona's, and the System Admin is kept as its `operator`.
@@ -3782,7 +3807,7 @@ different account on each side. Testing mode lets one System Admin do that alone
 - **Deleting test voters** *(added 2026-11-03, the owner's choice of "any test voter, records kept")*: a System Admin
   deletes test voters from Admin → Testing, one ("Delete" on its row) or every one at once ("Delete all test voters"),
   with `POST /v1/testing/personas/delete` `{ voters: [accountId, …] }` (1 to 50, testing mode only, 404 otherwise).
-  - **Who and when:** one System Admin, at once, with no second admin and no written reason, signed in with MFA within
+  - **Who and when:** one System Admin (never a Site Admin: 403), at once, with no second admin and no written reason, signed in with MFA within
     the last 15 minutes as for any deletion (`checkCanDeleteTestVoters` in `ustp-domain`). Only voter personas: every
     ID must be one (404 naming those that are not, before anything is deleted), and the admin personas stay. A voter
     deleted meanwhile, by another System Admin, is skipped.
@@ -3809,7 +3834,7 @@ different account on each side. Testing mode lets one System Admin do that alone
 
 ### 10.5 Who sees which link, and the voting home
 
-System Admins choose which main-menu links and admin console sections each membership state and staff role is shown,
+System and Site Admins choose which main-menu links and admin console sections each membership state and staff role is shown,
 and the page each starts on (Admin → Navigation). The settings decide what the web app **shows, never what anyone may
 do**: the API's role checks (§10.1, §12) are unchanged, and a page reached by its address refuses or explains itself
 as before. They also choose the quote on the voting home, or switch it off (Admin → Home page quote; below). The home
@@ -4599,12 +4624,12 @@ admin stopped. Never which emails or when: that stays the member's own.
   there. `POST` to that address unsubscribes, as the page's button and mail clients do; a token that is no one's gets
   404, and nothing the routes answer says whose a token is. Only the member can undo it, on their Account page (`POST
   /v1/me/email/unsubscribe`, `…/resubscribe`), where they can also unsubscribe; no admin can.
-- **An admin's stop.** A Membership or System Admin can stop email to a member, with a written reason, from the member's
+- **An admin's stop.** A Membership, System or Site Admin can stop email to a member, with a written reason, from the member's
   profile or Admin › Email (`GET|POST /v1/admin/mail/stops`, by address or ID; `POST …/stops/{accountId}/restore`, either
   role; 409 if already so; not their own, 403). Since it could cut a voter off from election notices, it is ledgered
   (`member.email_stopped`, the admin, the member and the reason; Auditors only), and the member sees it on their Account
   page and cannot undo it. It leaves their own unsubscribing, if any, standing. Admin › Email is open to Membership Admins
-  for this alone; its settings and the setup check stay System Admins'.
+  for this alone; its settings and the setup check stay System and Site Admins'.
 
 The election's counts show those members as skipped, never who they are. Identity Platform's emails (a sign-in link, a
 password reset, confirming an address) stay outside all three: a member asks for them themselves, Google sends them
@@ -4612,21 +4637,21 @@ without the app, and without them they could not sign in. Neither a stop nor uns
 deleted; adding the address again starts over.
 
 **A System Admin's test email** *(added 2026-11-06; recipient added 2026-11-07; members added 2026-11-07, the party's
-decision)*. Since email starts off, Admin › Email lets a System Admin send a test to themselves, another System Admin or a
-member, and no one else (`GET|POST /v1/admin/mail/test`, System Admin; queued as an `admin_test` in `mail_requests`, ten a
+decision)*. Since email starts off, Admin › Email lets a System or Site Admin send a test to themselves, another System or
+Site Admin or a member, and no one else (`GET|POST /v1/admin/mail/test`, System or Site Admin; queued as an `admin_test` in `mail_requests`, ten a
 day, one at a time, 409 and 429 otherwise). A member here is anyone with a member record who is an applicant, Active,
-lapsed or suspended; someone who resigned or was rejected, or an account with no member record that holds no System
-Admin role, is refused as `to` (403). The System Admins are listed; members are found by typing part of a name, or a
-whole email address (`GET /v1/admin/mail/test/recipients?q=`, System Admin: System Admins whose name or address holds
-the text, then members by name as the member search ranks them, at most ten, each with their address so the System
-Admin sees where it goes). It is the one thing that goes while all email is off, so they can see that email works
+lapsed or suspended; someone who resigned or was rejected, or an account with no member record that holds neither System
+Admin nor Site Admin, is refused as `to` (403). The System and Site Admins are listed, each labelled with which it is;
+members are found by typing part of a name, or a whole email address (`GET /v1/admin/mail/test/recipients?q=`, System or
+Site Admin: System and Site Admins whose name or address holds the text, then members by name as the member search ranks
+them, at most ten, each with their address so the admin sees where it goes). It is the one thing that goes while all email is off, so they can see that email works
 before switching it on, and nobody but the one chosen gets anything. It needs a deployment that sends mail and a
 confirmed address, and does not go to anyone who unsubscribed or whose email an admin stopped. A member who is not a
-System Admin gets it in their own words: what it is, that they need do nothing, and to mark it as not spam, without the
+System or Site Admin gets it in their own words: what it is, that they need do nothing, and to mark it as not spam, without the
 link to Admin › Email. The card shows what became of it from its delivery report. "Check now" on the
 setup check is a different thing: its messages go to SES's simulator and reach nobody.
 
-**The email log** *(added 2026-11-08, the party's decision)*. System Admins can see every email the site sent under
+**The email log** *(added 2026-11-08, the party's decision)*. System and Site Admins can see every email the site sent under
 Admin › Email › Email log (`GET /v1/admin/mail/log`): the records the worker already keeps of each message the mail
 service took (`mail_messages`, §6.8), this app's and Identity Platform's, newest first, fifty at a time. Each row says
 what the email was (and the election, for an election email), whom it went to (the account's name and the address the
@@ -4650,8 +4675,11 @@ to that person.
 - **Reading it.** Firestore reads the records by the most selective filter given (recipient, then who caused it, then
   kind, then status) and the days; the rest are applied to what comes back. One page reads at most 1,000 records, so a
   filter that matches little says when it stopped short and the next page goes further back.
+- **On a member's record** *(added 2026-11-08)*. Membership Admins, who write to members from the membership inbox
+  (§10.13), see one member's rows on that member's record (`GET /v1/admin/mail/log/members/{accountId}`, Membership and
+  System Admins): the same metadata, never the words.
 
-**An email to members** *(added 2026-11-07, the party's decision)*. Membership and System Admins can write to members from
+**An email to members** *(added 2026-11-07, the party's decision)*. Membership, System and Site Admins can write to members from
 Admin › Email, the Email Administration page (`/v1/admin/mail/broadcasts`, `preview`, `member-search`, `…/{id}/cancel`,
 `…/{id}/approve`, `…/{id}/reject`).
 
@@ -4673,18 +4701,19 @@ Admin › Email, the Email Administration page (`/v1/admin/mail/broadcasts`, `pr
   audience, how many; `notice.broadcast_cancelled`; Auditors only), never naming a member, since the ledger cannot be erased.
   `broadcasts` keeps the words, and the page shows them with how many were sent, delivered, bounced and marked as spam,
   never to whom. Each member sees their own copy among their emails on the Account page.
-- **Approval** *(added 2026-11-08, the party's decision)*. A System Admin can switch on, under Settings ("Emails to
-  members"; `broadcastApproval` in `notice_settings`, off by default, ledgered with the other settings), that each email
-  waits for a System Admin's approval before it goes. Sending then asks for approval instead (`status`
-  `awaiting_approval`; the request ledgered with `approvalRequired`), and every System Admin but the one who wrote it is
-  notified in the app (§10.13), and by email if they chose to have their notifications so. Any System Admin may approve
-  it, *the one who wrote it included* (the party chose this over the two-person rule of §10.2, so a System Admin alone can
-  still send, with one more step); a Membership Admin's email needs a System Admin. Each sees it on the page with its
-  words and how many it would go to now, and approves it (`POST …/{id}/approve`, System Admin; refused, 409, while it
+- **Approval** *(added 2026-11-08, the party's decision; Site Admins too, 2026-11-08)*. A System or Site Admin can
+  switch on, under Settings ("Emails to members"; `broadcastApproval` in `notice_settings`, off by default, ledgered with
+  the other settings), that each email waits for a System or Site Admin's approval before it goes. Sending then asks for
+  approval instead (`status` `awaiting_approval`; the request ledgered with `approvalRequired`), and every System and
+  Site Admin but the one who wrote it is notified in the app (§10.13), and by email if they chose to have their
+  notifications so. Any of them may approve it, *the one who wrote it included* (the party chose this over the
+  two-person rule of §10.2, so a System or Site Admin alone can still send, with one more step); a Membership Admin's
+  email needs a System or Site Admin. Each sees it on the page with its words and how many it would go to now, and
+  approves it (`POST …/{id}/approve`, System or Site Admin; refused, 409, while it
   could not go: email off, no contact, another going out) or rejects it with a reason (`POST …/{id}/reject`). Approved,
   it goes out as any other (`preparing`); rejected, nobody gets it (`rejected`). Both are ledgered
   (`notice.broadcast_approved`, `notice.broadcast_rejected` with the reason; Auditors only), whoever wrote it is notified
-  unless they decided it themselves, and the other System Admins' notifications about it are marked read. While it waits
+  unless they decided it themselves, and the other System and Site Admins' notifications about it are marked read. While it waits
   it counts as the one email at a time, and whoever can send emails may withdraw it ("Withdraw", ledgered as
   `notice.broadcast_cancelled` with `beforeApproval`). It does not lapse; switching approval off leaves one already
   waiting to be decided.
@@ -4693,12 +4722,13 @@ Admin › Email, the Email Administration page (`/v1/admin/mail/broadcasts`, `pr
 
 A bell in the header of every page, for whoever is signed in with an account, counts their unread notifications and
 lists the latest; each leads to what it is about, and opening it marks it read. `/notifications` lists the last 30,
-newest first, with "Mark all read". Members can also write to each other. All of it is the inbox context
-(`packages/domain/src/inbox`, `apps/server/src/inbox`).
+newest first, with "Mark all read". Members can also write to each other, and to the party's membership team, which
+answers them in a shared inbox. All of it is the inbox context (`packages/domain/src/inbox`, `apps/server/src/inbox`).
 
 - **What notifies.** A member writing to them ("Ada Brooks sent you a message"); for Membership Admins, a member
   reporting a message ("A member reported a message", leading to Admin › Forum); for System Admins, an email to members
-  waiting for their approval, and for whoever wrote it, the decision (§10.12). One notification stands for one thing
+  waiting for their approval, and for whoever wrote it, the decision (§10.12); the membership team writing to a member,
+  and for Membership Admins a member writing to the team or a conversation given to them (below). One notification stands for one thing
   (a conversation, the reports waiting): something more about it while it is unread adds to it ("3 new"), and after it
   was read starts it afresh. `app_notifications/{id}`, the ID a hash of the kind, the thing and the account; kept 90
   days after it last changed (Firestore TTL); never ledgered, since it only says where to look. The bell reads the
@@ -4740,6 +4770,45 @@ newest first, with "Mark all read". Members can also write to each other. All of
   `noindex` (§15). Deleting an account (§4) deletes its notifications, its preference, every conversation it was in
   with all of its messages (the other member's included) and the other member's notifications about them, its blocks
   either way, and the reports of its messages or by it.
+
+**The membership inbox** *(added 2026-11-08, the party's decisions)*. The Membership Admins are the party's *membership
+team*, and share one inbox of conversations between the team and each member, for one-off messages; an email to many
+members is still Email members, with its consent and approval (§10.12).
+
+- **Either side starts one.** A Membership Admin writes to a member from Admin › Membership inbox ("Write to a member",
+  any Active member found by name) or from the member's record ("Write to this member", whatever their status). A
+  member writes to the team from their Messages page ("Write to the membership team"), whatever their status, an
+  applicant or a lapsed member included: any account with a member record. Each conversation has a subject and is with
+  one member (`membership_threads/{random}`, `membership_messages/{random}`, plain text of up to 5,000 characters).
+- **What the member sees.** Their conversations with the team, under Messages (`/messages/team/{threadId}`); the team's
+  messages are signed by the membership team, never by the admin who wrote them, and the team's notes are not there.
+  Opening one marks it read, and the team sees when. Nobody else's is there: another account's is a 404.
+- **What the team sees.** Every conversation, the latest written to first, fifty at a time: those that need an answer
+  (the member wrote last), answered (the team did), closed, or all; anyone's, the caller's or nobody's. A conversation
+  (`/admin/inbox/{threadId}`) shows each message with which Membership Admin wrote it, whether its email went and why
+  not, and whether the member has read it since. The team answers, answers and closes, or adds a **note** only the team
+  sees, which changes nothing else. It **gives** a conversation to one Membership Admin, who is told, or back to the
+  whole team; and closes one, or opens it again. A member's next message opens a closed one again. A member's record
+  lists their conversations and the emails the site sent them (§10.12).
+- **Who is told.** A member writing notifies whoever has the conversation, or else every Membership Admin but the member
+  themselves; an answer or closing marks every Membership Admin's notification about it read. The team writing notifies
+  the member.
+- **By email, as membership business** (the party's decision). Whatever the team writes to a member (not a note) is
+  emailed to them, with its words, a link to answer on the site, and why it came: whether or not they chose news and
+  announcements, but through `Mailer` (§10.12), so never while all email is off, nor to a member who unsubscribed or
+  whose email an admin stopped, nor to an address that bounced, is unconfirmed or missing. The worker sends them, a step
+  of each tick after notifications by email, for at most 10 seconds, each claimed first so none goes twice; one the mail
+  service did not take is tried again for a day. What happened is kept on the message for the team, and the
+  conversation warns before anyone writes when email would not reach the member now. Nothing waits for email to be
+  switched on: the member has it on the site. The email is in the email log as `membership_message`, caused by the admin
+  who wrote it; and since the message is itself emailed, its notification is not emailed again as it comes (a digest
+  still lists it while unread). Replies to the email are not read: the member answers on the site.
+- **Limits.** A member starts at most 3 conversations and writes at most 20 messages to the team a day; a Membership
+  Admin starts at most 50 conversations a day; a conversation holds at most 200 messages and notes (429, 409).
+- **Kept two years** after the conversation's last message (the party's decision; Firestore TTL, each new message
+  moving its earlier ones' time on too), and deleted with the member's account (§4) with the team's notifications
+  about it; what a deleted Membership Admin wrote stays in the members' conversations. Not ledgered: the conversation
+  is its own record, and its emails are in the email log.
 
 ## 11. Data model (Firestore `(default)` database)
 
@@ -4824,6 +4893,8 @@ Physically, registration collections are top-level and election data lives under
 | `member_messages/{messageId}` | random | written once (marked when reported); TTL a year; deleted with either account | one message: conversation, from, to, plain text, when, whether its recipient reported it (§10.13) *(added 2026-11-08)* |
 | `member_blocks/{blocker}_{blocked}` | the two account IDs | made and deleted by the one who blocked; deleted with either account | one member gets no messages from another (§10.13) *(added 2026-11-08)* |
 | `message_reports/{reportId}` | random | open → closed with a note; TTL a year; deleted with either account | a reported message: a copy of it, who wrote it, who reported it and why, who closed it (§10.13) *(added 2026-11-08)* |
+| `membership_threads/{threadId}` | random | written with each message, status change and assignment; TTL two years after the last message; deleted with the member's account | a conversation between the membership team and one member: subject, status (open, answered, closed), who has it, who started it, its last message's start and time, the member's unread count and when they last read it (§10.13) *(added 2026-11-08)* |
+| `membership_messages/{messageId}` | random | written once (its email's outcome added); TTL with its conversation; deleted with the member's account | one message or note: who wrote it for which side, plain text, when, and for a team message whether its email went and why not (§10.13) *(added 2026-11-08)* |
 | `mail_preferences/{accountId}` | accountId | made with the account's first email, unsubscribing or stop; deleted with its account | the unsubscribe link's token, when the member unsubscribed, and when and by which admin their email was stopped (§10.12) *(added 2026-11-06)* |
 | `mail_health/{current\|request\|run}` | fixed | replaced by each run | the email setup check's last run (each check's status, detail and fix, the probe), a System Admin's request for a run, and the claim on a run (§10.12) *(added)* |
 | **audit & admin** | | | |
@@ -4955,8 +5026,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /bills/recent` | the Bills tool | a Congress's bills by when they were last updated, with their latest action, twenty a page, from Congress.gov (§5.14) |
 | `GET /bills/{congress}/{type}/{number}` · `GET …/text/{version}` | the Bills tool | one bill: details, status, actions, summaries, text versions and its watchlist entry with notes; one version's text, plain (§5.14) |
 | `GET /bills/watchlist` · `PUT /bills/watchlist/{billId}` · `DELETE /bills/watchlist/{billId}` | the Bills tool | the shared watchlist, refreshed when stale, sorted and filtered by tag; add a bill or change its tags, from the version edited (409 if stale); remove it with its notes (§5.14) |
-| `POST /bills/watchlist/{billId}/notes` · `PUT /bills/notes/{noteId}` · `DELETE /bills/notes/{noteId}` | the Bills tool | add a note to a watched bill; edit one's own; delete one's own, or any as a System Admin (§5.14) |
-| `GET\|PUT /admin/bills` | System Admin | which teams have the Bills tool, from the version edited (409 if stale), ledgered `bills.settings_changed`; and the key in use (§5.14) |
+| `POST /bills/watchlist/{billId}/notes` · `PUT /bills/notes/{noteId}` · `DELETE /bills/notes/{noteId}` | the Bills tool | add a note to a watched bill; edit one's own; delete one's own, or any as a System or Site Admin (§5.14) |
+| `GET\|PUT /admin/bills` | System Admin, Site Admin | which teams have the Bills tool, from the version edited (409 if stale), ledgered `bills.settings_changed`; and the key in use (§5.14) |
 | `GET /public/candidacies` · `GET /public/candidacies/{id}` | P | approved candidacies for public office of members who are Active now, upcoming elections first (§5.8) |
 | `GET /public/districts?kind=&state=` · `GET /public/districts/{kind}/{geoid}/boundary` · `GET /public/maps` | P | the Census districts of a kind in a state; a district's outline as GeoJSON (both cached an hour, a day on the CDN; 503 when TIGERweb does not answer); the Google Maps browser key, or null (§5.8) |
 | `GET /candidacies/area/contacts` | M | the Your area page: the caller's area, who holds and who runs for each office in it from public records and Communications Admins' entries, which records answered, and the email templates (§5.12) |
@@ -4976,8 +5047,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `PUT /room/messages/{id}/vote` · `PUT /room/messages/{id}/reactions` | M (Active, in the room) | one's vote on a member's message or an answer (`value` 1, -1, or 0 to take it back); one of the six reactions added or taken back (`reaction`, `on`); either returns the message, with the score and counts but never who |
 | `POST /room/decisions` · `POST /room/actions` · `PUT /room/actions/{id}` · `GET /room/memory` · `DELETE /room/memory/{id}` | M (Active, in the room) | `/decide`, `/todo` and changing an item one owns or added, `/memory` (all of it; the page searches), `/forget` an item one added, with the answers citing it |
 | `DELETE /admin/room/messages/{id}` · `PUT /admin/room/actions/{id}` · `DELETE /admin/room/memory/{id}` · `PUT /admin/room/assistant` | Membership Admin, in the room | delete any message or memory item, change any action item; the kill switch (`on`), ledgered `room.assistant_switched` |
-| `GET /admin/room/settings` · `PUT /admin/room/settings/open` | Membership Admin, System Admin | the switches, the door's words and how the room is doing; open or close the room (`on`), ledgered `room.settings_changed` |
-| `PUT /admin/room/door` | Membership Admin, System Admin | the door's intro line and terms, from the revision opened (`basedOn`); changed terms are a new version everyone accepts again; ledgered `room.door_changed` (§5.10) |
+| `GET /admin/room/settings` · `PUT /admin/room/settings/open` | Membership Admin, System Admin, Site Admin | the switches, the door's words and how the room is doing; open or close the room (`on`), ledgered `room.settings_changed` |
+| `PUT /admin/room/door` | Membership Admin, System Admin, Site Admin | the door's intro line and terms, from the revision opened (`basedOn`); changed terms are a new version everyone accepts again; ledgered `room.door_changed` (§5.10) |
 | `PUT /admin/room/settings/server` | System Admin | let the model server run, starting it, or stop anything reaching it (`on`), ledgered `room.settings_changed` (§5.10) |
 | `GET /share` | M (Active) | the share kit offered today, without who wrote it (403 for anyone not an Active member; §10.9) |
 | `GET\|POST /admin/communications/news` · `GET\|PUT\|DELETE …/news/{postId}` · `POST …/news/{postId}/publish` · `POST …/news/{postId}/withdraw` | Communications Admin | every post, drafts first; create a draft; change one from the version edited (its address only while never published); publish, withdraw, or delete a draft never published; publishing, changing a published post and withdrawing are ledgered (§10.9) |
@@ -5000,27 +5071,31 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST\|DELETE /messages/blocks/{accountId}` | Signed in | block or unblock a member (§10.13) |
 | `POST /messages/reports/{messageId}` | Signed in | its recipient reports a message to the Membership Admins, once (409 again, or by its writer) (§10.13) |
 | `GET /admin/message-reports` · `POST /admin/message-reports/{id}/close` | Membership Admin | the reported messages, each alone, and closing one with a note (409 if closed already) (§10.13) |
+| `GET\|POST /admin/inbox` · `GET /admin/inbox/team` · `GET /admin/inbox/{id}` · `POST /admin/inbox/{id}/messages\|status\|assign` | Membership Admin | the membership inbox: a page of conversations (by status, whose, or one member's, with how many need an answer), the Membership Admins, writing to a member (404 without a member record, 409 to oneself, 429 past 50 a day), a conversation, answering or noting (and closing), closing or opening again, giving it to a Membership Admin (409 otherwise) (§10.13) *(added 2026-11-08)* |
+| `GET\|POST /membership-team` · `GET\|POST /membership-team/{id}` · `POST /membership-team/{id}/read` | Signed in | the caller's conversations with the membership team: listing, starting one (403 without a member record, 429 past the day's limits), reading, answering (404 for anyone else's) and marking read (§10.13) *(added 2026-11-08)* |
+| `GET /admin/mail/log/members/{accountId}` | Membership Admin, System Admin, Site Admin | one member's rows of the email log, for their record (§10.12, §10.13) *(added 2026-11-08)* |
 | `GET /admin/mail/members` | Membership Admin | members who cannot be emailed, and why: bounced, marked as spam, unconfirmed, no address (§10.12) |
-| `GET /admin/mail/health` | System Admin | the email setup check's last run and a request still waiting (§10.12) |
-| `POST /admin/mail/broadcasts/{id}/approve` · `…/reject` | System Admin | with approval switched on, lets an email to members go, or rejects it with a reason; 409 when it is not waiting, or could not go now; ledgered (§10.12) |
-| `GET /admin/mail/log` | System Admin | the email log: every email sent in 180 days, newest first, 50 a page (`after`), narrowed by recipient (`account`), `causedBy`, `kind`, `status` and days (`from`, `to`); never an address it went to, a subject or a body (§10.12) |
-| `POST /admin/mail/health/check` | System Admin | asks the worker to run the check on its next tick; 202, 409 while one waits, 429 within five minutes of the last run (§10.12) |
-| `GET\|PUT /admin/notice-settings` | System Admin | the election emails' settings: each on or off, the reminder's lead time, the contact, each subject and opening, and the name all the site's email comes from; saved whole against the version read (409 if stale, 400 for unknown placeholders); ledgered (§6.8) |
+| `GET /admin/mail/health` | System Admin, Site Admin | the email setup check's last run and a request still waiting (§10.12) |
+| `POST /admin/mail/broadcasts/{id}/approve` · `…/reject` | System Admin, Site Admin | with approval switched on, lets an email to members go, or rejects it with a reason; 409 when it is not waiting, or could not go now; ledgered (§10.12) |
+| `GET /admin/mail/log` | System Admin, Site Admin | the email log: every email sent in 180 days, newest first, 50 a page (`after`), narrowed by recipient (`account`), `causedBy`, `kind`, `status` and days (`from`, `to`); never an address it went to, a subject or a body (§10.12) |
+| `POST /admin/mail/health/check` | System Admin, Site Admin | asks the worker to run the check on its next tick; 202, 409 while one waits, 429 within five minutes of the last run (§10.12) |
+| `GET\|PUT /admin/notice-settings` | System Admin, Site Admin | the election emails' settings: each on or off, the reminder's lead time, the contact, each subject and opening, and the name all the site's email comes from; saved whole against the version read (409 if stale, 400 for unknown placeholders); ledgered (§6.8) |
 | `POST /admin/elections/{id}/notices/{kind}/resend` | Election Admin | send the notice again to those it failed for, while voting is open and once its last round has finished (409 otherwise; §6.8) |
 | `POST /admin/elections/{id}/notices/{kind}/test` | Election Admin | queue the email, marked "[TEST]", for the caller's own address only (the System Admin's when acting as a persona); takes no address; 202; 403 for a candidate, 409 where email is off or has no contact or while their last test has not gone, 429 after ten a day (§6.8) |
 | `GET /admin/approvals` · `POST /admin/approvals/{id}/decision` | per action | two-person decisions (§10.2) |
 | `GET /admin/audit/events` · `GET /admin/audit/verify` | Auditor | ledger (paged by seq); verification of chain, blocks, signatures and anchors |
-| `GET\|PUT /admin/sign-in-methods` · `POST /admin/roles` | System Admin | auth switches; grant or revoke a role, at once (returns the account's roles afterwards; §10.2) |
+| `GET\|PUT /admin/sign-in-methods` | System Admin | auth switches (§4) |
+| `POST /admin/roles` | System Admin, Site Admin | grant or revoke a role, at once (returns the account's roles afterwards); a Site Admin every role but System Admin, never on a System Admin's account (403; §10.2) |
 | `GET\|PUT /admin/mfa-policy` | System Admin | whether members without a role must use two-step verification, with who saved it; save it from the version it was edited from (409 if someone saved since), ledgered (§4) |
-| `GET /admin/accounts` (paged; `email` prefix, `role` filter) | System Admin | People list: accounts with member status, active roles and whether the deployment lists them for deletion, read-only (§10.3) |
-| `POST /admin/accounts/{accountId}/delete` | System Admin | permanently delete an account the deployment lists that no election has on its roll or among those who voted, with its logins, roles and membership, at once (204; 403 otherwise; §4) |
+| `GET /admin/accounts` (paged; `email` prefix, `role` filter) | System Admin, Site Admin | People list: accounts with member status, active roles and whether the deployment lists them for deletion, read-only (§10.3) |
+| `POST /admin/accounts/{accountId}/delete` | System Admin | permanently delete an account the deployment lists that no election has on its roll or among those who voted, with its logins, roles and membership, at once (204; 403 otherwise, and to a Site Admin; §4) |
 | `GET\|PUT\|DELETE /admin/anthropic-key` | System Admin | whether a key is set, its last four characters, who added it and when, and how each Claude check is switched; add a key in place of any before it, after trying it with Anthropic (400 not an API key, 422 refused, 502 Anthropic unreachable; nothing kept); remove it (404 if none); never returns the key; ledgered (§5.6) |
-| `GET\|PUT /admin/navigation` | System Admin | the navigation settings with who saved them; save the whole matrix from the version it was edited from (409 if someone saved since, or a locked cell is switched), ledgered (§10.5) |
-| `GET /admin/security/sign-ins?days=` | System Admin, Auditor | the sign-ins of the last 1, 7, 30 (default), 90 or 180 days, newest first, at most 2,000, and whether more were left out (§10.7) |
-| `GET /admin/page-visits?days=` | System Admin, Auditor | hits per page and per UTC day over the last 1, 7, 30 (default), 90 or 180 days, and who opened each page, by name, from at most 20,000 visits, and whether more were left out (§10.7) |
-| `GET\|PUT /admin/site-analytics` | System Admin | the Google Analytics setting with who saved it; save a measurement ID or null from the version it was edited from (400 not a GA4 ID, 409 if someone saved since), ledgered (§10.7) |
-| `GET\|PUT /admin/home-quote` | System Admin | the voting home's quote with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if shown without its words or who said them, or a part over its limit), ledgered (§10.5) |
-| `GET\|PUT /admin/hub` · `PUT /admin/hub/logo` · `PUT /admin/hub/cover` · `PUT /admin/hub/background` · `GET /admin/hub/clicks` | System Admin, Communications Admin | the link hub with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if something shown is unfinished, an address, the accent, or the logo, cover banner or page background cannot be used), ledgered; upload a logo, cover banner or page background (the image as the body, giving its ID; shown once saved); each link's clicks in the last 30 days and in all (§10.6) |
+| `GET\|PUT /admin/navigation` | System Admin, Site Admin | the navigation settings with who saved them; save the whole matrix from the version it was edited from (409 if someone saved since, or a locked cell is switched), ledgered (§10.5) |
+| `GET /admin/security/sign-ins?days=` | System Admin, Site Admin, Auditor | the sign-ins of the last 1, 7, 30 (default), 90 or 180 days, newest first, at most 2,000, and whether more were left out (§10.7) |
+| `GET /admin/page-visits?days=` | System Admin, Site Admin, Auditor | hits per page and per UTC day over the last 1, 7, 30 (default), 90 or 180 days, and who opened each page, by name, from at most 20,000 visits, and whether more were left out (§10.7) |
+| `GET\|PUT /admin/site-analytics` | System Admin, Site Admin | the Google Analytics setting with who saved it; save a measurement ID or null from the version it was edited from (400 not a GA4 ID, 409 if someone saved since), ledgered (§10.7) |
+| `GET\|PUT /admin/home-quote` | System Admin, Site Admin | the voting home's quote with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if shown without its words or who said them, or a part over its limit), ledgered (§10.5) |
+| `GET\|PUT /admin/hub` · `PUT /admin/hub/logo` · `PUT /admin/hub/cover` · `PUT /admin/hub/background` · `GET /admin/hub/clicks` | System Admin, Site Admin, Communications Admin | the link hub with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if something shown is unfinished, an address, the accent, or the logo, cover banner or page background cannot be used), ledgered; upload a logo, cover banner or page background (the image as the body, giving its ID; shown once saved); each link's clicks in the last 30 days and in all (§10.6) |
 | `GET\|PUT /admin/courses/{courseId}` · `POST /admin/courses/{courseId}/lessons\|profiles` · `PUT /admin/courses/{courseId}/images` · `POST /admin/courses/{courseId}/publish` | Course Admin | the course draft; save a lesson with its quiz and any video, or a profile with its portrait (400 if a portrait is half done or names no upload, or a video names no finished upload); upload a portrait (the image as the body; shown once saved and published); publish a new version (409 while a profile lacks a complete portrait) (§10.8) |
 | `POST /admin/courses/{courseId}/videos` · `POST /admin/communications/videos` · `POST /admin/hub/videos`, each with `PUT …/videos/{videoId}/parts/{index}` | Course Admin · Communications Admin · System or Communications Admin | start uploading a video for lessons, for news and the press kit, or for the hub (type, size, file name; MP4 or WebM, at most 1 GB), then send its 8 MiB parts in order as raw bodies with its type; 404 for a part sent where its upload did not begin, 409 for one sent too soon, 400 for a wrong size or a first part that is not that kind of video, 503 until `VIDEOS_BUCKET` is set (§10.10) |
 | `GET\|POST /admin/courses` · `DELETE /admin/courses/{courseId}` · `PUT /admin/courses/{courseId}/map` · `PUT /admin/course-map` · `PUT /admin/courses/{courseId}/visibility` | Course Admin | every course, drafts and hidden ones included; add a draft course (its ID from its title); delete one never published (409 if published or another course comes after it); set where it sits on the map and its prerequisites, at once (409 for a loop, an unknown course, a taken square, or a course shown on the Courses page after a hidden one); save the board: the squares and prerequisites of up to 100 courses together, checked as one map, all or nothing (same 409s); hide the course from the Courses page or show it, at once (409 while a course shown there comes after it) (§10.8) |
@@ -5045,6 +5120,7 @@ Errors use RFC 9457 problem details. Request bodies are validated against schema
 | *(tick step, M5)* | every tick | each send of election email checked 30 minutes after it finished against its delivery reports, a short one alerted (§6.8); a notice held while the email setup check fails, which it runs first when over an hour old |
 | *(tick step, M5)* | every tick | vote confirmations: each voter told, within a minute or so, that their ballot was recorded (§6.8); planned as an `email` Cloud Task, which the tick made unnecessary |
 | *(tick step, M5)* | every tick | members' notifications by email, as each comes and the digests due, for at most 10 seconds after the election emails and admins' emails (§10.13) |
+| *(tick step, M5)* | every tick | the membership team's messages to members by email, for at most 10 seconds after the notifications (§10.13) *(added 2026-11-08)* |
 | *(tick step, M4b)* | every tick | destroy the ballot-pool key version of certified and cancelled elections (§7.3); planned as a `destroy-pool-key` Cloud Task, which the tick made unnecessary |
 
 Tallying is a step of the tick, not the `POST /tasks/tally` Cloud Task planned earlier: the tick already runs every

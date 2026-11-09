@@ -10,6 +10,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  administersSite,
   BILL_LIMITS,
   billId,
   billLabel,
@@ -66,7 +67,7 @@ interface Caller {
 }
 
 const NOT_FOR_YOU =
-  'the Bills page is for the legislative team: the teams a System Admin names under Admin › Bills, and System Admins. Ask a team’s lead to join it';
+  'the Bills page is for the legislative team: the teams a System or Site Admin names under Admin › Bills, and System and Site Admins. Ask a team’s lead to join it';
 
 /** The status a service's failure has (design §5.14): its hourly limit 429, anything else 502. */
 function sourceError(e: unknown): never {
@@ -114,7 +115,7 @@ export class BillsService {
       this.repo.settings(),
       this.roster.teamIdsOf(accountId),
     ]);
-    const systemAdmin = roles.includes('system_admin');
+    const systemAdmin = administersSite(roles);
     const named = new Set(settings.teamIds);
     const candidates = member?.status === 'active' ? mine.filter((id) => named.has(id)) : [];
     const teams = candidates.length

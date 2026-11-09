@@ -219,14 +219,14 @@ export function memberTestMessage(input: {
 /**
  * The test email a System Admin asks for in Admin › Email (design §10.12), to see that email from the site reaches a
  * System Admin, or a member, before it is switched on for everyone. It goes only to the one chosen, whether or not all
- * email is on. A member who is not a System Admin cannot open that page, so theirs only says what it is.
+ * email is on. A member who is not a System or Site Admin cannot open that page, so theirs only says what it is.
  */
 export function adminTestMessage(input: {
   readonly origin: string;
   readonly name: string | null;
   readonly contact: string | null;
   readonly unsubscribe?: string | null;
-  /** Whether it goes to a System Admin; true unless said otherwise. */
+  /** Whether it goes to a System or Site Admin; true unless said otherwise. */
   readonly toSystemAdmin?: boolean;
 }): NoticeMessage {
   const site = `${input.origin}/`;
@@ -234,7 +234,7 @@ export function adminTestMessage(input: {
   const about: Block[] =
     input.toSystemAdmin === false
       ? [
-          { p: 'A System Admin of the site sent you this test email, to check that the site’s email reaches members. You do not need to do anything.' },
+          { p: 'An administrator of the site sent you this test email, to check that the site’s email reaches members. You do not need to do anything.' },
           { p: 'If it was in your spam or junk folder, please mark it as not spam, so that the party’s emails reach you.' },
         ]
       : [
@@ -247,7 +247,7 @@ export function adminTestMessage(input: {
     greeting(input.name),
     ...about,
     { hr: true },
-    { small: 'You are getting this email because a System Admin of the site asked for it to be sent to you.' },
+    { small: 'You are getting this email because an administrator of the site asked for it to be sent to you.' },
     ...footer(input.contact, site, input, 'the site'),
   ];
   return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
@@ -273,6 +273,41 @@ export function broadcastMessage(input: {
     { hr: true },
     { small: 'You are getting this email because you chose to get news and announcements from the party. It came from a party administrator, not a member.' },
     ...footer(input.contact, site, input, 'this email'),
+  ];
+  return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
+}
+
+/**
+ * The membership team's message to a member (design §10.13): its words, as plain text that the HTML escapes, signed by
+ * the team rather than the admin who wrote it, with a link to the conversation on the site, where the member answers.
+ * It goes as membership business, whether or not the member chose to get news and announcements, and says so.
+ */
+export function membershipMessageEmail(input: {
+  readonly origin: string;
+  readonly name: string | null;
+  readonly contact: string | null;
+  /** The conversation's subject; "Re: " leads it after the first message. */
+  readonly subject: string;
+  readonly reply: boolean;
+  readonly body: string;
+  /** The conversation's path in the app, e.g. `/messages/team/{threadId}`. */
+  readonly link: string;
+  readonly unsubscribe?: string | null;
+}): NoticeMessage {
+  const site = `${input.origin}/`;
+  const subject = capped(`${input.reply ? 'Re: ' : ''}${oneLine(input.subject)}`);
+  const blocks: Block[] = [
+    greeting(input.name),
+    ...paragraphs(input.body).map((p) => ({ p })),
+    { p: 'The membership team' },
+    { link: `${input.origin}${input.link}`, label: 'Answer on the site', after: ' (you will be asked to sign in), where the whole conversation is.' },
+    { hr: true },
+    {
+      small:
+        'You are getting this email because the party’s membership team wrote to you about your membership. Such emails go to ' +
+        'members whether or not they chose to get news and announcements.',
+    },
+    ...footer(input.contact, site, input, 'anything else'),
   ];
   return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
 }

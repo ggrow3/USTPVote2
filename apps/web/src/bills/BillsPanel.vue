@@ -57,7 +57,7 @@ async function save() {
       <h2 class="text-subtitle1">Bills in Congress</h2>
       <div class="text-grey-7">
         The Bills page finds bills in Congress, opens their actions and text, and keeps a watchlist with tags and notes. It
-        is for the legislative team: the Active members of the teams named here, and System Admins. Membership Admins and
+        is for the legislative team: the Active members of the teams named here, and System and Site Admins. Membership Admins and
         the teams' leads decide who is on each team, under Teams.
       </div>
     </div>
@@ -69,7 +69,7 @@ async function save() {
           <h3 id="bills-teams-heading" class="text-subtitle1">Teams with the Bills page</h3>
           <div class="text-caption text-grey-7">
             <template v-if="settings.updatedBy">Last changed by {{ settings.updatedBy.name }} on {{ day(settings.updatedAt) }}.</template>
-            <template v-else>No team named yet, so only System Admins have the page.</template>
+            <template v-else>No team named yet, so only System and Site Admins have the page.</template>
           </div>
         </q-card-section>
         <q-card-section>

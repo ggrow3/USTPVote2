@@ -48,7 +48,7 @@ describe('an email that needs approval', () => {
   it('says it waits, and who decided', () => {
     const base = { counts: counts(), held: null, preview: null, completedAt: null };
     expect(broadcastStatusText({ ...base, status: 'awaiting_approval', approval: { status: 'waiting', decidedByName: null, decidedAt: null, reason: null } })).toBe(
-      'Waiting for a System Admin’s approval. Nothing has gone.',
+      'Waiting for a System or Site Admin’s approval. Nothing has gone.',
     );
     expect(broadcastStatusText({ ...base, status: 'rejected', approval: decided('rejected', 'not now') })).toBe('Not approved by Sam Admin: “not now”. Nobody got it.');
     expect(approvalText({ approval: decided('approved') })).toMatch(/^Approved by Sam Admin on /);

@@ -67,6 +67,7 @@ import { PublicRegistrationFormController, RegistrationFormAdminController } fro
 import { BroadcastsController } from '../notifications/broadcasts.js';
 import { MailAdminController } from '../notifications/mail-admin.controller.js';
 import { MessageReportsController, MessagesController, MyNotificationsController } from '../inbox/inbox.controller.js';
+import { MyTeamInboxController, TeamInboxController } from '../inbox/membership-inbox.controller.js';
 import { INBOX_API_PROVIDERS } from '../inbox/providers.js';
 import { UnsubscribeController } from '../notifications/mail-preferences.js';
 import { MyEmailController } from '../notifications/my-email.js';
@@ -134,6 +135,8 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     MyNotificationsController,
     MessagesController,
     MessageReportsController,
+    TeamInboxController,
+    MyTeamInboxController,
     VotingController,
     ConsistencyChecksController,
     AdminConsistencyChecksController,

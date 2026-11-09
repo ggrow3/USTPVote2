@@ -55,10 +55,12 @@ describe('defaults', () => {
 
   it('give each role the console tabs it had, System Admins the link hub, the home page quote and Bills, and Security to both', () => {
     const tabs = (role: Role) => shownTo(DEFAULT_NAVIGATION, viewer('active', role)).sections;
-    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'registration', 'offices', 'candidacies', 'teams', 'forum', 'room', 'approvals', 'email']);
+    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'inbox', 'photos', 'bylaws', 'registration', 'offices', 'candidacies', 'teams', 'forum', 'room', 'approvals', 'email']);
     expect(tabs('election_admin')).toEqual(['elections', 'offices', 'forum', 'approvals']);
     expect(tabs('auditor')).toEqual(['elections', 'offices', 'approvals', 'audit', 'security']);
     expect(tabs('system_admin')).toEqual(['room', 'approvals', 'people', 'signin', 'claude', 'email', 'security', 'testing', 'navigation', 'hub', 'quote', 'bills']);
+    // Site Admins: System Admins' tabs but Sign-in methods, API keys and Testing (design §10.1).
+    expect(tabs('site_admin')).toEqual(['room', 'approvals', 'people', 'email', 'security', 'navigation', 'hub', 'quote', 'bills']);
     expect(tabs('course_admin')).toEqual(['course']);
     expect(tabs('communications_admin')).toEqual(['communications', 'hub']);
   });
@@ -143,7 +145,7 @@ describe('defaults', () => {
     const resolved = resolveNavigation(before);
     expect(AUDIENCES.filter((a) => !resolved.menu[a].news)).toEqual([]);
     expect(ROLES.filter((r) => resolved.sections[r].communications)).toEqual(['communications_admin']);
-    expect(ROLES.filter((r) => resolved.sections[r].hub)).toEqual(['system_admin', 'communications_admin']);
+    expect(ROLES.filter((r) => resolved.sections[r].hub)).toEqual(['system_admin', 'site_admin', 'communications_admin']);
     for (const role of ['membership_admin', 'election_admin', 'auditor', 'system_admin', 'course_admin'] as const) {
       expect(sectionLock(role, 'communications')).toBe('not_permitted');
     }
@@ -185,6 +187,12 @@ describe('locked cells', () => {
   it('lock on Navigation and People for System Admins, and nothing else', () => {
     const guarded = ROLES.flatMap((r) => ADMIN_SECTIONS.filter((s) => sectionLock(r, s) === 'guarded').map((s) => `${r}:${s}`));
     expect(guarded).toEqual(['system_admin:people', 'system_admin:navigation']);
+  });
+
+  it('lock Sign-in methods, API keys and Testing off for Site Admins', () => {
+    for (const section of ['signin', 'claude', 'testing'] as const) expect(sectionLock('site_admin', section)).toBe('not_permitted');
+    expect(sectionLock('site_admin', 'people')).toBeNull();
+    expect(sectionLock('site_admin', 'navigation')).toBeNull();
   });
 
   it("make a role's Admin link follow its sections, and leave the other links free", () => {
@@ -262,6 +270,7 @@ describe('what a person sees', () => {
     expect(shownTo(resolved, viewer('applicant', 'membership_admin', 'election_admin')).sections).toEqual([
       'applications',
       'members',
+      'inbox',
       'photos',
       'bylaws',
       'registration',

@@ -39,6 +39,7 @@ export const AUDIENCE_CAPTIONS: Readonly<Record<Audience, string>> = {
   election_admin: 'Elections, offices',
   auditor: 'Approvals, the ledger',
   system_admin: 'Roles, settings',
+  site_admin: 'Roles, most settings',
   course_admin: 'Course content',
   communications_admin: 'News, press, social',
 };
@@ -68,7 +69,7 @@ export const MENU_CAPTIONS: Readonly<Record<MenuLink, string>> = {
   teams: 'Join a team, see who is on each; leads run theirs (Active members only)',
   forum: 'Discuss and propose, vote posts up or down (Active members only)',
   room: 'The members’ chat room and its assistant, after accepting its terms (Active members only)',
-  bills: 'Bills in Congress: search, read and the watchlist (only for the teams Admin › Bills names, and System Admins)',
+  bills: 'Bills in Congress: search, read and the watchlist (only for the teams Admin › Bills names, and System and Site Admins)',
   news: 'News and press releases, the press kit, the share kit and the suggestions form',
   course: 'The course map: public lessons, quizzes and a certificate for each course',
   admin: 'The admin console',
@@ -79,6 +80,7 @@ export const MENU_CAPTIONS: Readonly<Record<MenuLink, string>> = {
 export const SECTION_LABELS: Readonly<Record<AdminSection, string>> = {
   applications: 'Applications',
   members: 'Members',
+  inbox: 'Membership inbox',
   photos: 'Photos',
   bylaws: 'Bylaws',
   registration: 'Registration form',
@@ -107,6 +109,7 @@ export const SECTION_LABELS: Readonly<Record<AdminSection, string>> = {
 export const SECTION_CAPTIONS: Readonly<Record<AdminSection, string>> = {
   applications: 'Approve or reject applications to join',
   members: 'Find members, change status, correct details',
+  inbox: 'Conversations between the membership team and members',
   photos: 'Review flagged profile photos',
   bylaws: 'Draft, check and publish the bylaws',
   registration: "The Register page's intro, questions and Core Ideals",

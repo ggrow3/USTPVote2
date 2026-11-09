@@ -111,7 +111,7 @@ export class SecurityController {
   constructor(private readonly signIns: SignInLogService) {}
 
   @Get('sign-ins')
-  @Roles('system_admin', 'auditor')
+  @Roles('system_admin', 'site_admin', 'auditor')
   list(@Query('days') days?: string): Promise<SignInLog> {
     const n = Number(days);
     return this.signIns.list((SIGN_IN_LOG_PERIODS as readonly number[]).includes(n) ? n : 30);

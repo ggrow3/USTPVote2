@@ -143,6 +143,21 @@ describe('the two-step requirement for members (design §4)', () => {
     expect(await useSite(pat)).toMatchObject(SYSTEM_ADMIN_REFUSAL);
   });
 
+  it('holds Site Admins to it on every page, as System Admins', async () => {
+    const sa1 = await api.member(SA1_EMAIL, { mfa: true });
+    const site = await api.member('site@example.test');
+    const secured = await api.member('secured@example.test', { mfa: true });
+    await api.grant(site.accountId, 'site_admin', sa1);
+    await api.grant(secured.accountId, 'site_admin', sa1);
+    expect(await useSite(site)).toMatchObject({
+      status: 403,
+      body: { type: PROBLEM_TYPES.mfaRequired, detail: 'Site Admins must sign in with two-step verification' },
+    });
+    expect((await api.call('GET', '/v1/me', site)).body.mfa).toEqual({ required: true, everywhere: true, signedInWithMfa: false });
+    expect((await useSite(secured)).status).toBe(200);
+    expect((await api.call('GET', '/v1/admin/accounts', secured)).status).toBe(200);
+  });
+
   it('is changed only by a System Admin signed in with a second factor, from the version they saw', async () => {
     const sa1 = await api.member(SA1_EMAIL, { mfa: true });
     const sa2 = await api.member(SA2_EMAIL);

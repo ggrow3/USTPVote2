@@ -239,8 +239,8 @@ onMounted(load);
         <q-card-section>
           <h3 id="settings-all" class="text-subtitle2 q-my-none">All email from this site</h3>
           <div class="text-caption text-grey-7">
-            Email is off until a System Admin switches it on. This switches every email the site sends, at once, without the
-            Save button below. While it is off, what comes due waits, and goes if you switch it on in time. Sign-in and
+            Email is off until a System or Site Admin switches it on. This switches every email the site sends, at once,
+            without the Save button below. While it is off, what comes due waits, and goes if you switch it on in time. Sign-in and
             password-reset emails come from Identity Platform, so they still go, and so do the setup check’s messages to
             Amazon’s simulator and your own test email above.
           </div>
@@ -369,10 +369,10 @@ onMounted(load);
         </q-card-section>
         <q-card-section class="ustp-form q-pt-none">
           <div>
-            <q-toggle v-model="draft!.broadcastApproval" label="A System Admin approves each email to members before it goes" />
+            <q-toggle v-model="draft!.broadcastApproval" label="A System or Site Admin approves each email to members before it goes" />
             <div class="text-caption text-grey-7 q-pl-xl">
-              On: an email a Membership or System Admin writes under Email members waits, and every System Admin is
-              notified (under the bell). Any System Admin may approve it, the one who wrote it included, or reject it
+              On: an email a Membership, System or Site Admin writes under Email members waits, and every System and Site
+              Admin is notified (under the bell). Any of them may approve it, the one who wrote it included, or reject it
               with a reason. Each decision is recorded in the audit ledger. An email already waiting still waits if you
               switch this off.
             </div>

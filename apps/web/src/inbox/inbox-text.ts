@@ -14,6 +14,8 @@ export const NOTIFICATION_ICONS: Readonly<Record<AppNotificationKind, string>> =
   message_report: 'flag',
   broadcast_approval: 'mark_email_unread',
   broadcast_decided: 'outgoing_mail',
+  membership_message: 'support_agent',
+  membership_inbox: 'inbox',
 };
 
 /** The badge on the bell: the count, capped so it fits. */
@@ -24,7 +26,7 @@ export function badgeText(unread: number): string {
 /** A notification's line, with how many times it happened while unread. */
 export function notificationLine(n: { readonly title: string; readonly count: number; readonly kind: string }): string {
   if (n.count <= 1) return n.title;
-  if (n.kind === 'message') return `${n.title} (${n.count} new)`;
+  if (n.kind === 'message' || n.kind === 'membership_message' || n.kind === 'membership_inbox') return `${n.title} (${n.count} new)`;
   return `${n.title} (${n.count} times)`;
 }
 
@@ -52,6 +54,6 @@ export function emailCaveat(view: Pick<NotificationEmailView, 'notificationEmail
   if (view.mail === 'no_address') return 'Your account has no email address, so none of these can come.';
   if (view.mail === 'unverified') return 'Your email address is not confirmed yet, so none of these will come until it is.';
   if (view.mail === 'bounced' || view.mail === 'complained') return 'Email to your address is stopped (it bounced or was marked as spam); try it again above.';
-  if (!view.sending) return 'The party has these emails switched off for now, so none will come until a System Admin switches them on.';
+  if (!view.sending) return 'The party has these emails switched off for now, so none will come until a System or Site Admin switches them on.';
   return null;
 }

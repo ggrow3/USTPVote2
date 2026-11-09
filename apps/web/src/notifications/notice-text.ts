@@ -51,10 +51,10 @@ export const EMAIL_DESCRIPTION =
 export const NOT_SET_UP = 'Nothing is sent until email (Amazon SES) is set up for this deployment.';
 
 /** Where System Admins have switched all the site's email off. */
-export const ALL_OFF = 'All email is switched off by a System Admin (Admin › Email): nothing goes until it is on.';
+export const ALL_OFF = 'All email is switched off by a System or Site Admin (Admin › Email): nothing goes until it is on.';
 
 /** Where System Admins have switched Election Admins' test emails off. */
-export const TESTS_OFF = 'Test emails are switched off by a System Admin (Admin › Email).';
+export const TESTS_OFF = 'Test emails are switched off by a System or Site Admin (Admin › Email).';
 
 /** Where no contact for questions is set, in the app or the deployment. */
 export const NO_CONTACT = 'Nothing is mailed until a contact for election questions is set (Admin › Email).';
@@ -123,7 +123,7 @@ export function noNoticeText(step: NoticeStep, detail: ElectionDetail, view: Not
     case 'all_off':
       return ALL_OFF;
     case 'off':
-      return `A System Admin has switched ${step.kind === 'closing_soon' ? 'the reminder' : step.kind === 'voted' ? 'vote confirmations' : 'this email'} off (Admin › Email).`;
+      return `A System or Site Admin has switched ${step.kind === 'closing_soon' ? 'the reminder' : step.kind === 'voted' ? 'vote confirmations' : 'this email'} off (Admin › Email).`;
     case 'short_window':
       return `Voting is open for ${lead} or less, so there is no reminder.`;
     case 'closed':

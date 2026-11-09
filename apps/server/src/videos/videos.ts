@@ -267,13 +267,13 @@ export class VideosController {
   }
 
   @Post('admin/hub/videos')
-  @Roles('system_admin', 'communications_admin')
+  @Roles('system_admin', 'site_admin', 'communications_admin')
   startHub(@Ctx() ctx: RequestContext, @Body(new ZodPipe(startVideoSchema)) input: StartVideoInput) {
     return this.videos.start({ area: 'hub', courseId: null }, input, requireAccount(ctx));
   }
 
   @Put('admin/hub/videos/:videoId/parts/:index')
-  @Roles('system_admin', 'communications_admin')
+  @Roles('system_admin', 'site_admin', 'communications_admin')
   partHub(@Param('videoId') videoId: string, @Param('index') index: string, @Req() req: FastifyRequest, @Body() body: unknown) {
     return this.videos.putPart({ area: 'hub', courseId: null }, videoId, partIndex(index), body, req.headers['content-type']);
   }
