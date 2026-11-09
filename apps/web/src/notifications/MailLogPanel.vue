@@ -4,7 +4,7 @@ import { MAIL_CAUSED_BY_SYSTEM, MAIL_KINDS, MAIL_STATUSES, type MailKind, type M
 import { announce } from '../a11y.js';
 import { attempt } from '../dialogs.js';
 import { accountsByEmail, mailLog, searchMembersToEmail } from './api.js';
-import { LOG_KIND_LABELS, LOG_STATUS_COLOURS, LOG_STATUS_LABELS, logBounce, logCause, logRecipient } from './mail-log-text.js';
+import { LOG_KIND_LABELS, LOG_STATUS_COLOURS, LOG_STATUS_LABELS, logBounce, logCause, logKind, logRecipient, logStatus } from './mail-log-text.js';
 
 /**
  * The email log (design §10.12), for System Admins: every email the site sent, newest first, with whom it went to, who
@@ -110,7 +110,7 @@ function clear() {
 const when = (iso: string) => new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
 
 function what(row: MailLogRow): string {
-  return row.electionTitle ? `${LOG_KIND_LABELS[row.kind]}: ${row.electionTitle}` : LOG_KIND_LABELS[row.kind];
+  return row.electionTitle ? `${logKind(row)}: ${row.electionTitle}` : logKind(row);
 }
 
 function reported(row: MailLogRow): string | null {
@@ -187,7 +187,7 @@ function reported(row: MailLogRow): string | null {
             <button v-if="row.accountId && !to" type="button" class="mail-log__only" :title="`Show only emails to ${logRecipient(row)}`" @click="only('to', row)">{{ logRecipient(row) }}</button>
             <template v-else>{{ logRecipient(row) }}</template>
             · caused by
-            <button v-if="row.causedBy && !causedBy && row.sender === 'app'" type="button" class="mail-log__only" :title="`Show only emails caused by ${logCause(row)}`" @click="only('causedBy', row)">{{ logCause(row) }}</button>
+            <button v-if="row.causedBy && !causedBy" type="button" class="mail-log__only" :title="`Show only emails caused by ${logCause(row)}`" @click="only('causedBy', row)">{{ logCause(row) }}</button>
             <template v-else>{{ logCause(row) }}</template>
           </q-item-label>
           <q-item-label caption>
@@ -195,7 +195,7 @@ function reported(row: MailLogRow): string | null {
           </q-item-label>
         </q-item-section>
         <q-item-section side top>
-          <q-chip dense square :color="LOG_STATUS_COLOURS[row.status]" text-color="white" :label="LOG_STATUS_LABELS[row.status]" />
+          <q-chip dense square :color="LOG_STATUS_COLOURS[row.status]" text-color="white" :label="logStatus(row)" />
         </q-item-section>
       </q-item>
     </q-list>

@@ -45,6 +45,7 @@ export class MailLogService {
         messageId: r.messageId,
         kind: r.kind,
         sender: r.sender,
+        handOff: r.handOff === true,
         delivery: r.delivery,
         status: r.status,
         sentAt: r.sentAt,

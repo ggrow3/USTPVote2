@@ -1,5 +1,6 @@
-import type { AccountRecord, LedgerEntry, MemberImportRow, OutboxMessageRecord, WelcomeEmailRecord } from 'ustp-domain';
+import type { AccountRecord, LedgerEntry, MailMessageRecord, MemberImportRow, OutboxMessageRecord, WelcomeEmailRecord } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { addEmulatorMailEvent, sesEventBody } from './notifications/mail-transport.js';
 import { resetEmulators, signIn, TestApi, TestWorker, type User } from './testing/emulator.js';
 
 /**
@@ -16,10 +17,12 @@ afterAll(() => Promise.all([api.close(), worker.close()]));
 
 type Member = User & { accountId: string };
 let admin: Member;
+let systemAdmin: Member;
 
 beforeEach(async () => {
   await resetEmulators();
   const [sa1] = await api.systemAdmins();
+  systemAdmin = sa1;
   admin = await api.member('membership.admin@example.test');
   await api.grant(admin.accountId, 'membership_admin', sa1);
   const published = await api.call('POST', '/v1/admin/bylaws', admin, { version: '2026.1', title: 'USTP Bylaws', text: 'Article I. Name.\n' });
@@ -222,6 +225,85 @@ describe('the added member signs in', () => {
 });
 
 describe('without mail', () => {
+  const messagesTo = async (accountId: string) =>
+    (await db().collection('mail_messages').where('accountId', '==', accountId).get()).docs.map((d) => d.data() as MailMessageRecord);
+  /** Identity Platform's report of the sign-in link it sent through SES. */
+  const report = (eventType: string, messageId: string, to: string, sentAt: string) =>
+    addEmulatorMailEvent(db(), sesEventBody({ eventType, messageId, to, sentAt, at: new Date().toISOString(), tags: {}, subject: 'Sign in to USTP Vote requested at 10:04 AM' }));
+
+  /** An api that sends no mail, so welcomes go as Identity Platform's sign-in links. */
+  const withoutMail = async (run: (quiet: TestApi) => Promise<void>) => {
+    process.env.MAIL_TRANSPORT = 'off';
+    const quiet = await TestApi.start();
+    try {
+      await run(quiet);
+    } finally {
+      delete process.env.MAIL_TRANSPORT;
+      await quiet.close();
+    }
+  };
+
+  it('logs the sign-in link the admin’s browser had Identity Platform send, as the admin’s welcome', () =>
+    withoutMail(async (quiet) => {
+      const accountId = (await quiet.call('POST', '/v1/admin/members', admin, { ...ada, reason: 'Roster' })).body.added[0].accountId;
+      expect(await messagesTo(accountId)).toEqual([]);
+
+      expect((await quiet.call('POST', `/v1/admin/members/${accountId}/welcome-link`, admin)).status).toBe(204);
+      const [logged] = await messagesTo(accountId);
+      expect(logged).toMatchObject({ kind: 'welcome', sender: 'identity_platform', handOff: true, causedBy: admin.accountId, ref: accountId, status: 'sent', counted: false });
+      expect(JSON.stringify(logged)).not.toContain('@');
+      expect(await welcome(accountId)).toMatchObject({ via: 'identity_platform', status: 'done', outcome: null, requestedBy: admin.accountId, messageId: logged!.messageId, delivery: null });
+
+      const log = await quiet.call('GET', `/v1/admin/mail/log?account=${accountId}`, systemAdmin);
+      expect(log.body.rows).toEqual([
+        expect.objectContaining({ kind: 'welcome', sender: 'identity_platform', handOff: true, causedBy: admin.accountId, accountEmail: 'ada@example.test' }),
+      ]);
+      expect((await quiet.call('GET', `/v1/admin/members/${accountId}`, admin)).body.added.welcome).toMatchObject({ via: 'identity_platform', status: 'done' });
+
+      // Sending it again logs it again.
+      expect((await quiet.call('POST', `/v1/admin/members/${accountId}/welcome-link`, admin)).status).toBe(204);
+      expect(await messagesTo(accountId)).toHaveLength(2);
+    }));
+
+  it('is only for Membership Admins, and only of a member one added', () =>
+    withoutMail(async (quiet) => {
+      const accountId = (await quiet.call('POST', '/v1/admin/members', admin, { ...ada, reason: 'Roster' })).body.added[0].accountId;
+      const ben = await quiet.member('ben@example.test');
+      expect((await quiet.call('POST', `/v1/admin/members/${accountId}/welcome-link`, ben)).status).toBe(403);
+      expect((await quiet.call('POST', `/v1/admin/members/${ben.accountId}/welcome-link`, admin)).status).toBe(404);
+      expect((await quiet.call('POST', '/v1/admin/members/nobody/welcome-link', admin)).status).toBe(404);
+      expect(await messagesTo(accountId)).toEqual([]);
+    }));
+
+  it('shows the link once when Identity Platform sends through SES, with its reports, whichever comes first', () =>
+    withoutMail(async (quiet) => {
+      const sentAt = new Date().toISOString();
+      // The browser says so first, then the reports come.
+      const first = (await quiet.call('POST', '/v1/admin/members', admin, { ...ada, reason: 'Roster' })).body.added[0].accountId;
+      await quiet.call('POST', `/v1/admin/members/${first}/welcome-link`, admin);
+      await report('Send', 'ses-1', 'ADA@example.test', sentAt);
+      await report('Delivery', 'ses-1', 'ADA@example.test', sentAt);
+      await worker.tick();
+      expect(await messagesTo(first)).toEqual([
+        expect.objectContaining({ messageId: 'ses-1', kind: 'welcome', sender: 'identity_platform', causedBy: admin.accountId, ref: first, status: 'delivered', counted: true }),
+      ]);
+      expect((await messagesTo(first))[0]).not.toHaveProperty('handOff');
+      expect(await welcome(first)).toMatchObject({ messageId: 'ses-1', delivery: 'delivered', via: 'identity_platform' });
+
+      // A report that came first is claimed by the browser's word.
+      const second = (await quiet.call('POST', '/v1/admin/members', admin, { email: 'bea@example.test', legalName: 'Bea Ortiz', state: 'CA', reason: 'Roster' })).body.added[0].accountId;
+      await report('Delivery', 'ses-2', 'bea@example.test', new Date().toISOString());
+      await worker.tick();
+      expect(await messagesTo(second)).toEqual([expect.objectContaining({ messageId: 'ses-2', kind: 'sign_in_link', causedBy: null })]);
+      await quiet.call('POST', `/v1/admin/members/${second}/welcome-link`, admin);
+      expect(await messagesTo(second)).toEqual([expect.objectContaining({ messageId: 'ses-2', kind: 'welcome', causedBy: admin.accountId, status: 'delivered' })]);
+      expect(await welcome(second)).toMatchObject({ messageId: 'ses-2', delivery: 'delivered' });
+      // The member asking for a link of their own later is theirs, not another welcome.
+      await report('Delivery', 'ses-3', 'bea@example.test', new Date().toISOString());
+      await worker.tick();
+      expect((await messagesTo(second)).map((m) => [m.messageId, m.kind])).toEqual(expect.arrayContaining([['ses-2', 'welcome'], ['ses-3', 'sign_in_link']]));
+    }));
+
   it('leaves the welcome to Identity Platform, queueing nothing', async () => {
     process.env.MAIL_TRANSPORT = 'off';
     const quiet = await TestApi.start();
