@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyMailEvent,
+  asWelcomeLink,
   identityMailKind,
   identityMailRecord,
   isNoticeMail,
+  isUnclaimedSignInLink,
+  isUnmatchedWelcomeLink,
+  nearestWelcomeLink,
+  welcomeLinkRecord,
   mailAddressKey,
   mailMessageRecord,
   nextSuppression,
@@ -58,6 +63,35 @@ describe('the record of a message sent', () => {
     expect(identityMailKind("You've added 2 step verification to your USTP Vote account")).toBe('account_email');
     expect(identityMailKind(null)).toBe('account_email');
     expect(Object.keys(identityMailRecord(event('send', 0, { subject: 'Verify your email' }), null))).not.toContain('subject');
+  });
+});
+
+describe('a welcome sign-in link an admin’s browser asked Identity Platform for', () => {
+  const link = welcomeLinkRecord({ messageId: 'welcome-link-1', accountId: 'a7', causedBy: 'admin1', at: SENT });
+
+  it('is logged as the admin’s welcome to the member, apart from the deployment’s own rates', () => {
+    expect(link).toMatchObject({ kind: 'welcome', ref: 'a7', accountId: 'a7', causedBy: 'admin1', sender: 'identity_platform', handOff: true, status: 'sent', counted: false, sentAt: SENT });
+    expect(isUnmatchedWelcomeLink(link)).toBe(true);
+    expect(isUnclaimedSignInLink(link)).toBe(false);
+  });
+
+  it('is matched to Identity Platform’s report of it, the nearest within 15 minutes either side', () => {
+    const report = (id: string, minutes: number) => ({
+      ...identityMailRecord(event('send', minutes, { messageId: id, kind: null, sentAt: at(minutes), subject: 'Sign in to USTP Vote requested' }), 'a7'),
+    });
+    expect(isUnclaimedSignInLink(report('r1', 0))).toBe(true);
+    expect(nearestWelcomeLink([report('r1', -10), report('r2', 2), report('r3', 14)], SENT)?.messageId).toBe('r2');
+    expect(nearestWelcomeLink([report('r1', -16), report('r3', 16)], SENT)).toBeNull();
+    expect(nearestWelcomeLink([], SENT)).toBeNull();
+
+    const delivered = applyMailEvent(report('r2', 1), event('delivery', 2, { messageId: 'r2', kind: null })).record;
+    const welcome = asWelcomeLink(delivered, { accountId: 'a7', causedBy: link.causedBy });
+    expect(welcome).toMatchObject({ messageId: 'r2', kind: 'welcome', ref: 'a7', causedBy: 'admin1', sender: 'identity_platform', status: 'delivered', counted: true });
+    expect(welcome).not.toHaveProperty('handOff');
+    expect(isUnclaimedSignInLink(welcome)).toBe(false);
+    expect(isUnmatchedWelcomeLink(welcome)).toBe(false);
+    // A sign-in link already known as someone's welcome is not taken again.
+    expect(isUnclaimedSignInLink({ ...report('r4', 0), causedBy: 'admin2' })).toBe(false);
   });
 });
 

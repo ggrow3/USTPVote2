@@ -44,6 +44,8 @@ export interface MailLogRow {
   readonly messageId: string;
   readonly kind: MailKind;
   readonly sender: MailSender;
+  /** A welcome sign-in link the admin's browser says Identity Platform took, which no report reaches (`MailMessageRecord.handOff`). */
+  readonly handOff: boolean;
   readonly delivery: NoticeDelivery;
   readonly status: MailStatus;
   readonly sentAt: string;

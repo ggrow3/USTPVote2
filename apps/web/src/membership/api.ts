@@ -112,6 +112,14 @@ export function welcomeAgain(accountId: string): Promise<WelcomeAgain> {
   return api<WelcomeAgain>('POST', `/v1/admin/members/${accountId}/welcome`);
 }
 
+/**
+ * Says Identity Platform took the welcome sign-in link this browser just asked it for, so the site records it in the
+ * email log as this admin's and on the member's page (design §5.13).
+ */
+export function welcomeLinkSent(accountId: string): Promise<void> {
+  return api<void>('POST', `/v1/admin/members/${accountId}/welcome-link`);
+}
+
 /** The registration form's wording with who changed it last. */
 export function registrationFormSettings(): Promise<RegistrationFormRecord> {
   return api<RegistrationFormRecord>('GET', '/v1/admin/registration-form');
