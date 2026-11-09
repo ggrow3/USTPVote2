@@ -225,13 +225,7 @@ watch(headerShown, (now) => now || (document.documentElement.style.scrollPadding
         Could not load your account: {{ session.error }}
       </q-banner>
       <q-banner v-if="secondFactorBanner" class="bg-orange-2 text-black" role="region" aria-label="Two-step verification">
-        {{
-          hasRole('system_admin')
-            ? 'System Admins must use two-step verification.'
-            : hasRole('site_admin')
-              ? 'Site Admins must use two-step verification.'
-              : 'This site requires two-step verification.'
-        }}
+        {{ hasRole('system_admin') ? 'System Admins must use two-step verification.' : 'This site requires two-step verification.' }}
         Set it up, or sign in with it, on your
         <router-link to="/account" class="text-black">Account page</router-link> to use the rest of the site.
       </q-banner>

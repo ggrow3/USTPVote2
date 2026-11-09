@@ -100,6 +100,7 @@ describe('the two-step requirement for members (design §4)', () => {
     const secured = await api.member('secured@example.test', { mfa: true });
     expect((await api.call('GET', '/v1/admin/mfa-policy', sa1)).body).toEqual({
       membersRequired: false,
+      siteAdminsRequired: true,
       version: 0,
       updatedAt: null,
       updatedBy: null,
@@ -130,8 +131,8 @@ describe('the two-step requirement for members (design §4)', () => {
     expect((await api.call('GET', '/v1/me', sa2)).body.mfa).toEqual({ required: true, everywhere: true, signedInWithMfa: false });
 
     expect((await ledger()).filter((e) => e.type === 'mfa_policy.changed')).toMatchObject([
-      { actor: sa1.accountId, subject: null, payload: { version: 1, membersRequired: true } },
-      { actor: sa1.accountId, subject: null, payload: { version: 2, membersRequired: false } },
+      { actor: sa1.accountId, subject: null, payload: { version: 1, membersRequired: true, siteAdminsRequired: true } },
+      { actor: sa1.accountId, subject: null, payload: { version: 2, membersRequired: false, siteAdminsRequired: true } },
     ]);
   });
 
@@ -172,6 +173,77 @@ describe('the two-step requirement for members (design §4)', () => {
     // Saving what is already there writes nothing.
     expect((await put(sa1, false, 0)).body).toMatchObject({ membersRequired: false, version: 0 });
     expect((await ledger()).filter((e) => e.type === 'mfa_policy.changed')).toEqual([]);
+  });
+});
+
+describe('the two-step requirement for Site Admins (design §4)', () => {
+  const put = (by: User, body: Record<string, unknown>) => api.call('PUT', '/v1/admin/mfa-policy', by, body);
+  const useSite = (user: User) => api.call('PUT', '/v1/me/preferences', user, { dailyQuote: true });
+
+  it('is on by default, and switched off and on by a System Admin alone, ledgered', async () => {
+    const sa1 = await api.member(SA1_EMAIL, { mfa: true });
+    const site = await api.member('site@example.test');
+    const securedSite = await api.member('secured-site@example.test', { mfa: true });
+    await api.grant(site.accountId, 'site_admin', sa1);
+    await api.grant(securedSite.accountId, 'site_admin', sa1);
+
+    // On: a Site Admin without a second factor is refused on every page, the admin tools included.
+    expect(await useSite(site)).toMatchObject({ status: 403, body: { detail: 'Site Admins must sign in with two-step verification' } });
+    expect((await api.call('GET', '/v1/admin/accounts', site)).body.type).toBe(PROBLEM_TYPES.mfaRequired);
+    // Only System Admins switch it; Site Admins cannot, even signed in with a second factor.
+    expect((await put(securedSite, { basedOn: 0, membersRequired: false, siteAdminsRequired: false })).status).toBe(403);
+
+    const off = await put(sa1, { basedOn: 0, membersRequired: false, siteAdminsRequired: false });
+    expect(off).toMatchObject({ status: 200, body: { membersRequired: false, siteAdminsRequired: false, version: 1 } });
+    api.app.get(MfaPolicyService).invalidate();
+    // Off: the Site Admin uses the site and the admin tools with one factor, role changes included.
+    expect((await useSite(site)).status).toBe(200);
+    expect((await api.call('GET', '/v1/me', site)).body.mfa).toEqual({ required: false, everywhere: false, signedInWithMfa: false });
+    expect((await api.call('GET', '/v1/admin/accounts', site)).status).toBe(200);
+    const pat = await api.member('pat@example.test');
+    const grant = await api.call('POST', '/v1/admin/roles', site, { accountId: pat.accountId, role: 'course_admin', change: 'grant', reason: 'staffing' });
+    expect(grant).toMatchObject({ status: 201, body: { roles: ['course_admin'] } });
+    // Still never deletes anyone, and System Admins still need it.
+    const leaving = await api.member('leaving@example.test');
+    expect((await api.call('POST', `/v1/admin/accounts/${leaving.accountId}/delete`, site, { reason: 'test' })).status).toBe(403);
+    const sa2 = await api.member(SA2_EMAIL);
+    expect((await useSite(sa2)).body.detail).toBe('System Admins must sign in with two-step verification');
+
+    // A page opened before the setting existed saves the member requirement and leaves this one as it is.
+    expect((await put(sa1, { basedOn: 1, membersRequired: false })).body).toMatchObject({ siteAdminsRequired: false, version: 1 });
+    const on = await put(sa1, { basedOn: 1, membersRequired: false, siteAdminsRequired: true });
+    expect(on).toMatchObject({ status: 200, body: { siteAdminsRequired: true, version: 2 } });
+    api.app.get(MfaPolicyService).invalidate();
+    expect((await useSite(site)).status).toBe(403);
+
+    expect((await ledger()).filter((e) => e.type === 'mfa_policy.changed')).toMatchObject([
+      { actor: sa1.accountId, payload: { version: 1, membersRequired: false, siteAdminsRequired: false } },
+      { actor: sa1.accountId, payload: { version: 2, membersRequired: false, siteAdminsRequired: true } },
+    ]);
+  });
+
+  it('leaves a Site Admin to their other admin role, and to the member requirement, while it is off', async () => {
+    const sa1 = await api.member(SA1_EMAIL, { mfa: true });
+    const both = await api.member('both@example.test');
+    const site = await api.member('site@example.test');
+    await api.grant(both.accountId, 'site_admin', sa1);
+    await api.grant(both.accountId, 'membership_admin', sa1);
+    await api.grant(site.accountId, 'site_admin', sa1);
+    expect((await put(sa1, { basedOn: 0, membersRequired: false, siteAdminsRequired: false })).status).toBe(200);
+    api.app.get(MfaPolicyService).invalidate();
+
+    // A Membership Admin needs it for the admin tools, whatever their Site Admin role allows.
+    expect((await useSite(both)).status).toBe(200);
+    expect((await api.call('GET', '/v1/admin/accounts', both)).body.type).toBe(PROBLEM_TYPES.mfaRequired);
+    expect((await api.call('GET', '/v1/me', both)).body.mfa).toEqual({ required: true, everywhere: false, signedInWithMfa: false });
+
+    // Required of every member: of Site Admins too.
+    expect((await put(sa1, { basedOn: 1, membersRequired: true })).status).toBe(200);
+    api.app.get(MfaPolicyService).invalidate();
+    expect(await useSite(site)).toMatchObject({
+      status: 403,
+      body: { detail: 'this site requires two-step verification; set it up on your account page' },
+    });
   });
 });
 
