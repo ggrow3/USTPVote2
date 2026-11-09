@@ -66,6 +66,9 @@ watch(selected, () => {
 });
 onMounted(refresh);
 
+/** The day's emails by kind, the commonest first: “Vote confirmation 55 · Email to members 8”. */
+const kindSummary = computed(() => (view.value?.byKind ?? []).map((k) => `${LOG_KIND_LABELS[k.kind]} ${k.count.toLocaleString()}`).join(' · '));
+
 const rangeTotal = computed(() => totals.value?.days.reduce((sum, d) => sum + d.emails, 0) ?? 0);
 const isToday = computed(() => selected.value === today());
 
@@ -180,7 +183,7 @@ function outcome(p: MailDayPerson): string {
           </div>
           <p class="q-mt-sm q-mb-none text-body2">
             <span class="text-weight-medium">What they were:</span>
-            {{ view.byKind.map((k) => `${LOG_KIND_LABELS[k.kind]} ${k.count.toLocaleString()}`).join(' · ') }}
+            {{ kindSummary }}
           </p>
           <p v-if="view.scanLimited" class="q-mt-sm q-mb-none text-grey-7">
             So many emails went that day that the breakdown counts only the first {{ view.read.toLocaleString() }}; the total
