@@ -117,6 +117,14 @@ test. Keep it current when pages change.
   Save stays disabled until it is fixed; the count of unsaved changes is shown beside Save. The previews are plain text
   in a `pre` that wraps, so at 375 px nothing scrolls sideways; captions are `#b0b0b0` on `#1d1d1d` in the dark theme.
   An Election Admin does not get the tab, and `?tab=email` falls back to their first section.
+- **Added 2026-11-07, the sender's name in Admin › Email › Settings** (design §6.8; against the emulators on private
+  ports as admin1@example.test; 1100 px light, 375 px light and dark, by pointer and keyboard): "Who the emails come
+  from" is a `section` named by its `h3`, right after the site-wide switch, and Tab from that switch goes to its one
+  field, labelled "Sender name". The deployment's name is the placeholder, and the hint says in words what members will
+  see ("Emails will come from: U.S. Transhumanist Party, Elections <noreply@…>"), following what is typed. A name the
+  checks refuse (one with an address in it) is said under the field in the error colour and Save stays disabled. The
+  hint reads 4.61:1 on the light theme's card and about 8.8:1 on the dark theme's (`rgba(255,255,255,.7)` on
+  `#1d1d1d`), read back from the computed styles; at 375 px it wraps and nothing scrolls sideways.
 - **Added 2026-10-27, the emails in the election workflow** (against the emulators as elections@example.test: an open
   election with its reminder to come, then due, then sent; a scheduled one-day election with email switched off; light
   at desktop width, dark at 375 px): the list has an "Email to voters" item after Open for voting, with its status in

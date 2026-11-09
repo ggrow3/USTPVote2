@@ -4,8 +4,9 @@ import { NOTICE_KINDS, REMINDER_HOURS_BEFORE_CLOSE, type NoticeKind } from './no
 /**
  * What System Admins decide about the election emails (design §6.8): whether each is sent, how long before the close
  * the reminder goes, where the emails tell members to ask questions, and each email's subject and opening paragraph.
- * The election's details fill themselves in; the From address stays in the deployment's configuration, since Amazon
- * SES must have verified it. The defaults are the emails as they were before these settings.
+ * The election's details fill themselves in. Of the From header only the name can be set here: the address stays in the
+ * deployment's configuration, since Amazon SES must have verified it. The defaults are the emails as they were before
+ * these settings.
  */
 
 /** What a subject or opening may name, in braces: the election's title, when voting closes, how long is left. */
@@ -31,6 +32,7 @@ export const DEFAULT_NOTICE_TEXT: Readonly<Record<NoticeKind, { readonly subject
 export const MAX_NOTICE_SUBJECT = 150;
 export const MAX_NOTICE_INTRO = 1000;
 export const MAX_NOTICE_CONTACT = 200;
+export const MAX_SENDER_NAME = 60;
 /** The reminder goes between an hour and a week before the close. */
 export const MIN_REMINDER_HOURS = 1;
 export const MAX_REMINDER_HOURS = 168;
@@ -68,6 +70,11 @@ export interface NoticeSettings {
   readonly reminderHours: number;
   /** Where members ask about an election: an email address or an https page; null for the deployment's `NOTICE_CONTACT`. */
   readonly contact: string | null;
+  /**
+   * The name every email from the site comes from, before the address (“USTP Elections” in `USTP Elections
+   * <noreply@…>`); null for the name in the deployment's `MAIL_FROM`. Identity Platform's emails are not affected.
+   */
+  readonly senderName: string | null;
 }
 
 export const DEFAULT_NOTICE_SETTINGS: NoticeSettings = {
@@ -80,6 +87,7 @@ export const DEFAULT_NOTICE_SETTINGS: NoticeSettings = {
   emails: { welcome: true, electionTests: true, memberTests: true },
   reminderHours: REMINDER_HOURS_BEFORE_CLOSE,
   contact: null,
+  senderName: null,
 };
 
 /** `notice_settings/current`; version 0 (never saved) is the defaults. */
@@ -109,7 +117,51 @@ export function resolveNoticeSettings(
     emails: { ...DEFAULT_NOTICE_SETTINGS.emails, ...stored?.emails },
     reminderHours: stored?.reminderHours ?? DEFAULT_NOTICE_SETTINGS.reminderHours,
     contact: stored?.contact ?? DEFAULT_NOTICE_SETTINGS.contact,
+    senderName: stored?.senderName ?? DEFAULT_NOTICE_SETTINGS.senderName,
   };
+}
+
+/** A From header's parts: `Name <local@domain>`, `"Name" <local@domain>` or a bare `local@domain` (no name). */
+export function fromParts(from: string): { readonly name: string | null; readonly address: string } {
+  const match = /^(.*)<([^<>]+)>\s*$/.exec(from.trim());
+  if (!match) return { name: null, address: from.trim() };
+  const name = match[1]!.trim().replace(/^"(.*)"$/, '$1').replace(/\\(.)/g, '$1');
+  return { name: name || null, address: match[2]!.trim() };
+}
+
+/**
+ * The From header the site's email goes with: the deployment's (`MAIL_FROM`) as it is, or with a System Admin's name in
+ * place of its own. The name is quoted when it has characters a bare name may not, and in plain ASCII; any other is
+ * written as RFC 2047 encoded words, which is what Amazon SES asks for.
+ */
+export function fromHeader(deploymentFrom: string, senderName: string | null): string {
+  if (!senderName) return deploymentFrom;
+  return `${displayName(senderName)} <${fromParts(deploymentFrom).address}>`;
+}
+
+/** The From header as members' mail apps show it, for the settings page. */
+export function shownFrom(deploymentFrom: string, senderName: string | null): string {
+  const { name, address } = fromParts(deploymentFrom);
+  const shown = senderName ?? name;
+  return shown ? `${shown} <${address}>` : address;
+}
+
+function displayName(name: string): string {
+  if (/^[A-Za-z0-9!#$%&'*+\-/=?^_`{|}~ ]+$/.test(name)) return name;
+  if (/^[\x20-\x7e]+$/.test(name)) return `"${name.replace(/["\\]/g, '\\$&')}"`;
+  // Encoded words are at most 75 characters: 45 bytes of UTF-8 is 60 of base64, and no character is split.
+  const words: number[][] = [];
+  let chunk: number[] = [];
+  for (const char of name) {
+    const bytes = [...new TextEncoder().encode(char)];
+    if (chunk.length + bytes.length > 45) {
+      words.push(chunk);
+      chunk = [];
+    }
+    chunk.push(...bytes);
+  }
+  words.push(chunk);
+  return words.map((bytes) => `=?UTF-8?B?${btoa(String.fromCharCode(...bytes))}?=`).join(' ');
 }
 
 /** Placeholders that are not ones the emails fill in, and braces that open nothing; empty when the text is fine. */
@@ -166,10 +218,20 @@ export const noticeSettingsSchema = z.strictObject({
     .max(MAX_NOTICE_CONTACT)
     .refine((c) => EMAIL.test(c) || HTTPS_PAGE.test(c), 'an email address, or a page starting with https://')
     .nullable(),
+  // The sender's name came later too: a page opened before it keeps what was set. A name only, on one line: an address
+  // in it would pass for the sender's.
+  senderName: z
+    .string()
+    .trim()
+    .min(1)
+    .max(MAX_SENDER_NAME)
+    .refine((n) => !/[\p{Cc}<>@"\\]/u.test(n), 'a name only, on one line, without <, >, @, quotation marks or backslashes')
+    .nullable()
+    .optional(),
 });
 export type NoticeSettingsInput = z.infer<typeof noticeSettingsSchema>;
 
-/** One setting that changed: its path (`allEmails`, `closing_soon.enabled`, `emails.welcome`, `reminderHours`, `contact`) and its old and new value. */
+/** One setting that changed: its path (`allEmails`, `closing_soon.enabled`, `emails.welcome`, `reminderHours`, `contact`, `senderName`) and its old and new value. */
 export interface NoticeSettingsChange {
   readonly field: string;
   readonly from: string | number | boolean | null;
@@ -197,5 +259,6 @@ export function noticeSettingsChanges(before: NoticeSettings, after: NoticeSetti
   }
   if (before.reminderHours !== after.reminderHours) changes.push({ field: 'reminderHours', from: before.reminderHours, to: after.reminderHours });
   if (before.contact !== after.contact) changes.push({ field: 'contact', from: before.contact, to: after.contact });
+  if (before.senderName !== after.senderName) changes.push({ field: 'senderName', from: before.senderName, to: after.senderName });
   return changes;
 }

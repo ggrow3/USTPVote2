@@ -96,7 +96,6 @@ export class WelcomeSender {
     });
     const result = await this.mailer.send(this.transport!, {
       to: account.primaryEmail,
-      from: this.config.mailFrom,
       replyTo: this.config.mailReplyTo,
       listUnsubscribe: links.oneClick,
       ...message,

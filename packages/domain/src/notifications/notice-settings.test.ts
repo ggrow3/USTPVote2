@@ -4,6 +4,9 @@ import {
   DEFAULT_NOTICE_SETTINGS,
   DEFAULT_NOTICE_TEXT,
   fillNoticeText,
+  fromHeader,
+  fromParts,
+  shownFrom,
   noticeSettingsChanges,
   noticeSettingsSchema,
   noticeTemplateProblems,
@@ -42,8 +45,11 @@ describe('the default settings', () => {
       emails: { welcome: true, electionTests: true, memberTests: true },
       reminderHours: 24,
       contact: null,
+      senderName: null,
     });
     expect(resolveNoticeSettings(undefined)).toEqual(DEFAULT_NOTICE_SETTINGS);
+    // Settings saved before the sender's name was one keep the deployment's.
+    expect(resolveNoticeSettings({ contact: 'elections@example.org' }).senderName).toBeNull();
     expect(resolveNoticeSettings({ reminderHours: 48 } as Partial<NoticeSettings>)).toEqual({ ...DEFAULT_NOTICE_SETTINGS, reminderHours: 48 });
     // Settings saved before the other emails had switches keep them on.
     expect(resolveNoticeSettings({ emails: { welcome: false } }).emails).toEqual({ welcome: false, electionTests: true, memberTests: true });
@@ -104,9 +110,25 @@ describe('noticeSettingsSchema', () => {
       contact: 'https://transhumanist-party.org/contact/',
     });
     expect(noticeSettingsSchema.parse(custom)).toEqual(custom);
-    // A page opened before the other emails had switches leaves them out.
-    const { emails: _emails, ...older } = body();
+    // A page opened before the other emails had switches leaves them out, and one opened before the sender's name too.
+    const { emails: _emails, senderName: _name, ...older } = body();
     expect(noticeSettingsSchema.safeParse(older).success).toBe(true);
+    expect(noticeSettingsSchema.parse(body({ senderName: '  U.S. Transhumanist Party, Elections ' })).senderName).toBe(
+      'U.S. Transhumanist Party, Elections',
+    );
+    expect(noticeSettingsSchema.parse(body({ senderName: 'Élections Transhumanistes' })).senderName).toBe('Élections Transhumanistes');
+  });
+
+  it('takes a name only as the sender, on one line and up to 60 characters', () => {
+    const fails = (senderName: unknown) => !noticeSettingsSchema.safeParse(body({ senderName })).success;
+    expect(fails('x'.repeat(60))).toBe(false);
+    expect(fails('x'.repeat(61))).toBe(true);
+    expect(fails('   ')).toBe(true);
+    expect(fails('Elections\nBcc: someone')).toBe(true);
+    expect(fails('support@bank.example')).toBe(true);
+    expect(fails('Elections <other@example.org>')).toBe(true);
+    expect(fails('"Elections"')).toBe(true);
+    expect(fails('back\\slash')).toBe(true);
   });
 
   it('refuses a lead time out of range, a bad contact, a two-line subject, unknown placeholders and stray fields', () => {
@@ -141,6 +163,7 @@ describe('noticeSettingsChanges', () => {
       emails: { welcome: false, electionTests: true, memberTests: false },
       reminderHours: 48,
       contact: 'elections@example.org',
+      senderName: 'Transhumanist Party Elections',
     };
     expect(noticeSettingsChanges(DEFAULT_NOTICE_SETTINGS, after)).toEqual([
       { field: 'allEmails', from: false, to: true },
@@ -150,7 +173,49 @@ describe('noticeSettingsChanges', () => {
       { field: 'emails.memberTests', from: true, to: false },
       { field: 'reminderHours', from: 24, to: 48 },
       { field: 'contact', from: null, to: 'elections@example.org' },
+      { field: 'senderName', from: null, to: 'Transhumanist Party Elections' },
     ]);
     expect(noticeSettingsChanges(after, after)).toEqual([]);
+  });
+});
+
+describe('the From header', () => {
+  const DEPLOYMENT = 'USTP Elections <noreply@example.org>';
+
+  it('is the deployment’s until a System Admin names the sender, then theirs with the deployment’s address', () => {
+    expect(fromHeader(DEPLOYMENT, null)).toBe(DEPLOYMENT);
+    expect(fromHeader(DEPLOYMENT, 'Transhumanist Party')).toBe('Transhumanist Party <noreply@example.org>');
+    expect(fromHeader('noreply@example.org', 'Transhumanist Party')).toBe('Transhumanist Party <noreply@example.org>');
+  });
+
+  it('quotes a name with characters a bare one may not have', () => {
+    expect(fromHeader(DEPLOYMENT, 'U.S. Transhumanist Party, Elections')).toBe('"U.S. Transhumanist Party, Elections" <noreply@example.org>');
+    expect(fromHeader(DEPLOYMENT, 'Votes (dev)')).toBe('"Votes (dev)" <noreply@example.org>');
+  });
+
+  it('writes any other name as encoded words of at most 75 characters, never splitting a character', () => {
+    const decode = (header: string) =>
+      new TextDecoder().decode(
+        new Uint8Array(
+          [...header.matchAll(/=\?UTF-8\?B\?([^?]+)\?=/g)].flatMap(([, b64]) => [...atob(b64!)].map((c) => c.charCodeAt(0))),
+        ),
+      );
+    const header = fromHeader(DEPLOYMENT, 'Élections Transhumanistes');
+    expect(header).toBe('=?UTF-8?B?w4lsZWN0aW9ucyBUcmFuc2h1bWFuaXN0ZXM=?= <noreply@example.org>');
+    const long = 'Ünïcödé '.repeat(7).trim() + ' 🗳️';
+    const encoded = fromHeader(DEPLOYMENT, long);
+    const words = encoded.replace(/ <noreply@example\.org>$/, '').split(' ');
+    expect(words.length).toBeGreaterThan(1);
+    for (const word of words) expect(word.length).toBeLessThanOrEqual(75);
+    for (const word of words) expect(() => new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array([...atob(word.slice(10, -2))].map((c) => c.charCodeAt(0))))).not.toThrow();
+    expect(decode(encoded)).toBe(long);
+  });
+
+  it('is shown as a mail app shows it', () => {
+    expect(fromParts('"U.S. Party" <noreply@example.org>')).toEqual({ name: 'U.S. Party', address: 'noreply@example.org' });
+    expect(fromParts('noreply@example.org')).toEqual({ name: null, address: 'noreply@example.org' });
+    expect(shownFrom(DEPLOYMENT, null)).toBe(DEPLOYMENT);
+    expect(shownFrom(DEPLOYMENT, 'Élections')).toBe('Élections <noreply@example.org>');
+    expect(shownFrom('noreply@example.org', null)).toBe('noreply@example.org');
   });
 });

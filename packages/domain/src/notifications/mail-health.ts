@@ -86,6 +86,11 @@ export interface MailHealthRecord {
   readonly transport: 'ses' | 'outbox' | 'off';
   /** The From address's domain, which the identity checks are about. */
   readonly domain: string | null;
+  /**
+   * The deployment's From header (`MAIL_FROM`), whose name a System Admin may replace (§6.8). Only the worker has it, so
+   * the settings page reads it from here; absent from checks run before it was recorded.
+   */
+  readonly from?: string;
   readonly overall: MailCheckStatus;
   readonly checks: readonly MailCheck[];
   readonly probe: MailProbe | null;

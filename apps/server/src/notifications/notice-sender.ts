@@ -422,7 +422,6 @@ export class NoticeSender {
     });
     const result = await this.mailer.send(transport, {
       to: notice.rehearsal ? null : mailbox!.email,
-      from: this.config.mailFrom,
       replyTo: this.config.mailReplyTo,
       listUnsubscribe: links?.oneClick,
       ...message,
@@ -539,7 +538,6 @@ export class NoticeSender {
     });
     return this.mailer.send(transport, {
       to: mailbox.email,
-      from: this.config.mailFrom,
       replyTo: this.config.mailReplyTo,
       listUnsubscribe: links.oneClick,
       ...message,

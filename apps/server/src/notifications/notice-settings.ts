@@ -23,8 +23,8 @@ function record(data: Partial<NoticeSettingsRecord> | undefined): NoticeSettings
 
 /**
  * What System Admins set about the election emails (design §6.8): each email on or off, the reminder's lead time, the
- * contact line and the wording. The worker reads them every tick and the editor with each election's counts, so they
- * are cached briefly; another instance picks up a change within a minute.
+ * contact line, the wording and the name all the site's email comes from. The worker reads them every tick and the
+ * editor with each election's counts, so they are cached briefly; another instance picks up a change within a minute.
  */
 @Injectable()
 export class NoticeSettingsService {
@@ -60,6 +60,7 @@ export class NoticeSettingsService {
         allEmails: settings.allEmails ?? before.allEmails,
         kinds: { ...before.kinds, ...settings.kinds },
         emails: settings.emails ?? before.emails,
+        senderName: settings.senderName === undefined ? before.senderName : settings.senderName,
       });
       const changes = noticeSettingsChanges(before, after);
       if (changes.length === 0) return before;
