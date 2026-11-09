@@ -68,7 +68,7 @@ const MESSAGE: MailMessage = {
   subject: 'Voting is open: Officers',
   text: 'Hello Ada,',
   html: '<p>Hello Ada,</p>',
-  meta: { kind: 'voting_open', ref: 'e1_voting_open', electionId: 'e1', accountId: 'a1' },
+  meta: { kind: 'voting_open', ref: 'e1_voting_open', electionId: 'e1', accountId: 'a1', causedBy: 'system' },
 };
 
 /** Stands in for the AWS SDK client: records each command and answers as told. */
@@ -105,12 +105,21 @@ describe('sending through Amazon SES', () => {
         { Name: 'ref', Value: 'e1_voting_open' },
       ],
     });
-    expect(sesEmail({ ...MESSAGE, meta: { kind: 'account_email', ref: null, electionId: null, accountId: 'a1' } }, null).EmailTags).toEqual([
+    expect(sesEmail({ ...MESSAGE, meta: { kind: 'account_email', ref: null, electionId: null, accountId: 'a1', causedBy: 'system' } }, null).EmailTags).toEqual([
       { Name: 'kind', Value: 'account_email' },
     ]);
     const plain = sesEmail({ ...MESSAGE, replyTo: 'secretary@example.org' }, null);
     expect(plain.ReplyToAddresses).toEqual(['secretary@example.org']);
     expect(plain).not.toHaveProperty('ConfigurationSetName');
+  });
+
+  it('carries the one-click unsubscribe headers mail clients look for (RFC 8058), when it has a link', () => {
+    const link = 'https://vote.example.org/v1/public/unsubscribe/abc';
+    expect(sesEmail({ ...MESSAGE, listUnsubscribe: link }, null).Content?.Simple?.Headers).toEqual([
+      { Name: 'List-Unsubscribe', Value: `<${link}>` },
+      { Name: 'List-Unsubscribe-Post', Value: 'List-Unsubscribe=One-Click' },
+    ]);
+    expect(sesEmail(MESSAGE, null).Content?.Simple).not.toHaveProperty('Headers');
   });
 
   it('returns the message ID SES gives', async () => {

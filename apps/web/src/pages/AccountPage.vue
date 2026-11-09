@@ -17,6 +17,7 @@ import { resign as resignMembership } from '../membership/api.js';
 import { classOf, memberClassText } from '../membership/class-text.js';
 import MyDetailsCard from '../membership/MyDetailsCard.vue';
 import MyEmailCard from '../notifications/MyEmailCard.vue';
+import NotificationEmailCard from '../inbox/NotificationEmailCard.vue';
 import { refreshMe, secondFactorMissing, session } from '../session.js';
 import { PROVIDER_LABELS, signInWithPassword, signInWithProvider, type FederatedProvider } from '../sign-in.js';
 
@@ -223,6 +224,8 @@ function copyId() {
           <MyDetailsCard />
 
           <MyEmailCard />
+
+          <NotificationEmailCard />
 
           <ProfilePhotoCard v-if="me.member" />
 

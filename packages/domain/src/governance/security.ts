@@ -153,9 +153,19 @@ export interface SiteAnalyticsChangedPayload {
 
 /**
  * Pages Google Analytics never sees (design §10.7): the ballot and its receipts, checking a receipt, signing in, the
- * account emails' links (§4), the account page and the admin console. Analytics counts the public pages only.
+ * account emails' links (§4), the account page, the admin console, and a member's notifications and messages
+ * (§10.13), whose addresses name the two accounts in a conversation. Analytics counts the public pages only.
  */
-export const ANALYTICS_EXCLUDED_PATHS = ['/ballot', '/verify', '/signin', '/email-action', '/account', '/admin'] as const;
+export const ANALYTICS_EXCLUDED_PATHS = [
+  '/ballot',
+  '/verify',
+  '/signin',
+  '/email-action',
+  '/account',
+  '/admin',
+  '/notifications',
+  '/messages',
+] as const;
 
 export function analyticsAllowed(path: string): boolean {
   return !ANALYTICS_EXCLUDED_PATHS.some((p) => path === p || path.startsWith(`${p}/`));

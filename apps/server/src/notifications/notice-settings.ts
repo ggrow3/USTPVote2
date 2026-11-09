@@ -55,7 +55,14 @@ export class NoticeSettingsService {
       if (basedOn !== before.version) {
         throw new ConflictException('someone else changed these settings since you opened them; reload to see their changes');
       }
-      const after = resolveNoticeSettings({ ...settings, kinds: { ...before.kinds, ...settings.kinds }, emails: settings.emails ?? before.emails });
+      const after = resolveNoticeSettings({
+        ...settings,
+        allEmails: settings.allEmails ?? before.allEmails,
+        broadcastApproval: settings.broadcastApproval ?? before.broadcastApproval,
+        kinds: { ...before.kinds, ...settings.kinds },
+        // A page opened before a switch existed saves without it, which keeps what was set.
+        emails: { ...before.emails, ...settings.emails },
+      });
       const changes = noticeSettingsChanges(before, after);
       if (changes.length === 0) return before;
       const next: NoticeSettingsRecord = { ...after, version: before.version + 1, updatedAt: new Date().toISOString(), updatedBy: actor };

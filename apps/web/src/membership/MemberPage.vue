@@ -2,7 +2,7 @@
 import { useQuasar } from 'quasar';
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { adminStatusChanges, memberCorrectionSchema, type MemberDetail, type MemberStatus } from 'ustp-domain';
+import { adminStatusChanges, memberCorrectionSchema, type MailAddressState, type MemberDetail, type MemberStatus } from 'ustp-domain';
 import { focusFirstInvalid, usePageTitle } from '../a11y.js';
 import { ApiError, errorMessage } from '../api.js';
 import PageShell from '../components/PageShell.vue';
@@ -14,7 +14,7 @@ import ApplicationAnswers from './ApplicationAnswers.vue';
 import DetailsFields from './DetailsFields.vue';
 import { auth } from '../firebase.js';
 import { sendWelcomeLink } from '../sign-in.js';
-import { memberMailFlags } from '../notifications/api.js';
+import { memberMailFlags, restoreMemberEmail, stopMemberEmail } from '../notifications/api.js';
 import { FLAG_LABELS } from '../notifications/my-email-text.js';
 import { changeMemberStatus, correctMemberDetails, member as fetchMember, welcomeAgain } from './api.js';
 import { answerText, classOf, consentText, detailsForm, memberClassText, placeFacts, placeInput, type DetailsForm } from './member-text.js';
@@ -37,6 +37,7 @@ const NOT_GIVEN = 'Not given';
 
 /** Why this member cannot be emailed (design §10.12); null when they can, or before it is known. */
 const mailProblem = ref<string | null>(null);
+const mailState = ref<MailAddressState | null>(null);
 
 async function load() {
   const id = accountId.value;
@@ -45,6 +46,7 @@ async function load() {
     if (id !== accountId.value) return;
     const flag = flags.find((f) => f.accountId === id);
     mailProblem.value = flag ? FLAG_LABELS[flag.state] : null;
+    mailState.value = flag?.state ?? null;
     detail.value = found;
     loadState.value = 'ready';
   } catch (e) {
@@ -52,6 +54,22 @@ async function load() {
     loadState.value = e instanceof ApiError && e.status === 404 ? 'missing' : 'failed';
     if (loadState.value === 'failed') $q.notify({ type: 'negative', message: errorMessage(e) });
   }
+}
+
+/** No more email to this member, or email again (design §10.12): ledgered, with a reason, and shown to the member. */
+async function stopEmail() {
+  const reason = await askReason(
+    'Stop email to this member',
+    `${m.value?.legalName} will get no email from the party, election notices included, until an admin restores it. They will see this on their Account page, and it is recorded in the audit ledger.`,
+  );
+  if (reason === null) return;
+  if (await attempt(() => stopMemberEmail({ accountId: accountId.value, reason }), 'Email stopped')) await load();
+}
+
+async function restoreEmail() {
+  const reason = await askReason('Restore email to this member', `${m.value?.legalName} will get email from the party again, unless they unsubscribed themselves.`);
+  if (reason === null) return;
+  if (await attempt(() => restoreMemberEmail(accountId.value, { reason }), 'Email restored')) await load();
 }
 
 async function changeStatus(to: MemberStatus) {
@@ -71,6 +89,8 @@ const WELCOME_OUTCOMES: Readonly<Record<string, string>> = {
   no_address: 'the account has no address',
   undeliverable: 'the address bounced before, or was marked as spam',
   signed_in: 'they had signed in already',
+  unsubscribed: 'they have unsubscribed from email',
+  email_stopped: 'an admin has stopped email to them',
 };
 /** What the mail service reported of a welcome email it took. */
 const WELCOME_DELIVERY: Readonly<Record<string, string>> = {
@@ -229,6 +249,10 @@ watch(
           </q-card-section>
           <q-card-actions v-if="detail.added && !detail.added.signedInAt" class="q-px-md q-pb-md">
             <q-btn outline no-caps color="primary" icon="mail" label="Send the welcome email again" :loading="welcoming" @click="sendWelcome" />
+          </q-card-actions>
+          <q-card-actions v-if="!isSelf" class="q-px-md q-pb-md">
+            <q-btn v-if="mailState === 'email_stopped'" outline no-caps color="primary" icon="mail" label="Restore email to this member" @click="restoreEmail" />
+            <q-btn v-else flat no-caps color="primary" icon="unsubscribe" label="Stop email to this member" @click="stopEmail" />
           </q-card-actions>
         </q-card>
 

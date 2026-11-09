@@ -1,6 +1,15 @@
 import type { VoterElection } from 'ustp-domain';
-import { describe, expect, it } from 'vitest';
-import { ballotCard, secrecyText, shortWhen, votingWindow } from './ballot-list.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  ballotCard,
+  ballotLists,
+  finishedVotesShown,
+  rememberFinishedVotesShown,
+  secrecyText,
+  shortWhen,
+  votingFinished,
+  votingWindow,
+} from './ballot-list.js';
 
 const AT = { now: new Date('2026-10-28T12:00:00Z'), locale: 'en-US', timeZone: 'UTC' };
 // ICU puts thin and narrow no-break spaces around the dash and before AM/PM; ballot-list.ts makes the latter no-break.
@@ -42,6 +51,68 @@ describe('ballot list dates', () => {
   it('say whether the ballot is secret', () => {
     expect(secrecyText('secret')).toBe('Secret ballot');
     expect(secrecyText('open')).toBe('Roll-call: how you vote is published with your name');
+  });
+});
+
+describe('finished votes', () => {
+  const titled = (electionId: string, state: VoterElection['state'], closesAt: string): VoterElection => ({
+    ...election(state),
+    electionId,
+    closesAt,
+  });
+  const ids = (list: readonly VoterElection[]) => list.map((e) => e.electionId);
+
+  it('are those whose voting has closed, whether or not the voter took part', () => {
+    expect(votingFinished(election('closed'))).toBe(true);
+    expect(votingFinished(election('certified', '2026-10-26T16:01:30Z'))).toBe(true);
+    expect(votingFinished(election('scheduled'))).toBe(false);
+    expect(votingFinished(election('open'))).toBe(false);
+    // Voted, but voting is still open: the ballot and its receipt stay on the list.
+    expect(votingFinished(election('open', '2026-10-26T16:01:30Z'))).toBe(false);
+  });
+
+  it('are listed apart, the latest closed first, the others staying in the order given', () => {
+    const { current, finished } = ballotLists([
+      titled('old', 'certified', '2026-01-10T00:00:00Z'),
+      titled('open', 'open', '2026-11-15T00:00:00Z'),
+      titled('recent', 'closed', '2026-10-20T00:00:00Z'),
+      titled('soon', 'scheduled', '2026-12-15T00:00:00Z'),
+      titled('middle', 'certified', '2026-06-10T00:00:00Z'),
+    ]);
+    expect(ids(current)).toEqual(['open', 'soon']);
+    expect(ids(finished)).toEqual(['recent', 'middle', 'old']);
+  });
+
+  it('leave the list given as it was', () => {
+    const given = [titled('a', 'closed', '2026-01-10T00:00:00Z'), titled('b', 'closed', '2026-06-10T00:00:00Z')];
+    ballotLists(given);
+    expect(ids(given)).toEqual(['a', 'b']);
+  });
+
+  describe('in this browser', () => {
+    afterEach(() => vi.unstubAllGlobals());
+
+    it('are hidden until shown, then keep the choice', () => {
+      const held = new Map<string, string>();
+      vi.stubGlobal('localStorage', {
+        getItem: (key: string) => held.get(key) ?? null,
+        setItem: (key: string, value: string) => void held.set(key, value),
+      });
+      expect(finishedVotesShown()).toBe(false);
+      rememberFinishedVotesShown(true);
+      expect(finishedVotesShown()).toBe(true);
+      rememberFinishedVotesShown(false);
+      expect(finishedVotesShown()).toBe(false);
+    });
+
+    it('stay hidden, and nothing breaks, when storage is blocked', () => {
+      const blocked = () => {
+        throw new Error('blocked');
+      };
+      vi.stubGlobal('localStorage', { getItem: blocked, setItem: blocked });
+      expect(finishedVotesShown()).toBe(false);
+      expect(() => rememberFinishedVotesShown(true)).not.toThrow();
+    });
   });
 });
 

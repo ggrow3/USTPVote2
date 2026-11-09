@@ -1,6 +1,8 @@
+import { z } from 'zod';
 import { deny, OK, refuse, type Check } from '../check.js';
 import { NOTICE_CLAIM_MINUTES } from './notices.js';
 import type { MailKind, MailStatus, MailSuppressionReason } from './mail.js';
+import { mailStop, type MailPreferenceRecord } from './mail-preferences.js';
 
 /**
  * A member's own email (design §10.12): what was sent to them and what became of it, whether their address can be
@@ -13,8 +15,10 @@ import type { MailKind, MailStatus, MailSuppressionReason } from './mail.js';
  * - `bounced`, `complained`: not mailed until its owner asks to try it again.
  * - `unverified`: the address was never confirmed, so election email skips it.
  * - `no_address`: the account has none.
+ * - `unsubscribed`: the member unsubscribed from all email, until they turn it back on.
+ * - `email_stopped`: an admin stopped email to them, until an admin restores it.
  */
-export const MAIL_ADDRESS_STATES = ['ok', 'bounced', 'complained', 'unverified', 'no_address'] as const;
+export const MAIL_ADDRESS_STATES = ['ok', 'bounced', 'complained', 'unverified', 'no_address', 'unsubscribed', 'email_stopped'] as const;
 export type MailAddressState = (typeof MAIL_ADDRESS_STATES)[number];
 
 /** `GET /v1/me`: whether the caller's address can be mailed, and since when it cannot. */
@@ -23,11 +27,14 @@ export interface MyMailState {
   readonly since: string | null;
 }
 
-/** The state of an address from the account and its suppression, if any. */
+/** The state of an address from the account, its suppression and the member's preference, if any. */
 export function mailAddressState(
   account: { readonly primaryEmail: string | null; readonly emailVerified: boolean },
   suppression: { readonly reason: MailSuppressionReason; readonly since: string } | null,
+  preference?: Pick<MailPreferenceRecord, 'unsubscribedAt' | 'stoppedAt'> | null,
 ): MyMailState {
+  const stop = mailStop(preference);
+  if (stop) return { state: stop, since: stop === 'email_stopped' ? preference!.stoppedAt : preference!.unsubscribedAt };
   if (!account.primaryEmail) return { state: 'no_address', since: null };
   if (suppression) return { state: suppression.reason, since: suppression.since };
   if (!account.emailVerified) return { state: 'unverified', since: null };
@@ -51,18 +58,25 @@ export interface MyEmailMessage {
 export const MY_EMAIL_DAYS = 90;
 export const MY_EMAIL_SHOWN = 50;
 
-/** `test`: an email to the member's own address. `retry`: take it off the lists of addresses not to mail, then a test. */
-export const MAIL_REQUEST_KINDS = ['test', 'retry'] as const;
+/**
+ * `test`: an email to the member's own address. `retry`: take it off the lists of addresses not to mail, then a test.
+ * `admin_test`: a System Admin's test in Admin › Email, to their own address or another System Admin's, which goes even
+ * while all email is off.
+ */
+export const MAIL_REQUEST_KINDS = ['test', 'retry', 'admin_test'] as const;
 export type MailRequestKind = (typeof MAIL_REQUEST_KINDS)[number];
 
 /** Why a requested email did not go. */
-export const MAIL_REQUEST_OUTCOMES = ['refused', 'unavailable', 'interrupted', 'error', 'undeliverable', 'no_address'] as const;
+export const MAIL_REQUEST_OUTCOMES = ['refused', 'unavailable', 'interrupted', 'error', 'undeliverable', 'no_address', 'unsubscribed', 'email_stopped'] as const;
 export type MailRequestOutcome = (typeof MAIL_REQUEST_OUTCOMES)[number];
 
 /** `mail_requests/{requestId}`: a member's request, queued by the api for the worker. Kept 30 days. */
 export interface MailRequestRecord {
   readonly requestId: string;
+  /** Who asked. */
   readonly accountId: string;
+  /** A System Admin's test to another System Admin: who it goes to. Absent when it goes to who asked. */
+  readonly to?: string | null;
   readonly kind: MailRequestKind;
   readonly requestedAt: string;
   readonly status: 'pending' | 'sending' | 'done';
@@ -80,6 +94,10 @@ export interface MyEmailView {
   readonly address: string | null;
   readonly state: MailAddressState;
   readonly since: string | null;
+  /** When they unsubscribed; null while they have not. They can turn email back on. */
+  readonly unsubscribedAt: string | null;
+  /** When an admin stopped email to them; null while none has. Only an admin can restore it. */
+  readonly stoppedAt: string | null;
   /** Newest first. */
   readonly messages: readonly MyEmailMessage[];
   /** Whether they may ask for a test email, or to try their address again, at all: System Admins can switch it off. */
@@ -90,6 +108,8 @@ export interface MyEmailView {
 
 /** Each kind of request a member may make this many times a day. */
 export const MAIL_REQUESTS_PER_DAY = 3;
+/** A System Admin checking a new setup tries more often. */
+export const ADMIN_TESTS_PER_DAY = 10;
 
 export const MAIL_REQUEST_RETENTION_DAYS = 30;
 
@@ -107,7 +127,7 @@ export function checkMailRequest(input: {
   readonly kind: MailRequestKind;
   readonly state: MailAddressState;
   readonly mailing: boolean;
-  /** Whether System Admins have members' test emails switched on (Admin › Email). */
+  /** Whether System Admins have members' test emails switched on (Admin › Email); a System Admin's own test always is. */
   readonly enabled: boolean;
   readonly theirs: readonly Pick<MailRequestRecord, 'kind' | 'status' | 'claimedAt' | 'requestedAt'>[];
   readonly now: Date;
@@ -115,16 +135,39 @@ export function checkMailRequest(input: {
   const { kind, state, mailing, theirs, now } = input;
   if (!mailing) return deny('this deployment sends no email');
   if (!input.enabled) return deny('a System Admin has switched these emails off for now');
-  if (state === 'no_address') return deny('your account has no email address');
-  if (state === 'unverified') return deny('your email address is not confirmed yet');
-  if (kind === 'test' && (state === 'bounced' || state === 'complained')) {
-    return deny('your address is not mailed now; ask to try it again instead');
+  // A System Admin's test may be to another System Admin, so it speaks of the account rather than of "you".
+  const test = kind === 'admin_test';
+  if (state === 'email_stopped') return deny(test ? 'an administrator has stopped email to that account' : 'an administrator has stopped email to you');
+  if (state === 'unsubscribed') return deny(test ? 'that account has unsubscribed from email' : 'you have unsubscribed from email; turn it back on first');
+  if (state === 'no_address') return deny(test ? 'that account has no email address' : 'your account has no email address');
+  if (state === 'unverified') return deny(test ? 'that account’s email address is not confirmed yet' : 'your email address is not confirmed yet');
+  if (kind !== 'retry' && (state === 'bounced' || state === 'complained')) {
+    return deny(test ? 'that address is not mailed now: it bounced or was marked as spam' : 'your address is not mailed now; ask to try it again instead');
   }
   if (kind === 'retry' && state === 'ok') return deny('your address can be mailed already');
   if (theirs.some((r) => isMailRequestInFlight(r, now))) return deny('your last request has not been done yet; wait for it first');
   const today = theirs.filter((r) => r.kind === kind && Date.parse(r.requestedAt) > now.getTime() - 86_400_000).length;
-  if (today >= MAIL_REQUESTS_PER_DAY) return refuse('rate_limited', `you have asked for this ${MAIL_REQUESTS_PER_DAY} times in the last day`);
+  const limit = kind === 'admin_test' ? ADMIN_TESTS_PER_DAY : MAIL_REQUESTS_PER_DAY;
+  if (today >= limit) return refuse('rate_limited', `you have asked for this ${limit} times in the last day`);
   return OK;
+}
+
+/** `POST /v1/admin/mail/test`: which System Admin it goes to; the caller when left out. */
+export const adminTestSchema = z.strictObject({ to: z.string().min(1).max(64).optional() }).optional();
+export type AdminTestInput = z.infer<typeof adminTestSchema>;
+
+/** `GET /v1/admin/mail/test`: who a System Admin's test can go to, and how their last one went. */
+export interface AdminTestView {
+  /** Those who hold the role now, the caller first. */
+  readonly systemAdmins: readonly { readonly accountId: string; readonly name: string; readonly email: string | null }[];
+  readonly last: {
+    readonly toName: string | null;
+    readonly status: MailRequestRecord['status'];
+    readonly outcome: MailRequestOutcome | null;
+    readonly doneAt: string | null;
+    /** What the mail service reported of it, once it took it. */
+    readonly delivery: MailStatus | null;
+  } | null;
 }
 
 /** `GET /v1/admin/mail/members`: a member who cannot be emailed, and why. */

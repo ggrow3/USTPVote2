@@ -16,6 +16,8 @@ const props = defineProps<{
   error?: string;
   /** What choosing them does, before their name: "Appoints" unless given. */
   action?: string;
+  /** How to look members up, where a role other than those of the usual search picks them. */
+  search?: (name: string) => Promise<MemberMatch[]>;
 }>();
 const emit = defineEmits<{ 'update:modelValue': [MemberMatch | null] }>();
 
@@ -36,7 +38,7 @@ function search(text: string, update: (fn: () => void) => void, abort: () => voi
   }
   timer = setTimeout(async () => {
     try {
-      const found = await searchMembers(name);
+      const found = await (props.search ?? searchMembers)(name);
       update(() => (matches.value = found));
       const choosable = found.filter((m) => !props.unavailable(m)).length;
       announce(

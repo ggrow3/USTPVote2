@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
-import { API_KEY_SECRETS, type ApiKeyName } from 'ustp-domain';
+import { API_KEY_SECRETS, type ApiKeyName, type BillKeySource } from 'ustp-domain';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { SECRET_STORE, type SecretStore, type SecretVersion } from '../infra/secret-store.js';
 
@@ -40,12 +40,24 @@ export class ApiKeys {
   /** The deployment's own key, from its settings; null when it has none (the FEC's DEMO_KEY is none). */
   deployment(name: ApiKeyName): string | null {
     if (name === 'fec') return this.config.fecApiKey === 'DEMO_KEY' ? null : this.config.fecApiKey;
+    if (name === 'congress') return null;
     return name === 'openstates' ? this.config.openStatesApiKey : this.config.civicApiKey;
   }
 
   /** The key in use: the one added in the app, else the deployment's; null when there is neither. */
   async value(name: ApiKeyName): Promise<string | null> {
     return (await this.added(name)) ?? this.deployment(name);
+  }
+
+  /**
+   * The key the Bills page sends to Congress.gov and GovInfo (design §5.14): its own card's, else the FEC key in use
+   * (any api.data.gov key works for every service behind api.data.gov), else the shared DEMO_KEY.
+   */
+  async billsKey(): Promise<{ readonly key: string; readonly source: BillKeySource }> {
+    const own = await this.added('congress');
+    if (own) return { key: own, source: 'congress' };
+    const fec = await this.value('fec');
+    return fec ? { key: fec, source: 'fec' } : { key: 'DEMO_KEY', source: 'demo' };
   }
 
   async contactKeys(): Promise<ContactKeys> {

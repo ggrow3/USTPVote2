@@ -53,7 +53,8 @@ export type RecipientStatus = (typeof RECIPIENT_STATUSES)[number];
  * nobody gets it twice), `error` (anything else, the outcome unknown), `voting_closed` (voting ended before it was
  * sent, so it was not). Skips: `no_address` (the account has no email), `unverified_address`, `undeliverable` (the
  * address bounced for good, or its owner marked an email as spam, and is not mailed until they ask to try again),
- * `voted` (a reminder to someone who voted after it was prepared).
+ * `voted` (a reminder to someone who voted after it was prepared), `unsubscribed` (the member unsubscribed from all
+ * email), `email_stopped` (an admin stopped email to them; design §10.12).
  */
 export const NOTICE_OUTCOMES = [
   'refused',
@@ -65,6 +66,8 @@ export const NOTICE_OUTCOMES = [
   'unverified_address',
   'undeliverable',
   'voted',
+  'unsubscribed',
+  'email_stopped',
 ] as const;
 export type NoticeOutcome = (typeof NOTICE_OUTCOMES)[number];
 
@@ -155,6 +158,8 @@ export interface OutboxMessageRecord {
   readonly subject: string;
   readonly text: string;
   readonly html: string;
+  /** The address in its `List-Unsubscribe` header, if it has one (design §10.12). */
+  readonly listUnsubscribe?: string | null;
   readonly recordedAt: string;
 }
 

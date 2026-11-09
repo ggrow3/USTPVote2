@@ -12,7 +12,10 @@ import { NOTICE_KINDS, type NoticeDelivery, type NoticeKind, type RecipientStatu
 /**
  * What a message is: an election notice (`NoticeKind`), an Election Admin's test of one, a welcome email to an added
  * member (§5.13), the setup check's message to SES's mailbox simulator (`probe`, §10.12), a test email a member asked for
- * on their Account page (`member_test`, §10.12), or an email Identity Platform sent about the account through SES (§4):
+ * on their Account page (`member_test`, §10.12), a test email a System Admin asked for in Admin › Email (`admin_test`,
+ * §10.12), a copy of an email an admin wrote to members (`broadcast`, §10.12), a member's in-app notification by email as
+ * it came (`notification`) or a digest of them (`notification_digest`, §10.13), or an email Identity Platform sent about
+ * the account through SES (§4):
  * a sign-in link, an address to confirm, a password reset, or another (`account_email`), which the worker learns of only
  * from its delivery reports.
  */
@@ -22,6 +25,10 @@ export const MAIL_KINDS = [
   'welcome',
   'probe',
   'member_test',
+  'admin_test',
+  'broadcast',
+  'notification',
+  'notification_digest',
   'sign_in_link',
   'address_verification',
   'password_reset',
@@ -88,6 +95,13 @@ export interface MailMessageRecord {
   readonly ref: string | null;
   readonly electionId: string | null;
   readonly sender: MailSender;
+  /**
+   * Who caused it to be sent (design §10.12, the email log): the account that asked (an admin who wrote to members,
+   * resent a notice, added a member or asked for a test, or a member who asked for a test), `system` for what the
+   * worker sends by itself (a notice's first round, a vote confirmation, the setup check), or null for Identity
+   * Platform's mail, which the member asked for, and for records made before 2026-11-08.
+   */
+  readonly causedBy?: string | null;
   readonly delivery: NoticeDelivery;
   readonly status: MailStatus;
   /** The first bounce's type and subtype (a code, never the mail server's text). */
@@ -179,10 +193,11 @@ export function mailMessageRecord(input: {
   readonly ref: string | null;
   readonly electionId: string | null;
   readonly accountId: string | null;
+  readonly causedBy: string | null;
   readonly delivery: NoticeDelivery;
   readonly at: string;
 }): MailMessageRecord {
-  const { messageId, kind, ref, electionId, accountId, delivery, at } = input;
+  const { messageId, kind, ref, electionId, accountId, causedBy, delivery, at } = input;
   return {
     messageId,
     accountId,
@@ -190,6 +205,7 @@ export function mailMessageRecord(input: {
     ref,
     electionId,
     sender: 'app',
+    causedBy,
     delivery,
     status: 'sent',
     bounce: null,
@@ -221,7 +237,7 @@ export function identityMailKind(subject: string | null): MailKind {
 export function identityMailRecord(event: MailEvent, accountId: string | null): MailMessageRecord {
   const kind = identityMailKind(event.subject);
   return {
-    ...mailMessageRecord({ messageId: event.messageId, kind, ref: null, electionId: null, accountId, delivery: 'mail', at: event.sentAt }),
+    ...mailMessageRecord({ messageId: event.messageId, kind, ref: null, electionId: null, accountId, causedBy: null, delivery: 'mail', at: event.sentAt }),
     sender: 'identity_platform',
   };
 }

@@ -8,6 +8,11 @@ export interface MailMeta {
   readonly ref: string | null;
   readonly electionId: string | null;
   readonly accountId: string | null;
+  /**
+   * Who caused it (the email log, design §10.12): the account that asked for it, or `system` for what the worker sends
+   * by itself. Kept in the message's record; never sent to the provider.
+   */
+  readonly causedBy: string;
 }
 
 /** One email. `to` is null only in the outbox, for a test voter, who has no address. */
@@ -18,6 +23,8 @@ export interface MailMessage {
   readonly subject: string;
   readonly text: string;
   readonly html: string;
+  /** Where its `List-Unsubscribe` header points (design §10.12); absent for a message to nobody or to Amazon's simulator. */
+  readonly listUnsubscribe?: string | null;
   readonly meta: MailMeta;
 }
 
@@ -159,6 +166,7 @@ export class OutboxTransport implements MailTransport {
       subject: message.subject,
       text: message.text,
       html: message.html,
+      listUnsubscribe: message.listUnsubscribe ?? null,
       recordedAt,
     };
     await ref.create(record);

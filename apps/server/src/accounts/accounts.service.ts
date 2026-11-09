@@ -40,6 +40,7 @@ import { LedgerService } from '../ledger/ledger.service.js';
 import { ElectionReader } from '../elections/election-reader.js';
 import { MemberDirectory } from '../membership/member-directory.js';
 import { Members } from '../membership/members.service.js';
+import { InboxRecords } from '../inbox/inbox.service.js';
 import { MailRecords } from '../notifications/mail-records.js';
 import { EmailVerifiedSync } from './email-verified-sync.js';
 
@@ -71,6 +72,7 @@ export class AccountsService {
     private readonly elections: ElectionReader,
     private readonly mfaPolicy: MfaPolicyService,
     private readonly mailRecords: MailRecords,
+    private readonly inboxRecords: InboxRecords,
     private readonly emailSync: EmailVerifiedSync,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
@@ -268,7 +270,7 @@ export class AccountsService {
   /**
    * A deleted account's sign-ins (by account, and by login for those seen before it had one), page visits, its
    * courses' progress, attempts, certificates and messages, the welcome email of an added member (§5.13), and the
-   * records of the email sent to it (§6.8).
+   * records of the email sent to it (§6.8), and its notifications and messages (§10.13).
    */
   async forgetActivity(accountId: string, uids: readonly string[]): Promise<void> {
     const db = this.firebase.db;
@@ -290,7 +292,7 @@ export class AccountsService {
     // A sign-in can be found both by account and by login.
     const refs = new Map(found.flatMap((snap) => snap.docs.map((d) => [d.ref.path, d.ref] as const)));
     for (const ref of refs.values()) void writer.delete(ref);
-    await Promise.all([writer.close(), this.mailRecords.forgetAccount(accountId)]);
+    await Promise.all([writer.close(), this.mailRecords.forgetAccount(accountId), this.inboxRecords.forgetAccount(accountId)]);
   }
 
   /**

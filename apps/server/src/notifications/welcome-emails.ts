@@ -22,7 +22,8 @@ export class WelcomeEmails {
   /** How this deployment welcomes an added member now. */
   async delivery(): Promise<WelcomeDelivery> {
     if (this.config.mailTransport === 'off') return 'identity_platform';
-    return (await this.settings.current()).emails.welcome ? 'mail' : 'identity_platform';
+    const settings = await this.settings.current();
+    return settings.allEmails && settings.emails.welcome ? 'mail' : 'identity_platform';
   }
 
   /** Queues the welcome email for a member being added, in the adding transaction, when mail is how it goes. */

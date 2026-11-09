@@ -67,6 +67,18 @@ export type {
   MailEventEffect,
 } from './mail.js';
 export {
+  MAIL_LOG_PAGE,
+  MAIL_LOG_SCAN,
+  MAIL_CAUSED_BY_SYSTEM,
+  mailLogQuerySchema,
+  mailLogIndex,
+  matchesMailLog,
+  mailLogBounds,
+  mailLogCursor,
+  parseMailLogCursor,
+} from './mail-log.js';
+export type { MailLogQuery, MailLogRow, MailLogPage, MailLogIndex } from './mail-log.js';
+export {
   NOTICE_TEST_STATUSES,
   MAX_NOTICE_TESTS_PER_DAY,
   TEST_SUBJECT_PREFIX,
@@ -100,8 +112,11 @@ export {
   timeLeft,
   welcomeMessage,
   memberTestMessage,
+  adminTestMessage,
+  broadcastMessage,
+  notificationEmailMessage,
 } from './message.js';
-export type { NoticeElection, NoticeMessage, NoticeMessageInput } from './message.js';
+export type { NoticeElection, NoticeMessage, NoticeMessageInput, NotificationEmailPeriod } from './message.js';
 export {
   WELCOME_STATUSES,
   WELCOME_OUTCOMES,
@@ -194,10 +209,12 @@ export {
   MY_EMAIL_DAYS,
   MY_EMAIL_SHOWN,
   MAIL_REQUESTS_PER_DAY,
+  ADMIN_TESTS_PER_DAY,
   MAIL_REQUEST_RETENTION_DAYS,
   mailAddressState,
   isMailRequestInFlight,
   checkMailRequest,
+  adminTestSchema,
 } from './my-email.js';
 export type {
   MailAddressState,
@@ -206,9 +223,63 @@ export type {
   MailRequestKind,
   MailRequestOutcome,
   MailRequestRecord,
+  AdminTestView,
+  AdminTestInput,
   MyEmailView,
   MemberMailFlag,
 } from './my-email.js';
+export {
+  MAX_BROADCAST_SUBJECT,
+  MAX_BROADCAST_BODY,
+  MAX_BROADCAST_PICKED,
+  BROADCAST_STATUSES,
+  BROADCAST_RECIPIENT_STATUSES,
+  BROADCAST_RECIPIENT_RETENTION_DAYS,
+  broadcastAudienceSchema,
+  broadcastPreviewSchema,
+  broadcastSchema,
+  inBroadcastAudience,
+  hasOptedInToEmail,
+  broadcastSkip,
+  broadcastAudienceSummary,
+  broadcastRejectSchema,
+  isBroadcastOpen,
+} from './broadcasts.js';
+export type {
+  BroadcastAudience,
+  BroadcastInput,
+  BroadcastSkip,
+  BroadcastPreview,
+  BroadcastStatus,
+  BroadcastRecord,
+  BroadcastRecipientStatus,
+  BroadcastRecipientRecord,
+  BroadcastCounts,
+  BroadcastSummary,
+  BroadcastsView,
+  BroadcastRequestedPayload,
+  BroadcastApproval,
+  BroadcastRejectInput,
+  BroadcastDecidedPayload,
+} from './broadcasts.js';
+export {
+  UNSUBSCRIBE_PATH,
+  isUnsubscribeToken,
+  mailStop,
+  unsubscribeLinks,
+  mailStopSchema,
+  mailRestoreSchema,
+} from './mail-preferences.js';
+export type {
+  MailPreferenceRecord,
+  MailStop,
+  UnsubscribeLinks,
+  UnsubscribeStatus,
+  MailStopRow,
+  MailStopInput,
+  MailRestoreInput,
+  MemberEmailStoppedPayload,
+} from './mail-preferences.js';
 export {
   NOT_SEND_BLOCKING,
   SEND_CHECK_MINUTES,

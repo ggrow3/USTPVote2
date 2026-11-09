@@ -26,10 +26,10 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
 };
 
 /**
- * Pages open to everyone that still stay out of search results: signing in, the account emails' links, and one
- * person's course certificate.
+ * Pages open to everyone that still stay out of search results: signing in, the account emails' links, one person's
+ * course certificate, and unsubscribing.
  */
-const NOT_LISTED: ReadonlySet<string> = new Set(['/signin', '/email-action', '/course/certificates/:id']);
+const NOT_LISTED: ReadonlySet<string> = new Set(['/signin', '/email-action', '/course/certificates/:id', '/unsubscribe']);
 
 /** The route paths this module names, for its test to find in router.ts. */
 export const DESCRIBED_ROUTES = [...Object.keys(DESCRIPTIONS), ...NOT_LISTED];

@@ -45,10 +45,13 @@ export const EMAIL_STATUS_TEXT: Readonly<Record<StepStatus, string>> = {
 
 /** What the emails are, in the user's words: the card's caption and the workflow's "Email to voters" step. */
 export const EMAIL_DESCRIPTION =
-  "Official election notices: they go out whatever members' newsletter and announcement choices. Counts only; who each went to is not shown.";
+  "Official election notices: they go out whatever members' newsletter and announcement choices, but not to a member who unsubscribed from all email or whose email an admin stopped. Counts only; who each went to is not shown.";
 
 /** Where this deployment sends no email (`MAIL_TRANSPORT=off`). */
 export const NOT_SET_UP = 'Nothing is sent until email (Amazon SES) is set up for this deployment.';
+
+/** Where System Admins have switched all the site's email off. */
+export const ALL_OFF = 'All email is switched off by a System Admin (Admin › Email): nothing goes until it is on.';
 
 /** Where System Admins have switched Election Admins' test emails off. */
 export const TESTS_OFF = 'Test emails are switched off by a System Admin (Admin › Email).';
@@ -72,7 +75,7 @@ export function acceptedCount(counts: RecipientCounts): number {
 
 /** The counts, in the order an admin reads them, each with what it means. */
 export function countRows(kind: NoticeKind, counts: RecipientCounts): { label: string; value: number; note: string }[] {
-  const nowhere = 'no verified email address, or one that bounced or was marked as spam before';
+  const nowhere = 'no verified email address, one that bounced or was marked as spam before, or they unsubscribed or an admin stopped their email';
   return [
     { label: 'Delivered', value: counts.delivered, note: "the recipient's mail server took them; whether they were read, nobody here knows" },
     { label: 'Sent, no report yet', value: counts.sent, note: 'the mail service took them and has not said more' },
@@ -117,6 +120,8 @@ export function noNoticeText(step: NoticeStep, detail: ElectionDetail, view: Not
       return NOT_SET_UP;
     case 'no_contact':
       return NO_CONTACT;
+    case 'all_off':
+      return ALL_OFF;
     case 'off':
       return `A System Admin has switched ${step.kind === 'closing_soon' ? 'the reminder' : step.kind === 'voted' ? 'vote confirmations' : 'this email'} off (Admin › Email).`;
     case 'short_window':
@@ -199,6 +204,8 @@ const TEST_OUTCOMES: Readonly<Partial<Record<NoticeOutcome, string>>> = {
   no_address: 'your account has no email address',
   unverified_address: "your account's email address is not verified",
   undeliverable: 'your address bounced before, or you marked one of these emails as spam, so it is not mailed',
+  unsubscribed: 'you have unsubscribed from email; turn it back on on your Account page',
+  email_stopped: 'an admin has stopped email to you',
   refused: 'the mail service refused it',
   unavailable: 'the mail service could not take it; try again later',
   interrupted: 'it was interrupted, so whether it went is unknown',
@@ -227,10 +234,11 @@ export function testStatusText(test: NoticeTestSummary): string {
 /** Why the caller cannot have a test email sent now, or null when they can (as far as the browser can tell). */
 export function testBlocked(view: NoticesView | null, now: Date): string | null {
   if (!view) return null;
-  const enabled = view.settings.emails.electionTests;
+  const enabled = view.settings.allEmails && view.settings.emails.electionTests;
   const check = checkNoticeTest({ delivery: view.delivery, enabled, contact: view.contact, theirs: view.tests, now });
   if (check.ok) return null;
   if (view.delivery === 'none') return NOT_SET_UP;
+  if (!view.settings.allEmails) return ALL_OFF;
   if (!enabled) return TESTS_OFF;
   if (view.delivery === 'mail' && !view.contact) return NO_CONTACT;
   return `${check.reason[0]!.toUpperCase()}${check.reason.slice(1)}.`;

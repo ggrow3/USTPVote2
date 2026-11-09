@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { resolveTxt } from 'node:dns/promises';
 import {
+  MAIL_CAUSED_BY_SYSTEM,
   accountChecks,
   configChecks,
   configurationSetChecks,
@@ -137,7 +138,13 @@ export class MailHealthChecker {
     const { configurationSet, eventsQueueUrl, maxSendRate } = this.config.ses;
     const domain = fromDomain(mailFrom);
     const settings = await this.settings.current();
-    const checks: MailCheck[] = configChecks({ transport, webOrigin, contact: settings.contact ?? this.config.noticeContact, queueUrl: eventsQueueUrl });
+    const checks: MailCheck[] = configChecks({
+      transport,
+      webOrigin,
+      contact: settings.contact ?? this.config.noticeContact,
+      queueUrl: eventsQueueUrl,
+      allEmails: settings.allEmails,
+    });
 
     if (transport === 'ses' && this.ses && domain) {
       const [account, identity, set, queue, largestRoll, signIn, lastSeen] = await Promise.all([
@@ -212,7 +219,7 @@ export class MailHealthChecker {
           subject: 'USTP email setup check',
           text: "This message goes to Amazon SES's mailbox simulator and reaches nobody. It checks that delivery reports come back.",
           html: "<p>This message goes to Amazon SES's mailbox simulator and reaches nobody. It checks that delivery reports come back.</p>",
-          meta: { kind: 'probe', ref: probeId, electionId: null, accountId: null },
+          meta: { kind: 'probe', ref: probeId, electionId: null, accountId: null, causedBy: MAIL_CAUSED_BY_SYSTEM },
         });
         return { address, messageId: result.status === 'sent' ? result.messageId : null, status: null };
       }),

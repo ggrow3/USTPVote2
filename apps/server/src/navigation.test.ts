@@ -16,12 +16,13 @@ import { ForumAdminController } from './forum/forum.controller.js';
 import { RoomAdminController } from './room/room.controller.js';
 import { MembershipAdminController } from './membership/membership.controller.js';
 import { RegistrationFormAdminController } from './membership/registration-form.js';
-import { NoticeSettingsController } from './notifications/notice-settings.js';
+import { MailAdminController } from './notifications/mail-admin.controller.js';
 import { PersonasController } from './personas/personas.controller.js';
 import { PhotoReviewController } from './photos/photos.controller.js';
 import { PositionsController } from './positions/positions.controller.js';
 import { SecurityController } from './security/sign-in-log.js';
 import { TeamsAdminController } from './teams/teams.controller.js';
+import { BillsAdminController } from './bills/bills.controller.js';
 
 type Route = readonly [controller: abstract new (...args: never[]) => object, method: string];
 
@@ -42,7 +43,8 @@ const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
   people: [AccountsAdminController, 'list'],
   signin: [SignInMethodsController, 'current'],
   claude: [AnthropicKeyController, 'status'],
-  email: [NoticeSettingsController, 'current'],
+  // System Admins also get the settings and the setup check; both roles get who gets no email.
+  email: [MailAdminController, 'stops'],
   audit: [AuditController, 'events'],
   security: [SecurityController, 'list'],
   testing: [PersonasController, 'list'],
@@ -51,6 +53,7 @@ const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
   quote: [HomeQuoteAdminController, 'current'],
   course: [CourseController, 'adminContent'],
   communications: [CommunicationsAdminController, 'allNews'],
+  bills: [BillsAdminController, 'settings'],
 };
 
 function rolesOf([controller, method]: Route): readonly Role[] {

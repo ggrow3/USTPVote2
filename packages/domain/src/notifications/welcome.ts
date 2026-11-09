@@ -14,7 +14,7 @@ export type WelcomeStatus = (typeof WELCOME_STATUSES)[number];
  * Why a welcome email did not go: as for a notice (`undeliverable`: the address bounced for good or was marked as spam),
  * or the member had already signed in.
  */
-export const WELCOME_OUTCOMES = ['refused', 'unavailable', 'interrupted', 'error', 'no_address', 'undeliverable', 'signed_in'] as const;
+export const WELCOME_OUTCOMES = ['refused', 'unavailable', 'interrupted', 'error', 'no_address', 'undeliverable', 'signed_in', 'unsubscribed', 'email_stopped'] as const;
 export type WelcomeOutcome = (typeof WELCOME_OUTCOMES)[number];
 
 /** `welcome_emails/{accountId}`: the latest welcome email asked for an added member; asking again starts it over. */

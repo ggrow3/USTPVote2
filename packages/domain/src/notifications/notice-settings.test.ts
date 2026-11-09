@@ -31,21 +31,23 @@ const input = (text: NoticeMessageInput['text'] = null): NoticeMessageInput => (
 const body = (over: Partial<Record<string, unknown>> = {}) => ({ basedOn: 0, ...DEFAULT_NOTICE_SETTINGS, ...over });
 
 describe('the default settings', () => {
-  it('keep the emails as they were: all on, the reminder a day before, the built-in wording', () => {
+  it('send nothing until a System Admin switches email on; then each email on, the reminder a day before, the built-in wording', () => {
     expect(DEFAULT_NOTICE_SETTINGS).toEqual({
+      allEmails: false,
       kinds: {
         voting_open: { enabled: true, subject: null, intro: null },
         closing_soon: { enabled: true, subject: null, intro: null },
         voted: { enabled: true, subject: null, intro: null },
       },
-      emails: { welcome: true, electionTests: true, memberTests: true },
+      emails: { welcome: true, electionTests: true, memberTests: true, notifications: true },
+      broadcastApproval: false,
       reminderHours: 24,
       contact: null,
     });
     expect(resolveNoticeSettings(undefined)).toEqual(DEFAULT_NOTICE_SETTINGS);
     expect(resolveNoticeSettings({ reminderHours: 48 } as Partial<NoticeSettings>)).toEqual({ ...DEFAULT_NOTICE_SETTINGS, reminderHours: 48 });
     // Settings saved before the other emails had switches keep them on.
-    expect(resolveNoticeSettings({ emails: { welcome: false } }).emails).toEqual({ welcome: false, electionTests: true, memberTests: true });
+    expect(resolveNoticeSettings({ emails: { welcome: false } }).emails).toEqual({ welcome: false, electionTests: true, memberTests: true, notifications: true });
   });
 
   it('give the same emails as the built-in wording', () => {
@@ -131,20 +133,25 @@ describe('noticeSettingsSchema', () => {
 describe('noticeSettingsChanges', () => {
   it('lists every setting that changed, with its old and new value', () => {
     const after: NoticeSettings = {
+      allEmails: true,
       kinds: {
         voting_open: { enabled: true, subject: 'Vote: {title}', intro: null },
         closing_soon: { enabled: false, subject: null, intro: null },
         voted: { enabled: true, subject: null, intro: null },
       },
-      emails: { welcome: false, electionTests: true, memberTests: false },
+      emails: { welcome: false, electionTests: true, memberTests: false, notifications: false },
+      broadcastApproval: true,
       reminderHours: 48,
       contact: 'elections@example.org',
     };
     expect(noticeSettingsChanges(DEFAULT_NOTICE_SETTINGS, after)).toEqual([
+      { field: 'allEmails', from: false, to: true },
       { field: 'voting_open.subject', from: null, to: 'Vote: {title}' },
       { field: 'closing_soon.enabled', from: true, to: false },
       { field: 'emails.welcome', from: true, to: false },
       { field: 'emails.memberTests', from: true, to: false },
+      { field: 'emails.notifications', from: true, to: false },
+      { field: 'broadcastApproval', from: false, to: true },
       { field: 'reminderHours', from: 24, to: 48 },
       { field: 'contact', from: null, to: 'elections@example.org' },
     ]);

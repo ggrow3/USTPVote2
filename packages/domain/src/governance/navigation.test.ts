@@ -34,15 +34,17 @@ function edit(base: NavigationSettings, change: (s: { -readonly [K in keyof Navi
 const viewer = (membership: Viewer['membership'], ...roles: Role[]): Viewer => ({ membership, roles });
 
 describe('defaults', () => {
-  it('show Register, Ballot, Verify, Offices, Candidates, News, Course and Admin to everyone, Teams, Forum and Room to Active members, and Sign in while signed out', () => {
+  it('show Register, Ballot, Verify, Offices, Candidates, News, Course and Admin to everyone, Teams, Forum, Room and Bills to Active members, and Sign in while signed out', () => {
     const all = ['register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin'];
-    const withTeams = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'news', 'course', 'admin'];
+    const withTeams = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'bills', 'news', 'course', 'admin'];
     expect(shownTo(DEFAULT_NAVIGATION, viewer('signed_out')).menu).toEqual([...all, 'signin']);
     for (const membership of ['no_membership', ...MEMBER_STATUSES] as const) {
       expect(shownTo(DEFAULT_NAVIGATION, viewer(membership)).menu).toEqual(membership === 'active' ? withTeams : all);
     }
     expect(shownTo(DEFAULT_NAVIGATION, viewer('active', 'election_admin')).menu).toEqual(withTeams);
     expect(shownTo(DEFAULT_NAVIGATION, viewer('applicant', 'membership_admin')).menu).toEqual(all);
+    // Bills is for the legislative team: System Admins see its link too, other roles only as Active members (design §5.14).
+    expect(shownTo(DEFAULT_NAVIGATION, viewer('applicant', 'system_admin')).menu).toEqual(['register', 'ballot', 'verify', 'offices', 'candidates', 'bills', 'news', 'course', 'admin']);
   });
 
   it('let every role keep Ballot, Verify, Offices, Candidates, News and Course without a membership', () => {
@@ -51,12 +53,12 @@ describe('defaults', () => {
     }
   });
 
-  it('give each role the console tabs it had, System Admins the link hub and the home page quote, and Security to both', () => {
+  it('give each role the console tabs it had, System Admins the link hub, the home page quote and Bills, and Security to both', () => {
     const tabs = (role: Role) => shownTo(DEFAULT_NAVIGATION, viewer('active', role)).sections;
-    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'registration', 'offices', 'candidacies', 'teams', 'forum', 'room', 'approvals']);
+    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'registration', 'offices', 'candidacies', 'teams', 'forum', 'room', 'approvals', 'email']);
     expect(tabs('election_admin')).toEqual(['elections', 'offices', 'forum', 'approvals']);
     expect(tabs('auditor')).toEqual(['elections', 'offices', 'approvals', 'audit', 'security']);
-    expect(tabs('system_admin')).toEqual(['room', 'approvals', 'people', 'signin', 'claude', 'email', 'security', 'testing', 'navigation', 'hub', 'quote']);
+    expect(tabs('system_admin')).toEqual(['room', 'approvals', 'people', 'signin', 'claude', 'email', 'security', 'testing', 'navigation', 'hub', 'quote', 'bills']);
     expect(tabs('course_admin')).toEqual(['course']);
     expect(tabs('communications_admin')).toEqual(['communications', 'hub']);
   });
@@ -270,6 +272,7 @@ describe('what a person sees', () => {
       'forum',
       'room',
       'approvals',
+      'email',
     ]);
   });
 
@@ -346,6 +349,7 @@ describe('saved settings', () => {
       teams: false,
       forum: false,
       room: false,
+      bills: false,
       news: true,
       course: true,
       admin: true,

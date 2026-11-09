@@ -41,6 +41,11 @@ export class TeamRepository {
     return (await query.get()).docs.map((d) => d.data() as TeamMemberRecord);
   }
 
+  /** The places one account has, on any team. */
+  async placesOf(accountId: string): Promise<TeamMemberRecord[]> {
+    return (await this.places().where('accountId', '==', accountId).get()).docs.map((d) => d.data() as TeamMemberRecord);
+  }
+
   /** The team's places, read in `tx`. */
   async placesIn(tx: Transaction, teamId: string): Promise<TeamMemberRecord[]> {
     return (await tx.get(this.places().where('teamId', '==', teamId))).docs.map((d) => d.data() as TeamMemberRecord);

@@ -29,6 +29,12 @@ export const Collections = {
   positionTerms: 'position_terms',
   /** `teams/{teamId}`: working groups members join (design §5.7). */
   teams: 'teams',
+  /** `bill_settings/current`: which teams have the Bills tool (design §5.14). */
+  billSettings: 'bill_settings',
+  /** `bill_watch/{congress}-{type}-{number}`: the legislative team's shared watchlist (design §5.14). */
+  billWatch: 'bill_watch',
+  /** `bill_notes/{noteId}`: the team's notes on watched bills (design §5.14). */
+  billNotes: 'bill_notes',
   /** `team_members/{teamId}_{accountId}`: who is on each team, as a lead or a member. */
   teamMembers: 'team_members',
   /** `team_requests/{teamId}_{accountId}`: each member's latest request to join a team. */
@@ -41,6 +47,13 @@ export const Collections = {
   forumVotes: 'forum_votes',
   /** `forum_reports/{kind}_{targetId}_{accountId}`: each member's report of a post or comment, for Membership Admins. */
   forumReports: 'forum_reports',
+  // The inbox (design §10.13): in-app notifications, messages between members, and how each wants notifications by email.
+  appNotifications: 'app_notifications',
+  inboxPreferences: 'inbox_preferences',
+  memberThreads: 'member_threads',
+  memberMessages: 'member_messages',
+  memberBlocks: 'member_blocks',
+  messageReports: 'message_reports',
   /** `room_consents/{accountId}`: each member's acceptance of the room's terms, or its withdrawal (design §5.10). */
   roomConsents: 'room_consents',
   /** `room_messages/{messageId}`: the room's messages, the assistant's answers and notices; kept 90 days. */
@@ -166,6 +179,12 @@ export const Collections = {
   mailHealth: 'mail_health',
   /** `mail_requests/{requestId}`: a member's request for a test email, or to try their address again, kept 30 days (§10.12). */
   mailRequests: 'mail_requests',
+  /** `mail_preferences/{accountId}`: whether a member unsubscribed or an admin stopped their email, and their link's token (§10.12). */
+  mailPreferences: 'mail_preferences',
+  /** `broadcasts/{broadcastId}`: an email an admin wrote to members, and who it came to in terms of the audience (§10.12). */
+  broadcasts: 'broadcasts',
+  /** `broadcast_recipients/{broadcastId}_{accountId}`: one member's copy of it, kept 180 days (§10.12). */
+  broadcastRecipients: 'broadcast_recipients',
   // testing mode (design §10.4)
   testingPersonas: 'testing_personas',
 } as const;

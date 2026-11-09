@@ -43,6 +43,7 @@ const settingsOf = (over: Partial<NoticeSettings> & { votingOpen?: Partial<Notic
   const { votingOpen, closingSoon, ...rest } = over;
   return {
     ...DEFAULT_NOTICE_SETTINGS,
+    allEmails: true, // as `resetEmulators` leaves it; these tests are about what each setting does while email is on
     ...rest,
     kinds: {
       voting_open: { ...DEFAULT_NOTICE_SETTINGS.kinds.voting_open, ...votingOpen },
@@ -56,7 +57,8 @@ describe('the election email settings', () => {
   it('are the defaults until a System Admin saves, and only a System Admin may read or change them', async () => {
     const read = await api.call('GET', URL, sa1);
     expect(read.status).toBe(200);
-    expect(read.body).toEqual({ ...DEFAULT_NOTICE_SETTINGS, version: 0, updatedAt: null, updatedBy: null });
+    // `resetEmulators` leaves email on; a new site's is off (mail-preferences.int.test.ts).
+    expect(read.body).toEqual({ ...DEFAULT_NOTICE_SETTINGS, allEmails: true, version: 0, updatedAt: null, updatedBy: null });
     expect((await api.call('GET', URL, electionAdmin)).status).toBe(403);
     expect((await api.call('GET', URL, voters[0]!)).status).toBe(403);
     expect((await save(settingsOf({ reminderHours: 48 }), 0, electionAdmin)).status).toBe(403);
@@ -94,7 +96,7 @@ describe('the election email settings', () => {
     const election = await seedElection(api, { voters: voters.map((v) => v.accountId) });
     expect((await api.call('GET', `/v1/admin/elections/${election.electionId}/notices`, electionAdmin)).body).toMatchObject({
       contact: null,
-      settings: DEFAULT_NOTICE_SETTINGS,
+      settings: { ...DEFAULT_NOTICE_SETTINGS, allEmails: true },
     });
     await save(settingsOf({ contact: 'https://transhumanist-party.org/contact/' }), 0);
     expect((await api.call('GET', `/v1/admin/elections/${election.electionId}/notices`, electionAdmin)).body).toMatchObject({
@@ -105,10 +107,10 @@ describe('the election email settings', () => {
 });
 
 describe('the other emails’ switches', () => {
-  const off = { welcome: false, electionTests: false, memberTests: false };
+  const off = { welcome: false, electionTests: false, memberTests: false, notifications: false };
 
   it('are on until a System Admin switches one off, each switch ledgered, and kept by a save that leaves them out', async () => {
-    expect((await api.call('GET', URL, sa1)).body.emails).toEqual({ welcome: true, electionTests: true, memberTests: true });
+    expect((await api.call('GET', URL, sa1)).body.emails).toEqual({ welcome: true, electionTests: true, memberTests: true, notifications: true });
     expect((await save(settingsOf({ emails: { ...DEFAULT_NOTICE_SETTINGS.emails, memberTests: false } }), 0)).status).toBe(200);
     const entries = (await api.firebase.db.collection('audit_events').where('type', '==', 'notice.settings_changed').get()).docs.map((d) => d.data());
     expect(entries[0]!.payload.changes).toEqual([{ field: 'emails.memberTests', from: true, to: false }]);
@@ -116,7 +118,12 @@ describe('the other emails’ switches', () => {
     // A page opened before the switches existed saves without them, and changes none.
     const { emails: _emails, ...older } = settingsOf({ reminderHours: 36 });
     const saved = await api.call('PUT', URL, sa1, { basedOn: 1, ...older });
-    expect(saved.body).toMatchObject({ version: 2, reminderHours: 36, emails: { welcome: true, electionTests: true, memberTests: false } });
+    expect(saved.body).toMatchObject({ version: 2, reminderHours: 36, emails: { welcome: true, electionTests: true, memberTests: false, notifications: true } });
+
+    // One opened before the notifications' switch saves the others, and keeps it as it was.
+    const { notifications: _notifications, ...three } = { ...DEFAULT_NOTICE_SETTINGS.emails, welcome: false };
+    const keeps = await api.call('PUT', URL, sa1, { ...settingsOf({ reminderHours: 36 }), basedOn: 2, emails: three });
+    expect(keeps.body).toMatchObject({ version: 3, emails: { welcome: false, notifications: true } });
   });
 
   it('switched off, leave a Membership Admin’s new member to Identity Platform’s sign-in link', async () => {

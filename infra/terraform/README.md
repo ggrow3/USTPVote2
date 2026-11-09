@@ -43,7 +43,7 @@ API-side limits are only checked by Google on the first apply.
 | | Read Identity Platform users (`firebaseauth.viewer`) | `verifyIdToken(…, checkRevoked)` on admin routes and casting (§4) |
 | | Create secrets; add versions to `tiebreak-seed-*` secrets only (IAM condition) | Tie-break seed per scheduling attempt (§6.1); it never reads a seed back |
 | | `secretVersionManager` on `anthropic-api-key` only: add, list and destroy versions, never read one | Keeps the key a System Admin adds under Admin › API keys (§5.6); it cannot read it back |
-| | `secretVersionManager` and `secretAccessor` on `app-fec-api-key`, `app-openstates-api-key` and `app-civic-api-key` only | Keeps the public-records keys a System Admin adds under Admin › API keys (§5.6), and reads them to ask those services |
+| | `secretVersionManager` and `secretAccessor` on `app-fec-api-key`, `app-openstates-api-key`, `app-civic-api-key` and `app-congress-api-key` only | Keeps the public-records keys a System Admin adds under Admin › API keys (§5.6, §5.14), and reads them to ask those services |
 | | `publicKeyViewer` on `ballot-pool` | Encrypts ballots locally to an election's public key; cannot decrypt (§7.3) |
 | | Read, write, delete objects in the photos bucket | Profile photos (§5.3) |
 | | Create and read objects in the videos bucket; never delete | Uploaded videos for lessons, news, the press kit and the hub, stored a part at a time and played back by byte range (§10.10) |
@@ -513,6 +513,16 @@ Statewide, county and city offices, and state and local candidates outside an el
 Communications Admins enter them under Admin › Communications. With the emulators (`DISTRICTS=local`) the api uses
 made-up people, ballot and biographies instead of these records.
 
+### Bills in Congress (design §5.14)
+
+The legislative team's Bills page asks the Congress.gov API and GovInfo's search service, both with one api.data.gov key
+sent in a header. Nothing has to be set: without a key of its own it uses the FEC key in use (any api.data.gov key works
+for both), and without that the shared `DEMO_KEY` (30 Congress.gov requests an hour). A System Admin can give it a key of
+its own under **Admin › API keys** (the Congress.gov and GovInfo card), kept as the only live version of
+`app-congress-api-key` (`api_keys.tf`). Until that secret exists (a targeted apply of `api_keys.tf` on an environment
+created before 2026-11-08) the card says so and the page uses the FEC key; the other cards are unaffected. With the
+emulators `BILLS=local` answers from a few fixture bills and sends nothing.
+
 ### Members' room model
 
 The members' room (design §5.10) answers `/ask` with a self-hosted model, so nothing said in the room goes to an AI
@@ -628,10 +638,13 @@ Terraform refuses `ses` without the configuration set or the queue.
 
 #### SES in the app
 
-A System Admin opens Admin › Email: each email on or off, the reminder's lead time (a day by default), the contact
-for questions (it overrides `notice_contact`; with neither, nothing is mailed) and each email's subject and opening.
-Changes are ledgered as `notice.settings_changed`. Then send yourself one: "Send test email" on an election's "Email to
-voters" card says whether your mail server took it. The card's counts (delivered, no report yet, bounced, marked as
+A System Admin opens Admin › Email. **All email from the site is off until they switch it on** there ("Send email"), so
+setting SES up mails nobody by itself; switching it on starts the voting-open email of any election open at that moment.
+First send a test (Setup and test on that tab, "Send test email"), which goes only to the System Admin you choose, even
+while email is off, and says whether their mail server took it. The same tab has each email on or off, the reminder's lead time (a day by
+default), the contact for questions (it overrides `notice_contact`; with neither, nothing is mailed) and each email's
+subject and opening. Changes are ledgered as `notice.settings_changed`. Once it is on, "Send test email" on an election's
+"Email to voters" card sends you that election's email. The card's counts (delivered, no report yet, bounced, marked as
 spam, skipped) come from SES's delivery reports; an address that bounced for good or was marked as spam is not mailed
 again.
 

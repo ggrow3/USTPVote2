@@ -1,9 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { Timestamp, type DocumentReference, type Query, type Transaction } from 'firebase-admin/firestore';
+import { FieldPath, Timestamp, type DocumentReference, type Query, type Transaction } from 'firebase-admin/firestore';
 import {
   Collections,
+  MAIL_LOG_PAGE,
+  MAIL_LOG_SCAN,
   MAIL_MESSAGE_RETENTION_DAYS,
+  mailLogBounds,
+  mailLogCursor,
+  mailLogIndex,
+  matchesMailLog,
+  type MailLogQuery,
   MAIL_SUPPRESSION_DAYS,
+  type MailPreferenceRecord,
   type MailHealthRecord,
   type MailHealthRequest,
   MAIL_REQUEST_RETENTION_DAYS,
@@ -76,6 +84,43 @@ export class MailRepository {
     return snap.docs.map((d) => withoutExpiry(d.data() as Stored<MailMessageRecord>));
   }
 
+  /**
+   * A page of the email log (§10.12), newest first: read in Firestore by the query's most selective field and its days,
+   * the other fields applied to what comes back, until the page is full, the log ends, or `MAIL_LOG_SCAN` records have
+   * been read. `after` is where the last page stopped.
+   */
+  async log(query: MailLogQuery, after: { sentAt: string; messageId: string } | null): Promise<{ records: MailMessageRecord[]; next: string | null; scanLimited: boolean }> {
+    const index = mailLogIndex(query);
+    const value = { accountId: query.account, causedBy: query.causedBy, kind: query.kind, status: query.status };
+    let base: Query = this.firebase.db.collection(Collections.mailMessages);
+    if (index) base = base.where(index, '==', value[index]);
+    const [from, to] = mailLogBounds(query);
+    if (from) base = base.where('sentAt', '>=', from);
+    if (to) base = base.where('sentAt', '<', to);
+    base = base.orderBy('sentAt', 'desc').orderBy(FieldPath.documentId(), 'desc');
+    // Filters beyond the one read by in Firestore can pass few of the records, so read more at a time then.
+    const batch = Object.values(value).filter(Boolean).length > 1 ? MAIL_LOG_PAGE * 4 : MAIL_LOG_PAGE;
+    const records: MailMessageRecord[] = [];
+    let last = after;
+    let scanned = 0;
+    let ended = false;
+    while (records.length < MAIL_LOG_PAGE && scanned < MAIL_LOG_SCAN) {
+      const limit = Math.min(batch, MAIL_LOG_SCAN - scanned);
+      const snap = await (last ? base.startAfter(last.sentAt, last.messageId) : base).limit(limit).get();
+      for (const doc of snap.docs) {
+        scanned++;
+        const record = withoutExpiry(doc.data() as Stored<MailMessageRecord>);
+        last = { sentAt: record.sentAt, messageId: doc.id };
+        if (matchesMailLog(record, query) && records.push(record) === MAIL_LOG_PAGE) break;
+      }
+      if (snap.size < limit) {
+        ended = records.length < MAIL_LOG_PAGE || snap.docs[snap.size - 1]?.id === last?.messageId;
+        break;
+      }
+    }
+    return { records, next: ended || !last ? null : mailLogCursor(last), scanLimited: !ended && records.length < MAIL_LOG_PAGE };
+  }
+
   /** Suppressions found through an account's message, for the Membership Admins' flags (§10.12). */
   async suppressionsOfAccounts(): Promise<MailSuppressionRecord[]> {
     const snap = await this.firebase.db.collection(Collections.mailSuppressions).where('accountId', '!=', null).get();
@@ -85,6 +130,35 @@ export class MailRepository {
   /** Takes an address off the app's list of addresses not to mail (its owner asked to try it again). */
   async deleteSuppression(addressKey: string): Promise<void> {
     await this.suppressionRef(addressKey).delete();
+  }
+
+  // --- who gets no email (§10.12) -------------------------------------------------------------------------------------
+
+  private preferenceRef(accountId: string): DocumentReference {
+    return this.firebase.db.collection(Collections.mailPreferences).doc(accountId);
+  }
+
+  async preference(accountId: string, tx?: Transaction): Promise<MailPreferenceRecord | null> {
+    const snap = tx ? await tx.get(this.preferenceRef(accountId)) : await this.preferenceRef(accountId).get();
+    return (snap.data() as MailPreferenceRecord | undefined) ?? null;
+  }
+
+  async preferenceByToken(token: string): Promise<MailPreferenceRecord | null> {
+    const snap = await this.firebase.db.collection(Collections.mailPreferences).where('token', '==', token).limit(1).get();
+    return (snap.docs[0]?.data() as MailPreferenceRecord | undefined) ?? null;
+  }
+
+  setPreference(tx: Transaction, record: MailPreferenceRecord): void {
+    tx.set(this.preferenceRef(record.accountId), record);
+  }
+
+  /** Accounts that unsubscribed or that an admin stopped email to. */
+  async stoppedPreferences(): Promise<MailPreferenceRecord[]> {
+    const preferences = this.firebase.db.collection(Collections.mailPreferences);
+    const [unsubscribed, stopped] = await Promise.all([preferences.where('unsubscribedAt', '>', '').get(), preferences.where('stoppedAt', '>', '').get()]);
+    const found = new Map<string, MailPreferenceRecord>();
+    for (const doc of [...unsubscribed.docs, ...stopped.docs]) found.set(doc.id, doc.data() as MailPreferenceRecord);
+    return [...found.values()];
   }
 
   // --- members' requests (§10.12) -------------------------------------------------------------------------------------
@@ -110,6 +184,12 @@ export class MailRepository {
   async unfinishedRequests(limit: number): Promise<MailRequestRecord[]> {
     const snap = await this.firebase.db.collection(Collections.mailRequests).where('status', 'in', ['pending', 'sending']).limit(limit).get();
     return snap.docs.map((d) => withoutExpiry(d.data() as Stored<MailRequestRecord>));
+  }
+
+  /** System Admins' test emails the worker has still to do, or has claimed, which go even while all email is off. */
+  async unfinishedAdminTests(): Promise<MailRequestRecord[]> {
+    const snap = await this.firebase.db.collection(Collections.mailRequests).where('kind', '==', 'admin_test').get();
+    return snap.docs.map((d) => withoutExpiry(d.data() as Stored<MailRequestRecord>)).filter((r) => r.status !== 'done');
   }
 
   /** Moves a request on from `from` in a transaction; false when it is no longer there, as another worker moved it. */
@@ -195,12 +275,14 @@ export class MailRepository {
     await batch.commit();
   }
 
-  /** Deletes an account's messages, the suppressions found through them and its requests (a deleted account, design §4). */
+  /** Deletes an account's messages, the suppressions found through them, its requests and its preference (a deleted account, design §4). */
   async forgetAccount(accountId: string): Promise<void> {
     await this.deleteWhere([
       this.firebase.db.collection(Collections.mailMessages).where('accountId', '==', accountId),
       this.firebase.db.collection(Collections.mailSuppressions).where('accountId', '==', accountId),
       this.firebase.db.collection(Collections.mailRequests).where('accountId', '==', accountId),
+      this.firebase.db.collection(Collections.mailPreferences).where('accountId', '==', accountId),
+      this.firebase.db.collection(Collections.broadcastRecipients).where('accountId', '==', accountId),
     ]);
   }
 

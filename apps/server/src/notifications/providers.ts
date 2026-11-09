@@ -1,10 +1,15 @@
 import type { Provider } from '@nestjs/common';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
+import { BroadcastRepository } from './broadcast.repository.js';
+import { BroadcastSender } from './broadcast-sender.js';
+import { BroadcastAudienceReader, BroadcastsService } from './broadcasts.js';
 import { MailHealthService } from './mail-admin.controller.js';
+import { MailLogService } from './mail-log.js';
 import { MailEventRecorder } from './mail-events.js';
 import { MailRequestSender } from './mail-requests.js';
 import { DNS_TXT, dnsTxt, IDENTITY_PLATFORM, MailHealthChecker, SES_ACCOUNT } from './mail-health.js';
+import { MailPreferences } from './mail-preferences.js';
 import { MailRecords } from './mail-records.js';
 import { MAIL_EVENT_SOURCE, MAIL_TRANSPORT, OutboxMailEvents, OutboxTransport, type MailEventSource, type MailTransport } from './mail-transport.js';
 import { MailRepository } from './mail.repository.js';
@@ -31,7 +36,12 @@ export const NOTIFICATION_API_PROVIDERS: Provider[] = [
   NoticeRepository,
   MailRepository,
   MailRecords,
+  MailPreferences,
+  BroadcastRepository,
+  BroadcastAudienceReader,
+  BroadcastsService,
   MailHealthService,
+  MailLogService,
   MyEmailService,
   NoticeSettingsService,
   NoticesService,
@@ -42,7 +52,11 @@ export const NOTIFICATION_WORKER_PROVIDERS: Provider[] = [
   NoticeRepository,
   MailRepository,
   NoticeSettingsService,
+  MailPreferences,
   Mailer,
+  BroadcastRepository,
+  BroadcastAudienceReader,
+  BroadcastSender,
   MailEventRecorder,
   MailHealthChecker,
   MailRequestSender,

@@ -1,6 +1,19 @@
 import type {
+  AdminTestView,
+  BroadcastAudience,
+  BroadcastInput,
+  BroadcastPreview,
+  BroadcastsView,
+  BroadcastSummary,
+  AccountSummary,
   MailHealthView,
+  MailLogPage,
+  MailLogQuery,
+  MemberMatch,
   MailRequestKind,
+  MailRestoreInput,
+  MailStopInput,
+  MailStopRow,
   MemberMailFlag,
   MyEmailView,
   NoticeKind,
@@ -9,6 +22,7 @@ import type {
   NoticesView,
   NoticeSummary,
   NoticeTestSummary,
+  UnsubscribeStatus,
 } from 'ustp-domain';
 import { api } from '../api.js';
 
@@ -48,6 +62,16 @@ export function mailHealth(): Promise<MailHealthView> {
   return api<MailHealthView>('GET', '/v1/admin/mail/health');
 }
 
+/** Who a test email can go to, and how the caller's last one went. */
+export function adminTest(): Promise<AdminTestView> {
+  return api<AdminTestView>('GET', '/v1/admin/mail/test');
+}
+
+/** A test email to a System Admin, on the worker's next tick, even while all email is off. */
+export function requestAdminTest(to: string | null): Promise<AdminTestView> {
+  return api<AdminTestView>('POST', '/v1/admin/mail/test', to ? { to } : {});
+}
+
 /** Asks the worker to run the check on its next tick; refused while one waits (409) or soon after a run (429). */
 export function requestMailCheck(): Promise<MailHealthView> {
   return api<MailHealthView>('POST', '/v1/admin/mail/health/check');
@@ -64,7 +88,89 @@ export function requestMyEmail(kind: MailRequestKind): Promise<MyEmailView> {
   return api<MyEmailView>('POST', `/v1/me/email/${kind}`);
 }
 
+/** No more email from the party; or email again, unless an admin has stopped it. */
+export function setMyEmail(on: boolean): Promise<MyEmailView> {
+  return api<MyEmailView>('POST', `/v1/me/email/${on ? 'resubscribe' : 'unsubscribe'}`);
+}
+
 /** Membership Admin: members who cannot be emailed, and why. */
 export function memberMailFlags(): Promise<MemberMailFlag[]> {
   return api<MemberMailFlag[]>('GET', '/v1/admin/mail/members');
+}
+
+// --- Emails to members (design §10.12) ----------------------------------------------------------------------------
+
+/** Membership or System Admin: the emails sent so far, and whether one can be sent now. */
+export function emailsToMembers(): Promise<BroadcastsView> {
+  return api<BroadcastsView>('GET', '/v1/admin/mail/broadcasts');
+}
+
+/** Who a choice of members comes to, before anything is sent. */
+export function previewEmailToMembers(audience: BroadcastAudience): Promise<BroadcastPreview> {
+  return api<BroadcastPreview>('POST', '/v1/admin/mail/broadcasts/preview', { audience });
+}
+
+/** Queues the email for the worker. */
+export function emailMembers(input: BroadcastInput): Promise<BroadcastSummary> {
+  return api<BroadcastSummary>('POST', '/v1/admin/mail/broadcasts', input);
+}
+
+/** System Admin: lets an email waiting for approval go out. */
+export function approveEmailToMembers(broadcastId: string): Promise<BroadcastSummary> {
+  return api<BroadcastSummary>('POST', `/v1/admin/mail/broadcasts/${encodeURIComponent(broadcastId)}/approve`);
+}
+
+/** System Admin: an email waiting for approval goes to nobody, with why. */
+export function rejectEmailToMembers(broadcastId: string, reason: string): Promise<BroadcastSummary> {
+  return api<BroadcastSummary>('POST', `/v1/admin/mail/broadcasts/${encodeURIComponent(broadcastId)}/reject`, { reason });
+}
+
+/** Stops one going out, or withdraws one waiting for approval: what has gone has gone. */
+export function cancelEmailToMembers(broadcastId: string): Promise<BroadcastSummary> {
+  return api<BroadcastSummary>('POST', `/v1/admin/mail/broadcasts/${encodeURIComponent(broadcastId)}/cancel`);
+}
+
+/** Active members by name, to pick them by hand. */
+export function searchMembersToEmail(name: string): Promise<MemberMatch[]> {
+  return api<MemberMatch[]>('GET', `/v1/admin/mail/broadcasts/member-search?${new URLSearchParams({ name })}`);
+}
+
+// --- The email log (design §10.12) -------------------------------------------------------------------------------
+
+/** System Admin: a page of every email the site sent, newest first. */
+export function mailLog(query: MailLogQuery): Promise<MailLogPage> {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(query)) if (value) params.set(key, String(value));
+  return api<MailLogPage>('GET', `/v1/admin/mail/log?${params}`);
+}
+
+/** System Admin: accounts whose address starts with this, to find someone in the log by address. */
+export function accountsByEmail(email: string): Promise<AccountSummary[]> {
+  return api<AccountSummary[]>('GET', `/v1/admin/accounts?${new URLSearchParams({ email, limit: '10' })}`);
+}
+
+// --- Who gets no email (design §10.12) ----------------------------------------------------------------------------
+
+/** Membership or System Admin: members who unsubscribed, or whose email an admin stopped. */
+export function mailStops(): Promise<MailStopRow[]> {
+  return api<MailStopRow[]>('GET', '/v1/admin/mail/stops');
+}
+
+/** Membership or System Admin: no more email to this member, by their address or ID, with a written reason. */
+export function stopMemberEmail(input: MailStopInput): Promise<void> {
+  return api<void>('POST', '/v1/admin/mail/stops', input);
+}
+
+export function restoreMemberEmail(accountId: string, input: MailRestoreInput): Promise<void> {
+  return api<void>('POST', `/v1/admin/mail/stops/${encodeURIComponent(accountId)}/restore`, input);
+}
+
+/** Whether an email's unsubscribe link has been used. Needs no sign-in, and changes nothing. */
+export function unsubscribeLinkStatus(token: string): Promise<UnsubscribeStatus> {
+  return api<UnsubscribeStatus>('GET', `/v1/public/unsubscribe/${encodeURIComponent(token)}/status`, undefined, { actAs: null });
+}
+
+/** Unsubscribes the member an email's link was sent to. Needs no sign-in. */
+export function unsubscribeLink(token: string): Promise<UnsubscribeStatus> {
+  return api<UnsubscribeStatus>('POST', `/v1/public/unsubscribe/${encodeURIComponent(token)}`, undefined, { actAs: null });
 }

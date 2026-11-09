@@ -52,6 +52,8 @@ export class WelcomeSender {
       .get();
     if (waiting.empty) return 0;
     const settings = await this.settings.current();
+    // All email switched off: what is waiting goes if it comes back on.
+    if (!settings.allEmails) return 0;
     const contact = settings.contact ?? this.config.noticeContact;
     let sent = 0;
     for (const doc of waiting.docs) {
@@ -69,7 +71,7 @@ export class WelcomeSender {
   private async send(record: WelcomeEmailRecord, contact: string | null): Promise<boolean> {
     const claimedAt = new Date().toISOString();
     if (!(await this.move(record, 'pending', { status: 'sending', claimedAt }))) return false;
-    const result = await this.deliver(record.accountId, contact);
+    const result = await this.deliver(record.accountId, record.requestedBy, contact);
     await this.ref(record.accountId).update({
       status: 'done',
       claimedAt: null,
@@ -81,22 +83,24 @@ export class WelcomeSender {
   }
 
   /** Sends to the account's address, read here and stored nowhere else. */
-  private async deliver(accountId: string, contact: string | null): Promise<{ messageId: string } | { outcome: WelcomeOutcome }> {
+  private async deliver(accountId: string, requestedBy: string, contact: string | null): Promise<{ messageId: string } | { outcome: WelcomeOutcome }> {
     const account = (await this.firebase.db.collection(Collections.accounts).doc(accountId).get()).data() as AccountRecord | undefined;
     if (!account?.primaryEmail) return { outcome: 'no_address' };
     if (account.claimedAt) return { outcome: 'signed_in' };
-    const [member] = await this.members.findMany([accountId]);
+    const [[member], links] = await Promise.all([this.members.findMany([accountId]), this.mailer.links(accountId)]);
     const message = welcomeMessage({
       origin: this.config.webOrigin!,
       name: member?.preferredName || member?.legalName || null,
       contact,
+      unsubscribe: links.page,
     });
     const result = await this.mailer.send(this.transport!, {
       to: account.primaryEmail,
       from: this.config.mailFrom,
       replyTo: this.config.mailReplyTo,
+      listUnsubscribe: links.oneClick,
       ...message,
-      meta: { kind: 'welcome', ref: accountId, electionId: null, accountId },
+      meta: { kind: 'welcome', ref: accountId, electionId: null, accountId, causedBy: requestedBy },
     });
     if (result.status === 'sent') return { messageId: result.messageId };
     return { outcome: result.outcome };

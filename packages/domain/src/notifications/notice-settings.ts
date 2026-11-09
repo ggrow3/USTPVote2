@@ -46,17 +46,30 @@ export interface NoticeKindSettings {
 /**
  * The site's other emails, each on or off (design §6.8). `welcome`: to members a Membership Admin added (§5.13); off,
  * the admin's browser sends Identity Platform's sign-in link instead. `electionTests`: "Send test email" on an election's
- * email card. `memberTests`: "Send me a test email" and "Try my address again" on the Account page (§10.12). Switching
- * one off stops new ones; one already queued still goes.
+ * email card. `memberTests`: "Send me a test email" and "Try my address again" on the Account page (§10.12).
+ * `notifications`: members' in-app notifications by email, as each comes or in a digest, for those who chose it (§10.13).
+ * Switching one off stops new ones; one already queued still goes.
  */
-export const OTHER_EMAILS = ['welcome', 'electionTests', 'memberTests'] as const;
+export const OTHER_EMAILS = ['welcome', 'electionTests', 'memberTests', 'notifications'] as const;
 export type OtherEmail = (typeof OTHER_EMAILS)[number];
 export type OtherEmailSettings = Readonly<Record<OtherEmail, boolean>>;
 
 export interface NoticeSettings {
+  /**
+   * The site's email as a whole (design §10.12), off until a System Admin switches it on. Off, the worker mails nobody:
+   * what is due waits, and goes if it is switched on in time. Not affected: Identity Platform's emails, the setup check's
+   * messages to Amazon's simulator, and a System Admin's test email to themselves, which is how they see that it works
+   * before switching it on.
+   */
+  readonly allEmails: boolean;
   readonly kinds: Readonly<Record<NoticeKind, NoticeKindSettings>>;
   /** The site's other emails, each on or off. */
   readonly emails: OtherEmailSettings;
+  /**
+   * Whether each email an admin writes to members waits for a System Admin's approval before it goes (design §10.12);
+   * off until a System Admin switches it on. Any System Admin may approve, the one who wrote it included.
+   */
+  readonly broadcastApproval: boolean;
   /** How long before voting closes the reminder goes. */
   readonly reminderHours: number;
   /** Where members ask about an election: an email address or an https page; null for the deployment's `NOTICE_CONTACT`. */
@@ -64,12 +77,14 @@ export interface NoticeSettings {
 }
 
 export const DEFAULT_NOTICE_SETTINGS: NoticeSettings = {
+  allEmails: false,
   kinds: {
     voting_open: { enabled: true, subject: null, intro: null },
     closing_soon: { enabled: true, subject: null, intro: null },
     voted: { enabled: true, subject: null, intro: null },
   },
-  emails: { welcome: true, electionTests: true, memberTests: true },
+  emails: { welcome: true, electionTests: true, memberTests: true, notifications: true },
+  broadcastApproval: false,
   reminderHours: REMINDER_HOURS_BEFORE_CLOSE,
   contact: null,
 };
@@ -96,8 +111,10 @@ export function resolveNoticeSettings(
     NOTICE_KINDS.map((kind) => [kind, { ...DEFAULT_NOTICE_SETTINGS.kinds[kind], ...stored?.kinds?.[kind] }]),
   ) as Record<NoticeKind, NoticeKindSettings>;
   return {
+    allEmails: stored?.allEmails ?? DEFAULT_NOTICE_SETTINGS.allEmails,
     kinds,
     emails: { ...DEFAULT_NOTICE_SETTINGS.emails, ...stored?.emails },
+    broadcastApproval: stored?.broadcastApproval ?? DEFAULT_NOTICE_SETTINGS.broadcastApproval,
     reminderHours: stored?.reminderHours ?? DEFAULT_NOTICE_SETTINGS.reminderHours,
     contact: stored?.contact ?? DEFAULT_NOTICE_SETTINGS.contact,
   };
@@ -143,10 +160,14 @@ const kindSettings = z.strictObject({
 /** `PUT /v1/admin/notice-settings`: the whole settings, and the version they were edited from. */
 export const noticeSettingsSchema = z.strictObject({
   basedOn: z.number().int().min(0),
+  // The whole site's switch came later too: a page opened before it keeps what was set.
+  allEmails: z.boolean().optional(),
   // Vote confirmations came later: a page opened before them saves without them, and keeps what was set.
   kinds: z.strictObject({ voting_open: kindSettings, closing_soon: kindSettings, voted: kindSettings.optional() }),
   // Likewise the other emails' switches: a page opened before them keeps what was set.
-  emails: z.strictObject({ welcome: z.boolean(), electionTests: z.boolean(), memberTests: z.boolean() }).optional(),
+  emails: z.strictObject({ welcome: z.boolean(), electionTests: z.boolean(), memberTests: z.boolean(), notifications: z.boolean().optional() }).optional(),
+  // Approval of emails to members came later too: a page opened before it keeps what was set.
+  broadcastApproval: z.boolean().optional(),
   reminderHours: z.number().int().min(MIN_REMINDER_HOURS).max(MAX_REMINDER_HOURS),
   contact: z
     .string()
@@ -158,7 +179,7 @@ export const noticeSettingsSchema = z.strictObject({
 });
 export type NoticeSettingsInput = z.infer<typeof noticeSettingsSchema>;
 
-/** One setting that changed: its path (`closing_soon.enabled`, `emails.welcome`, `reminderHours`, `contact`) and its old and new value. */
+/** One setting that changed: its path (`allEmails`, `closing_soon.enabled`, `emails.welcome`, `reminderHours`, `contact`) and its old and new value. */
 export interface NoticeSettingsChange {
   readonly field: string;
   readonly from: string | number | boolean | null;
@@ -173,6 +194,7 @@ export interface NoticeSettingsChangedPayload {
 
 export function noticeSettingsChanges(before: NoticeSettings, after: NoticeSettings): NoticeSettingsChange[] {
   const changes: NoticeSettingsChange[] = [];
+  if (before.allEmails !== after.allEmails) changes.push({ field: 'allEmails', from: before.allEmails, to: after.allEmails });
   for (const kind of NOTICE_KINDS) {
     for (const key of ['enabled', 'subject', 'intro'] as const) {
       const from = before.kinds[kind][key];
@@ -182,6 +204,9 @@ export function noticeSettingsChanges(before: NoticeSettings, after: NoticeSetti
   }
   for (const key of OTHER_EMAILS) {
     if (before.emails[key] !== after.emails[key]) changes.push({ field: `emails.${key}`, from: before.emails[key], to: after.emails[key] });
+  }
+  if (before.broadcastApproval !== after.broadcastApproval) {
+    changes.push({ field: 'broadcastApproval', from: before.broadcastApproval, to: after.broadcastApproval });
   }
   if (before.reminderHours !== after.reminderHours) changes.push({ field: 'reminderHours', from: before.reminderHours, to: after.reminderHours });
   if (before.contact !== after.contact) changes.push({ field: 'contact', from: before.contact, to: after.contact });

@@ -35,12 +35,13 @@ const ACCOUNT: SesAccountFacts = {
 
 describe('the email setup check', () => {
   it('reads the deployment’s own settings', () => {
-    expect(statuses(configChecks({ transport: 'ses', webOrigin: 'https://vote.example.org', contact: 'elections@example.org', queueUrl: 'q' }))).toEqual({
+    expect(statuses(configChecks({ transport: 'ses', webOrigin: 'https://vote.example.org', contact: 'elections@example.org', queueUrl: 'q', allEmails: false })).transport).toBe('warn');
+    expect(statuses(configChecks({ transport: 'ses', webOrigin: 'https://vote.example.org', contact: 'elections@example.org', queueUrl: 'q', allEmails: true }))).toEqual({
       transport: 'ok',
       web_origin: 'ok',
       contact: 'ok',
     });
-    const off = configChecks({ transport: 'off', webOrigin: null, contact: null, queueUrl: null });
+    const off = configChecks({ transport: 'off', webOrigin: null, contact: null, queueUrl: null, allEmails: true });
     expect(statuses(off)).toEqual({ transport: 'warn', web_origin: 'fail', contact: 'fail' });
     expect(off.find((c) => c.id === 'contact')!.fix).toBe('SES in the app');
   });

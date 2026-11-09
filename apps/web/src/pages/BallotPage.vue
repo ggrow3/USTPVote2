@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import type { VoterElection } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
 import PageShell from '../components/PageShell.vue';
 import { attempt } from '../dialogs.js';
-import { ballotCard, secrecyText, votingWindow } from '../elections/ballot-list.js';
+import { ballotCard, ballotLists, finishedVotesShown, rememberFinishedVotesShown, secrecyText, votingWindow } from '../elections/ballot-list.js';
 import { session } from '../session.js';
 
 usePageTitle('Your ballots');
@@ -20,8 +20,15 @@ onMounted(async () => {
   }));
 });
 
+const lists = computed(() => ballotLists(elections.value ?? []));
+/** Finished votes stay off the list until the voter shows them (design §10.5). */
+const showFinished = ref(finishedVotesShown());
+watch(showFinished, (shown) => rememberFinishedVotesShown(shown));
+
 /** A card per election, in the voting home's style (design §10.5): when, how secret, where the voter stands, what next. */
-const cards = computed(() => (elections.value ?? []).map((e) => ({ e, card: ballotCard(e) })));
+const cards = computed(() =>
+  [...lists.value.current, ...(showFinished.value ? lists.value.finished : [])].map((e) => ({ e, card: ballotCard(e) })),
+);
 </script>
 
 <template>
@@ -46,36 +53,45 @@ const cards = computed(() => (elections.value ?? []).map((e) => ({ e, card: ball
           elections set up after you are admitted.
         </template>
       </q-banner>
-      <ul v-else-if="elections" class="ustp-ballots" aria-label="Your elections">
-        <li v-for="{ e, card } in cards" :key="e.electionId">
-          <q-card flat bordered>
-            <q-card-section>
-              <h2 class="text-subtitle1">{{ e.title }}</h2>
-              <p class="q-mb-none">{{ votingWindow(e.opensAt, e.closesAt) }}</p>
-              <p class="q-mb-none">{{ secrecyText(e.secrecy) }}</p>
-              <p class="ustp-ballots__status q-mb-none q-mt-sm text-weight-medium" :class="`text-${card.tone}`">
-                <q-icon :name="card.icon" size="24px" />
-                <span>{{ card.status }}</span>
-              </p>
-            </q-card-section>
-            <q-card-section class="ustp-actions">
-              <q-btn
-                v-for="(a, i) in card.actions"
-                :key="a.to"
-                color="primary"
-                no-caps
-                :unelevated="a.main"
-                :outline="!a.main && i === 0"
-                :flat="!a.main && i > 0"
-                :to="a.to"
-                :label="a.label"
-              >
-                <span class="sr-only">: {{ e.title }}</span>
-              </q-btn>
-            </q-card-section>
-          </q-card>
-        </li>
-      </ul>
+      <template v-else-if="elections">
+        <q-toggle
+          v-if="lists.finished.length"
+          v-model="showFinished"
+          class="self-start"
+          :label="`Show finished votes (${lists.finished.length})`"
+        />
+        <q-banner v-if="!cards.length" class="bg-grey-3 text-black" rounded>Nothing to vote on right now.</q-banner>
+        <ul v-else class="ustp-ballots" aria-label="Your elections">
+          <li v-for="{ e, card } in cards" :key="e.electionId">
+            <q-card flat bordered>
+              <q-card-section>
+                <h2 class="text-subtitle1">{{ e.title }}</h2>
+                <p class="q-mb-none">{{ votingWindow(e.opensAt, e.closesAt) }}</p>
+                <p class="q-mb-none">{{ secrecyText(e.secrecy) }}</p>
+                <p class="ustp-ballots__status q-mb-none q-mt-sm text-weight-medium" :class="`text-${card.tone}`">
+                  <q-icon :name="card.icon" size="24px" />
+                  <span>{{ card.status }}</span>
+                </p>
+              </q-card-section>
+              <q-card-section class="ustp-actions">
+                <q-btn
+                  v-for="(a, i) in card.actions"
+                  :key="a.to"
+                  color="primary"
+                  no-caps
+                  :unelevated="a.main"
+                  :outline="!a.main && i === 0"
+                  :flat="!a.main && i > 0"
+                  :to="a.to"
+                  :label="a.label"
+                >
+                  <span class="sr-only">: {{ e.title }}</span>
+                </q-btn>
+              </q-card-section>
+            </q-card>
+          </li>
+        </ul>
+      </template>
       <div v-else-if="failed" class="text-grey-7">Could not load your ballots.</div>
       <div v-else class="text-grey-7">Loading…</div>
     </div>
