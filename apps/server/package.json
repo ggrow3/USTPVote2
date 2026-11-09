@@ -27,9 +27,9 @@
     "@google-cloud/kms": "^6.3.0",
     "@google-cloud/secret-manager": "^7.2.0",
     "@google-cloud/vision": "^6.2.0",
-    "@nestjs/common": "^12.2.0",
-    "@nestjs/core": "^12.2.0",
-    "@nestjs/platform-fastify": "^12.2.0",
+    "@nestjs/common": "^12.3.2",
+    "@nestjs/core": "^12.3.2",
+    "@nestjs/platform-fastify": "^12.3.2",
     "fastify": "^5.12.7",
     "firebase-admin": "^14.5.0",
     "qrcode": "^1.5.4",
@@ -42,7 +42,7 @@
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@nestjs/testing": "^12.2.0",
+    "@nestjs/testing": "^12.3.2",
     "firebase-tools": "^15.34.2",
     "ustp-verify": "^0.1.0"
   }
