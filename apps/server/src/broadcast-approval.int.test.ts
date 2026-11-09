@@ -3,7 +3,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { NoticeSettingsService } from './notifications/notice-settings.js';
 import { resetEmulators, TestApi, TestWorker, type User } from './testing/emulator.js';
 
-/** Group emails that wait for a System Admin's approval (design §10.12), with the outbox standing in for SES. */
+/** Group emails that wait for a System or Site Admin's approval (design §10.12), with the outbox standing in for SES. */
 
 let api: TestApi;
 let worker: TestWorker;
@@ -107,6 +107,18 @@ describe('approval of emails to members', () => {
     expect(await outbox()).toHaveLength(2);
   });
 
+  it('lets a Site Admin approve one too, notified with the System Admins (design §10.1)', async () => {
+    const site = await api.member('site@example.test');
+    await api.grant(site.accountId, 'site_admin', sa1);
+    const email = (await send()).body as BroadcastSummary;
+    expect((await notifications(site)).notifications[0]).toMatchObject({ kind: 'broadcast_approval', readAt: null });
+    expect((await view(site)).canApprove).toBe(true);
+    const approved = await api.call('POST', `${URL}/${email.broadcastId}/approve`, site);
+    expect(approved).toMatchObject({ status: 200, body: { status: 'preparing', approval: { status: 'approved' } } });
+    expect((await ledger('notice.broadcast_approved'))[0]).toMatchObject({ actor: site.accountId });
+    expect((await notifications(sa1)).unread).toBe(0);
+  });
+
   it('can be rejected with a reason, and then nobody gets it', async () => {
     const email = (await send()).body as BroadcastSummary;
     expect((await api.call('POST', `${URL}/${email.broadcastId}/reject`, sa1, { reason: '' })).status).toBe(400);
@@ -124,8 +136,8 @@ describe('approval of emails to members', () => {
     const email = (await send()).body as BroadcastSummary;
     const second = await send(sa1, 'Another');
     expect(second.status).toBe(409);
-    expect(JSON.stringify(second.body)).toContain('waiting for a System Admin');
-    expect((await view(ma)).blocked).toMatch(/waiting for a System Admin/);
+    expect(JSON.stringify(second.body)).toContain('waiting for a System or Site Admin');
+    expect((await view(ma)).blocked).toMatch(/waiting for a System or Site Admin/);
 
     expect((await api.call('POST', `${URL}/${email.broadcastId}/cancel`, ma)).body).toMatchObject({ status: 'cancelled' });
     expect((await ledger('notice.broadcast_cancelled'))[0]!.payload).toMatchObject({ beforeApproval: true });
