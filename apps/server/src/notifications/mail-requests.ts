@@ -66,7 +66,7 @@ export class MailRequestSender {
 
   /** The address is read here and stored nowhere else. */
   private async deliver(request: MailRequestRecord): Promise<{ messageId: string } | { outcome: MailRequestOutcome }> {
-    // A System Admin's test may be to another System Admin; everything else goes to who asked.
+    // A System Admin's test may be to another System Admin or a member; everything else goes to who asked.
     const to = request.to ?? request.accountId;
     const mailbox = (await this.directory.mailboxes([to])).get(to);
     if (!mailbox?.email) return { outcome: 'no_address' };
@@ -79,20 +79,21 @@ export class MailRequestSender {
       }
       await this.mail.deleteSuppression(mailAddressKey(mailbox.email));
     }
-    const [[member], settings, links] = await Promise.all([
+    const [[member], settings, links, roles] = await Promise.all([
       this.members.findMany([to]),
       this.settings.current(),
       this.mailer.links(to),
+      request.kind === 'admin_test' ? this.directory.activeRoles(to) : Promise.resolve([]),
     ]);
     const message = (request.kind === 'admin_test' ? adminTestMessage : memberTestMessage)({
       origin: this.config.webOrigin!,
       name: member?.preferredName || member?.legalName || null,
       contact: settings.contact ?? this.config.noticeContact,
       unsubscribe: links.page,
+      toSystemAdmin: roles.includes('system_admin'),
     });
     const result = await this.mailer.send(this.transport!, {
       to: mailbox.email,
-      from: this.config.mailFrom,
       replyTo: this.config.mailReplyTo,
       listUnsubscribe: links.oneClick,
       ...message,

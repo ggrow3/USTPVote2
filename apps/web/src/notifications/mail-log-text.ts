@@ -30,6 +30,16 @@ export const LOG_STATUS_LABELS: Readonly<Record<MailStatus, string>> = {
   rejected: 'Not sent after all',
 };
 
+/** A row's status, in words: a welcome link no report reaches says so rather than waiting for one. */
+export function logStatus(row: Pick<MailLogRow, 'status' | 'handOff'>): string {
+  return row.handOff && row.status === 'sent' ? 'Sent by Identity Platform, no reports' : LOG_STATUS_LABELS[row.status];
+}
+
+/** What an email was, as the log names it: a welcome says when it was Identity Platform's sign-in link. */
+export function logKind(row: Pick<MailLogRow, 'kind' | 'sender'>): string {
+  return row.kind === 'welcome' && row.sender === 'identity_platform' ? `${LOG_KIND_LABELS.welcome} (Identity Platform’s sign-in link)` : LOG_KIND_LABELS[row.kind];
+}
+
 /** Quasar colours for a status chip, which also carries the words, so colour is never the only sign. */
 export const LOG_STATUS_COLOURS: Readonly<Record<MailStatus, string>> = {
   sent: 'grey-7',
@@ -50,7 +60,8 @@ export function logRecipient(row: Pick<MailLogRow, 'kind' | 'accountId' | 'accou
 
 /** Who caused it, as the log shows it. */
 export function logCause(row: Pick<MailLogRow, 'sender' | 'causedBy' | 'causedByName'>): string {
-  if (row.sender === 'identity_platform') return 'Identity Platform, when the member asked';
+  // Identity Platform's own emails, unless an admin's browser asked for it (a welcome link).
+  if (row.sender === 'identity_platform' && !row.causedBy) return 'Identity Platform, when the member asked';
   if (row.causedBy === MAIL_CAUSED_BY_SYSTEM) return 'The site, by itself';
   if (!row.causedBy) return 'Not recorded';
   return row.causedByName ?? 'A deleted account';

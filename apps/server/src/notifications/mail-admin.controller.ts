@@ -123,7 +123,13 @@ export class MailAdminController {
     return this.email.adminTestView(ctx);
   }
 
-  /** A test email to a System Admin, the caller by default, on the worker's next tick, even while all email is off. */
+  /** System Admins and members a test email can go to, by name or by email address. */
+  @Get('test/recipients')
+  testRecipients(@Query('q') q?: string) {
+    return this.email.adminTestRecipients(parseQuery(z.string().trim().min(1).max(200), q, 'q'));
+  }
+
+  /** A test email to a System Admin or a member, the caller by default, on the worker's next tick, even while all email is off. */
   @Post('test')
   @HttpCode(202)
   test(@Ctx() ctx: RequestContext, @Body(new ZodPipe(adminTestSchema)) body: AdminTestInput) {

@@ -40,7 +40,14 @@ describe('the email setup check', () => {
 
     expect((await worker.tick()).body).toMatchObject({ mailChecked: true });
     const first = (await health()).body.health as MailHealthRecord;
-    expect(first).toMatchObject({ trigger: 'request', requestedBy: sa1.accountId, transport: 'outbox', domain: 'transhumanist-party.org' });
+    expect(first).toMatchObject({
+      trigger: 'request',
+      requestedBy: sa1.accountId,
+      transport: 'outbox',
+      domain: 'transhumanist-party.org',
+      // The settings page shows it, since the api has no MAIL_FROM of its own.
+      from: 'USTP Elections <noreply@transhumanist-party.org>',
+    });
     expect(status(first, 'transport')).toBe('ok');
     expect(status(first, 'web_origin')).toBe('ok');
     // No NOTICE_CONTACT with the emulators, and no contact set in the app.

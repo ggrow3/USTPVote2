@@ -1,10 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   applyMailEvent,
+  asWelcomeLink,
   Collections,
   identityMailRecord,
   isNoticeMail,
+  isUnclaimedSignInLink,
+  isUnmatchedWelcomeLink,
   mailAddressKey,
+  nearestWelcomeLink,
   nextSuppression,
   recipientStatusOf,
   type MailEvent,
@@ -34,8 +38,9 @@ type Outcome = 'recorded' | 'unchanged' | 'later';
  * the message's record (`mail_messages`), on the notice recipient, test email or welcome email it was, and, for a
  * permanent bounce or a complaint, as an address not to mail again (`mail_suppressions`). Mail Identity Platform sent
  * carries none of this app's tags: its first report makes its record, found to be an account's by the address it went
- * to, which is used for that and stored nowhere. Reports are removed from the queue once recorded; one about a message of
- * this app's not yet recorded is left to come back.
+ * to, which is used for that and stored nowhere; a sign-in link that a Membership Admin's browser already reported as
+ * an added member's welcome (§5.13) takes the place of that report's record, as the welcome. Reports are removed from
+ * the queue once recorded; one about a message of this app's not yet recorded is left to come back.
  */
 @Injectable()
 export class MailEventRecorder {
@@ -77,18 +82,26 @@ export class MailEventRecorder {
       return 'unchanged';
     }
     let fresh: MailMessageRecord | null = null;
+    let link: string | null = null;
     if (!(await this.mail.message(event.messageId))) {
       // This app's messages are recorded when sent; a report that came first is read again later.
       if (event.kind) return event.type === 'send' ? 'unchanged' : 'later';
       const accountId = event.destination ? await this.directory.accountWithEmail(event.destination) : null;
       fresh = identityMailRecord(event, accountId);
+      if (accountId && isUnclaimedSignInLink(fresh)) {
+        link = nearestWelcomeLink((await this.mail.messagesNear(accountId, event.sentAt)).filter(isUnmatchedWelcomeLink), event.sentAt)?.messageId ?? null;
+      }
     }
     return this.firebase.db.runTransaction(async (tx): Promise<Outcome> => {
-      const current = (await this.mail.message(event.messageId, tx)) ?? fresh;
+      const stored = await this.mail.message(event.messageId, tx);
+      // The welcome link the admin's browser reported, if still unmatched: this report's record replaces it.
+      const handOff = !stored && link ? await this.mail.message(link, tx) : null;
+      const matched = handOff && isUnmatchedWelcomeLink(handOff) && handOff.accountId === fresh?.accountId ? handOff : null;
+      const current = stored ?? (fresh && matched ? asWelcomeLink(fresh, { accountId: matched.accountId!, causedBy: matched.causedBy }) : fresh);
       if (!current) return 'later';
       const effect = applyMailEvent(current, event);
       const { record } = effect;
-      const write = effect.changed || current === fresh;
+      const write = effect.changed || !stored;
       if (!write && !effect.suppress) return 'unchanged';
 
       const db = this.firebase.db;
@@ -110,7 +123,9 @@ export class MailEventRecorder {
         tx.update(recipientRef!, { status, updatedAt: now });
       }
       if (test?.status === 'done' && test.outcome === null && test.delivery !== record.status) tx.update(testRef!, { delivery: record.status });
+      if (matched) this.mail.deleteMessage(tx, matched.messageId);
       if (welcome && welcome.messageId === record.messageId && welcome.delivery !== record.status) tx.update(welcomeRef!, { delivery: record.status });
+      if (welcome && matched && welcome.messageId === matched.messageId) tx.update(welcomeRef!, { messageId: record.messageId, delivery: record.status });
       if (key) {
         const next = nextSuppression(suppression, { addressKey: key, reason: effect.suppress!, event, accountId: record.accountId });
         if (JSON.stringify(next) !== JSON.stringify(suppression)) this.mail.setSuppression(tx, next);

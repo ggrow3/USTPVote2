@@ -123,7 +123,6 @@ export class BroadcastSender {
     });
     const result = await this.mailer.send(this.transport!, {
       to: mailbox.email,
-      from: this.config.mailFrom,
       replyTo: this.config.mailReplyTo,
       listUnsubscribe: links.oneClick,
       ...message,

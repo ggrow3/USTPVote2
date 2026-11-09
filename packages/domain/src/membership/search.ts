@@ -29,11 +29,11 @@ const collator = new Intl.Collator('en', { sensitivity: 'base', numeric: true })
  * `limit`: names that start with the text first, then those where each word of it starts a word of the name, then
  * the rest; alphabetically by legal name within each. An empty text matches nobody.
  */
-export function matchMembers(members: readonly MemberMatch[], text: string, limit: number): MemberMatch[] {
+export function matchMembers<T extends MemberMatch>(members: readonly T[], text: string, limit: number): T[] {
   const query = foldName(text.trim().replace(/\s+/g, ' '));
   const terms = words(query);
   if (!terms.length) return [];
-  const rank = (m: MemberMatch): number | null => {
+  const rank = (m: T): number | null => {
     const names = [m.legalName, m.preferredName ?? ''].filter(Boolean);
     const folded = names.map(foldName);
     if (!folded.some((name) => terms.every((t) => name.includes(t)))) return null;

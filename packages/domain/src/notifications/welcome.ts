@@ -4,7 +4,8 @@ import { NOTICE_CLAIM_MINUTES } from './notices.js';
 /**
  * The welcome email a member a Membership Admin added gets (design §5.13), where the deployment sends mail: the worker
  * sends it through the same transport as election notices, once per request, to the address the admin entered. Where
- * no mail is sent, the admin's browser asks Identity Platform to send its sign-in link instead, and nothing is stored.
+ * no mail is sent, the admin's browser asks Identity Platform to send its sign-in link instead, then tells the api,
+ * which records it here (`welcomeLinkSent`) and in the email log.
  */
 
 export const WELCOME_STATUSES = ['pending', 'sending', 'done'] as const;
@@ -32,11 +33,32 @@ export interface WelcomeEmailRecord {
   readonly messageId: string | null;
   /** What the provider has reported of it since it took it (design §6.8); null until a report, absent on older records. */
   readonly delivery?: MailStatus | null;
+  /**
+   * How it went: the site's own email (`mail`, also when absent), or Identity Platform's sign-in link, which the admin's
+   * browser asked for and said was taken (`identity_platform`). Its `messageId` is then its record in the email log.
+   */
+  readonly via?: WelcomeVia;
 }
+
+export type WelcomeVia = 'mail' | 'identity_platform';
 
 /** A welcome email waiting for the worker. */
 export function welcomeEmailRecord(accountId: string, requestedBy: string, at: string): WelcomeEmailRecord {
   return { accountId, requestedBy, requestedAt: at, status: 'pending', claimedAt: null, doneAt: null, outcome: null, messageId: null, delivery: null };
+}
+
+/** A welcome sign-in link the admin's browser says Identity Platform took: done when recorded. */
+export function welcomeLinkSent(input: {
+  readonly accountId: string;
+  readonly requestedBy: string;
+  readonly at: string;
+  /** Its record in the email log. */
+  readonly messageId: string;
+  /** What its reports said, when it was matched to Identity Platform's report of it. */
+  readonly delivery: MailStatus | null;
+}): WelcomeEmailRecord {
+  const { accountId, requestedBy, at, messageId, delivery } = input;
+  return { accountId, requestedBy, requestedAt: at, status: 'done', claimedAt: null, doneAt: at, outcome: null, messageId, delivery, via: 'identity_platform' };
 }
 
 /** Waiting, or claimed by a worker that may still be sending it: asking again now could send two. */
