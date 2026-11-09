@@ -3,17 +3,23 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { MAIL_CAUSED_BY_SYSTEM, MAIL_KINDS, MAIL_STATUSES, type MailKind, type MailLogQuery, type MailLogRow, type MailStatus } from 'ustp-domain';
 import { announce } from '../a11y.js';
 import { attempt } from '../dialogs.js';
-import { accountsByEmail, mailLog, searchMembersToEmail } from './api.js';
+import { accountsByEmail, browserTimeZone, mailLog, searchMembersToEmail } from './api.js';
 import { LOG_KIND_LABELS, LOG_STATUS_COLOURS, LOG_STATUS_LABELS, logBounce, logCause, logKind, logRecipient, logStatus } from './mail-log-text.js';
 
 /**
- * The email log (design §10.12), for System Admins: every email the site sent, newest first, with whom it went to, who
- * caused it and what its delivery report said. Never its words: a group email's are on Email members. Kept 180 days.
+ * The email log (design §10.12), for System and Site Admins: every email the site sent, newest first, with whom and which
+ * address it went to, who caused it and what its delivery report said. Never its words: a group email's are on Email
+ * members. Kept 180 days. Its days are in the admin's time zone; Daily counts opens it narrowed to a person and a day.
  */
 interface Person {
   readonly accountId: string;
   readonly label: string;
 }
+
+const props = defineProps<{
+  /** A narrowing to apply, from Daily counts; a new object each time, so the same person and day can come again. */
+  preset?: { readonly accountId: string | null; readonly label: string | null; readonly day: string } | null;
+}>();
 
 const SYSTEM: Person = { accountId: MAIL_CAUSED_BY_SYSTEM, label: 'The site, by itself' };
 
@@ -48,7 +54,7 @@ async function load(more = false) {
   if (rangeError.value) return;
   loading.value = true;
   await attempt(async () => {
-    const page = await mailLog({ ...query.value, after: more ? (next.value ?? undefined) : undefined });
+    const page = await mailLog({ ...query.value, tz: browserTimeZone(), after: more ? (next.value ?? undefined) : undefined });
     rows.value = more ? [...rows.value, ...page.rows] : [...page.rows];
     next.value = page.next;
     scanLimited.value = page.scanLimited;
@@ -59,7 +65,24 @@ async function load(more = false) {
 }
 
 watch(query, () => void load(), { deep: true });
-onMounted(() => void load());
+
+/** Narrows the log to a person (or everyone) on one day, as Daily counts asks. */
+function applyPreset() {
+  const p = props.preset;
+  if (!p) return;
+  to.value = p.accountId ? { accountId: p.accountId, label: p.label ?? 'This account' } : null;
+  causedBy.value = null;
+  kind.value = null;
+  status.value = null;
+  from.value = p.day;
+  until.value = p.day;
+}
+watch(() => props.preset, applyPreset);
+onMounted(() => {
+  // Set before the first load, which the watch on the query then makes.
+  if (props.preset) applyPreset();
+  else void load();
+});
 
 // --- finding a person by name or address ----------------------------------------------------------------------------
 
@@ -127,9 +150,10 @@ function reported(row: MailLogRow): string | null {
     <div>
       <h2 class="text-subtitle1">Email log</h2>
       <p class="q-mb-none">
-        Every email the site sent in the last 180 days, newest first: whom it went to, who caused it, and what the recipient’s
-        mail server did with it. It never keeps an email’s words or the address it went to; the address shown is the
-        account’s address now. Whether anyone opened an email is never known.
+        Every email the site sent in the last 180 days, newest first: whom and which address it went to, who caused it, and
+        what the recipient’s mail server did with it. It never keeps an email’s words. Emails sent before 9 November 2026
+        did not keep their address: theirs show the account’s address now. Days are in your time zone. Whether anyone
+        opened an email is never known.
       </p>
     </div>
 

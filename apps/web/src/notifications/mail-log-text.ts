@@ -1,4 +1,4 @@
-import { MAIL_CAUSED_BY_SYSTEM, type MailKind, type MailLogRow, type MailStatus } from 'ustp-domain';
+import { MAIL_CAUSED_BY_SYSTEM, type MailDayPerson, type MailKind, type MailKindCount, type MailLogRow, type MailStatus } from 'ustp-domain';
 
 /** Wording for the email log in Admin › Email (design §10.12), in an administrator's words rather than the member's. */
 
@@ -50,12 +50,40 @@ export const LOG_STATUS_COLOURS: Readonly<Record<MailStatus, string>> = {
   rejected: 'negative',
 };
 
-/** Whom an email went to, as the log shows it. */
-export function logRecipient(row: Pick<MailLogRow, 'kind' | 'accountId' | 'accountName' | 'accountEmail'>): string {
+/**
+ * Whom an email went to, as the log shows it: the account's name with the address it went to, or, for an email sent
+ * before addresses were kept (2026-11-09), the address the account has now, said so.
+ */
+export function logRecipient(row: Pick<MailLogRow, 'kind' | 'accountId' | 'accountName' | 'accountEmail' | 'to'>): string {
   if (row.kind === 'probe') return 'Amazon’s mailbox simulator (nobody)';
-  if (!row.accountId) return 'An address no account has';
+  if (!row.accountId) return row.to ? `${row.to} (no account has this address)` : 'An address no account has';
   const name = row.accountName ?? 'An account with no name';
-  return row.accountEmail && row.accountEmail !== name ? `${name} (${row.accountEmail})` : name;
+  if (row.to) return row.to.toLowerCase() === name.toLowerCase() ? row.to : `${name} (${row.to})`;
+  return row.accountEmail && row.accountEmail !== name ? `${name} (address now: ${row.accountEmail})` : name;
+}
+
+/** A day's person, by name: an address no account has by itself. */
+export function dayPersonName(person: Pick<MailDayPerson, 'accountId' | 'name' | 'addresses' | 'kinds'>): string {
+  if (person.accountId) return person.name ?? 'An account with no name';
+  if (person.kinds.every((k) => k.kind === 'probe')) return 'Amazon’s mailbox simulator (nobody)';
+  return person.addresses.length ? 'No account has this address' : 'Addresses no account has (not kept)';
+}
+
+/** The addresses a day's emails to a person went to, in words. */
+export function dayPersonAddresses(person: Pick<MailDayPerson, 'addresses' | 'addressNow'>): string {
+  if (person.addresses.length) return person.addresses.join(', ');
+  if (person.addressNow) return `${person.addressNow} (the address now: sent before addresses were kept)`;
+  return 'Address not kept';
+}
+
+/** What a person's emails were, the commonest first: “2 × Vote confirmation, Email to members”. */
+export function kindCounts(kinds: readonly MailKindCount[]): string {
+  return kinds.map((k) => (k.count > 1 ? `${k.count} × ${LOG_KIND_LABELS[k.kind]}` : LOG_KIND_LABELS[k.kind])).join(', ');
+}
+
+/** A number of emails, in words. */
+export function emailCount(n: number): string {
+  return `${n.toLocaleString()} ${n === 1 ? 'email' : 'emails'}`;
 }
 
 /** Who caused it, as the log shows it. */

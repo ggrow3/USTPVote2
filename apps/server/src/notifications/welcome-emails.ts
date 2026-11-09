@@ -72,14 +72,14 @@ export class WelcomeEmails {
    * first (`reported`), becomes the welcome rather than a second line in the log. Refused while a welcome email of the
    * site's own is on its way. It reads in `tx` before it writes: call it after the transaction's other reads.
    */
-  async recordLink(tx: Transaction, accountId: string, requestedBy: string, at: string, reported: string | null): Promise<void> {
+  async recordLink(tx: Transaction, accountId: string, to: string | null, requestedBy: string, at: string, reported: string | null): Promise<void> {
     const latest = await this.latest(tx, accountId);
     if (latest && isWelcomeInFlight(latest, new Date(at))) throw new ConflictException('a welcome email is on its way already');
     const report = reported ? await this.mail.message(reported, tx) : null;
     const message =
       report && isUnclaimedSignInLink(report)
         ? asWelcomeLink(report, { accountId, causedBy: requestedBy })
-        : welcomeLinkRecord({ messageId: `welcome-link-${uuidv7()}`, accountId, causedBy: requestedBy, at });
+        : welcomeLinkRecord({ messageId: `welcome-link-${uuidv7()}`, accountId, to, causedBy: requestedBy, at });
     this.mail.setMessage(tx, message);
     tx.set(this.ref(accountId), welcomeLinkSent({ accountId, requestedBy, at, messageId: message.messageId, delivery: message.handOff ? null : message.status }));
   }

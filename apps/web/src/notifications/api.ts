@@ -8,6 +8,8 @@ import type {
   BroadcastSummary,
   AccountSummary,
   MailHealthView,
+  MailDaysView,
+  MailDayView,
   MailLogPage,
   MailLogQuery,
   MemberMatch,
@@ -154,6 +156,21 @@ export function mailLog(query: MailLogQuery): Promise<MailLogPage> {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) if (value) params.set(key, String(value));
   return api<MailLogPage>('GET', `/v1/admin/mail/log?${params}`);
+}
+
+/** System Admin: how many emails the site sent each of the last `days` days, in this browser's time zone. */
+export function mailDays(days: number): Promise<MailDaysView> {
+  return api<MailDaysView>('GET', `/v1/admin/mail/days?${new URLSearchParams({ days: String(days), tz: browserTimeZone() })}`);
+}
+
+/** System Admin: one day's emails, in this browser's time zone: in all, by kind and status, and to each person. */
+export function mailDay(day: string): Promise<MailDayView> {
+  return api<MailDayView>('GET', `/v1/admin/mail/day?${new URLSearchParams({ day, tz: browserTimeZone() })}`);
+}
+
+/** The browser's time zone, which the email log's days are in; UTC if it names none. */
+export function browserTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 }
 
 /** System Admin: accounts whose address starts with this, to find someone in the log by address. */

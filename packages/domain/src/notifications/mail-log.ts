@@ -1,13 +1,14 @@
 import { z } from 'zod';
 import { MAIL_KINDS, MAIL_STATUSES, type BounceType, type MailKind, type MailMessageRecord, type MailSender, type MailStatus } from './mail.js';
+import { timeZoneSchema, zoneDayBounds } from './mail-days.js';
 import type { NoticeDelivery } from './notices.js';
 
 /**
  * The email log (design §10.12): every email the site sent, for System Admins in Admin › Email. It is the records the
  * worker already keeps of each message the mail service took (`mail_messages`, §6.8), the app's own and Identity
  * Platform's, read with whom each went to, who caused it and what its delivery reports said. Metadata only, the party's
- * decision (2026-11-08): no record holds an address, a subject or a body; a group email's words stay in its own record.
- * Kept 180 days, as the records are.
+ * decision (2026-11-08): no record holds a subject or a body; a group email's words stay in its own record. Since
+ * 2026-11-09 each record keeps the address it went to (the party's decision then). Kept 180 days, as the records are.
  */
 
 /** Rows a page of the log holds. */
@@ -30,16 +31,21 @@ export const mailLogQuerySchema = z
     causedBy: z.string().trim().min(1).max(64).optional(),
     kind: z.enum(MAIL_KINDS).optional(),
     status: z.enum(MAIL_STATUSES).optional(),
-    /** Sent on or after this day, and on or before that one (UTC). */
+    /** Sent on or after this day, and on or before that one, in `tz`. */
     from: day.optional(),
     to: day.optional(),
+    /** The time zone the days are in (the admin's browser's); UTC when none is given. */
+    tz: timeZoneSchema.optional(),
     /** Where the last page stopped (`next` from it). */
     after: z.string().max(200).optional(),
   })
   .refine((q) => !q.from || !q.to || q.from <= q.to, { message: 'the first day comes after the last', path: ['from'] });
 export type MailLogQuery = z.infer<typeof mailLogQuerySchema>;
 
-/** One email in the log. Names are the accounts' as they are now; the address shown is the account's address now. */
+/**
+ * One email in the log. Names are the accounts' as they are now; `to` is the address it went to, and `accountEmail` the
+ * address the account has now (all an email sent before addresses were kept has).
+ */
 export interface MailLogRow {
   readonly messageId: string;
   readonly kind: MailKind;
@@ -58,6 +64,8 @@ export interface MailLogRow {
   readonly accountId: string | null;
   readonly accountName: string | null;
   readonly accountEmail: string | null;
+  /** The address it went to, as the record keeps it; null on records made before 2026-11-09, and for a message to nobody. */
+  readonly to: string | null;
   /** Who caused it (`MailMessageRecord.causedBy`), and their name now. */
   readonly causedBy: string | null;
   readonly causedByName: string | null;
@@ -100,10 +108,11 @@ export function matchesMailLog(record: MailMessageRecord, query: MailLogQuery): 
   return true;
 }
 
-/** The query's days as times: from the start of `from`, up to (not including) the day after `to`. */
-export function mailLogBounds(query: Pick<MailLogQuery, 'from' | 'to'>): [string | null, string | null] {
-  const from = query.from ? `${query.from}T00:00:00.000Z` : null;
-  const to = query.to ? new Date(Date.parse(`${query.to}T00:00:00.000Z`) + 86_400_000).toISOString() : null;
+/** The query's days as times in its time zone: from the start of `from`, up to (not including) the day after `to`. */
+export function mailLogBounds(query: Pick<MailLogQuery, 'from' | 'to' | 'tz'>): [string | null, string | null] {
+  const zone = query.tz ?? 'UTC';
+  const from = query.from ? zoneDayBounds(query.from, zone).start : null;
+  const to = query.to ? zoneDayBounds(query.to, zone).end : null;
   return [from, to];
 }
 

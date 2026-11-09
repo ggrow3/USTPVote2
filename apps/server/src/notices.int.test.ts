@@ -257,7 +257,9 @@ describe('delivery reports', () => {
     });
     const all = (await db().collection('mail_messages').get()).docs.map((d) => d.data());
     expect(all).toHaveLength(4);
-    expect(JSON.stringify(all.map(({ expireAt: _e, ...r }) => r))).not.toContain('@');
+    // Each keeps the address it went to, for the email log (design §10.12), and no other.
+    expect(all.every((r) => typeof r.to === 'string' && r.to.includes('@'))).toBe(true);
+    expect(JSON.stringify(all.map(({ expireAt: _e, to: _to, ...r }) => r))).not.toContain('@');
 
     // A soft bounce stops nothing; a complaint stops mail to that address.
     expect(await suppression('full@soft.test')).toBeUndefined();
@@ -312,7 +314,9 @@ describe('delivery reports', () => {
     expect(await message('idp-2')).toMatchObject({ sender: 'identity_platform', kind: 'account_email', accountId: null, status: 'bounced' });
     expect(JSON.stringify(await message('idp-1'))).not.toContain('Sign in to');
     expect(await suppression('stranger@example.test')).toMatchObject({ reason: 'bounced', accountId: null, messageId: 'idp-2' });
-    expect(JSON.stringify(await message('idp-1'))).not.toContain('@');
+    // The address the report named, as it named it, for the email log (design §10.12).
+    expect(await message('idp-1')).toMatchObject({ to: voters[1]!.email.toUpperCase() });
+    expect(await message('idp-2')).toMatchObject({ to: 'stranger@example.test' });
   });
 
   it('of an election go with it when it is deleted', async () => {

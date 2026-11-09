@@ -4,6 +4,7 @@ import {
   Collections,
   MAIL_LOG_PAGE,
   MAIL_LOG_SCAN,
+  type MailDayRecord,
   MAIL_MESSAGE_RETENTION_DAYS,
   mailLogBounds,
   mailLogCursor,
@@ -132,6 +133,30 @@ export class MailRepository {
       }
     }
     return { records, next: ended || !last ? null : mailLogCursor(last), scanLimited: !ended && records.length < MAIL_LOG_PAGE };
+  }
+
+  /** How many messages were sent from `start` up to (not including) `end`, counted by Firestore: no record is read. */
+  async countBetween(start: string, end: string): Promise<number> {
+    const snap = await this.firebase.db.collection(Collections.mailMessages).where('sentAt', '>=', start).where('sentAt', '<', end).count().get();
+    return snap.data().count;
+  }
+
+  /**
+   * The messages sent from `start` up to (not including) `end`, at most `limit`, the earliest first: only the fields the
+   * daily counts read (§10.12).
+   */
+  async between(start: string, end: string, limit: number): Promise<MailDayRecord[]> {
+    const snap = await this.firebase.db
+      .collection(Collections.mailMessages)
+      .where('sentAt', '>=', start)
+      .where('sentAt', '<', end)
+      .select('accountId', 'to', 'kind', 'status')
+      .limit(limit)
+      .get();
+    return snap.docs.map((d) => {
+      const { accountId, to, kind, status } = d.data() as MailDayRecord;
+      return { accountId: accountId ?? null, to: to ?? null, kind, status };
+    });
   }
 
   /** Suppressions found through an account's message, for the Membership Admins' flags (§10.12). */

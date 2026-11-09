@@ -85,6 +85,33 @@ export {
 } from './mail-log.js';
 export type { MailLogQuery, MailLogRow, MailLogPage, MailLogIndex } from './mail-log.js';
 export {
+  MAIL_DAYS_MAX,
+  MAIL_DAYS_DEFAULT,
+  MAIL_DAY_SCAN,
+  MAIL_DAY_PEOPLE,
+  isTimeZone,
+  timeZoneSchema,
+  mailDaysQuerySchema,
+  mailDayQuerySchema,
+  zoneDayStart,
+  zoneDay,
+  zoneDayBounds,
+  addDays,
+  tallyMailDay,
+} from './mail-days.js';
+export type {
+  MailDaysQuery,
+  MailDayQuery,
+  MailDayTotal,
+  MailDaysView,
+  MailKindCount,
+  MailStatusCount,
+  MailDayPerson,
+  MailDayView,
+  MailDayRecord,
+  MailDayTally,
+} from './mail-days.js';
+export {
   NOTICE_TEST_STATUSES,
   MAX_NOTICE_TESTS_PER_DAY,
   TEST_SUBJECT_PREFIX,
