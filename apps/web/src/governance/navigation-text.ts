@@ -80,6 +80,7 @@ export const MENU_CAPTIONS: Readonly<Record<MenuLink, string>> = {
 export const SECTION_LABELS: Readonly<Record<AdminSection, string>> = {
   applications: 'Applications',
   members: 'Members',
+  inbox: 'Membership inbox',
   photos: 'Photos',
   bylaws: 'Bylaws',
   registration: 'Registration form',
@@ -108,6 +109,7 @@ export const SECTION_LABELS: Readonly<Record<AdminSection, string>> = {
 export const SECTION_CAPTIONS: Readonly<Record<AdminSection, string>> = {
   applications: 'Approve or reject applications to join',
   members: 'Find members, change status, correct details',
+  inbox: 'Conversations between the membership team and members',
   photos: 'Review flagged profile photos',
   bylaws: 'Draft, check and publish the bylaws',
   registration: "The Register page's intro, questions and Core Ideals",

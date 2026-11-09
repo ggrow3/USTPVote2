@@ -16,6 +16,7 @@ import { Firebase } from '../infra/firebase.js';
 import { MailRecords } from '../notifications/mail-records.js';
 import { NoticeSettingsService } from '../notifications/notice-settings.js';
 import { InboxRepository } from './inbox.repository.js';
+import { MembershipInboxRepository } from './membership-inbox.repository.js';
 
 /** What a notification says, and where it leads. */
 export interface NotificationInput {
@@ -129,9 +130,18 @@ export class MyNotificationsService {
 /** What other contexts may ask of the inbox: forgetting a deleted account's (design §4). */
 @Injectable()
 export class InboxRecords {
-  constructor(private readonly inbox: InboxRepository) {}
+  constructor(
+    private readonly inbox: InboxRepository,
+    private readonly membership: MembershipInboxRepository,
+  ) {}
 
-  forgetAccount(accountId: string): Promise<void> {
-    return this.inbox.forgetAccount(accountId);
+  /**
+   * Its notifications, messages and the rest (`InboxRepository.forgetAccount`), and its conversations with the membership
+   * team, with the Membership Admins' notifications about them. What it wrote as a Membership Admin stays, in the
+   * conversations of the members it wrote to.
+   */
+  async forgetAccount(accountId: string): Promise<void> {
+    const threads = await this.membership.forgetMember(accountId);
+    await Promise.all([this.inbox.forgetAccount(accountId), this.inbox.deleteNotificationsAbout(threads)]);
   }
 }

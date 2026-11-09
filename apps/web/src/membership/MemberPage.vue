@@ -8,6 +8,7 @@ import { ApiError, errorMessage } from '../api.js';
 import PageShell from '../components/PageShell.vue';
 import { askReason, attempt } from '../dialogs.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../forms.js';
+import MemberCorrespondence from '../inbox/MemberCorrespondence.vue';
 import MemberOffices from '../offices/MemberOffices.vue';
 import { session } from '../session.js';
 import ApplicationAnswers from './ApplicationAnswers.vue';
@@ -270,6 +271,8 @@ watch(
         </q-card>
 
         <MemberOffices :member="m" :is-self="isSelf" />
+
+        <MemberCorrespondence :account-id="accountId" :name="m.preferredName || m.legalName" :is-self="isSelf" />
 
         <q-card flat bordered>
           <q-card-section class="ustp-header">

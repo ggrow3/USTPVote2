@@ -12,6 +12,7 @@ export const LOG_KIND_LABELS: Readonly<Record<MailKind, string>> = {
   member_test: 'Test a member asked for',
   admin_test: 'Admin’s test',
   broadcast: 'Email to members',
+  membership_message: 'From the membership team',
   notification: 'Notification by email, as it came',
   notification_digest: 'Digest of notifications',
   sign_in_link: 'Sign-in link (Identity Platform)',

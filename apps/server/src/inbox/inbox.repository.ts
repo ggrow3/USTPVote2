@@ -278,6 +278,15 @@ export class InboxRepository {
 
   // --- a deleted account (design §4) --------------------------------------------------------------------------------
 
+  /** Deletes every account's notifications about these things (conversations that are gone). */
+  async deleteNotificationsAbout(refs: readonly string[]): Promise<void> {
+    if (!refs.length) return;
+    const found = await Promise.all(refs.map((ref) => this.db.collection(Collections.appNotifications).where('ref', '==', ref).select().get()));
+    const writer = this.db.bulkWriter();
+    for (const snap of found) for (const doc of snap.docs) void writer.delete(doc.ref);
+    await writer.close();
+  }
+
   /**
    * Deletes everything of an account's in the inbox: its notifications and preference, its conversations with every
    * message in them (the other member's too, since a conversation is the two of theirs), its blocks either way, and

@@ -160,7 +160,7 @@ this structure one at a time, without changing routes, documents or the ledger.
 | Governance | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `anthropic_key`, `api_keys` |
 | Audit ledger | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` |
 | Notifications | §6.8, §5.13 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests`, `welcome_emails`, `mail_messages`, `mail_suppressions`, `mail_preferences`, `broadcasts`, `broadcast_recipients` |
-| Inbox | §10.13 | `app_notifications`, `inbox_preferences`, `member_threads`, `member_messages`, `member_blocks`, `message_reports` |
+| Inbox | §10.13 | `app_notifications`, `inbox_preferences`, `member_threads`, `member_messages`, `member_blocks`, `message_reports`, `membership_threads`, `membership_messages` |
 
 **Layers.** Records stay plain data (Firestore stores them, JCS hashes them, the browser reads them), so an aggregate
 is its record types plus pure functions in `ustp-domain`:
@@ -3546,6 +3546,7 @@ results page, the CLI and the tests pass it that entry.
 | Capability | Membership Admin | Election Admin | Auditor | System Admin | Site Admin |
 |---|:-:|:-:|:-:|:-:|:-:|
 | Triage applications and photos; add members, one or from a CSV file (§5.13); view member profiles; change member status; correct member details; change the registration form's wording (§5.2) | ● | | | | |
+| Write to members and answer them as the membership team, in the membership inbox, giving, noting and closing its conversations; see the emails the site sent a member, on their record (§10.13) | ● | | | | |
 | Create, rename, archive and restore teams; name and remove their leads; change anything on any team (§5.7) | ● | | | | |
 | Moderate the forum: remove and restore posts and comments, lock and pin threads, see and close reports (§5.9) | ● | | | | |
 | Put a forum proposal on a draft election's ballot (§5.9) | | ● | | | |
@@ -4640,6 +4641,9 @@ to that person.
 - **Reading it.** Firestore reads the records by the most selective filter given (recipient, then who caused it, then
   kind, then status) and the days; the rest are applied to what comes back. One page reads at most 1,000 records, so a
   filter that matches little says when it stopped short and the next page goes further back.
+- **On a member's record** *(added 2026-11-08)*. Membership Admins, who write to members from the membership inbox
+  (§10.13), see one member's rows on that member's record (`GET /v1/admin/mail/log/members/{accountId}`, Membership and
+  System Admins): the same metadata, never the words.
 
 **An email to members** *(added 2026-11-07, the party's decision)*. Membership, System and Site Admins can write to members from
 Admin › Email, the Email Administration page (`/v1/admin/mail/broadcasts`, `preview`, `member-search`, `…/{id}/cancel`,
@@ -4684,12 +4688,13 @@ Admin › Email, the Email Administration page (`/v1/admin/mail/broadcasts`, `pr
 
 A bell in the header of every page, for whoever is signed in with an account, counts their unread notifications and
 lists the latest; each leads to what it is about, and opening it marks it read. `/notifications` lists the last 30,
-newest first, with "Mark all read". Members can also write to each other. All of it is the inbox context
-(`packages/domain/src/inbox`, `apps/server/src/inbox`).
+newest first, with "Mark all read". Members can also write to each other, and to the party's membership team, which
+answers them in a shared inbox. All of it is the inbox context (`packages/domain/src/inbox`, `apps/server/src/inbox`).
 
 - **What notifies.** A member writing to them ("Ada Brooks sent you a message"); for Membership Admins, a member
   reporting a message ("A member reported a message", leading to Admin › Forum); for System Admins, an email to members
-  waiting for their approval, and for whoever wrote it, the decision (§10.12). One notification stands for one thing
+  waiting for their approval, and for whoever wrote it, the decision (§10.12); the membership team writing to a member,
+  and for Membership Admins a member writing to the team or a conversation given to them (below). One notification stands for one thing
   (a conversation, the reports waiting): something more about it while it is unread adds to it ("3 new"), and after it
   was read starts it afresh. `app_notifications/{id}`, the ID a hash of the kind, the thing and the account; kept 90
   days after it last changed (Firestore TTL); never ledgered, since it only says where to look. The bell reads the
@@ -4731,6 +4736,45 @@ newest first, with "Mark all read". Members can also write to each other. All of
   `noindex` (§15). Deleting an account (§4) deletes its notifications, its preference, every conversation it was in
   with all of its messages (the other member's included) and the other member's notifications about them, its blocks
   either way, and the reports of its messages or by it.
+
+**The membership inbox** *(added 2026-11-08, the party's decisions)*. The Membership Admins are the party's *membership
+team*, and share one inbox of conversations between the team and each member, for one-off messages; an email to many
+members is still Email members, with its consent and approval (§10.12).
+
+- **Either side starts one.** A Membership Admin writes to a member from Admin › Membership inbox ("Write to a member",
+  any Active member found by name) or from the member's record ("Write to this member", whatever their status). A
+  member writes to the team from their Messages page ("Write to the membership team"), whatever their status, an
+  applicant or a lapsed member included: any account with a member record. Each conversation has a subject and is with
+  one member (`membership_threads/{random}`, `membership_messages/{random}`, plain text of up to 5,000 characters).
+- **What the member sees.** Their conversations with the team, under Messages (`/messages/team/{threadId}`); the team's
+  messages are signed by the membership team, never by the admin who wrote them, and the team's notes are not there.
+  Opening one marks it read, and the team sees when. Nobody else's is there: another account's is a 404.
+- **What the team sees.** Every conversation, the latest written to first, fifty at a time: those that need an answer
+  (the member wrote last), answered (the team did), closed, or all; anyone's, the caller's or nobody's. A conversation
+  (`/admin/inbox/{threadId}`) shows each message with which Membership Admin wrote it, whether its email went and why
+  not, and whether the member has read it since. The team answers, answers and closes, or adds a **note** only the team
+  sees, which changes nothing else. It **gives** a conversation to one Membership Admin, who is told, or back to the
+  whole team; and closes one, or opens it again. A member's next message opens a closed one again. A member's record
+  lists their conversations and the emails the site sent them (§10.12).
+- **Who is told.** A member writing notifies whoever has the conversation, or else every Membership Admin but the member
+  themselves; an answer or closing marks every Membership Admin's notification about it read. The team writing notifies
+  the member.
+- **By email, as membership business** (the party's decision). Whatever the team writes to a member (not a note) is
+  emailed to them, with its words, a link to answer on the site, and why it came: whether or not they chose news and
+  announcements, but through `Mailer` (§10.12), so never while all email is off, nor to a member who unsubscribed or
+  whose email an admin stopped, nor to an address that bounced, is unconfirmed or missing. The worker sends them, a step
+  of each tick after notifications by email, for at most 10 seconds, each claimed first so none goes twice; one the mail
+  service did not take is tried again for a day. What happened is kept on the message for the team, and the
+  conversation warns before anyone writes when email would not reach the member now. Nothing waits for email to be
+  switched on: the member has it on the site. The email is in the email log as `membership_message`, caused by the admin
+  who wrote it; and since the message is itself emailed, its notification is not emailed again as it comes (a digest
+  still lists it while unread). Replies to the email are not read: the member answers on the site.
+- **Limits.** A member starts at most 3 conversations and writes at most 20 messages to the team a day; a Membership
+  Admin starts at most 50 conversations a day; a conversation holds at most 200 messages and notes (429, 409).
+- **Kept two years** after the conversation's last message (the party's decision; Firestore TTL, each new message
+  moving its earlier ones' time on too), and deleted with the member's account (§4) with the team's notifications
+  about it; what a deleted Membership Admin wrote stays in the members' conversations. Not ledgered: the conversation
+  is its own record, and its emails are in the email log.
 
 ## 11. Data model (Firestore `(default)` database)
 
@@ -4815,6 +4859,8 @@ Physically, registration collections are top-level and election data lives under
 | `member_messages/{messageId}` | random | written once (marked when reported); TTL a year; deleted with either account | one message: conversation, from, to, plain text, when, whether its recipient reported it (§10.13) *(added 2026-11-08)* |
 | `member_blocks/{blocker}_{blocked}` | the two account IDs | made and deleted by the one who blocked; deleted with either account | one member gets no messages from another (§10.13) *(added 2026-11-08)* |
 | `message_reports/{reportId}` | random | open → closed with a note; TTL a year; deleted with either account | a reported message: a copy of it, who wrote it, who reported it and why, who closed it (§10.13) *(added 2026-11-08)* |
+| `membership_threads/{threadId}` | random | written with each message, status change and assignment; TTL two years after the last message; deleted with the member's account | a conversation between the membership team and one member: subject, status (open, answered, closed), who has it, who started it, its last message's start and time, the member's unread count and when they last read it (§10.13) *(added 2026-11-08)* |
+| `membership_messages/{messageId}` | random | written once (its email's outcome added); TTL with its conversation; deleted with the member's account | one message or note: who wrote it for which side, plain text, when, and for a team message whether its email went and why not (§10.13) *(added 2026-11-08)* |
 | `mail_preferences/{accountId}` | accountId | made with the account's first email, unsubscribing or stop; deleted with its account | the unsubscribe link's token, when the member unsubscribed, and when and by which admin their email was stopped (§10.12) *(added 2026-11-06)* |
 | `mail_health/{current\|request\|run}` | fixed | replaced by each run | the email setup check's last run (each check's status, detail and fix, the probe), a System Admin's request for a run, and the claim on a run (§10.12) *(added)* |
 | **audit & admin** | | | |
@@ -4991,6 +5037,9 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST\|DELETE /messages/blocks/{accountId}` | Signed in | block or unblock a member (§10.13) |
 | `POST /messages/reports/{messageId}` | Signed in | its recipient reports a message to the Membership Admins, once (409 again, or by its writer) (§10.13) |
 | `GET /admin/message-reports` · `POST /admin/message-reports/{id}/close` | Membership Admin | the reported messages, each alone, and closing one with a note (409 if closed already) (§10.13) |
+| `GET\|POST /admin/inbox` · `GET /admin/inbox/team` · `GET /admin/inbox/{id}` · `POST /admin/inbox/{id}/messages\|status\|assign` | Membership Admin | the membership inbox: a page of conversations (by status, whose, or one member's, with how many need an answer), the Membership Admins, writing to a member (404 without a member record, 409 to oneself, 429 past 50 a day), a conversation, answering or noting (and closing), closing or opening again, giving it to a Membership Admin (409 otherwise) (§10.13) *(added 2026-11-08)* |
+| `GET\|POST /membership-team` · `GET\|POST /membership-team/{id}` · `POST /membership-team/{id}/read` | Signed in | the caller's conversations with the membership team: listing, starting one (403 without a member record, 429 past the day's limits), reading, answering (404 for anyone else's) and marking read (§10.13) *(added 2026-11-08)* |
+| `GET /admin/mail/log/members/{accountId}` | Membership Admin, System Admin, Site Admin | one member's rows of the email log, for their record (§10.12, §10.13) *(added 2026-11-08)* |
 | `GET /admin/mail/members` | Membership Admin | members who cannot be emailed, and why: bounced, marked as spam, unconfirmed, no address (§10.12) |
 | `GET /admin/mail/health` | System Admin, Site Admin | the email setup check's last run and a request still waiting (§10.12) |
 | `POST /admin/mail/broadcasts/{id}/approve` · `…/reject` | System Admin, Site Admin | with approval switched on, lets an email to members go, or rejects it with a reason; 409 when it is not waiting, or could not go now; ledgered (§10.12) |
@@ -5037,6 +5086,7 @@ Errors use RFC 9457 problem details. Request bodies are validated against schema
 | *(tick step, M5)* | every tick | each send of election email checked 30 minutes after it finished against its delivery reports, a short one alerted (§6.8); a notice held while the email setup check fails, which it runs first when over an hour old |
 | *(tick step, M5)* | every tick | vote confirmations: each voter told, within a minute or so, that their ballot was recorded (§6.8); planned as an `email` Cloud Task, which the tick made unnecessary |
 | *(tick step, M5)* | every tick | members' notifications by email, as each comes and the digests due, for at most 10 seconds after the election emails and admins' emails (§10.13) |
+| *(tick step, M5)* | every tick | the membership team's messages to members by email, for at most 10 seconds after the notifications (§10.13) *(added 2026-11-08)* |
 | *(tick step, M4b)* | every tick | destroy the ballot-pool key version of certified and cancelled elections (§7.3); planned as a `destroy-pool-key` Cloud Task, which the tick made unnecessary |
 
 Tallying is a step of the tick, not the `POST /tasks/tally` Cloud Task planned earlier: the tick already runs every

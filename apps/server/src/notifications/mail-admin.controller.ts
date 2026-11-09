@@ -78,6 +78,19 @@ export class MailAdminController {
     return this.log.page(query);
   }
 
+  /**
+   * One member's emails, for their record (design §10.13): what the email log has of them, for the Membership Admins who
+   * write to them as well as System and Site Admins.
+   */
+  @Get('log/members/:accountId')
+  @Roles('membership_admin', 'system_admin', 'site_admin')
+  memberLog(@Param('accountId') accountId: string, @Query('after') after?: string) {
+    return this.log.page({
+      account: parseQuery(z.string().trim().min(1).max(64), accountId, 'accountId'),
+      after: parseQuery(z.string().trim().min(1).max(200).optional(), after, 'after'),
+    });
+  }
+
   @Get('members')
   @Roles('membership_admin')
   members(): Promise<MemberMailFlag[]> {
