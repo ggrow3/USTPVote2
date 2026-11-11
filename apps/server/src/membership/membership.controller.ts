@@ -103,6 +103,12 @@ export class MembershipAdminController {
     return this.membership.publishBylaws(ctx, body);
   }
 
+  /** How many applications wait, and since when the oldest: the count beside Admin in the menu (design §5.2). */
+  @Get('applications/summary')
+  applicationQueue() {
+    return this.applications.queue();
+  }
+
   @Get('applications')
   listApplications(@Query('status') status?: string, @Query('limit') limit?: string) {
     return this.applications.list(

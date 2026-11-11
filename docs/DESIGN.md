@@ -527,6 +527,13 @@ Every transition writes, in one transaction, the new status on `members/{account
   3. *Membership review*: the submitted application's status, until a Membership Admin decides it, and the bonus
      link the intro promises (Tips for Advancing a Brighter Future) once a Membership Admin has set its address.
      Active members see that link on Register too.
+- **The queue** *(added 2026-11-10)*. So that the time to a decision does not become what keeps people out, a
+  Membership Admin sees how many applications wait: a count beside Admin in the menu and on the console's Applications
+  tab (none when nothing waits; only Membership Admins are asked for it), and above the pending list how many wait and
+  for how long the oldest has. Each waiting application says how long it has waited, marked once that is three days
+  or more; the list is oldest first. `GET /v1/admin/applications/summary` gives the count and when the oldest was
+  submitted; the web app reads it when a Membership Admin signs in, on each page they open and after each decision,
+  with no polling.
 - **Who sees what.** The web app's menu links (Register, Ballot, Verify, Offices, Candidates, Admin) and the header's Sign in button
   are the ones the navigation settings give the person's membership state and roles (§10.5). By default everyone sees
   all five links, signed in or not, visitors see Sign in, and each page tells people it is not for what they can do

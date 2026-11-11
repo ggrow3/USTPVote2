@@ -4,6 +4,7 @@ import {
   checkApplicantEmail,
   decideApplication,
   submitApplication,
+  type ApplicationQueueSummary,
   type ApplicationRecord,
   type ApplicationStatus,
   type CreateApplicationInput,
@@ -68,6 +69,11 @@ export class MembershipApplications {
 
   list(status: ApplicationStatus, limit: number): Promise<ApplicationRecord[]> {
     return this.applications.list(status, limit);
+  }
+
+  /** The queue's size and age, for the count Membership Admins see (design §5.2). */
+  queue(): Promise<ApplicationQueueSummary> {
+    return this.applications.queue();
   }
 
   async decide(ctx: RequestContext, applicationId: string, input: DecisionInput): Promise<ApplicationRecord> {

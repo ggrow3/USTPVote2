@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch, watchEffect, type Component } from 'vue';
-import type { AdminSection } from 'ustp-domain';
+import { queueBadge, type AdminSection } from 'ustp-domain';
 import ApiKeysPanel from '../claude-key/ApiKeysPanel.vue';
 import ApprovalsPanel from '../components/admin/ApprovalsPanel.vue';
 import AuditPanel from '../components/admin/AuditPanel.vue';
@@ -34,6 +34,7 @@ import SecurityPanel from '../security/SecurityPanel.vue';
 import { useRoute, useRouter } from 'vue-router';
 import { usePageTitle } from '../a11y.js';
 import { acting } from '../acting.js';
+import { applicationQueue } from '../membership/queue.js';
 import { session } from '../session.js';
 
 /** Each section's panel. Which ones a person sees is the navigation settings' (design §10.5); the API decides what they may do. */
@@ -135,7 +136,11 @@ onUnmounted(() => (guide.openTab = null));
           :name="t.name"
           :label="t.label"
           :aria-controls="`admin-panel-${t.name}`"
-        />
+        >
+          <q-badge v-if="t.name === 'applications' && applicationQueue.summary?.pending" color="warning" text-color="black" floating>
+            {{ queueBadge(applicationQueue.summary.pending) }}<span class="sr-only"> waiting</span>
+          </q-badge>
+        </q-tab>
       </q-tabs>
       <q-separator />
       <!-- Transparent and without side padding, so panels sit on the page, in line with the title and tabs. -->
