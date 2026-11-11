@@ -38,6 +38,9 @@ resource "google_project_service" "this" {
     "iamcredentials.googleapis.com",
     "logging.googleapis.com",
     "monitoring.googleapis.com",
+    # Reading the developer log (design §14, Logging): errors grouped by stack trace, and a request's lines by trace.
+    "clouderrorreporting.googleapis.com",
+    "cloudtrace.googleapis.com",
     "serviceusage.googleapis.com",
     # Runtime: services, data, keys, triggers (design §3)
     "cloudkms.googleapis.com",

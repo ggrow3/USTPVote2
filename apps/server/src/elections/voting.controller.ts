@@ -1,6 +1,6 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { castBallotSchema, type CastBallotInput } from 'ustp-domain';
-import { CheckRevoked, Ctx } from '../auth/decorators.js';
+import { CheckRevoked, Ctx, NoActorLog } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { ZodPipe } from '../common/validation.js';
 import { VotingService } from './voting.service.js';
@@ -25,9 +25,10 @@ export class VotingController {
     return this.voting.participation(ctx, id);
   }
 
-  /** Request bodies are never logged (design §7.1); the token must not have been revoked. */
+  /** Request bodies are never logged, nor who cast (design §7.1); the token must not have been revoked. */
   @Post(':id/ballots')
   @CheckRevoked()
+  @NoActorLog()
   cast(@Ctx() ctx: RequestContext, @Param('id') id: string, @Body(new ZodPipe(castBallotSchema)) body: CastBallotInput) {
     return this.voting.cast(ctx, id, body);
   }
