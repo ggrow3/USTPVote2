@@ -23,6 +23,7 @@ import { MyEmailService } from './my-email.js';
 import { IdentityPlatformReader, SesAccountReader } from './ses-account.js';
 import { SesEventQueue, sesMailEvent, SesTransport } from './ses.js';
 import { WelcomeEmails } from './welcome-emails.js';
+import { WeeklyDigest } from './weekly-digest.js';
 import { WelcomeSender } from './welcome-sender.js';
 
 /**
@@ -57,6 +58,7 @@ export const NOTIFICATION_WORKER_PROVIDERS: Provider[] = [
   BroadcastRepository,
   BroadcastAudienceReader,
   BroadcastSender,
+  WeeklyDigest,
   MailEventRecorder,
   MailHealthChecker,
   MailRequestSender,

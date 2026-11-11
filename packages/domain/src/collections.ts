@@ -188,6 +188,8 @@ export const Collections = {
   broadcasts: 'broadcasts',
   /** `broadcast_recipients/{broadcastId}_{accountId}`: one member's copy of it, kept 180 days (§10.12). */
   broadcastRecipients: 'broadcast_recipients',
+  /** `mail_digest/weekly`: when the weekly digest is next due (design §10.14). */
+  mailDigest: 'mail_digest',
   // testing mode (design §10.4)
   testingPersonas: 'testing_personas',
 } as const;

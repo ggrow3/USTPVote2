@@ -137,6 +137,8 @@ export interface TickResult {
   readonly memberEmailsSent: number;
   /** Copies of an email an admin wrote to members (design §10.12). */
   readonly broadcastEmailsSent: number;
+  /** Weekly digests queued as an email to members (design §10.14): 0, or 1 when one was due with something new. */
+  readonly digestsQueued: number;
   /** Notifications emailed as they came, and digests (design §10.13). */
   readonly notificationEmailsSent: number;
   /** The membership team's messages emailed to members (design §10.13). */
