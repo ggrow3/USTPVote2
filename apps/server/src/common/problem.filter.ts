@@ -1,5 +1,5 @@
 import { Catch, HttpException, HttpStatus, Logger, type ArgumentsHost, type ExceptionFilter } from '@nestjs/common';
-import type { FastifyReply } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { ProblemDetails } from 'ustp-domain';
 
 /** Every error leaves the API as RFC 9457 problem details; unexpected errors never leak internals. */
@@ -26,8 +26,13 @@ export class ProblemDetailsFilter implements ExceptionFilter {
         errors = b.errors;
       }
     } else {
-      this.logger.error(exception instanceof Error ? (exception.stack ?? exception.message) : String(exception));
+      // One entry with the stack trace, which Error Reporting groups; the request's id, trace, handler and caller are
+      // added by the logger (design §14, "Logging").
+      this.logger.error(exception instanceof Error ? exception : new Error(String(exception)));
     }
+    // The request's own line says why it was refused, where the refusal has a type.
+    const log = host.switchToHttp().getRequest<FastifyRequest>().logContext;
+    if (log && type !== 'about:blank') log.problemType = type;
 
     const problem: ProblemDetails = {
       type,

@@ -14,6 +14,7 @@ export const ROLES_KEY = 'ustp:roles';
 export const CHECK_REVOKED_KEY = 'ustp:check-revoked';
 export const APP_CHECKED_KEY = 'ustp:app-checked';
 export const MFA_EXEMPT_KEY = 'ustp:mfa-exempt';
+export const NO_ACTOR_LOG_KEY = 'ustp:no-actor-log';
 
 /** No sign-in required. */
 export const Public = () => SetMetadata(PUBLIC_KEY, true);
@@ -38,6 +39,12 @@ export const MfaExempt = () => SetMetadata(MFA_EXEMPT_KEY, true);
 
 /** Also check that the ID token has not been revoked, as admin routes do (casting a ballot, design §7.1). */
 export const CheckRevoked = () => SetMetadata(CHECK_REVOKED_KEY, true);
+
+/**
+ * The log lines of this route never say who is calling (design §7.1, §14): casting a ballot, where a line holding the
+ * voter and the time would be the link between voter and ballot that the rest of the design removes.
+ */
+export const NoActorLog = () => SetMetadata(NO_ACTOR_LOG_KEY, true);
 
 /** The authenticated caller. */
 export const Ctx = createParamDecorator((_: unknown, host: ExecutionContext): RequestContext => {

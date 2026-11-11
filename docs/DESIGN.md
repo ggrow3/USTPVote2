@@ -636,7 +636,7 @@ Every transition writes, in one transaction, the new status on `members/{account
 - **Member profiles.** A Membership Admin opens any member from the Members or Applications tab:
   `GET /v1/admin/members/{accountId}` gives the member record, every application the account made with all its
   answers (date of birth included, as it is for the review), and the status history. The profile page shows them, with
-  the member's class and Core Ideals answer beside their status, and Change status and Correct details. Opening a profile is not ledgered or logged, like every other admin read. System
+  the member's class and Core Ideals answer beside their status, and Change status and Correct details. Opening a profile is not ledgered, like every other admin read; the developer log has the request, as it has every request (§14, Logging). System
   Admins do not see profiles: their People list stays as in §10.3.
 - **Members tab.** The Membership Admin's list loads every member from `GET /v1/admin/members`, 500 a request, and each
   member's offices from `GET /v1/admin/positions`: the active terms held under the member's account (a candidate entered
@@ -651,7 +651,7 @@ Every transition writes, in one transaction, the new status on `members/{account
   rows if any: name, account ID, offices, state (US members only), country, class, the Core Ideals answer, status and
   member-since date (the reader's own date), never contact details or opt-ins; UTF-8 with a byte-order mark for Excel,
   and a cell a spreadsheet would read as a formula starts with `'`. The checkboxes only choose what to export: there are
-  no bulk status changes. The api never sees an export, so like opening a profile it is not ledgered or logged.
+  no bulk status changes. The api never sees an export, so it is not ledgered or logged.
 - **Changing details after joining.** The record keeps what membership uses, and it changes in two ways, each ledgered
   as `member.details_changed` with the names of the fields that changed (`legalName`, `contact.phone`,
   `communications.newsletter`…) and never their values, since the ledger cannot be erased:
@@ -3747,7 +3747,8 @@ different account on each side. Testing mode lets one System Admin do that alone
   persona; the request's account and roles are then the persona's, and the System Admin is kept as its `operator`.
   Every route behaves as it would for the persona, two-person checks included, so a rehearsal exercises the real
   rules, and ledger entries name the persona. The api logs each acting request with operator, persona, method and
-  path; that log is what ties a persona's actions to a real person. Linking and unlinking logins refuse while acting,
+  path, and the request's own line in the developer log (§14) names both; that log is what ties a persona's actions to a
+  real person. Linking and unlinking logins refuse while acting,
   and `GET /v1/me` reports `testing.enabled` and `testing.operator`.
 - **Web app:** Admin → Testing (System Admins, testing mode only) creates personas, starts acting as one and makes
   demo elections. A bar under the menu names the persona, switches to another or stops. The choice is per browser tab
@@ -5237,7 +5238,18 @@ every 15 seconds in place of Cloud Scheduler.
   and when to the minute (never how anyone voted). The outbox, which
   does store messages with their addresses, is refused outside the emulators, apart from a rehearsal's notices in
   testing mode, which have no address.
-- **Logging:** structured logs with redaction; no request bodies on cast; Firestore Data Access audit logs off in
+- **Logging:** the api and worker write a developer log to Cloud Logging, for whoever runs the deployment to follow
+  what the server did (`docs/LOGGING.md`): one line for every request (method, path, route, status, time taken, the
+  handler that answered as `Controller.handler`, the caller's accountId and roles, and the operator of a test persona),
+  one for every ledger event as it is recorded (type, sequence number, actor, subject), one for each worker step that
+  did something, and one with the stack trace for every unexpected error, which Error Reporting groups. Every line
+  written while a request is handled carries its id and Cloud Trace ids, so one request's lines read together. No line
+  holds a request body, a query string (a search holds a name or an address), a header, the client's address, an email
+  address, a ledger payload, or a path with a secret in it (the unsubscribe link is written as its pattern); and **the
+  lines of the cast request never say who is calling** (§7.1; a test persona's rehearsal ballot aside, §10.4), since a voter and a time together are the link the rest
+  of the design removes. It is not the ledger: it is kept 30 days (the log bucket's default), read only by people with
+  access to the Google Cloud project (`operator_members`), proves nothing, and unlike the ledger it does record reads.
+  Firestore Data Access audit logs off in
   production (they would record write paths and times; pool encryption makes them harmless, but there is no need for
   them); KMS Data Access audit logs on. Sign-ins: the api's sign-in log with each sign-in's address, for System Admins
   and Auditors, and Identity Platform's request logs with every attempt, failed ones included, both kept 180 days

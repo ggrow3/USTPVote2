@@ -39,6 +39,7 @@ photo checks and Cloud KMS have no emulator and have not been exercised in dev y
 ## Documents
 
 - [System design](docs/DESIGN.md) — architecture, threat model, data model, algorithms, open questions, roadmap
+- [Reading the developer log](docs/LOGGING.md) — what the api and worker log, and the Logs Explorer queries to read it
 - [Accessibility](docs/ACCESSIBILITY.md) — what was checked and fixed, known gaps, the manual screen-reader pass still due
 - [Infrastructure](infra/terraform/README.md) — Terraform layout, IAM per service account, bringing an environment up, releasing
 - [Independent verifier](packages/verify/README.md) — `ustp-verify` usage and what each check proves

@@ -147,7 +147,7 @@ export class AuthGuard implements CanActivate {
     if (!roles.includes('system_admin')) throw new ForbiddenException('only System Admins can act as test personas');
     if (!isPersona) throw new ForbiddenException('not a test persona');
     // Persona accounts have no login of their own, so this log is what ties each persona action to a real person.
-    this.logger.log(`${ownAccountId} acting as test persona ${personaId}: ${request.method} ${request.url}`);
+    this.logger.log(`${ownAccountId} acting as test persona ${personaId}: ${request.method} ${request.url.split('?', 1)[0]}`);
     return ownAccountId;
   }
 }

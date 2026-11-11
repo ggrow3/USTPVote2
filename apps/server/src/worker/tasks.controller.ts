@@ -75,11 +75,16 @@ export class TasksController {
   async tick(): Promise<TickResult> {
     const failures: string[] = [];
     const step = async <T>(name: string, run: () => Promise<T>, fallback: T): Promise<T> => {
+      const started = Date.now();
       try {
-        return await run();
+        const done = await run();
+        // A step that did something is worth a line; the others, every minute, only at LOG_LEVEL=debug.
+        const did = Array.isArray(done) ? done.length : done;
+        this.logger[did ? 'log' : 'debug']({ message: `tick: ${name}`, step: name, done: did, ms: Date.now() - started });
+        return done;
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
-        this.logger.error(`tick: ${name} failed: ${message}`);
+        this.logger.error({ message: `tick: ${name} failed: ${message}`, step: name, ms: Date.now() - started });
         failures.push(`${name}: ${message}`);
         return fallback;
       }

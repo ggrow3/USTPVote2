@@ -45,8 +45,9 @@ export interface User {
 export class TestApi {
   private constructor(readonly app: NestFastifyApplication) {}
 
-  static async start(): Promise<TestApi> {
-    const app = await createFastifyApp(ApiModule, { quiet: true });
+  /** `logStream` receives the api's log lines, for tests of what is logged; without one nothing is logged. */
+  static async start(logStream?: { write(line: string): void }): Promise<TestApi> {
+    const app = await createFastifyApp(ApiModule, logStream ? { logStream } : { quiet: true });
     await app.init();
     await app.getHttpAdapter().getInstance().ready();
     return new TestApi(app);
