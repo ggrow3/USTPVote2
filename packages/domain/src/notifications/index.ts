@@ -334,3 +334,5 @@ export {
   noticeVerificationTotals,
 } from './send-checks.js';
 export type { SendGate, NoticeHold, SendVerificationRecord, NoticeVerificationTotals } from './send-checks.js';
+export { DIGEST_LIST_MAX, digestIsEmpty, digestMessage, nextWeeklyDigestAt } from './digest.js';
+export type { DigestContent, DigestStateRecord } from './digest.js';

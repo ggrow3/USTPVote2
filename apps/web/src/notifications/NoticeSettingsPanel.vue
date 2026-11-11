@@ -186,6 +186,11 @@ const field = (kind: NoticeKind, name: 'subject' | 'intro') => `kinds.${kind}.${
 
 /** What each of the other emails is, and what happens instead while it is off. */
 const OTHER_EMAIL_TEXT: Readonly<Record<OtherEmail, { label: string; caption: string }>> = {
+  weeklyDigest: {
+    label: 'Weekly digest',
+    caption:
+      'On Mondays, to the Active members who opted in to party email: votes open, and news posts and courses published since the last one. Nothing goes in a week with nothing new. It is sent as an email to members is, so it waits for approval while that is switched on.',
+  },
   applicationReceived: {
     label: 'Application received',
     caption: 'To someone who applies to join: that their application arrived and a Membership Admin will decide it. Off: they see it on the site only.',

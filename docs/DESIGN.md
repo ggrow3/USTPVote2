@@ -4893,6 +4893,28 @@ members is still Email members, with its consent and approval (§10.12).
   about it; what a deleted Membership Admin wrote stays in the members' conversations. Not ledgered: the conversation
   is its own record, and its emails are in the email log.
 
+### 10.14 The weekly digest *(added 2026-11-10)*
+
+Members who do not open the site still hear what is new on it: once a week the worker writes one email saying what has
+happened since the last one, and sends it as an email to members is sent (§10.12).
+
+- **What it holds.** The votes open now (never a rehearsal, soonest to close first), the news posts published since
+  the last digest, and the courses published or published again with changes. At most eight of each, with where the
+  rest are. Plain text, each item on a line with its address. A week with nothing new sends nothing.
+- **When.** Mondays at 13:00 UTC, as members' own weekly notification digests (§10.13). `mail_digest/weekly` holds when
+  the next is due and when the last was looked at, which is what the next one covers from; the due time moves on in a
+  transaction before anything is gathered, so overlapping ticks queue one. The first time it only sets the due time:
+  a first digest covers from when it was switched on, not everything before.
+- **Who gets it.** The Active members who opted in to party email, like any email to members: never someone who
+  unsubscribed or whose email an admin stopped, and it carries the unsubscribe link.
+- **It is an email to members.** The worker queues it as a `broadcasts` record written by `system`, ledgered as
+  `notice.broadcast_requested`, and the broadcast sender takes it from there: the same gate, the same record of who got
+  it under Admin › Email (shown as written by the weekly digest), the same one-at-a-time rule (a week's digest gives way
+  to an email an admin wrote that is still going out), and **the same approval**: while System Admins have approval
+  switched on, each digest waits for one of them.
+- **Off until switched on.** Admin › Email › Settings has a Weekly digest switch, off by default. It also needs all
+  email on, a contact for questions and the site's address, as every email does.
+
 ## 11. Data model (Firestore `(default)` database)
 
 Firestore Native mode has no namespaces. The spec's two namespaces are **module boundaries in code**: each bounded

@@ -52,6 +52,8 @@ export interface NoticeKindSettings {
  * `notifications`: members' in-app notifications by email, as each comes or in a digest, for those who chose it (§10.13).
  * `applicationReceived`, `applicationApproved`, `applicationRejected`: to an applicant, that their application to join
  * arrived, and what a Membership Admin decided (§5.2); these go whatever they chose for their notifications.
+ * `weeklyDigest`: once a week, what is new on the site, to the Active members who opted in (§10.14); off until a System
+ * Admin switches it on.
  * Switching one off stops new ones; one already queued still goes.
  */
 export const OTHER_EMAILS = [
@@ -62,6 +64,7 @@ export const OTHER_EMAILS = [
   'applicationReceived',
   'applicationApproved',
   'applicationRejected',
+  'weeklyDigest',
 ] as const;
 export type OtherEmail = (typeof OTHER_EMAILS)[number];
 export type OtherEmailSettings = Readonly<Record<OtherEmail, boolean>>;
@@ -108,6 +111,7 @@ export const DEFAULT_NOTICE_SETTINGS: NoticeSettings = {
     applicationReceived: true,
     applicationApproved: true,
     applicationRejected: true,
+    weeklyDigest: false,
   },
   broadcastApproval: false,
   reminderHours: REMINDER_HOURS_BEFORE_CLOSE,
@@ -245,6 +249,8 @@ export const noticeSettingsSchema = z.strictObject({
       applicationReceived: z.boolean().optional(),
       applicationApproved: z.boolean().optional(),
       applicationRejected: z.boolean().optional(),
+      // And the weekly digest (design §10.14).
+      weeklyDigest: z.boolean().optional(),
     })
     .optional(),
   // Approval of emails to members came later too: a page opened before it keeps what was set.

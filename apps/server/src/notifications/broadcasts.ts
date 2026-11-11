@@ -3,6 +3,7 @@ import { sha256Hex } from 'ustp-audit';
 import { z } from 'zod';
 import {
   broadcastAudienceSummary,
+  MAIL_CAUSED_BY_SYSTEM,
   broadcastPreviewSchema,
   broadcastRejectSchema,
   broadcastSchema,
@@ -175,7 +176,7 @@ export class BroadcastsService {
       status: 'preparing',
       approval: { status: 'approved', decidedBy: actor, decidedAt: at, reason: null },
     }));
-    if (record.createdBy !== actor) {
+    if (record.createdBy !== actor && record.createdBy !== MAIL_CAUSED_BY_SYSTEM) {
       await this.notices.notify([record.createdBy], {
         kind: 'broadcast_decided',
         ref: broadcastId,
@@ -195,7 +196,7 @@ export class BroadcastsService {
       (current, at) => ({ ...current, status: 'rejected', completedAt: at, approval: { status: 'rejected', decidedBy: actor, decidedAt: at, reason } }),
       reason,
     );
-    if (record.createdBy !== actor) {
+    if (record.createdBy !== actor && record.createdBy !== MAIL_CAUSED_BY_SYSTEM) {
       await this.notices.notify([record.createdBy], {
         kind: 'broadcast_decided',
         ref: broadcastId,
@@ -282,7 +283,8 @@ export class BroadcastsService {
     return {
       ...rest,
       audience: broadcastAudienceSummary(audience),
-      createdByName: names.get(createdBy) ?? null,
+      // The weekly digest (design §10.14) is written by the site, not a person.
+      createdByName: createdBy === MAIL_CAUSED_BY_SYSTEM ? 'the weekly digest' : (names.get(createdBy) ?? null),
       counts,
       approval: approval
         ? { status: approval.status, decidedAt: approval.decidedAt, reason: approval.reason, decidedByName: approval.decidedBy ? (names.get(approval.decidedBy) ?? null) : null }
