@@ -1,7 +1,6 @@
 import { Controller, Get, Injectable, Query } from '@nestjs/common';
 import {
   Collections,
-  ElectionCollections,
   JOIN_FUNNEL_MAX_ACCOUNTS,
   JOIN_FUNNEL_PERIODS,
   joinFunnelReport,
@@ -9,36 +8,28 @@ import {
   visitDay,
   type AccountRecord,
   type ApplicationRecord,
-  type FirstStep,
   type JoinFunnelPerson,
   type JoinFunnelReport,
   type PageHitsRecord,
 } from 'ustp-domain';
 import { Roles } from '../auth/decorators.js';
-import { ForumActivity } from '../forum/forum-activity.js';
 import { Firebase } from '../infra/firebase.js';
-import { RoomEntry } from '../room/room-entry.js';
-import { TeamRoster } from '../teams/team-roster.js';
+import { FirstStepsReader } from './first-steps.js';
 
 /** Approved accounts whose first steps are looked up at once. */
 const LOOKUPS_AT_ONCE = 20;
-/** Documents read in one `getAll`. */
-const GET_ALL_BATCH = 300;
 
 /**
  * The join funnel (design §5.15), made on request from records that exist anyway: the Register page's hit counter,
  * the accounts made in the period, their applications, and for the approved whether they have since voted, started a
  * course, joined a team, entered the room or posted. Accounts a Membership Admin added (§5.13) and test personas
- * (§10.4) never registered, so they are left out. The report is counts: it names nobody. What belongs to another
- * context (teams, the forum, the room) is asked of that context's port.
+ * (§10.4) never registered, so they are left out. The report is counts: it names nobody.
  */
 @Injectable()
 export class JoinFunnelService {
   constructor(
     private readonly firebase: Firebase,
-    private readonly teams: TeamRoster,
-    private readonly forum: ForumActivity,
-    private readonly room: RoomEntry,
+    private readonly steps: FirstStepsReader,
   ) {}
 
   async report(days: number, now: Date = new Date()): Promise<JoinFunnelReport> {
@@ -84,7 +75,7 @@ export class JoinFunnelService {
               appliedAt: own[0]?.submittedAt ?? null,
               decision: settled?.status ?? null,
               decidedAt: settled?.decidedAt ?? null,
-              did: settled?.status === 'approved' ? await this.firstSteps(account.accountId, electionIds) : [],
+              did: settled?.status === 'approved' ? await this.steps.done(account.accountId, electionIds) : [],
             };
           }),
         )),
@@ -99,31 +90,6 @@ export class JoinFunnelService {
       people,
       truncated: accountsSnap.size > JOIN_FUNNEL_MAX_ACCOUNTS,
     });
-  }
-
-  /** What the member has done, each from the first record that says so. */
-  private async firstSteps(accountId: string, electionIds: readonly string[]): Promise<FirstStep[]> {
-    const db = this.firebase.db;
-    const course = async () => !(await db.collection(Collections.courseProgress).where('accountId', '==', accountId).limit(1).get()).empty;
-    const voted = async () => {
-      for (let i = 0; i < electionIds.length; i += GET_ALL_BATCH) {
-        const refs = electionIds
-          .slice(i, i + GET_ALL_BATCH)
-          .map((id) => db.collection(Collections.elections).doc(id).collection(ElectionCollections.participation).doc(accountId));
-        if ((await db.getAll(...refs)).some((snap) => snap.exists)) return true;
-      }
-      return false;
-    };
-    const [hasVoted, onCourse, teamIds, inRoom, posted] = await Promise.all([
-      voted(),
-      course(),
-      this.teams.teamIdsOf(accountId),
-      this.room.hasEntered(accountId),
-      this.forum.hasPosted(accountId),
-    ]);
-    return [hasVoted && 'voted', onCourse && 'course', teamIds.length > 0 && 'team', inRoom && 'room', posted && 'posted'].filter(
-      (step): step is FirstStep => typeof step === 'string',
-    );
   }
 }
 

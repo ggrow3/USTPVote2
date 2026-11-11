@@ -14,6 +14,7 @@ import {
   type AddMemberInput,
   type CreateApplicationInput,
   type DecisionInput,
+  type FirstStepsView,
   type MemberCorrectionInput,
   type MemberDetailsInput,
   type MemberImportInput,
@@ -23,10 +24,12 @@ import {
   type ResignInput,
 } from 'ustp-domain';
 import { z } from 'zod';
-import { Ctx, Public, Roles } from '../auth/decorators.js';
+import { Ctx, Public, requireAccount, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { parseQuery, ZodPipe } from '../common/validation.js';
 import { MembershipApplications } from './applications.service.js';
+import { FirstStepsReader } from './first-steps.js';
+import { MemberDirectory } from './member-directory.js';
 import { MemberAdditions } from './member-additions.service.js';
 import { Members } from './members.service.js';
 import { MembershipService } from './membership.service.js';
@@ -40,7 +43,16 @@ export class RegistrationController {
     private readonly membership: MembershipService,
     private readonly applications: MembershipApplications,
     private readonly members: Members,
+    private readonly directory: MemberDirectory,
+    private readonly steps: FirstStepsReader,
   ) {}
+
+  /** A member's first steps and which they have done (design §5.16); nothing for someone who is not an Active member. */
+  @Get('me/first-steps')
+  async firstSteps(@Ctx() ctx: RequestContext): Promise<FirstStepsView> {
+    const accountId = requireAccount(ctx);
+    return this.steps.mine(accountId, await this.directory.find(accountId));
+  }
 
   @Public()
   @Get('bylaws/current')
