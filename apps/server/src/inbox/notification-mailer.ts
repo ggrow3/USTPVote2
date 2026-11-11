@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
+  ALWAYS_EMAILED,
   DIGEST_ITEMS,
   MAIL_CAUSED_BY_SYSTEM,
   nextDigestAt,
@@ -49,13 +50,23 @@ export class NotificationMailer {
   async sendDue(budgetMs: number = NOTIFICATION_MAIL_BUDGET_MS): Promise<number> {
     const settings = await this.settings.current();
     const contact = settings.contact ?? this.config.noticeContact;
-    const sending =
-      !!this.transport && !!this.config.webOrigin && settings.allEmails && settings.emails.notifications && (this.transport.delivery !== 'mail' || !!contact);
+    const possible = !!this.transport && !!this.config.webOrigin && settings.allEmails && (this.transport.delivery !== 'mail' || !!contact);
+    const sending = possible && settings.emails.notifications;
     const deadline = Date.now() + budgetMs;
-    return (await this.eachAsItComes(sending, contact, deadline)) + (await this.digests(sending, contact, deadline));
+    // News of someone's own application goes whatever they chose, while its own switch is on (design §5.2).
+    const always = (notification: AppNotificationRecord) => {
+      const email = ALWAYS_EMAILED[notification.kind];
+      return email === undefined ? null : possible && settings.emails[email];
+    };
+    return (await this.eachAsItComes(sending, always, contact, deadline)) + (await this.digests(sending, contact, deadline));
   }
 
-  private async eachAsItComes(sending: boolean, contact: string | null, deadline: number): Promise<number> {
+  private async eachAsItComes(
+    sending: boolean,
+    always: (notification: AppNotificationRecord) => boolean | null,
+    contact: string | null,
+    deadline: number,
+  ): Promise<number> {
     const pending = await this.inbox.emailPending(BATCH);
     if (!pending.length) return 0;
     const preferences = await this.inbox.preferences([...new Set(pending.map((n) => n.accountId))]);
@@ -64,9 +75,15 @@ export class NotificationMailer {
       if (Date.now() >= deadline) break;
       // Claimed first: whatever comes of it, the next tick will not look at it again.
       if (!(await this.inbox.emailDone(notification, null))) continue;
-      const wanted = preferences.get(notification.accountId)?.notificationEmail === 'each';
       const stale = Date.now() - Date.parse(notification.updatedAt) > STALE_MS;
-      if (!wanted || notification.readAt || !sending || stale) continue;
+      const own = always(notification);
+      if (own === null) {
+        const wanted = preferences.get(notification.accountId)?.notificationEmail === 'each';
+        if (!wanted || notification.readAt || !sending || stale) continue;
+      } else if (!own || stale) {
+        // An applicant gets theirs even after reading it on the site: it is their record of the decision.
+        continue;
+      }
       const result = await this.deliver(notification.accountId, contact, 'each', [notification], 0);
       if (result === 'sent') {
         await this.inbox.markEmailed([notification], new Date().toISOString());
@@ -115,6 +132,7 @@ export class NotificationMailer {
       // member's mail provider, links to the Messages page instead.
       items: items.map((n) => ({ title: n.title, link: n.kind === 'message' ? '/messages' : n.link })),
       more,
+      ...(period === 'each' && items[0] && ALWAYS_EMAILED[items[0].kind] !== undefined && { application: { detail: items[0].detail ?? null } }),
     });
     const result = await this.mailer.send(this.transport!, {
       to: mailbox.email,

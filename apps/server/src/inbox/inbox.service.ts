@@ -25,6 +25,8 @@ export interface NotificationInput {
   readonly ref: string;
   readonly title: string;
   readonly link: string;
+  /** More to say in its own email, for the kinds that are always emailed. */
+  readonly detail?: string;
 }
 
 /** Unread notifications marked read at once at most; the rest stay for the next "mark all read". */

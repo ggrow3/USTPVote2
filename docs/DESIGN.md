@@ -534,6 +534,18 @@ Every transition writes, in one transaction, the new status on `members/{account
   or more; the list is oldest first. `GET /v1/admin/applications/summary` gives the count and when the oldest was
   submitted; the web app reads it when a Membership Admin signs in, on each page they open and after each decision,
   with no polling.
+- **What an application tells people** *(added 2026-11-10)*. The applicant gets a notification (§10.13) when their
+  application arrives, saying a Membership Admin will decide it, and another when it is decided: approved, with where
+  to start, or not approved, with the reason the admin wrote (which the Register page shows them too) and that they may
+  apply again. Each of the three also goes to them **by email whatever they chose for their notifications**: they asked
+  for it by applying, and may never open the site again to look. Those emails pass the gate of all the site's email
+  (§10.12: nothing while all email is off, after they unsubscribed, or while an admin has stopped their email), each has
+  its own switch in Admin › Email (Application received, Application approved, Application not approved; on by
+  default), and each goes even if they read the notification on the site first, as their record of it. They are logged
+  as notification emails. Every Membership Admin but the applicant gets one notification that an application waits,
+  counting up while unread and leading to Admin › Applications; it is emailed only to those who chose their
+  notifications by email. The notifications are written in the transaction that records the application or the
+  decision, so none is lost and none is sent for a change that did not happen.
 - **Who sees what.** The web app's menu links (Register, Ballot, Verify, Offices, Candidates, Admin) and the header's Sign in button
   are the ones the navigation settings give the person's membership state and roles (§10.5). By default everyone sees
   all five links, signed in or not, visitors see Sign in, and each page tells people it is not for what they can do
@@ -4943,7 +4955,7 @@ Physically, registration collections are top-level and election data lives under
 | `mail_requests/{requestId}` | auto | pending → sending → done; TTL 30 days; deleted with its account | a member's request for a test email to themselves, or to try their address again, or a System Admin's test: kind, when, outcome code, the message's ID; never the address (§10.12) *(added)* |
 | `broadcasts/{broadcastId}` | auto | (awaiting_approval →) preparing → sending → done, or cancelled, or rejected | an email an admin wrote to members: subject, body, the audience, who it came to when prepared, by whom and when, and with approval switched on who approved or rejected it, when and why (§10.12) *(added 2026-11-07; approval 2026-11-08)* |
 | `broadcast_recipients/{broadcastId}_{accountId}` | composite | pending → sending → sent, skipped or failed; TTL 180 days; deleted with its account | one member's copy: status, outcome code, the message's ID; never the address (§10.12) *(added 2026-11-07)* |
-| `app_notifications/{id}` | hash of kind, thing and account | unread → read; another event adds to an unread one; TTL 90 days after it last changed; deleted with its account | one account's notification: kind (`message`, `message_report`, `broadcast_approval`, `broadcast_decided`), one line, the path it leads to, what it is about, how many times, read, whether the email step has looked at it and when it went by email (§10.13) *(added 2026-11-08)* |
+| `app_notifications/{id}` | hash of kind, thing and account | unread → read; another event adds to an unread one; TTL 90 days after it last changed; deleted with its account | one account's notification: kind (`message`, `message_report`, `broadcast_approval`, `broadcast_decided`, the membership team's, and an application's: `application_received`, `application_approved`, `application_rejected`, `application_waiting`, §5.2), one line, the path it leads to, what it is about, how many times, read, more to say in its own email for the kinds always emailed, whether the email step has looked at it and when it went by email (§10.13) *(added 2026-11-08)* |
 | `inbox_preferences/{accountId}` | account ID | changed by the member; deleted with the account | how they have notifications by email (off, each, daily, weekly), when the next digest is due and when the last went (§10.13) *(added 2026-11-08)* |
 | `member_threads/{a}_{b}` | the two account IDs in order | written with each message; TTL a year after the last; deleted with either account | a conversation between two members: who started it, its last message's start and time, each one's unread count (§10.13) *(added 2026-11-08)* |
 | `member_messages/{messageId}` | random | written once (marked when reported); TTL a year; deleted with either account | one message: conversation, from, to, plain text, when, whether its recipient reported it (§10.13) *(added 2026-11-08)* |
