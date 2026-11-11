@@ -527,6 +527,13 @@ Every transition writes, in one transaction, the new status on `members/{account
   3. *Membership review*: the submitted application's status, until a Membership Admin decides it, and the bonus
      link the intro promises (Tips for Advancing a Brighter Future) once a Membership Admin has set its address.
      Active members see that link on Register too.
+- **The queue** *(added 2026-11-10)*. So that the time to a decision does not become what keeps people out, a
+  Membership Admin sees how many applications wait: a count beside Admin in the menu and on the console's Applications
+  tab (none when nothing waits; only Membership Admins are asked for it), and above the pending list how many wait and
+  for how long the oldest has. Each waiting application says how long it has waited, marked once that is three days
+  or more; the list is oldest first. `GET /v1/admin/applications/summary` gives the count and when the oldest was
+  submitted; the web app reads it when a Membership Admin signs in, on each page they open and after each decision,
+  with no polling.
 - **What an application tells people** *(added 2026-11-10)*. The applicant gets a notification (§10.13) when their
   application arrives, saying a Membership Admin will decide it, and another when it is decided: approved, with where
   to start, or not approved, with the reason the admin wrote (which the Register page shows them too) and that they may
