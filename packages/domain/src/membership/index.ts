@@ -105,3 +105,14 @@ export type {
 } from './member-import.js';
 export { MEMBER_SEARCH_DEFAULT_LIMIT, MEMBER_SEARCH_MAX_LIMIT, foldName, matchMembers } from './search.js';
 export type { MemberMatch } from './search.js';
+export {
+  JOIN_FUNNEL_PERIODS,
+  JOIN_FUNNEL_MAX_ACCOUNTS,
+  FIRST_STEPS,
+  FIRST_STEP_LABELS,
+  JOIN_FUNNEL_STEPS,
+  JOIN_FUNNEL_STEP_LABELS,
+  joinFunnelReport,
+  biggestDrop,
+} from './join-funnel.js';
+export type { FirstStep, JoinFunnelPerson, JoinFunnelStepId, JoinFunnelStep, JoinFunnelReport } from './join-funnel.js';

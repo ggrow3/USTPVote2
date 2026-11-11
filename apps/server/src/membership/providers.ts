@@ -1,6 +1,7 @@
 import type { Provider } from '@nestjs/common';
 import { ApplicationRepository } from './application.repository.js';
 import { MembershipApplications } from './applications.service.js';
+import { JoinFunnelService } from './join-funnel.js';
 import { MemberAdditions } from './member-additions.service.js';
 import { MemberDirectory } from './member-directory.js';
 import { MemberRepository } from './member.repository.js';
@@ -21,6 +22,7 @@ export const MEMBERSHIP_PROVIDERS: Provider[] = [
   MembershipApplications,
   MembershipService,
   RegistrationFormService,
+  JoinFunnelService,
 ];
 
 /** For a module that only reads members, as the worker does for election notices (design §6.8). */

@@ -4,6 +4,7 @@ import type {
   ApplicationStatus,
   CreateApplicationInput,
   DecisionInput,
+  JoinFunnelReport,
   MemberCorrectionInput,
   MemberDetail,
   MemberDetailsInput,
@@ -56,6 +57,11 @@ export function updateMyDetails(input: MemberDetailsInput): Promise<MemberRecord
 /** Applications in a status, oldest first. */
 export function applications(status: ApplicationStatus): Promise<ApplicationRecord[]> {
   return api<ApplicationRecord[]>('GET', `/v1/admin/applications?status=${status}`);
+}
+
+/** The join funnel over the last `days` days (design §5.15). */
+export function joinFunnel(days: number): Promise<JoinFunnelReport> {
+  return api<JoinFunnelReport>('GET', `/v1/admin/join-funnel?days=${days}`);
 }
 
 export function decideApplication(applicationId: string, input: DecisionInput): Promise<ApplicationRecord> {
