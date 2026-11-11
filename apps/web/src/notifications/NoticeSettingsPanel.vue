@@ -186,6 +186,18 @@ const field = (kind: NoticeKind, name: 'subject' | 'intro') => `kinds.${kind}.${
 
 /** What each of the other emails is, and what happens instead while it is off. */
 const OTHER_EMAIL_TEXT: Readonly<Record<OtherEmail, { label: string; caption: string }>> = {
+  applicationReceived: {
+    label: 'Application received',
+    caption: 'To someone who applies to join: that their application arrived and a Membership Admin will decide it. Off: they see it on the site only.',
+  },
+  applicationApproved: {
+    label: 'Application approved',
+    caption: 'To a new member when a Membership Admin approves them, with where to start. Off: they see it on the site only.',
+  },
+  applicationRejected: {
+    label: 'Application not approved',
+    caption: 'To an applicant a Membership Admin rejects, with the reason written and that they may apply again. Off: they see it on the site only.',
+  },
   welcome: {
     label: 'Welcome emails',
     caption:

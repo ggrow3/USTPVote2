@@ -16,6 +16,10 @@ export const NOTIFICATION_ICONS: Readonly<Record<AppNotificationKind, string>> =
   broadcast_decided: 'outgoing_mail',
   membership_message: 'support_agent',
   membership_inbox: 'inbox',
+  application_received: 'assignment_turned_in',
+  application_approved: 'how_to_reg',
+  application_rejected: 'assignment_late',
+  application_waiting: 'person_add',
 };
 
 /** The badge on the bell: the count, capped so it fits. */
