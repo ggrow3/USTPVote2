@@ -2,6 +2,7 @@ import type { Provider } from '@nestjs/common';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { RoomAssistant } from './room-assistant.js';
 import { ASSISTANT_DISPATCH, CloudTasksDispatch, InlineDispatch, UnconfiguredDispatch } from './room-dispatch.js';
+import { RoomEntry } from './room-entry.js';
 import { RoomFeedWatcher } from './room-feed.js';
 import { RoomRetention } from './room-retention.js';
 import { LocalRoomModel, NoRoomModel, OllamaRoomModel, ROOM_MODEL } from './room-model.js';
@@ -26,6 +27,7 @@ export const ROOM_PROVIDERS: Provider[] = [
   RoomFeedWatcher,
   RoomAssistant,
   RoomService,
+  RoomEntry,
   roomModelProvider,
   {
     provide: ASSISTANT_DISPATCH,

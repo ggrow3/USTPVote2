@@ -15,7 +15,10 @@ import {
   type PageHitsRecord,
 } from 'ustp-domain';
 import { Roles } from '../auth/decorators.js';
+import { ForumActivity } from '../forum/forum-activity.js';
 import { Firebase } from '../infra/firebase.js';
+import { RoomEntry } from '../room/room-entry.js';
+import { TeamRoster } from '../teams/team-roster.js';
 
 /** Approved accounts whose first steps are looked up at once. */
 const LOOKUPS_AT_ONCE = 20;
@@ -26,11 +29,17 @@ const GET_ALL_BATCH = 300;
  * The join funnel (design §5.15), made on request from records that exist anyway: the Register page's hit counter,
  * the accounts made in the period, their applications, and for the approved whether they have since voted, started a
  * course, joined a team, entered the room or posted. Accounts a Membership Admin added (§5.13) and test personas
- * (§10.4) never registered, so they are left out. The report is counts: it names nobody.
+ * (§10.4) never registered, so they are left out. The report is counts: it names nobody. What belongs to another
+ * context (teams, the forum, the room) is asked of that context's port.
  */
 @Injectable()
 export class JoinFunnelService {
-  constructor(private readonly firebase: Firebase) {}
+  constructor(
+    private readonly firebase: Firebase,
+    private readonly teams: TeamRoster,
+    private readonly forum: ForumActivity,
+    private readonly room: RoomEntry,
+  ) {}
 
   async report(days: number, now: Date = new Date()): Promise<JoinFunnelReport> {
     const db = this.firebase.db;
@@ -95,7 +104,7 @@ export class JoinFunnelService {
   /** What the member has done, each from the first record that says so. */
   private async firstSteps(accountId: string, electionIds: readonly string[]): Promise<FirstStep[]> {
     const db = this.firebase.db;
-    const any = async (collection: string, field: string) => !(await db.collection(collection).where(field, '==', accountId).limit(1).get()).empty;
+    const course = async () => !(await db.collection(Collections.courseProgress).where('accountId', '==', accountId).limit(1).get()).empty;
     const voted = async () => {
       for (let i = 0; i < electionIds.length; i += GET_ALL_BATCH) {
         const refs = electionIds
@@ -105,15 +114,14 @@ export class JoinFunnelService {
       }
       return false;
     };
-    const [hasVoted, course, team, inRoom, post, comment] = await Promise.all([
+    const [hasVoted, onCourse, teamIds, inRoom, posted] = await Promise.all([
       voted(),
-      any(Collections.courseProgress, 'accountId'),
-      any(Collections.teamMembers, 'accountId'),
-      any(Collections.roomConsents, 'accountId'),
-      any(Collections.forumPosts, 'authorId'),
-      any(Collections.forumComments, 'authorId'),
+      course(),
+      this.teams.teamIdsOf(accountId),
+      this.room.hasEntered(accountId),
+      this.forum.hasPosted(accountId),
     ]);
-    return [hasVoted && 'voted', course && 'course', team && 'team', inRoom && 'room', (post || comment) && 'posted'].filter(
+    return [hasVoted && 'voted', onCourse && 'course', teamIds.length > 0 && 'team', inRoom && 'room', posted && 'posted'].filter(
       (step): step is FirstStep => typeof step === 'string',
     );
   }
