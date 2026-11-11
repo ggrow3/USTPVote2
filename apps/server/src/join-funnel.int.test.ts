@@ -87,3 +87,20 @@ describe('the join funnel', () => {
     expect((await api.call('GET', '/v1/admin/join-funnel')).status).toBe(401);
   });
 });
+
+describe('a new member’s first steps', () => {
+  it('are the member’s own, ticked from the records, and empty for someone who is not a member', async () => {
+    const applicant = await apply('applicant@example.test');
+    expect((await api.call('GET', '/v1/me/first-steps', applicant.who)).body).toEqual({ memberSince: null, done: [] });
+
+    expect((await decide(applicant.applicationId, 'approve')).status).toBe(201);
+    const fresh = await api.call('GET', '/v1/me/first-steps', applicant.who);
+    expect(fresh.status).toBe(200);
+    expect(fresh.body).toEqual({ memberSince: expect.any(String), done: [] });
+
+    await api.firebase.db.collection('course_progress').doc(`intro_${applicant.who.accountId}`).set({ courseId: 'intro', accountId: applicant.who.accountId });
+    await api.firebase.db.collection('forum_comments').doc('c1').set({ commentId: 'c1', authorId: applicant.who.accountId });
+    expect((await api.call('GET', '/v1/me/first-steps', applicant.who)).body.done.sort()).toEqual(['course', 'posted']);
+    expect((await api.call('GET', '/v1/me/first-steps')).status).toBe(401);
+  });
+});

@@ -2382,6 +2382,21 @@ cast a ballot, started a course, joined a team, entered the members' room or pos
 - **Verified** is the account's flag today, not when it was set (no time is kept); someone who applied counts as
   verified, since applying needs a verified address.
 
+### 5.16 A new member's first steps *(added 2026-11-10)*
+
+An Active member's voting home (§10.5) opens with a short **Getting started** list, so that someone just approved is
+not left to find everything alone: take a first course, join a team, say hello in the members' room, post or comment in
+the forum, cast a first ballot. Each line links to its page and says in a sentence what it is for.
+
+- **Ticked from records, not clicks.** `GET /v1/me/first-steps` answers which the member has done, from the same
+  records the join funnel counts (§5.15): a course started, a place on a team, the room's terms accepted, a post or a
+  comment, a ballot cast in any election. Nothing is stored for the list. Someone who is not an Active member has none.
+- **Only what they can reach.** A step whose page the navigation settings hide from the member is left out.
+- **It goes away.** The list is shown until every step on it is done, or the member presses Hide, which is kept in
+  that browser only. It says how many are done, and each step's state is in its text for screen readers.
+- A member who joined long ago and never did a step sees it too: it is a list of what they have not tried, not a
+  welcome that expires.
+
 ## 6. Elections
 
 ### 6.1 Lifecycle
