@@ -1,6 +1,8 @@
 /** The inbox context (design §10.13): in-app notifications, messages between members, and notifications by email. */
 export {
   APP_NOTIFICATION_KINDS,
+  ALWAYS_EMAILED,
+  MAX_NOTIFICATION_DETAIL,
   EMAILED_ON_THEIR_OWN,
   APP_NOTIFICATION_RETENTION_DAYS,
   APP_NOTIFICATIONS_SHOWN,

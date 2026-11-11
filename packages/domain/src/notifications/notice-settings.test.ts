@@ -42,7 +42,7 @@ describe('the default settings', () => {
         closing_soon: { enabled: true, subject: null, intro: null },
         voted: { enabled: true, subject: null, intro: null },
       },
-      emails: { welcome: true, electionTests: true, memberTests: true, notifications: true },
+      emails: { welcome: true, electionTests: true, memberTests: true, notifications: true, applicationReceived: true, applicationApproved: true, applicationRejected: true },
       broadcastApproval: false,
       reminderHours: 24,
       contact: null,
@@ -53,7 +53,7 @@ describe('the default settings', () => {
     expect(resolveNoticeSettings({ contact: 'elections@example.org' }).senderName).toBeNull();
     expect(resolveNoticeSettings({ reminderHours: 48 } as Partial<NoticeSettings>)).toEqual({ ...DEFAULT_NOTICE_SETTINGS, reminderHours: 48 });
     // Settings saved before the other emails had switches keep them on.
-    expect(resolveNoticeSettings({ emails: { welcome: false } }).emails).toEqual({ welcome: false, electionTests: true, memberTests: true, notifications: true });
+    expect(resolveNoticeSettings({ emails: { welcome: false } }).emails).toEqual({ welcome: false, electionTests: true, memberTests: true, notifications: true, applicationReceived: true, applicationApproved: true, applicationRejected: true });
   });
 
   it('give the same emails as the built-in wording', () => {
@@ -161,7 +161,7 @@ describe('noticeSettingsChanges', () => {
         closing_soon: { enabled: false, subject: null, intro: null },
         voted: { enabled: true, subject: null, intro: null },
       },
-      emails: { welcome: false, electionTests: true, memberTests: false, notifications: false },
+      emails: { welcome: false, electionTests: true, memberTests: false, notifications: false, applicationReceived: true, applicationApproved: true, applicationRejected: true },
       broadcastApproval: true,
       reminderHours: 48,
       contact: 'elections@example.org',
