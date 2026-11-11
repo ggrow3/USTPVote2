@@ -4,6 +4,7 @@ import { ageOn, placeText, type ApplicationRecord, type ApplicationStatus } from
 import { askReason, attempt } from '../dialogs.js';
 import { session } from '../session.js';
 import { applications, decideApplication } from './api.js';
+import JoinFunnelCard from './JoinFunnelCard.vue';
 import { answerText, localityText, memberClassText } from './member-text.js';
 
 const status = ref<ApplicationStatus>('pending');
@@ -56,6 +57,7 @@ onMounted(load);
 
 <template>
   <div class="ustp-content">
+    <JoinFunnelCard />
     <div class="ustp-toolbar">
       <q-btn-toggle
         v-model="status"

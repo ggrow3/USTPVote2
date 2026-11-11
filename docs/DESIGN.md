@@ -2353,6 +2353,28 @@ services.
 **Not yet:** state bills (Open States has them, as §5.11 notes); emailing the team when a watched bill moves; and
 `/bill` in the members' room (§5.11), which may reuse this API.
 
+### 5.15 The join funnel *(added 2026-11-10)*
+
+Membership Admins can see where people stop on the way to taking part. Admin → Applications opens with a **Join
+funnel** card: for a period (7, 30, 90, 180 or 365 days, UTC), of the people who made an account in it, how many
+verified their email, applied to join, were approved, and then did one thing as a member, each step counted among
+those who reached the one before, with its share of the step before. It also says how many times the Register page was
+opened in the period (page opens from §10.7, not people), how many of the period's applications still wait and for how
+long the oldest has, how many were rejected, the median time from applying to a decision, and of the approved how many
+cast a ballot, started a course, joined a team, entered the members' room or posted in the forum.
+
+- **Counts only.** The report names nobody and holds no account ID; who voted is not shown, only how many of the
+  period's new members have.
+- **Nothing is stored for it.** `GET /v1/admin/join-funnel?days=` (Membership Admins) reads records that exist anyway:
+  `page_hits/register`, the accounts made in the period (at most 2,000, oldest first; a longer period is reported as
+  cut short), their applications, and for each approved account the first record that says they voted (a participation
+  record in an election that closed after the period began), started a course (`course_progress`), joined a team
+  (`team_members`), accepted the room's terms (`room_consents`) or posted (`forum_posts`, `forum_comments`).
+- **Who is left out:** accounts a Membership Admin added (§5.13) and test personas (§10.4), who never registered.
+  Bootstrap admins are accounts like any other and are counted.
+- **Verified** is the account's flag today, not when it was set (no time is kept); someone who applied counts as
+  verified, since applying needs a verified address.
+
 ## 6. Elections
 
 ### 6.1 Lifecycle
