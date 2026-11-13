@@ -31,9 +31,16 @@ import { CONFIG, type ServerConfig } from '../config.js';
 import { VisitRateLimiter } from '../security/page-visits.js';
 import { AreaContactsService } from './area-contacts.service.js';
 import { CandidaciesService } from './candidacies.service.js';
+import { RacesService } from './races.service.js';
 
 /** Census lists and outlines change once a year: browsers keep them an hour, Hosting's CDN a day. */
 const DISTRICT_CACHE = 'public, max-age=3600, s-maxage=86400';
+
+/**
+ * Race pages and people's pages change when their records are read again, once a day, or a party candidacy is approved:
+ * browsers keep them five minutes, Hosting's CDN an hour, so a crawler reading every page mostly reads the CDN.
+ */
+const RACE_CACHE = 'public, max-age=300, s-maxage=3600';
 
 function districtKind(value: string): DistrictKind {
   if (!(DISTRICT_KINDS as readonly string[]).includes(value)) throw new BadRequestException('invalid district kind');
@@ -239,5 +246,34 @@ export class PublicDistrictsController {
   @Get('maps')
   maps() {
     return this.candidacies.maps();
+  }
+}
+
+/**
+ * The race pages and people's pages, for everyone (design §5.17): who runs and who holds each state's federal offices
+ * and each House seat, from public records, with the party's own candidates; and each public-record person with an
+ * official ID. An address that is no page is a 404 at once, without asking any record.
+ */
+@Controller('v1/public')
+@Public()
+export class PublicRacesController {
+  constructor(private readonly races: RacesService) {}
+
+  @Get('races/:state')
+  @Header('Cache-Control', RACE_CACHE)
+  state(@Param('state') state: string) {
+    return this.races.race(state);
+  }
+
+  @Get('races/:state/:district')
+  @Header('Cache-Control', RACE_CACHE)
+  seat(@Param('state') state: string, @Param('district') district: string) {
+    return this.races.race(state, district);
+  }
+
+  @Get('people/:id')
+  @Header('Cache-Control', RACE_CACHE)
+  person(@Param('id') id: string) {
+    return this.races.person(id);
   }
 }

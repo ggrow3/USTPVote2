@@ -1,8 +1,9 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import sharp from 'sharp';
-import { Collections, type CandidacyContent } from 'ustp-domain';
+import { Collections, nextFederalElectionYear, type CandidacyContent } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { RacesService } from './candidacies/races.service.js';
 import { PAGE_HEADERS } from './link-previews/link-previews.controller.js';
 import { seedElection } from './testing/elections.js';
 import { resetEmulators, TestApi } from './testing/emulator.js';
@@ -191,6 +192,32 @@ describe('link previews outside production', () => {
     );
     expect(meta(html, 'og:image:alt')).toBe('Candidate · U.S. Representative: Ada Brooks');
     expect((await get(api, '/candidates/cand-gone')).body).toBe(INDEX);
+  });
+
+  it('previews a race page at once, from the records it holds, never waiting for them; a person’s once their race is read', async () => {
+    const year = nextFederalElectionYear(new Date().toISOString().slice(0, 10));
+    api.app.get(RacesService).forget();
+    // Nothing read yet: the page and its card say what the race is, and nobody is asked; a person's page has none.
+    const first = (await get(api, '/races/ca/1')).body;
+    expect(first).toContain(`<title>${year} candidates in CA-1 · USTP Vote</title>`);
+    expect(meta(first, 'og:image:alt')).toBe(`U.S. House · ${year}: ${year} candidates in CA-1`);
+    expect(meta(first, 'description')).not.toMatch(/listed so far/);
+    expect((await api.firebase.db.collection(Collections.raceRecords).get()).size).toBe(0);
+    expect((await get(api, '/people/H060100')).body).toBe(INDEX);
+    // Once the page has been read, its preview names who holds the seat and how many run.
+    await get(api, '/v1/public/races/ca/1');
+    const html = (await get(api, '/races/ca/1')).body;
+    expect(meta(html, 'description')).toMatch(/who holds the seat now: Hal House \(Democrat\)\. 2 candidates listed so far\./);
+    expect(meta(html, 'og:url')).toBe(`${index.origin}/races/ca/1`);
+    const state = (await get(api, '/races/ca')).body;
+    expect(state).toContain(`<title>${year} candidates in California · USTP Vote</title>`);
+    const person = (await get(api, '/people/H060100')).body;
+    expect(person).toContain('<title>Hal House · U.S. Representative · USTP Vote</title>');
+    expect(meta(person, 'og:type')).toBe('profile');
+    const card = meta(person, 'og:image')!.replace(index.origin, '').replace('&amp;', '&');
+    expect((await get(api, card)).headers['content-type']).toBe('image/png');
+    // An address that is no race page has no preview.
+    for (const path of ['/races/ca/53', '/races/CA', '/people/nobody']) expect((await get(api, path)).body, path).toBe(INDEX);
   });
 
   it('previews a published event with when and where on its card, and not a draft', async () => {

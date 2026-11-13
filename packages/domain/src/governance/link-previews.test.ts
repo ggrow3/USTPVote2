@@ -47,16 +47,20 @@ describe('matchPreviewPage', () => {
     expect(matchPreviewPage('/legislation/119-hr-10538')).toEqual({ page: '/legislation/:billId', params: { billId: '119-hr-10538' } });
     expect(matchPreviewPage('/scorecard/')).toEqual({ page: '/scorecard', params: {} });
     expect(matchPreviewPage('/scorecard/A000370')).toEqual({ page: '/scorecard/:memberId', params: { memberId: 'A000370' } });
+    expect(matchPreviewPage('/races/ca')).toEqual({ page: '/races/:state', params: { state: 'ca' } });
+    expect(matchPreviewPage('/races/ca/12')).toEqual({ page: '/races/:state/:district', params: { state: 'ca', district: '12' } });
+    expect(matchPreviewPage('/races/wy/at-large/')).toEqual({ page: '/races/:state/:district', params: { state: 'wy', district: 'at-large' } });
+    expect(matchPreviewPage('/people/H8CA49058')).toEqual({ page: '/people/:id', params: { id: 'H8CA49058' } });
   });
 
   it('matches nothing else', () => {
-    for (const path of ['/', '/news', '/news/a/b', '/legislation/a/b', '/course/certificates/abc', '/candidates/a%2Fb', '/news/%E0%A4%A', '/news/a%5Cb', '/results/%00', '/other/x']) {
+    for (const path of ['/', '/news', '/news/a/b', '/legislation/a/b', '/course/certificates/abc', '/candidates/a%2Fb', '/news/%E0%A4%A', '/news/a%5Cb', '/results/%00', '/other/x', '/races', '/races/ca/12/x', '/races/ca/%2F', '/people']) {
       expect(matchPreviewPage(path), path).toBeNull();
     }
   });
 
-  it('every page is a fixed first segment, with at most one parameter after it', () => {
-    for (const page of PREVIEW_PAGES) expect(page).toMatch(/^\/[a-z]+(?:\/:[A-Za-z]+)?$/);
+  it('every page is a fixed first segment, with at most two parameters after it', () => {
+    for (const page of PREVIEW_PAGES) expect(page).toMatch(/^\/[a-z]+(?:\/:[A-Za-z]+){0,2}$/);
   });
 });
 

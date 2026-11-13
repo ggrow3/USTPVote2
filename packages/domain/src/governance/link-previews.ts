@@ -21,6 +21,9 @@ export const PREVIEW_PAGES = [
   '/legislation/:billId',
   '/scorecard',
   '/scorecard/:memberId',
+  '/races/:state',
+  '/races/:state/:district',
+  '/people/:id',
 ] as const;
 export type PreviewPage = (typeof PREVIEW_PAGES)[number];
 
@@ -77,8 +80,9 @@ export interface PreviewMatch {
 }
 
 /**
- * The preview page a path is, if any. A parameter is one path segment, decoded; a segment that does not decode, or
- * decodes to one holding a slash, a backslash or a control character, matches nothing (design §14: `%2F` in IDs).
+ * The preview page a path is, if any: a page of as many segments, each fixed one the same and each parameter
+ * (`/races/:state/:district` has two) one segment, decoded. A segment that does not decode, or decodes to one holding a
+ * slash, a backslash or a control character, matches nothing (design §14: `%2F` in IDs).
  */
 export function matchPreviewPage(path: string): PreviewMatch | null {
   const segments = path.replace(/\/+$/, '').split('/');

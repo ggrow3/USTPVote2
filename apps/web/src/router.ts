@@ -66,6 +66,11 @@ export const router = createRouter({
           meta: { requiresAuth: true },
         },
         { path: 'candidates/:id', component: () => import('./candidacies/CandidatePage.vue') },
+        // Race pages and people's pages (design §5.17): public, listed in search, each with its own link preview.
+        { path: 'races', component: () => import('./candidacies/RacesPage.vue') },
+        { path: 'races/:state', component: () => import('./candidacies/RacePage.vue') },
+        { path: 'races/:state/:district', component: () => import('./candidacies/RacePage.vue') },
+        { path: 'people/:id', component: () => import('./candidacies/PersonPage.vue') },
         // Teams are for Active members; the pages say so to anyone else signed in (design §5.7).
         { path: 'teams', component: () => import('./teams/TeamsPage.vue'), meta: { requiresAuth: true } },
         { path: 'teams/:teamId', component: () => import('./teams/TeamPage.vue'), meta: { requiresAuth: true } },
