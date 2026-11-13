@@ -10,6 +10,8 @@ import {
   menuLock,
   navigationChanges,
   resolveNavigation,
+  ROLE_LINK_STATES,
+  roleLinkState,
   ROLES,
   sectionLock,
   startPageOptions,
@@ -19,13 +21,14 @@ import {
   type NavigationRecord,
   type NavigationSettings,
   type Role,
+  type RoleLinkState,
   type SignedInAudience,
   type StartPage,
 } from 'ustp-domain';
 import { focusSoon } from '../a11y.js';
 import { attempt } from '../dialogs.js';
 import { navigationSettings, saveNavigation } from './api.js';
-import { cellRuns } from './navigation-matrix.js';
+import { cellRuns, setRoleLink } from './navigation-matrix.js';
 import { applyNavigation } from './navigation.js';
 import {
   AUDIENCE_CAPTIONS,
@@ -35,6 +38,8 @@ import {
   lockText,
   MENU_CAPTIONS,
   MENU_LABELS,
+  ROLE_LINK_STATE_LABELS,
+  roleCellName,
   SECTION_CAPTIONS,
   SECTION_LABELS,
   startPageLabel,
@@ -44,11 +49,13 @@ import {
 
 type Draft = {
   menu: Record<Audience, Record<MenuLink, boolean>>;
+  hiddenFrom: Record<Role, Record<MenuLink, boolean>>;
   sections: Record<Role, Record<AdminSection, boolean>>;
   startsOn: Record<SignedInAudience, StartPage>;
 };
 
-const copy = ({ menu, sections, startsOn }: NavigationSettings): Draft => JSON.parse(JSON.stringify({ menu, sections, startsOn }));
+const copy = ({ menu, hiddenFrom, sections, startsOn }: NavigationSettings): Draft =>
+  JSON.parse(JSON.stringify({ menu, hiddenFrom, sections, startsOn }));
 
 const saved = ref<NavigationRecord | null>(null);
 const draft = ref<Draft | null>(null);
@@ -71,6 +78,19 @@ const COLUMN_OPTIONS = [
 const membershipColumns = computed(() => (columns.value === 'roles' ? [] : MEMBERSHIP_AUDIENCES));
 const roleColumns = computed(() => (columns.value === 'membership' ? [] : ROLES));
 const audiences = computed<Audience[]>(() => [...membershipColumns.value, ...roleColumns.value]);
+const isRole = (a: Audience): a is Role => (ROLES as readonly string[]).includes(a);
+
+/** What the empty circle means in the columns shown: hidden for a membership state, nothing added for a staff role. */
+const emptyLegend = computed(() => {
+  if (!roleColumns.value.length) return 'Hidden';
+  if (!membershipColumns.value.length) return 'Not added: their membership decides';
+  return 'Hidden; in a staff role’s column, not added: their membership decides';
+});
+
+/** A staff role's menu cell is a choice of three: shown, not added (membership decides), or hidden from the role. */
+function chooseRoleLink(role: Role, link: MenuLink, event: Event) {
+  setRoleLink(draft.value!, role, link, (event.target as HTMLSelectElement).value as RoleLinkState);
+}
 
 /** Admin sections are only ever a role's, so their rows need the role columns; focus stays with the rows it brings. */
 function showStaffRoles() {
@@ -127,8 +147,9 @@ onMounted(load);
     <p>
       Choose which menu links and admin sections each membership state and staff role sees, and the page each starts on
       after signing in. A person sees everything their membership state and each of their roles is given: roles add to
-      membership, never take away. This changes what is shown, not what is allowed: the API still checks every
-      request, and pages reached by their address still explain themselves.
+      membership. A staff role can also hide a menu link from the people who hold it, whatever their membership or
+      another role gives them: choose Hidden in its column. This changes what is shown, not what is allowed: the API
+      still checks every request, and pages reached by their address still explain themselves.
     </p>
 
     <q-card v-if="draft && resolved" flat bordered>
@@ -137,8 +158,12 @@ onMounted(load);
           <h3 class="text-subtitle2">The matrix</h3>
           <ul class="nav-legend text-caption">
             <li><span class="nav-check nav-check--sample" aria-hidden="true" data-on></span> Shown</li>
-            <li><span class="nav-check nav-check--sample" aria-hidden="true"></span> Hidden</li>
+            <li><span class="nav-check nav-check--sample" aria-hidden="true"></span> {{ emptyLegend }}</li>
             <template v-if="roleColumns.length">
+              <li>
+                <span class="nav-tri nav-tri--sample" data-state="hidden" aria-hidden="true"></span> Hidden from everyone
+                holding the role, whatever their membership gives
+              </li>
               <li>
                 <span class="nav-fixed" aria-hidden="true">—</span> Not available: each role only gets the admin sections
                 the API lets it use
@@ -177,7 +202,7 @@ onMounted(load);
                 Membership
               </th>
               <th v-if="roleColumns.length" scope="colgroup" :colspan="roleColumns.length" class="nav-group nav-group--staff">
-                Staff roles · added to membership
+                Staff roles · add to membership, or hide
               </th>
             </tr>
             <tr>
@@ -201,12 +226,28 @@ onMounted(load);
               <template v-for="run in menuRow(l)" :key="'audience' in run ? run.audience : run.audiences[0]">
                 <td v-if="'audience' in run" class="nav-cell">
                   <input
-                    v-if="!menuLock(run.audience, l)"
+                    v-if="!menuLock(run.audience, l) && !isRole(run.audience)"
                     v-model="draft.menu[run.audience][l]"
                     type="checkbox"
                     class="nav-check"
                     :aria-label="cellName(l, run.audience, 'link')"
                   />
+                  <!-- A staff role's cell: a circle showing its state, over the list of the three to choose from. -->
+                  <span
+                    v-else-if="!menuLock(run.audience, l)"
+                    class="nav-tri"
+                    :data-state="roleLinkState(resolved, run.audience as Role, l)"
+                    :title="ROLE_LINK_STATE_LABELS[roleLinkState(resolved, run.audience as Role, l)]"
+                  >
+                    <select
+                      class="nav-tri__select"
+                      :aria-label="roleCellName(l, run.audience as Role)"
+                      :value="roleLinkState(resolved, run.audience as Role, l)"
+                      @change="chooseRoleLink(run.audience as Role, l, $event)"
+                    >
+                      <option v-for="state in ROLE_LINK_STATES" :key="state" :value="state">{{ ROLE_LINK_STATE_LABELS[state] }}</option>
+                    </select>
+                  </span>
                   <span
                     v-else
                     class="nav-fixed"
@@ -343,12 +384,14 @@ onMounted(load);
   --nav-line: rgba(0, 0, 0, 0.12);
   --nav-off: #757575;
   --nav-strong: #000;
+  --nav-ban: #b3261e;
 }
 .nav-panel--dark {
   --nav-bg: #1d1d1d;
   --nav-line: rgba(255, 255, 255, 0.28);
   --nav-off: #b0b0b0;
   --nav-strong: #fff;
+  --nav-ban: #ff8a80;
 }
 
 .nav-legend {
@@ -505,6 +548,69 @@ onMounted(load);
 .nav-check--sample[data-on]::before {
   width: 10px;
   height: 10px;
+}
+
+/* A staff role's menu cell: the same circle, with a third state, hidden from the role (the circle struck through). The
+   native list over it, transparent, is what is clicked and focused, so it works by keyboard and with a screen reader. */
+.nav-tri {
+  position: relative;
+  display: inline-grid;
+  place-content: center;
+  width: 28px;
+  height: 28px;
+  border: 2px solid var(--nav-off);
+  border-radius: 50%;
+  vertical-align: middle;
+}
+.nav-tri::before {
+  content: '';
+  width: 10px;
+  height: 2px;
+  background: var(--nav-off);
+}
+.nav-tri[data-state='shown'] {
+  border-color: var(--q-primary);
+  background: var(--q-primary);
+}
+.nav-tri[data-state='shown']::before {
+  width: 14px;
+  height: 14px;
+  background: #fff;
+  clip-path: polygon(14% 44%, 0 65%, 50% 100%, 100% 16%, 80% 0%, 43% 62%);
+}
+.nav-tri[data-state='hidden'] {
+  border-color: var(--nav-ban);
+}
+.nav-tri[data-state='hidden']::before {
+  width: 24px;
+  background: var(--nav-ban);
+  transform: rotate(-45deg);
+}
+.nav-tri:hover {
+  box-shadow: 0 0 0 4px var(--nav-line);
+}
+.nav-tri:has(.nav-tri__select:focus-visible) {
+  outline: 2px solid var(--q-primary);
+  outline-offset: 2px;
+}
+.nav-tri__select {
+  position: absolute;
+  inset: -2px;
+  width: calc(100% + 4px);
+  height: calc(100% + 4px);
+  margin: 0;
+  border-radius: 50%;
+  opacity: 0;
+  cursor: pointer;
+  font-size: 14px;
+}
+.nav-tri--sample {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+.nav-tri--sample[data-state='hidden']::before {
+  width: 17px;
 }
 
 /* A fixed cell: no circle, so it does not look like something to press. */

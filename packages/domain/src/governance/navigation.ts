@@ -143,6 +143,13 @@ export const START_PAGES: readonly StartPage[] = [
 export interface NavigationSettings {
   /** Whether each audience sees each menu link. A role's Admin link follows its sections (shown while any is). */
   readonly menu: Readonly<Record<Audience, Readonly<Record<MenuLink, boolean>>>>;
+  /**
+   * The menu links each role hides from the people who hold it, whatever their membership state or another role shows
+   * them: a role's third state beside Shown (adds the link) and not shown (adds nothing, so membership decides). A
+   * hidden link is never also shown to the role, and Admin (which follows the role's sections) and Sign in (visitors
+   * only) cannot be hidden.
+   */
+  readonly hiddenFrom: Readonly<Record<Role, Readonly<Record<MenuLink, boolean>>>>;
   /** Whether each role sees each admin section. Only roles have sections: a membership state alone has none. */
   readonly sections: Readonly<Record<Role, Readonly<Record<AdminSection, boolean>>>>;
   /** The page each signed-in audience lands on after signing in, and when a browser tab first opens the app. */
@@ -180,6 +187,20 @@ export function menuLock(audience: Audience, link: MenuLink): CellLock | null {
   return link === 'admin' && isRole(audience) ? 'follows_sections' : null;
 }
 
+/** Whether a role can hide a link from the people who hold it: every link it can switch, so not Admin or Sign in. */
+export function canHideFrom(role: Role, link: MenuLink): boolean {
+  return menuLock(role, link) === null;
+}
+
+/** A role's menu cell: adds the link, adds nothing (membership decides), or hides it whatever their membership gives. */
+export type RoleLinkState = 'shown' | 'membership' | 'hidden';
+export const ROLE_LINK_STATES: readonly RoleLinkState[] = ['shown', 'membership', 'hidden'];
+
+export function roleLinkState(settings: NavigationSettings, role: Role, link: MenuLink): RoleLinkState {
+  if (settings.hiddenFrom[role][link]) return 'hidden';
+  return settings.menu[role][link] ? 'shown' : 'membership';
+}
+
 export function sectionLock(audience: Audience, section: AdminSection): CellLock | null {
   if (!isRole(audience)) return 'no_role';
   if (!SECTION_ROLES[section].includes(audience)) return 'not_permitted';
@@ -210,7 +231,7 @@ function defaultSection(role: Role, section: AdminSection): boolean {
  * page otherwise. Teams, the forum and the members' room are for Active members only (design §5.7, §5.9, §5.10); News is for everyone (design §10.9), as is
  * Legislation, the public bills and scorecard (design §5.14).
  * Bills (design §5.14) is for Active members and System and Site Admins, and the web app shows it only to people who
- * have the tool: those on a team its setting names, and System and Site Admins.
+ * have the tool: those on a team its setting names, and System and Site Admins. No role hides anything.
  */
 export const DEFAULT_NAVIGATION: NavigationSettings = {
   menu: Object.fromEntries(
@@ -225,6 +246,7 @@ export const DEFAULT_NAVIGATION: NavigationSettings = {
             : links('register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'legislation', 'course', 'admin'),
     ]),
   ) as Record<Audience, Record<MenuLink, boolean>>,
+  hiddenFrom: Object.fromEntries(ROLES.map((r) => [r, links()])) as Record<Role, Record<MenuLink, boolean>>,
   sections: Object.fromEntries(ROLES.map((r) => [r, sectionsOf(r)])) as Record<Role, Record<AdminSection, boolean>>,
   startsOn: Object.fromEntries(SIGNED_IN_AUDIENCES.map((a) => [a, a === 'no_membership' ? 'register' : 'home'])) as Record<
     SignedInAudience,
@@ -243,13 +265,15 @@ export function startPageOptions(settings: NavigationSettings, audience: SignedI
 
 type Stored = {
   readonly menu?: Partial<Record<string, Partial<Record<string, unknown>>>>;
+  readonly hiddenFrom?: Partial<Record<string, Partial<Record<string, unknown>>>>;
   readonly sections?: Partial<Record<string, Partial<Record<string, unknown>>>>;
   readonly startsOn?: Partial<Record<string, unknown>>;
 };
 
 /**
- * The settings in force from what was saved: defaults for anything missing (a link or section added since, say), locked
- * cells at their locked value, and a start page the audience no longer sees replaced by its default, or home.
+ * The settings in force from what was saved: defaults for anything missing (a link or section added since, or every
+ * role's hidden links in settings saved before roles could hide any: none), locked cells at their locked value, a link a
+ * role hides not shown to it, and a start page the audience no longer sees replaced by its default, or home.
  */
 export function resolveNavigation(stored: Stored | null | undefined): NavigationSettings {
   const flag = (value: unknown, fallback: boolean) => (typeof value === 'boolean' ? value : fallback);
@@ -265,6 +289,14 @@ export function resolveNavigation(stored: Stored | null | undefined): Navigation
       ),
     ]),
   ) as Record<Role, Record<AdminSection, boolean>>;
+  const hiddenFrom = Object.fromEntries(
+    ROLES.map((role) => [
+      role,
+      Object.fromEntries(
+        MENU_LINKS.map((l) => [l, canHideFrom(role, l) && flag(stored?.hiddenFrom?.[role]?.[l], DEFAULT_NAVIGATION.hiddenFrom[role][l])]),
+      ),
+    ]),
+  ) as Record<Role, Record<MenuLink, boolean>>;
   const menu = Object.fromEntries(
     AUDIENCES.map((a) => [
       a,
@@ -272,12 +304,13 @@ export function resolveNavigation(stored: Stored | null | undefined): Navigation
         MENU_LINKS.map((l) => {
           const lock = menuLock(a, l);
           if (lock === 'follows_sections') return [l, Object.values(sections[a as Role]).some(Boolean)];
+          if (isRole(a) && hiddenFrom[a][l]) return [l, false];
           return [l, lock === 'signed_in' ? false : flag(stored?.menu?.[a]?.[l], DEFAULT_NAVIGATION.menu[a][l])];
         }),
       ),
     ]),
   ) as Record<Audience, Record<MenuLink, boolean>>;
-  const partial: NavigationSettings = { menu, sections, startsOn: DEFAULT_NAVIGATION.startsOn };
+  const partial: NavigationSettings = { menu, hiddenFrom, sections, startsOn: DEFAULT_NAVIGATION.startsOn };
   const startsOn = Object.fromEntries(
     SIGNED_IN_AUDIENCES.map((a) => {
       const options = startPageOptions(partial, a);
@@ -286,17 +319,27 @@ export function resolveNavigation(stored: Stored | null | undefined): Navigation
       return [a, options.includes(saved as StartPage) ? saved : fallback];
     }),
   ) as Record<SignedInAudience, StartPage>;
-  return { menu, sections, startsOn };
+  return { menu, hiddenFrom, sections, startsOn };
 }
 
 /**
  * Whether settings can be saved as sent: no section for a role the API refuses it to, no guarded section hidden from
- * System Admins, Sign in only for visitors and always some way for them to sign in, and every start page one its
- * audience sees. A role's Admin link is recomputed, not checked.
+ * System Admins, Sign in only for visitors and always some way for them to sign in, a role's link shown or hidden (not
+ * both) and never Admin or Sign in hidden, and every start page one its audience sees. A role's Admin link is
+ * recomputed, not checked.
  */
 export function checkNavigationSettings(settings: NavigationSettings): Check {
   for (const a of AUDIENCES) {
     if (menuLock(a, 'signin') === 'signed_in' && settings.menu[a].signin) return deny(`signin cannot be shown to ${a}: they are signed in`);
+  }
+  for (const role of ROLES) {
+    for (const l of MENU_LINKS) {
+      if (!settings.hiddenFrom[role][l]) continue;
+      if (!canHideFrom(role, l)) {
+        return deny(`${l} cannot be hidden from ${role}: ${l === 'admin' ? "a role's Admin link follows its sections" : 'Sign in is for visitors only'}`);
+      }
+      if (settings.menu[role][l]) return deny(`${l} cannot be both shown to and hidden from ${role}`);
+    }
   }
   if (!SIGN_IN_WAYS.some((l) => settings.menu.signed_out[l])) {
     return refuse('conflict', 'signed-out visitors need a way to sign in: show them Sign in, Register, Ballot or Admin');
@@ -321,9 +364,13 @@ export function checkNavigationSettings(settings: NavigationSettings): Check {
   return OK;
 }
 
-/** One cell that changed, as the ledger records it (`navigation.changed`). */
+/**
+ * One cell that changed, as the ledger records it (`navigation.changed`). A role's menu cell carries `hidden` when the
+ * role hides the link before or after the change; without it the change is between shown and not shown, as it was
+ * before roles could hide links.
+ */
 export type NavigationChange =
-  | { readonly audience: Audience; readonly link: MenuLink; readonly shown: boolean }
+  | { readonly audience: Audience; readonly link: MenuLink; readonly shown: boolean; readonly hidden?: boolean }
   | { readonly audience: Role; readonly section: AdminSection; readonly shown: boolean }
   | { readonly audience: SignedInAudience; readonly startsOn: StartPage };
 
@@ -335,12 +382,16 @@ export interface NavigationChangedPayload {
 
 /** Every cell that differs between two resolved settings, in the matrix's order (menu, sections, start pages). */
 export function navigationChanges(before: NavigationSettings, after: NavigationSettings): NavigationChange[] {
+  const hidden = (s: NavigationSettings, a: Audience, l: MenuLink) => isRole(a) && s.hiddenFrom[a][l];
   return [
     ...AUDIENCES.flatMap((audience) =>
-      MENU_LINKS.filter((l) => before.menu[audience][l] !== after.menu[audience][l]).map((link) => ({
+      MENU_LINKS.filter(
+        (l) => before.menu[audience][l] !== after.menu[audience][l] || hidden(before, audience, l) !== hidden(after, audience, l),
+      ).map((link) => ({
         audience,
         link,
         shown: after.menu[audience][link],
+        ...(hidden(before, audience, link) || hidden(after, audience, link) ? { hidden: hidden(after, audience, link) } : {}),
       })),
     ),
     ...ROLES.flatMap((audience) =>
@@ -373,11 +424,15 @@ function audiencesOf(viewer: Viewer): Audience[] {
   return viewer.membership === 'signed_out' ? ['signed_out'] : [viewer.membership, ...ROLES.filter((r) => viewer.roles.includes(r))];
 }
 
-/** What a viewer sees: everything any of their audiences sees (roles add to what membership shows, never take away). */
+/**
+ * What a viewer sees: everything any of their audiences sees (roles add to what membership shows), less any link a role
+ * they hold hides from them, whatever their membership state or another role shows them.
+ */
 export function shownTo(settings: NavigationSettings, viewer: Viewer): { menu: MenuLink[]; sections: AdminSection[] } {
   const audiences = audiencesOf(viewer);
+  const hidden = (l: MenuLink) => audiences.some((a) => isRole(a) && settings.hiddenFrom[a][l]);
   return {
-    menu: MENU_LINKS.filter((l) => audiences.some((a) => settings.menu[a][l])),
+    menu: MENU_LINKS.filter((l) => audiences.some((a) => settings.menu[a][l]) && !hidden(l)),
     sections: ADMIN_SECTIONS.filter((s) => audiences.some((a) => isRole(a) && settings.sections[a][s])),
   };
 }
@@ -411,10 +466,15 @@ export function startPagePath(page: StartPage): string {
 
 const flags = <K extends string>(keys: readonly [K, ...K[]]) => z.record(z.enum(keys), z.boolean());
 
-/** `PUT /v1/admin/navigation`: the whole matrix, and the version it was edited from. */
+/**
+ * `PUT /v1/admin/navigation`: the whole matrix, and the version it was edited from. `hiddenFrom` may be left out, as a
+ * page opened before roles could hide links leaves it out: the links each role hides then stay as saved, except any the
+ * matrix sent now shows to that role.
+ */
 export const navigationSettingsSchema = z.strictObject({
   basedOn: z.number().int().min(0),
   menu: z.record(z.enum(AUDIENCES), flags(MENU_LINKS)),
+  hiddenFrom: z.record(z.enum(ROLES), flags(MENU_LINKS)).optional(),
   sections: z.record(z.enum(ROLES), flags(ADMIN_SECTIONS)),
   startsOn: z.record(
     z.enum(SIGNED_IN_AUDIENCES as [SignedInAudience, ...SignedInAudience[]]),
@@ -422,3 +482,16 @@ export const navigationSettingsSchema = z.strictObject({
   ),
 });
 export type NavigationSettingsInput = z.infer<typeof navigationSettingsSchema>;
+
+/**
+ * The settings a save asks for: as sent, with the links each role hides taken from those saved when the page left them
+ * out (it was opened before roles could hide links), less any the matrix sent shows to that role.
+ */
+export function requestedNavigation(input: Omit<NavigationSettingsInput, 'basedOn'>, saved: NavigationSettings): NavigationSettings {
+  const { hiddenFrom, ...rest } = input;
+  if (hiddenFrom) return { ...rest, hiddenFrom };
+  const kept = Object.fromEntries(
+    ROLES.map((role) => [role, Object.fromEntries(MENU_LINKS.map((l) => [l, saved.hiddenFrom[role][l] && !input.menu[role][l]]))]),
+  ) as Record<Role, Record<MenuLink, boolean>>;
+  return { ...rest, hiddenFrom: kept };
+}

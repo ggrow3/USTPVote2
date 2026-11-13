@@ -143,6 +143,63 @@ describe('navigation settings (design §10.5)', () => {
     expect((await ledger()).at(-1)!.payload.changes).toEqual([{ audience: 'signed_out', link: 'offices', shown: offices }]);
   });
 
+  it('let a role hide a link from the people who hold it, ledgered with the cell', async () => {
+    const settings = edit((s) => {
+      s.hiddenFrom.system_admin.register = true;
+      s.menu.election_admin.ballot = false;
+      s.hiddenFrom.election_admin.ballot = true;
+    });
+    const res = await put(sa1, settings);
+    expect(res).toMatchObject({ status: 200, body: { version: 1, hiddenFrom: { system_admin: { register: true }, election_admin: { ballot: true } } } });
+    expect((await api.call('GET', '/v1/navigation')).body).toEqual({ ...settings, version: 1 });
+    expect((await ledger()).at(-1)!.payload.changes).toEqual([
+      { audience: 'election_admin', link: 'ballot', shown: false, hidden: true },
+      { audience: 'system_admin', link: 'register', shown: false, hidden: true },
+    ]);
+
+    const back = await put(sa1, edit((s) => (s.hiddenFrom.system_admin.register = false), settings), 1);
+    expect(back.body).toMatchObject({ version: 2, hiddenFrom: { system_admin: { register: false } } });
+    expect((await ledger()).at(-1)!.payload.changes).toEqual([{ audience: 'system_admin', link: 'register', shown: false, hidden: false }]);
+  });
+
+  it("refuse hiding a role's Admin link or Sign in, or a link both shown to and hidden from the role", async () => {
+    const admin = await put(sa1, edit((s) => (s.hiddenFrom.auditor.admin = true)));
+    expect(admin).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/follows its sections/) } });
+    const signIn = await put(sa1, edit((s) => (s.hiddenFrom.auditor.signin = true)));
+    expect(signIn).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/visitors only/) } });
+    const both = await put(sa1, edit((s) => (s.hiddenFrom.election_admin.ballot = true)));
+    expect(both).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/both shown to and hidden from/) } });
+    expect((await api.call('GET', '/v1/navigation')).body.version).toBe(0);
+  });
+
+  it('read settings saved before roles could hide links as hiding none, and keep hidden links a save leaves out', async () => {
+    const { hiddenFrom: _, ...older } = edit((s) => (s.menu.applicant.ballot = false));
+    await api.firebase.db
+      .collection(Collections.navigation)
+      .doc('current')
+      .set({ ...older, version: 4, updatedAt: '2026-11-01T00:00:00.000Z', updatedBy: sa1.accountId });
+    api.app.get(NavigationService).invalidate();
+    const resolved = edit((s) => (s.menu.applicant.ballot = false));
+    expect((await api.call('GET', '/v1/navigation')).body).toEqual({ ...resolved, version: 4 });
+
+    const hidden = edit((s) => (s.hiddenFrom.system_admin.register = true), resolved);
+    expect((await put(sa1, hidden, 4)).body.version).toBe(5);
+    // A page opened before roles could hide links sends none: the saved ones stay, unless it shows one to the role.
+    const fromOlderPage = (change: (s: any) => void) => {
+      const { hiddenFrom: _h, ...rest } = edit(change, hidden);
+      return rest;
+    };
+    const res = await api.call('PUT', '/v1/admin/navigation', sa1, { basedOn: 5, ...fromOlderPage((s) => (s.menu.lapsed.ballot = false)) });
+    expect(res.body).toMatchObject({ version: 6, hiddenFrom: { system_admin: { register: true } }, menu: { lapsed: { ballot: false } } });
+    const showsIt = fromOlderPage((s) => {
+      s.menu.lapsed.ballot = false;
+      s.menu.system_admin.register = true;
+    });
+    const shown = await api.call('PUT', '/v1/admin/navigation', sa1, { basedOn: 6, ...showsIt });
+    expect(shown.body).toMatchObject({ version: 7, hiddenFrom: { system_admin: { register: false } }, menu: { system_admin: { register: true } } });
+    expect((await ledger()).at(-1)!.payload.changes).toEqual([{ audience: 'system_admin', link: 'register', shown: true, hidden: false }]);
+  });
+
   it('validate the body: every audience and cell, and the version it was edited from', async () => {
     const { applicant: _, ...menu } = DEFAULT_NAVIGATION.menu;
     expect((await api.call('PUT', '/v1/admin/navigation', sa1, { basedOn: 0, ...DEFAULT_NAVIGATION, menu })).status).toBe(400);

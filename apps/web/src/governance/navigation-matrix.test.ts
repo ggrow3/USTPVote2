@@ -1,6 +1,6 @@
-import { AUDIENCES, MEMBERSHIP_AUDIENCES, menuLock, ROLES } from 'ustp-domain';
+import { AUDIENCES, DEFAULT_NAVIGATION, MEMBERSHIP_AUDIENCES, menuLock, roleLinkState, ROLES } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
-import { cellRuns } from './navigation-matrix.js';
+import { cellRuns, setRoleLink } from './navigation-matrix.js';
 
 const signedIn = (a: (typeof AUDIENCES)[number]) => (menuLock(a, 'signin') === 'signed_in' ? 'signed in' : null);
 
@@ -27,5 +27,20 @@ describe('navigation matrix layout', () => {
       { audiences: ['d'], reason: 'x' },
       { audiences: ['e'], reason: 'y' },
     ]);
+  });
+});
+
+describe("a staff role's menu cell", () => {
+  it('sets shown, not added or hidden, never both shown and hidden', () => {
+    const draft = structuredClone(DEFAULT_NAVIGATION);
+    setRoleLink(draft, 'system_admin', 'register', 'hidden');
+    expect([draft.menu.system_admin.register, draft.hiddenFrom.system_admin.register]).toEqual([false, true]);
+    expect(roleLinkState(draft, 'system_admin', 'register')).toBe('hidden');
+    setRoleLink(draft, 'system_admin', 'register', 'shown');
+    expect([draft.menu.system_admin.register, draft.hiddenFrom.system_admin.register]).toEqual([true, false]);
+    expect(roleLinkState(draft, 'system_admin', 'register')).toBe('shown');
+    setRoleLink(draft, 'system_admin', 'register', 'membership');
+    expect([draft.menu.system_admin.register, draft.hiddenFrom.system_admin.register]).toEqual([false, false]);
+    expect(draft).toEqual(DEFAULT_NAVIGATION);
   });
 });

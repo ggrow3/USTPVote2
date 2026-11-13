@@ -2,6 +2,7 @@ import { computed, reactive, readonly } from 'vue';
 import {
   DEFAULT_NAVIGATION,
   membershipAudience,
+  resolveNavigation,
   shownTo,
   startPageFor,
   startPagePath,
@@ -23,9 +24,12 @@ const state = reactive<{ settings: NavigationSettings; version: number; loaded: 
 });
 export const navigationState = readonly(state);
 
-/** Puts settings in force in this tab: on loading, and when a System Admin saves them here. */
-export function applyNavigation({ version, menu, sections, startsOn }: PublicNavigation): void {
-  Object.assign(state, { version, settings: { menu, sections, startsOn } });
+/**
+ * Puts settings in force in this tab: on loading, and when a System Admin saves them here. Resolved again, so settings
+ * from an api older than this page (no links hidden by roles, say) take the defaults for what they lack.
+ */
+export function applyNavigation({ version, ...settings }: PublicNavigation): void {
+  Object.assign(state, { version, settings: resolveNavigation(settings) });
 }
 
 /** Resolves once the settings have loaded, or failed to. */

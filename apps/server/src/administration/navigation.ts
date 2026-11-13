@@ -4,6 +4,7 @@ import {
   Collections,
   navigationChanges,
   navigationSettingsSchema,
+  requestedNavigation,
   resolveNavigation,
   type NavigationChangedPayload,
   type NavigationRecord,
@@ -50,14 +51,16 @@ export class NavigationService {
 
   /**
    * Saves the whole matrix if nobody saved since `basedOn`, ledgering every cell that changed. Locked cells are refused
-   * when switched; a role's Admin link is recomputed from its sections.
+   * when switched; a role's Admin link is recomputed from its sections. A page opened before roles could hide links
+   * sends none, and the ones saved stay hidden unless it shows them to the role.
    */
   async update(ctx: RequestContext, input: NavigationSettingsInput): Promise<NavigationRecord> {
     const actor = requireAccount(ctx);
-    const { basedOn, ...settings } = input;
-    assertCheck(checkNavigationSettings(settings));
+    const { basedOn, ...sent } = input;
     const saved = await this.firebase.db.runTransaction(async (tx) => {
       const before = record((await tx.get(this.doc)).data() as NavigationRecord | undefined);
+      const settings = requestedNavigation(sent, before);
+      assertCheck(checkNavigationSettings(settings));
       if (basedOn !== before.version) {
         throw new ConflictException('someone else changed these settings since you opened them; reload to see their changes');
       }

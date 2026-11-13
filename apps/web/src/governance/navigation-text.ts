@@ -7,6 +7,7 @@ import {
   type MenuLink,
   type NavigationChange,
   type Role,
+  type RoleLinkState,
   type StartPage,
 } from 'ustp-domain';
 import { roleLabel } from '../approval-text.js';
@@ -156,6 +157,18 @@ export function cellName(item: MenuLink | AdminSection, audience: Audience, kind
   return `Show ${label} to ${AUDIENCE_LABELS[audience]}`;
 }
 
+/** A staff role's menu cell, a choice of three: "Register for System Admin". */
+export function roleCellName(link: MenuLink, role: Role): string {
+  return `${MENU_LABELS[link]} for ${AUDIENCE_LABELS[role]}`;
+}
+
+/** The three choices of a staff role's menu cell, as its list offers them. */
+export const ROLE_LINK_STATE_LABELS: Readonly<Record<RoleLinkState, string>> = {
+  shown: 'Shown: added to their membership',
+  membership: 'Not added: their membership decides',
+  hidden: 'Hidden, whatever their membership',
+};
+
 const plural = (role: Role) => `${roleLabel(role)}s`;
 
 /** What a locked cell holds and why it cannot be switched, for its tooltip and for screen readers. */
@@ -178,10 +191,18 @@ export function lockText(lock: CellLock, audience: Audience, section?: AdminSect
   }
 }
 
-/** One unsaved change in words: "Hide Ballot from Applicant", "Active member starts on Ballot". */
+/**
+ * One unsaved change in words: "Hide Ballot from Applicant", "Active member starts on Ballot". A staff role's menu
+ * cell has three states: "Show Register to System Admin", "Hide Register from System Admin, whatever their
+ * membership", and "Let membership decide Register for System Admin".
+ */
 export function describeChange(change: NavigationChange): string {
   const who = AUDIENCE_LABELS[change.audience];
   if ('startsOn' in change) return `${who} starts on ${startPageLabel(change.startsOn)}`;
   const what = 'link' in change ? MENU_LABELS[change.link] : `Admin › ${SECTION_LABELS[change.section]}`;
-  return change.shown ? `Show ${what} to ${who}` : `Hide ${what} from ${who}`;
+  if (change.shown) return `Show ${what} to ${who}`;
+  if ('link' in change && (ROLES as readonly string[]).includes(change.audience) && change.link !== 'admin') {
+    return change.hidden ? `Hide ${what} from ${who}, whatever their membership` : `Let membership decide ${what} for ${who}`;
+  }
+  return `Hide ${what} from ${who}`;
 }
