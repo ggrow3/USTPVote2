@@ -41,6 +41,7 @@ API-side limits are only checked by Google on the first apply.
 |---|---|---|
 | `ustp-api` | Firestore (`datastore.user`) | All client-facing reads and writes (§11) |
 | | Read Identity Platform users (`firebaseauth.viewer`) | `verifyIdToken(…, checkRevoked)` on admin routes and casting (§4) |
+| | Delete Identity Platform users (custom role `ustpLoginDeleter`: `firebaseauth.users.delete` only) | A System Admin deleting an account on `DELETABLE_ACCOUNT_EMAILS` deletes its logins first (§4) |
 | | Create secrets; add versions to `tiebreak-seed-*` secrets only (IAM condition) | Tie-break seed per scheduling attempt (§6.1); it never reads a seed back |
 | | `secretVersionManager` on `anthropic-api-key` only: add, list and destroy versions, never read one | Keeps the key a System Admin adds under Admin › API keys (§5.6); it cannot read it back |
 | | `secretVersionManager` and `secretAccessor` on `app-fec-api-key`, `app-openstates-api-key`, `app-civic-api-key` and `app-congress-api-key` only | Keeps the public-records keys a System Admin adds under Admin › API keys (§5.6, §5.14), and reads them to ask those services |
@@ -699,7 +700,7 @@ on while voting is still open.
 - **Nothing here is easily undone.** KMS key rings and keys can never be deleted, so they and the anchors bucket have
   `prevent_destroy`; Firestore is only forgotten on destroy; Cloud Run services and Firestore have deletion protection.
   `terraform destroy` therefore stops at the keys by design.
-- **Custom roles** (`ustpSecretCreator`, `ustpSecretDeleter`, `ustpBallotPoolWorker`) keep their IDs reserved for weeks
+- **Custom roles** (`ustpSecretCreator`, `ustpSecretDeleter`, `ustpLoginDeleter`, `ustpBallotPoolWorker`) keep their IDs reserved for weeks
   after deletion; undelete them rather than recreate them. So does the `github` workload identity pool (30 days).
 - **Firestore's location** is fixed at creation (default: the region; `firestore_location = "nam5"` for the
   multi-region).
