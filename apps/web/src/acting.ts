@@ -29,6 +29,7 @@ export const acting = reactive<{ persona: ActingAs | null }>({ persona: stored()
 
 /** The admin tab each admin persona starts on; the others start on the console's first tab. */
 const PERSONA_TABS: Partial<Record<PersonaKind, AdminSection>> = {
+  site_admin: 'people',
   course_admin: 'course',
   communications_admin: 'communications',
 };
