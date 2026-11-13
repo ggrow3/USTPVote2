@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Timestamp, type DocumentReference, type Transaction } from 'firebase-admin/firestore';
 import {
   BROADCAST_RECIPIENT_RETENTION_DAYS,
+  broadcastRecipientKey,
   Collections,
   type BroadcastCounts,
   type BroadcastRecipientRecord,
@@ -21,8 +22,9 @@ export class BroadcastRepository {
     return broadcastId ? all.doc(broadcastId) : all.doc();
   }
 
-  private recipientRef(broadcastId: string, accountId: string): DocumentReference {
-    return this.firebase.db.collection(Collections.broadcastRecipients).doc(`${broadcastId}_${accountId}`);
+  /** A copy's document: `key` is the account, or `s-` and the newsletter subscriber (`broadcastRecipientKey`). */
+  private recipientRef(broadcastId: string, key: string): DocumentReference {
+    return this.firebase.db.collection(Collections.broadcastRecipients).doc(`${broadcastId}_${key}`);
   }
 
   async find(broadcastId: string, tx?: Transaction): Promise<BroadcastRecord | null> {
@@ -53,14 +55,18 @@ export class BroadcastRepository {
     return this.ref(broadcastId).update(fields);
   }
 
-  /** A copy to send for each account. Run again after an interrupted preparation, before any has been sent. */
-  async addRecipients(broadcastId: string, accountIds: readonly string[], at: string): Promise<void> {
+  /**
+   * A copy to send for each account, and for each newsletter subscriber (design §10.15). Run again after an interrupted
+   * preparation, before any has been sent.
+   */
+  async addRecipients(broadcastId: string, accountIds: readonly string[], at: string, subscriberIds: readonly string[] = []): Promise<void> {
     const expireAt = Timestamp.fromMillis(Date.parse(at) + BROADCAST_RECIPIENT_RETENTION_DAYS * DAY_MS);
     const writer = this.firebase.db.bulkWriter();
-    for (const accountId of accountIds) {
-      const record: BroadcastRecipientRecord = { broadcastId, accountId, status: 'pending', outcome: null, messageId: null, attempts: 0, claimedAt: null, updatedAt: at };
-      void writer.set(this.recipientRef(broadcastId, accountId), { ...record, expireAt });
-    }
+    const copies: BroadcastRecipientRecord[] = [
+      ...accountIds.map((accountId) => ({ broadcastId, accountId, status: 'pending' as const, outcome: null, messageId: null, attempts: 0, claimedAt: null, updatedAt: at })),
+      ...subscriberIds.map((subscriberId) => ({ broadcastId, accountId: null, subscriberId, status: 'pending' as const, outcome: null, messageId: null, attempts: 0, claimedAt: null, updatedAt: at })),
+    ];
+    for (const record of copies) void writer.set(this.recipientRef(broadcastId, broadcastRecipientKey(record)), { ...record, expireAt });
     await writer.close();
   }
 
@@ -79,8 +85,8 @@ export class BroadcastRepository {
   }
 
   /** Claims a copy for sending in a transaction, so overlapping ticks never both send it. False when another did. */
-  claim(broadcastId: string, accountId: string, now: Date): Promise<BroadcastRecipientRecord | null> {
-    const ref = this.recipientRef(broadcastId, accountId);
+  claim(broadcastId: string, key: string, now: Date): Promise<BroadcastRecipientRecord | null> {
+    const ref = this.recipientRef(broadcastId, key);
     return this.firebase.db.runTransaction(async (tx) => {
       const current = (await tx.get(ref)).data() as BroadcastRecipientRecord | undefined;
       if (current?.status !== 'pending') return null;
@@ -91,8 +97,8 @@ export class BroadcastRepository {
     });
   }
 
-  finish(broadcastId: string, accountId: string, fields: Partial<BroadcastRecipientRecord>): Promise<unknown> {
-    return this.recipientRef(broadcastId, accountId).update({ ...fields, claimedAt: null, updatedAt: new Date().toISOString() });
+  finish(broadcastId: string, key: string, fields: Partial<BroadcastRecipientRecord>): Promise<unknown> {
+    return this.recipientRef(broadcastId, key).update({ ...fields, claimedAt: null, updatedAt: new Date().toISOString() });
   }
 
   /** How its copies stand, and what the mail service reported of those it took. Counted by Firestore; no record is read. */

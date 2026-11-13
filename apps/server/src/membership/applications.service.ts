@@ -18,6 +18,7 @@ import { DirectoryService } from '../auth/directory.service.js';
 import type { RequestContext } from '../auth/principal.js';
 import { accepted, assertCheck } from '../common/validation.js';
 import { InboxNotices } from '../inbox/inbox.service.js';
+import { ReferralCodes } from '../referrals/referrals.js';
 import { Firebase } from '../infra/firebase.js';
 import { ApplicationRepository } from './application.repository.js';
 import { MemberRepository } from './member.repository.js';
@@ -45,11 +46,14 @@ export class MembershipApplications {
     private readonly form: RegistrationFormService,
     private readonly notices: InboxNotices,
     private readonly directory: DirectoryService,
+    private readonly referrals: ReferralCodes,
   ) {}
 
   async submit(ctx: RequestContext, input: CreateApplicationInput): Promise<ApplicationRecord> {
     const accountId = requireAccount(ctx);
     assertCheck(checkApplicantEmail(ctx.principal.emailVerified));
+    // Whose referral link the applicant came by (design §5.18); a code that is no one's names nobody.
+    const referredBy = await this.referrals.owner(input.referralCode);
     const submitted = await this.firebase.db.runTransaction(async (tx) => {
       const now = new Date();
       const bylaws = await this.bylaws.currentBylaws(tx);
@@ -68,6 +72,7 @@ export class MembershipApplications {
           recent,
           current,
           at: now.toISOString(),
+          referredBy,
         }),
       );
       await this.statusChanges.record(tx, transition);

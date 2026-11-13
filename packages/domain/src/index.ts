@@ -151,6 +151,7 @@ export { courseEmbed, courseEmbedPath, courseEmbedSnippet, coursesEmbed, EMBED_H
 export type { CourseEmbed, CoursesEmbed, Embed, EmbedLesson, EmbedProfile, EmbedQuestion, EmbedSite, EmbedVideo } from './course-embed.js';
 export * from './membership/index.js';
 export * from './teams/index.js';
+export * from './referrals/index.js';
 export * from './bills/index.js';
 export { voteSchema, NO_VOTES, changeVote } from './votes.js';
 export type { VoteValue, VoteTally } from './votes.js';

@@ -42,6 +42,9 @@ export const router = createRouter({
         { path: 'set-password', component: () => import('./membership/SetPasswordPage.vue') },
         // Where an email's Unsubscribe link leads, with no sign-in (design §10.12).
         { path: 'unsubscribe', component: () => import('./notifications/UnsubscribePage.vue') },
+        // The newsletter's sign-up form for people not ready to join, and where its confirmation email leads (§10.15).
+        { path: 'newsletter', component: () => import('./notifications/NewsletterPage.vue') },
+        { path: 'newsletter/confirm', component: () => import('./notifications/NewsletterConfirmPage.vue') },
         { path: 'account', component: () => import('./pages/AccountPage.vue'), meta: { requiresAuth: true } },
         { path: 'notifications', component: () => import('./inbox/NotificationsPage.vue'), meta: { requiresAuth: true } },
         { path: 'messages', component: () => import('./inbox/MessagesPage.vue'), meta: { requiresAuth: true } },

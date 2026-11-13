@@ -147,6 +147,8 @@ export {
   memberTestMessage,
   adminTestMessage,
   broadcastMessage,
+  newsletterMessage,
+  newsletterConfirmMessage,
   membershipMessageEmail,
   notificationEmailMessage,
 } from './message.js';
@@ -287,6 +289,9 @@ export {
   broadcastAudienceSummary,
   broadcastRejectSchema,
   isBroadcastOpen,
+  audienceHasSubscribers,
+  broadcastTotal,
+  broadcastRecipientKey,
 } from './broadcasts.js';
 export type {
   BroadcastAudience,
@@ -304,6 +309,8 @@ export type {
   BroadcastApproval,
   BroadcastRejectInput,
   BroadcastDecidedPayload,
+  SubscriberSkip,
+  SubscriberPreview,
 } from './broadcasts.js';
 export {
   UNSUBSCRIBE_PATH,
@@ -336,3 +343,4 @@ export {
 export type { SendGate, NoticeHold, SendVerificationRecord, NoticeVerificationTotals } from './send-checks.js';
 export { DIGEST_LIST_MAX, digestIsEmpty, digestMessage, nextWeeklyDigestAt } from './digest.js';
 export type { DigestContent, DigestStateRecord } from './digest.js';
+export * from './newsletter.js';

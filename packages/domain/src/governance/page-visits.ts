@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { VisitSourcesReport } from './visit-sources.js';
 
 /**
  * Page visits (design §10.7): how often each page of the web app is opened, and which signed-in people open it. Hits
@@ -35,6 +36,8 @@ export const TRACKED_PAGES: readonly TrackedPage[] = [
   { id: 'register', pattern: '/register', label: 'Register' },
   { id: 'set-password', pattern: '/set-password', label: 'Set your password' },
   { id: 'unsubscribe', pattern: '/unsubscribe', label: 'Unsubscribe' },
+  { id: 'newsletter', pattern: '/newsletter', label: 'Newsletter sign-up' },
+  { id: 'newsletter-confirm', pattern: '/newsletter/confirm', label: 'Newsletter confirmation' },
   { id: 'account', pattern: '/account', label: 'Account' },
   { id: 'notifications', pattern: '/notifications', label: 'Notifications' },
   { id: 'messages-team', pattern: '/messages/team/:threadId', label: 'A conversation with the membership team' },
@@ -118,8 +121,25 @@ export function trackedPage(path: string): { readonly page: TrackedPage; readonl
   return match ? { page: match.page, path: match.page.recordAs ?? tidy } : null;
 }
 
-/** `POST /v1/page-visits` and `POST /v1/public/page-visits`: the path of the page opened. */
-export const pageVisitSchema = z.object({ path: z.string().min(1).max(PAGE_PATH_MAX) });
+/**
+ * Where an arrival came from (design §10.7), sent with the first page of a tab only: the referring site's host, the
+ * landing address's campaign tags and whether it was a member's referral link, each as a field of its own. Loose here,
+ * made tidy (or dropped) by `visitSource`, so a strange tag never loses the visit.
+ */
+export const visitFromSchema = z.object({
+  referrer: z.string().max(500).optional(),
+  source: z.string().max(500).optional(),
+  medium: z.string().max(500).optional(),
+  campaign: z.string().max(500).optional(),
+  referral: z.boolean().optional(),
+});
+export type VisitFromInput = z.infer<typeof visitFromSchema>;
+
+/**
+ * `POST /v1/page-visits` and `POST /v1/public/page-visits`: the path of the page opened, and with the first page of a
+ * tab where it came from (`from`, design §10.7), never the address's query.
+ */
+export const pageVisitSchema = z.object({ path: z.string().min(1).max(PAGE_PATH_MAX), from: visitFromSchema.optional() });
 export type PageVisitInput = z.infer<typeof pageVisitSchema>;
 
 /** At most this many visits a minute from one account or address, per api instance; more are refused (429). */
@@ -200,6 +220,8 @@ export interface PageVisitReport {
   readonly visitors: readonly PageVisitor[];
   /** More visits naming people happened in the period than `PAGE_VISIT_LOG_MAX` (the oldest are left out). */
   readonly truncated: boolean;
+  /** Where the period's arrivals came from (design §10.7); absent from a report built without them. */
+  readonly sources?: VisitSourcesReport;
 }
 
 const countsOn = (days: Readonly<Record<string, number>> | undefined, dayList: readonly string[]) =>

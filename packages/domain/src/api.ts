@@ -98,6 +98,11 @@ export const createApplicationSchema = z
     runForOffice: z.boolean().optional(),
     referral: optionalText(200),
     /**
+     * The code of the member's referral link the applicant came by, if any (design §5.18), as the browser kept it. A code
+     * that is no one's is ignored, never refused.
+     */
+    referralCode: z.string().max(32).optional(),
+    /**
      * Opt-ins to party email; recorded with the time of consent. The Register page asks both at once with one box
      * (design §5.2).
      */

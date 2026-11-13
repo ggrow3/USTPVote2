@@ -42,6 +42,7 @@ import { MemberDirectory } from '../membership/member-directory.js';
 import { Members } from '../membership/members.service.js';
 import { InboxRecords } from '../inbox/inbox.service.js';
 import { MailRecords } from '../notifications/mail-records.js';
+import { ReferralCodes } from '../referrals/referrals.js';
 import { EmailVerifiedSync } from './email-verified-sync.js';
 
 /** A second sign-in used to link a login method must be this fresh. */
@@ -74,6 +75,7 @@ export class AccountsService {
     private readonly mailRecords: MailRecords,
     private readonly inboxRecords: InboxRecords,
     private readonly emailSync: EmailVerifiedSync,
+    private readonly referrals: ReferralCodes,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
@@ -270,7 +272,7 @@ export class AccountsService {
   /**
    * A deleted account's sign-ins (by account, and by login for those seen before it had one), page visits, its
    * courses' progress, attempts, certificates and messages, the welcome email of an added member (§5.13), and the
-   * records of the email sent to it (§6.8), and its notifications and messages (§10.13).
+   * records of the email sent to it (§6.8), its notifications and messages (§10.13), and its referral code (§5.18).
    */
   async forgetActivity(accountId: string, uids: readonly string[]): Promise<void> {
     const db = this.firebase.db;
@@ -292,7 +294,12 @@ export class AccountsService {
     // A sign-in can be found both by account and by login.
     const refs = new Map(found.flatMap((snap) => snap.docs.map((d) => [d.ref.path, d.ref] as const)));
     for (const ref of refs.values()) void writer.delete(ref);
-    await Promise.all([writer.close(), this.mailRecords.forgetAccount(accountId), this.inboxRecords.forgetAccount(accountId)]);
+    await Promise.all([
+      writer.close(),
+      this.mailRecords.forgetAccount(accountId),
+      this.inboxRecords.forgetAccount(accountId),
+      this.referrals.forgetAccount(accountId),
+    ]);
   }
 
   /**
