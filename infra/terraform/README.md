@@ -55,6 +55,7 @@ API-side limits are only checked by Google on the first apply.
 | | Create, get, decrypt with and destroy `ballot-pool` versions (custom role, on that key only) | One version per election, unwrapping at sealing, destruction after certification (§7.3, §13) |
 | | Create and read objects in the anchors bucket; never delete | Write-once anchors; overwriting needs delete, which it lacks (§8.4) |
 | | Access secrets | Tie-break seeds at tally (§9), the Anthropic API key for the bylaws, consistency and election setup checks, read each time it runs them (§5.4–§5.6, §6.9), the AWS key for election notices by SES (§6.8) |
+| | Make Identity Platform email links (custom role `ustpSignInLinkMaker`: `firebaseauth.users.sendEmail` only) | The welcome email to a member a Membership Admin added carries the sign-in link for their address, so one email proves it and signs them in (§5.13). Such a link signs in whoever holds it, so only the internal-only worker may make one |
 | | Invoke `room-model` (while `room_model_enabled`) | Answers questions in the members' room with the self-hosted model (§5.10) |
 | `ustp-worker-invoker` | Invoke the worker | Identity of the Scheduler tick and of Cloud Tasks; nothing else |
 | `ustp-room-model` | Read and write objects in the room models bucket | The members' room's model loads its files from there; the pull job fetches them (§5.10) |
@@ -700,7 +701,7 @@ on while voting is still open.
 - **Nothing here is easily undone.** KMS key rings and keys can never be deleted, so they and the anchors bucket have
   `prevent_destroy`; Firestore is only forgotten on destroy; Cloud Run services and Firestore have deletion protection.
   `terraform destroy` therefore stops at the keys by design.
-- **Custom roles** (`ustpSecretCreator`, `ustpSecretDeleter`, `ustpLoginDeleter`, `ustpBallotPoolWorker`) keep their IDs reserved for weeks
+- **Custom roles** (`ustpSecretCreator`, `ustpSecretDeleter`, `ustpLoginDeleter`, `ustpSignInLinkMaker`, `ustpBallotPoolWorker`) keep their IDs reserved for weeks
   after deletion; undelete them rather than recreate them. So does the `github` workload identity pool (30 days).
 - **Firestore's location** is fixed at creation (default: the region; `firestore_location = "nam5"` for the
   multi-region).

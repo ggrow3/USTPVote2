@@ -9,7 +9,7 @@ const firebase = vi.hoisted(() => ({
 }));
 vi.mock('firebase/auth', async (original) => ({ ...(await original<object>()), ...firebase }));
 
-const { changePassword, checkNewPassword, PasswordRejected, resetPassword, sendPasswordReset } = await import('./sign-in.js');
+const { changePassword, checkNewPassword, isDeadLink, PasswordRejected, resetPassword, sendPasswordReset } = await import('./sign-in.js');
 
 const auth = {} as Auth;
 const GOOD = 'violet harbor lantern';
@@ -167,5 +167,15 @@ describe('the re-authentication window (design §4)', () => {
     expect(params(providerFor('apple.com', 'kev@example.test'))).toEqual({});
     expect(params(providerFor('google.com'))).toEqual({});
     expect(params(providerFor('google.com', null))).toEqual({});
+  });
+});
+
+describe('isDeadLink (design §5.13)', () => {
+  it('knows a sign-in link that expired, was used already or was cut short, and nothing else', () => {
+    expect(isDeadLink({ code: 'auth/expired-action-code' })).toBe(true);
+    expect(isDeadLink({ code: 'auth/invalid-action-code' })).toBe(true);
+    expect(isDeadLink({ code: 'auth/invalid-email' })).toBe(false);
+    expect(isDeadLink(new Error('offline'))).toBe(false);
+    expect(isDeadLink(null)).toBe(false);
   });
 });
