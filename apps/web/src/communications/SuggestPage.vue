@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import { SUGGESTION_LIMITS, SUGGESTION_RETENTION_DAYS, SUGGESTION_TOPICS, suggestionSchema, type SuggestionTopic } from 'ustp-domain';
 import { focusFirstInvalid, usePageTitle } from '../a11y.js';
 import { errorMessage } from '../api.js';
@@ -15,7 +16,10 @@ import { SUGGESTION_TOPIC_LABELS } from './comms-text.js';
  */
 usePageTitle('Send a suggestion');
 const topics = SUGGESTION_TOPICS.map((value) => ({ value, label: SUGGESTION_TOPIC_LABELS[value] }));
-const blank = () => ({ topic: null as SuggestionTopic | null, message: '', name: '', email: '', consent: false, website: '' });
+/** A topic a link chose (`/suggest?topic=events`, from the Partners page), else none. */
+const asked = useRoute().query.topic;
+const preset = SUGGESTION_TOPICS.find((t) => t === asked) ?? null;
+const blank = () => ({ topic: preset as SuggestionTopic | null, message: '', name: '', email: '', consent: false, website: '' });
 const form = ref(blank());
 const errors = ref<FieldErrors>({});
 const sending = ref(false);

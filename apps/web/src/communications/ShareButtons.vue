@@ -13,7 +13,7 @@ import { targetIcon } from './comms-text.js';
  */
 const props = defineProps<{
   item: Shareable;
-  /** What the presses are counted against; none for pages whose shares are not counted (results, design §10.15). */
+  /** What the presses are counted against; uncounted without it (results, design §10.15; the public bills and scorecard, §5.14). */
   countAs?: ShareItem;
   /** Show under each button what the site will make of the post (too long, link only): for the share kit. */
   fit?: boolean;

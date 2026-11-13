@@ -11,6 +11,7 @@ import { CONSISTENCY_CHECKER } from '../consistency-check/checker.js';
 import { ClaudeConsistencyChecker } from '../consistency-check/claude-consistency-checker.js';
 import { ConsistencyCheckRunner } from '../consistency-check/consistency-check-runner.js';
 import { StubConsistencyChecker } from '../consistency-check/stub-consistency-checker.js';
+import { BILLS_WORKER_PROVIDERS } from '../bills/providers.js';
 import { COMMUNICATIONS_WORKER_PROVIDERS } from '../communications/providers.js';
 import { CoreModule } from '../core.module.js';
 import { ELECTION_CHECKER } from '../election-check/checker.js';
@@ -58,6 +59,8 @@ import { TasksController } from './tasks.controller.js';
     ...COMMUNICATIONS_WORKER_PROVIDERS,
     // The members' room: questions for its assistant, and its retention (design §5.10).
     ...ROOM_WORKER_PROVIDERS,
+    // The public bills, read again from Congress.gov every six hours (design §5.14).
+    ...BILLS_WORKER_PROVIDERS,
     {
       provide: AUDIT_SIGNER,
       inject: [CONFIG, Firebase],

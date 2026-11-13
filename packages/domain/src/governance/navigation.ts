@@ -10,7 +10,7 @@ import { administersSite, ROLES, type Role } from '../roles.js';
  */
 
 /** The menu bar's links in menu order, then the header's Sign in button (which only signed-out visitors can use). */
-export const MENU_LINKS = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'bills', 'news', 'course', 'admin', 'signin'] as const;
+export const MENU_LINKS = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'bills', 'news', 'legislation', 'course', 'admin', 'signin'] as const;
 export type MenuLink = (typeof MENU_LINKS)[number];
 
 /** The admin console's sections (tabs), in tab order. */
@@ -135,6 +135,7 @@ export const START_PAGES: readonly StartPage[] = [
   'room',
   'bills',
   'news',
+  'legislation',
   'course',
   ...ADMIN_SECTIONS.map((s) => `admin/${s}` as const),
 ];
@@ -206,7 +207,8 @@ function defaultSection(role: Role, section: AdminSection): boolean {
  * list of who holds each office, came later and is for everyone too, as is Candidates (members running for public
  * office, design §5.8). Roles add Ballot, Verify, Offices and Candidates, so a staff member with no membership keeps
  * them, and Admin (from their sections). Signing in lands on Register with no membership, as it did, and on the home
- * page otherwise. Teams, the forum and the members' room are for Active members only (design §5.7, §5.9, §5.10); News is for everyone (design §10.9).
+ * page otherwise. Teams, the forum and the members' room are for Active members only (design §5.7, §5.9, §5.10); News is for everyone (design §10.9), as is
+ * Legislation, the public bills and scorecard (design §5.14).
  * Bills (design §5.14) is for Active members and System and Site Admins, and the web app shows it only to people who
  * have the tool: those on a team its setting names, and System and Site Admins.
  */
@@ -215,12 +217,12 @@ export const DEFAULT_NAVIGATION: NavigationSettings = {
     AUDIENCES.map((a) => [
       a,
       isRole(a)
-        ? links('ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin', ...(administersSite([a]) ? (['bills'] as const) : []))
+        ? links('ballot', 'verify', 'offices', 'candidates', 'news', 'legislation', 'course', 'admin', ...(administersSite([a]) ? (['bills'] as const) : []))
         : a === 'signed_out'
-          ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin', 'signin')
+          ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'legislation', 'course', 'admin', 'signin')
           : a === 'active'
-            ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'bills', 'news', 'course', 'admin')
-            : links('register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin'),
+            ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'bills', 'news', 'legislation', 'course', 'admin')
+            : links('register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'legislation', 'course', 'admin'),
     ]),
   ) as Record<Audience, Record<MenuLink, boolean>>,
   sections: Object.fromEntries(ROLES.map((r) => [r, sectionsOf(r)])) as Record<Role, Record<AdminSection, boolean>>,

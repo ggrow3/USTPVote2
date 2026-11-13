@@ -2,7 +2,10 @@ import type { Provider } from '@nestjs/common';
 import { BotsService } from './bots.service.js';
 import { CalendarService } from './calendar.service.js';
 import { CommunicationsRepository } from './communications.repository.js';
+import { EventsRepository } from './events.repository.js';
+import { EventsService } from './events.service.js';
 import { NewsService } from './news.service.js';
+import { PartnersService } from './partners.service.js';
 import { PublishedNews } from './published-news.js';
 import { PollsService } from './polls.service.js';
 import { PressKitService } from './press-kit.service.js';
@@ -18,6 +21,9 @@ export const COMMUNICATIONS_PROVIDERS: Provider[] = [
   SuggestionsService,
   PressKitService,
   BotsService,
+  EventsRepository,
+  EventsService,
+  PartnersService,
   PollsService,
 ];
 

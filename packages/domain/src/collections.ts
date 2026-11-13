@@ -39,6 +39,10 @@ export const Collections = {
   billWatch: 'bill_watch',
   /** `bill_notes/{noteId}`: the team's notes on watched bills (design §5.14). */
   billNotes: 'bill_notes',
+  /** `bill_public/{congress}-{type}-{number}`: the bills the team shows on the public Legislation page (design §5.14). */
+  billPublic: 'bill_public',
+  /** `bill_roll_calls/{chamber}-{congress}-{session}-{roll}`: each roll call on a public bill, every member's vote (design §5.14). */
+  billRollCalls: 'bill_roll_calls',
   /** `team_members/{teamId}_{accountId}`: who is on each team, as a lead or a member. */
   teamMembers: 'team_members',
   /** `team_requests/{teamId}_{accountId}`: each member's latest request to join a team. */
@@ -177,6 +181,10 @@ export const Collections = {
   pollLimits: 'poll_limits',
   /** `poll_address_counts/{day}_{pollId}_{hash}`: answers from one address to one poll that day; deleted the day after next. */
   pollAddressCounts: 'poll_address_counts',
+  /** `events/{eventId}`: the party's public events, drafts too (design §10.17). */
+  events: 'events',
+  /** `partners/{partnerId}`: partner groups, listed in public only with their consent (design §10.17). */
+  partners: 'partners',
   // notifications (design §6.8)
   notices: 'notices',
   noticeOutbox: 'notice_outbox',

@@ -26,6 +26,13 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   '/offices': 'Who holds each U.S. Transhumanist Party office now, and how they came to hold it.',
   '/polls': 'Polls from the U.S. Transhumanist Party anyone may answer: say what you think, see what others think, and share the results.',
   '/polls/:id': 'A poll from the U.S. Transhumanist Party anyone may answer. It decides nothing; the party decides in its elections.',
+  '/events': 'U.S. Transhumanist Party events: candidate Q&As, debate nights, talks and meetups, with recordings of past events.',
+  '/events/:slug': 'An event of the U.S. Transhumanist Party: when and where, how to take part, and its recording once it is over.',
+  '/partners': 'Groups the U.S. Transhumanist Party works with, the events they co-host, and its free courses for other sites to show.',
+  '/legislation': 'The science, AI and longevity bills in Congress the U.S. Transhumanist Party follows, as they move, with how Congress voted on them.',
+  '/legislation/:billId': 'A bill in Congress the U.S. Transhumanist Party follows: why it matters, how far it has gone and how Congress voted on it.',
+  '/scorecard': 'How each member of Congress voted on the science, AI and longevity bills the U.S. Transhumanist Party follows, against the party’s positions.',
+  '/scorecard/:memberId': 'How a member of Congress voted on the science, AI and longevity bills the U.S. Transhumanist Party follows, against the party’s positions.',
 };
 
 /**

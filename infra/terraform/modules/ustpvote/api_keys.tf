@@ -44,3 +44,19 @@ resource "google_secret_manager_secret_iam_member" "api_app_api_key_reader" {
   role      = "roles/secretmanager.secretAccessor"
   member    = google_service_account.api.member
 }
+
+# The worker reads the public bills on the Legislation page again from Congress.gov every six hours (design §5.14), so it
+# reads the key the Bills page uses as the api does: the Congress.gov and GovInfo key added in the app, else the FEC key
+# (any api.data.gov key works for Congress.gov). Reading only, on these two secrets alone.
+locals {
+  worker_bills_key_secrets = toset(["app-congress-api-key", "app-fec-api-key"])
+}
+
+resource "google_secret_manager_secret_iam_member" "worker_bills_key_reader" {
+  for_each = local.worker_bills_key_secrets
+
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.app_api_key[each.value].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = google_service_account.worker.member
+}

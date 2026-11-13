@@ -1,10 +1,7 @@
 import {
-  BadGatewayException,
   BadRequestException,
   ConflictException,
   ForbiddenException,
-  HttpException,
-  HttpStatus,
   Inject,
   Injectable,
   NotFoundException,
@@ -46,6 +43,8 @@ import {
   type BillWatchEntry,
   type BillWatchQuery,
   type BillWatchRecord,
+  type PublicBillInput,
+  type PublicBillTeamView,
   type WatchBillInput,
 } from 'ustp-domain';
 import { ApiKeys } from '../api-keys/api-keys.js';
@@ -57,8 +56,10 @@ import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { MemberDirectory } from '../membership/member-directory.js';
 import { TeamRoster } from '../teams/team-roster.js';
-import { BILL_SOURCE, BillSourceError, type BillSource } from './bill-source.js';
+import { BILL_SOURCE, type BillSource } from './bill-source.js';
+import { sourceError } from './source-error.js';
 import { BillRepository } from './bill.repository.js';
+import { PublicBills } from './public-bills.js';
 
 /** Someone with the tool, as its routes see them. */
 interface Caller {
@@ -68,15 +69,6 @@ interface Caller {
 
 const NOT_FOR_YOU =
   'the Bills page is for the legislative team: the teams a System or Site Admin names under Admin › Bills, and System and Site Admins. Ask a team’s lead to join it';
-
-/** The status a service's failure has (design §5.14): its hourly limit 429, anything else 502. */
-function sourceError(e: unknown): never {
-  if (e instanceof BillSourceError) {
-    if (e.kind === 'rate_limited') throw new HttpException({ message: e.message }, HttpStatus.TOO_MANY_REQUESTS);
-    throw new BadGatewayException(e.message);
-  }
-  throw e;
-}
 
 /**
  * The legislative team's Bills tool (design §5.14): bills in Congress found, sorted and read through the `BillSource`
@@ -94,6 +86,7 @@ export class BillsService {
     private readonly ledger: LedgerService,
     private readonly keys: ApiKeys,
     @Inject(BILL_SOURCE) private readonly source: BillSource,
+    private readonly publicBills: PublicBills,
   ) {}
 
   private latest(): number {
@@ -154,7 +147,7 @@ export class BillsService {
     const ref = this.ref(congress, type, number);
     const record = await this.record(ref);
     const id = billId(ref);
-    const [watched, notes, counts] = await Promise.all([this.repo.findWatched(id), this.repo.notesOn(id), this.repo.noteCounts()]);
+    const [watched, notes, counts, shown] = await Promise.all([this.repo.findWatched(id), this.repo.notesOn(id), this.repo.noteCounts(), this.publicBills.teamView(id)]);
     const names = await this.names([...(watched ? [watched.addedBy] : []), ...notes.map((n) => n.author)]);
     return {
       ...record,
@@ -162,8 +155,9 @@ export class BillsService {
       label: billLabel(ref),
       status: billStatus(record.actions, record.laws),
       url: congressGovUrl(ref),
-      watch: watched ? this.entry(watched, names, counts, false) : null,
+      watch: watched ? this.entry(watched, names, counts, false, shown !== null) : null,
       notes: notes.sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map((n) => this.noteView(n, names, caller)),
+      public: shown,
     };
   }
 
@@ -205,8 +199,8 @@ export class BillsService {
       tag ? current.filter((e) => e.tags.some((t) => t.toLocaleLowerCase('en') === tag)) : current,
       query.sort ?? 'latest_action',
     );
-    const [names, counts] = await Promise.all([this.names(shown.map((e) => e.addedBy)), this.repo.noteCounts()]);
-    return shown.map((e) => this.entry(e, names, counts, failed.has(e.billId)));
+    const [names, counts, open] = await Promise.all([this.names(shown.map((e) => e.addedBy)), this.repo.noteCounts(), this.publicBills.publicIds()]);
+    return shown.map((e) => this.entry(e, names, counts, failed.has(e.billId), open.has(e.billId)));
   }
 
   /** Adds a bill to the watchlist with its tags, or changes the tags of one on it, from the version edited. */
@@ -245,19 +239,36 @@ export class BillsService {
       this.repo.setWatched(tx, next);
       return next;
     });
-    const [names, counts] = await Promise.all([this.names([saved.addedBy]), this.repo.noteCounts()]);
-    return this.entry(saved, names, counts, false);
+    const [names, counts, open] = await Promise.all([this.names([saved.addedBy]), this.repo.noteCounts(), this.publicBills.publicIds()]);
+    return this.entry(saved, names, counts, false, open.has(saved.billId));
   }
 
-  /** Takes a bill off the watchlist, with its notes. */
+  /** Takes a bill off the watchlist, with its notes; refused while it is on the public page. */
   async unwatch(ctx: RequestContext, id: string): Promise<{ readonly removed: true; readonly notes: number }> {
     await this.caller(ctx);
     const ref = this.refFromId(id);
     const notes = await this.firebase.db.runTransaction(async (tx) => {
       if (!(await this.repo.getWatched(tx, billId(ref)))) throw new NotFoundException(`${billLabel(ref)} is not on the watchlist`);
+      if (await this.repo.getPublic(tx, billId(ref))) throw new ConflictException(`${billLabel(ref)} is on the public Legislation page: take it off there first`);
       return this.repo.deleteWatched(tx, billId(ref));
     });
     return { removed: true, notes };
+  }
+
+  /**
+   * Shows a watched bill on the public Legislation page, or changes its topic, public summary and the party's position
+   * on its roll calls (design §5.14, "Legislation and the scorecard"); ledgered as `bills.public_changed`.
+   */
+  async savePublic(ctx: RequestContext, id: string, input: PublicBillInput): Promise<PublicBillTeamView> {
+    const caller = await this.caller(ctx);
+    return this.publicBills.save(caller.accountId, this.refFromId(id), input);
+  }
+
+  /** Takes a bill off the public Legislation page; ledgered as `bills.public_changed`. */
+  async withdrawPublic(ctx: RequestContext, id: string): Promise<{ readonly withdrawn: true }> {
+    const caller = await this.caller(ctx);
+    await this.publicBills.withdraw(caller.accountId, this.refFromId(id));
+    return { withdrawn: true };
   }
 
   async addNote(ctx: RequestContext, id: string, input: BillNoteInput): Promise<BillNoteView> {
@@ -368,9 +379,9 @@ export class BillsService {
     };
   }
 
-  private entry(e: BillWatchRecord, names: Map<string, string>, counts: Map<string, number>, stale: boolean): BillWatchEntry {
+  private entry(e: BillWatchRecord, names: Map<string, string>, counts: Map<string, number>, stale: boolean, shown: boolean): BillWatchEntry {
     const { addedBy, updatedBy: _updatedBy, ...rest } = e;
-    return { ...rest, label: billLabel(e), addedBy: { accountId: addedBy, name: names.get(addedBy) ?? 'a former member' }, notes: counts.get(e.billId) ?? 0, stale };
+    return { ...rest, label: billLabel(e), addedBy: { accountId: addedBy, name: names.get(addedBy) ?? 'a former member' }, notes: counts.get(e.billId) ?? 0, stale, public: shown };
   }
 
   private noteView(n: BillNoteRecord, names: Map<string, string>, caller: Caller): BillNoteView {

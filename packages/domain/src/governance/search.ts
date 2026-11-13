@@ -6,7 +6,21 @@
  */
 
 /** The web app's pages that are the same for everyone, as the sitemap lists them. */
-export const SITEMAP_PAGES = ['/', '/vote', '/register', '/courses', '/course/transhumanism', '/bylaws', '/offices', '/verify', '/polls'] as const;
+export const SITEMAP_PAGES = [
+  '/',
+  '/vote',
+  '/register',
+  '/courses',
+  '/course/transhumanism',
+  '/bylaws',
+  '/offices',
+  '/verify',
+  '/polls',
+  '/events',
+  '/partners',
+  '/legislation',
+  '/scorecard',
+] as const;
 
 /**
  * Paths no search engine needs: the reporting MCP server and Firebase's reserved paths. `/v1/**` stays open, since a
@@ -47,12 +61,14 @@ export interface SitemapEntry {
 }
 
 /**
- * The sitemap's pages: the pages for everyone, each published bylaws version, and each election's certified results,
- * which stay public for good. The bylaws page shows the newest version, so it changed when that was published.
+ * The sitemap's pages: the pages for everyone, each published bylaws version, each election's certified results,
+ * which stay public for good, and each bill on the public Legislation page. The bylaws page shows the newest version,
+ * so it changed when that was published.
  */
 export function sitemapEntries(
   bylaws: readonly { readonly version: string; readonly publishedAt: string }[],
   results: readonly { readonly electionId: string; readonly certifiedAt: string | null }[],
+  bills: readonly { readonly billId: string; readonly lastModified: string }[] = [],
 ): SitemapEntry[] {
   const newest = bylaws.reduce<string | undefined>((latest, b) => (!latest || b.publishedAt > latest ? b.publishedAt : latest), undefined);
   const dated = (path: string, at: string | null | undefined): SitemapEntry => (at ? { path, lastModified: at } : { path });
@@ -60,6 +76,8 @@ export function sitemapEntries(
     ...SITEMAP_PAGES.map((path) => dated(path, path === '/bylaws' ? newest : undefined)),
     ...bylaws.map((b) => dated(`/bylaws/${encodeURIComponent(b.version)}`, b.publishedAt)),
     ...results.map((r) => dated(`/results/${encodeURIComponent(r.electionId)}`, r.certifiedAt)),
+    // The bills on the public Legislation page (design §5.14), each last changed when it moved or the team edited it.
+    ...bills.map((b) => dated(`/legislation/${encodeURIComponent(b.billId)}`, b.lastModified)),
   ];
 }
 
