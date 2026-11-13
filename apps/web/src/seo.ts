@@ -23,6 +23,9 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   '/bylaws/:version?': 'The bylaws of the U.S. Transhumanist Party, every published version, with a way to check a copy.',
   '/results/:id': 'Results of a U.S. Transhumanist Party election, from its published record, which anyone can verify.',
   '/offices': 'Who holds each U.S. Transhumanist Party office now, and how they came to hold it.',
+  '/events': 'U.S. Transhumanist Party events: candidate Q&As, debate nights, talks and meetups, with recordings of past events.',
+  '/events/:slug': 'An event of the U.S. Transhumanist Party: when and where, how to take part, and its recording once it is over.',
+  '/partners': 'Groups the U.S. Transhumanist Party works with, the events they co-host, and its free courses for other sites to show.',
 };
 
 /**
@@ -55,15 +58,38 @@ export function canonicalUrl(origin: string, path: string): string {
   return origin + (path.replace(/\/+$/, '') || '/');
 }
 
+/**
+ * The description the api wrote into the page's `<head>` for its link preview (design §15, "Link previews"), when the
+ * head was written for `path`: its `og:url` is that page. index.html as built has no `og:url`.
+ */
+export function servedDescription(ogUrl: string | null | undefined, description: string | null | undefined, path: string): string | null {
+  const served = ogUrl ? URL.parse(ogUrl) : null;
+  if (!served || !description) return null;
+  const bare = (p: string) => p.replace(/\/+$/, '') || '/';
+  return bare(served.pathname) === bare(path) ? description : null;
+}
+
 let routeDescription = SITE_DESCRIPTION;
 let descriptionOwner: object | null = null;
+let firstPage = true;
 
-/** After each navigation: the route's description, canonical link and robots tag. */
+/**
+ * After each navigation: the route's description, canonical link and robots tag. On the first page opened, a
+ * description the api wrote for it (a news post's summary, say) is kept in place of the route's general one.
+ */
 export function applyRouteSeo(route: Route & Pick<RouteLocationNormalized, 'path'>): void {
   const seo = pageSeo(route);
-  routeDescription = seo.description;
+  const served = firstPage
+    ? servedDescription(
+        document.head.querySelector<HTMLMetaElement>('meta[property="og:url"]')?.content,
+        document.head.querySelector<HTMLMetaElement>('meta[name="description"]')?.content,
+        route.path,
+      )
+    : null;
+  firstPage = false;
+  routeDescription = served ?? seo.description;
   descriptionOwner = null;
-  setMeta('description', seo.description);
+  setMeta('description', routeDescription);
   setMeta('robots', seo.listed ? null : 'noindex');
   setCanonical(seo.listed ? canonicalUrl(location.origin, route.path) : null);
 }
