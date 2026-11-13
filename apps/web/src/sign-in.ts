@@ -34,10 +34,21 @@ export const PROVIDER_LABELS: Record<SignInProvider, string> = {
   password: 'Email',
 };
 
-function providerFor(id: FederatedProvider): AuthProvider {
-  if (id === 'google.com') return new GoogleAuthProvider();
+/**
+ * The provider for a sign-in window. `loginHint`, for confirming who is signed in, opens Google's and Microsoft's
+ * window on that account instead of their account chooser, so a browser signed in to several accounts does not offer
+ * another one (Firebase refuses it as `auth/user-mismatch`). Apple takes no hint.
+ */
+export function providerFor(id: FederatedProvider, loginHint?: string | null): AuthProvider {
+  const hint = loginHint ? { login_hint: loginHint } : null;
+  if (id === 'google.com') {
+    const google = new GoogleAuthProvider();
+    if (hint) google.setCustomParameters(hint);
+    return google;
+  }
   const provider = new OAuthProvider(id);
   provider.addScope('email');
+  if (hint && id === 'microsoft.com') provider.setCustomParameters(hint);
   return provider;
 }
 
@@ -52,7 +63,7 @@ export function isFederatedProvider(id: string): id is FederatedProvider {
 /** Proves the signed-in user is still present, refreshing `auth_time` (design §10.2: approvals need ≤ 15 minutes). */
 export function reauthenticate(user: User, method: { provider: FederatedProvider } | { password: string }) {
   return 'provider' in method
-    ? reauthenticateWithPopup(user, providerFor(method.provider))
+    ? reauthenticateWithPopup(user, providerFor(method.provider, user.email))
     : reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email ?? '', method.password));
 }
 

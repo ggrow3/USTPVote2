@@ -84,6 +84,7 @@ const AUTH_MESSAGES: Record<string, string> = {
   'auth/invalid-credential': "That email and password don't match. Check them, or use “Email me a link”.",
   'auth/invalid-login-credentials': "That email and password don't match. Check them, or use “Email me a link”.",
   'auth/too-many-requests': 'Too many attempts. Wait a few minutes, then try again.',
+  'auth/user-mismatch': 'That is a different account. In the sign-in window, choose the account you are signed in with, and try again.',
   'auth/email-already-in-use': 'An account already uses this email. Sign in instead.',
   'auth/invalid-email': 'Enter a valid email address.',
   'auth/network-request-failed': 'Could not reach the sign-in service. Check your connection and try again.',

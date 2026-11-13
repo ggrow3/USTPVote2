@@ -157,3 +157,15 @@ describe('changePassword', () => {
     expect(firebase.updatePassword).not.toHaveBeenCalled();
   });
 });
+
+describe('the re-authentication window (design §4)', () => {
+  it('opens on the signed-in account for Google and Microsoft, and with no hint for Apple or without an address', async () => {
+    const { providerFor } = await import('./sign-in.js');
+    const params = (p: unknown) => (p as { getCustomParameters(): Record<string, string> }).getCustomParameters();
+    expect(params(providerFor('google.com', 'kev@example.test'))).toEqual({ login_hint: 'kev@example.test' });
+    expect(params(providerFor('microsoft.com', 'kev@example.test'))).toEqual({ login_hint: 'kev@example.test' });
+    expect(params(providerFor('apple.com', 'kev@example.test'))).toEqual({});
+    expect(params(providerFor('google.com'))).toEqual({});
+    expect(params(providerFor('google.com', null))).toEqual({});
+  });
+});
