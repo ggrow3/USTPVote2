@@ -124,6 +124,8 @@ export type {
   PackagedLesson,
   PackagedProfile,
 } from './course-package.js';
+export { courseEmbed, courseEmbedPath, courseEmbedSnippet, coursesEmbed, EMBED_HEIGHT, EMBED_ROUTES, embedLink } from './course-embed.js';
+export type { CourseEmbed, CoursesEmbed, Embed, EmbedLesson, EmbedProfile, EmbedQuestion, EmbedSite, EmbedVideo } from './course-embed.js';
 export * from './membership/index.js';
 export * from './teams/index.js';
 export * from './bills/index.js';

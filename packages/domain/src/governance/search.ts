@@ -6,7 +6,20 @@
  */
 
 /** The web app's pages that are the same for everyone, as the sitemap lists them. */
-export const SITEMAP_PAGES = ['/', '/vote', '/register', '/courses', '/course/transhumanism', '/bylaws', '/offices', '/verify', '/legislation', '/scorecard'] as const;
+export const SITEMAP_PAGES = [
+  '/',
+  '/vote',
+  '/register',
+  '/courses',
+  '/course/transhumanism',
+  '/bylaws',
+  '/offices',
+  '/verify',
+  '/events',
+  '/partners',
+  '/legislation',
+  '/scorecard',
+] as const;
 
 /**
  * Paths no search engine needs: the reporting MCP server and Firebase's reserved paths. `/v1/**` stays open, since a

@@ -1,6 +1,7 @@
 import type { Provider } from '@nestjs/common';
 import { LegislationPreviews, PublicBillPreviews, ScorecardMemberPreviews, ScorecardPreviews } from '../bills/legislation-preview.js';
 import { CandidacyPreviews } from '../candidacies/candidacy-preview.js';
+import { EventPreviews } from '../communications/event-preview.js';
 import { NewsPreviews } from '../communications/news-preview.js';
 import { CoursePreviews } from '../course/course-preview.js';
 import { ResultsPreviews } from '../elections/results-preview.js';
@@ -16,6 +17,7 @@ const SOURCES = [
   CandidacyPreviews,
   CoursePreviews,
   ResultsPreviews,
+  EventPreviews,
   LegislationPreviews,
   PublicBillPreviews,
   ScorecardPreviews,
