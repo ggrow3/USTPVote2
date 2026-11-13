@@ -6,6 +6,7 @@ import {
   type BotSite,
   type BotStatus,
   type CalendarStatus,
+  type EventStatus,
   type NewsKind,
   type NewsStatus,
   type Shareable,
@@ -121,3 +122,37 @@ export function localDay(at = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${at.getFullYear()}-${pad(at.getMonth() + 1)}-${pad(at.getDate())}`;
 }
+
+/** What an event's share buttons share: its summary, hashtags and its page here. */
+export function eventShareable(
+  event: { slug: string; title: string; summary: string; hashtags: readonly string[] },
+  origin = location.origin,
+): Shareable {
+  return { text: event.summary || event.title, url: absoluteUrl(`/events/${event.slug}`, origin), hashtags: event.hashtags, title: event.title };
+}
+
+/** When an event is in the viewer's own zone: "Thu, Dec 3, 8:00 – 9:30 PM EST". */
+export function eventLocalTime(event: { startsAt: string; endsAt: string }, timeZone?: string): string {
+  const format = new Intl.DateTimeFormat(undefined, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    timeZoneName: 'short',
+    ...(timeZone && { timeZone }),
+  });
+  return format.formatRange(new Date(event.startsAt), new Date(event.endsAt)).replace(/\s+/g, ' ');
+}
+
+/** Whether the viewer's own zone is not the event's, so the page gives both times. */
+export function otherZone(timeZone: string): boolean {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone !== timeZone;
+  } catch {
+    return true;
+  }
+}
+
+export const EVENT_STATUS_LABELS: Readonly<Record<EventStatus, string>> = { draft: 'Draft', published: 'Published', cancelled: 'Cancelled' };
+export const EVENT_STATUS_COLORS: Readonly<Record<EventStatus, string>> = { draft: 'orange-9', published: 'positive', cancelled: 'grey-7' };

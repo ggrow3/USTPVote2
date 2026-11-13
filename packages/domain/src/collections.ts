@@ -168,6 +168,10 @@ export const Collections = {
   suggestionLimits: 'suggestion_limits',
   /** `bots/{botId}`: the registry of the party's bots. */
   bots: 'bots',
+  /** `events/{eventId}`: the party's public events, drafts too (design §10.17). */
+  events: 'events',
+  /** `partners/{partnerId}`: partner groups, listed in public only with their consent (design §10.17). */
+  partners: 'partners',
   // notifications (design §6.8)
   notices: 'notices',
   noticeOutbox: 'notice_outbox',

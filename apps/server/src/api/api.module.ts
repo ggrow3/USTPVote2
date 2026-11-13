@@ -39,6 +39,7 @@ import { ApiKeys } from '../api-keys/api-keys.js';
 import { ApiKeysAdminService, ApiKeysController } from '../api-keys/api-keys-admin.js';
 import { API_KEY_TESTER, PublicApiKeyTester, UntriedApiKeyTester } from '../api-keys/key-tester.js';
 import { HealthController } from '../common/health.controller.js';
+import { CourseEmbedController } from '../course/course-embed.controller.js';
 import { CourseController } from '../course/course.controller.js';
 import { CourseService } from '../course/course.service.js';
 import { CourseLearnersService } from '../course/course-learners.service.js';
@@ -98,6 +99,7 @@ import {
   PublicSuggestionsController,
   ShareController,
 } from '../communications/communications.controller.js';
+import { EventsAdminController, PublicEventsController, PublicPartnersController } from '../communications/events.controller.js';
 import { TEAMS_PROVIDERS } from '../teams/providers.js';
 import { REFERRALS_PROVIDERS } from '../referrals/providers.js';
 import { MyReferralsController, ReferralLeaderboardController } from '../referrals/referrals.js';
@@ -190,6 +192,9 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     PublicSuggestionsController,
     ShareController,
     CommunicationsAdminController,
+    PublicEventsController,
+    PublicPartnersController,
+    EventsAdminController,
     SearchEnginesController,
     ...LINK_PREVIEW_CONTROLLERS,
     SecurityController,
@@ -203,6 +208,7 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     PersonasController,
     DemoElectionsController,
     CourseController,
+    CourseEmbedController,
     VideosController,
   ],
   providers: [

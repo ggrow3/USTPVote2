@@ -24,6 +24,9 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   '/results/:id': 'Results of a U.S. Transhumanist Party election, from its published record, which anyone can verify.',
   '/offices': 'Who holds each U.S. Transhumanist Party office now, and how they came to hold it.',
   '/newsletter': "Get the U.S. Transhumanist Party's newsletter by email: news, elections, campaigns and events, for anyone not ready to join.",
+  '/events': 'U.S. Transhumanist Party events: candidate Q&As, debate nights, talks and meetups, with recordings of past events.',
+  '/events/:slug': 'An event of the U.S. Transhumanist Party: when and where, how to take part, and its recording once it is over.',
+  '/partners': 'Groups the U.S. Transhumanist Party works with, the events they co-host, and its free courses for other sites to show.',
 };
 
 /**
