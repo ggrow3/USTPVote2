@@ -5088,7 +5088,10 @@ the api's communications context owns the collections (`events.repository`).
   Content-Security-Policy names that one script and style by their hashes and allows only this site's videos, https
   images (the portraits, uploaded here or open-licence images elsewhere, as the course page shows them), YouTube's
   privacy-enhanced player once a viewer presses play, no forms and no other requests; it says `frame-ancestors *`, the
-  one page any site may frame (every other page says `'none'`, §14). It is cached five minutes and says `noindex`; a
+  one page any site may frame (every other page says `'none'`, §14). Firebase Hosting gives the pages it rewrites to
+  the api its own header rules too, in place of the api's (the first release served the embed with the site's
+  `frame-ancestors 'none'`), so `firebase.json` has an `/embed/**` rule after the site's with the embed's policy, which
+  a test keeps equal to the api's (`EMBED_HEADERS`). It is cached five minutes and says `noindex`; a
   course that is not published is a page saying so, with 404. The snippet (`courseEmbedSnippet`) is an `<iframe>` 720
   pixels tall that scrolls inside, allowing fullscreen and autoplay for the videos, titled with the course's title.
 - **Ledger.** `event.published`, `event.changed`, `event.cancelled` and `partner.changed`, each with the Communications
