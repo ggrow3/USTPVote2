@@ -18,3 +18,23 @@ export function cellRuns<A>(audiences: readonly A[], reasonOf: (audience: A) => 
   }
   return runs;
 }
+
+/** The cells a staff role's menu choice sets in a draft of the settings. */
+type RoleLinkDraft<R extends string, L extends string> = {
+  menu: Record<R, Record<L, boolean>>;
+  hiddenFrom: Record<R, Record<L, boolean>>;
+};
+
+/**
+ * A staff role's menu cell is a choice of three (design §10.5): shown (adds the link to their membership's), not added
+ * (`membership`: their membership decides), or hidden from everyone holding the role.
+ */
+export function setRoleLink<R extends string, L extends string>(
+  draft: RoleLinkDraft<R, L>,
+  role: R,
+  link: L,
+  state: 'shown' | 'membership' | 'hidden',
+): void {
+  draft.menu[role][link] = state === 'shown';
+  draft.hiddenFrom[role][link] = state === 'hidden';
+}

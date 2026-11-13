@@ -1,4 +1,4 @@
-import { ADMIN_SECTIONS, AUDIENCES, MENU_LINKS, START_PAGES } from 'ustp-domain';
+import { ADMIN_SECTIONS, AUDIENCES, MENU_LINKS, ROLE_LINK_STATES, ROLES, START_PAGES } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
 import {
   AUDIENCE_LABELS,
@@ -7,6 +7,8 @@ import {
   lockText,
   MENU_CAPTIONS,
   MENU_LABELS,
+  ROLE_LINK_STATE_LABELS,
+  roleCellName,
   SECTION_LABELS,
   startPageLabel,
 } from './navigation-text.js';
@@ -21,7 +23,18 @@ describe('navigation settings wording', () => {
       ...MENU_LINKS.map((l) => cellName(l, a, 'link')),
       ...ADMIN_SECTIONS.map((s) => cellName(s, a, 'section')),
     ]);
-    expect(new Set(names).size).toBe(names.length);
+    // A staff role's menu cell is a list of three states, named by the link and the role.
+    const roleNames = ROLES.flatMap((r) => MENU_LINKS.map((l) => roleCellName(l, r)));
+    expect(roleCellName('register', 'system_admin')).toBe('Register for System Admin');
+    expect(new Set([...names, ...roleNames]).size).toBe(names.length + roleNames.length);
+  });
+
+  it("words the three states of a staff role's menu cell", () => {
+    expect(ROLE_LINK_STATES.map((state) => ROLE_LINK_STATE_LABELS[state])).toEqual([
+      'Shown: added to their membership',
+      'Not added: their membership decides',
+      'Hidden, whatever their membership',
+    ]);
   });
 
   it('labels every audience, section and start page', () => {
@@ -51,5 +64,16 @@ describe('navigation settings wording', () => {
     expect(describeChange({ audience: 'system_admin', section: 'offices', shown: true })).toBe('Show Admin › Offices to System Admin');
     expect(describeChange({ audience: 'active', startsOn: 'admin/elections' })).toBe('Active member starts on Admin › Elections');
     expect(describeChange({ audience: 'signed_out', link: 'signin', shown: false })).toBe('Hide Sign in from Signed out');
+    // A staff role's menu cell: shown, hidden whatever their membership, or left to their membership.
+    expect(describeChange({ audience: 'system_admin', link: 'register', shown: false, hidden: true })).toBe(
+      'Hide Register from System Admin, whatever their membership',
+    );
+    expect(describeChange({ audience: 'system_admin', link: 'register', shown: false, hidden: false })).toBe(
+      'Let membership decide Register for System Admin',
+    );
+    expect(describeChange({ audience: 'auditor', link: 'news', shown: false })).toBe('Let membership decide News for Auditor');
+    expect(describeChange({ audience: 'auditor', link: 'news', shown: true, hidden: false })).toBe('Show News to Auditor');
+    // A role's Admin link follows its sections: it is hidden, never left to membership.
+    expect(describeChange({ audience: 'auditor', link: 'admin', shown: false })).toBe('Hide Admin from Auditor');
   });
 });

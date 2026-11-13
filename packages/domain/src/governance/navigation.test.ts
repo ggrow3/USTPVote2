@@ -4,6 +4,7 @@ import { ROLES, type Role } from '../roles.js';
 import {
   ADMIN_SECTIONS,
   AUDIENCES,
+  canHideFrom,
   checkNavigationSettings,
   DEFAULT_NAVIGATION,
   MENU_LINKS,
@@ -11,7 +12,10 @@ import {
   menuLock,
   navigationChanges,
   navigationSettingsSchema,
+  requestedNavigation,
   resolveNavigation,
+  ROLE_LINK_STATES,
+  roleLinkState,
   SECTION_ROLES,
   sectionLock,
   SIGN_IN_WAYS,
@@ -271,7 +275,7 @@ describe('what a person sees', () => {
     expect(shownTo(resolved, viewer('lapsed'))).toEqual({ menu: [], sections: [] });
   });
 
-  it('adds each role they hold, never taking anything away', () => {
+  it('adds each role they hold, taking nothing away unless a role hides it', () => {
     expect(shownTo(resolved, viewer('active', 'election_admin'))).toEqual({
       menu: ['ballot', 'verify', 'admin'],
       sections: ['elections', 'forum', 'approvals'],
@@ -303,6 +307,139 @@ describe('what a person sees', () => {
     expect(membershipAudience(false, 'active')).toBe('signed_out');
     expect(membershipAudience(true, null)).toBe('no_membership');
     expect(membershipAudience(true, 'suspended')).toBe('suspended');
+  });
+});
+
+describe('links a role hides', () => {
+  // The System Admin column hides Register: their membership state still shows it to everyone else.
+  const hideRegister = edit(DEFAULT_NAVIGATION, (s) => (s.hiddenFrom.system_admin.register = true));
+
+  it('are none by default, and none in settings saved before roles could hide links', () => {
+    for (const role of ROLES) expect(Object.values(DEFAULT_NAVIGATION.hiddenFrom[role]).some(Boolean)).toBe(false);
+    const { hiddenFrom: _, ...older } = edit(DEFAULT_NAVIGATION, (s) => (s.menu.applicant.ballot = false));
+    const resolved = resolveNavigation(older);
+    expect(resolved.hiddenFrom).toEqual(DEFAULT_NAVIGATION.hiddenFrom);
+    expect(resolved.menu.applicant.ballot).toBe(false);
+    expect(shownTo(resolved, viewer('no_membership', 'system_admin')).menu).toContain('register');
+  });
+
+  it('take the link away from anyone holding the role, whatever their membership shows them', () => {
+    const resolved = resolveNavigation(hideRegister);
+    expect(checkNavigationSettings(resolved)).toEqual({ ok: true });
+    for (const membership of ['no_membership', ...MEMBER_STATUSES] as const) {
+      expect(shownTo(resolved, viewer(membership, 'system_admin')).menu).not.toContain('register');
+      expect(shownTo(resolved, viewer(membership)).menu).toContain('register');
+      expect(shownTo(resolved, viewer(membership, 'site_admin')).menu).toContain('register');
+    }
+    expect(shownTo(resolved, viewer('signed_out', 'system_admin')).menu).toContain('register');
+  });
+
+  it("win over another role's Shown, and over Active members' links", () => {
+    const settings = resolveNavigation(
+      edit(hideRegister, (s) => {
+        s.menu.membership_admin.register = true;
+        s.hiddenFrom.election_admin.teams = true;
+      }),
+    );
+    expect(shownTo(settings, viewer('applicant', 'membership_admin')).menu).toContain('register');
+    expect(shownTo(settings, viewer('applicant', 'membership_admin', 'system_admin')).menu).not.toContain('register');
+    expect(shownTo(settings, viewer('active')).menu).toContain('teams');
+    expect(shownTo(settings, viewer('active', 'election_admin')).menu).not.toContain('teams');
+  });
+
+  it('can be any link a role can switch: never Admin, which follows its sections, or Sign in', () => {
+    for (const role of ROLES) {
+      expect(MENU_LINKS.filter((l) => !canHideFrom(role, l))).toEqual(['admin', 'signin']);
+    }
+    const tampered = edit(DEFAULT_NAVIGATION, (s) => {
+      s.hiddenFrom.auditor.admin = true;
+      s.hiddenFrom.auditor.signin = true;
+    });
+    expect(resolveNavigation(tampered).hiddenFrom.auditor).toEqual(DEFAULT_NAVIGATION.hiddenFrom.auditor);
+    expect(resolveNavigation(tampered).menu.auditor.admin).toBe(true);
+    expect(checkNavigationSettings(tampered)).toMatchObject({ ok: false, reason: expect.stringMatching(/admin cannot be hidden from auditor/) });
+    const signIn = edit(DEFAULT_NAVIGATION, (s) => (s.hiddenFrom.auditor.signin = true));
+    expect(checkNavigationSettings(signIn)).toMatchObject({ ok: false, reason: expect.stringMatching(/signin cannot be hidden/) });
+  });
+
+  it('are never also shown to the role: refused as sent, and hidden once resolved', () => {
+    const both = edit(DEFAULT_NAVIGATION, (s) => (s.hiddenFrom.election_admin.ballot = true));
+    expect(DEFAULT_NAVIGATION.menu.election_admin.ballot).toBe(true);
+    expect(checkNavigationSettings(both)).toMatchObject({ ok: false, reason: expect.stringMatching(/both shown to and hidden from election_admin/) });
+    const resolved = resolveNavigation(both);
+    expect(resolved.menu.election_admin.ballot).toBe(false);
+    expect(checkNavigationSettings(resolved)).toEqual({ ok: true });
+  });
+
+  it("give each role's cell one of three states", () => {
+    const settings = resolveNavigation(hideRegister);
+    expect(roleLinkState(settings, 'system_admin', 'register')).toBe('hidden');
+    expect(roleLinkState(settings, 'system_admin', 'ballot')).toBe('shown');
+    expect(roleLinkState(settings, 'system_admin', 'teams')).toBe('membership');
+    expect(ROLE_LINK_STATES).toEqual(['shown', 'membership', 'hidden']);
+  });
+
+  it('leave a start page the role hides off its choices, and send people starting on one to home', () => {
+    const starts = edit(DEFAULT_NAVIGATION, (s) => (s.startsOn.election_admin = 'verify'));
+    expect(startPageFor(starts, viewer('active', 'election_admin'))).toBe('verify');
+    const hidden = edit(starts, (s) => {
+      s.menu.election_admin.verify = false;
+      s.hiddenFrom.election_admin.verify = true;
+    });
+    expect(startPageOptions(resolveNavigation(hidden), 'election_admin')).not.toContain('verify');
+    expect(checkNavigationSettings(hidden)).toMatchObject({ ok: false, reason: expect.stringMatching(/election_admin cannot start on verify/) });
+    // The Active member column still shows Verify, but the role they hold hides it.
+    expect(startPageFor(hidden, viewer('active', 'election_admin'))).toBe('home');
+    // Another role held that hides the page a first role starts on sends them home too.
+    const other = edit(starts, (s) => (s.hiddenFrom.system_admin.verify = true));
+    expect(startPageFor(resolveNavigation(other), viewer('active', 'election_admin', 'system_admin'))).toBe('home');
+  });
+
+  it('are ledgered with the cell: hidden, no longer hidden, and shown', () => {
+    const hidden = resolveNavigation(edit(DEFAULT_NAVIGATION, (s) => {
+      s.hiddenFrom.system_admin.register = true;
+      s.menu.election_admin.ballot = false;
+      s.hiddenFrom.election_admin.ballot = true;
+    }));
+    expect(navigationChanges(DEFAULT_NAVIGATION, hidden)).toEqual([
+      { audience: 'election_admin', link: 'ballot', shown: false, hidden: true },
+      { audience: 'system_admin', link: 'register', shown: false, hidden: true },
+    ]);
+    const after = resolveNavigation(edit(hidden, (s) => {
+      s.hiddenFrom.system_admin.register = false;
+      s.hiddenFrom.election_admin.ballot = false;
+      s.menu.election_admin.ballot = true;
+    }));
+    expect(navigationChanges(hidden, after)).toEqual([
+      { audience: 'election_admin', link: 'ballot', shown: true, hidden: false },
+      { audience: 'system_admin', link: 'register', shown: false, hidden: false },
+    ]);
+    expect(navigationChanges(after, DEFAULT_NAVIGATION)).toEqual([]);
+  });
+
+  it('may be left out of a save by a page opened before roles could hide links, keeping those saved', () => {
+    const saved = resolveNavigation(edit(DEFAULT_NAVIGATION, (s) => {
+      s.hiddenFrom.system_admin.register = true;
+      s.hiddenFrom.auditor.news = true;
+    }));
+    const { hiddenFrom: _, ...older } = saved;
+    expect(navigationSettingsSchema.safeParse({ basedOn: 1, ...older }).success).toBe(true);
+    expect(requestedNavigation(older, saved).hiddenFrom).toEqual(saved.hiddenFrom);
+    // The older page shows News to Auditors: they want it shown, so it is no longer hidden.
+    const showsNews = edit(older as NavigationSettings, (s) => (s.menu.auditor.news = true));
+    const requested = requestedNavigation(showsNews, saved);
+    expect(requested.hiddenFrom.auditor.news).toBe(false);
+    expect(requested.hiddenFrom.system_admin.register).toBe(true);
+    expect(checkNavigationSettings(requested)).toEqual({ ok: true });
+    // A page that sends them has them as sent.
+    expect(requestedNavigation(DEFAULT_NAVIGATION, saved).hiddenFrom).toEqual(DEFAULT_NAVIGATION.hiddenFrom);
+  });
+
+  it('are sent per role and link', () => {
+    const { auditor: _, ...missing } = DEFAULT_NAVIGATION.hiddenFrom;
+    expect(navigationSettingsSchema.safeParse({ basedOn: 0, ...DEFAULT_NAVIGATION, hiddenFrom: missing }).success).toBe(false);
+    const asMember = { ...DEFAULT_NAVIGATION.hiddenFrom, active: DEFAULT_NAVIGATION.hiddenFrom.auditor };
+    expect(navigationSettingsSchema.safeParse({ basedOn: 0, ...DEFAULT_NAVIGATION, hiddenFrom: asMember }).success).toBe(false);
   });
 });
 
