@@ -158,6 +158,7 @@ export type { VoteValue, VoteTally } from './votes.js';
 export * from './forum/index.js';
 export * from './room/index.js';
 export * from './communications/index.js';
+export * from './discord/index.js';
 export * from './notifications/index.js';
 export * from './inbox/index.js';
 export * from './governance/index.js';

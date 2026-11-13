@@ -14,6 +14,7 @@ import { StubConsistencyChecker } from '../consistency-check/stub-consistency-ch
 import { BILLS_WORKER_PROVIDERS } from '../bills/providers.js';
 import { COMMUNICATIONS_WORKER_PROVIDERS } from '../communications/providers.js';
 import { CoreModule } from '../core.module.js';
+import { DISCORD_WORKER_PROVIDERS } from '../discord/providers.js';
 import { ELECTION_CHECKER } from '../election-check/checker.js';
 import { ClaudeElectionChecker } from '../election-check/claude-election-checker.js';
 import { ElectionCheckMaterials } from '../election-check/election-check-material.js';
@@ -61,6 +62,8 @@ import { TasksController } from './tasks.controller.js';
     ...ROOM_WORKER_PROVIDERS,
     // The public bills, read again from Congress.gov every six hours (design §5.14).
     ...BILLS_WORKER_PROVIDERS,
+    // The Discord bot's posts (design §10.18).
+    ...DISCORD_WORKER_PROVIDERS,
     {
       provide: AUDIT_SIGNER,
       inject: [CONFIG, Firebase],

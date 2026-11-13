@@ -157,7 +157,7 @@ this structure one at a time, without changing routes, documents or the ledger.
 | Bills | §5.14 | `bill_settings`, `bill_watch`, `bill_notes`, `bill_public`, `bill_roll_calls` |
 | Forum | §5.9 | `forum_posts`, `forum_comments`, `forum_votes`, `forum_reports` |
 | Members' room | §5.10 | `room_consents`, `room_messages`, `room_reactions`, `room_memory`, `room_jobs`, `room_state`, `room_voice`, `room_signals` |
-| Communications | §10.9, §10.16, §10.17 | `news_posts`, `press_kit`, `press_assets`, `share_posts`, `share_counts`, `calendar_items`, `suggestions`, `suggestion_limits`, `bots`, `polls`, `poll_tallies`, `poll_marks`, `poll_limits`, `poll_address_counts`, `events`, `partners` |
+| Communications | §10.9, §10.16, §10.17, §10.18 | `news_posts`, `press_kit`, `press_assets`, `share_posts`, `share_counts`, `calendar_items`, `suggestions`, `suggestion_limits`, `bots`, `polls`, `poll_tallies`, `poll_marks`, `poll_limits`, `poll_address_counts`, `events`, `partners`, `discord_settings`, `discord_state`, `discord_posts` |
 | Governance | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `anthropic_key`, `api_keys` |
 | Audit ledger | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` |
 | Notifications | §6.8, §5.13 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests`, `welcome_emails`, `mail_messages`, `mail_suppressions`, `mail_preferences`, `broadcasts`, `broadcast_recipients`, `newsletter_subscribers`, `newsletter_limits` (§10.15) |
@@ -4849,10 +4849,10 @@ news feeds for bots, Claude drafting each site's version and bots the app runs, 
   `bot.changed`, each with the Communications Admin as actor, in the transaction that makes the change; for Auditors
   only, like the hub's. Suggestions, the calendar and drafts are not ledgered.
 - **Not yet.** *Claude drafting each site's version* of a release (X's 280, Bluesky's 300, LinkedIn…) and replies to
-  suggestions, for a Communications Admin to edit, with the Anthropic key of §5.6. *Bots run by the app*: posting
-  each release, or a calendar item at its time, to the party's own Discord (webhook), Telegram, Bluesky, Mastodon or X
-  accounts, with each site's token in Secret Manager as the Anthropic key is (written by the api, read only by the
-  worker), every post ledgered; this needs Terraform for the secrets and the worker's access. Also: email to members
+  suggestions, for a Communications Admin to edit, with the Anthropic key of §5.6. *Bots run by the app*: the party's
+  Discord has one now (§10.18). Still to come: posting each release, or a calendar item at its time, to the party's
+  Telegram, Bluesky, Mastodon or X accounts, with each site's token in Secret Manager as the Anthropic key is (written
+  by the api, read only by the worker), every post ledgered. Also: email to members
   when something joins the share kit, a newsletter, and images in posts.
 
 ### 10.10 Videos: YouTube links and uploads *(added)*
@@ -5408,6 +5408,68 @@ the api's communications context owns the collections (`events.repository`).
   a menu link: the menu's links are System Admins' stored settings (§10.5), so the pages are linked from the row of
   links on News, Press and the suggestions form, and a hub link is the admins' to add (§10.6); captions for recordings.
 
+### 10.18 The Discord bot *(added 2026-11-12, the user's decisions)*
+
+The site has news, votes, events, bills and courses, and none of it reached people where they already talk: Discord was
+an invite link and an online count on the hub (§10.6). The app now runs the party's own Discord bot, the first of the
+"bots run by the app" that §10.9 left for later. The user chose, on 2026-11-12: a **public server with member channels**
+for people who link their site account; **an activity feed, slash commands and engagement loops** first, and no AI
+assistant; **the bot before Projects** (volunteer projects members join, to be designed as their own section); and that
+the bot **names a member only if they opted in**, everyone else counting only in totals. It is built in stages; this
+section describes the first, the activity feed, and lists the rest under "Not yet".
+
+- **What it posts.** One card per thing that happened: a title that links to its page on the site, and a line under
+  it. News and press releases published; voting opened, voting closing within 24 hours (once, and not for a vote
+  shorter than 48 hours), results counted (provisional) and certified; an event published, cancelled, or starting within
+  24 hours; a bill the legislative team shows on the Legislation page (§5.14), when it is first shown; a course
+  published (once per course). Times are written as Discord's own timestamps, which each reader sees in their time
+  zone. Links carry `utm_source=discord`, so the site's count of where visitors come from shows what Discord brings.
+- **What it never posts.** Who voted or has not, a member's name, anything said in the forum (§5.9), the members' room
+  (§5.10) or a private message (§10.13), and nothing from a rehearsal election (§10.4). The feed reads the ledger
+  through an **allow-list** of entry types (`discordLedgerInterest`, in `packages/domain/src/discord/discord.ts`):
+  `news.published`, `election.opened`, `results.computed`, `results.certified`, `event.published`, `event.cancelled`
+  and `bills.public_changed` (when first published). Every other type is nothing to Discord, and a test walks every
+  ledger type to hold that. Adding to the list is a decision about what leaves the site. Every post is sent with
+  `allowed_mentions: {parse: []}`, so a title that says `@everyone` pings nobody.
+- **Who sets it.** Communications Admins, under Admin › Communications › Discord: the bot's switch (off until they
+  switch it on), the channel for each of the five kinds of post (news, votes, events, legislation, courses; a kind with
+  no channel is not posted), a test post to each channel, and the last 20 posts with any Discord refused. Switched on,
+  the bot starts from that moment: nothing that happened while it was off is posted. System Admins add the bot's
+  token under Admin › API keys, as they do the Anthropic API key (§5.6).
+- **The token.** Kept as the only live version of the `discord-bot-token` secret, which Terraform creates empty. The
+  api tries a pasted token with Discord (`GET /users/@me`, which must say it is a bot's) and writes it, and cannot read
+  it back (`secretVersionManager` only); the worker reads it each tick. No record, ledger entry, log line or answer
+  holds it: `discord_settings/token` keeps its last four characters, the bot's name and who added it.
+- **How it posts.** A step of the worker's tick (§13), last. It reads `audit_events` from where it left off
+  (`discord_state/feed`), then looks for courses published, votes closing and events starting. Each post is first
+  recorded as `discord_posts/{what:id}`, created once, so the same thing is never posted twice even if ticks overlap;
+  then sent; then marked sent and ledgered. A post Discord refuses for good (no such channel, no permission) is
+  recorded as failed and passed over, and shown on the admins' page; when Discord is busy or out of reach the step
+  stops and goes on from the same place next tick. At most 10 posts a tick. A post left `sending` (the worker stopped
+  between Discord taking it and the record) is not tried again: a missing post is better than a double one.
+- **A test post** is queued (`discord_state/test`) for the worker, since the api cannot read the token, and goes within
+  a minute whether or not the bot is switched on, as a System Admin's test email does while email is off (§10.12).
+- **The deployment's switch.** `DISCORD`: `live` (the default outside the emulators), `stub` (emulators only: posts are
+  recorded in `discord_outbox`) or `off`. Live does nothing until an admin switches the bot on and a token is added.
+  Posts need the site's own address (`WEB_ORIGIN`) for their links.
+- **Hosting.** Google Cloud Run, with everything else (§15), rather than a second cloud. The bot keeps no connection
+  open to Discord: posting is plain HTTPS from the worker, and the slash commands to come arrive as HTTPS requests, so
+  nothing runs between ticks and requests. The price is that the bot cannot see who joins the server or read what is
+  said there, which it should not do anyway.
+- **Ledger.** `discord.settings_changed` (each setting that changed, with its old and new value), by the Communications
+  Admin; `discord.token_changed` (added or removed, never the token), by the System Admin; `discord.posted` (what it
+  was about, the channel and Discord's message ID), by `system`. For Auditors only, like the rest of §10.9. A test post
+  is not ledgered.
+- **Not yet.** *Slash commands* (`/vote`, `/events`, `/news`, `/bills`, `/course`, `/rep`, `/join`, `/link`), answered
+  from the public API by a small service of its own that holds no secret, as the MCP server does (§3.4): Discord wants
+  an answer within three seconds, which the api's cold start can miss. *Linking a Discord account* on the Account page
+  (Discord's own sign-in; the page says plainly that linking tells Discord you are a member), which gives the Member
+  role and its channels, taken away when a membership lapses. *Loops*: a Monday digest post (the weekly digest's
+  content, §10.14), a question of the week as a Discord poll, a weekly "what members did" in totals, naming only
+  members who ticked "Celebrate my milestones on Discord". Each event also as a Discord scheduled event; turnout
+  milestones from the public count; candidacies approved and offices filled. *Projects*: volunteer projects with open
+  tasks, their "help wanted" posts and `/projects`, once Projects has its own section.
+
 ## 11. Data model (Firestore `(default)` database)
 
 Firestore Native mode has no namespaces. The spec's two namespaces are **module boundaries in code**: each bounded
@@ -5547,6 +5609,11 @@ Physically, registration collections are top-level and election data lives under
 | `poll_limits/{YYYY-MM-DD}` | UTC day | created once; deleted the day after next | the day's random salt for counting addresses (§10.16) *(added)* |
 | `poll_address_counts/{day}_{pollId}_{hash}` | day, poll and a salted hash of the address | counters; deleted the day after next | day, pollId, count; no address (§10.16) *(added)* |
 | `bots/{botId}` | UUIDv7 | added, changed, checked, removed | name, site, handle, url, purpose, operator, runsOn, status, public, notes, checkedAt/By, version, created/updated by and at; never a token (§10.9) *(added)* |
+| `discord_settings/current` | fixed | saved by a Communications Admin | enabled, channels (a Discord channel ID or null for each of news, votes, events, legislation, courses), version, updatedAt/By (§10.18) *(added 2026-11-12)* |
+| `discord_settings/token` | fixed | set when a System Admin adds the bot's token, deleted when they remove it | version (the Secret Manager version), hint (last four characters), botName, addedAt, addedBy, addedByName; never the token (§10.18) |
+| `discord_state/feed` | fixed | set when the bot is switched on, moved on by the worker | seq (the last ledger entry read), since (courses published from then are still to post) (§10.18) |
+| `discord_state/test` | fixed | set by a Communications Admin's test post, finished by the worker | kind, channelId, requestedBy/At, status (waiting, sent, failed), problem, doneAt (§10.18) |
+| `discord_posts/{what:id}` | what happened and to what | created once by the worker before it posts, then marked | kind, ref, title, text, url, status (sending, sent, failed), channelId, messageId, problem, createdAt, sentAt (§10.18) |
 | `events/{eventId}` | UUIDv7 | draft → published ⇄ cancelled (cancelled only before it ends); a draft never published may be deleted | kind, slug (fixed once published), title, summary, body, startsAt/endsAt (UTC), timeZone, attendance (online, in person, members' room), joinUrl, joinLabel, place, address, speakers, partnerIds, hashtags, recording, status, version (the calendars' SEQUENCE), created/updated/published/edited/cancelled by and at (§10.17) *(added)* |
 | `partners/{partnerId}` | UUIDv7 | added, changed, consent recorded ⇄ withdrawn, removed | name, description, website, notes (the team's), consent (from, note, recordedAt/By; null until given, the group named in public only while set), version, created/updated by and at (§10.17) *(added)* |
 
@@ -5697,6 +5764,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET\|PUT /admin/communications/press-kit` · `PUT …/press-kit/assets?name=` · `GET …/press-kit/assets/{sha256}` | Communications Admin | the press kit; save it whole from the version edited (400 for a file not uploaded here), ledgered; upload a file as the body (image/png, image/jpeg, image/webp or application/pdf); any uploaded file, to preview (§10.9) |
 | `GET\|POST /admin/communications/bots` · `PUT\|DELETE …/bots/{botId}` · `POST …/checked` | Communications Admin | the bot registry; add, change, mark checked, remove; ledgered (§10.9) |
 | `GET\|POST /admin/communications/polls` · `PUT\|DELETE …/polls/{pollId}` · `POST …/publish` · `POST …/close` | Communications Admin | every issue poll, drafts first, with its running results and share count; create a draft; change it from the version edited; publish; close early; delete it with its counts and marks; not ledgered (§10.16) |
+| `GET /admin/discord` · `PUT /admin/discord/settings` · `POST /admin/discord/test` | Communications Admin | the Discord bot: its switch, each kind's channel, whether a token is set, the last 20 posts; save (ledgered; 409 from an older copy); queue a test post to a kind's channel (409 without a saved channel or a token) (§10.18) *(added 2026-11-12)* |
+| `GET\|PUT\|DELETE /admin/discord-token` | System Admin | the Discord bot's token: whether one is set, its last four characters, the bot's name and who added it, never the token; add (tried with Discord first: 400 not shaped like one, 422 refused, 502 Discord unreachable) or remove; ledgered (§10.18) |
 | `POST /mcp` (not under `/v1`; the `mcp` service, not the api) | P | the reporting MCP server's Streamable HTTP endpoint: read-only tools over the public endpoints above, election reports and course files (§3.4) |
 | `GET /admin/elections/{id}/roll` | Election Admin, Auditor | latest roll with member names, for review |
 | `GET /admin/elections/{id}/notices` | Election Admin, Auditor | the election's notices as counts (delivered, sent with no report yet, still to send, failed, bounced, marked as spam, skipped), what the send receipts add up to per email (to the roll, and tests apart), and the caller's own last test emails; never addresses (§6.8) |
@@ -5766,6 +5835,7 @@ Errors use RFC 9457 problem details. Request bodies are validated against schema
 | *(tick step, M5)* | every tick | vote confirmations: each voter told, within a minute or so, that their ballot was recorded (§6.8); planned as an `email` Cloud Task, which the tick made unnecessary |
 | *(tick step, M5)* | every tick | members' notifications by email, as each comes and the digests due, for at most 10 seconds after the election emails and admins' emails (§10.13) |
 | *(tick step, M5)* | every tick | the membership team's messages to members by email, for at most 10 seconds after the notifications (§10.13) *(added 2026-11-08)* |
+| *(tick step)* | every tick, last | the Discord bot: a waiting test post, then what is new since the last tick (ledger entries on its allow-list, courses published, votes closing and events starting within a day), at most 10 posts, each recorded once and ledgered (§10.18) *(added 2026-11-12)* |
 | *(tick step, M4b)* | every tick | destroy the ballot-pool key version of certified and cancelled elections (§7.3); planned as a `destroy-pool-key` Cloud Task, which the tick made unnecessary |
 
 Tallying is a step of the tick, not the `POST /tasks/tally` Cloud Task planned earlier: the tick already runs every

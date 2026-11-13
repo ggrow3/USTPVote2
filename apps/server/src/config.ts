@@ -104,6 +104,13 @@ export interface ServerConfig {
    * from keyword overlap) or `off` (`/ask` answers 503; the chat and memory work). Off unless set, outside the emulators.
    */
   readonly roomModel: 'ollama' | 'local' | 'off';
+  /**
+   * The party's Discord bot (design §10.18): `live` (posts through Discord's API, once a Communications Admin switches
+   * the bot on and a System Admin adds its token), `stub` (the emulator-only stand-in, which records each post in
+   * `discord_outbox`) or `off` (nothing is posted, whatever the admins set). Live unless set, outside the emulators:
+   * the bot is off in the app until it is switched on there.
+   */
+  readonly discord: 'live' | 'stub' | 'off';
   readonly room: {
     /** The Ollama server: the private `room-model` Cloud Run service (called with an ID token), or a local one. */
     readonly modelUrl: string | null;
@@ -215,6 +222,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const roomModel = (env.ROOM_MODEL ?? (usingEmulators ? 'local' : 'off')) as ServerConfig['roomModel'];
   if (!['ollama', 'local', 'off'].includes(roomModel)) throw new Error('ROOM_MODEL must be "ollama", "local" or "off"');
   if (roomModel === 'local' && !usingEmulators) throw new Error('ROOM_MODEL=local is only allowed with the Firebase emulators');
+  const discord = (env.DISCORD ?? (usingEmulators ? 'stub' : 'live')) as ServerConfig['discord'];
+  if (!['live', 'stub', 'off'].includes(discord)) throw new Error('DISCORD must be "live", "stub" or "off"');
+  if (discord === 'stub' && !usingEmulators) throw new Error('DISCORD=stub is only allowed with the Firebase emulators');
   const roomModelUrl = env.ROOM_MODEL_URL ? env.ROOM_MODEL_URL.replace(/\/+$/, '') : null;
   if (roomModel === 'ollama' && !roomModelUrl) throw new Error('ROOM_MODEL=ollama needs ROOM_MODEL_URL');
   const roomDispatch = (env.ROOM_DISPATCH ?? (usingEmulators ? 'inline' : 'cloud-tasks')) as ServerConfig['room']['dispatch'];
@@ -260,6 +270,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     civicApiKey: env.GOOGLE_CIVIC_API_KEY?.trim() || null,
     trustedProxyHops: wholeNumber(env.TRUSTED_PROXY_HOPS, 'TRUSTED_PROXY_HOPS') ?? DEFAULT_TRUSTED_PROXY_HOPS,
     roomModel,
+    discord,
     room: {
       modelUrl: roomModelUrl,
       chatModel: env.ROOM_CHAT_MODEL || DEFAULT_ROOM_CHAT_MODEL,
