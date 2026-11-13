@@ -44,6 +44,7 @@ const profiles = ref<readonly FuturistProfile[]>([]);
 const loading = ref(false);
 const publishing = ref(false);
 const hiding = ref(false);
+const opening = ref(false);
 const lessonOpen = ref(false);
 const profileOpen = ref(false);
 const lessonErrors = ref<string[]>([]);
@@ -187,6 +188,34 @@ async function setHidden(hidden: boolean) {
   }
 }
 
+/** What the guest switch means for this course, in a line under it (design §10.8, "Open without sign-in"). */
+const guestHelp = computed(() => {
+  const value = course.value;
+  if (!value) return '';
+  if (value.prerequisites.length) {
+    return value.openToGuests
+      ? 'Closed to visitors while it comes after another course, which they cannot have passed. Take it off its prerequisites to open it.'
+      : 'Only a course that comes after no other can be opened: visitors cannot have passed the one before it.';
+  }
+  if (!value.openToGuests) return 'Visitors read the lessons; signing in is needed to take the quizzes.';
+  const when = value.publishedVersion === null ? 'Once it is published, anyone' : 'Anyone';
+  return `${when} can take its quizzes without signing in; their browser keeps what they pass, which moves into their account, with the certificate, when they join or sign in.`;
+});
+
+/** Opens the course's quizzes to visitors or closes them, at once (409, in words, while a course comes before it). */
+async function setOpenToGuests(openToGuests: boolean) {
+  opening.value = true;
+  try {
+    await attempt(async () => {
+      const updated = await api<CourseRecord>('PUT', `/v1/admin/courses/${courseId.value}/guests`, { openToGuests });
+      if (course.value?.courseId === updated.courseId) course.value = { ...course.value, openToGuests: updated.openToGuests };
+      courses.value = courses.value.map((item) => (item.courseId === updated.courseId ? { ...item, openToGuests: updated.openToGuests } : item));
+    }, openToGuests ? 'Open without signing in' : 'Signing in needed for the quizzes');
+  } finally {
+    opening.value = false;
+  }
+}
+
 async function saveCourse() {
   if (!course.value) return;
   if (await attempt(() => api('PUT', `/v1/admin/courses/${courseId.value}`, { title: course.value!.title, summary: course.value!.summary }), 'Course draft saved')) await loadCourses();
@@ -319,6 +348,14 @@ void loadCourses().catch((e: unknown) => console.error(errorMessage(e)));
             @update:model-value="(shown: boolean) => setHidden(!shown)"
           />
           <div class="text-caption text-grey-7 q-ml-sm">{{ hiddenHelp }} Applies at once.</div>
+          <q-toggle
+            :model-value="course.openToGuests === true"
+            :disable="opening || (!course.openToGuests && course.prerequisites.length > 0)"
+            class="q-mt-sm"
+            label="Open without sign-in"
+            @update:model-value="(open: boolean) => setOpenToGuests(open)"
+          />
+          <div class="text-caption text-grey-7 q-ml-sm">{{ guestHelp }} Applies at once.</div>
         </q-card-section>
         <q-card-actions align="right">
           <q-btn-dropdown flat no-caps icon="download" label="Export JSON">

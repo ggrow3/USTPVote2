@@ -1,7 +1,11 @@
 import { Body, Controller, Delete, Get, Header, HttpCode, NotFoundException, Param, Post, Put, Query, Req, Res, type PipeTransform } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 import {
+  certificateHolderSchema,
+  checkCourseQuizSchema,
+  claimCourseProgressSchema,
   courseBoardSchema,
+  courseGuestsSchema,
   courseMapSchema,
   courseMessagingSchema,
   courseMetadataSchema,
@@ -11,6 +15,10 @@ import {
   saveFuturistProfileSchema,
   sendCourseMessageSchema,
   submitCourseQuizSchema,
+  type CertificateHolderInput,
+  type CheckCourseQuizInput,
+  type ClaimCourseProgressInput,
+  type CourseGuestsInput,
   type CourseBoardInput,
   type CourseMapInput,
   type CourseMessagingInput,
@@ -80,7 +88,25 @@ export class CourseController {
     return this.courses.image(id);
   }
 
-  /** Intentionally returns only validity and course metadata: certificate recipients stay private. */
+  /**
+   * A quiz of a course open to guests, marked without signing in, and nothing kept (design §10.8): the score and how
+   * each answer went. 403 for a course not open to guests, 409 when it has a newer version than `version`.
+   */
+  @Public()
+  @Post('public/courses/:courseId/lessons/:lessonId/check')
+  @HttpCode(200)
+  check(
+    @Param('courseId', CourseIdPipe) courseId: string,
+    @Param('lessonId') lessonId: string,
+    @Body(new ZodPipe(checkCourseQuizSchema)) input: CheckCourseQuizInput,
+  ) {
+    return this.courses.checkGuestQuiz(courseId, lessonId, input);
+  }
+
+  /**
+   * Validity and the course, and the holder's name only while they choose to show it (design §10.8): otherwise
+   * certificate holders stay private.
+   */
   @Public()
   @Get('public/certificates/:certificateId')
   verify(@Param('certificateId') certificateId: string) {
@@ -106,6 +132,18 @@ export class CourseController {
     @Body(new ZodPipe(submitCourseQuizSchema)) input: SubmitCourseQuizInput,
   ) {
     return this.courses.submitQuiz(courseId, lessonId, input, requireAccount(ctx));
+  }
+
+  /** The quizzes passed before signing in, kept in the browser, recorded in the account as if taken now (design §10.8). */
+  @Post('courses/:courseId/claim')
+  claim(@Ctx() ctx: RequestContext, @Param('courseId', CourseIdPipe) courseId: string, @Body(new ZodPipe(claimCourseProgressSchema)) input: ClaimCourseProgressInput) {
+    return this.courses.claim(courseId, input, requireAccount(ctx));
+  }
+
+  /** The holder's own certificate: the name on it, whether its public page shows the name, or both (design §10.8). */
+  @Put('courses/:courseId/certificate')
+  holder(@Ctx() ctx: RequestContext, @Param('courseId', CourseIdPipe) courseId: string, @Body(new ZodPipe(certificateHolderSchema)) input: CertificateHolderInput) {
+    return this.courses.setCertificateHolder(courseId, requireAccount(ctx), input);
   }
 
   @Get('courses/:courseId/certificate.pdf')
@@ -178,6 +216,13 @@ export class CourseController {
     @Body(new ZodPipe(courseVisibilitySchema)) input: CourseVisibilityInput,
   ) {
     return this.courses.setHidden(courseId, input, requireAccount(ctx));
+  }
+
+  /** Opens the course's quizzes to visitors not signed in, or closes them, at once (409 while a course comes before it). */
+  @Put('admin/courses/:courseId/guests')
+  @Roles('course_admin')
+  guests(@Ctx() ctx: RequestContext, @Param('courseId', CourseIdPipe) courseId: string, @Body(new ZodPipe(courseGuestsSchema)) input: CourseGuestsInput) {
+    return this.courses.setOpenToGuests(courseId, input, requireAccount(ctx));
   }
 
   /**

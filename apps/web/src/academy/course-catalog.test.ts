@@ -10,6 +10,7 @@ const course = (courseId: string, over: Partial<CourseMapEntry> = {}): CourseMap
   lessonCount: 4,
   prerequisites: [],
   position: { row: 0, column: 0 },
+  openToGuests: false,
   ...over,
 });
 const draft = (courseId: string, prerequisites: string[] = []) => course(courseId, { summary: null, published: false, lessonCount: 0, prerequisites });
@@ -39,6 +40,7 @@ describe('a course row', () => {
   it('says where the learner stands', () => {
     expect(statusLine(draft('soon'), undefined, titles).label).toBe('Coming soon');
     expect(statusLine(course('basics'), undefined, titles).label).toBe('Open to everyone');
+    expect(statusLine(course('basics', { openToGuests: true }), undefined, titles)).toEqual({ label: 'Take it now: no sign-in needed', icon: 'bolt' });
     expect(statusLine(course('basics'), status('basics', 'not_started'), titles).label).toBe('Not started');
     expect(statusLine(course('basics'), status('basics', 'in_progress', { lessonsPassed: 2 }), titles).label).toBe('In progress: 2 of 4 lessons passed');
     expect(statusLine(course('basics'), status('basics', 'passed'), titles)).toEqual({ label: 'Passed', icon: 'check_circle' });

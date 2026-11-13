@@ -45,14 +45,34 @@ describe('matchPreviewPage', () => {
     expect(matchPreviewPage('/results/e%20x')).toEqual({ page: '/results/:id', params: { id: 'e x' } });
   });
 
+  it('matches a page with two fixed segments before its parameter, apart from the one-segment page beside it', () => {
+    const id = '019a7b2c-1d2e-7f00-8a00-0123456789ab';
+    expect(matchPreviewPage(`/course/certificates/${id}`)).toEqual({ page: '/course/certificates/:id', params: { id } });
+    expect(matchPreviewPage(`/course/certificates/${id}/`)).toEqual({ page: '/course/certificates/:id', params: { id } });
+    // One segment fewer is the course page, as the router has it: there is no course called "certificates".
+    expect(matchPreviewPage('/course/certificates')).toEqual({ page: '/course/:courseId', params: { courseId: 'certificates' } });
+  });
+
   it('matches nothing else', () => {
-    for (const path of ['/', '/news', '/news/a/b', '/course/certificates/abc', '/candidates/a%2Fb', '/news/%E0%A4%A', '/news/a%5Cb', '/results/%00', '/other/x']) {
+    for (const path of [
+      '/',
+      '/news',
+      '/news/a/b',
+      '/course/certificates/abc/more',
+      '/course/other/abc',
+      '/course/certificates/a%2Fb',
+      '/candidates/a%2Fb',
+      '/news/%E0%A4%A',
+      '/news/a%5Cb',
+      '/results/%00',
+      '/other/x',
+    ]) {
       expect(matchPreviewPage(path), path).toBeNull();
     }
   });
 
-  it('every page has one parameter after a fixed first segment', () => {
-    for (const page of PREVIEW_PAGES) expect(page).toMatch(/^\/[a-z]+\/:[A-Za-z]+$/);
+  it('every page is fixed lower-case segments then one parameter', () => {
+    for (const page of PREVIEW_PAGES) expect(page).toMatch(/^(\/[a-z]+)+\/:[A-Za-z]+$/);
   });
 });
 

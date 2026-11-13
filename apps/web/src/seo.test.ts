@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PREVIEW_PAGES, SITEMAP_PAGES } from 'ustp-domain';
+import { PREVIEW_PAGES, SITEMAP_PAGES, UNLISTED_PREVIEW_PAGES } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
 import { canonicalUrl, DESCRIBED_ROUTES, pageSeo, servedDescription, SITE_DESCRIPTION } from './seo.js';
 
@@ -79,5 +79,9 @@ describe('link previews', () => {
       expect(line, page).toBeDefined();
       expect(line, page).not.toMatch(/requiresAuth|roles/);
     }
+  });
+
+  it('of pages the api never lets search engines list are kept out by the web app too', () => {
+    for (const page of UNLISTED_PREVIEW_PAGES) expect(pageSeo(route(page)).listed, page).toBe(false);
   });
 });

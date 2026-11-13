@@ -105,6 +105,8 @@ export const Collections = {
   courseProgress: 'course_progress',
   courseAttempts: 'course_attempts',
   courseCertificates: 'course_certificates',
+  /** `certificate_settings/current`: what System Admins set about certificates, the party's LinkedIn organization. */
+  certificateSettings: 'certificate_settings',
   /** `course_images/{sha256}`: portraits uploaded by Course Administrators, as stored after re-encoding. */
   courseImages: 'course_images',
   /** `course_seeds/{seed}`: which starter courses have been added, so a course deleted later is not added again. */
