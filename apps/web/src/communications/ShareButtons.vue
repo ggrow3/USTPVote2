@@ -12,8 +12,8 @@ import { targetIcon } from './comms-text.js';
  */
 const props = defineProps<{
   item: Shareable;
-  /** What the presses are counted against. */
-  countAs: ShareItem;
+  /** What the presses are counted against; uncounted without it (the public bills and scorecard, design §5.14). */
+  countAs?: ShareItem;
   /** Show under each button what the site will make of the post (too long, link only): for the share kit. */
   fit?: boolean;
 }>();
@@ -42,7 +42,7 @@ const buttons = computed(() =>
 const canShare = typeof navigator !== 'undefined' && 'share' in navigator;
 
 function pressed(target: ShareTarget) {
-  countShare(props.countAs, target);
+  if (props.countAs) countShare(props.countAs, target);
 }
 
 /** Mastodon has no one site: ask once for the sharer's own server, kept in this browser. */

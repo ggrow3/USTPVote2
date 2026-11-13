@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { OK, refuse, type Check } from '../check.js';
+import type { PublicBillTeamView, RecordedVote } from './public-bills.js';
 
 /**
  * Bills in Congress (design §5.14): the legislative team's search over U.S. Congress bills, from the Congress.gov API
@@ -344,6 +345,8 @@ export interface BillAction {
   readonly type: string | null;
   /** Where it was recorded: the House, the Senate, or the Library of Congress (whose actions mark each step). */
   readonly source: string | null;
+  /** The roll calls it records, if any (design §5.14, "Legislation and the scorecard"). */
+  readonly votes?: readonly RecordedVote[];
 }
 
 /** A law the bill became: `Public Law 119-12`. */
@@ -639,6 +642,8 @@ export interface BillWatchEntry extends Omit<BillWatchRecord, 'addedBy' | 'updat
   readonly notes: number;
   /** Congress.gov could not be read when it was due a check; what it shows is from `checkedAt`. */
   readonly stale: boolean;
+  /** Whether the team shows it on the public Legislation page. */
+  readonly public: boolean;
 }
 
 /** `GET /v1/bills/{congress}/{type}/{number}`. */
@@ -649,6 +654,8 @@ export interface BillDetail extends BillRecord {
   readonly url: string;
   readonly watch: BillWatchEntry | null;
   readonly notes: readonly BillNoteView[];
+  /** What the public sees of it, when the team shows it on the Legislation page. */
+  readonly public: PublicBillTeamView | null;
 }
 
 /** `GET /v1/admin/bills`. */
