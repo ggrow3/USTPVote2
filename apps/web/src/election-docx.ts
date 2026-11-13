@@ -29,7 +29,7 @@ import {
   type ResultsSynopsis,
 } from 'ustp-domain';
 import { APP_NAME } from './app-name.js';
-import { INK, LETTER_PAGE, STAMP_PARAGRAPH_STYLE, stampLine, textParagraph } from './bylaws-docx.js';
+import { INK, LETTER_PAGE, STAMP_PARAGRAPH_STYLE, stampLine, textParagraph } from './docx-stamp.js';
 import { electionSlug, fileDate, KIND_LABELS, rulesText, tieBreakText } from './election-text.js';
 import {
   ballotsText,

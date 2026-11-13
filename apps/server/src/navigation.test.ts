@@ -28,13 +28,12 @@ import { BillsAdminController } from './bills/bills.controller.js';
 
 type Route = readonly [controller: abstract new (...args: never[]) => object, method: string];
 
-/** The route each admin console section opens with: what it lists, or (Bylaws) what it is for. */
+/** The route each admin console section opens with: what it lists, or what it is for. */
 const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
   applications: [MembershipAdminController, 'listApplications'],
   members: [MembershipAdminController, 'listMembers'],
   inbox: [TeamInboxController, 'page'],
   photos: [PhotoReviewController, 'list'],
-  bylaws: [MembershipAdminController, 'publishBylaws'],
   registration: [RegistrationFormAdminController, 'current'],
   first_steps: [FirstStepsAdminController, 'current'],
   elections: [ElectionsController, 'list'],

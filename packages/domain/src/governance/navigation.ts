@@ -19,7 +19,6 @@ export const ADMIN_SECTIONS = [
   'members',
   'inbox',
   'photos',
-  'bylaws',
   'registration',
   'first_steps',
   'elections',
@@ -68,8 +67,7 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   // The membership inbox: conversations between the membership team and each member (design §10.13).
   inbox: ['membership_admin'],
   photos: ['membership_admin'],
-  bylaws: ['membership_admin'],
-  // The registration form's wording: its intro and questions (design §5.2).
+  // The registration form: its wording, and the bylaws applicants agree to (design §5.2).
   registration: ['membership_admin'],
   // The getting started list new members see on their voting home (design §5.16).
   first_steps: ['membership_admin'],

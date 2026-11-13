@@ -67,7 +67,7 @@ const groups = computed(() => {
         ...(a.attestations ? [[`At least ${a.attestations.minimumAge} years old`, 'Yes']] : []),
         // Asked until the Core Ideals question replaced it.
         ...(a.attestations?.supportsPlatform ? [['Supports the platform and goals of the US Transhumanist Party', 'Yes']] : []),
-        ['Agreed to the bylaws', `Version ${a.bylawsVersion}, SHA-256 ${a.bylawsHash}`],
+        ['Agreed to the bylaws', a.bylawsVersion ? `Version ${a.bylawsVersion}, SHA-256 ${a.bylawsHash}` : 'None were in force'],
       ],
     },
     {

@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Inject, Inj
 import type { Transaction } from 'firebase-admin/firestore';
 import {
   ADMIN_PERSONAS,
+  bylawsInForce,
   checkCanDeleteTestVoters,
   Collections,
   MAX_TEST_VOTERS,
@@ -79,13 +80,11 @@ export class PersonasService {
       if (existing.data().count + input.voters > MAX_TEST_VOTERS) {
         throw new BadRequestException(`a deployment holds at most ${MAX_TEST_VOTERS} test voters; it has ${existing.data().count}`);
       }
-      bylawsVersion = (await this.membership.currentBylaws())?.version ?? null;
-      if (!bylawsVersion) {
-        throw new ConflictException('publish bylaws before adding test voters: act as the Test Membership Admin and use Admin → Bylaws');
-      }
+      // On the bylaws in force, or none while none are (design §5.2).
+      bylawsVersion = bylawsInForce(await this.membership.currentBylaws())?.version ?? null;
     }
     for (const { kind, label } of ADMIN_PERSONAS) await this.createAdmin(operator, kind, label);
-    for (let i = 0; i < input.voters; i++) await this.createVoter(operator, bylawsVersion!);
+    for (let i = 0; i < input.voters; i++) await this.createVoter(operator, bylawsVersion);
     return this.list();
   }
 
@@ -135,7 +134,7 @@ export class PersonasService {
     });
   }
 
-  private async createVoter(operator: string, bylawsVersion: string): Promise<void> {
+  private async createVoter(operator: string, bylawsVersion: string | null): Promise<void> {
     const db = this.firebase.db;
     await db.runTransaction(async (tx) => {
       const voters = await tx.get(db.collection(Collections.testingPersonas).where('kind', '==', 'voter'));

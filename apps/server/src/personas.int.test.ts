@@ -157,10 +157,13 @@ describe('test personas', () => {
     expect((await api.call('POST', '/v1/admin/roles', sa1, real)).status).toBe(201);
   });
 
-  it('adds numbered voters as Active members once bylaws are published', async () => {
-    const early = await api.call('POST', '/v1/testing/personas', sa1, { voters: 2 });
-    expect(early).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/publish bylaws/) } });
+  it('adds test voters while no bylaws are in force, on none', async () => {
+    const early = (await api.call('POST', '/v1/testing/personas', sa1, { voters: 1 })).body as PersonaSummary[];
+    const voter = idOf(early, 'Test Voter 1');
+    expect((await api.call('GET', '/v1/me', sa1, undefined, as(voter))).body.member).toMatchObject({ status: 'active', bylawsVersion: null });
+  });
 
+  it('adds numbered voters as Active members on the bylaws in force', async () => {
     const personas = await personasWithVoters(2);
     expect(personas.filter((p) => p.kind === 'voter').map((p) => [p.label, p.number, p.roles, p.memberStatus])).toEqual([
       ['Test Voter 1', 1, [], 'active'],

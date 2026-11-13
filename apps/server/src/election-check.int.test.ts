@@ -147,7 +147,7 @@ describe('the election setup check', () => {
     expect((await api.call('GET', '/v1/public/elections/nope/bylaws-check')).status).toBe(404);
 
     await api.firebase.db.collection(Collections.bylawsVersions).doc('2026.1').delete();
-    expect(await api.call('POST', checksUrl(draft), ea)).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/no bylaws have been published/) } });
+    expect(await api.call('POST', checksUrl(draft), ea)).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/no bylaws are in force/) } });
   });
 
   it('fails a check the worker cannot run, which can then be asked for again', async () => {

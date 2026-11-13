@@ -115,7 +115,7 @@ onMounted(load);
             Party email: {{ partyEmail(a) }}
           </q-item-label>
           <q-item-label caption>
-            Submitted {{ new Date(a.submittedAt).toLocaleString() }} · bylaws {{ a.bylawsVersion }} · account
+            Submitted {{ new Date(a.submittedAt).toLocaleString() }} · {{ a.bylawsVersion ? `bylaws ${a.bylawsVersion}` : 'no bylaws in force' }} · account
             <code>{{ a.accountId }}</code>
           </q-item-label>
           <q-item-label v-if="a.statement" class="q-mt-xs" style="white-space: pre-wrap">{{ a.statement }}</q-item-label>

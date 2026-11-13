@@ -52,7 +52,8 @@ export interface MemberRecord {
    * the platform and the party's structure may be limited to those who answered Yes (design §5.2, §6.3).
    */
   readonly agreesWithCoreIdeals: boolean | null;
-  readonly bylawsVersion: string;
+  /** The bylaws version the member agreed to, or was added on; null when none was in force (design §5.2). */
+  readonly bylawsVersion: string | null;
   /** First time the member became Active. */
   readonly memberSince: string | null;
   readonly statusChangedAt: string;
@@ -78,8 +79,9 @@ export interface ApplicationRecord {
   readonly accountId: string;
   readonly status: ApplicationStatus;
   readonly submittedAt: string;
-  readonly bylawsVersion: string;
-  readonly bylawsHash: string;
+  /** The bylaws the applicant agreed to; both null when none were in force (design §5.2). */
+  readonly bylawsVersion: string | null;
+  readonly bylawsHash: string | null;
   readonly legalName: string;
   readonly preferredName: string | null;
   /** `YYYY-MM-DD`. Only on the application, for the Membership Admin's review; never copied to the member. */

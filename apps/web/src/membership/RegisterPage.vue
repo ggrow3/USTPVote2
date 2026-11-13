@@ -3,6 +3,7 @@ import { sendEmailVerification } from 'firebase/auth';
 import { useQuasar } from 'quasar';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import {
+  bylawsInForce,
   createApplicationSchema,
   DEFAULT_COUNTRY,
   DEFAULT_REGISTRATION_FORM,
@@ -66,8 +67,27 @@ const tips = computed(() =>
 );
 
 // Step 2: the application.
+/** The bylaws applicants agree to; null while none are in force (none published, or cleared), design §5.2. */
 const bylaws = ref<BylawsRecord | null>(null);
+const bylawsLoaded = ref(false);
 const bylawsError = ref<string | null>(null);
+
+/** Reads the bylaws in force: none at all (404) and a blank version both mean there is nothing to show or agree to. */
+async function loadBylaws() {
+  bylawsError.value = null;
+  try {
+    const current = bylawsInForce(await api<BylawsRecord>('GET', '/v1/bylaws/current'));
+    if (current?.version !== bylaws.value?.version) agreed.value = false;
+    bylaws.value = current;
+  } catch (e) {
+    if (!(e instanceof ApiError && e.status === 404)) {
+      bylawsError.value = errorMessage(e);
+      return;
+    }
+    bylaws.value = null;
+  }
+  bylawsLoaded.value = true;
+}
 const applications = ref<ApplicationRecord[]>([]);
 const agreed = ref(false);
 const busy = ref(false);
@@ -160,12 +180,7 @@ watch(
   async (accountId) => {
     if (!accountId) return;
     applications.value = await myApplications().catch(() => []);
-    if (canApply.value && !bylaws.value) {
-      bylaws.value = await api<BylawsRecord>('GET', '/v1/bylaws/current').catch((e) => {
-        bylawsError.value = errorMessage(e);
-        return null;
-      });
-    }
+    if (canApply.value && !bylawsLoaded.value) await loadBylaws();
   },
   { immediate: true },
 );
@@ -251,14 +266,14 @@ async function resendVerification() {
 }
 
 async function submit() {
-  if (!bylaws.value || !wording.value) return;
-  if (!agreed.value) {
+  if (!bylawsLoaded.value || !wording.value) return;
+  if (bylaws.value && !agreed.value) {
     errors.value = { _: 'You must agree to the bylaws to apply.' };
     return;
   }
   const checked = validate(createApplicationSchema, {
-    bylawsVersion: bylaws.value.version,
-    bylawsHash: bylaws.value.contentHash,
+    bylawsVersion: bylaws.value?.version ?? null,
+    bylawsHash: bylaws.value?.contentHash ?? null,
     legalName: form.legalName,
     preferredName: optional(form.preferredName),
     dateOfBirth: form.dateOfBirth,
@@ -301,8 +316,8 @@ async function submit() {
     await focusSoon('#application-status');
   } catch (e) {
     errors.value = { _: errorMessage(e), ...apiFieldErrors(e) };
-    // A Membership Admin may have changed the questions meanwhile: show the new wording, keeping the answers.
-    if (e instanceof ApiError && e.status === 409) await loadWording();
+    // A Membership Admin may have changed the questions or the bylaws meanwhile: show the new ones, keeping the answers.
+    if (e instanceof ApiError && e.status === 409) await Promise.all([loadWording(), loadBylaws()]);
     await focusFirstInvalid();
   } finally {
     busy.value = false;
@@ -474,8 +489,13 @@ async function submit() {
         <q-banner v-if="lastDecision?.status === 'rejected'" class="bg-orange-1 text-black" rounded>
           Your previous application was not approved: {{ lastDecision.decisionReason }}
         </q-banner>
-        <q-banner v-if="bylawsError" class="bg-negative text-white" rounded>{{ bylawsError }}</q-banner>
-        <div v-else-if="!bylaws" class="text-grey-7">Loading the bylaws…</div>
+        <q-banner v-if="bylawsError" class="bg-negative text-white" rounded>
+          {{ bylawsError }}
+          <template #action>
+            <q-btn flat no-caps label="Try again" @click="loadBylaws" />
+          </template>
+        </q-banner>
+        <div v-else-if="!bylawsLoaded" class="text-grey-7">Loading the bylaws…</div>
         <q-banner v-if="wordingError && !wording" class="bg-negative text-white" rounded>
           {{ wordingError }}
           <template #action>
@@ -506,7 +526,7 @@ async function submit() {
         </q-card>
 
         <!-- Each section of the form is a card, its legend the card's heading. -->
-        <q-form v-if="bylaws && wording" class="ustp-stack" @submit.prevent="submit">
+        <q-form v-if="bylawsLoaded && wording" class="ustp-stack" @submit.prevent="submit">
           <q-card flat bordered>
             <q-card-section>
               <fieldset class="ustp-fieldset">

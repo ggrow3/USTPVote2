@@ -5,7 +5,6 @@ import ApiKeysPanel from '../claude-key/ApiKeysPanel.vue';
 import ApprovalsPanel from '../components/admin/ApprovalsPanel.vue';
 import AuditPanel from '../components/admin/AuditPanel.vue';
 import CoursePanel from '../components/admin/CoursePanel.vue';
-import BylawsPanel from '../components/admin/BylawsPanel.vue';
 import ElectionsPanel from '../components/admin/ElectionsPanel.vue';
 import OfficesPanel from '../offices/OfficesPanel.vue';
 import CandidaciesPanel from '../candidacies/CandidaciesPanel.vue';
@@ -44,7 +43,6 @@ const PANELS: Record<AdminSection, Component> = {
   members: MembersPanel,
   inbox: MembershipInboxPanel,
   photos: PhotosPanel,
-  bylaws: BylawsPanel,
   registration: RegistrationFormPanel,
   first_steps: FirstStepsPanel,
   elections: ElectionsPanel,
@@ -82,15 +80,20 @@ const email = computed(() => session.me?.account?.primaryEmail);
 const needsMfa = computed(() => !!session.me?.mfa.required && !session.me.mfa.signedInWithMfa);
 const route = useRoute();
 const router = useRouter();
-const requested = String(route.query.tab ?? '');
+/** Tabs that moved: the bylaws are edited in the Registration form tab now (design §5.2), so old links still reach them. */
+const MOVED_TABS: Readonly<Record<string, AdminSection>> = { bylaws: 'registration' };
+const tabAsked = (asked: unknown) => MOVED_TABS[String(asked ?? '')] ?? String(asked ?? '');
+const requested = tabAsked(route.query.tab);
 const tab = ref<string>(tabs.value.some((t) => t.name === requested) ? requested : (tabs.value[0]?.name ?? 'approvals'));
+if (route.query.tab !== undefined && route.query.tab !== tab.value) void router.replace({ query: { ...route.query, tab: tab.value } });
 // A link to another tab while the console is open, such as a walkthrough's Next, opens that tab; a tab picked here is
 // kept in the address, so such a link is never to the address already shown, and a reload stays on it. Neither is a
 // page visit (§10.7), and the admin pages have no analytics.
 watch(
   () => route.query.tab,
   (now) => {
-    if (tabs.value.some((t) => t.name === now)) tab.value = String(now);
+    const asked = tabAsked(now);
+    if (tabs.value.some((t) => t.name === asked)) tab.value = asked;
   },
 );
 watch(tab, (now) => {

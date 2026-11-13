@@ -286,8 +286,8 @@ export function correctMemberDetails(
 
 /**
  * A Membership Admin adds someone as an Active member at once (design §5.13), with a written reason: like a test voter
- * persona, a status change that skips the application, on the bylaws in force (`bylawsVersion`), which the member has
- * not been shown. They answered neither membership question here: the US-vote answer is the admin's, if given, and
+ * persona, a status change that skips the application, on the bylaws in force (`bylawsVersion`, null while none are),
+ * which the member has not been shown. They answered neither membership question here: the US-vote answer is the admin's, if given, and
  * the Core Ideals answer stays "Not asked". The admin gives no email opt-ins: those are the member's to give.
  */
 export function memberAddition(args: {
@@ -295,7 +295,7 @@ export function memberAddition(args: {
   readonly member: NewMember;
   readonly actor: string;
   readonly reason: string;
-  readonly bylawsVersion: string;
+  readonly bylawsVersion: string | null;
   readonly at: string;
 }): StatusTransition {
   const { member } = args;
@@ -324,13 +324,14 @@ export function memberAddition(args: {
 
 /**
  * A test voter persona joins as an Active member at once (design §10.4), the one status change that skips the
- * application; testing mode allows it. It is recorded like any other change, with the reason `test persona`.
+ * application; testing mode allows it. It is recorded like any other change, with the reason `test persona`, on the
+ * bylaws in force (`bylawsVersion`, null while none are).
  */
 export function testVoterAdmission(persona: {
   readonly accountId: string;
   readonly label: string;
   readonly actor: string;
-  readonly bylawsVersion: string;
+  readonly bylawsVersion: string | null;
   readonly at: string;
 }): StatusTransition {
   return memberStatusTransition({

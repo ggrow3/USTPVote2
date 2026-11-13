@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Collections, definitionHash, positionsHash, type BylawsRecord, type ElectionCheckBasis, type PositionRecord } from 'ustp-domain';
+import { bylawsInForce, Collections, definitionHash, positionsHash, type BylawsRecord, type ElectionCheckBasis, type PositionRecord } from 'ustp-domain';
 import { ElectionReader, type LoadedElection } from '../elections/election-reader.js';
 import { Firebase } from '../infra/firebase.js';
 
@@ -36,9 +36,12 @@ export class ElectionCheckMaterials {
     return { ...loaded, positions, bylaws, basis };
   }
 
-  /** The newest published version, as `MembershipService.currentBylaws` reads it (the worker has no membership service). */
+  /**
+   * The bylaws in force: the newest published version, as `MembershipService.currentBylaws` reads it (the worker has
+   * no membership service), unless it is blank (design §5.2).
+   */
   private async currentBylaws(): Promise<BylawsRecord | null> {
     const snap = await this.firebase.db.collection(Collections.bylawsVersions).orderBy('publishedAt', 'desc').limit(1).get();
-    return (snap.docs[0]?.data() as BylawsRecord | undefined) ?? null;
+    return bylawsInForce(snap.docs[0]?.data() as BylawsRecord | undefined);
   }
 }

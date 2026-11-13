@@ -224,7 +224,17 @@ describe('applications', () => {
 
   it('are made against the current bylaws and form, within the limit, by someone who may apply', () => {
     const base = { applicationId: 'app-1', accountId: 'acc-1', input, bylaws, formVersion: 2, recent: 0, current: null, at: AT };
-    expect(submitApplication({ ...base, bylaws: null })).toMatchObject({ ok: false, reason: 'no bylaws have been published yet' });
+    // With no bylaws in force (none published, or the newest blank), an application agrees to none.
+    for (const none of [null, { ...bylaws, text: ' \n' }]) {
+      expect(submitApplication({ ...base, bylaws: none })).toMatchObject({ ok: false, refusal: 'conflict', reason: /none are in force/ });
+      const agreeingToNone = submitApplication({ ...base, bylaws: none, input: { ...input, bylawsVersion: null, bylawsHash: null } });
+      expect(agreeingToNone).toMatchObject({ ok: true, value: { application: { bylawsVersion: null, bylawsHash: null } } });
+      expect(agreeingToNone.ok && agreeingToNone.value.transition.member.bylawsVersion).toBeNull();
+    }
+    expect(submitApplication({ ...base, input: { ...input, bylawsVersion: null, bylawsHash: null } })).toMatchObject({
+      ok: false,
+      reason: /bylaws have changed/,
+    });
     expect(submitApplication({ ...base, input: { ...input, bylawsHash: 'b'.repeat(64) } })).toMatchObject({
       ok: false,
       reason: /bylaws have changed/,
