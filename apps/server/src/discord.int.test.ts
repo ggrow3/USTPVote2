@@ -17,6 +17,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { CONFIG, type ServerConfig } from './config.js';
 import { DISCORD_API, STUB_APPLICATION, STUB_UNKNOWN_CHANNEL, type DiscordApi } from './discord/discord-api.js';
 import { DiscordCommandSync } from './discord/discord-commands.js';
+import { DiscordKeepWarm } from './discord/discord-keep-warm.js';
 import { DiscordToken } from './discord/discord-token.js';
 import { DiscordFeed } from './discord/discord-feed.js';
 import { DiscordSettingsService } from './discord/discord-settings.js';
@@ -407,6 +408,42 @@ describe('the slash commands', () => {
     expect(await sync({ application: async () => ({ ok: false, problem: "Discord did not accept the bot's token" }) })).toBe(true);
     expect(await state()).toMatchObject({ applicationId: null, publicKey: null, registered: false, problem: "Discord did not accept the bot's token" });
     expect(await publicKey()).toBeNull();
+  });
+
+  describe('kept awake', () => {
+    /** The worker's step with a commands service, and what it asked for. */
+    const ping = async (answer: () => Promise<Response> = async () => new Response('ok'), config: Partial<ServerConfig> = {}) => {
+      const asked: string[] = [];
+      const step = new DiscordKeepWarm(worker.app.get(Firebase), { ...worker.app.get<ServerConfig>(CONFIG), discordInteractionsUrl: ENDPOINT, ...config });
+      step.fetcher = async (url) => (asked.push(String(url)), answer());
+      return { started: await step.ping(), asked };
+    };
+
+    it('asks nothing before Discord has the address, or without a commands service', async () => {
+      expect(await ping()).toEqual({ started: false, asked: [] });
+      await addToken();
+      await sync({ setInteractionsUrl: async () => ({ ok: false, problem: 'refused' }) });
+      expect((await ping()).asked).toEqual([]);
+      await sync({}, '2026-11-13T12:03:00.000Z');
+      expect((await ping(undefined, { discordInteractionsUrl: null })).asked).toEqual([]);
+      expect((await ping(undefined, { discord: 'off' })).asked).toEqual([]);
+    });
+
+    it("asks the commands service for its health once Discord has the address, and a silent service does not fail the tick's step", async () => {
+      await addToken();
+      await sync();
+      expect(await ping()).toEqual({ started: false, asked: ['https://discord.example.test/health'] });
+      expect((await ping(async () => new Response('no', { status: 503 }))).started).toBe(false);
+      expect(
+        (
+          await ping(async () => {
+            throw new Error('unreachable');
+          })
+        ).started,
+      ).toBe(false);
+      // The emulators have no commands service: the tick's own step asks nothing.
+      expect((await worker.tick()).status).toBe(200);
+    });
   });
 
   it('shows Communications Admins where commands go and whether Discord was told', async () => {

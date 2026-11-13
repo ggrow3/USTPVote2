@@ -14,6 +14,7 @@ import { PollsService } from '../communications/polls.service.js';
 import { SuggestionsService } from '../communications/suggestions.service.js';
 import { DiscordCommandSync } from '../discord/discord-commands.js';
 import { DiscordFeed } from '../discord/discord-feed.js';
+import { DiscordKeepWarm } from '../discord/discord-keep-warm.js';
 import { ConsistencyCheckRunner } from '../consistency-check/consistency-check-runner.js';
 import { ElectionCheckRunner } from '../election-check/election-check-runner.js';
 import { MailEventRecorder } from '../notifications/mail-events.js';
@@ -71,6 +72,7 @@ export class TasksController {
     private readonly publicBills: PublicBills,
     private readonly discordFeed: DiscordFeed,
     private readonly discordCommands: DiscordCommandSync,
+    private readonly discordKeepWarm: DiscordKeepWarm,
   ) {}
 
   /**
@@ -82,8 +84,8 @@ export class TasksController {
    * up every hour or when a System Admin asks (§10.12), delete suggestions a year old and closed issue polls' marks (§10.16)
    * (design §10.9) and the members' room's records past their time (§5.10), then seal new ledger entries (including those) into a signed block, sign approved rolls and anchor
    * new blocks, read the public bills due again from Congress.gov, for at most 20 seconds (§5.14), and last post what is
-   * new to the party's Discord and tell Discord of the bot's commands when they or its token changed (§10.18). Each step
-   * runs even if an earlier one failed.
+   * new to the party's Discord and tell Discord of the bot's commands when they or its token changed, and ask
+   * the commands service for its health so it stays running (§10.18). Each step runs even if an earlier one failed.
    */
   @Post('tick')
   @HttpCode(200)
@@ -134,6 +136,7 @@ export class TasksController {
       discordPosts: await step('post to Discord', () => this.discordFeed.postDue(), 0),
     };
     await step('tell Discord of the commands', () => this.discordCommands.sync(), false);
+    await step('keep the Discord commands service awake', () => this.discordKeepWarm.ping(), false);
     if (failures.length) throw new InternalServerErrorException(`tick incomplete (${JSON.stringify(result)}): ${failures.join('; ')}`);
     return result;
   }

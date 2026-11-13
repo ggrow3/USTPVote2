@@ -425,7 +425,7 @@ variable "discord_max_instances" {
 }
 
 variable "discord_min_instances" {
-  description = "Instances of the Discord bot's commands service kept running. 0 costs nothing while nobody runs a command, but the first command after a quiet spell may go unanswered while an instance starts (Discord waits three seconds); 1 answers every command."
+  description = "Instances of the Discord bot's commands service kept running. 0 costs next to nothing: the worker's tick asks the service for its health every minute so it stays running, but Cloud Run may stop it anyway, and a command that arrives then goes unanswered while an instance starts (Discord waits three seconds); 1 answers every command."
   type        = number
   default     = 0
 }
