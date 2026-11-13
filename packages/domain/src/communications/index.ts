@@ -13,3 +13,4 @@ export * from './calendar.js';
 export * from './suggestions.js';
 export * from './press-kit.js';
 export * from './bots.js';
+export * from './polls.js';

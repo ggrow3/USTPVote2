@@ -82,6 +82,9 @@ export const router = createRouter({
         { path: 'news/:slug', component: () => import('./communications/NewsPostPage.vue') },
         { path: 'press', component: () => import('./communications/PressPage.vue') },
         { path: 'suggest', component: () => import('./communications/SuggestPage.vue') },
+        // Issue polls anyone may answer, signed in or not (design §10.15).
+        { path: 'polls', component: () => import('./communications/PollsPage.vue') },
+        { path: 'polls/:id', component: () => import('./communications/PollPage.vue') },
         { path: 'share', component: () => import('./communications/SharePage.vue'), meta: { requiresAuth: true } },
         // Open to anyone signed in: the page tells people without an admin role who it is for.
         { path: 'admin', component: () => import('./pages/AdminPage.vue'), meta: { requiresAuth: true } },

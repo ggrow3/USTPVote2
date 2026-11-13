@@ -54,7 +54,7 @@ import { TasksController } from './tasks.controller.js';
     ...MEMBER_DIRECTORY_PROVIDERS,
     ...NOTIFICATION_WORKER_PROVIDERS,
     ...INBOX_WORKER_PROVIDERS,
-    // Suggestions are deleted a year after they arrive (design §10.9).
+    // Suggestions are deleted a year after they arrive (design §10.9), closed polls' marks at once (§10.15).
     ...COMMUNICATIONS_WORKER_PROVIDERS,
     // The members' room: questions for its assistant, and its retention (design §5.10).
     ...ROOM_WORKER_PROVIDERS,

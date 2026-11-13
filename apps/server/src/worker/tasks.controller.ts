@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import type { BylawsRunResult, ConsistencyRunResult, ElectionRunResult, TickResult } from 'ustp-domain';
 import { BylawsCheckRunner } from '../bylaws-check/bylaws-check-runner.js';
+import { PollsService } from '../communications/polls.service.js';
 import { SuggestionsService } from '../communications/suggestions.service.js';
 import { ConsistencyCheckRunner } from '../consistency-check/consistency-check-runner.js';
 import { ElectionCheckRunner } from '../election-check/election-check-runner.js';
@@ -59,6 +60,7 @@ export class TasksController {
     private readonly membershipMail: MembershipMailer,
     private readonly sendChecks: SendVerifier,
     private readonly suggestions: SuggestionsService,
+    private readonly polls: PollsService,
     private readonly roomRetention: RoomRetention,
     private readonly roomAssistant: RoomAssistant,
   ) {}
@@ -68,7 +70,7 @@ export class TasksController {
    * now fully sealed, destroy the pool keys of certified and cancelled elections, send election notices (for at most
    * 20 seconds, vote confirmations first), the weekly digest when it is due (§10.14) and the emails admins wrote to members (§10.12), the test emails Election Admins asked for and the welcome emails of added members (§5.13), record what
    * the mail provider reported of them and ledger each notice round's reports after three days, check how email is set
-   * up every hour or when a System Admin asks (§10.12), delete suggestions a year old
+   * up every hour or when a System Admin asks (§10.12), delete suggestions a year old and closed issue polls' marks (§10.15)
    * (design §10.9) and the members' room's records past their time (§5.10), then seal new ledger entries (including those) into a signed block, sign approved rolls and anchor
    * new blocks. Each step runs even if an earlier one failed.
    */
@@ -111,6 +113,7 @@ export class TasksController {
       sendsVerified: await step('verify sends', () => this.sendChecks.verifyDue(), 0),
       mailChecked: await step('check mail setup', () => this.mailHealth.runDue(), false),
       suggestionsDeleted: await step('delete old suggestions', () => this.suggestions.deleteExpired(), 0),
+      pollMarksDeleted: await step("delete closed polls' marks", () => this.polls.clearClosed(), 0),
       roomExpired: await step('expire room records', () => this.roomRetention.run(), 0),
       blocksSealed: (await step('seal blocks', () => this.sealer.sealBlocks(), [])).length,
       rollsSigned: await step('sign rolls', () => this.sealer.signRolls(), 0),

@@ -18,6 +18,7 @@
       { "source": "/candidates/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/course/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/results/*", "run": { "serviceId": "api", "region": "us-central1" } },
+      { "source": "/polls/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "**", "destination": "/index.html" }
     ],
     "headers": [

@@ -96,6 +96,7 @@ import {
   PublicSuggestionsController,
   ShareController,
 } from '../communications/communications.controller.js';
+import { PollsAdminController, PublicPollsController } from '../communications/polls.controller.js';
 import { TEAMS_PROVIDERS } from '../teams/providers.js';
 import { BillsAdminController, BillsController } from '../bills/bills.controller.js';
 import { BILLS_PROVIDERS } from '../bills/providers.js';
@@ -107,7 +108,7 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
  * M1: accounts, registration, membership administration, profile photos, roles and approvals, auth switches, ledger.
  * M2: election setup, rolls, scheduling and cancellation; the published ledger (blocks, keys, proofs, anchors).
  * M3: voting. M4: results, certification, offices and terms; teams (design §5.7), the forum (§5.9), the members' room (§5.10). Testing mode: test personas and demo elections (design
- * §10.4). M5: who sees which link (design §10.5), the home page hub (§10.6), communications (§10.9), robots.txt,
+ * §10.4). M5: who sees which link (design §10.5), the home page hub (§10.6), communications (§10.9), issue polls (§10.15), robots.txt,
  * the sitemap and link previews (§15); the
  * platform consistency check (design §5.5), the election setup check (§6.9) and the Anthropic API key (design §5.6);
  * candidacies for public office and their districts' map (design §5.8); the legislative team's Bills tool (design §5.14);
@@ -181,6 +182,8 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     PublicSuggestionsController,
     ShareController,
     CommunicationsAdminController,
+    PublicPollsController,
+    PollsAdminController,
     SearchEnginesController,
     ...LINK_PREVIEW_CONTROLLERS,
     SecurityController,

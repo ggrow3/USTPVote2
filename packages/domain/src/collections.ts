@@ -162,6 +162,17 @@ export const Collections = {
   suggestionLimits: 'suggestion_limits',
   /** `bots/{botId}`: the registry of the party's bots. */
   bots: 'bots',
+  // issue polls (design §10.15): non-binding, apart from elections, never ledgered
+  /** `polls/{pollId}`: the public issue polls Communications Admins write, drafts too. */
+  polls: 'polls',
+  /** `poll_tallies/{pollId}_{shard}`: each poll's counts, split over a few documents so many can vote at once. */
+  pollTallies: 'poll_tallies',
+  /** `poll_marks/{pollId}_{a|b}{hash}`: that an account or a browser has answered a poll, never what; deleted at the close. */
+  pollMarks: 'poll_marks',
+  /** `poll_limits/{YYYY-MM-DD}`: each day's salt for counting voters' addresses; deleted the day after next. */
+  pollLimits: 'poll_limits',
+  /** `poll_address_counts/{day}_{pollId}_{hash}`: answers from one address to one poll that day; deleted the day after next. */
+  pollAddressCounts: 'poll_address_counts',
   // notifications (design §6.8)
   notices: 'notices',
   noticeOutbox: 'notice_outbox',

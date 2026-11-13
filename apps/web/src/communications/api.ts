@@ -1,19 +1,24 @@
+import { POLL_VOTER_HEADER } from 'ustp-domain';
 import type {
+  AdminPoll,
   BotRecord,
   CalendarItemRecord,
   CalendarStatusInput,
   CreateBotInput,
   CreateCalendarItemInput,
   CreateNewsInput,
+  CreatePollInput,
   CreateSharePostInput,
   MemberSharePost,
   NewsPostRecord,
   PressAssetRecord,
   PressKitInput,
+  PollVoteInput,
   PressKitRecord,
   PublicBot,
   PublicNewsPost,
   PublicNewsSummary,
+  PublicPoll,
   PublicPressKit,
   ShareCountsRecord,
   ShareItem,
@@ -25,6 +30,7 @@ import type {
   UpdateBotInput,
   UpdateCalendarItemInput,
   UpdateNewsInput,
+  UpdatePollInput,
   UpdateSharePostInput,
 } from 'ustp-domain';
 import { api, apiBlob, apiUpload } from '../api.js';
@@ -57,6 +63,19 @@ export const sendSuggestion = (input: Partial<SuggestionInput>) =>
   api<{ received: true }>('POST', '/v1/suggestions', input, { appCheck: true });
 
 export const shareKit = () => api<MemberSharePost[]>('GET', '/v1/share');
+
+/**
+ * Issue polls (design §10.15). A signed-out browser shows its token, so the api can tell whether it answered; someone
+ * signed in with an account reads and answers as themself. A signed-out answer is App Checked, as the suggestions form.
+ */
+const voterHeaders = (voter: string) => ({ headers: { [POLL_VOTER_HEADER]: voter } });
+export const pollsList = (voter: string) => api<PublicPoll[]>('GET', '/v1/polls', undefined, voterHeaders(voter));
+export const pollView = (pollId: string, voter: string, signedIn: boolean) =>
+  api<PublicPoll>('GET', signedIn ? `/v1/polls/${id(pollId)}/mine` : `/v1/polls/${id(pollId)}`, undefined, voterHeaders(voter));
+export const answerPoll = (pollId: string, input: PollVoteInput, signedIn: boolean) =>
+  signedIn
+    ? api<PublicPoll>('POST', `/v1/polls/${id(pollId)}/member-votes`, input)
+    : api<PublicPoll>('POST', `/v1/polls/${id(pollId)}/votes`, input, { appCheck: true });
 
 /** Counts a press of a share button; never fails the share itself. */
 export function countShare(item: ShareItem, target: ShareTarget): void {
@@ -108,3 +127,10 @@ export const addBot = (input: CreateBotInput) => api<BotRecord>('POST', `${ADMIN
 export const saveBot = (botId: string, input: UpdateBotInput) => api<BotRecord>('PUT', `${ADMIN}/bots/${id(botId)}`, input);
 export const botChecked = (botId: string, basedOn: number) => api<BotRecord>('POST', `${ADMIN}/bots/${id(botId)}/checked`, { basedOn });
 export const removeBot = (botId: string) => api<void>('DELETE', `${ADMIN}/bots/${id(botId)}`);
+
+export const adminPolls = () => api<AdminPoll[]>('GET', `${ADMIN}/polls`);
+export const createPoll = (input: CreatePollInput) => api<AdminPoll>('POST', `${ADMIN}/polls`, input);
+export const savePoll = (pollId: string, input: UpdatePollInput) => api<AdminPoll>('PUT', `${ADMIN}/polls/${id(pollId)}`, input);
+export const publishPollNow = (pollId: string, basedOn: number) => api<AdminPoll>('POST', `${ADMIN}/polls/${id(pollId)}/publish`, { basedOn });
+export const closePollNow = (pollId: string, basedOn: number) => api<AdminPoll>('POST', `${ADMIN}/polls/${id(pollId)}/close`, { basedOn });
+export const deletePoll = (pollId: string) => api<void>('DELETE', `${ADMIN}/polls/${id(pollId)}`);

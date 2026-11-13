@@ -8,12 +8,13 @@ import { targetIcon } from './comms-text.js';
 
 /**
  * Share buttons (design §10.9): each is a plain link to a site's own composer with the post filled in, opened in a new
- * tab; the person sharing presses Post there. Nothing from those sites loads here. Each press is counted, nothing more.
+ * tab; the person sharing presses Post there. Nothing from those sites loads here. Each press is counted (where the
+ * page has a count), nothing more.
  */
 const props = defineProps<{
   item: Shareable;
-  /** What the presses are counted against. */
-  countAs: ShareItem;
+  /** What the presses are counted against; none for pages whose shares are not counted (results, design §10.15). */
+  countAs?: ShareItem;
   /** Show under each button what the site will make of the post (too long, link only): for the share kit. */
   fit?: boolean;
 }>();
@@ -42,7 +43,7 @@ const buttons = computed(() =>
 const canShare = typeof navigator !== 'undefined' && 'share' in navigator;
 
 function pressed(target: ShareTarget) {
-  countShare(props.countAs, target);
+  if (props.countAs) countShare(props.countAs, target);
 }
 
 /** Mastodon has no one site: ask once for the sharer's own server, kept in this browser. */

@@ -6,22 +6,24 @@ import EmailTemplatesAdmin from '../candidacies/EmailTemplatesAdmin.vue';
 import BotsAdmin from './BotsAdmin.vue';
 import CalendarAdmin from './CalendarAdmin.vue';
 import NewsAdmin from './NewsAdmin.vue';
+import PollsAdmin from './PollsAdmin.vue';
 import PressKitAdmin from './PressKitAdmin.vue';
 import ShareKitAdmin from './ShareKitAdmin.vue';
 import SuggestionsAdmin from './SuggestionsAdmin.vue';
 import { suggestions } from './api.js';
 
 /**
- * Communications, for Communications Admins (design §10.9): news and press releases, the share kit for members, the
- * social media calendar, suggestions from the public, the press kit, the party's bots, and the office holders,
+ * Communications, for Communications Admins (design §10.9): news and press releases, the share kit for members, issue
+ * polls (§10.15), the social media calendar, suggestions from the public, the press kit, the party's bots, and the office holders,
  * candidates and email templates of members' Your area page (design §5.12). The home page's Link hub,
  * with the party's social accounts, is its own section beside this one.
  */
-type View = 'news' | 'share' | 'calendar' | 'suggestions' | 'press' | 'bots' | 'people' | 'templates';
+type View = 'news' | 'share' | 'polls' | 'calendar' | 'suggestions' | 'press' | 'bots' | 'people' | 'templates';
 const unread = ref(0);
 const TABS: readonly { name: View; label: string; icon: string }[] = [
   { name: 'news', label: 'News', icon: 'article' },
   { name: 'share', label: 'Share kit', icon: 'share' },
+  { name: 'polls', label: 'Polls', icon: 'poll' },
   { name: 'calendar', label: 'Calendar', icon: 'event' },
   { name: 'suggestions', label: 'Suggestions', icon: 'lightbulb' },
   { name: 'press', label: 'Press kit', icon: 'mic' },
@@ -54,6 +56,7 @@ onMounted(async () => {
     <q-tab-panels v-model="view" keep-alive class="bg-transparent">
       <q-tab-panel id="comms-panel-news" name="news" aria-labelledby="comms-tab-news" class="q-px-none"><NewsAdmin /></q-tab-panel>
       <q-tab-panel id="comms-panel-share" name="share" aria-labelledby="comms-tab-share" class="q-px-none"><ShareKitAdmin /></q-tab-panel>
+      <q-tab-panel id="comms-panel-polls" name="polls" aria-labelledby="comms-tab-polls" class="q-px-none"><PollsAdmin /></q-tab-panel>
       <q-tab-panel id="comms-panel-calendar" name="calendar" aria-labelledby="comms-tab-calendar" class="q-px-none"><CalendarAdmin /></q-tab-panel>
       <q-tab-panel id="comms-panel-suggestions" name="suggestions" aria-labelledby="comms-tab-suggestions" class="q-px-none">
         <SuggestionsAdmin @unread="unread = $event" />

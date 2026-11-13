@@ -25,11 +25,12 @@ import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { MemberDirectory } from '../membership/member-directory.js';
 import { CommunicationsRepository } from './communications.repository.js';
+import { PollsService } from './polls.service.js';
 
 /**
  * The share kit (design §10.9): ready-made posts for Active members to share from their own accounts, and how often
- * each share button is pressed, on these and on news posts. Publishing, editing a published post and archiving are
- * ledgered.
+ * each share button is pressed, on these, on news posts and on issue polls (§10.15). Publishing, editing a published
+ * post and archiving are ledgered.
  */
 @Injectable()
 export class ShareKitService {
@@ -38,6 +39,7 @@ export class ShareKitService {
     private readonly repo: CommunicationsRepository,
     private readonly ledger: LedgerService,
     private readonly members: MemberDirectory,
+    private readonly polls: PollsService,
   ) {}
 
   /** What an Active member is offered today, newest first. */
@@ -61,7 +63,9 @@ export class ShareKitService {
         ? (await this.repo.newsBySlug(item.slug))?.status === 'published'
         : item?.kind === 'kit'
           ? (await this.repo.findSharePost(item.shareId))?.status === 'published'
-          : false;
+          : item?.kind === 'poll'
+            ? (await this.polls.findPublished(item.pollId)) !== null
+            : false;
     if (!shareable) throw new NotFoundException('nothing to share by that name');
     await this.repo.countShare(input.item as ShareCountsRecord['item'], input.target, new Date().toISOString());
   }

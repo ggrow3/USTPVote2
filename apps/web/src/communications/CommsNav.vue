@@ -3,12 +3,13 @@ import { computed } from 'vue';
 import { session } from '../session.js';
 
 /**
- * The links between the public communications pages (design §10.9): News, the Press page, the share kit (shown to
- * Active members, the only people it is for) and the suggestions form.
+ * The links between the public communications pages (design §10.9): News, the Press page, issue polls (§10.15), the
+ * share kit (shown to Active members, the only people it is for) and the suggestions form.
  */
 const links = computed(() => [
   { to: '/news', label: 'News', icon: 'article' },
   { to: '/press', label: 'Press', icon: 'mic' },
+  { to: '/polls', label: 'Polls', icon: 'poll' },
   ...(session.me?.member?.status === 'active' ? [{ to: '/share', label: 'Share kit', icon: 'share' }] : []),
   { to: '/suggest', label: 'Send a suggestion', icon: 'lightbulb' },
 ]);

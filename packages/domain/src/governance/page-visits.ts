@@ -63,6 +63,8 @@ export const TRACKED_PAGES: readonly TrackedPage[] = [
   { id: 'news-post', pattern: '/news/:slug', label: 'A news post' },
   { id: 'press', pattern: '/press', label: 'Press kit' },
   { id: 'suggest', pattern: '/suggest', label: 'Suggestions' },
+  { id: 'polls', pattern: '/polls', label: 'Polls' },
+  { id: 'poll', pattern: '/polls/:id', label: 'A poll' },
   { id: 'share', pattern: '/share', label: 'Share kit' },
   { id: 'admin', pattern: '/admin', label: 'Admin console' },
   { id: 'admin-member', pattern: '/admin/members/:accountId', label: "A member's record (admin)" },
