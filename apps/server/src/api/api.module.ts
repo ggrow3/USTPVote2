@@ -66,6 +66,7 @@ import { JoinFunnelController } from '../membership/join-funnel.js';
 import { MembershipAdminController, RegistrationController } from '../membership/membership.controller.js';
 import { MEMBERSHIP_PROVIDERS } from '../membership/providers.js';
 import { PublicRegistrationFormController, RegistrationFormAdminController } from '../membership/registration-form.js';
+import { FirstStepsAdminController } from '../membership/first-steps-settings.js';
 import { BroadcastsController } from '../notifications/broadcasts.js';
 import { MailAdminController } from '../notifications/mail-admin.controller.js';
 import { MessageReportsController, MessagesController, MyNotificationsController } from '../inbox/inbox.controller.js';
@@ -124,6 +125,7 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     JoinFunnelController,
     PublicRegistrationFormController,
     RegistrationFormAdminController,
+    FirstStepsAdminController,
     BylawsChecksController,
     MyPhotoController,
     PhotoReviewController,

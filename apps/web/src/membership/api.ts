@@ -5,6 +5,8 @@ import type {
   ApplicationStatus,
   CreateApplicationInput,
   DecisionInput,
+  FirstStepsRecord,
+  FirstStepsSettingsInput,
   FirstStepsView,
   JoinFunnelReport,
   MemberCorrectionInput,
@@ -64,6 +66,20 @@ export function applications(status: ApplicationStatus): Promise<ApplicationReco
 /** The signed-in member's first steps and which they have done (design §5.16). */
 export function myFirstSteps(): Promise<FirstStepsView> {
   return api<FirstStepsView>('GET', '/v1/me/first-steps');
+}
+
+/** Ticks or unticks a step the member ticks themselves, and gives back their list (design §5.16). */
+export function tickFirstStep(id: string, done: boolean): Promise<FirstStepsView> {
+  return api<FirstStepsView>('PUT', `/v1/me/first-steps/${encodeURIComponent(id)}`, { done });
+}
+
+/** The getting started list as Membership Admins set it (design §5.16). */
+export function firstStepsSettings(): Promise<FirstStepsRecord> {
+  return api<FirstStepsRecord>('GET', '/v1/admin/first-steps');
+}
+
+export function saveFirstSteps(input: FirstStepsSettingsInput): Promise<FirstStepsRecord> {
+  return api<FirstStepsRecord>('PUT', '/v1/admin/first-steps', input);
 }
 
 /** The join funnel over the last `days` days (design §5.15). */

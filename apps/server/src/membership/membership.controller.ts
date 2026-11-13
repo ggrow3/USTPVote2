@@ -1,8 +1,10 @@
-import { Body, Controller, Get, HttpCode, NotFoundException, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, NotFoundException, Param, Post, Put, Query } from '@nestjs/common';
 import {
   addMemberSchema,
   createApplicationSchema,
   decisionSchema,
+  FIRST_STEP_ID,
+  firstStepTickSchema,
   MEMBER_STATUSES,
   memberCorrectionSchema,
   memberDetailsSchema,
@@ -15,6 +17,7 @@ import {
   type CreateApplicationInput,
   type DecisionInput,
   type FirstStepsView,
+  type FirstStepTickInput,
   type MemberCorrectionInput,
   type MemberDetailsInput,
   type MemberImportInput,
@@ -29,6 +32,7 @@ import type { RequestContext } from '../auth/principal.js';
 import { parseQuery, ZodPipe } from '../common/validation.js';
 import { MembershipApplications } from './applications.service.js';
 import { FirstStepsReader } from './first-steps.js';
+import { FirstStepsSettingsService } from './first-steps-settings.js';
 import { MemberDirectory } from './member-directory.js';
 import { MemberAdditions } from './member-additions.service.js';
 import { Members } from './members.service.js';
@@ -45,6 +49,7 @@ export class RegistrationController {
     private readonly members: Members,
     private readonly directory: MemberDirectory,
     private readonly steps: FirstStepsReader,
+    private readonly stepSettings: FirstStepsSettingsService,
   ) {}
 
   /** A member's first steps and which they have done (design §5.16); nothing for someone who is not an Active member. */
@@ -52,6 +57,18 @@ export class RegistrationController {
   async firstSteps(@Ctx() ctx: RequestContext): Promise<FirstStepsView> {
     const accountId = requireAccount(ctx);
     return this.steps.mine(accountId, await this.directory.find(accountId));
+  }
+
+  /** Ticks or unticks a step on the member's list that they tick themselves (design §5.16), and returns their list. */
+  @Put('me/first-steps/:id')
+  async tickFirstStep(
+    @Ctx() ctx: RequestContext,
+    @Param('id') id: string,
+    @Body(new ZodPipe(firstStepTickSchema)) body: FirstStepTickInput,
+  ): Promise<FirstStepsView> {
+    const accountId = requireAccount(ctx);
+    if (!FIRST_STEP_ID.test(id)) throw new NotFoundException('that step is not on the getting started list');
+    return this.stepSettings.tick(accountId, await this.directory.find(accountId), id, body.done);
   }
 
   @Public()

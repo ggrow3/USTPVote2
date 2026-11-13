@@ -8,6 +8,7 @@ export const LEDGER_EVENT_TYPES = [
   'account.deleted',
   'bylaws.published',
   'registration_form.changed',
+  'first_steps.changed',
   'role.granted',
   'role.revoked',
   'approval.requested',
