@@ -52,9 +52,10 @@ What is not domain-centred:
 | **Elections** (setup, roll, voting, sealing, results) | §5.5, §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results`, `consistency_checks`, `consistency_documents` | core |
 | **Offices** | §6.4 | `positions`, `position_terms` | supporting |
 | **Candidacies** (members running for public office; the Your area page of office holders, candidates and emails) | §5.8, §5.12 | `candidacies`, `area_contacts`, `email_templates` | supporting |
+| **Referrals** (members' referral links, credited on approval; the team leaderboard) | §5.18 | `referral_codes`, `referral_links` | supporting |
 | **Governance** (roles, two-person rule, testing mode, who sees which link, the voting home's quote, the home page hub, the Anthropic API key) | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `home_quote`, `hub`, `hub_logos`, `hub_covers`, `hub_backgrounds`, `hub_clicks`, `anthropic_key` | core rule, generic mechanism |
 | **Audit ledger** | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` | shared kernel |
-| **Notifications** (election notices by email) | §6.8 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests` | supporting |
+| **Notifications** (election notices by email; emails to members and to the newsletter's subscribers) | §6.8, §10.12, §10.15 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests`, `broadcasts`, `broadcast_recipients`, `newsletter_subscribers`, `newsletter_limits` | supporting |
 | **Inbox** (in-app notifications, messages between members, notifications by email, the membership inbox) | §10.13 | `app_notifications`, `inbox_preferences`, `member_threads`, `member_messages`, `member_blocks`, `message_reports`, `membership_threads`, `membership_messages` | supporting |
 | **Verification** (`ustp-verify`, `/verify`, receipt and results checks) | §7.5, §16 | — (reads the public record) | conformist |
 
@@ -79,6 +80,9 @@ flowchart LR
   ELE -- "offices exist; create terms at certification" --> OFF
   OFF -- "is the appointee an Active member? (appointment)" --> MEM
   CAN -- "is the candidate an Active member? their name" --> MEM
+  REF[Referrals]
+  MEM -- "whose link is this code? (apply)" --> REF
+  REF -- "referred applications, Active members; who is on which team" --> MEM
   ELE & OFF -- "two-person requests + handlers" --> GOV
   GOV -- "test voters (rehearsal roll), personas" --> MEM
   ACC & MEM & BYL & ELE & OFF & CAN & GOV -- "domain events, same transaction" --> LED

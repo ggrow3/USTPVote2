@@ -10,6 +10,7 @@ export const SITEMAP_PAGES = [
   '/',
   '/vote',
   '/register',
+  '/newsletter',
   '/courses',
   '/course/transhumanism',
   '/bylaws',

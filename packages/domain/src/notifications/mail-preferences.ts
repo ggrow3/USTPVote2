@@ -60,6 +60,8 @@ export function unsubscribeLinks(origin: string, token: string): UnsubscribeLink
 /** `GET` and `POST /v1/public/unsubscribe/{token}/…`: all a link's holder learns. Never whose it is. */
 export interface UnsubscribeStatus {
   readonly unsubscribed: boolean;
+  /** The link is a newsletter subscriber's (design §10.15), not a member's: unsubscribing deletes the address. */
+  readonly newsletter?: boolean;
 }
 
 /** `GET /v1/admin/mail/stops`: a member who gets no email, and why. */

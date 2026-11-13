@@ -151,6 +151,8 @@ export const Collections = {
   pageHits: 'page_hits',
   /** `page_visits/{visitId}`: a signed-in person's visit to a page, naming their account; expires (design §10.7). */
   pageVisits: 'page_visits',
+  /** `visit_sources/{day}_{hash}`: arrivals per UTC day by where they came from and their campaign tags; nothing about who (§10.7). */
+  visitSources: 'visit_sources',
   // communications (design §10.9)
   /** `news_posts/{postId}`: news, statements and press releases, drafts too. */
   newsPosts: 'news_posts',
@@ -204,6 +206,15 @@ export const Collections = {
   broadcastRecipients: 'broadcast_recipients',
   /** `mail_digest/weekly`: when the weekly digest is next due (design §10.14). */
   mailDigest: 'mail_digest',
+  /** `newsletter_subscribers/{subscriberId}`: an address on the newsletter's list, or waiting to be confirmed (§10.15). */
+  newsletterSubscribers: 'newsletter_subscribers',
+  /** `newsletter_limits/{YYYY-MM-DD}`: each day's salt and counts for the sign-up form's limits (§10.15). */
+  newsletterLimits: 'newsletter_limits',
+  // referrals (design §5.18)
+  /** `referral_codes/{code}`: whose referral link a code is. */
+  referralCodes: 'referral_codes',
+  /** `referral_links/{accountId}`: a member's referral code. */
+  referralLinks: 'referral_links',
   // testing mode (design §10.4)
   testingPersonas: 'testing_personas',
 } as const;

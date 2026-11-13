@@ -19,6 +19,7 @@ import { MembershipMailer } from '../inbox/membership-mailer.js';
 import { NotificationMailer } from '../inbox/notification-mailer.js';
 import { BroadcastSender } from '../notifications/broadcast-sender.js';
 import { MailRequestSender } from '../notifications/mail-requests.js';
+import { NewsletterSender } from '../notifications/newsletter-sender.js';
 import { NoticeSender } from '../notifications/notice-sender.js';
 import { SendVerifier } from '../notifications/send-verification.js';
 import { WeeklyDigest } from '../notifications/weekly-digest.js';
@@ -55,6 +56,7 @@ export class TasksController {
     private readonly mailHealth: MailHealthChecker,
     private readonly mailRequests: MailRequestSender,
     private readonly broadcasts: BroadcastSender,
+    private readonly newsletter: NewsletterSender,
     private readonly digest: WeeklyDigest,
     private readonly notificationMail: NotificationMailer,
     private readonly membershipMail: MembershipMailer,
@@ -68,7 +70,8 @@ export class TasksController {
   /**
    * Every minute: prepare ballot-pool keys, open and close elections on time, seal ballots, tally elections that are
    * now fully sealed, destroy the pool keys of certified and cancelled elections, send election notices (for at most
-   * 20 seconds, vote confirmations first), the weekly digest when it is due (§10.14) and the emails admins wrote to members (§10.12), the test emails Election Admins asked for and the welcome emails of added members (§5.13), record what
+   * 20 seconds, vote confirmations first), the weekly digest when it is due (§10.14) and the emails admins wrote to members (§10.12), the
+   * links confirming newsletter sign-ups (§10.15), the test emails Election Admins asked for and the welcome emails of added members (§5.13), record what
    * the mail provider reported of them and ledger each notice round's reports after three days, check how email is set
    * up every hour or when a System Admin asks (§10.12), delete suggestions a year old
    * (design §10.9) and the members' room's records past their time (§5.10), then seal new ledger entries (including those) into a signed block, sign approved rolls and anchor
@@ -107,6 +110,7 @@ export class TasksController {
       memberEmailsSent: await step("do members' email requests", () => this.mailRequests.sendDue(), 0),
       digestsQueued: await step('queue the weekly digest', () => this.digest.queueDue(), 0),
       broadcastEmailsSent: await step("send admins' emails to members", () => this.broadcasts.sendDue(), 0),
+      newsletterConfirmationsSent: await step('confirm newsletter sign-ups', () => this.newsletter.sendDue(), 0),
       notificationEmailsSent: await step('email notifications', () => this.notificationMail.sendDue(), 0),
       membershipEmailsSent: await step("email the membership team's messages", () => this.membershipMail.sendDue(), 0),
       mailEventsRecorded: await step('record mail events', () => this.mailEvents.record(), 0),

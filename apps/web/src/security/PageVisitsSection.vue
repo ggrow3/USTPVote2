@@ -15,14 +15,18 @@ import {
   visitTotals,
 } from './page-visits.js';
 import VisitsChart from './VisitsChart.vue';
+import VisitSourcesView from './VisitSourcesView.vue';
 
-/** Page visits (design §10.7): hits per page over time and who opened each page, for System Admins and Auditors. */
+/**
+ * Page visits (design §10.7): hits per page over time and who opened each page, and where visitors came from, for System
+ * Admins and Auditors.
+ */
 
 const days = ref<number>(30);
 const report = ref<PageVisitReport | null>(null);
 const loading = ref(false);
 const search = ref('');
-const view = ref<'pages' | 'people'>('pages');
+const view = ref<'pages' | 'people' | 'sources'>('pages');
 /** The page whose visitors are listed and charted; null charts every page. */
 const selected = ref<string | null>(null);
 
@@ -119,9 +123,12 @@ function exportCsv() {
       :options="[
         { label: 'By page', value: 'pages' },
         { label: 'By person', value: 'people' },
+        { label: 'Where from', value: 'sources' },
       ]"
-      aria-label="Show the visits by page or by person"
+      aria-label="Show the visits by page, by person, or where visitors came from"
     />
+
+    <VisitSourcesView v-if="report?.sources && view === 'sources'" :sources="report.sources" />
 
     <template v-if="report && view === 'pages'">
       <q-markup-table flat bordered dense wrap-cells class="visits">
