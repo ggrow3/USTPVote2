@@ -18,6 +18,8 @@
       { "source": "/candidates/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/course/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/results/*", "run": { "serviceId": "api", "region": "us-central1" } },
+      { "source": "/events/*", "run": { "serviceId": "api", "region": "us-central1" } },
+      { "source": "/embed/**", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/races/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/races/*/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/people/*", "run": { "serviceId": "api", "region": "us-central1" } },

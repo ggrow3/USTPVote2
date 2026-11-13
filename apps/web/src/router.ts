@@ -85,6 +85,9 @@ export const router = createRouter({
         // News, the press kit and the suggestions form are for everyone; the share kit for Active members (design §10.9).
         { path: 'news', component: () => import('./communications/NewsPage.vue') },
         { path: 'news/:slug', component: () => import('./communications/NewsPostPage.vue') },
+        { path: 'events', component: () => import('./communications/EventsPage.vue') },
+        { path: 'events/:slug', component: () => import('./communications/EventPage.vue') },
+        { path: 'partners', component: () => import('./communications/PartnersPage.vue') },
         { path: 'press', component: () => import('./communications/PressPage.vue') },
         { path: 'suggest', component: () => import('./communications/SuggestPage.vue') },
         { path: 'share', component: () => import('./communications/SharePage.vue'), meta: { requiresAuth: true } },

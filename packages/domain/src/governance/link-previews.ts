@@ -15,6 +15,7 @@ export const PREVIEW_PAGES = [
   '/candidates/:id',
   '/course/:courseId',
   '/results/:id',
+  '/events/:slug',
   '/races/:state',
   '/races/:state/:district',
   '/people/:id',

@@ -4,16 +4,24 @@ import type {
   CalendarStatusInput,
   CreateBotInput,
   CreateCalendarItemInput,
+  CreateEventInput,
   CreateNewsInput,
+  CreatePartnerInput,
+  EventRecord,
   CreateSharePostInput,
   MemberSharePost,
   NewsPostRecord,
+  PartnerConsentInput,
+  PartnerRecord,
   PressAssetRecord,
   PressKitInput,
   PressKitRecord,
   PublicBot,
+  PublicEvent,
+  PublicEventsPage,
   PublicNewsPost,
   PublicNewsSummary,
+  PublicPartnersPage,
   PublicPressKit,
   ShareCountsRecord,
   ShareItem,
@@ -24,15 +32,17 @@ import type {
   SuggestionTriageInput,
   UpdateBotInput,
   UpdateCalendarItemInput,
+  UpdateEventInput,
   UpdateNewsInput,
+  UpdatePartnerInput,
   UpdateSharePostInput,
 } from 'ustp-domain';
 import { api, apiBlob, apiUpload } from '../api.js';
 
 /**
- * The communications context's API (design §10.9, §12): the only place its routes are written. The public reads
- * `/v1/news` and `/v1/press` and sends `/v1/suggestions`; Active members read `/v1/share`; Communications Admins use
- * `/v1/admin/communications`.
+ * The communications context's API (design §10.9, §10.17, §12): the only place its routes are written. The public
+ * reads `/v1/news`, `/v1/press`, `/v1/public/events` and `/v1/public/partners` and sends `/v1/suggestions`; Active
+ * members read `/v1/share`; Communications Admins use `/v1/admin/communications`.
  */
 
 const ADMIN = '/v1/admin/communications';
@@ -55,6 +65,11 @@ export const pressAssetUrl = (assetId: string) => `/v1/press/assets/${id(assetId
 /** The route is public but App Checked (design §10.9), so the form gets a token even when nobody is signed in. */
 export const sendSuggestion = (input: Partial<SuggestionInput>) =>
   api<{ received: true }>('POST', '/v1/suggestions', input, { appCheck: true });
+
+/** The Events and Partners pages (design §10.17), and each event's page. Calendar files are opened as links. */
+export const eventsPage = () => api<PublicEventsPage>('GET', '/v1/public/events');
+export const publicEvent = (slug: string) => api<PublicEvent>('GET', `/v1/public/events/${id(slug)}`);
+export const partnersPage = () => api<PublicPartnersPage>('GET', '/v1/public/partners');
 
 export const shareKit = () => api<MemberSharePost[]>('GET', '/v1/share');
 
@@ -102,6 +117,22 @@ export const savePressKit = (input: PressKitInput) => api<PressKitRecord>('PUT',
 export const uploadPressAsset = (file: File) => apiUpload<PressAssetRecord>(`${ADMIN}/press-kit/assets?name=${id(file.name)}`, file);
 /** An uploaded file, listed or not, as a blob (it needs the admin's sign-in, which an <img> cannot send). */
 export const pressAssetBlob = (assetId: string) => apiBlob(`${ADMIN}/press-kit/assets/${id(assetId)}`);
+
+export const adminEvents = () => api<EventRecord[]>('GET', `${ADMIN}/events`);
+export const createEvent = (input: CreateEventInput) => api<EventRecord>('POST', `${ADMIN}/events`, input);
+export const saveEvent = (eventId: string, input: UpdateEventInput) => api<EventRecord>('PUT', `${ADMIN}/events/${id(eventId)}`, input);
+export const publishEvent = (eventId: string, basedOn: number) => api<EventRecord>('POST', `${ADMIN}/events/${id(eventId)}/publish`, { basedOn });
+export const cancelEvent = (eventId: string, basedOn: number) => api<EventRecord>('POST', `${ADMIN}/events/${id(eventId)}/cancel`, { basedOn });
+export const deleteEvent = (eventId: string) => api<void>('DELETE', `${ADMIN}/events/${id(eventId)}`);
+
+export const adminPartners = () => api<PartnerRecord[]>('GET', `${ADMIN}/partners`);
+export const addPartner = (input: CreatePartnerInput) => api<PartnerRecord>('POST', `${ADMIN}/partners`, input);
+export const savePartner = (partnerId: string, input: UpdatePartnerInput) => api<PartnerRecord>('PUT', `${ADMIN}/partners/${id(partnerId)}`, input);
+export const recordConsent = (partnerId: string, input: PartnerConsentInput) =>
+  api<PartnerRecord>('POST', `${ADMIN}/partners/${id(partnerId)}/consent`, input);
+export const withdrawConsent = (partnerId: string, basedOn: number) =>
+  api<PartnerRecord>('POST', `${ADMIN}/partners/${id(partnerId)}/withdraw-consent`, { basedOn });
+export const removePartner = (partnerId: string) => api<void>('DELETE', `${ADMIN}/partners/${id(partnerId)}`);
 
 export const bots = () => api<BotRecord[]>('GET', `${ADMIN}/bots`);
 export const addBot = (input: CreateBotInput) => api<BotRecord>('POST', `${ADMIN}/bots`, input);
