@@ -19,6 +19,7 @@
       { "source": "/course/certificates/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/course/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/results/*", "run": { "serviceId": "api", "region": "us-central1" } },
+      { "source": "/polls/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/events/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/embed/**", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/legislation", "run": { "serviceId": "api", "region": "us-central1" } },

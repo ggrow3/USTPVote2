@@ -16,6 +16,7 @@ export const SITEMAP_PAGES = [
   '/bylaws',
   '/offices',
   '/verify',
+  '/polls',
   '/events',
   '/partners',
   '/legislation',

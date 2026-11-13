@@ -16,6 +16,7 @@ export const PREVIEW_PAGES = [
   '/course/:courseId',
   '/course/certificates/:id',
   '/results/:id',
+  '/polls/:id',
   '/events/:slug',
   '/legislation',
   '/legislation/:billId',

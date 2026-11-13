@@ -4,6 +4,7 @@ import { computed, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import {
   checkResults,
+  isRehearsalRoll,
   resultsSynopsis,
   type AnchorRecord,
   type BallotView,
@@ -25,7 +26,10 @@ import { publishedElectionCheck } from '../election-check/api.js';
 import BylawsCheckNotes from '../election-check/BylawsCheckNotes.vue';
 import { downloadElectionDocx } from '../election-files.js';
 import { rulesText, tieBreakText } from '../election-text.js';
+import { resultsShareable } from '../elections/results-share.js';
 import ResultsSynopsis from '../elections/ResultsSynopsis.vue';
+import ShareButtons from '../communications/ShareButtons.vue';
+import { cardSrc } from '../seo.js';
 import { session } from '../session.js';
 
 type Contest = ElectionDefinition['contests'][number];
@@ -86,6 +90,15 @@ const view = ref<'synopsis' | 'full'>('synopsis');
 const resultsUrl = `${window.location.origin}/results/${encodeURIComponent(electionId)}`;
 const synopsis = computed(() =>
   results.value && record.value ? resultsSynopsis({ results: results.value, definition: record.value.definition }) : null,
+);
+
+/**
+ * Sharing the results (design §10.16, "Result cards"): share buttons, and the card a link to this page shows where it
+ * is shared, which changes when the results are certified.
+ */
+const shareable = computed(() => (synopsis.value ? resultsShareable(synopsis.value, isRehearsalRoll(record.value?.roll?.criteria)) : null));
+const card = computed(() =>
+  results.value ? cardSrc(`/results/${electionId}`, `${results.value.resultsHash.slice(0, 12)}-${results.value.status}`) : '',
 );
 
 function showFullResults() {
@@ -347,6 +360,22 @@ const summary = computed(() => {
             </q-tab-panel>
           </q-tab-panels>
 
+          <q-card v-if="shareable" flat bordered class="ustp-no-print">
+            <q-card-section>
+              <h2 class="text-subtitle1">Share these results</h2>
+              <div class="text-caption text-grey-7">A link to this page shows the card below where it is shared.</div>
+            </q-card-section>
+            <q-card-section class="q-pt-none ustp-stack">
+              <ShareButtons :item="shareable" />
+              <figure class="results-card">
+                <img :src="card" :alt="`Election results: ${record.definition.title}`" width="1200" height="630" loading="lazy" />
+                <figcaption class="text-caption text-grey-7">
+                  The result card. <a :href="card" download="results-card.png">Download the image</a>
+                </figcaption>
+              </figure>
+            </q-card-section>
+          </q-card>
+
           <q-card v-if="check" flat bordered class="ustp-no-print">
             <q-card-section>
               <h2 class="text-subtitle1">How these results were checked</h2>
@@ -422,3 +451,17 @@ const summary = computed(() => {
     </div>
   </PageShell>
 </template>
+
+<style scoped>
+.results-card {
+  margin: 0;
+  max-width: 600px;
+}
+.results-card img {
+  width: 100%;
+  height: auto;
+  border: 1px solid rgba(127, 127, 127, 0.3);
+  border-radius: 8px;
+  display: block;
+}
+</style>

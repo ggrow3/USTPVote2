@@ -15,3 +15,4 @@ export * from './press-kit.js';
 export * from './bots.js';
 export * from './events.js';
 export * from './partners.js';
+export * from './polls.js';
