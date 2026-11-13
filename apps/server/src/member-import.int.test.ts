@@ -194,6 +194,11 @@ describe('the added member signs in', () => {
     expect(outbox[0]).toMatchObject({ to: 'ada@example.test', subject: 'Welcome to the US Transhumanist Party: set your password' });
     expect(outbox[0]!.text).toContain('Hello Ada,');
     expect(outbox[0]!.text).toContain('http://localhost:5173/set-password');
+    // Its button is Identity Platform's sign-in link for the address, opening the set-password page (one email, not two).
+    const link = new URL(outbox[0]!.text.match(/Set your password: (\S+)/)![1]!);
+    expect(link.searchParams.get('mode')).toBe('signIn');
+    expect(link.searchParams.get('oobCode')).toBeTruthy();
+    expect(link.searchParams.get('continueUrl')).toBe('http://localhost:5173/set-password');
     expect(await welcome(added)).toMatchObject({ status: 'done', outcome: null, messageId: expect.any(String) });
     expect((await worker.tick()).body).toMatchObject({ welcomeEmailsSent: 0 });
 
@@ -207,6 +212,30 @@ describe('the added member signs in', () => {
     expect((await worker.tick()).body).toMatchObject({ welcomeEmailsSent: 0 });
     expect(await welcome(added)).toMatchObject({ status: 'done', outcome: 'signed_in' });
     expect((await api.call('POST', `/v1/admin/members/${added}/welcome`, admin)).status).toBe(409);
+  });
+
+  it('signs in from the welcome email alone, which proves the address and claims the membership', async () => {
+    await worker.tick();
+    const [message] = (await db().collection('notice_outbox').where('accountId', '==', added).get()).docs.map((d) => d.data() as OutboxMessageRecord);
+    const oobCode = new URL(message!.text.match(/Set your password: (\S+)/)![1]!).searchParams.get('oobCode');
+    // What the set-password page does with the link: signInWithEmailLink, with the address typed or remembered.
+    const res = await fetch(`http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1/accounts:signInWithEmailLink?key=fake-api-key`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'ada@example.test', oobCode }),
+    });
+    const { idToken, localId } = (await res.json()) as { idToken: string; localId: string };
+    expect(res.status).toBe(200);
+    const user = { email: 'ada@example.test', uid: localId, token: idToken };
+    expect((await api.call('POST', '/v1/accounts', user)).body).toMatchObject({ accountId: added, claimed: true });
+    expect(await account(added)).toMatchObject({ emailVerified: true, claimedAt: expect.any(String) });
+    // The link works once.
+    const again = await fetch(`http://${process.env.FIREBASE_AUTH_EMULATOR_HOST}/identitytoolkit.googleapis.com/v1/accounts:signInWithEmailLink?key=fake-api-key`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: 'ada@example.test', oobCode }),
+    });
+    expect(again.status).toBe(400);
   });
 
   it('can change their details abroad, keeping the country', async () => {

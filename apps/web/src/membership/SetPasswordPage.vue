@@ -12,6 +12,7 @@ import { auth } from '../firebase.js';
 import { session, signOut } from '../session.js';
 import {
   completeEmailLink,
+  isDeadLink,
   PASSWORD_HINT,
   PasswordRejected,
   passwordProblem,
@@ -23,22 +24,41 @@ import { useSignInFlow } from '../sign-in-flow.js';
 
 /**
  * Where a member a Membership Admin added sets their own password (design §5.13), and anyone else a new one. The
- * address is proved first by an emailed sign-in link (Identity Platform's, as the welcome email's is where the site
- * sends no mail of its own): signing in with it links the login to the added membership, since the api links an
+ * address is proved first by an emailed sign-in link (Identity Platform's: the welcome email's button is one, and the
+ * page sends another on request): signing in with it links the login to the added membership, since the api links an
  * account only to a verified address. Then they choose a password, under the sign-up rules, which also ends every other
  * session of that login.
  */
 usePageTitle('Set your password');
 const router = useRouter();
 
-const emailLink = pendingEmailLink(auth);
+/** The sign-in link this page was opened with, if any: the welcome email's, or one the page sent. */
+const emailLink = ref(pendingEmailLink(auth));
 const email = ref('');
 const notice = ref<string | null>(null);
 const { busy, error, challenge, code, run, submitCode } = useSignInFlow(() => router.replace(SET_PASSWORD_PATH));
 
 onMounted(async () => {
-  if (emailLink.isLink && emailLink.email) await run(() => completeEmailLink(auth, emailLink.email!));
+  if (emailLink.value.isLink && emailLink.value.email) await finishLink(emailLink.value.email);
 });
+
+/**
+ * Signs in with the link the page was opened with. One that has expired or was used already (a welcome email opened
+ * days later, say) leaves the link behind and offers a new one to the address typed (design §5.13).
+ */
+function finishLink(address: string) {
+  return run(async () => {
+    try {
+      return await completeEmailLink(auth, address);
+    } catch (e) {
+      if (!isDeadLink(e)) throw e;
+      emailLink.value = { isLink: false, email: null };
+      email.value = address;
+      await router.replace(SET_PASSWORD_PATH);
+      throw new Error('This link has expired or has been used already. Email yourself a new one below.');
+    }
+  });
+}
 
 function sendLink() {
   const address = email.value.trim();
@@ -126,7 +146,7 @@ async function freshLink() {
             <div class="text-caption text-grey-7">Enter the address the sign-in link was sent to.</div>
           </q-card-section>
           <q-card-section>
-            <q-form class="ustp-form" @submit.prevent="run(() => completeEmailLink(auth, email.trim()))">
+            <q-form class="ustp-form" @submit.prevent="finishLink(email.trim())">
               <q-input v-model="email" type="email" label="Email address" outlined dense autocomplete="email" />
               <div class="ustp-actions">
                 <q-btn type="submit" color="primary" no-caps label="Continue" :loading="busy" />

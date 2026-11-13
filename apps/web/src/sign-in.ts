@@ -220,6 +220,12 @@ export function pendingEmailLink(auth: Auth): { isLink: boolean; email: string |
   return { isLink: true, email };
 }
 
+/** A sign-in link that can no longer sign anyone in: expired, used already, or not copied whole. */
+export function isDeadLink(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return code === 'auth/expired-action-code' || code === 'auth/invalid-action-code';
+}
+
 export async function completeEmailLink(auth: Auth, email: string) {
   const credential = await signInWithEmailLink(auth, email, location.href);
   try {

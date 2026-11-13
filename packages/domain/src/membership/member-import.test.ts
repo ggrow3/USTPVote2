@@ -275,7 +275,7 @@ describe('memberAddition', () => {
 });
 
 describe('welcomeMessage', () => {
-  it('greets the member, leads to the set-password page and carries no sign-in link', () => {
+  it('greets the member and, with no sign-in link to hand, leads to the set-password page', () => {
     const message = welcomeMessage({ origin: 'https://vote.example.org', name: 'Ada <b>', contact: 'members@example.org' });
     expect(message.subject).toBe('Welcome to the US Transhumanist Party: set your password');
     expect(message.text).toContain('Hello Ada <b>,');
@@ -284,5 +284,15 @@ describe('welcomeMessage', () => {
     expect(message.html).toContain('Hello Ada &lt;b&gt;,');
     expect(message.html).toContain('href="https://vote.example.org/set-password"');
     expect(message.html).not.toContain('oobCode');
+  });
+
+  it("puts Identity Platform's sign-in link behind the button when there is one, so one email does it all", () => {
+    const signInLink = 'https://vote.example.org/email-action?mode=signIn&oobCode=abc&continueUrl=https%3A%2F%2Fvote.example.org%2Fset-password';
+    const message = welcomeMessage({ origin: 'https://vote.example.org', name: 'Ada', contact: null, signInLink });
+    expect(message.text).toContain(`Set your password: ${signInLink}`);
+    expect(message.html).toContain('href="https://vote.example.org/email-action?mode=signIn&amp;oobCode=abc&amp;continueUrl=');
+    expect(message.text).toContain('It works once, for a few hours: after that, open https://vote.example.org/set-password');
+    expect(message.text).toContain('Do not forward it: its button signs in whoever opens it.');
+    expect(message.text).not.toContain('We will email you a sign-in link, which shows');
   });
 });
