@@ -28,6 +28,7 @@ import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { WelcomeEmails } from '../notifications/welcome-emails.js';
 import { ApplicationRepository } from './application.repository.js';
+import { FirstStepsRepository } from './first-steps.repository.js';
 import { MemberRepository } from './member.repository.js';
 
 /**
@@ -43,15 +44,17 @@ export class Members {
     private readonly members: MemberRepository,
     private readonly applications: ApplicationRepository,
     private readonly welcomes: WelcomeEmails,
+    private readonly firstSteps: FirstStepsRepository,
   ) {}
 
   /**
    * For deleting an account (design §4): reads in `tx` what membership keeps about it, its member record, status
-   * history and applications, and returns the step that deletes them, to run after the transaction's other reads. The
+   * history and applications, and the steps it ticked on its getting started list (§5.16), and returns the step that deletes them, to run after the transaction's other reads. The
    * ledger keeps its `member.status_changed` entries.
    */
   async forgetting(tx: Transaction, accountId: string): Promise<() => void> {
     const refs = (await Promise.all([this.members.refsOf(tx, accountId), this.applications.refsOf(tx, accountId)])).flat();
+    refs.push(this.firstSteps.ticksRef(accountId));
     return () => {
       for (const ref of refs) tx.delete(ref);
     };

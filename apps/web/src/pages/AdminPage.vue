@@ -30,6 +30,7 @@ import ApplicationsPanel from '../membership/ApplicationsPanel.vue';
 import MembersPanel from '../membership/MembersPanel.vue';
 import MembershipInboxPanel from '../inbox/MembershipInboxPanel.vue';
 import RegistrationFormPanel from '../membership/RegistrationFormPanel.vue';
+import FirstStepsPanel from '../membership/FirstStepsPanel.vue';
 import SecurityPanel from '../security/SecurityPanel.vue';
 import { useRoute, useRouter } from 'vue-router';
 import { usePageTitle } from '../a11y.js';
@@ -45,6 +46,7 @@ const PANELS: Record<AdminSection, Component> = {
   photos: PhotosPanel,
   bylaws: BylawsPanel,
   registration: RegistrationFormPanel,
+  first_steps: FirstStepsPanel,
   elections: ElectionsPanel,
   offices: OfficesPanel,
   candidacies: CandidaciesPanel,
