@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { Collections, ElectionCollections, type FirstStep, type FirstStepsView, type MemberRecord } from 'ustp-domain';
+import { Collections, ElectionCollections, ownTicks, type FirstStep, type FirstStepsView, type MemberRecord } from 'ustp-domain';
 import { ForumActivity } from '../forum/forum-activity.js';
 import { Firebase } from '../infra/firebase.js';
 import { RoomEntry } from '../room/room-entry.js';
 import { TeamRoster } from '../teams/team-roster.js';
+import { FirstStepsRepository } from './first-steps.repository.js';
 
 /** Documents read in one `getAll`. */
 const GET_ALL_BATCH = 300;
@@ -13,7 +14,8 @@ const ELECTIONS_MAX = 500;
 /**
  * What a member has done so far, each from the first record that says so (design §5.15, §5.16): cast a ballot, started
  * a course, joined a team, entered the members' room, posted in the forum. For the join funnel's counts and for a new
- * member's own list of first steps. What belongs to another context (teams, the forum, the room) is asked of its port.
+ * member's own list of first steps, with the steps Membership Admins set and those the member ticked themselves. What
+ * belongs to another context (teams, the forum, the room) is asked of its port.
  */
 @Injectable()
 export class FirstStepsReader {
@@ -22,6 +24,7 @@ export class FirstStepsReader {
     private readonly teams: TeamRoster,
     private readonly forum: ForumActivity,
     private readonly room: RoomEntry,
+    private readonly list: FirstStepsRepository,
   ) {}
 
   /** `electionIds`: the elections they could have voted in, when the caller knows; else every election. */
@@ -48,9 +51,13 @@ export class FirstStepsReader {
     );
   }
 
-  /** The member's own list: nothing for someone who is not an Active member. */
+  /** The member's own list: nothing for someone who is not an Active member, and no records read for an empty list. */
   async mine(accountId: string, member: MemberRecord | null): Promise<FirstStepsView> {
-    if (member?.status !== 'active') return { memberSince: null, done: [] };
-    return { memberSince: member.memberSince ?? member.statusChangedAt, done: await this.done(accountId) };
+    if (member?.status !== 'active') return { memberSince: null, done: [], steps: [], ticked: [] };
+    const settings = await this.list.settings();
+    const memberSince = member.memberSince ?? member.statusChangedAt;
+    if (!settings.steps.length) return { memberSince, done: [], steps: [], ticked: [] };
+    const [done, ticked] = await Promise.all([this.done(accountId), this.list.ticks(accountId)]);
+    return { memberSince, done, steps: settings.steps, ticked: ownTicks(settings, ticked) };
   }
 }
