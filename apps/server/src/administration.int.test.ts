@@ -373,12 +373,13 @@ describe('deleting an account (POST /v1/admin/accounts/{accountId}/delete)', () 
     expect((await api.call('GET', '/v1/admin/audit/verify', auditor)).body).toMatchObject({ ok: true });
   });
 
-  it('deletes a listed member with their membership: member record, status history and applications', async () => {
+  it('deletes a listed member with their membership: member record, status history, applications and ticked first steps', async () => {
     const member = { accountId: leaving.accountId, status: 'active' };
     await db().collection('members').doc(leaving.accountId).set(member);
     await db().collection('member_status_history').doc('h1').set({ accountId: leaving.accountId, from: null, to: 'applicant' });
     await db().collection('member_status_history').doc('h2').set({ accountId: leaving.accountId, from: 'applicant', to: 'active' });
     await db().collection('applications').doc('a1').set({ accountId: leaving.accountId, status: 'approved' });
+    await db().collection('first_step_ticks').doc(leaving.accountId).set({ ticked: ['bylaws'], updatedAt: '2026-11-12T00:00:00.000Z' });
     await db().collection('members').doc(pat.accountId).set({ accountId: pat.accountId, status: 'active' });
     // An election in which the account is on no roll and has not voted does not stop it, nor does a rejected roll.
     await db().collection('elections').doc('e1').set({ electionId: 'e1' });
@@ -388,6 +389,7 @@ describe('deleting an account (POST /v1/admin/accounts/{accountId}/delete)', () 
     expect((await remove(sa1, leaving.accountId)).status).toBe(204);
 
     expect((await db().collection('members').doc(leaving.accountId).get()).exists).toBe(false);
+    expect((await db().collection('first_step_ticks').doc(leaving.accountId).get()).exists).toBe(false);
     for (const c of ['member_status_history', 'applications']) {
       expect((await db().collection(c).where('accountId', '==', leaving.accountId).get()).size).toBe(0);
     }

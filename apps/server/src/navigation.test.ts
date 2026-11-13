@@ -16,6 +16,7 @@ import { ForumAdminController } from './forum/forum.controller.js';
 import { RoomAdminController } from './room/room.controller.js';
 import { MembershipAdminController } from './membership/membership.controller.js';
 import { RegistrationFormAdminController } from './membership/registration-form.js';
+import { FirstStepsAdminController } from './membership/first-steps-settings.js';
 import { TeamInboxController } from './inbox/membership-inbox.controller.js';
 import { MailAdminController } from './notifications/mail-admin.controller.js';
 import { PersonasController } from './personas/personas.controller.js';
@@ -35,6 +36,7 @@ const SECTION_ROUTES: Readonly<Record<AdminSection, Route>> = {
   photos: [PhotoReviewController, 'list'],
   bylaws: [MembershipAdminController, 'publishBylaws'],
   registration: [RegistrationFormAdminController, 'current'],
+  first_steps: [FirstStepsAdminController, 'current'],
   elections: [ElectionsController, 'list'],
   offices: [PositionsController, 'all'],
   candidacies: [CandidaciesAdminController, 'list'],
