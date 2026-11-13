@@ -120,5 +120,37 @@ export {
 export type { FirstStep, JoinFunnelPerson, JoinFunnelStepId, JoinFunnelStep, JoinFunnelReport } from './join-funnel.js';
 export { APPLICATION_WAIT_WARNING_DAYS, waitingDays, waitText, waitsLong, queueSummaryText, queueBadge } from './application-queue.js';
 export type { ApplicationQueueSummary } from './application-queue.js';
-export { FIRST_STEP_GUIDE, FIRST_STEP_ORDER, firstStepsList, firstStepsProgress, firstStepsLeft } from './first-steps.js';
-export type { FirstStepsView, FirstStepItem } from './first-steps.js';
+export {
+  FIRST_STEP_CHECKS,
+  FIRST_STEP_CHECK_LABELS,
+  FIRST_STEPS_LIMITS,
+  FIRST_STEP_ID,
+  DEFAULT_FIRST_STEPS,
+  tidyFirstStep,
+  resolveFirstSteps,
+  isSiteLink,
+  firstStepLinkProblem,
+  firstStepMenu,
+  checkFirstSteps,
+  firstStepsDiffer,
+  checkFirstStepTick,
+  ownTicks,
+  nextFirstStepTicks,
+  firstStepsList,
+  firstStepsProgress,
+  firstStepsLeft,
+  firstStepsSettingsSchema,
+  firstStepTickSchema,
+} from './first-steps.js';
+export type {
+  FirstStepCheck,
+  FirstStepSetting,
+  FirstStepsSettings,
+  FirstStepsRecord,
+  FirstStepsChangedPayload,
+  FirstStepTicksRecord,
+  FirstStepsView,
+  FirstStepItem,
+  FirstStepsSettingsInput,
+  FirstStepTickInput,
+} from './first-steps.js';

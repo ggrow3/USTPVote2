@@ -15,6 +15,10 @@ export const Collections = {
   registrationForm: 'registration_form',
   /** `registration_form_versions/{version}`: each saved version of that wording, never changed afterwards. */
   registrationFormVersions: 'registration_form_versions',
+  /** `first_steps/current`: the getting started list new members see, as Membership Admins set it (design §5.16). */
+  firstSteps: 'first_steps',
+  /** `first_step_ticks/{accountId}`: the steps on that list a member ticked themselves. */
+  firstStepTicks: 'first_step_ticks',
   bylawsChecks: 'bylaws_checks',
   bylawsCheckReferences: 'bylaws_check_references',
   profilePhotos: 'profile_photos',

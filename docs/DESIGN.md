@@ -147,7 +147,7 @@ this structure one at a time, without changing routes, documents or the ledger.
 | Context | Sections | Owns |
 |---|---|---|
 | Accounts & identity | §4 | `accounts`, `account_identities`, `sign_in_methods`, `mfa_policy` |
-| Membership | §5.1–5.3 | `members`, `member_status_history`, `applications`, `registration_form`, `registration_form_versions`, `profile_photos`, `photo_checks` |
+| Membership | §5.1–5.3, §5.16 | `members`, `member_status_history`, `applications`, `registration_form`, `registration_form_versions`, `first_steps`, `first_step_ticks`, `profile_photos`, `photo_checks` |
 | Bylaws | §5.2, §5.4, §6.6 | `bylaws_versions`, `bylaws_checks`, `bylaws_check_references` |
 | Elections | §5.5, §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results`, `consistency_checks`, `consistency_documents`, `election_checks` |
 | Offices | §6.4 | `positions`, `position_terms` |
@@ -333,7 +333,8 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
     with the System Admin as actor and the deleted `accountId` as subject, and deletes `accounts/{accountId}`, its
     `account_identities`, all its `role_assignments` (revoked ones too), the approval requests about it and, through
     the membership context (`Members.forgetting`), its membership: `members/{accountId}`, its
-    `member_status_history` and its `applications` (the ledger keeps their `member.status_changed` entries);
+    `member_status_history`, its `applications` and the steps it ticked on its getting started list (`first_step_ticks`,
+    §5.16; the ledger keeps their `member.status_changed` entries);
   - last, deletes its sign-ins (§10.7, by account and by login), page visits, and course progress, attempts,
     certificates and instructor messages (§10.8), which can be too many for the transaction; a failure there is logged
     and leaves them to expire.
@@ -2382,18 +2383,44 @@ cast a ballot, started a course, joined a team, entered the members' room or pos
 - **Verified** is the account's flag today, not when it was set (no time is kept); someone who applied counts as
   verified, since applying needs a verified address.
 
-### 5.16 A new member's first steps *(added 2026-11-10)*
+### 5.16 A new member's first steps *(added 2026-11-10; set by Membership Admins since 2026-11-12)*
 
 An Active member's voting home (§10.5) opens with a short **Getting started** list, so that someone just approved is
-not left to find everything alone: take a first course, join a team, say hello in the members' room, post or comment in
-the forum, cast a first ballot. Each line links to its page and says in a sentence what it is for.
+not left to find everything alone. By default it has five steps: take a first course, join a team, say hello in the
+members' room, post or comment in the forum, cast a first ballot. Each line links to its page and says in a sentence
+what it is for.
 
-- **Ticked from records, not clicks.** `GET /v1/me/first-steps` answers which the member has done, from the same
-  records the join funnel counts (§5.15): a course started, a place on a team, the room's terms accepted, a post or a
-  comment, a ballot cast in any election. Nothing is stored for the list. Someone who is not an Active member has none.
-- **Only what they can reach.** A step whose page the navigation settings hide from the member is left out.
+- **Membership Admins set the list** *(added 2026-11-12, at the owner's request)*. Admin → Getting started (section
+  `first_steps`, Membership Admins only, like the registration form; `GET|PUT /v1/admin/first-steps`) adds, edits,
+  removes and reorders steps, with Restore the default, a preview with its own ticks, and the same 409 as the
+  registration form when someone saved since the editor was opened. Each step has words (at most 80 characters), an
+  optional sentence on what it is for (240), a link and a way to be ticked. At most 10 steps; none at all means nobody
+  sees a list. `first_steps/current` keeps the list with a `version` counter (version 0 is the default, which nobody
+  saved), and each save that changes something is ledgered whole as `first_steps.changed` with `{ version, steps }`.
+  The rules are `checkFirstSteps` in `ustp-domain` (`membership/first-steps.ts`), checked in the browser and again by
+  the API (400).
+- **Links.** A page on this site, written as a path from its root (`/courses`, `/course/abc?lesson=2`; never `//host`
+  or a backslash), or an `https://` address, which opens in a new tab and says so to screen readers. Nothing else
+  (`http:`, `mailto:`, `javascript:`) is taken.
+- **Ticked from records, or by the member.** Each step is ticked one of two ways. By one of the site's own records,
+  the same the join funnel counts (§5.15): a course started, a place on a team, the room's terms accepted, a post or a
+  comment, a ballot cast in any election. Each of these five can tick one step only, so one thing done never ticks two
+  lines. Or, for anything the site cannot see (reading the bylaws, following the party's social accounts), **the member
+  ticks it themselves** (the owner's choice, 2026-11-12): the step has a box beside its link, and
+  `PUT /v1/me/first-steps/{id}` with `{ done }` ticks or unticks it, for an Active member only (403), and only a step on
+  the list that members tick (404 for one not on it, 409 for one the site ticks). Ticks are kept by step id in
+  `first_step_ticks/{accountId}`, so they follow the member across devices and stay when a step's words change; a step
+  taken off the list takes its ticks with it, and the member's next tick drops them. A member's ticks are their own
+  note and are not ledgered. Deleting an account deletes them (§4).
+- `GET /v1/me/first-steps` answers `{ memberSince, done, steps, ticked }`: when they became a member, which of the
+  five records they have, the list as set, and their own ticks. Someone who is not an Active member has no list.
+- **Only what they can reach.** A step whose page the navigation settings hide from the member is left out: a link to
+  `/courses` or `/course/…` needs the Course menu link, and `/teams`, `/forum`, `/room`, `/ballot` and the other menu
+  pages need their own (`firstStepMenu`). Other pages, and addresses elsewhere, are always shown.
 - **It goes away.** The list is shown until every step on it is done, or the member presses Hide, which is kept in
-  that browser only. It says how many are done, and each step's state is in its text for screen readers.
+  that browser only; a member who hid it does not get it back when steps are added. Once a member ticks a box the list
+  stays until they leave the page, so ticking the last step does not take it away under the pointer. It says how many
+  are done and how its steps are ticked, and each step's state is in its text for screen readers.
 - A member who joined long ago and never did a step sees it too: it is a list of what they have not tried, not a
   welcome that expires.
 
@@ -3442,7 +3469,7 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled` (M2–M3a), `ballots.sealed`,
   `election.sealed` (M3b), `results.computed` (M4a), `results.certified`, `election.pool_key_destroyed`,
   `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed`, `member.email_stopped`, `notice.broadcast_requested`, `notice.broadcast_cancelled`,
-  `navigation.changed`, `home_quote.changed`, `hub.changed`, `analytics.changed`, `notice.sent`, `notice.delivery_reported`, `notice.resend_requested`, `notice.settings_changed`, `anthropic_key.changed`, `api_key.changed`, `position_term.appointed`, `registration_form.changed`, `team.changed`, `team.member_changed`, `forum.moderated`, `room.consent_changed`, `room.assistant_switched`, `room.settings_changed`, `room.door_changed`, `candidacy.changed`, `area_contact.changed`, `email_template.changed`, `bills.settings_changed` (M5; Auditors only). The authoritative list is `LEDGER_EVENT_TYPES` in
+  `navigation.changed`, `home_quote.changed`, `hub.changed`, `analytics.changed`, `notice.sent`, `notice.delivery_reported`, `notice.resend_requested`, `notice.settings_changed`, `anthropic_key.changed`, `api_key.changed`, `position_term.appointed`, `registration_form.changed`, `first_steps.changed`, `team.changed`, `team.member_changed`, `forum.moderated`, `room.consent_changed`, `room.assistant_switched`, `room.settings_changed`, `room.door_changed`, `candidacy.changed`, `area_contact.changed`, `email_template.changed`, `bills.settings_changed` (M5; Auditors only). The authoritative list is `LEDGER_EVENT_TYPES` in
   `ustp-domain`.
 - `identity.linked` with `claimed: true` records a member a Membership Admin added signing in for the first time
   (§4, §5.13); their addition is a `member.status_changed` from none to `active` with the admin as actor.
@@ -3914,7 +3941,7 @@ page itself, `/`, is the party's link hub (§10.6).
 - **Columns (audiences):** signed out; signed in with no membership; each member status (applicant, Active, lapsed,
   suspended, resigned, rejected; §5.1); then each staff role. **Rows:** Register, Ballot, Verify, Offices (the public
   list of office holders, §6.4), Candidates (members running for public office, §5.8), Teams (§5.7), Forum (§5.9), Bills (§5.14), News (§10.9) and Admin; Sign in (the header's button for visitors); the admin sections (Applications,
-  Members, Photos, Bylaws, Registration form, Elections, Offices, Candidacies, Teams, Forum, Approvals, People, Sign-in methods, Claude, Election
+  Members, Photos, Bylaws, Registration form, Getting started, Elections, Offices, Candidacies, Teams, Forum, Approvals, People, Sign-in methods, Claude, Election
   emails, Audit ledger, Testing, Navigation, Communications, Link hub, Home page quote, Bills); and "Starts on". The vocabulary, defaults
   and rules are `MENU_LINKS`, `ADMIN_SECTIONS`, `AUDIENCES` and the functions beside them in `ustp-domain`
   (`governance/navigation.ts`), shared by the API and the web app.
@@ -4986,6 +5013,8 @@ Physically, registration collections are top-level and election data lives under
 | `applications/{applicationId}` | auto | status only | answers (incl. date of birth, attestations and the two membership questions, §5.2), bylaws version + hash, registration form version |
 | `registration_form/current` | `current` | replaced whole, by one Membership Admin | the registration form's wording: the page's heading, intro, both questions and their help, Core Ideals heading and list, bonus link, version, updatedAt, updatedBy (§5.2) *(added)* |
 | `registration_form_versions/{version}` | version | immutable | each saved version of that wording (§5.2) *(added)* |
+| `first_steps/current` | `current` | replaced whole, by one Membership Admin | the getting started list: each step's id, words, explanation, link and how it is ticked, in order; version, updatedAt, updatedBy (§5.16) *(added 2026-11-12)* |
+| `first_step_ticks/{accountId}` | accountId | replaced whole, by the member | the ids of the steps on that list the member ticked themselves, updatedAt (§5.16) *(added 2026-11-12)* |
 | `bylaws_versions/{version}` | version | immutable | text, content hash *(added)*; `adoptedIn` when an election's amendments gave it (§6.6) |
 | `bylaws_checks/{checkId}` | UUIDv7 | queued → running → done / failed | draft text and hash, scope and changed lines, requester, findings, references used, model, token usage (§5.4) *(added)* |
 | `bylaws_check_references/{id}` | reference ID | replaced daily | cached text of a party page, URL, read and modified times, SHA-256 (§5.4) *(added)* |
