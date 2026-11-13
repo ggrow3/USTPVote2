@@ -47,14 +47,15 @@ What is not domain-centred:
 | Context | DESIGN.md | Owns (Firestore) | Kind |
 |---|---|---|---|
 | **Accounts & identity** | §4 | `accounts`, `account_identities`, `sign_in_methods`, `mfa_policy` | supporting |
-| **Membership** | §5.1–5.3 | `members`, `member_status_history`, `applications`, `registration_form`, `registration_form_versions`, `profile_photos`, `photo_checks` | core |
+| **Membership** | §5.1–5.3, §5.16 | `members`, `member_status_history`, `applications`, `registration_form`, `registration_form_versions`, `first_steps`, `first_step_ticks`, `profile_photos`, `photo_checks` | core |
 | **Bylaws** | §5.2, §5.4, §6.6 | `bylaws_versions`, `bylaws_checks`, `bylaws_check_references` | core |
 | **Elections** (setup, roll, voting, sealing, results) | §5.5, §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results`, `consistency_checks`, `consistency_documents` | core |
 | **Offices** | §6.4 | `positions`, `position_terms` | supporting |
 | **Candidacies** (members running for public office; the Your area page of office holders, candidates and emails) | §5.8, §5.12 | `candidacies`, `area_contacts`, `email_templates` | supporting |
+| **Referrals** (members' referral links, credited on approval; the team leaderboard) | §5.17 | `referral_codes`, `referral_links` | supporting |
 | **Governance** (roles, two-person rule, testing mode, who sees which link, the voting home's quote, the home page hub, the Anthropic API key) | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `home_quote`, `hub`, `hub_logos`, `hub_covers`, `hub_backgrounds`, `hub_clicks`, `anthropic_key` | core rule, generic mechanism |
 | **Audit ledger** | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` | shared kernel |
-| **Notifications** (election notices by email) | §6.8 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests` | supporting |
+| **Notifications** (election notices by email; emails to members and to the newsletter's subscribers) | §6.8, §10.12, §10.15 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests`, `broadcasts`, `broadcast_recipients`, `newsletter_subscribers`, `newsletter_limits` | supporting |
 | **Inbox** (in-app notifications, messages between members, notifications by email, the membership inbox) | §10.13 | `app_notifications`, `inbox_preferences`, `member_threads`, `member_messages`, `member_blocks`, `message_reports`, `membership_threads`, `membership_messages` | supporting |
 | **Verification** (`ustp-verify`, `/verify`, receipt and results checks) | §7.5, §16 | — (reads the public record) | conformist |
 
@@ -79,6 +80,9 @@ flowchart LR
   ELE -- "offices exist; create terms at certification" --> OFF
   OFF -- "is the appointee an Active member? (appointment)" --> MEM
   CAN -- "is the candidate an Active member? their name" --> MEM
+  REF[Referrals]
+  MEM -- "whose link is this code? (apply)" --> REF
+  REF -- "referred applications, Active members; who is on which team" --> MEM
   ELE & OFF -- "two-person requests + handlers" --> GOV
   GOV -- "test voters (rehearsal roll), personas" --> MEM
   ACC & MEM & BYL & ELE & OFF & CAN & GOV -- "domain events, same transaction" --> LED
@@ -98,6 +102,7 @@ commit. What changes is that only the owner touches its documents.
 | Membership | **Member** (`members/{accountId}` → `member_status_history`) | transitions only per §5.1; admin changes need a reason; nobody changes their own status; every change writes member, history and `member.status_changed` together; `memberSince` set once, at first Active; details change only by the member (not the legal name) or by another Membership Admin with a reason (not the opt-ins), ledgered as `member.details_changed` by field name |
 | Membership | **MembershipApplication** | only against the current bylaws (version and hash) and the registration form's current version; verified email; at most 3 per 30 days; both membership questions answered Yes or No, and neither answer refuses; pending → approved \| rejected once; decider ≠ applicant; applicant still `applicant` |
 | Membership | **RegistrationForm** (`registration_form/current`, `registration_form_versions/{version}`) | both questions, the Core Ideals' heading and at least one ideal; each part within its limit once tidied; a bonus link only at `https://`; saved whole from the version it was edited from, each version kept and each changed part ledgered as `registration_form.changed`; what the answers mean is fixed (Yes to the first: United States Member, No: Allied Member) |
+| Membership | **FirstSteps** (`first_steps/current`, `first_step_ticks/{accountId}`) | at most 10 steps, each with an id of its own, words, a link to a page on the site or an `https://` address, and one way to be ticked; each of the site's own checks ticks at most one step; saved whole from the version it was edited from and ledgered whole as `first_steps.changed`; a member ticks only a step on the list that members tick themselves, and only while Active |
 | Membership | **ProfilePhoto** | machine flags, people decide; reviewer ≠ owner; new photo supersedes the old |
 | Bylaws | **BylawsVersion** | immutable; `amends` is the current version; no publishing while an amending election is scheduled, open or closed; adopted from an election (`adoptedIn`) only once it is certified, with exactly the text its passed amendments give, once per election |
 | Bylaws | **BylawsCheck** | queued → running → done \| failed; one at a time per admin, 20 a day |

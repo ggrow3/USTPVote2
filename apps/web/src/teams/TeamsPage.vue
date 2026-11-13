@@ -6,6 +6,7 @@ import { ApiError, errorMessage } from '../api.js';
 import PageShell from '../components/PageShell.vue';
 import { session } from '../session.js';
 import { listTeams } from './api.js';
+import LeaderboardCard from '../referrals/LeaderboardCard.vue';
 import TeamBadge from './TeamBadge.vue';
 import { leadsLine, membersLine, POLICY_LABELS, standingLabel } from './team-text.js';
 
@@ -93,6 +94,7 @@ onMounted(async () => {
             </div>
           </section>
         </template>
+        <LeaderboardCard />
       </template>
     </div>
   </PageShell>

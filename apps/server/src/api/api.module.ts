@@ -66,12 +66,14 @@ import { JoinFunnelController } from '../membership/join-funnel.js';
 import { MembershipAdminController, RegistrationController } from '../membership/membership.controller.js';
 import { MEMBERSHIP_PROVIDERS } from '../membership/providers.js';
 import { PublicRegistrationFormController, RegistrationFormAdminController } from '../membership/registration-form.js';
+import { FirstStepsAdminController } from '../membership/first-steps-settings.js';
 import { BroadcastsController } from '../notifications/broadcasts.js';
 import { MailAdminController } from '../notifications/mail-admin.controller.js';
 import { MessageReportsController, MessagesController, MyNotificationsController } from '../inbox/inbox.controller.js';
 import { MyTeamInboxController, TeamInboxController } from '../inbox/membership-inbox.controller.js';
 import { INBOX_API_PROVIDERS } from '../inbox/providers.js';
 import { UnsubscribeController } from '../notifications/mail-preferences.js';
+import { NewsletterAdminController, PublicNewsletterController } from '../notifications/newsletter.js';
 import { MyEmailController } from '../notifications/my-email.js';
 import { NoticeSettingsController } from '../notifications/notice-settings.js';
 import { NoticesController } from '../notifications/notices.controller.js';
@@ -99,6 +101,8 @@ import {
 } from '../communications/communications.controller.js';
 import { EventsAdminController, PublicEventsController, PublicPartnersController } from '../communications/events.controller.js';
 import { TEAMS_PROVIDERS } from '../teams/providers.js';
+import { REFERRALS_PROVIDERS } from '../referrals/providers.js';
+import { MyReferralsController, ReferralLeaderboardController } from '../referrals/referrals.js';
 import { BillsAdminController, BillsController } from '../bills/bills.controller.js';
 import { BILLS_PROVIDERS } from '../bills/providers.js';
 import { TeamsAdminController, TeamsController } from '../teams/teams.controller.js';
@@ -125,6 +129,7 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     JoinFunnelController,
     PublicRegistrationFormController,
     RegistrationFormAdminController,
+    FirstStepsAdminController,
     BylawsChecksController,
     MyPhotoController,
     PhotoReviewController,
@@ -137,6 +142,8 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     BroadcastsController,
     MyEmailController,
     UnsubscribeController,
+    PublicNewsletterController,
+    NewsletterAdminController,
     MyNotificationsController,
     MessagesController,
     MessageReportsController,
@@ -159,6 +166,8 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     EmailTemplatesAdminController,
     TeamsController,
     TeamsAdminController,
+    MyReferralsController,
+    ReferralLeaderboardController,
     BillsController,
     BillsAdminController,
     ForumController,
@@ -228,6 +237,7 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     PositionsService,
     ...CANDIDACIES_PROVIDERS,
     ...TEAMS_PROVIDERS,
+    ...REFERRALS_PROVIDERS,
     ...BILLS_PROVIDERS,
     ...FORUM_PROVIDERS,
     ...ROOM_PROVIDERS,

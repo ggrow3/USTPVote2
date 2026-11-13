@@ -158,6 +158,7 @@ export {
   trackedPage,
   trackedPageById,
   pageVisitSchema,
+  visitFromSchema,
   visitDay,
   periodDays,
   pageVisitReport,
@@ -170,6 +171,7 @@ export type {
   PageHits,
   PageVisitor,
   PageVisitReport,
+  VisitFromInput,
 } from './page-visits.js';
 export {
   PREVIEW_PAGES,
@@ -185,3 +187,4 @@ export {
   cardAlt,
 } from './link-previews.js';
 export type { PreviewPage, CardBar, LinkCard, LinkPreview, PreviewMatch, PreviewHead } from './link-previews.js';
+export * from './visit-sources.js';

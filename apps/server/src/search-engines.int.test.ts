@@ -53,6 +53,7 @@ describe('outside production', () => {
       ['https://vote.example.org/', undefined],
       ['https://vote.example.org/vote', undefined],
       ['https://vote.example.org/register', undefined],
+      ['https://vote.example.org/newsletter', undefined],
       ['https://vote.example.org/courses', undefined],
       ['https://vote.example.org/course/transhumanism', undefined],
       ['https://vote.example.org/bylaws', '2026-10-01T12:00:00.000Z'],

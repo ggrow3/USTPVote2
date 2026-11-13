@@ -2,7 +2,9 @@ import { Body, ConflictException, Controller, Get, HttpCode, Inject, Injectable,
 import { sha256Hex } from 'ustp-audit';
 import { z } from 'zod';
 import {
+  audienceHasSubscribers,
   broadcastAudienceSummary,
+  broadcastTotal,
   MAIL_CAUSED_BY_SYSTEM,
   broadcastPreviewSchema,
   broadcastRejectSchema,
@@ -22,6 +24,8 @@ import {
   type BroadcastSummary,
   type BroadcastsView,
   type MemberMatch,
+  type SubscriberPreview,
+  type SubscriberSkip,
   administersSite,
 } from 'ustp-domain';
 import { Ctx, requireAccount, Roles } from '../auth/decorators.js';
@@ -35,6 +39,7 @@ import { LedgerService } from '../ledger/ledger.service.js';
 import { MemberDirectory } from '../membership/member-directory.js';
 import { BroadcastRepository } from './broadcast.repository.js';
 import { MailRepository } from './mail.repository.js';
+import { NewsletterRepository } from './newsletter.repository.js';
 import { NoticeSettingsService } from './notice-settings.js';
 
 /** The latest emails shown. */
@@ -51,11 +56,16 @@ export class BroadcastAudienceReader {
     private readonly members: MemberDirectory,
     private readonly directory: DirectoryService,
     private readonly mail: MailRepository,
+    private readonly newsletter: NewsletterRepository,
   ) {}
 
-  async resolve(audience: BroadcastAudience): Promise<{ readonly to: readonly string[]; readonly preview: BroadcastPreview }> {
+  async resolve(audience: BroadcastAudience): Promise<{ readonly to: readonly string[]; readonly subscribers: readonly string[]; readonly preview: BroadcastPreview }> {
     const found =
-      audience.kind === 'picked' ? (await this.members.findMany([...new Set(audience.accountIds)])).flatMap((m) => (m ? [m] : [])) : await this.members.active();
+      audience.kind === 'subscribers'
+        ? []
+        : audience.kind === 'picked'
+          ? (await this.members.findMany([...new Set(audience.accountIds)])).flatMap((m) => (m ? [m] : []))
+          : await this.members.active();
     const members = found.filter((m) => inBroadcastAudience(audience, m));
     const [mailboxes, preferences, suppressions] = await Promise.all([
       this.directory.mailboxes(members.map((m) => m.accountId)),
@@ -77,7 +87,33 @@ export class BroadcastAudienceReader {
       if (skip) skipped[skip]++;
       else to.push(member.accountId);
     }
-    return { to, preview: { matched: members.length, willGet: to.length, skipped } };
+    if (!audienceHasSubscribers(audience)) return { to, subscribers: [], preview: { matched: members.length, willGet: to.length, skipped } };
+    const listed = await this.subscribersOf(
+      new Set(to.flatMap((id) => (mailboxes.get(id)?.email ? [mailAddressKey(mailboxes.get(id)!.email!)] : []))),
+      preferences.map((p) => p.accountId),
+    );
+    return { to, subscribers: listed.ids, preview: { matched: members.length, willGet: to.length, skipped, subscribers: listed.preview } };
+  }
+
+  /**
+   * The newsletter's confirmed subscribers who get an email (design §10.15): each address once, not one a member gets
+   * it at already (`membersGetting`), not one of an account that unsubscribed or whose email an admin stopped (their
+   * choice as a member holds), and not one that bounced for good or was marked as spam.
+   */
+  private async subscribersOf(membersGetting: ReadonlySet<string>, stoppedAccounts: readonly string[]): Promise<{ readonly ids: string[]; readonly preview: SubscriberPreview }> {
+    const [list, stoppedBoxes] = await Promise.all([this.newsletter.confirmed(), this.directory.mailboxes(stoppedAccounts)]);
+    const stopped = new Set([...stoppedBoxes.values()].flatMap((box) => (box.email ? [mailAddressKey(box.email)] : [])));
+    const once = [...new Map(list.map((s) => [s.addressKey, s])).values()];
+    const suppressed = await this.mail.suppressedAmong(once.map((s) => s.addressKey));
+    const skipped: Record<SubscriberSkip, number> = { member_copy: 0, stopped: 0, undeliverable: 0 };
+    const ids: string[] = [];
+    for (const s of once) {
+      if (membersGetting.has(s.addressKey)) skipped.member_copy++;
+      else if (stopped.has(s.addressKey)) skipped.stopped++;
+      else if (suppressed.has(s.addressKey)) skipped.undeliverable++;
+      else ids.push(s.subscriberId);
+    }
+    return { ids, preview: { listed: once.length, willGet: ids.length, skipped } };
   }
 }
 
@@ -122,7 +158,7 @@ export class BroadcastsService {
     const blocked = await this.blocked();
     if (blocked) throw new ConflictException(blocked);
     const { preview } = await this.audience.resolve(input.audience);
-    if (!preview.willGet) throw new ConflictException('nobody in that choice can get this email');
+    if (!broadcastTotal(preview)) throw new ConflictException('nobody in that choice can get this email');
     // With approval switched on (design §10.12), it waits for a System or Site Admin, who may be the one who wrote it.
     const approvalRequired = (await this.settings.current()).broadcastApproval;
     const ref = this.broadcasts.ref();
@@ -146,7 +182,8 @@ export class BroadcastsService {
         subject: input.subject,
         bodyHash: sha256Hex(input.body),
         audience: broadcastAudienceSummary(input.audience),
-        willGet: preview.willGet,
+        willGet: broadcastTotal(preview),
+        ...(preview.subscribers && { subscribers: preview.subscribers.willGet }),
         approvalRequired,
       };
       await this.ledger.record(tx, [{ type: 'notice.broadcast_requested', actor, subject: null, payload: { ...payload } }]);
@@ -157,7 +194,7 @@ export class BroadcastsService {
       const who = names.get(actor) ?? 'An admin';
       await this.notices.notify(
         admins.map((a) => a.accountId).filter((id) => id !== actor),
-        { kind: 'broadcast_approval', ref: ref.id, title: `${who} wants to email ${preview.willGet} ${preview.willGet === 1 ? 'member' : 'members'}: “${input.subject}”. It waits for a System or Site Admin’s approval.`, link: '/admin?tab=email' },
+        { kind: 'broadcast_approval', ref: ref.id, title: `${who} wants to send an email to ${recipientsText(preview)}: “${input.subject}”. It waits for a System or Site Admin’s approval.`, link: '/admin?tab=email' },
       );
     }
     return this.summary(record, new Map(), ctx);
@@ -278,7 +315,7 @@ export class BroadcastsService {
     const waiting = record.status === 'awaiting_approval';
     const [counts, willGetNow] = await Promise.all([
       this.broadcasts.counts(record.broadcastId),
-      waiting ? this.audience.resolve(audience).then((r) => r.preview.willGet) : Promise.resolve(null),
+      waiting ? this.audience.resolve(audience).then((r) => broadcastTotal(r.preview)) : Promise.resolve(null),
     ]);
     return {
       ...rest,
@@ -293,6 +330,15 @@ export class BroadcastsService {
       willGetNow,
     };
   }
+}
+
+/** Who an email comes to, in the approvers' notification: members, subscribers or both. */
+function recipientsText(preview: BroadcastPreview): string {
+  const n = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+  const members = n(preview.willGet, 'member', 'members');
+  if (!preview.subscribers) return members;
+  const subscribers = n(preview.subscribers.willGet, 'newsletter subscriber', 'newsletter subscribers');
+  return preview.willGet ? `${members} and ${subscribers}` : subscribers;
 }
 
 /** Why another email keeps a new one from going: one waits for approval, or one is going out. Null when none does. */

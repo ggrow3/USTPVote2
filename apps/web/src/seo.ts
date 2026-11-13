@@ -23,6 +23,7 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   '/bylaws/:version?': 'The bylaws of the U.S. Transhumanist Party, every published version, with a way to check a copy.',
   '/results/:id': 'Results of a U.S. Transhumanist Party election, from its published record, which anyone can verify.',
   '/offices': 'Who holds each U.S. Transhumanist Party office now, and how they came to hold it.',
+  '/newsletter': "Get the U.S. Transhumanist Party's newsletter by email: news, elections, campaigns and events, for anyone not ready to join.",
   '/events': 'U.S. Transhumanist Party events: candidate Q&As, debate nights, talks and meetups, with recordings of past events.',
   '/events/:slug': 'An event of the U.S. Transhumanist Party: when and where, how to take part, and its recording once it is over.',
   '/partners': 'Groups the U.S. Transhumanist Party works with, the events they co-host, and its free courses for other sites to show.',
@@ -30,9 +31,9 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
 
 /**
  * Pages open to everyone that still stay out of search results: signing in, the account emails' links, one person's
- * course certificate, and unsubscribing.
+ * course certificate, unsubscribing, and confirming a newsletter sign-up.
  */
-const NOT_LISTED: ReadonlySet<string> = new Set(['/signin', '/email-action', '/course/certificates/:id', '/unsubscribe']);
+const NOT_LISTED: ReadonlySet<string> = new Set(['/signin', '/email-action', '/course/certificates/:id', '/unsubscribe', '/newsletter/confirm']);
 
 /** The route paths this module names, for its test to find in router.ts. */
 export const DESCRIBED_ROUTES = [...Object.keys(DESCRIPTIONS), ...NOT_LISTED];

@@ -6,12 +6,13 @@ import MailDaysPanel from './MailDaysPanel.vue';
 import MailHealthPanel from './MailHealthPanel.vue';
 import MailLogPanel from './MailLogPanel.vue';
 import MailStopsPanel from './MailStopsPanel.vue';
+import NewsletterPanel from './NewsletterPanel.vue';
 import NoticeSettingsPanel from './NoticeSettingsPanel.vue';
 import SendEmailPanel from './SendEmailPanel.vue';
 
 /**
- * Admin › Email, the Email Administration page. For System and Membership Admins: an email to members, and the members who
- * get no email (design §10.12). For System and Site Admins too: the settings of all the site's email (§6.8), whether
+ * Admin › Email, the Email Administration page. For System and Membership Admins: an email to members and the newsletter's
+ * subscribers, the members who get no email (design §10.12), and the newsletter's list (§10.15). For System and Site Admins too: the settings of all the site's email (§6.8), whether
  * email is set up properly, a test email to a System or Site Admin, the log of every email the site sent, and how many
  * went each day and to whom (§10.12).
  */
@@ -31,6 +32,7 @@ function showInLog(filter: { accountId: string | null; label: string | null; day
     <h2 class="text-h6 q-my-none">Email administration</h2>
     <q-tabs v-model="tab" align="left" no-caps dense class="text-primary" aria-label="Email administration">
       <q-tab name="send" label="Email members" />
+      <q-tab name="newsletter" label="Newsletter" />
       <q-tab name="stops" label="Who gets no email" />
       <q-tab v-if="systemAdmin" name="log" label="Email log" />
       <q-tab v-if="systemAdmin" name="days" label="Daily counts" />
@@ -40,6 +42,7 @@ function showInLog(filter: { accountId: string | null; label: string | null; day
     <q-separator />
     <q-tab-panels v-model="tab" keep-alive class="bg-transparent">
       <q-tab-panel name="send" class="q-px-none"><SendEmailPanel /></q-tab-panel>
+      <q-tab-panel name="newsletter" class="q-px-none"><NewsletterPanel /></q-tab-panel>
       <q-tab-panel name="stops" class="q-px-none"><MailStopsPanel /></q-tab-panel>
       <q-tab-panel v-if="systemAdmin" name="log" class="q-px-none"><MailLogPanel :preset="logPreset" /></q-tab-panel>
       <q-tab-panel v-if="systemAdmin" name="days" class="q-px-none"><MailDaysPanel @show="showInLog" /></q-tab-panel>

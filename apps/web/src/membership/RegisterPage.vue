@@ -32,6 +32,7 @@ import {
   type FederatedProvider,
 } from '../sign-in.js';
 import { useSignInFlow } from '../sign-in-flow.js';
+import { forgetReferral, keptReferral } from '../referrals/landing.js';
 import { myApplications, registrationForm, submitApplication } from './api.js';
 import MembershipQuestions from './MembershipQuestions.vue';
 import { placeInput } from './member-text.js';
@@ -273,6 +274,8 @@ async function submit() {
     volunteer: form.volunteer,
     runForOffice: form.runForOffice,
     referral: optional(form.referral),
+    // The member's referral link they came by, if any (design §5.17).
+    referralCode: keptReferral() ?? undefined,
     newsletter: form.keepInTouch,
     announcements: form.keepInTouch,
   });
@@ -291,6 +294,7 @@ async function submit() {
       return;
     }
     await submitApplication(checked.data);
+    forgetReferral();
     await refreshMe();
     applications.value = await myApplications();
     $q.notify({ type: 'positive', message: 'Application submitted' });
@@ -401,6 +405,10 @@ async function submit() {
             will come back here.
           </q-card-section>
         </q-card>
+        <p class="ustp-narrow text-grey-8">
+          Not ready to join? <router-link to="/newsletter">Get the party's newsletter</router-link> instead: just your email
+          address, and you can leave the list at any time.
+        </p>
       </template>
 
       <template v-else-if="!session.me">

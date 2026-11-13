@@ -8,12 +8,12 @@ import { describe, expect, it } from 'vitest';
  */
 const CONTEXTS: Readonly<Record<string, { readonly collections: readonly string[]; readonly repositories: readonly string[] }>> = {
   membership: {
-    collections: ['members', 'memberStatusHistory', 'applications', 'registrationForm', 'registrationFormVersions'],
-    repositories: ['member.repository', 'application.repository'],
+    collections: ['members', 'memberStatusHistory', 'applications', 'registrationForm', 'registrationFormVersions', 'firstSteps', 'firstStepTicks'],
+    repositories: ['member.repository', 'application.repository', 'first-steps.repository'],
   },
   notifications: {
-    collections: ['notices', 'noticeOutbox', 'noticeSettings', 'noticeReceipts', 'noticeTests', 'noticeVerifications', 'mailMessages', 'mailSuppressions', 'mailHealth', 'mailRequests', 'mailPreferences', 'broadcasts', 'broadcastRecipients', 'mailDigest'],
-    repositories: ['notice.repository', 'mail.repository', 'broadcast.repository'],
+    collections: ['notices', 'noticeOutbox', 'noticeSettings', 'noticeReceipts', 'noticeTests', 'noticeVerifications', 'mailMessages', 'mailSuppressions', 'mailHealth', 'mailRequests', 'mailPreferences', 'broadcasts', 'broadcastRecipients', 'mailDigest', 'newsletterSubscribers', 'newsletterLimits'],
+    repositories: ['notice.repository', 'mail.repository', 'broadcast.repository', 'newsletter.repository'],
   },
   inbox: {
     collections: ['appNotifications', 'inboxPreferences', 'memberThreads', 'memberMessages', 'memberBlocks', 'messageReports', 'membershipThreads', 'membershipMessages'],
@@ -26,6 +26,10 @@ const CONTEXTS: Readonly<Record<string, { readonly collections: readonly string[
   teams: {
     collections: ['teams', 'teamMembers', 'teamRequests'],
     repositories: ['team.repository'],
+  },
+  referrals: {
+    collections: ['referralCodes', 'referralLinks'],
+    repositories: ['referral.repository'],
   },
   forum: {
     collections: ['forumPosts', 'forumComments', 'forumVotes', 'forumReports'],
