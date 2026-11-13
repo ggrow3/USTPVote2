@@ -50,11 +50,12 @@ describe('outside production', () => {
     expect(res.headers['content-type']).toBe('application/xml; charset=utf-8');
     const urls = [...res.body.matchAll(/<url><loc>([^<]+)<\/loc>(?:<lastmod>([^<]+)<\/lastmod>)?<\/url>/g)].map((m) => [m[1], m[2]]);
     // Then every race page (design §5.17); no person's yet, since no race's records have been read.
-    expect(urls.slice(16)).toEqual(racePlaces().map((p) => [`https://vote.example.org${racePath(p)}`, undefined]));
-    expect(urls.slice(0, 16)).toEqual([
+    expect(urls.slice(17)).toEqual(racePlaces().map((p) => [`https://vote.example.org${racePath(p)}`, undefined]));
+    expect(urls.slice(0, 17)).toEqual([
       ['https://vote.example.org/', undefined],
       ['https://vote.example.org/vote', undefined],
       ['https://vote.example.org/register', undefined],
+      ['https://vote.example.org/newsletter', undefined],
       ['https://vote.example.org/courses', undefined],
       ['https://vote.example.org/course/transhumanism', undefined],
       ['https://vote.example.org/bylaws', '2026-10-01T12:00:00.000Z'],

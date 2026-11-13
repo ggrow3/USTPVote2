@@ -30,7 +30,7 @@ import { PollsService } from './polls.service.js';
 
 /**
  * The share kit (design §10.9): ready-made posts for Active members to share from their own accounts, and how often
- * each share button is pressed, on these, on news posts and on issue polls (§10.15). Publishing, editing a published
+ * each share button is pressed, on these, on news posts and on issue polls (§10.16). Publishing, editing a published
  * post and archiving are ledgered.
  */
 @Injectable()

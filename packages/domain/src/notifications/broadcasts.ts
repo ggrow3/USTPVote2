@@ -21,13 +21,16 @@ const STATE_CODES: ReadonlySet<string> = new Set(US_STATES.map((s) => s.code));
 
 export const broadcastAudienceSchema = z
   .discriminatedUnion('kind', [
-    z.strictObject({ kind: z.literal('all_active') }),
+    /** With `withSubscribers`, the newsletter's subscribers get it too (design §10.15). */
+    z.strictObject({ kind: z.literal('all_active'), withSubscribers: z.boolean().optional() }),
     z.strictObject({
       kind: z.literal('place'),
       countries: z.array(z.string().refine(isCountryCode, 'not a country')).max(300),
       states: z.array(z.string().refine((s) => STATE_CODES.has(s), 'not a US state')).max(60),
     }),
     z.strictObject({ kind: z.literal('picked'), accountIds: z.array(z.string().min(1).max(64)).min(1, 'pick at least one member').max(MAX_BROADCAST_PICKED) }),
+    /** The newsletter's confirmed subscribers alone, no member (design §10.15). */
+    z.strictObject({ kind: z.literal('subscribers') }),
   ])
   .refine((a) => a.kind !== 'place' || a.countries.length + a.states.length > 0, 'choose at least one state or country');
 export type BroadcastAudience = z.infer<typeof broadcastAudienceSchema>;
@@ -55,7 +58,7 @@ type AudienceMember = Pick<MemberRecord, 'accountId' | 'status' | 'country' | 's
  * state chosen counts, or the country; elsewhere the country.
  */
 export function inBroadcastAudience(audience: BroadcastAudience, member: AudienceMember): boolean {
-  if (member.status !== 'active') return false;
+  if (member.status !== 'active' || audience.kind === 'subscribers') return false;
   if (audience.kind === 'all_active') return true;
   if (audience.kind === 'picked') return audience.accountIds.includes(member.accountId);
   const country = countryOf(member);
@@ -84,11 +87,42 @@ export function broadcastSkip(input: {
   return input.suppressed ? 'undeliverable' : null;
 }
 
-/** Who an audience comes to before it is sent: how many it takes in, how many get it, and why the rest do not. */
+/** Whether the newsletter's subscribers are among those an audience takes in (design §10.15). */
+export function audienceHasSubscribers(audience: BroadcastAudience): boolean {
+  return audience.kind === 'subscribers' || (audience.kind === 'all_active' && !!audience.withSubscribers);
+}
+
+/**
+ * Why a confirmed subscriber does not get an email: their address is a member's who gets it as a member already, or an
+ * account's whose email is stopped or who unsubscribed (their choice as a member holds), or it bounced for good or was
+ * marked as spam.
+ */
+export type SubscriberSkip = 'member_copy' | 'stopped' | 'undeliverable';
+
+/** The subscribers' part of a preview. */
+export interface SubscriberPreview {
+  /** Confirmed subscribers. */
+  readonly listed: number;
+  readonly willGet: number;
+  readonly skipped: Readonly<Record<SubscriberSkip, number>>;
+}
+
+/**
+ * Who an audience comes to before it is sent: how many members it takes in, how many get it, and why the rest do not;
+ * and, when it takes in the newsletter's subscribers, the same of them. `willGet` counts members only: `broadcastTotal`
+ * adds the subscribers.
+ */
 export interface BroadcastPreview {
   readonly matched: number;
   readonly willGet: number;
   readonly skipped: Readonly<Record<BroadcastSkip, number>>;
+  /** Absent or null when the audience has no subscribers. */
+  readonly subscribers?: SubscriberPreview | null;
+}
+
+/** Every copy an email comes to: members and subscribers. */
+export function broadcastTotal(preview: Pick<BroadcastPreview, 'willGet' | 'subscribers'>): number {
+  return preview.willGet + (preview.subscribers?.willGet ?? 0);
 }
 
 /**
@@ -137,10 +171,16 @@ export function isBroadcastOpen(record: Pick<BroadcastRecord, 'status'>): boolea
 export const BROADCAST_RECIPIENT_STATUSES = ['pending', 'sending', 'sent', 'skipped', 'failed'] as const;
 export type BroadcastRecipientStatus = (typeof BROADCAST_RECIPIENT_STATUSES)[number];
 
-/** `broadcast_recipients/{broadcastId}_{accountId}`: one member's copy. Kept 180 days, and never their address. */
+/**
+ * `broadcast_recipients/{broadcastId}_{accountId}`: one member's copy; `broadcast_recipients/{broadcastId}_s-{subscriberId}`
+ * a subscriber's (design §10.15). Kept 180 days, and never an address.
+ */
 export interface BroadcastRecipientRecord {
   readonly broadcastId: string;
-  readonly accountId: string;
+  /** The member's account; null for a subscriber's copy. */
+  readonly accountId: string | null;
+  /** The newsletter subscriber's ID; absent or null for a member's copy. */
+  readonly subscriberId?: string | null;
   readonly status: BroadcastRecipientStatus;
   readonly outcome: NoticeOutcome | null;
   readonly messageId: string | null;
@@ -150,6 +190,11 @@ export interface BroadcastRecipientRecord {
 }
 
 export const BROADCAST_RECIPIENT_RETENTION_DAYS = 180;
+
+/** What follows the email's ID in a copy's document ID: the account, or `s-` and the subscriber. */
+export function broadcastRecipientKey(recipient: Pick<BroadcastRecipientRecord, 'accountId' | 'subscriberId'>): string {
+  return recipient.subscriberId ? `s-${recipient.subscriberId}` : recipient.accountId!;
+}
 
 /** How a sent email stands: its copies, and what the mail service reported of those it took. */
 export interface BroadcastCounts {
@@ -165,7 +210,11 @@ export interface BroadcastCounts {
 /** `GET /v1/admin/mail/broadcasts`: never who it went to, only how many. */
 export interface BroadcastSummary extends Omit<BroadcastRecord, 'audience' | 'createdBy' | 'approval'> {
   /** For hand-picked members, how many rather than who. */
-  readonly audience: { readonly kind: 'all_active' } | { readonly kind: 'place'; readonly countries: readonly string[]; readonly states: readonly string[] } | { readonly kind: 'picked'; readonly count: number };
+  readonly audience:
+    | { readonly kind: 'all_active'; readonly withSubscribers?: boolean }
+    | { readonly kind: 'place'; readonly countries: readonly string[]; readonly states: readonly string[] }
+    | { readonly kind: 'picked'; readonly count: number }
+    | { readonly kind: 'subscribers' };
   readonly createdByName: string | null;
   readonly counts: BroadcastCounts;
   /** The approval with who decided by name; null when none was needed. */
@@ -196,7 +245,10 @@ export interface BroadcastRequestedPayload {
   readonly subject: string;
   readonly bodyHash: string;
   readonly audience: BroadcastSummary['audience'];
+  /** Every copy: members, and subscribers when it has them. */
   readonly willGet: number;
+  /** Of `willGet`, the newsletter's subscribers (design §10.15); absent when it has none. */
+  readonly subscribers?: number;
   /** It waits for a System Admin's approval. Absent before approval existed. */
   readonly approvalRequired?: boolean;
 }

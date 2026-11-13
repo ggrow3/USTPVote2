@@ -42,6 +42,9 @@ export const router = createRouter({
         { path: 'set-password', component: () => import('./membership/SetPasswordPage.vue') },
         // Where an email's Unsubscribe link leads, with no sign-in (design §10.12).
         { path: 'unsubscribe', component: () => import('./notifications/UnsubscribePage.vue') },
+        // The newsletter's sign-up form for people not ready to join, and where its confirmation email leads (§10.15).
+        { path: 'newsletter', component: () => import('./notifications/NewsletterPage.vue') },
+        { path: 'newsletter/confirm', component: () => import('./notifications/NewsletterConfirmPage.vue') },
         { path: 'account', component: () => import('./pages/AccountPage.vue'), meta: { requiresAuth: true } },
         { path: 'notifications', component: () => import('./inbox/NotificationsPage.vue'), meta: { requiresAuth: true } },
         { path: 'messages', component: () => import('./inbox/MessagesPage.vue'), meta: { requiresAuth: true } },
@@ -95,7 +98,7 @@ export const router = createRouter({
         { path: 'partners', component: () => import('./communications/PartnersPage.vue') },
         { path: 'press', component: () => import('./communications/PressPage.vue') },
         { path: 'suggest', component: () => import('./communications/SuggestPage.vue') },
-        // Issue polls anyone may answer, signed in or not (design §10.15).
+        // Issue polls anyone may answer, signed in or not (design §10.16).
         { path: 'polls', component: () => import('./communications/PollsPage.vue') },
         { path: 'polls/:id', component: () => import('./communications/PollPage.vue') },
         { path: 'share', component: () => import('./communications/SharePage.vue'), meta: { requiresAuth: true } },

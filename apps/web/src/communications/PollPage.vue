@@ -16,7 +16,7 @@ import { answersText, pollPath, pollShareable, pollVoter, rememberAnswer, rememb
 import ShareButtons from './ShareButtons.vue';
 
 /**
- * One issue poll (design §10.15): its question and choices to answer, once per person; the running results to those
+ * One issue poll (design §10.16): its question and choices to answer, once per person; the running results to those
  * who answered, and to everyone once it closes; its share buttons and card. Plainly a poll, not an election.
  */
 const route = useRoute();

@@ -16,7 +16,7 @@ import { suggestions } from './api.js';
 
 /**
  * Communications, for Communications Admins (design §10.9): news and press releases, events and partner groups
- * (§10.17), the share kit for members, issue polls (§10.15), the social media calendar, suggestions from the public, the press kit, the party's bots, and the office holders,
+ * (§10.17), the share kit for members, issue polls (§10.16), the social media calendar, suggestions from the public, the press kit, the party's bots, and the office holders,
  * candidates and email templates of members' Your area page (design §5.12). The home page's Link hub,
  * with the party's social accounts, is its own section beside this one.
  */

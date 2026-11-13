@@ -15,6 +15,8 @@ usePageTitle('Unsubscribe');
 const route = useRoute();
 const token = computed(() => (isUnsubscribeToken(route.query.token) ? route.query.token : null));
 const state = ref<'loading' | 'invalid' | 'ready' | 'done' | 'failed'>('loading');
+/** A newsletter subscriber's link (design §10.15), not a member's: unsubscribing deletes the address. */
+const newsletter = ref(false);
 const problem = ref('');
 const working = ref(false);
 
@@ -29,7 +31,9 @@ onMounted(async () => {
     return;
   }
   try {
-    state.value = (await unsubscribeLinkStatus(token.value)).unsubscribed ? 'done' : 'ready';
+    const status = await unsubscribeLinkStatus(token.value);
+    newsletter.value = !!status.newsletter;
+    state.value = status.unsubscribed ? 'done' : 'ready';
   } catch (e) {
     failed(e);
   }
@@ -38,7 +42,7 @@ onMounted(async () => {
 async function unsubscribe() {
   working.value = true;
   try {
-    await unsubscribeLink(token.value!);
+    newsletter.value = !!(await unsubscribeLink(token.value!)).newsletter;
     state.value = 'done';
   } catch (e) {
     failed(e);
@@ -50,7 +54,20 @@ async function unsubscribe() {
 
 <template>
   <PageShell>
-    <div v-if="state === 'ready'" class="ustp-content">
+    <div v-if="state === 'ready' && newsletter" class="ustp-content">
+      <h1 class="text-h5 q-my-none">Leave the newsletter</h1>
+      <p>If you unsubscribe, the U.S. Transhumanist Party sends no more newsletters to this address, and deletes it from the list.</p>
+      <div class="ustp-actions">
+        <q-btn color="primary" no-caps label="Unsubscribe" :loading="working" @click="unsubscribe" />
+      </div>
+    </div>
+
+    <div v-else-if="state === 'done' && newsletter" class="ustp-content" role="status">
+      <h1 class="text-h5 q-my-none">You are off the list</h1>
+      <p>Your address is deleted, and no more newsletters come. Changed your mind? <router-link to="/newsletter">Sign up again</router-link>.</p>
+    </div>
+
+    <div v-else-if="state === 'ready'" class="ustp-content">
       <h1 class="text-h5 q-my-none">Unsubscribe from party email</h1>
       <p>
         If you unsubscribe, the US Transhumanist Party will send you no more email: no notice that voting has opened, no
@@ -78,6 +95,7 @@ async function unsubscribe() {
         Use the Unsubscribe link in your most recent email from the party, or sign in and unsubscribe on
         <router-link to="/account">your Account page</router-link>.
       </p>
+      <p>If it was a newsletter's link and you have unsubscribed, your address is deleted already: nothing more comes.</p>
     </div>
 
     <div v-else-if="state === 'failed'" class="ustp-content">

@@ -93,7 +93,7 @@ const synopsis = computed(() =>
 );
 
 /**
- * Sharing the results (design §10.15, "Result cards"): share buttons, and the card a link to this page shows where it
+ * Sharing the results (design §10.16, "Result cards"): share buttons, and the card a link to this page shows where it
  * is shared, which changes when the results are certified.
  */
 const shareable = computed(() => (synopsis.value ? resultsShareable(synopsis.value, isRehearsalRoll(record.value?.roll?.criteria)) : null));

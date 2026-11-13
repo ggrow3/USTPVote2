@@ -1,7 +1,7 @@
 import { absoluteUrl, percent, type ResultsSynopsis, type Shareable } from 'ustp-domain';
 
 /**
- * What a finished election's share buttons share (design §10.15, "Result cards"): its status and outcome in one
+ * What a finished election's share buttons share (design §10.16, "Result cards"): its status and outcome in one
  * line, and its results page here, whose link preview carries the result card. A rehearsal says so.
  */
 export function resultsShareable(synopsis: ResultsSynopsis, rehearsal: boolean, origin = location.origin): Shareable {

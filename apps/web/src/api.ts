@@ -37,7 +37,7 @@ export interface ApiOptions {
    * (`@AppChecked`, the suggestions form, design §10.9).
    */
   readonly appCheck?: boolean;
-  /** More headers for the request: a signed-out browser's poll token (design §10.15). */
+  /** More headers for the request: a signed-out browser's poll token (design §10.16). */
   readonly headers?: Readonly<Record<string, string>>;
 }
 

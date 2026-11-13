@@ -5,7 +5,7 @@ import { percent } from '../results-synopsis.js';
 import { basedOnSchema, hashtagsSchema, oneLine, stale, text } from './common.js';
 
 /**
- * Issue polls (design §10.15): a question of the day ("Should Congress fund longevity research?") that anyone may
+ * Issue polls (design §10.16): a question of the day ("Should Congress fund longevity research?") that anyone may
  * answer, signed in or not, with results to share. A poll decides nothing and is not an election: it has no roll,
  * no secret ballot and no audit ledger, and its page says so. Communications Admins write, publish, close and delete
  * polls, one alone, as with news.
@@ -108,7 +108,7 @@ export interface PollRecord {
   /** Set when a Communications Admin closed it before its time. */
   readonly closedAt: string | null;
   readonly closedBy: string | null;
-  /** The worker deleted its "has answered" marks after it closed (design §10.15). */
+  /** The worker deleted its "has answered" marks after it closed (design §10.16). */
   readonly marksCleared: boolean;
 }
 

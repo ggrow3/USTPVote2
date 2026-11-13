@@ -49,6 +49,8 @@ export function submitApplication(args: {
   readonly recent: number;
   readonly current: MemberRecord | null;
   readonly at: string;
+  /** Whose referral link the applicant came by, from `input.referralCode` (design §5.18); null when none or no one's. */
+  readonly referredBy?: string | null;
 }): Outcome<ApplicationChange> {
   const { accountId, input, bylaws, current, at } = args;
   if (!bylaws) return refuse('conflict', 'no bylaws have been published yet');
@@ -89,6 +91,8 @@ export function submitApplication(args: {
     volunteer: input.volunteer ?? false,
     runForOffice: input.runForOffice ?? false,
     referral: input.referral || null,
+    // Never the applicant's own link.
+    referredBy: args.referredBy && args.referredBy !== accountId ? args.referredBy : null,
     decidedBy: null,
     decidedAt: null,
     decisionReason: null,

@@ -50,7 +50,7 @@ const BATCH = 400;
 const hashed = (pollId: string, key: string) => createHash('sha256').update(`${pollId}:${key}`).digest('hex').slice(0, 32);
 
 /**
- * Issue polls (design §10.15): Communications Admins write and publish them; anyone answers. Not ledgered: a poll
+ * Issue polls (design §10.16): Communications Admins write and publish them; anyone answers. Not ledgered: a poll
  * decides nothing, and its marks are deleted. Each answer is one transaction: the poll is open, this browser (and
  * account) has not answered, the address has room today, then the marks are made and one of the poll's count
  * documents goes up by one.

@@ -74,6 +74,7 @@ import { MessageReportsController, MessagesController, MyNotificationsController
 import { MyTeamInboxController, TeamInboxController } from '../inbox/membership-inbox.controller.js';
 import { INBOX_API_PROVIDERS } from '../inbox/providers.js';
 import { UnsubscribeController } from '../notifications/mail-preferences.js';
+import { NewsletterAdminController, PublicNewsletterController } from '../notifications/newsletter.js';
 import { MyEmailController } from '../notifications/my-email.js';
 import { NoticeSettingsController } from '../notifications/notice-settings.js';
 import { NoticesController } from '../notifications/notices.controller.js';
@@ -102,6 +103,8 @@ import {
 import { EventsAdminController, PublicEventsController, PublicPartnersController } from '../communications/events.controller.js';
 import { PollsAdminController, PublicPollsController } from '../communications/polls.controller.js';
 import { TEAMS_PROVIDERS } from '../teams/providers.js';
+import { REFERRALS_PROVIDERS } from '../referrals/providers.js';
+import { MyReferralsController, ReferralLeaderboardController } from '../referrals/referrals.js';
 import { BillsAdminController, BillsController, PublicBillsController } from '../bills/bills.controller.js';
 import { BILLS_PROVIDERS } from '../bills/providers.js';
 import { TeamsAdminController, TeamsController } from '../teams/teams.controller.js';
@@ -112,7 +115,7 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
  * M1: accounts, registration, membership administration, profile photos, roles and approvals, auth switches, ledger.
  * M2: election setup, rolls, scheduling and cancellation; the published ledger (blocks, keys, proofs, anchors).
  * M3: voting. M4: results, certification, offices and terms; teams (design §5.7), the forum (§5.9), the members' room (§5.10). Testing mode: test personas and demo elections (design
- * §10.4). M5: who sees which link (design §10.5), the home page hub (§10.6), communications (§10.9), issue polls (§10.15), robots.txt,
+ * §10.4). M5: who sees which link (design §10.5), the home page hub (§10.6), communications (§10.9), issue polls (§10.16), robots.txt,
  * the sitemap and link previews (§15); the
  * platform consistency check (design §5.5), the election setup check (§6.9) and the Anthropic API key (design §5.6);
  * candidacies for public office and their districts' map (design §5.8); the legislative team's Bills tool (design §5.14);
@@ -141,6 +144,8 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     BroadcastsController,
     MyEmailController,
     UnsubscribeController,
+    PublicNewsletterController,
+    NewsletterAdminController,
     MyNotificationsController,
     MessagesController,
     MessageReportsController,
@@ -164,6 +169,8 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     EmailTemplatesAdminController,
     TeamsController,
     TeamsAdminController,
+    MyReferralsController,
+    ReferralLeaderboardController,
     BillsController,
     BillsAdminController,
     PublicBillsController,
@@ -236,6 +243,7 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     PositionsService,
     ...CANDIDACIES_PROVIDERS,
     ...TEAMS_PROVIDERS,
+    ...REFERRALS_PROVIDERS,
     ...BILLS_PROVIDERS,
     ...FORUM_PROVIDERS,
     ...ROOM_PROVIDERS,

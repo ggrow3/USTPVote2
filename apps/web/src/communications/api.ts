@@ -80,7 +80,7 @@ export const partnersPage = () => api<PublicPartnersPage>('GET', '/v1/public/par
 export const shareKit = () => api<MemberSharePost[]>('GET', '/v1/share');
 
 /**
- * Issue polls (design §10.15). A signed-out browser shows its token, so the api can tell whether it answered; someone
+ * Issue polls (design §10.16). A signed-out browser shows its token, so the api can tell whether it answered; someone
  * signed in with an account reads and answers as themself. A signed-out answer is App Checked, as the suggestions form.
  */
 const voterHeaders = (voter: string) => ({ headers: { [POLL_VOTER_HEADER]: voter } });

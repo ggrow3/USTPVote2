@@ -10,7 +10,7 @@ const easternDay = (iso: string) =>
 const answers = (n: number) => `${n.toLocaleString('en-US')} ${n === 1 ? 'answer' : 'answers'}`;
 
 /**
- * An issue poll's link preview (design §15, "Link previews"; §10.15). While it is open, the question and its choices,
+ * An issue poll's link preview (design §15, "Link previews"; §10.16). While it is open, the question and its choices,
  * never the running results, which only those who answered see; once it has closed, a bar per choice. A poll says
  * it is a poll, not an election.
  */

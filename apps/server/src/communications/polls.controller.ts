@@ -25,7 +25,7 @@ import { PollsService } from './polls.service.js';
 const voterOf = (header: unknown): string | null => (typeof header === 'string' && POLL_VOTER.test(header) ? header : null);
 
 /**
- * Issue polls for everyone (design §10.15): the list, a poll, and answering it signed out. The routes that read send
+ * Issue polls for everyone (design §10.16): the list, a poll, and answering it signed out. The routes that read send
  * a poll's results only to a browser that answered it (by the token in `x-poll-voter`) or once it has closed.
  */
 @Controller('v1/polls')
@@ -75,7 +75,7 @@ export class PublicPollsController {
   }
 }
 
-/** Communications Admins write, publish, close and delete issue polls (design §10.15), one alone. Nothing is ledgered. */
+/** Communications Admins write, publish, close and delete issue polls (design §10.16), one alone. Nothing is ledgered. */
 @Controller('v1/admin/communications/polls')
 @Roles('communications_admin')
 export class PollsAdminController {

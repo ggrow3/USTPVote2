@@ -11,7 +11,7 @@ import PollBars from './PollBars.vue';
 import { answersText, pollPath } from './polls.js';
 
 /**
- * Issue polls for Communications Admins (design §10.15): drafts, publishing (open at once until the closing time),
+ * Issue polls for Communications Admins (design §10.16): drafts, publishing (open at once until the closing time),
  * closing early and deleting. A published poll's question and choices no longer change. Nothing is ledgered.
  */
 const polls = ref<AdminPoll[] | null>(null);

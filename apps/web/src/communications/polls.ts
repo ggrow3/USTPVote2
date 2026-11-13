@@ -1,7 +1,7 @@
 import { absoluteUrl, choiceShare, percent, type PollCount, type PublicPoll, type Shareable } from 'ustp-domain';
 
 /**
- * What the issue poll pages share (design §10.15): this browser's token, the answers it remembers, and what share
+ * What the issue poll pages share (design §10.16): this browser's token, the answers it remembers, and what share
  * buttons and the card show.
  */
 

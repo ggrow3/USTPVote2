@@ -4,7 +4,7 @@ import { choiceShare, leadingChoices, percent, type PollChoice, type PollResults
 import { answersText } from './polls.js';
 
 /**
- * A poll's results (design §10.15): a bar per choice for everyone who answered and, beside it, for the Active
+ * A poll's results (design §10.16): a bar per choice for everyone who answered and, beside it, for the Active
  * members who answered signed in. Each bar says its share and count in words too, for screen readers and print.
  */
 const props = defineProps<{

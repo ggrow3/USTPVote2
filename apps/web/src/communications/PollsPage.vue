@@ -11,7 +11,7 @@ import PollBars from './PollBars.vue';
 import { answersText, leadText, pollPath, pollVoter, rememberedAnswer } from './polls.js';
 
 /**
- * The issue polls (design §10.15): open ones to answer, newest first, then closed ones with their results. A poll
+ * The issue polls (design §10.16): open ones to answer, newest first, then closed ones with their results. A poll
  * this browser answered shows its running results here too.
  */
 usePageTitle('Polls');
