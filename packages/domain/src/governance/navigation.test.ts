@@ -55,7 +55,7 @@ describe('defaults', () => {
 
   it('give each role the console tabs it had, System Admins the link hub, the home page quote and Bills, and Security to both', () => {
     const tabs = (role: Role) => shownTo(DEFAULT_NAVIGATION, viewer('active', role)).sections;
-    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'inbox', 'photos', 'bylaws', 'registration', 'offices', 'candidacies', 'teams', 'forum', 'room', 'approvals', 'email']);
+    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'inbox', 'photos', 'bylaws', 'registration', 'first_steps', 'offices', 'candidacies', 'teams', 'forum', 'room', 'approvals', 'email']);
     expect(tabs('election_admin')).toEqual(['elections', 'offices', 'forum', 'approvals']);
     expect(tabs('auditor')).toEqual(['elections', 'offices', 'approvals', 'audit', 'security']);
     expect(tabs('system_admin')).toEqual(['room', 'approvals', 'people', 'signin', 'claude', 'email', 'security', 'testing', 'navigation', 'hub', 'quote', 'bills']);
@@ -78,6 +78,15 @@ describe('defaults', () => {
     expect(resolveNavigation(stored).sections.membership_admin.registration).toBe(true);
     for (const role of ['election_admin', 'auditor', 'system_admin'] as const) {
       expect(sectionLock(role, 'registration')).toBe('not_permitted');
+    }
+  });
+
+  it('give settings saved before the Getting started section existed its default', () => {
+    const { first_steps: _, ...saved } = DEFAULT_NAVIGATION.sections.membership_admin;
+    const stored = { ...DEFAULT_NAVIGATION, sections: { ...DEFAULT_NAVIGATION.sections, membership_admin: saved } };
+    expect(resolveNavigation(stored).sections.membership_admin.first_steps).toBe(true);
+    for (const role of ['election_admin', 'auditor', 'system_admin', 'site_admin'] as const) {
+      expect(sectionLock(role, 'first_steps')).toBe('not_permitted');
     }
   });
 
@@ -274,6 +283,7 @@ describe('what a person sees', () => {
       'photos',
       'bylaws',
       'registration',
+      'first_steps',
       'elections',
       'offices',
       'candidacies',
