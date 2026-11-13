@@ -290,7 +290,7 @@ export class LocalProfileSource implements ProfileSource {
     };
     const photo: ContactPhoto = { url: 'https://upload.wikimedia.org/example.jpg', credit: 'Photo: Example Photographer, CC BY-SA 4.0', creditUrl: 'https://commons.wikimedia.org/wiki/File:Example.jpg' };
     return {
-      people: people.map((p) => (/^(fec|congress):H/.test(p.contactId) ? { ...p, profile, photo } : p)),
+      people: people.map((p) => (p.name === 'Hal House' && /^(fec|congress):/.test(p.contactId) ? { ...p, profile, photo } : p)),
       state: 'ok',
     };
   }
