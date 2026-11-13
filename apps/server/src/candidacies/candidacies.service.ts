@@ -13,6 +13,8 @@ import {
   changeCandidacy,
   compareAdminCandidacies,
   comparePublicCandidacies,
+  countryName,
+  countryOf,
   decideCandidacy,
   declareCandidacy,
   districtLookupId,
@@ -90,7 +92,7 @@ export class CandidaciesService {
   /**
    * The caller's own area, which the Candidates page opens on: the state on their membership record and the districts
    * its ZIP code reaches into, or the whole state when that cannot be worked out. Nothing is stored, and the ZIP code
-   * is not sent back.
+   * is not sent back. A member outside the United States has none (404), and the page opens on every state instead.
    */
   async area(accountId: string): Promise<CandidateArea> {
     return (await this.placed(accountId)).area;
@@ -104,6 +106,11 @@ export class CandidaciesService {
     const member = await this.members.find(accountId);
     if (!member) throw new NotFoundException('no membership record');
     const { state } = member;
+    if (state === null) {
+      throw new NotFoundException(
+        `your membership record is in ${countryName(countryOf(member))}, so it has no US area; look up a US ZIP code on the Candidates page`,
+      );
+    }
     const postalCode = member.contact?.postalCode ?? null;
     if (postalCode === null) return { area: { state, districts: [], basis: 'no_zip' }, zip: null };
     return { area: await this.areaOf(postalCode, state), zip: postalCode.slice(0, 5) };

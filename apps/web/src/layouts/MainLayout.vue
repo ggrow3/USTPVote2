@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { queueBadge } from 'ustp-domain';
 import { focusElement, liveRegions } from '../a11y.js';
 import { acting } from '../acting.js';
+import { claimGuestProgress } from '../academy/claim-guest-progress.js';
 import { APP_NAME } from '../app-name.js';
 import UpdateBanner from '../components/UpdateBanner.vue';
+import { applicationQueue, refreshApplicationQueue } from '../membership/queue.js';
+import MailProblemBanner from '../notifications/MailProblemBanner.vue';
+import NotificationBell from '../inbox/NotificationBell.vue';
 import { usingEmulators } from '../firebase.js';
 import { navigationState, shown } from '../governance/navigation.js';
 import { MENU_LABELS } from '../governance/navigation-text.js';
@@ -13,6 +18,7 @@ import { hasRole, secondFactorMissing, session, signOut } from '../session.js';
 import { toggleTheme } from '../theme.js';
 import { update } from '../update.js';
 import { linksInRow } from './menu-fit.js';
+import { billsState } from '../bills/access.js';
 
 const TestingBar = defineAsyncComponent(() => import('../components/TestingBar.vue'));
 /** The walkthrough under way (design §10.11), loaded only while there is one. */
@@ -24,11 +30,37 @@ const who = computed(() => acting.persona?.label || session.me?.account?.display
 /**
  * The links the navigation settings give this person (design §10.5), once their account and the settings are known.
  * Each page still explains itself to someone who reaches it without being one it is for. Sign in is the header's button.
+ * Bills is shown only to people who have the tool (design §5.14), which the settings cannot know.
  */
 const links = computed(() =>
   session.ready && navigationState.loaded
-    ? shown.value.menu.filter((link) => link !== 'signin').map((link) => ({ to: link === 'course' ? '/courses' : `/${link}`, label: MENU_LABELS[link] }))
+    ? shown.value.menu
+        .filter((link) => link !== 'signin' && (link !== 'bills' || billsState.access?.allowed === true))
+        .map((link) => ({
+          to: link === 'course' ? '/courses' : `/${link}`,
+          label: MENU_LABELS[link],
+          // Applications waiting for a Membership Admin (design §5.2); null for everyone else, and when none waits.
+          waiting: link === 'admin' && applicationQueue.summary?.pending ? queueBadge(applicationQueue.summary.pending) : null,
+        }))
     : [],
+);
+
+// Membership Admins see how many applications wait, beside Admin (design §5.2): read when they sign in and on each
+// page they open, so it follows what they and the other admins decide without polling.
+watch(
+  () => [session.me?.roles.join(','), route.path],
+  () => void refreshApplicationQueue(),
+  { immediate: true },
+);
+
+// Quizzes passed before signing in move into the account once it is loaded (design §10.8), never into a test persona's
+// and not before a second factor the site requires is set up.
+watch(
+  () => (session.me?.account && !acting.persona && !secondFactorMissing() ? session.me.account.accountId : null),
+  (accountId) => {
+    if (accountId) void claimGuestProgress((path) => void router.push(path));
+  },
+  { immediate: true },
 );
 
 const isActive = (to: string) => route.path === to || route.path.startsWith(`${to}/`);
@@ -148,6 +180,8 @@ watch(headerShown, (now) => now || (document.documentElement.style.scrollPadding
             @click="toggleTheme"
           />
           <template v-if="session.ready">
+            <!-- Notifications and messages (design §10.13), for whoever has an account. -->
+            <NotificationBell v-if="session.user && session.me?.account" />
             <!-- On phones only the icon shows, so the title is not squeezed out (WCAG 1.4.10). -->
             <q-btn-dropdown
               v-if="session.user"
@@ -159,6 +193,7 @@ watch(headerShown, (now) => now || (document.documentElement.style.scrollPadding
             >
               <q-list>
                 <q-item v-close-popup clickable to="/account"><q-item-section>Account</q-item-section></q-item>
+                <q-item v-if="session.me?.account" v-close-popup clickable to="/messages"><q-item-section>Messages</q-item-section></q-item>
                 <q-item v-close-popup clickable @click="onSignOut"><q-item-section>Sign out</q-item-section></q-item>
               </q-list>
             </q-btn-dropdown>
@@ -174,7 +209,7 @@ watch(headerShown, (now) => now || (document.documentElement.style.scrollPadding
             class="ustp-nav-link"
             :class="{ 'ustp-nav-link--active': isActive(l.to) }"
           >
-            {{ l.label }}
+            {{ l.label }}<span v-if="l.waiting" class="ustp-nav-count">{{ l.waiting }}<span class="sr-only"> applications waiting</span></span>
           </router-link>
           <!-- A disclosure, not an ARIA menu: its items are the same page links, in the same tab order. -->
           <div v-if="moreLinks.length" ref="moreBox" class="ustp-nav-more" @keydown.esc="closeMore(true)" @focusout="onMoreFocusOut">
@@ -192,7 +227,7 @@ watch(headerShown, (now) => now || (document.documentElement.style.scrollPadding
             <ul v-show="moreOpen" id="ustp-nav-more" class="ustp-nav-more__list">
               <li v-for="l in moreLinks" :key="l.to">
                 <router-link :to="l.to" class="ustp-nav-more__link" :class="{ 'ustp-nav-more__link--active': isActive(l.to) }">
-                  {{ l.label }}
+                  {{ l.label }}<span v-if="l.waiting" class="ustp-nav-count">{{ l.waiting }}<span class="sr-only"> applications waiting</span></span>
                 </router-link>
               </li>
             </ul>
@@ -201,7 +236,9 @@ watch(headerShown, (now) => now || (document.documentElement.style.scrollPadding
                cannot widen the page. -->
           <div class="ustp-nav-ruler-box" aria-hidden="true">
             <div ref="ruler" class="ustp-nav-ruler">
-              <span v-for="l in links" :key="l.to" class="ustp-nav-link">{{ l.label }}</span>
+              <span v-for="l in links" :key="l.to" class="ustp-nav-link"
+                >{{ l.label }}<span v-if="l.waiting" class="ustp-nav-count">{{ l.waiting }}</span></span
+              >
               <span class="ustp-nav-link ustp-nav-more__button">More</span>
             </div>
           </div>
@@ -220,6 +257,7 @@ watch(headerShown, (now) => now || (document.documentElement.style.scrollPadding
         Set it up, or sign in with it, on your
         <router-link to="/account" class="text-black">Account page</router-link> to use the rest of the site.
       </q-banner>
+      <MailProblemBanner v-if="!bare" />
       <!-- Keyed by persona, so switching reloads every page's data as the new persona. -->
       <router-view :key="acting.persona?.accountId ?? 'self'" />
     </q-page-container>
@@ -246,6 +284,17 @@ watch(headerShown, (now) => now || (document.documentElement.style.scrollPadding
   letter-spacing: 0.0892857143em;
   text-decoration: none;
   text-transform: uppercase;
+}
+.ustp-nav-count {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: #f2c037;
+  color: #000;
+  font-size: 12px;
+  line-height: 18px;
+  letter-spacing: 0;
 }
 .ustp-nav-link:hover {
   background: rgba(255, 255, 255, 0.1);

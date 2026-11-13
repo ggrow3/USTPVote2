@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch, watchEffect, type Component } from 'vue';
-import type { AdminSection } from 'ustp-domain';
+import { queueBadge, type AdminSection } from 'ustp-domain';
 import ApiKeysPanel from '../claude-key/ApiKeysPanel.vue';
 import ApprovalsPanel from '../components/admin/ApprovalsPanel.vue';
 import AuditPanel from '../components/admin/AuditPanel.vue';
@@ -10,6 +10,7 @@ import ElectionsPanel from '../components/admin/ElectionsPanel.vue';
 import OfficesPanel from '../offices/OfficesPanel.vue';
 import CandidaciesPanel from '../candidacies/CandidaciesPanel.vue';
 import TeamsPanel from '../teams/TeamsPanel.vue';
+import BillsPanel from '../bills/BillsPanel.vue';
 import CommunicationsPanel from '../communications/CommunicationsPanel.vue';
 import ForumPanel from '../forum/ForumPanel.vue';
 import RoomPanel from '../room/RoomPanel.vue';
@@ -21,26 +22,31 @@ import PageShell from '../components/PageShell.vue';
 import HomeQuotePanel from '../governance/HomeQuotePanel.vue';
 import HubPanel from '../governance/HubPanel.vue';
 import NavigationPanel from '../governance/NavigationPanel.vue';
-import NoticeSettingsPanel from '../notifications/NoticeSettingsPanel.vue';
+import EmailAdminPanel from '../notifications/EmailAdminPanel.vue';
 import { shown } from '../governance/navigation.js';
 import { SECTION_LABELS } from '../governance/navigation-text.js';
 import { guide } from '../guide/tour.js';
 import ApplicationsPanel from '../membership/ApplicationsPanel.vue';
 import MembersPanel from '../membership/MembersPanel.vue';
+import MembershipInboxPanel from '../inbox/MembershipInboxPanel.vue';
 import RegistrationFormPanel from '../membership/RegistrationFormPanel.vue';
+import FirstStepsPanel from '../membership/FirstStepsPanel.vue';
 import SecurityPanel from '../security/SecurityPanel.vue';
 import { useRoute, useRouter } from 'vue-router';
 import { usePageTitle } from '../a11y.js';
 import { acting } from '../acting.js';
+import { applicationQueue } from '../membership/queue.js';
 import { session } from '../session.js';
 
 /** Each section's panel. Which ones a person sees is the navigation settings' (design §10.5); the API decides what they may do. */
 const PANELS: Record<AdminSection, Component> = {
   applications: ApplicationsPanel,
   members: MembersPanel,
+  inbox: MembershipInboxPanel,
   photos: PhotosPanel,
   bylaws: BylawsPanel,
   registration: RegistrationFormPanel,
+  first_steps: FirstStepsPanel,
   elections: ElectionsPanel,
   offices: OfficesPanel,
   candidacies: CandidaciesPanel,
@@ -51,7 +57,7 @@ const PANELS: Record<AdminSection, Component> = {
   people: PeoplePanel,
   signin: SignInMethodsPanel,
   claude: ApiKeysPanel,
-  email: NoticeSettingsPanel,
+  email: EmailAdminPanel,
   audit: AuditPanel,
   security: SecurityPanel,
   testing: TestingPanel,
@@ -60,6 +66,7 @@ const PANELS: Record<AdminSection, Component> = {
   communications: CommunicationsPanel,
   quote: HomeQuotePanel,
   course: CoursePanel,
+  bills: BillsPanel,
 };
 
 usePageTitle('Administration');
@@ -104,12 +111,11 @@ onUnmounted(() => (guide.openTab = null));
       </p>
       <template v-else>
         <p>
-          The admin console is for party officers: Membership Admins, Election Admins, Auditors, System Admins, Course Administrators and
-          Communications Admins. Your
-          account holds none of these roles.
+          The admin console is for party officers: Membership Admins, Election Admins, Auditors, System Admins, Site
+          Admins, Course Administrators and Communications Admins. Your account holds none of these roles.
         </p>
         <p>
-          A System Admin grants roles. If you have been chosen for one, ask a System Admin to grant it to the account you
+          A System or Site Admin grants roles. If you have been chosen for one, ask one of them to grant it to the account you
           sign in with<template v-if="email">, {{ email }}</template>. Every admin role needs two-step verification,
           which you can set up beforehand on your <router-link to="/account">Account page</router-link>.
         </p>
@@ -121,7 +127,7 @@ onUnmounted(() => (guide.openTab = null));
         <router-link to="/account">Account page</router-link>, then sign out and sign back in with its code.
       </q-banner>
       <p v-if="!tabs.length">
-        A System Admin has hidden every section of the console from your roles. Ask them if you need one back.
+        A System or Site Admin has hidden every section of the console from your roles. Ask them if you need one back.
       </p>
       <!-- Arrows beside the tabs rather than over the first and last when they do not all fit in the card. -->
       <q-tabs v-model="tab" dense align="left" class="text-primary" no-caps outside-arrows>
@@ -132,7 +138,11 @@ onUnmounted(() => (guide.openTab = null));
           :name="t.name"
           :label="t.label"
           :aria-controls="`admin-panel-${t.name}`"
-        />
+        >
+          <q-badge v-if="t.name === 'applications' && applicationQueue.summary?.pending" color="warning" text-color="black" floating>
+            {{ queueBadge(applicationQueue.summary.pending) }}<span class="sr-only"> waiting</span>
+          </q-badge>
+        </q-tab>
       </q-tabs>
       <q-separator />
       <!-- Transparent and without side padding, so panels sit on the page, in line with the title and tabs. -->

@@ -45,8 +45,8 @@ output "api_env" {
 }
 
 output "worker_env" {
-  description = "Environment of the worker service."
-  value       = local.worker_env
+  description = "Environment of the worker service, except the FEC key it reads the public bills with."
+  value       = { for name, value in local.worker_env : name => value if name != "FEC_API_KEY" }
 }
 
 # --- Services ----------------------------------------------------------------------------------------------------------

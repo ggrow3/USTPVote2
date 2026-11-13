@@ -130,11 +130,11 @@ describe('a demo election', () => {
     expect(candidates(again)).toEqual(candidates(detail));
   });
 
-  it('mails nobody: both of its notices go to the outbox, addressed to nobody, and the mail transport is never used', async () => {
+  it('mails nobody: its notices go to the outbox, addressed to nobody, and the mail transport is never used', async () => {
     const transport = worker.app.get<MailTransport>(MAIL_TRANSPORT);
     const sent = vi.spyOn(transport, 'send');
     // A reminder an hour before the close, so a two-hour demo gets one.
-    const settings = { ...DEFAULT_NOTICE_SETTINGS, reminderHours: 1 };
+    const settings = { ...DEFAULT_NOTICE_SETTINGS, allEmails: true, reminderHours: 1 };
     expect((await api.call('PUT', '/v1/admin/notice-settings', sa1, { basedOn: 0, ...settings })).status).toBe(200);
     worker.app.get(NoticeSettingsService).invalidate();
 
@@ -146,11 +146,16 @@ describe('a demo election', () => {
 
     await vote(electionId, 1);
     travelTo(Date.parse(closesAt) - 59 * 60_000);
-    expect((await worker.tick()).body).toMatchObject({ noticesSent: 4 });
+    // The reminder to the four who have not voted, and the voter's confirmation.
+    expect((await worker.tick()).body).toMatchObject({ noticesSent: 5 });
     expect(await notice(electionId, 'closing_soon')).toMatchObject({ delivery: 'outbox', rehearsal: true, status: 'done', recipients: 4 });
 
     const messages = await outbox(electionId);
-    expect(messages.map((m) => m.subject.split(':')[0]).sort()).toEqual([...Array(4).fill('Voting closes soon'), ...Array(5).fill('Voting is open')]);
+    expect(messages.map((m) => m.subject.split(':')[0]).sort()).toEqual([
+      ...Array(4).fill('Voting closes soon'),
+      ...Array(5).fill('Voting is open'),
+      'Your vote was recorded',
+    ]);
     expect(messages.every((m) => m.to === null)).toBe(true);
     expect(sent).not.toHaveBeenCalled();
     for (const e of await entries(electionId, 'notice.sent')) expect(e.payload).toMatchObject({ delivery: 'outbox' });

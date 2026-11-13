@@ -1,4 +1,5 @@
 import { deny, OK, refuse, type Check } from '../check.js';
+import type { MailStatus } from './mail.js';
 import { NOTICE_CLAIM_MINUTES, NOTICE_KINDS, type NoticeDelivery, type NoticeKind, type NoticeOutcome } from './notices.js';
 
 /**
@@ -36,7 +37,7 @@ export interface NoticeReceiptRecord {
   readonly failed: number;
   /** People with nowhere to send it (no verified address), or who voted before their reminder went. */
   readonly skipped: number;
-  /** The mail service's ID for each message it took, which its bounce reports name. */
+  /** The mail service's ID for each message it took, which its delivery reports name. */
   readonly messageIds: readonly string[];
 }
 
@@ -67,6 +68,8 @@ export interface NoticeTestRecord {
   /** Null when it was sent; else why not, as for a roll member's notice. */
   readonly outcome: NoticeOutcome | null;
   readonly receiptId: string | null;
+  /** What the mail service has reported of it since it took it (design §6.8); null until a report, absent on older tests. */
+  readonly delivery?: MailStatus | null;
 }
 
 /** An Election Admin may ask for this many test emails of an election a day; one at a time. */
@@ -107,6 +110,8 @@ export interface NoticeTestSummary {
   readonly outcome: NoticeOutcome | null;
   /** Whether the mail service took it: `done` with no outcome. */
   readonly sent: boolean;
+  /** What the mail service has reported of it since: delivered, bounced, marked as spam; null with no report yet. */
+  readonly delivery: MailStatus | null;
 }
 
 /** How one message of a send went: the mail service's ID for it, or why it did not go. */
@@ -169,7 +174,8 @@ export function isTestInFlight(test: Pick<NoticeTestRecord, 'status' | 'claimedA
 
 export function noticeTestSummary(test: NoticeTestRecord): NoticeTestSummary {
   const { testId, kind, status, requestedAt, claimedAt, doneAt, outcome } = test;
-  return { testId, kind, status, requestedAt, claimedAt, doneAt, outcome, sent: status === 'done' && outcome === null };
+  const sent = status === 'done' && outcome === null;
+  return { testId, kind, status, requestedAt, claimedAt, doneAt, outcome, sent, delivery: sent ? (test.delivery ?? null) : null };
 }
 
 /**
@@ -179,14 +185,17 @@ export function noticeTestSummary(test: NoticeTestRecord): NoticeTestSummary {
  */
 export function checkNoticeTest(input: {
   readonly delivery: NoticeDelivery | 'none';
+  /** Whether System Admins have test emails switched on (Admin › Email). */
+  readonly enabled: boolean;
   readonly contact: string | null;
   readonly theirs: readonly Pick<NoticeTestRecord, 'status' | 'claimedAt' | 'requestedAt'>[];
   readonly now: Date;
 }): Check {
   const { delivery, contact, theirs, now } = input;
   if (delivery === 'none') return deny('this deployment sends no email (MAIL_TRANSPORT=off), so there is nothing to test');
+  if (!input.enabled) return deny('a System Admin has switched test emails off (Admin › Email)');
   if (delivery === 'mail' && !contact) {
-    return deny('no contact for election questions is set (Admin › Election emails), and no email goes without one');
+    return deny('no contact for election questions is set (Admin › Email), and no email goes without one');
   }
   if (theirs.some((t) => isTestInFlight(t, now))) return deny('your last test email has not gone yet; wait for it first');
   const today = theirs.filter((t) => Date.parse(t.requestedAt) > now.getTime() - 86_400_000).length;
@@ -220,10 +229,6 @@ export function noticeTestRecord(input: {
     doneAt: null,
     outcome: null,
     receiptId: null,
+    delivery: null,
   };
-}
-
-/** The notice ID a test email carries as its mail tag, so a bounce report about it matches no roll member's record. */
-export function testNoticeTag(electionId: string, kind: NoticeKind): string {
-  return `${electionId}_${kind}_test`;
 }

@@ -15,7 +15,8 @@ const CONTEXTS: Readonly<Record<string, readonly string[]>> = {
     '/v1/me/resign',
     '/v1/me/details',
   ],
-  notifications: ['/notices', '/notice-settings'],
+  notifications: ['/notices', '/notice-settings', '/v1/admin/mail', '/v1/me/email', '/v1/public/unsubscribe', '/v1/public/newsletter', '/v1/admin/newsletter'],
+  referrals: ['/v1/me/referrals', '/v1/referrals'],
   governance: ['/v1/navigation', '/v1/admin/navigation', '/v1/home-quote', '/v1/admin/home-quote', '/v1/hub', '/v1/admin/hub'],
   // Its routes end the path after an election ID; the folder's own name appears in imports.
   'consistency-check': ['}/consistency-check'],
@@ -33,6 +34,7 @@ const CONTEXTS: Readonly<Record<string, readonly string[]>> = {
     '/v1/public/maps',
   ],
   teams: ['/v1/teams', '/v1/admin/teams'],
+  bills: ['/v1/bills', '/v1/admin/bills'],
   forum: ['/v1/forum', '/v1/admin/forum'],
   room: ['/v1/room', '/v1/admin/room', 'room/messages', 'room/actions', 'room/memory'],
   communications: ['/v1/news', '/v1/press', '/v1/share', '/v1/suggestions', '/v1/admin/communications'],

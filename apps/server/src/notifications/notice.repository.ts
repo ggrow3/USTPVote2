@@ -6,7 +6,9 @@ import {
   RECIPIENT_STATUSES,
   type NoticeRecipientRecord,
   type NoticeRecord,
+  type NoticeReceiptRecord,
   type NoticeTestRecord,
+  type SendVerificationRecord,
   type ReceiptCounts,
   type RecipientCounts,
   type RecipientStatus,
@@ -40,6 +42,12 @@ export class NoticeRepository {
   async ofElection(electionId: string): Promise<NoticeRecord[]> {
     const snap = await this.firebase.db.collection(Collections.notices).where('electionId', '==', electionId).get();
     return snap.docs.map((d) => d.data() as NoticeRecord).sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+  /** Notices whose last round has finished. */
+  async done(): Promise<NoticeRecord[]> {
+    const snap = await this.firebase.db.collection(Collections.notices).where('status', '==', 'done').get();
+    return snap.docs.map((d) => d.data() as NoticeRecord);
   }
 
   /** Notices whose current round has not finished. */
@@ -92,20 +100,17 @@ export class NoticeRepository {
     return snap.docs.map((d) => d.data() as NoticeRecipientRecord);
   }
 
-  /** The recipient sent the message with this provider ID, for a bounce report; null if none did. */
-  async byMessageId(noticeId: string, messageId: string): Promise<NoticeRecipientRecord | null> {
-    const snap = await this.ref(noticeId).collection(NOTICE_RECIPIENTS).where('messageId', '==', messageId).limit(1).get();
-    return (snap.docs[0]?.data() as NoticeRecipientRecord | undefined) ?? null;
-  }
-
   /** Recipients by status, counted by Firestore (no record is read). `pending` includes those being sent. */
   async counts(noticeId: string, tx?: Transaction): Promise<RecipientCounts> {
     const count = (status: RecipientStatus) => {
       const query: Query = this.ref(noticeId).collection(NOTICE_RECIPIENTS).where('status', '==', status);
       return (tx ? tx.get(query.count()) : query.count().get()).then((s) => s.data().count);
     };
-    const [pending, sending, sent, failed, bounced, skipped] = await Promise.all(RECIPIENT_STATUSES.map(count));
-    return { pending: pending! + sending!, sent: sent!, failed: failed!, bounced: bounced!, skipped: skipped! };
+    const n = Object.fromEntries(
+      await Promise.all(RECIPIENT_STATUSES.map(async (status) => [status, await count(status)] as const)),
+    ) as Record<RecipientStatus, number>;
+    const { pending, sending, ...rest } = n;
+    return { ...rest, pending: pending + sending };
   }
 
   /** How many recipient records the notice has. */
@@ -125,6 +130,32 @@ export class NoticeRepository {
   receiptRef(receiptId?: string): DocumentReference {
     const receipts = this.firebase.db.collection(Collections.noticeReceipts);
     return receiptId ? receipts.doc(receiptId) : receipts.doc();
+  }
+
+  async receipt(receiptId: string): Promise<NoticeReceiptRecord | null> {
+    return ((await this.receiptRef(receiptId).get()).data() as NoticeReceiptRecord | undefined) ?? null;
+  }
+
+  // --- each send checked afterwards (§6.8) -------------------------------------------------------------------------
+
+  verificationRef(receiptId: string): DocumentReference {
+    return this.firebase.db.collection(Collections.noticeVerifications).doc(receiptId);
+  }
+
+  /** Sends whose 30 minutes are up and which have not been checked. */
+  async dueVerifications(now: string, limit: number): Promise<SendVerificationRecord[]> {
+    const snap = await this.firebase.db
+      .collection(Collections.noticeVerifications)
+      .where('status', '==', 'pending')
+      .where('dueAt', '<=', now)
+      .limit(limit)
+      .get();
+    return snap.docs.map((d) => d.data() as SendVerificationRecord);
+  }
+
+  async verificationsOf(electionId: string): Promise<SendVerificationRecord[]> {
+    const snap = await this.firebase.db.collection(Collections.noticeVerifications).where('electionId', '==', electionId).get();
+    return snap.docs.map((d) => d.data() as SendVerificationRecord);
   }
 
   /** The election's receipts as counts, without reading their message IDs. */
@@ -161,20 +192,21 @@ export class NoticeRepository {
   }
 
   /**
-   * Removes an election's notices, their recipient records, its receipts, its test emails and its outbox messages (a
-   * deleted election, §6.1).
+   * Removes an election's notices, their recipient records, its receipts, its test emails, the checks of its sends and
+   * its outbox messages (a deleted election, §6.1).
    */
   async deleteForElection(electionId: string): Promise<void> {
     const db = this.firebase.db;
     const ofElection = (collection: string) => db.collection(collection).where('electionId', '==', electionId).get();
-    const [notices, outbox, receipts, tests] = await Promise.all([
+    const [notices, outbox, receipts, tests, verifications] = await Promise.all([
       ofElection(Collections.notices),
       ofElection(Collections.noticeOutbox),
       ofElection(Collections.noticeReceipts),
       ofElection(Collections.noticeTests),
+      ofElection(Collections.noticeVerifications),
     ]);
     const writer = db.bulkWriter();
-    for (const doc of [...outbox.docs, ...receipts.docs, ...tests.docs]) void writer.delete(doc.ref);
+    for (const doc of [...outbox.docs, ...receipts.docs, ...tests.docs, ...verifications.docs]) void writer.delete(doc.ref);
     for (const doc of notices.docs) await db.recursiveDelete(doc.ref, writer);
     await writer.close();
   }

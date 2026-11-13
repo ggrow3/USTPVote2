@@ -26,8 +26,8 @@ import {
 } from './sign-ins.js';
 
 /**
- * Sign-in traffic and site analytics (design §10.7): System Admins and Auditors read the log and the page visits;
- * System Admins set Google Analytics.
+ * Sign-in traffic and site analytics (design §10.7): System Admins, Site Admins and Auditors read the log and the page
+ * visits; System and Site Admins set Google Analytics.
  */
 
 const days = ref<number>(30);
@@ -66,7 +66,7 @@ function exportCsv() {
 }
 
 // --- Google Analytics (System Admins) ---
-const isSystemAdmin = computed(() => hasRole('system_admin'));
+const isSystemAdmin = computed(() => hasRole('system_admin', 'site_admin'));
 const analytics = ref<SiteAnalyticsRecord | null>(null);
 const measurementId = ref('');
 const draftId = computed(() => measurementId.value.trim().toUpperCase() || null);

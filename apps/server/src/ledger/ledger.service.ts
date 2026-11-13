@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import type { Transaction } from 'firebase-admin/firestore';
 import {
   blockBody,
@@ -38,6 +38,8 @@ interface LedgerHead {
  */
 @Injectable()
 export class LedgerService {
+  private readonly logger = new Logger('Ledger');
+
   constructor(
     private readonly firebase: Firebase,
     @Inject(CONFIG) private readonly config: ServerConfig,
@@ -62,6 +64,10 @@ export class LedgerService {
       tx.create(this.firebase.db.collection(Collections.auditEvents).doc(sequenceId(seq)), entry);
       head = { seq, hash: entry.hash };
       seqs.push(seq);
+      // The developer log's line for the action (design §14, "Logging"): what, by whom, about what, never the payload.
+      // Written as the transaction runs, so one Firestore retries is written again, and one that fails was never kept:
+      // the ledger is the record, this is for following a request.
+      this.logger.log({ message: `ledger ${event.type}`, event: event.type, seq, actor: event.actor, subject: event.subject });
     }
     tx.set(headRef, head);
     return seqs;

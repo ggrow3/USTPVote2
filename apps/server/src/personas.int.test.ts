@@ -1,6 +1,6 @@
-import type { PersonaSummary } from 'ustp-domain';
+import { checkResults, TEST_VOTER_DELETION_REASON, type PersonaSummary, type ResultsRecord } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { minutes, seedElection, seededBallot } from './testing/elections.js';
+import { closeNow, minutes, seedElection, seededBallot } from './testing/elections.js';
 import { resetEmulators, TestApi, TestWorker, type User } from './testing/emulator.js';
 
 let api: TestApi;
@@ -155,6 +155,113 @@ describe('test personas', () => {
   });
 });
 
+describe('deleting test voters (POST /v1/testing/personas/delete)', () => {
+  const db = () => api.firebase.db;
+  const remove = (voters: readonly string[], user: User = sa1, headers: Record<string, string> = {}) =>
+    api.call('POST', '/v1/testing/personas/delete', user, { voters }, headers);
+  const ledgerAfter = async (seq: number) =>
+    (await db().collection('audit_events').where('seq', '>', seq).orderBy('seq').get()).docs.map((d) => d.data());
+  const ledgerSeq = async () => (await db().collection('ledger_head').doc('main').get()).data()!.seq as number;
+
+  it('deletes a test voter with its membership and persona, ledgered as account.deleted, and leaves the others', async () => {
+    const personas = await personasWithVoters(3);
+    const [v1, v2, v3] = ['Test Voter 1', 'Test Voter 2', 'Test Voter 3'].map((label) => idOf(personas, label));
+    await db().collection('page_visits').doc('visit').set({ accountId: v2, page: 'ballot' });
+    const seq = await ledgerSeq();
+
+    const res = await remove([v2!]);
+    expect(res.status).toBe(200);
+    expect((res.body as PersonaSummary[]).filter((p) => p.kind === 'voter').map((p) => p.label)).toEqual(['Test Voter 1', 'Test Voter 3']);
+    for (const c of ['accounts', 'members', 'testing_personas']) expect((await db().collection(c).doc(v2!).get()).exists, c).toBe(false);
+    for (const c of ['member_status_history', 'page_visits']) {
+      expect((await db().collection(c).where('accountId', '==', v2).get()).size, c).toBe(0);
+    }
+    expect((await db().collection('members').doc(v1!).get()).exists).toBe(true);
+    expect((await ledgerAfter(seq)).map((e) => [e.type, e.actor, e.subject, e.payload])).toEqual([
+      ['account.deleted', sa1.accountId, v2, { email: null, uid: null, reason: TEST_VOTER_DELETION_REASON }],
+    ]);
+    // Its admission stays in the ledger, and the chain still verifies: the deletion only appended to it.
+    const admitted = await db().collection('audit_events').where('type', '==', 'member.status_changed').where('subject', '==', v2).get();
+    expect(admitted.size).toBe(1);
+    const auditor = as(idOf(personas, 'Test Auditor'));
+    expect((await api.call('GET', '/v1/admin/audit/verify', sa1, undefined, auditor)).body).toMatchObject({ ok: true });
+
+    // A voter added later takes the number after the highest remaining one, as a new account.
+    expect((await remove([v3!])).status).toBe(200);
+    const added = (await api.call('POST', '/v1/testing/personas', sa1, { voters: 1 })).body as PersonaSummary[];
+    const voters = added.filter((p) => p.kind === 'voter');
+    expect(voters.map((p) => [p.label, p.number])).toEqual([
+      ['Test Voter 1', 1],
+      ['Test Voter 2', 2],
+    ]);
+    expect(voters[1]!.accountId).not.toBe(v2);
+  });
+
+  it('deletes test voters an election holds, and its roll, ballots and results stay as they were and still verify', async () => {
+    const personas = await personasWithVoters(2);
+    const [v1, v2] = [idOf(personas, 'Test Voter 1'), idOf(personas, 'Test Voter 2')];
+    const worker = await TestWorker.start();
+    try {
+      const election = await seedElection(api, { voters: [v1, v2], rehearsal: true, opensAt: minutes(-1), closesAt: minutes(60) });
+      const { electionId, url } = election;
+      expect((await worker.tick()).body).toMatchObject({ electionsOpened: 1 });
+      const { definitionHash } = (await api.call('GET', `${url}/ballot`, sa1, undefined, as(v1))).body;
+      const cast = await api.call('POST', `${url}/ballots`, sa1, { definitionHash, parts: seededBallot(electionId) }, as(v1));
+      expect(cast.status).toBe(201);
+      const roll = db().collection('eligibility_snapshots').doc(`r-${electionId}`);
+      const rollBefore = (await roll.get()).data()!;
+
+      const res = await remove([v1, v2]);
+      expect(res.status).toBe(200);
+      expect((res.body as PersonaSummary[]).filter((p) => p.kind === 'voter')).toEqual([]);
+
+      expect((await roll.get()).data()).toEqual(rollBefore);
+      expect((await election.ref.collection('participation').doc(v1).get()).exists).toBe(true);
+      const view = await api.call('GET', `/v1/admin/elections/${electionId}/roll`, sa1, undefined, as(idOf(personas, 'Test Auditor')));
+      expect(view.body.entries.map((e: { legalName: string }) => e.legalName)).toEqual(['(no member record)', '(no member record)']);
+      expect((await api.call('GET', `${url}/ballot`, sa1, undefined, as(v2))).body.detail).toMatch(/not a test persona/);
+
+      await closeNow(api, election);
+      expect((await worker.tick()).body).toMatchObject({ electionsClosed: 1, ballotsSealed: 1, resultsComputed: 1 });
+      const publicUrl = `/v1/public/elections/${electionId}`;
+      const results = (await api.call('GET', `${publicUrl}/results`)).body as ResultsRecord;
+      expect(results.bundle).toMatchObject({ participationCount: 1, roll: { count: 2, merkleRoot: rollBefore.merkleRoot } });
+      const entry = await api.call('GET', `/v1/public/ledger/entries/${results.ledgerSeq}`);
+      const check = await checkResults({
+        election: (await api.call('GET', publicUrl)).body,
+        results,
+        blocks: (await api.call('GET', `${publicUrl}/sealed-blocks`)).body,
+        keys: (await api.call('GET', '/v1/public/ledger/keys')).body,
+        ledger: entry.status === 200 ? entry.body : null,
+        anchor: null,
+      });
+      expect(check.steps.filter((s) => s.ok === false)).toEqual([]);
+    } finally {
+      await worker.close();
+    }
+  });
+
+  it('checks every ID first: only test voters, never the admin personas or anyone else', async () => {
+    const personas = await personasWithVoters(1);
+    const voter = idOf(personas, 'Test Voter 1');
+    const auditor = idOf(personas, 'Test Auditor');
+    const pat = await api.member('pat@example.test');
+
+    for (const other of [auditor, pat.accountId, '01a00000-0000-7000-8000-000000000000']) {
+      expect(await remove([voter, other])).toMatchObject({ status: 404, body: { detail: `not a test voter: ${other}` } });
+    }
+    for (const voters of [[], [voter, voter], ['nobody']]) expect((await remove(voters)).status, JSON.stringify(voters)).toBe(400);
+    expect((await remove([voter], pat)).status).toBe(403);
+    // A Site Admin deletes no test voter, and cannot act as a persona that might (design §10.1).
+    await api.grant(pat.accountId, 'site_admin', sa1);
+    expect(await remove([voter], pat)).toMatchObject({ status: 403, body: { detail: 'requires role system_admin' } });
+    expect(await remove([voter], pat, as(auditor))).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/only System Admins/) } });
+    expect((await remove([voter], sa1, as(auditor))).status).toBe(403);
+    for (const id of [voter, auditor, pat.accountId]) expect((await db().collection('accounts').doc(id).get()).exists).toBe(true);
+    expect((await db().collection('testing_personas').doc(voter).get()).exists).toBe(true);
+  });
+});
+
 describe('with testing mode off', () => {
   let off: TestApi;
   beforeAll(async () => {
@@ -169,6 +276,8 @@ describe('with testing mode off', () => {
   it('has no persona routes and refuses to act as anyone', async () => {
     const personas = (await api.call('POST', '/v1/testing/personas', sa1, {})).body as PersonaSummary[];
     expect((await off.call('GET', '/v1/testing/personas', sa1)).status).toBe(404);
+    const voters = [idOf(personas, 'Test Auditor')];
+    expect((await off.call('POST', '/v1/testing/personas/delete', sa1, { voters })).status).toBe(404);
     const acting = await off.call('GET', '/v1/me', sa1, undefined, as(idOf(personas, 'Test Auditor')));
     expect(acting).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/testing mode is off/) } });
     expect((await off.call('GET', '/v1/me', sa1)).body.testing).toEqual({ enabled: false, operator: null });

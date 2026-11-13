@@ -21,6 +21,7 @@
     { "file": "elections/committee-elections.election.json", "seed": "scheduled" },
     { "file": "elections/2027-platform-convention.election.json", "seed": "scheduled" },
     { "file": "elections/2027-bylaws-review.election.json", "seed": "draft" },
+    { "file": "elections/transhumanist-sample.election.json", "seed": "draft" },
     {
       "file": "elections/bylaws-amendments.election.json",
       "seed": "scheduled",

@@ -296,7 +296,7 @@ variable "civic_enabled" {
   default     = true
 }
 
-# --- Election notices (design §6.8) -----------------------------------------------------------------------------------
+# --- Email (design §6.8) ----------------------------------------------------------------------------------------------
 
 variable "web_origin" {
   description = "Where the web app is served (WEB_ORIGIN): election notices link to it, and in prod it is the one address search engines may crawl. Empty: the Firebase Hosting default, https://<project_id>.web.app."
@@ -310,7 +310,7 @@ variable "web_origin" {
 }
 
 variable "mail_transport" {
-  description = "How the worker sends election notices (MAIL_TRANSPORT): \"ses\" through Amazon SES, or \"off\". Before \"ses\": set up SES and add the two aws-ses-* secret versions (README \"Election notices\")."
+  description = "How the worker sends email (MAIL_TRANSPORT): \"ses\" through Amazon SES, or \"off\". Before \"ses\": apply infra/terraform/aws, publish its DNS records and add the two aws-ses-* secret versions (README \"Email (Amazon SES)\")."
   type        = string
   default     = "off"
 
@@ -321,9 +321,14 @@ variable "mail_transport" {
 }
 
 variable "mail_from" {
-  description = "From header of election notices (MAIL_FROM). Its domain must be verified in SES. It takes no replies."
+  description = "From header of the app's email (MAIL_FROM): the environment's address from infra/terraform/aws (its mail_from output), whose domain SES has verified. It takes no replies."
   type        = string
   default     = "USTP Elections <noreply@transhumanist-party.org>"
+
+  validation {
+    condition     = can(regex("<[^@<>\\s]+@[^@<>\\s]+>$", var.mail_from)) || can(regex("^[^@<>\\s]+@[^@<>\\s]+$", var.mail_from))
+    error_message = "mail_from is an address, with or without a display name: USTP Elections <noreply@example.org>."
+  }
 }
 
 variable "mail_reply_to" {
@@ -339,25 +344,34 @@ variable "notice_contact" {
 }
 
 variable "ses_region" {
-  description = "AWS region of the SES identity, configuration set and bounce queue (SES_REGION)."
+  description = "AWS region of the SES identity, configuration set and delivery-report queue (SES_REGION)."
   type        = string
   default     = "us-east-1"
 }
 
 variable "ses_configuration_set" {
-  description = "SES configuration set that publishes bounces to the SNS topic feeding the bounce queue (SES_CONFIGURATION_SET)."
+  description = "The environment's SES configuration set (SES_CONFIGURATION_SET), ustp-mail-<env> from infra/terraform/aws: it publishes the delivery reports to the topic feeding the queue below. Needed with \"ses\"."
   type        = string
-  default     = "ustp-notices"
+  default     = ""
+
+  validation {
+    condition     = var.mail_transport != "ses" || var.ses_configuration_set != ""
+    error_message = "With mail_transport = \"ses\", set ses_configuration_set (infra/terraform/aws's configuration_sets output)."
+  }
 }
 
 variable "ses_events_queue_url" {
-  description = "URL of the SQS queue SES bounce reports arrive on (SES_EVENTS_QUEUE_URL); empty: bounces are not counted."
+  description = "URL of the SQS queue SES delivery reports arrive on (SES_EVENTS_QUEUE_URL), from infra/terraform/aws's queue_urls output. Needed with \"ses\": without it nothing is known of what became of a message."
   type        = string
   default     = ""
 
   validation {
     condition     = var.ses_events_queue_url == "" || can(regex("^https://sqs\\.[a-z0-9-]+\\.amazonaws\\.com/[0-9]{12}/[A-Za-z0-9_-]+$", var.ses_events_queue_url))
-    error_message = "ses_events_queue_url is an SQS queue URL, such as https://sqs.us-east-1.amazonaws.com/123456789012/ustp-notice-events."
+    error_message = "ses_events_queue_url is an SQS queue URL, such as https://sqs.us-east-1.amazonaws.com/123456789012/ustp-mail-events-dev."
+  }
+  validation {
+    condition     = var.mail_transport != "ses" || var.ses_events_queue_url != ""
+    error_message = "With mail_transport = \"ses\", set ses_events_queue_url (infra/terraform/aws's queue_urls output)."
   }
 }
 
@@ -408,6 +422,17 @@ variable "sign_in_log_retention_days" {
   description = "Days the sign-in-traffic log bucket keeps Identity Platform's request logs; the app's own sign-in log keeps 180 (design §10.7)."
   type        = number
   default     = 180
+}
+
+variable "log_level" {
+  description = "The least severe developer log lines the api and worker write (design §14, Logging): info has a line per request and action; debug adds health checks, idle worker steps and Nest's start-up lines."
+  type        = string
+  default     = "info"
+
+  validation {
+    condition     = contains(["trace", "debug", "info", "warn", "error"], var.log_level)
+    error_message = "log_level is one of trace, debug, info, warn, error."
+  }
 }
 
 variable "deletion_protection" {

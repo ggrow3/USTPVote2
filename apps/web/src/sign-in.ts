@@ -1,4 +1,5 @@
 import {
+  confirmPasswordReset,
   createUserWithEmailAndPassword,
   EmailAuthProvider,
   GoogleAuthProvider,
@@ -7,19 +8,22 @@ import {
   reauthenticateWithCredential,
   reauthenticateWithPopup,
   sendEmailVerification,
+  sendPasswordResetEmail,
   sendSignInLinkToEmail,
   signInWithEmailAndPassword,
   signInWithEmailLink,
   signInWithPopup,
+  signOut,
+  updatePassword,
+  verifyPasswordResetCode,
   type Auth,
   type AuthProvider,
   type User,
 } from 'firebase/auth';
-import type { SignInProvider } from 'ustp-domain';
+import { SET_PASSWORD_PATH, type SignInProvider } from 'ustp-domain';
+import { passwordProblem } from './password-policy.js';
 
-/** NIST SP 800-63B-4 single-factor minimum (design §4); applied to every account. */
-export const MIN_PASSWORD_LENGTH = 15;
-export const MAX_PASSWORD_LENGTH = 128;
+export { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH, PASSWORD_HINT, passwordProblem } from './password-policy.js';
 
 export type FederatedProvider = Exclude<SignInProvider, 'password'>;
 
@@ -52,13 +56,6 @@ export function reauthenticate(user: User, method: { provider: FederatedProvider
     : reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email ?? '', method.password));
 }
 
-/** Returns a problem with the password, or null if it meets the policy. */
-export function passwordProblem(password: string): string | null {
-  if (password.length < MIN_PASSWORD_LENGTH) return `Use at least ${MIN_PASSWORD_LENGTH} characters (a passphrase works well).`;
-  if (password.length > MAX_PASSWORD_LENGTH) return `Use at most ${MAX_PASSWORD_LENGTH} characters.`;
-  return null;
-}
-
 /**
  * How often the password appears in known breaches (design §4, Q9), from Have I Been Pwned's k-anonymity range API:
  * only the first 5 hex digits of its SHA-1 leave the browser, and padded responses hide which range was of interest.
@@ -84,14 +81,22 @@ export async function breachCount(password: string): Promise<number | null> {
 /** The chosen password breaks the policy or is breached, so the form can show the message on the password field. */
 export class PasswordRejected extends Error {}
 
-/** Creates an email/password login and sends the verification email, whose link leads back to registering. */
-export async function signUpWithPassword(auth: Auth, email: string, password: string) {
-  const problem = passwordProblem(password);
+/**
+ * Refuses a password that breaks the rule for `email`'s login or has appeared in a breach (design §4), before it
+ * reaches Identity Platform.
+ */
+export async function checkNewPassword(password: string, email: string): Promise<void> {
+  const problem = passwordProblem(password, email);
   if (problem) throw new PasswordRejected(problem);
   const breaches = await breachCount(password);
   if (breaches) {
     throw new PasswordRejected('This password has appeared in a data breach. Choose another (a few unrelated words work well).');
   }
+}
+
+/** Creates an email/password login and sends the verification email, whose link leads back to registering. */
+export async function signUpWithPassword(auth: Auth, email: string, password: string) {
+  await checkNewPassword(password, email);
   const credential = await createUserWithEmailAndPassword(auth, email, password);
   await sendEmailVerification(credential.user, { url: `${location.origin}/register` });
   return credential;
@@ -101,14 +106,94 @@ export function signInWithPassword(auth: Auth, email: string, password: string) 
   return signInWithEmailAndPassword(auth, email, password);
 }
 
+/**
+ * Emails a link to choose a new password (design §4), which opens the email-action page. Email-enumeration protection
+ * answers the same whether or not the address has a login; where it is off (the Auth emulator), an unknown address is
+ * treated as sent too, so the form never tells.
+ */
+export async function sendPasswordReset(auth: Auth, email: string): Promise<void> {
+  try {
+    await sendPasswordResetEmail(auth, email, { url: `${location.origin}/signin` });
+  } catch (e) {
+    if ((e as { code?: unknown } | null)?.code !== 'auth/user-not-found') throw e;
+  }
+}
+
+/** The email address a password-reset link is for; rejects if the link has expired or has been used. */
+export function passwordResetEmail(auth: Auth, oobCode: string): Promise<string> {
+  return verifyPasswordResetCode(auth, oobCode);
+}
+
+/** Sets the password a reset link is for, after the same checks as signing up. Every session of that login ends. */
+export async function resetPassword(auth: Auth, oobCode: string, email: string, password: string): Promise<void> {
+  await checkNewPassword(password, email);
+  await confirmPasswordReset(auth, oobCode, password);
+}
+
+/** How a password change ended: not made, made, or made with this session still to sign in again (see below). */
+export type PasswordChange = 'cancelled' | 'changed' | 'sign-in-again';
+
+/**
+ * Changes the signed-in login's password (design §4): the same checks as signing up, then `reauthenticate` with the
+ * current password (and the authenticator code if there is one), then the change. Identity Platform revokes the login's
+ * sessions as it changes it, and the Auth emulator hands this one back a token with its old sign-in time, which the
+ * routes that check revocation (admin routes, casting) refuse; so when the sign-in time has not moved, this session
+ * re-authenticates with the new password too.
+ */
+export async function changePassword(
+  user: User,
+  current: string,
+  replacement: string,
+  reauthenticate: (password: string, step: 'confirm' | 'renew') => Promise<boolean>,
+): Promise<PasswordChange> {
+  await checkNewPassword(replacement, user.email ?? '');
+  if (!(await reauthenticate(current, 'confirm'))) return 'cancelled';
+  const signedInAt = (await user.getIdTokenResult()).authTime;
+  await updatePassword(user, replacement);
+  if ((await user.getIdTokenResult()).authTime !== signedInAt) return 'changed';
+  try {
+    return (await reauthenticate(replacement, 'renew')) ? 'changed' : 'sign-in-again';
+  } catch {
+    return 'sign-in-again';
+  }
+}
+
 const EMAIL_LINK_KEY = 'ustp.emailLinkAddress';
 
-export async function sendEmailLink(auth: Auth, email: string): Promise<void> {
-  await sendSignInLinkToEmail(auth, email, { url: `${location.origin}/signin`, handleCodeInApp: true });
+/** Emails a sign-in link that opens `path` (the sign-in page by default), and remembers the address for when it does. */
+export async function sendEmailLink(auth: Auth, email: string, path = '/signin'): Promise<void> {
+  await sendSignInLinkToEmail(auth, email, { url: `${location.origin}${path}`, handleCodeInApp: true });
   try {
     localStorage.setItem(EMAIL_LINK_KEY, email);
   } catch {
     // Storage unavailable: the user will be asked for their email when they open the link.
+  }
+}
+
+/**
+ * Asks Identity Platform to email an added member its sign-in link, which opens the set-password page (design §5.13):
+ * the welcome where the deployment sends no mail of its own. A Membership Admin's browser sends it for someone else,
+ * so the address is not remembered here, and the member types it when they open the link.
+ */
+export function sendWelcomeLink(auth: Auth, email: string): Promise<void> {
+  return sendSignInLinkToEmail(auth, email, { url: `${location.origin}${SET_PASSWORD_PATH}`, handleCodeInApp: true });
+}
+
+/**
+ * Sets the signed-in person's password, under the same policy and breach check as signing up (design §4). A new
+ * password ends every session of the login, and this one's tokens keep the earlier sign-in time, so the api's
+ * revocation check (admin routes, casting) would refuse them: it signs in again with the new password at once.
+ * Resolves false when that sign-in needs the second step; it has then signed out, and they sign in as usual.
+ */
+export async function setOwnPassword(auth: Auth, user: User, password: string): Promise<boolean> {
+  await checkNewPassword(password, user.email ?? '');
+  await updatePassword(user, password);
+  try {
+    await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email ?? '', password));
+    return true;
+  } catch {
+    await signOut(auth);
+    return false;
   }
 }
 

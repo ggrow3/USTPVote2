@@ -62,7 +62,8 @@ export function statusLine(
     case 'coming_soon':
       return { label: 'Coming soon', icon: 'schedule' };
     case 'open':
-      return { label: 'Open to everyone', icon: 'menu_book' };
+      // A visitor may take its quizzes too, and earn the certificate by joining (design §10.8).
+      return course.openToGuests ? { label: 'Take it now: no sign-in needed', icon: 'bolt' } : { label: 'Open to everyone', icon: 'menu_book' };
     case 'not_started':
       return { label: 'Not started', icon: 'play_circle' };
     case 'in_progress':

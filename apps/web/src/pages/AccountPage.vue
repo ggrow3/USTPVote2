@@ -6,6 +6,7 @@ import type { IdentityRecord, SignInProvider } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { api, errorMessage } from '../api.js';
 import AuthenticatorSetupDialog from '../components/AuthenticatorSetupDialog.vue';
+import ChangePasswordDialog from '../components/ChangePasswordDialog.vue';
 import PageShell from '../components/PageShell.vue';
 import ProfilePhotoCard from '../components/ProfilePhotoCard.vue';
 import DailyQuoteSettings from '../daily/DailyQuoteSettings.vue';
@@ -15,6 +16,9 @@ import { enrolledFactors, removeFactor } from '../mfa.js';
 import { resign as resignMembership } from '../membership/api.js';
 import { classOf, memberClassText } from '../membership/class-text.js';
 import MyDetailsCard from '../membership/MyDetailsCard.vue';
+import MyEmailCard from '../notifications/MyEmailCard.vue';
+import InviteCard from '../referrals/InviteCard.vue';
+import NotificationEmailCard from '../inbox/NotificationEmailCard.vue';
 import { refreshMe, secondFactorMissing, session } from '../session.js';
 import { PROVIDER_LABELS, signInWithPassword, signInWithProvider, type FederatedProvider } from '../sign-in.js';
 
@@ -24,6 +28,7 @@ const enabled = ref<Record<SignInProvider, boolean> | null>(null);
 const busy = ref(false);
 const factors = shallowRef<MultiFactorInfo[]>(enrolledFactors(auth.currentUser));
 const settingUp = ref(false);
+const changingPassword = ref(false);
 const mfa = computed(() => session.me?.mfa);
 
 const me = computed(() => session.me);
@@ -36,7 +41,9 @@ const mfaNotice = computed(() => {
     ? 'Your admin role requires two-step verification for the admin tools.'
     : me.value?.roles.includes('system_admin')
       ? 'System Admins must use two-step verification on every page.'
-      : 'This site requires two-step verification of everyone.';
+      : me.value?.roles.includes('site_admin')
+        ? 'You need two-step verification on every page.'
+        : 'This site requires two-step verification of everyone.';
   return factors.value.length
     ? `${why} Enter a code from your authenticator app to continue.`
     : `${why} Set up an authenticator app here first.`;
@@ -47,6 +54,9 @@ const linkable = computed(() =>
     (p) => enabled.value?.[p] && !identities.value.some((i) => i.provider === p),
   ),
 );
+/** The email login they are signed in with, whose password they can change here (design §4). */
+const isCurrentPasswordLogin = (identity: IdentityRecord) =>
+  identity.provider === 'password' && identity.uid === session.user?.uid;
 const canResign = computed(() => ['active', 'lapsed', 'suspended'].includes(me.value?.member?.status ?? ''));
 
 onMounted(async () => {
@@ -153,6 +163,20 @@ function removeDevice(factor: MultiFactorInfo) {
   );
 }
 
+async function onPasswordChanged(signInAgain: boolean) {
+  await refreshMe().catch(() => undefined);
+  if (!signInAgain) {
+    $q.notify({ type: 'positive', message: 'Password changed. This login is signed out everywhere else.' });
+    return;
+  }
+  $q.notify({
+    type: 'warning',
+    timeout: 0,
+    message: 'Password changed. Sign out and in again with it before you vote or use the admin tools.',
+    actions: [{ label: 'Dismiss', color: 'black' }],
+  });
+}
+
 function copyId() {
   void navigator.clipboard?.writeText(me.value?.account?.accountId ?? '');
   $q.notify({ message: 'Account ID copied' });
@@ -201,6 +225,12 @@ function copyId() {
         <!-- Saving any of these needs the second factor the site requires (design §4), so they wait for it. -->
         <template v-if="!locked">
           <MyDetailsCard />
+
+          <InviteCard v-if="me.member?.status === 'active'" />
+
+          <MyEmailCard />
+
+          <NotificationEmailCard />
 
           <ProfilePhotoCard v-if="me.member" />
 
@@ -259,6 +289,9 @@ function copyId() {
                 <q-item-label>{{ PROVIDER_LABELS[i.provider] }}</q-item-label>
                 <q-item-label caption>{{ i.email ?? i.uid }} · linked {{ new Date(i.linkedAt).toLocaleDateString() }}</q-item-label>
               </q-item-section>
+              <q-item-section v-if="isCurrentPasswordLogin(i)" side>
+                <q-btn flat dense no-caps color="primary" label="Change password" :disable="busy" @click="changingPassword = true" />
+              </q-item-section>
               <q-item-section side>
                 <q-btn flat dense color="negative" label="Remove" :disable="busy || identities.length <= 1" @click="unlink(i)">
                   <span class="sr-only">&nbsp;{{ PROVIDER_LABELS[i.provider] }} login {{ i.email ?? '' }}</span>
@@ -280,6 +313,7 @@ function copyId() {
             <q-btn v-if="enabled?.password" outline no-caps color="primary" :disable="busy" label="Link email & password" @click="linkPassword" />
           </q-card-section>
         </q-card>
+        <ChangePasswordDialog v-model="changingPassword" @changed="onPasswordChanged" />
       </template>
     </div>
   </PageShell>

@@ -36,8 +36,20 @@ export const router = createRouter({
         { path: 'course/:courseId', component: () => import('./academy/CoursePage.vue') },
         { path: 'vote', component: () => import('./pages/VotingPage.vue') },
         { path: 'signin', component: () => import('./pages/SignInPage.vue') },
+        // Where the account emails' links lead: password resets are handled here, other links go on (design §4).
+        { path: 'email-action', component: () => import('./pages/EmailActionPage.vue') },
         { path: 'register', component: () => import('./membership/RegisterPage.vue') },
+        { path: 'set-password', component: () => import('./membership/SetPasswordPage.vue') },
+        // Where an email's Unsubscribe link leads, with no sign-in (design §10.12).
+        { path: 'unsubscribe', component: () => import('./notifications/UnsubscribePage.vue') },
+        // The newsletter's sign-up form for people not ready to join, and where its confirmation email leads (§10.15).
+        { path: 'newsletter', component: () => import('./notifications/NewsletterPage.vue') },
+        { path: 'newsletter/confirm', component: () => import('./notifications/NewsletterConfirmPage.vue') },
         { path: 'account', component: () => import('./pages/AccountPage.vue'), meta: { requiresAuth: true } },
+        { path: 'notifications', component: () => import('./inbox/NotificationsPage.vue'), meta: { requiresAuth: true } },
+        { path: 'messages', component: () => import('./inbox/MessagesPage.vue'), meta: { requiresAuth: true } },
+        { path: 'messages/team/:threadId', component: () => import('./inbox/TeamThreadPage.vue'), meta: { requiresAuth: true } },
+        { path: 'messages/:threadId', component: () => import('./inbox/MessagesPage.vue'), meta: { requiresAuth: true } },
         { path: 'ballot', component: () => import('./pages/BallotPage.vue'), meta: { requiresAuth: true } },
         { path: 'ballot/:id', component: () => import('./pages/VotePage.vue'), meta: { requiresAuth: true } },
         { path: 'verify', component: () => import('./pages/VerifyPage.vue') },
@@ -57,6 +69,11 @@ export const router = createRouter({
           meta: { requiresAuth: true },
         },
         { path: 'candidates/:id', component: () => import('./candidacies/CandidatePage.vue') },
+        // Race pages and people's pages (design §5.17): public, listed in search, each with its own link preview.
+        { path: 'races', component: () => import('./candidacies/RacesPage.vue') },
+        { path: 'races/:state', component: () => import('./candidacies/RacePage.vue') },
+        { path: 'races/:state/:district', component: () => import('./candidacies/RacePage.vue') },
+        { path: 'people/:id', component: () => import('./candidacies/PersonPage.vue') },
         // Teams are for Active members; the pages say so to anyone else signed in (design §5.7).
         { path: 'teams', component: () => import('./teams/TeamsPage.vue'), meta: { requiresAuth: true } },
         { path: 'teams/:teamId', component: () => import('./teams/TeamPage.vue'), meta: { requiresAuth: true } },
@@ -65,14 +82,31 @@ export const router = createRouter({
         { path: 'forum/:postId', component: () => import('./forum/ForumPostPage.vue'), meta: { requiresAuth: true } },
         // The members' room is for Active members who accept its terms; the page is the door (design §5.10).
         { path: 'room', component: () => import('./room/RoomPage.vue'), meta: { requiresAuth: true } },
+        // The legislative team's Bills page: the teams a System Admin names, and System Admins; it says so to anyone else (design §5.14).
+        { path: 'bills', component: () => import('./bills/BillsPage.vue'), meta: { requiresAuth: true } },
+        { path: 'bills/:congress/:type/:number', component: () => import('./bills/BillPage.vue'), meta: { requiresAuth: true } },
+        // The public Legislation page and scorecard (design §5.14), for everyone.
+        { path: 'legislation', component: () => import('./bills/LegislationPage.vue') },
+        { path: 'legislation/:billId', component: () => import('./bills/PublicBillPage.vue') },
+        { path: 'scorecard', component: () => import('./bills/ScorecardPage.vue') },
+        { path: 'scorecard/:memberId', component: () => import('./bills/ScorecardMemberPage.vue') },
         // News, the press kit and the suggestions form are for everyone; the share kit for Active members (design §10.9).
         { path: 'news', component: () => import('./communications/NewsPage.vue') },
         { path: 'news/:slug', component: () => import('./communications/NewsPostPage.vue') },
+        { path: 'events', component: () => import('./communications/EventsPage.vue') },
+        { path: 'events/:slug', component: () => import('./communications/EventPage.vue') },
+        { path: 'partners', component: () => import('./communications/PartnersPage.vue') },
         { path: 'press', component: () => import('./communications/PressPage.vue') },
         { path: 'suggest', component: () => import('./communications/SuggestPage.vue') },
         { path: 'share', component: () => import('./communications/SharePage.vue'), meta: { requiresAuth: true } },
         // Open to anyone signed in: the page tells people without an admin role who it is for.
         { path: 'admin', component: () => import('./pages/AdminPage.vue'), meta: { requiresAuth: true } },
+        // A conversation in the membership inbox (design §10.13).
+        {
+          path: 'admin/inbox/:threadId',
+          component: () => import('./inbox/InboxThreadPage.vue'),
+          meta: { requiresAuth: true, roles: ['membership_admin'] },
+        },
         {
           path: 'admin/members/:accountId',
           component: () => import('./membership/MemberPage.vue'),

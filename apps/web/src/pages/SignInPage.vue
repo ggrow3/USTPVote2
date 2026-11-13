@@ -34,6 +34,10 @@ const purpose = computed(() => {
             New to USTP? <router-link to="/register">Register as a member</router-link>: creating your login is the
             first step.
           </q-card-section>
+          <q-card-section class="q-pt-none">
+            Added as a member by the party, or forgot your password?
+            <router-link to="/set-password">Set your password</router-link>.
+          </q-card-section>
         </template>
       </SignInForm>
     </div>

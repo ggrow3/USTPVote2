@@ -1,26 +1,40 @@
-import { Body, Controller, Get, NotFoundException, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, NotFoundException, Param, Post, Put, Query } from '@nestjs/common';
 import {
+  addMemberSchema,
   createApplicationSchema,
   decisionSchema,
+  FIRST_STEP_ID,
+  firstStepTickSchema,
   MEMBER_STATUSES,
   memberCorrectionSchema,
   memberDetailsSchema,
+  memberImportPreviewSchema,
+  memberImportSchema,
   memberStatusSchema,
   publishBylawsSchema,
   resignSchema,
+  type AddMemberInput,
   type CreateApplicationInput,
   type DecisionInput,
+  type FirstStepsView,
+  type FirstStepTickInput,
   type MemberCorrectionInput,
   type MemberDetailsInput,
+  type MemberImportInput,
+  type MemberImportPreviewInput,
   type MemberStatusInput,
   type PublishBylawsInput,
   type ResignInput,
 } from 'ustp-domain';
 import { z } from 'zod';
-import { Ctx, Public, Roles } from '../auth/decorators.js';
+import { Ctx, Public, requireAccount, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { parseQuery, ZodPipe } from '../common/validation.js';
 import { MembershipApplications } from './applications.service.js';
+import { FirstStepsReader } from './first-steps.js';
+import { FirstStepsSettingsService } from './first-steps-settings.js';
+import { MemberDirectory } from './member-directory.js';
+import { MemberAdditions } from './member-additions.service.js';
 import { Members } from './members.service.js';
 import { MembershipService } from './membership.service.js';
 
@@ -33,7 +47,29 @@ export class RegistrationController {
     private readonly membership: MembershipService,
     private readonly applications: MembershipApplications,
     private readonly members: Members,
+    private readonly directory: MemberDirectory,
+    private readonly steps: FirstStepsReader,
+    private readonly stepSettings: FirstStepsSettingsService,
   ) {}
+
+  /** A member's first steps and which they have done (design §5.16); nothing for someone who is not an Active member. */
+  @Get('me/first-steps')
+  async firstSteps(@Ctx() ctx: RequestContext): Promise<FirstStepsView> {
+    const accountId = requireAccount(ctx);
+    return this.steps.mine(accountId, await this.directory.find(accountId));
+  }
+
+  /** Ticks or unticks a step on the member's list that they tick themselves (design §5.16), and returns their list. */
+  @Put('me/first-steps/:id')
+  async tickFirstStep(
+    @Ctx() ctx: RequestContext,
+    @Param('id') id: string,
+    @Body(new ZodPipe(firstStepTickSchema)) body: FirstStepTickInput,
+  ): Promise<FirstStepsView> {
+    const accountId = requireAccount(ctx);
+    if (!FIRST_STEP_ID.test(id)) throw new NotFoundException('that step is not on the getting started list');
+    return this.stepSettings.tick(accountId, await this.directory.find(accountId), id, body.done);
+  }
 
   @Public()
   @Get('bylaws/current')
@@ -88,11 +124,18 @@ export class MembershipAdminController {
     private readonly membership: MembershipService,
     private readonly applications: MembershipApplications,
     private readonly members: Members,
+    private readonly additions: MemberAdditions,
   ) {}
 
   @Post('bylaws')
   publishBylaws(@Ctx() ctx: RequestContext, @Body(new ZodPipe(publishBylawsSchema)) body: PublishBylawsInput) {
     return this.membership.publishBylaws(ctx, body);
+  }
+
+  /** How many applications wait, and since when the oldest: the count beside Admin in the menu (design §5.2). */
+  @Get('applications/summary')
+  applicationQueue() {
+    return this.applications.queue();
   }
 
   @Get('applications')
@@ -115,6 +158,38 @@ export class MembershipAdminController {
       parseQuery(z.string().min(1).optional(), after, 'after'),
       parseQuery(limitParam, limit, 'limit'),
     );
+  }
+
+  /** Adds one member, Active at once, who sets their own password when they first come (design §5.13). */
+  @Post('members')
+  addMember(@Ctx() ctx: RequestContext, @Body(new ZodPipe(addMemberSchema)) body: AddMemberInput) {
+    return this.additions.addOne(ctx, body);
+  }
+
+  /** What importing a file's rows would do: each row added or skipped, with the reasons. Writes nothing. */
+  @Post('member-imports/preview')
+  @HttpCode(200)
+  previewImport(@Body(new ZodPipe(memberImportPreviewSchema)) body: MemberImportPreviewInput) {
+    return this.additions.preview(body.rows);
+  }
+
+  @Post('member-imports')
+  importMembers(@Ctx() ctx: RequestContext, @Body(new ZodPipe(memberImportSchema)) body: MemberImportInput) {
+    return this.additions.import(ctx, body.rows, body.reason);
+  }
+
+  /** Sends an added member's welcome email again, before they have signed in. */
+  @Post('members/:accountId/welcome')
+  @HttpCode(200)
+  welcomeAgain(@Ctx() ctx: RequestContext, @Param('accountId') accountId: string) {
+    return this.additions.welcomeAgain(ctx, accountId);
+  }
+
+  /** Records the welcome sign-in link this admin's browser just had Identity Platform send, for the email log. */
+  @Post('members/:accountId/welcome-link')
+  @HttpCode(204)
+  async welcomeLinkSent(@Ctx() ctx: RequestContext, @Param('accountId') accountId: string): Promise<void> {
+    await this.additions.welcomeLinkSent(ctx, accountId);
   }
 
   @Post('members/:accountId/status')

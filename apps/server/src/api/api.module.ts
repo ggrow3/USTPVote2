@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { APP_GUARD } from '@nestjs/core';
 import { AccountsAdminController, AccountsController } from '../accounts/accounts.controller.js';
 import { AccountsService } from '../accounts/accounts.service.js';
+import { EmailVerifiedSync } from '../accounts/email-verified-sync.js';
 import {
   ApprovalsController,
   AuditController,
@@ -28,6 +29,7 @@ import {
   PublicAreaCandidatesController,
   PublicCandidaciesController,
   PublicDistrictsController,
+  PublicRacesController,
 } from '../candidacies/candidacies.controller.js';
 import { CANDIDACIES_PROVIDERS } from '../candidacies/providers.js';
 import { BylawsChecksService } from '../bylaws-check/bylaws-checks.service.js';
@@ -38,6 +40,8 @@ import { ApiKeys } from '../api-keys/api-keys.js';
 import { ApiKeysAdminService, ApiKeysController } from '../api-keys/api-keys-admin.js';
 import { API_KEY_TESTER, PublicApiKeyTester, UntriedApiKeyTester } from '../api-keys/key-tester.js';
 import { HealthController } from '../common/health.controller.js';
+import { CertificateSettingsController, CertificateSettingsService } from '../course/certificate-settings.js';
+import { CourseEmbedController } from '../course/course-embed.controller.js';
 import { CourseController } from '../course/course.controller.js';
 import { CourseService } from '../course/course.service.js';
 import { CourseLearnersService } from '../course/course-learners.service.js';
@@ -60,9 +64,19 @@ import { VotingService } from '../elections/voting.service.js';
 import { ballotPoolKeysProvider } from '../infra/ballot-pool.js';
 import { secretStoreProvider } from '../infra/secret-store.js';
 import { PublicLedgerController } from '../ledger/ledger.controller.js';
+import { JoinFunnelController } from '../membership/join-funnel.js';
 import { MembershipAdminController, RegistrationController } from '../membership/membership.controller.js';
 import { MEMBERSHIP_PROVIDERS } from '../membership/providers.js';
 import { PublicRegistrationFormController, RegistrationFormAdminController } from '../membership/registration-form.js';
+import { FirstStepsAdminController } from '../membership/first-steps-settings.js';
+import { BroadcastsController } from '../notifications/broadcasts.js';
+import { MailAdminController } from '../notifications/mail-admin.controller.js';
+import { MessageReportsController, MessagesController, MyNotificationsController } from '../inbox/inbox.controller.js';
+import { MyTeamInboxController, TeamInboxController } from '../inbox/membership-inbox.controller.js';
+import { INBOX_API_PROVIDERS } from '../inbox/providers.js';
+import { UnsubscribeController } from '../notifications/mail-preferences.js';
+import { NewsletterAdminController, PublicNewsletterController } from '../notifications/newsletter.js';
+import { MyEmailController } from '../notifications/my-email.js';
 import { NoticeSettingsController } from '../notifications/notice-settings.js';
 import { NoticesController } from '../notifications/notices.controller.js';
 import { NOTIFICATION_API_PROVIDERS } from '../notifications/providers.js';
@@ -87,18 +101,25 @@ import {
   PublicSuggestionsController,
   ShareController,
 } from '../communications/communications.controller.js';
+import { EventsAdminController, PublicEventsController, PublicPartnersController } from '../communications/events.controller.js';
 import { TEAMS_PROVIDERS } from '../teams/providers.js';
+import { REFERRALS_PROVIDERS } from '../referrals/providers.js';
+import { MyReferralsController, ReferralLeaderboardController } from '../referrals/referrals.js';
+import { BillsAdminController, BillsController, PublicBillsController } from '../bills/bills.controller.js';
+import { BILLS_PROVIDERS } from '../bills/providers.js';
 import { TeamsAdminController, TeamsController } from '../teams/teams.controller.js';
+import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previews/providers.js';
 
 /**
  * Client-facing API (design §12). Every route requires a verified sign-in unless marked @Public().
  * M1: accounts, registration, membership administration, profile photos, roles and approvals, auth switches, ledger.
  * M2: election setup, rolls, scheduling and cancellation; the published ledger (blocks, keys, proofs, anchors).
  * M3: voting. M4: results, certification, offices and terms; teams (design §5.7), the forum (§5.9), the members' room (§5.10). Testing mode: test personas and demo elections (design
- * §10.4). M5: who sees which link (design §10.5), the home page hub (§10.6), communications (§10.9), robots.txt and
- * the sitemap (§15); the
+ * §10.4). M5: who sees which link (design §10.5), the home page hub (§10.6), communications (§10.9), robots.txt,
+ * the sitemap and link previews (§15); the
  * platform consistency check (design §5.5), the election setup check (§6.9) and the Anthropic API key (design §5.6);
- * candidacies for public office and their districts' map (design §5.8).
+ * candidacies for public office and their districts' map (design §5.8); the legislative team's Bills tool (design §5.14);
+ * in-app notifications and messages between members (design §10.13).
  */
 @Module({
   imports: [CoreModule],
@@ -107,8 +128,10 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     AccountsController,
     RegistrationController,
     MembershipAdminController,
+    JoinFunnelController,
     PublicRegistrationFormController,
     RegistrationFormAdminController,
+    FirstStepsAdminController,
     BylawsChecksController,
     MyPhotoController,
     PhotoReviewController,
@@ -117,6 +140,17 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     MemberSearchController,
     NoticesController,
     NoticeSettingsController,
+    MailAdminController,
+    BroadcastsController,
+    MyEmailController,
+    UnsubscribeController,
+    PublicNewsletterController,
+    NewsletterAdminController,
+    MyNotificationsController,
+    MessagesController,
+    MessageReportsController,
+    TeamInboxController,
+    MyTeamInboxController,
     VotingController,
     ConsistencyChecksController,
     AdminConsistencyChecksController,
@@ -130,10 +164,16 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     PublicCandidaciesController,
     PublicAreaCandidatesController,
     PublicDistrictsController,
+    PublicRacesController,
     AreaContactsAdminController,
     EmailTemplatesAdminController,
     TeamsController,
     TeamsAdminController,
+    MyReferralsController,
+    ReferralLeaderboardController,
+    BillsController,
+    BillsAdminController,
+    PublicBillsController,
     ForumController,
     ForumAdminController,
     RoomController,
@@ -156,7 +196,11 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     PublicSuggestionsController,
     ShareController,
     CommunicationsAdminController,
+    PublicEventsController,
+    PublicPartnersController,
+    EventsAdminController,
     SearchEnginesController,
+    ...LINK_PREVIEW_CONTROLLERS,
     SecurityController,
     PublicSiteAnalyticsController,
     SiteAnalyticsAdminController,
@@ -168,12 +212,16 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     PersonasController,
     DemoElectionsController,
     CourseController,
+    CertificateSettingsController,
+    CourseEmbedController,
     VideosController,
   ],
   providers: [
     AccountsService,
+    EmailVerifiedSync,
     ...MEMBERSHIP_PROVIDERS,
     ...NOTIFICATION_API_PROVIDERS,
+    ...INBOX_API_PROVIDERS,
     BylawsChecksService,
     PhotosService,
     ElectionsService,
@@ -194,6 +242,8 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     PositionsService,
     ...CANDIDACIES_PROVIDERS,
     ...TEAMS_PROVIDERS,
+    ...REFERRALS_PROVIDERS,
+    ...BILLS_PROVIDERS,
     ...FORUM_PROVIDERS,
     ...ROOM_PROVIDERS,
     ...COMMUNICATIONS_PROVIDERS,
@@ -208,8 +258,10 @@ import { TeamsAdminController, TeamsController } from '../teams/teams.controller
     PersonasService,
     DemoElectionsService,
     CourseService,
+    CertificateSettingsService,
     VideosService,
     CourseLearnersService,
+    ...LINK_PREVIEW_PROVIDERS,
     secretStoreProvider,
     {
       provide: PHOTO_CHECKER,

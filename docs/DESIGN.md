@@ -93,7 +93,7 @@ flowchart LR
   WK --> GCSA[("GCS: anchors<br/>Bucket Lock (WORM)")]
   WK --> SM[Secret Manager]
   WK -- "election notices" --> SES[Amazon SES]
-  WK -- "bounce reports" --> SQS[Amazon SQS]
+  WK -- "delivery reports" --> SQS[Amazon SQS]
 ```
 
 ### 3.1 Components
@@ -147,18 +147,21 @@ this structure one at a time, without changing routes, documents or the ledger.
 | Context | Sections | Owns |
 |---|---|---|
 | Accounts & identity | §4 | `accounts`, `account_identities`, `sign_in_methods`, `mfa_policy` |
-| Membership | §5.1–5.3 | `members`, `member_status_history`, `applications`, `registration_form`, `registration_form_versions`, `profile_photos`, `photo_checks` |
+| Membership | §5.1–5.3, §5.16 | `members`, `member_status_history`, `applications`, `registration_form`, `registration_form_versions`, `first_steps`, `first_step_ticks`, `profile_photos`, `photo_checks` |
 | Bylaws | §5.2, §5.4, §6.6 | `bylaws_versions`, `bylaws_checks`, `bylaws_check_references` |
 | Elections | §5.5, §6, §7, §9 | `elections/**`, `eligibility_snapshots`, `proposal_snapshots`, `results`, `consistency_checks`, `consistency_documents`, `election_checks` |
 | Offices | §6.4 | `positions`, `position_terms` |
 | Teams | §5.7 | `teams`, `team_members`, `team_requests` |
-| Candidacies | §5.8, §5.12 | `candidacies`, `area_contacts`, `email_templates` |
+| Referrals | §5.18 | `referral_codes`, `referral_links` |
+| Candidacies | §5.8, §5.12, §5.17 | `candidacies`, `area_contacts`, `email_templates`, `race_records` |
+| Bills | §5.14 | `bill_settings`, `bill_watch`, `bill_notes`, `bill_public`, `bill_roll_calls` |
 | Forum | §5.9 | `forum_posts`, `forum_comments`, `forum_votes`, `forum_reports` |
 | Members' room | §5.10 | `room_consents`, `room_messages`, `room_reactions`, `room_memory`, `room_jobs`, `room_state`, `room_voice`, `room_signals` |
-| Communications | §10.9 | `news_posts`, `press_kit`, `press_assets`, `share_posts`, `share_counts`, `calendar_items`, `suggestions`, `suggestion_limits`, `bots` |
+| Communications | §10.9, §10.17 | `news_posts`, `press_kit`, `press_assets`, `share_posts`, `share_counts`, `calendar_items`, `suggestions`, `suggestion_limits`, `bots`, `events`, `partners` |
 | Governance | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `anthropic_key`, `api_keys` |
 | Audit ledger | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` |
-| Notifications | §6.8 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests` |
+| Notifications | §6.8, §5.13 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests`, `welcome_emails`, `mail_messages`, `mail_suppressions`, `mail_preferences`, `broadcasts`, `broadcast_recipients`, `newsletter_subscribers`, `newsletter_limits` (§10.15) |
+| Inbox | §10.13 | `app_notifications`, `inbox_preferences`, `member_threads`, `member_messages`, `member_blocks`, `message_reports`, `membership_threads`, `membership_messages` |
 
 **Layers.** Records stay plain data (Firestore stores them, JCS hashes them, the browser reads them), so an aggregate
 is its record types plus pure functions in `ustp-domain`:
@@ -205,7 +208,11 @@ room, `RoomAssistant` answers questions through the `RoomModel` port (Ollama, or
 questions reach it through the `AssistantDispatch` port (Cloud Tasks, or the api itself with the emulators).
 **Communications** (§10.9) too: `ustp-domain/communications/` holds the records, commands and views of news, the
 share kit, the calendar, suggestions, the press kit and bots; `CommunicationsRepository` stores them, and a service
-per part runs them.
+per part runs them. **Bills** (§5.14) too: `ustp-domain/bills/` holds the bill references and their parser, the
+search's query rules, the status worked out from actions, the watchlist's records and commands, and the setting;
+`BillRepository` stores them, `BillsService` runs them, reading teams through the teams context's `TeamRoster` port and
+members through `MemberDirectory`, and the bills come through the `BillSource` port (Congress.gov and GovInfo, or the
+emulator-only fixtures).
 
 **The web app** follows the same contexts ([DOMAIN-MODEL.md](DOMAIN-MODEL.md) §7). The root of `apps/web/src` holds the
 app shell (router, layout and menu, the admin console that composes each context's panels, PWA), the client kernel
@@ -221,8 +228,9 @@ profile's Offices card and the public Offices page (§6.4), `teams/`: the Teams 
 Membership Admins' view of it, from the Teams tab) and the Teams panel (§5.7), `candidacies/`: the Candidates pages,
 the declaration form, the Google map and the admin Candidacies tab (§5.8), `forum/`: the Forum page, a post's page
 (also the console's view of it) and the Forum panel (§5.9), `room/`: the members' room's page with its door, messages,
-composer, decision and action item dialogs and memory panel (§5.10), and `communications/`: the News, post, Press, Share kit
-and Suggest pages, the share buttons, and the Communications panel's six tabs (§10.9).
+composer, decision and action item dialogs and memory panel (§5.10), `communications/`: the News, post, Press, Share kit
+and Suggest pages, the share buttons, and the Communications panel's six tabs (§10.9), and `bills/`: the Bills page,
+a bill's page and the Bills panel (§5.14).
 
 ### 3.4 The reporting MCP server *(added)*
 
@@ -273,6 +281,12 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
   time in milliseconds; that is acceptable (not secret) and makes IDs sortable.
 - **Identities.** `account_identities/{uid}` maps an Identity Platform user to an `accountId`, so each request
   resolves in one read. One account may have several identities; an identity belongs to exactly one account.
+- **Sign-in email** *(added 2026-11-03)*. Identity Platform sends the sign-in links, address confirmations and
+  password resets. Once an environment's email setup check passes, its custom SMTP points at Amazon SES
+  (`identity-platform-smtp.mjs`, infra README "SES sign-in mail"), so they come from the environment's own address,
+  DKIM-signed by the party's domain, and their delivery reports reach the worker through the sender domain's default
+  configuration set; each person sees them on their Account page (§10.12). Until then, and at once with `--off`, they
+  come from Google's sender. Never while SES's account is in the sandbox, which the check fails.
 - **Providers.** Google, Microsoft, Apple, passwordless email link, and email/password. The admin "auth switches"
   (`sign_in_methods`) are enforced by the API: a token whose `firebase.sign_in_provider` is switched off is refused,
   which takes effect within a minute (switches are cached for 60 s per instance) without changing Identity Platform
@@ -283,6 +297,19 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
 - **First sign-in.** `POST /v1/accounts` creates `accounts/{accountId}` and `account_identities/{uid}` in one
   transaction (`create`, so a race cannot mint two accounts for one uid). In the web app a new login is made as the
   first step of registering (§5.2), not on the sign-in page.
+  *(Added)* A first sign-in whose address a Membership Admin added as a member (§5.13: an account with that
+  `primaryEmail` and `claimedAt: null`) gets that account instead, but only when the ID token says the address is
+  verified: the same transaction creates the identity, sets `claimedAt` and `emailVerified`, and ledgers
+  `identity.linked` with `claimed: true` (actor and subject the account), and the answer is 200 `{created: false,
+  accountId, claimed: true}`. With the address not verified it answers 403 and mints nothing, so the person confirms
+  the address and comes back to their membership.
+  *(Added 2026-11-03)* The web app calls it again on each sign-in and after the address is confirmed; for an account
+  that exists, a token saying its address is verified marks the account's `emailVerified` once, if that address is
+  the account's primary email. A password sign-up starts unverified and confirms the address while registering, and
+  election email goes only to a verified address (§6.8), so without this it would never reach them. Accounts whose
+  login confirmed the address before this are caught up in the background once per api instance, on the first sign-in
+  it sees (`EmailVerifiedSync`, reading Identity Platform's users by email), leaving an added member nobody has signed in to
+  yet to their first sign-in.
 - **Portability.** To add a login method the member, while signed in, also signs in with the new method and the client
   sends both ID tokens; the API links the second uid to the same account if that sign-in is under 5 minutes old and the
   uid has no account of its own. The last login method cannot be unlinked. Linking and unlinking are ledgered. Losing
@@ -290,13 +317,16 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
 - **Deleting an account** *(added)*. Only accounts the deployment names can be deleted: `DELETABLE_ACCOUNT_EMAILS`
   (Terraform `deletable_account_emails`, empty by default) lists primary emails, set per environment like the bootstrap
   list because they are people's addresses. On dev it names one demo admin's address, the one account the owner wants
-  removable from the console. A **System Admin** deletes one from the People tab ("Delete account", §10.3;
+  removable from the console. A **System Admin** deletes one, never a Site Admin (403; §10.1), from the People tab ("Delete account", §10.3;
   `POST /v1/admin/accounts/{accountId}/delete` with a written reason), at once, with no second admin, under the role
   changes' rules (`checkCanDeleteAccount` in `ustp-domain`): signed in with MFA within 15 minutes, never their own
-  account, and never an account on any election's roll or among those who voted in one
-  (`elections/{id}/roll_entries` or `participation`), since an election's record keys on the account. A listed member
+  account, and never an account on any election's roll or among those who voted in one (a roll snapshot that was not
+  rejected, found by its `accountIds` in `eligibility_snapshots`, or `elections/{id}/participation`), since an
+  election's record keys on the account *(fixed 2026-11-03: the check looked in `roll_entries`, which nothing writes,
+  so it caught only those who had voted)*. A listed member
   can be deleted *(changed 2026-11-02, at the owner's request, after the dev demo admin signed up again and was
-  admitted)*; other members leave by resigning or a status change (§5.1). The deletion:
+  admitted)*; other members leave by resigning or a status change (§5.1). Test voters, which have no email, are
+  deleted from Admin → Testing instead, whatever elections hold them (§10.4). The deletion:
   - first deletes the account's Identity Platform users, so if anything later fails, nobody can sign in to the half-
     deleted account and deleting it again finishes the job; if Identity Platform refuses, nothing is deleted (503);
   - then, in one transaction that checks everything again, ledgers `role.revoked` for each active role,
@@ -304,7 +334,8 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
     with the System Admin as actor and the deleted `accountId` as subject, and deletes `accounts/{accountId}`, its
     `account_identities`, all its `role_assignments` (revoked ones too), the approval requests about it and, through
     the membership context (`Members.forgetting`), its membership: `members/{accountId}`, its
-    `member_status_history` and its `applications` (the ledger keeps their `member.status_changed` entries);
+    `member_status_history`, its `applications` and the steps it ticked on its getting started list (`first_step_ticks`,
+    §5.16; the ledger keeps their `member.status_changed` entries);
   - last, deletes its sign-ins (§10.7, by account and by login), page visits, and course progress, attempts,
     certificates and instructor messages (§10.8), which can be too many for the transaction; a failure there is logged
     and leaves them to expire.
@@ -317,12 +348,52 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
   `BOOTSTRAP_SYSTEM_ADMIN_EMAILS` would be made System Admin again on its next sign-in: take it off that list first. The
   first deletions came before this action, by hand on dev on 2026-11-02, for four accounts (seq 159–167, sealed in
   block 92); their leftover role assignment and an expired role request were deleted by hand later the same day.
-- **Passwords (NIST SP 800-63B-4).** Minimum 15 characters (the single-factor minimum, applied to everyone), at least 64
-  allowed, no composition rules, no forced rotation, breached-password screening, rate-limited attempts. Identity Platform
-  enforces length; the browser screens against breached passwords before creating the account (Q9): it sends only the
-  first 5 hex digits of the password's SHA-1 to Have I Been Pwned's range API, with padded responses, and refuses any
-  password found there. If that service is unreachable sign-up goes ahead, since Identity Platform never exposes the
-  password to our code for a later check.
+- **Passwords (NIST SP 800-63B-4, but 12 characters).** Minimum 12 characters *(changed 2026-11-03 from NIST's
+  15-character single-factor minimum, §17)*, counted as Unicode code points, up to 128 in the browser (Identity
+  Platform allows 4096), any characters including spaces, no composition rules, no forced rotation, breached-password
+  screening, rate-limited attempts. The browser also refuses a password that, ignoring case, spaces, dots, dashes and
+  underscores, is the login's email address or its part before the `@`, the party's name, or one character repeated
+  (`passwordProblem` in `apps/web/src/password-policy.ts`; the whole password is compared, never a part of it, as NIST
+  asks). Password fields have a "Show password" button (`PasswordInput`). Existing passwords stay valid
+  (`forceUpgradeOnSignin` off). Identity Platform
+  enforces length; the browser screens against breached passwords before creating the account, resetting a password or
+  changing one (Q9): it sends only the first 5 hex digits of the password's SHA-1 to Have I Been Pwned's range API, with
+  padded responses, and refuses any password found there. If that service is unreachable the new password goes ahead,
+  since Identity Platform never exposes the password to our code for a later check.
+- **Resetting and changing a password** *(added 2026-11-03)*. Both check the new password as signing up does: the rule
+  with the login's address, then the breach screen (`checkNewPassword` in `apps/web/src/sign-in.ts`).
+  - **Forgot password?** on the sign-in form's Email & password tab emails a reset link to the address typed
+    (`sendPasswordResetEmail`, continuing to `/signin`). The form answers "If that address has a login here, we have
+    emailed it a link" whatever happens, as email-enumeration protection does; where that protection is off (the Auth
+    emulator) an unknown address (`auth/user-not-found`) gets the same answer. A login made with an email link, which
+    has no password, can set one this way (checked on the Auth emulator).
+  - The link opens the web app's own **`/email-action`** page, not Firebase's hosted one, which would take any password
+    Identity Platform's length rule allows. The page confirms the link (`verifyPasswordResetCode`), shows which login it
+    is for, takes the new password in a `PasswordInput`, checks it, sets it (`confirmPasswordReset`), then signs in with
+    it, asking for the authenticator code if the account has one. An expired or used link (an hour, once) says so and
+    points back to Forgot password?.
+  - Identity Platform's **action URL is one setting for every email template** (`notification.sendEmail.callbackUri`),
+    so pointing it at `/email-action` sends the address-verification and email sign-in links there too. The page
+    handles `mode=resetPassword` only and sends every other link on, query and all, to Identity Platform's own page on
+    the auth domain (`https://<authDomain>/__/auth/action`; the emulator's `/emulator/action`), which handles it as
+    before; a link without a mode or code says it is incomplete. Setting the action URL is manual (infra README
+    "Identity Platform"); until it is set, reset links open Firebase's page, which skips the breach screen and the
+    browser's rule. The page is kept out of search results and Google Analytics, and page visits record its path
+    only, never the link's code (§10.7, §15).
+  - **Change password** on the Account page, in Login methods on the email login they are signed in with, asks for
+    the current password and the new one. It checks the new one (and that it differs), re-authenticates with the
+    current password and then the authenticator code if they have one (`confirmPassword` in `dialogs.ts`), then
+    `updatePassword` (`changePassword` in `sign-in.ts`). The dialog also emails a reset link, for a forgotten password
+    or a login that has only ever used email links. Another email login linked to the account is changed by signing in
+    with it, or by Forgot password?.
+  - Either way Identity Platform revokes the login's sessions (`validSince`): their refresh tokens stop working, so they
+    end within the hour, and at once on the routes that verify with `checkRevoked` (admin routes and casting). A reset
+    then signs in afresh. A change keeps the session that made it, but on the Auth emulator the token handed back
+    keeps the old `auth_time`, earlier than `validSince`, so those routes refuse it, and refreshing it does not help.
+    So when the token's sign-in time has not moved, the dialog re-authenticates once more with the new password: no
+    prompt, or a fresh authenticator code for an account with one. If that is cancelled the password is still changed
+    and the page says to sign out and in again before voting or using the admin tools. Whether a real project moves
+    `auth_time` on a change has not been checked.
 - **Bot resistance at sign-up and sign-in.** Identity Platform's reCAPTCHA Enterprise integration is enforced for
   email/password sign-up, sign-in and email links, blocking scores at or below 0.3 (the web SDK preloads its
   configuration and attaches a bot-score token; the emulator has none). Identity Platform creates its own reCAPTCHA
@@ -337,8 +408,9 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
   (problem type `/problems/mfa-required`), and approvals additionally require `auth_time` within the last 15 minutes
   (`/problems/reauth-required`; the web app re-authenticates and retries once).
   - **Who needs it where** *(added)* (`secondFactorScope` in `ustp-domain`): **System Admins on every signed-in
-    route**, always, whatever the setting below says, since they change roles, the sign-in switches and this setting;
-    **every other admin role** on the admin routes; **members without a role** nowhere, unless a System Admin turns on
+    route**, always, whatever the settings below say, since they change roles, the sign-in switches and these settings;
+    **Site Admins** likewise while the Site Admins' setting below is on, as it is by default, since they change roles too
+    (`Site Admins must sign in with two-step verification`); **every other admin role** on the admin routes; **members without a role** nowhere, unless a System Admin turns on
     the **member requirement**, which then holds everyone to it on every route. Two routes answer a sign-in without a
     second factor (`@MfaExempt()`), so anyone can see where they stand and set one up: `GET /v1/me` and
     `POST /v1/accounts`; so does `POST /v1/page-visits` (§10.7), which records only the caller's own visit, so pages
@@ -354,6 +426,17 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
     second factor only on a verified address), setting up the app and signing in with it before applying. The guard
     reads the caller's roles only for a sign-in without a second factor while the requirement is off, and reads them
     fresh, so someone just made System Admin is held to it at once.
+  - **The Site Admins' setting** *(added 2026-11-09, the owner's decision: "two-step itself can be turned on or off for
+    Site Admin", by a switch System Admins control)*: `siteAdminsRequired` in `mfa_policy/current`, on by default. System
+    Admins switch it beside the member requirement (Admin › Sign-in methods, "Require it of Site Admins"; the same
+    `PUT /v1/admin/mfa-policy`, which keeps it as it is when a page opened before it existed leaves it out; ledgered in
+    the same `mfa_policy.changed` entry). Off, the Site Admin role asks for no second factor, on any route, the admin
+    routes included: a Site Admin with no other admin role signs in and acts with one factor, role changes and the
+    site's settings included (the guard marks the request `secondFactorWaived`, and the checks that ask for a
+    multi-factor sign-in, such as `checkCanChangeRole`, count it as one). The 15-minute re-authentication for role
+    changes still applies. Everything else stays: another admin role the Site Admin holds asks for a second factor on
+    the admin routes as usual, the member requirement, while on, holds Site Admins as everyone, and System Admins always
+    need one. Turning it off is confirmed in a dialog that says Site Admins could then change roles with only a password.
   - `GET /v1/me` reports `mfa.required` (a second factor is needed for something: a role, or the requirement),
     `mfa.everywhere` (for every route) and `mfa.signedInWithMfa`. In the web app, someone who needs it everywhere and
     has not used it sees a banner on every page but the hub and the Account page; pages that need a sign-in send them
@@ -408,6 +491,7 @@ are not ledgered. There is one so far, `dailyQuote`:
 ```mermaid
 stateDiagram-v2
   [*] --> Applicant: application submitted
+  [*] --> Active: added (Membership Admin, §5.13)
   Applicant --> Active: approved (Membership Admin)
   Applicant --> Rejected: rejected + reason
   Active --> Lapsed: lapse rule (Q2)
@@ -423,7 +507,8 @@ stateDiagram-v2
 
 Every transition writes, in one transaction, the new status on `members/{accountId}`, an append-only
 `member_status_history` entry and a ledger entry. Admin-initiated transitions require a non-empty written reason
-(spec §9, due process). The allowed transitions are defined once in `ustp-domain`.
+(spec §9, due process). The allowed transitions are defined once in `ustp-domain`. A member a Membership Admin adds
+(§5.13) and a test voter persona (§10.4) start Active without an application, each recorded like any other change.
 
 ### 5.2 Applications, bylaws, address
 
@@ -444,6 +529,25 @@ Every transition writes, in one transaction, the new status on `members/{account
   3. *Membership review*: the submitted application's status, until a Membership Admin decides it, and the bonus
      link the intro promises (Tips for Advancing a Brighter Future) once a Membership Admin has set its address.
      Active members see that link on Register too.
+- **The queue** *(added 2026-11-10)*. So that the time to a decision does not become what keeps people out, a
+  Membership Admin sees how many applications wait: a count beside Admin in the menu and on the console's Applications
+  tab (none when nothing waits; only Membership Admins are asked for it), and above the pending list how many wait and
+  for how long the oldest has. Each waiting application says how long it has waited, marked once that is three days
+  or more; the list is oldest first. `GET /v1/admin/applications/summary` gives the count and when the oldest was
+  submitted; the web app reads it when a Membership Admin signs in, on each page they open and after each decision,
+  with no polling.
+- **What an application tells people** *(added 2026-11-10)*. The applicant gets a notification (§10.13) when their
+  application arrives, saying a Membership Admin will decide it, and another when it is decided: approved, with where
+  to start, or not approved, with the reason the admin wrote (which the Register page shows them too) and that they may
+  apply again. Each of the three also goes to them **by email whatever they chose for their notifications**: they asked
+  for it by applying, and may never open the site again to look. Those emails pass the gate of all the site's email
+  (§10.12: nothing while all email is off, after they unsubscribed, or while an admin has stopped their email), each has
+  its own switch in Admin › Email (Application received, Application approved, Application not approved; on by
+  default), and each goes even if they read the notification on the site first, as their record of it. They are logged
+  as notification emails. Every Membership Admin but the applicant gets one notification that an application waits,
+  counting up while unread and leading to Admin › Applications; it is emailed only to those who chose their
+  notifications by email. The notifications are written in the transaction that records the application or the
+  decision, so none is lost and none is sent for a change that did not happen.
 - **Who sees what.** The web app's menu links (Register, Ballot, Verify, Offices, Candidates, Admin) and the header's Sign in button
   are the ones the navigation settings give the person's membership state and roles (§10.5). By default everyone sees
   all five links, signed in or not, visitors see Sign in, and each page tells people it is not for what they can do
@@ -480,10 +584,30 @@ Every transition writes, in one transaction, the new status on `members/{account
   Constitution, Transhumanist principles or the USTP Constitution, for the whole draft or only the lines changed since
   the version it amends. It never blocks publishing, decides nothing and is not ledgered. See [§5.4](#54-bylaws-check).
 - The application asks for: legal and preferred name; date of birth (at least `MINIMUM_MEMBER_AGE`, 18 until USTP
-  decides Q17); an attestation of that minimum age; state, city and US ZIP code (never a street address); an optional
+  decides Q17); an attestation of that minimum age; where they live (below; never a street address); an optional
   phone number (stored as E.164); the two membership questions (below); optional statement, interests, skills, how they
   heard about USTP, and wishes to volunteer or run for office; and opt-ins to the newsletter and to announcements, each
   stored with the time consent was given. The browser and the api apply the same schema, the api with its own clock.
+- **Where they live** *(changed 2026-11-03)*. Allied Members can live outside the United States, so the application
+  asks for the country first (`country`, an ISO 3166-1 alpha-2 code from `COUNTRIES` in `ustp-domain`, the United
+  States by default and when none is sent). In the US the state or territory, city and ZIP code are needed, as before.
+  Anywhere else none of them is: the applicant may give a state, province or region (`region`, free text, 100
+  characters), a city, and a postcode (letters and digits with single spaces or dashes between them, 16 characters,
+  stored in capitals). The record keeps `state` for the US only (null elsewhere) and `region` outside it only (null
+  in the US), so a US state code is never confused with anything else; `contact.city` and `contact.postalCode` are
+  null when not given. Puerto Rico, Guam and the other US territories are not in the country list: someone there
+  chooses the United States and the territory as their state. Kosovo (`XK`) is listed although ISO has not assigned
+  it. Records and applications made before the country was asked have none and are in the United States
+  (`countryOf`); the next status change writes it. Beside a name (the forum, teams, the voter roll, member search) a
+  member's place is their state's code in the US and their country's name elsewhere (`placeText`).
+- **Staying in touch** *(changed 2026-11-03)*. The Register page asks the two opt-ins with one box on one line,
+  "Email me the USTP newsletter, party announcements and calls to vote.", which sets both or neither; the record still
+  keeps each with its time. Above it the page says why it matters: the party is only as strong as the members it can
+  reach. The user asked for the box to be ticked to start, so that members opt out by unticking it; since a box ticked
+  in advance is not consent under the GDPR (EU and UK residents), the user chose (2026-11-03) to tick it to start only
+  when the country is the United States (`staysInTouchByDefault`), and to leave it unticked elsewhere, for the
+  applicant to tick. It follows the country until the applicant ticks or unticks it themselves. The Account page
+  keeps the two opt-ins apart, so a member can keep one and drop the other.
   Applications made before the membership questions also attested support for the USTP platform
   (`attestations.supportsPlatform`); the Core Ideals question replaced that attestation, which, being required, would
   have refused anyone who could not give it.
@@ -524,41 +648,44 @@ Every transition writes, in one transaction, the new status on `members/{account
   or the address is not `https://`). Each save that changes something is ledgered as `registration_form.changed` with
   each changed part and its new value; like the home page quote it is an internal setting, visible to Auditors only.
 - Data minimization: the date of birth stays on the application, for the Membership Admin's review, and is never
-  copied to `members/{accountId}`; the member record gets only what membership uses afterwards (name, state, city, ZIP,
-  phone, the consents, and the answers to the two membership questions). Members who applied before these fields have
-  `contact` and `communications` null.
+  copied to `members/{accountId}`; the member record gets only what membership uses afterwards (name, country, state
+  or region, city, ZIP code or postcode, phone, the consents, and the answers to the two membership questions).
+  Members who applied before these fields have `contact` and `communications` null.
 - Separation of duties within membership: an admin cannot decide their own application or change their own status.
   Status changes other than application decisions (suspend, reinstate, lapse) use a separate endpoint so an
   application can never be bypassed.
 - **Member profiles.** A Membership Admin opens any member from the Members or Applications tab:
   `GET /v1/admin/members/{accountId}` gives the member record, every application the account made with all its
   answers (date of birth included, as it is for the review), and the status history. The profile page shows them, with
-  the member's class and Core Ideals answer beside their status, and Change status and Correct details. Opening a profile is not ledgered or logged, like every other admin read. System
+  the member's class and Core Ideals answer beside their status, and Change status and Correct details. Opening a profile is not ledgered, like every other admin read; the developer log has the request, as it has every request (§14, Logging). System
   Admins do not see profiles: their People list stays as in §10.3.
-- **Members tab.** The Membership Admin's list loads every member from `GET /v1/admin/members`, 500 a request, and
-  each member's offices from `GET /v1/admin/positions`: the active terms held under the member's account (a candidate
-  entered with it, or an appointment, §6.4), each shown as the office's title over its description; anyone else is "Member" while they have a
-  membership (active, lapsed, suspended). The browser does the rest, over the whole list: a search of legal and
-  preferred names, a state filter, a class filter (United States Members, Allied Members, or Not asked), status
-  filters with counts (Active, Lapsed, Suspended and Resigned always; Applicant and Rejected while someone has that
-  status, since applications are decided on their own tab), sorting by any column (Class included, Not asked last),
-  and 50 rows a page. Each row keeps the profile link, the copy-account-ID button, History and Change
-  status (§5.1). **Export CSV** builds the file in the browser from the list as filtered and sorted, or from the
-  ticked rows if any: name, account ID, offices, state, class, the Core Ideals answer, status and member-since date
-  (the reader's own date), never contact details or opt-ins; UTF-8 with a byte-order mark for Excel, and a cell a spreadsheet would read as a formula
-  starts with `'`. The checkboxes only choose what to export: there are no bulk status changes. The api never sees an
-  export, so like opening a profile it is not ledgered or logged.
+- **Members tab.** The Membership Admin's list loads every member from `GET /v1/admin/members`, 500 a request, and each
+  member's offices from `GET /v1/admin/positions`: the active terms held under the member's account (a candidate entered
+  with it, or an appointment, §6.4), each shown as the office's title over its description; anyone else is "Member"
+  while they have a membership (active, lapsed, suspended). The browser does the rest, over the whole list: a search of
+  legal and preferred names, a location filter (a US state, or the country of a member outside the US; the table's
+  Location column shows the state's code or the country's name), a class filter (United States Members, Allied Members,
+  or Not asked), status filters with counts (Active, Lapsed, Suspended and Resigned always; Applicant and Rejected while
+  someone has that status, since applications are decided on their own tab), sorting by any column (Class included, Not
+  asked last), and 50 rows a page. Each row keeps the profile link, the copy-account-ID button, History and Change
+  status (§5.1). **Add members** opens the form and CSV import of §5.13. **Export CSV** builds the file in the browser from the list as filtered and sorted, or from the ticked
+  rows if any: name, account ID, offices, state (US members only), country, class, the Core Ideals answer, status and
+  member-since date (the reader's own date), never contact details or opt-ins; UTF-8 with a byte-order mark for Excel,
+  and a cell a spreadsheet would read as a formula starts with `'`. The checkboxes only choose what to export: there are
+  no bulk status changes. The api never sees an export, so it is not ledgered or logged.
 - **Changing details after joining.** The record keeps what membership uses, and it changes in two ways, each ledgered
   as `member.details_changed` with the names of the fields that changed (`legalName`, `contact.phone`,
   `communications.newsletter`…) and never their values, since the ledger cannot be erased:
-  - *The member*, on their Account page (`POST /v1/me/details`): preferred name, state, city, ZIP, phone, and the two
-    email opt-ins. An opt-in keeps the time it was first given; withdrawing it clears it. Not the legal name.
+  - *The member*, on their Account page (`POST /v1/me/details`): preferred name, country, state or region, city, ZIP
+    code or postcode, phone, and the two email opt-ins. An opt-in keeps the time it was first given; withdrawing it
+    clears it. Not the legal name.
   - *A Membership Admin*, on the profile (`POST /v1/admin/members/{accountId}/details`): legal and preferred name,
-    state, city, ZIP and phone, with a written reason; never the opt-ins, which are the member's to give, and never
-    their own record.
+    country, state or region, city, ZIP code or postcode and phone, with a written reason; never the opt-ins, which
+    are the member's to give, and never their own record.
 
   Both use the application's rules for the fields they share (`ustp-domain`), and a change that changes nothing is
-  refused. The applications themselves are never edited: they stay the record of what was agreed to.
+  refused. Moving abroad or back changes `country`, `state` and `region` together. The applications themselves
+  are never edited: they stay the record of what was agreed to.
 - **Address minimization:** the street address is used once to look up state/district, then discarded — never
   written to Firestore, logs or task payloads. Only the derived `state` / `district` are stored. The lookup provider is
   open (Q8).
@@ -838,7 +965,11 @@ States' and Google Civic Information's. `ustp-domain` (`api-keys.ts`) holds thei
   header: the FEC's first candidate, Open States' first state, Google's list of elections. A key the service refuses
   is not kept (422), and nothing is saved when it cannot be asked (502). With the emulators nothing is sent.
 - **System Admins only**, ledgered as `api_key.changed` (which key, `added` or `removed`; Auditors only), never the
-  key. The law analysis's data keys (§5.11: Congress.gov, CourtListener) are to be added here the same way.
+  key. The Congress.gov and GovInfo key, which the Bills page uses (§5.14), was added the same way on 2026-11-07, its
+  card's own key falling back to the FEC key in use since any api.data.gov key works for both; the law analysis's
+  CourtListener token (§5.11) is to be added here too. A card whose secret this server may not look at yet (its
+  Terraform not applied) says so on its own card, with what is used meanwhile, and offers no field; the other cards
+  load as before, so a key added to the list never takes the tab down until the apply.
 
 ### 5.7 Teams *(added)*
 
@@ -938,7 +1069,9 @@ before it shows; and the page is public.
   So a ZIP code across a line gives both districts, and a district holding less of it than one grid cell may be missed;
   the page says that some races shown may not be on the member's own ballot. Areas are kept a day per ZIP code and
   state, the latest 1,000. With no ZIP code on the record, one the Census draws no area for in that state (a PO box's
-  has none), or TIGERweb not answering, the area is the whole state (`basis` says which), and the page says why. The
+  has none), or TIGERweb not answering, the area is the whole state (`basis` says which), and the page says why. A
+  member living outside the United States has no area (404, saying so): the page opens on all states, where they can
+  still type any US ZIP code. The
   page links to the Account page, where the ZIP code is changed, and to the Your area page (§5.12), which lists the
   districts with who holds and who runs for each office there; the member can choose All
   states or another state instead, and the choice is kept in the page's address (`?state=`), so coming back from a
@@ -1405,7 +1538,8 @@ a bill or how to vote on one.
 
 **What can be analyzed.**
 - A federal bill or public law, picked on the Policy page by number ("H.R. 1234, 119th Congress") or by words, and
-  one of its text versions, from the Congress.gov API.
+  one of its text versions, from the Congress.gov API. The search and the bill's page are built (§5.14, the
+  legislative team's Bills page and `/v1/bills`), so the picker reuses them.
 - A state bill, from Open States, once that state is turned on (Q22: which first).
 - Text a member pastes, or a forum proposal (§5.9) through "Analyze as a law" on the post, with the jurisdiction it
   would be enacted in.
@@ -1882,17 +2016,18 @@ Wikipedia and Wikidata, the ballot's contests from Google's Civic Information AP
 records only, on the public Candidates page for the member's area or any ZIP code typed there (§5.8).
 
 - **The area** is the member's own, worked out from their record as on the Candidates page (§5.8): the nation, their
-  state, and the districts their ZIP code reaches into. When the ZIP code could not be placed, the page lists only
-  nationwide and statewide offices (not every district in the state) and says why. Under a heading per district, each
-  office of that kind (`OFFICES_OF_KIND`: President; U.S. Senate and statewide offices; U.S. House; State Senate;
-  State House or Assembly; county offices; city or town offices) has its people in office and running, or says nobody
-  is listed yet (`groupAreaContacts`). *(Changed 2026-11-01.)* The offices are the same grid of compact cards as on the
-  Candidates page (§5.8), each with its district's outline, the presidency left out in other years unless someone is
-  listed, and each person on two lines with a small *Write*. *(Changed again 2026-11-01.)* The people are in the three
-  groups of §5.8, each its own section: the Transhumanist Party's candidates in the area first (members' candidacies,
-  each opening its page), then *Your representatives* (every office's card, with who holds it), then *Others running*
-  (the offices someone else runs for), each person badged *Transhumanist* or *Your representative*; *Write* is offered
-  to representatives and others running.
+  state, and the districts their ZIP code reaches into. For a member living outside the United States the page lists
+  nothing and says so, pointing to the Candidates page, where any US ZIP code can be typed, and to the Account page.
+  When the ZIP code could not be placed, the page lists only nationwide and statewide offices (not every district in the
+  state) and says why. Under a heading per district, each office of that kind (`OFFICES_OF_KIND`: President; U.S. Senate
+  and statewide offices; U.S. House; State Senate; State House or Assembly; county offices; city or town offices) has
+  its people in office and running, or says nobody is listed yet (`groupAreaContacts`). *(Changed 2026-11-01.)* The
+  offices are the same grid of compact cards as on the Candidates page (§5.8), each with its district's outline, the
+  presidency left out in other years unless someone is listed, and each person on two lines with a small *Write*.
+  *(Changed again 2026-11-01.)* The people are in the three groups of §5.8, each its own section: the Transhumanist
+  Party's candidates in the area first (members' candidacies, each opening its page), then *Your representatives* (every
+  office's card, with who holds it), then *Others running* (the offices someone else runs for), each person badged
+  *Transhumanist* or *Your representative*; *Write* is offered to representatives and others running.
 - **Public records**, each kept a day by the api (`ContactSource`, the context's second port to the outside):
   - members of Congress, from the `unitedstates/congress-legislators` data (no key): the state's two senators and the
     representative of each congressional district, with their website and contact form;
@@ -1990,6 +2125,476 @@ records only, on the public Candidates page for the member's area or any ZIP cod
   The keys are Terraform variables (`fec_api_key`, `openstates_api_key`) and the Civic key Terraform's own
   (`civic_enabled`; infra README "Your area records"), or a key a System Admin adds under Admin › API keys, which
   comes first (§5.6).
+
+### 5.13 Members added by a Membership Admin *(added)*
+
+A Membership Admin can add someone as a member without an application: one at a time on a form, or a whole roster
+from a CSV file. The admin never sets or sees a password: the member sets their own the first time they come, after
+proving the email address is theirs. The owner's decisions (2026-11-03): added members are Active at once; a welcome
+email always goes out, by the site's mail where it sends mail and by Identity Platform's sign-in link where it does
+not; each needs an email address, a legal name, and a US state or, for someone living abroad, a country (as the
+application has asked since §5.2 took members outside the US); an address that already has a login is skipped.
+
+- **Where.** The Members tab's **Add members** button opens a card with two tabs.
+  - *One member:* email, legal name, preferred name, where they live (the application's place fields, §5.2: the
+    country, then a US state, or elsewhere an optional state, province or region; city and ZIP code or postcode are
+    optional here even in the US), phone, whether they are eligible to vote in US elections (Yes, No or Not asked) and
+    a written reason. `POST /v1/admin/members`; a field that breaks the
+    rules is a 400 naming it, an address already on the site 409.
+  - *From a CSV file:* the browser reads the file (`readMemberImport` in `ustp-domain`; RFC 4180, as spreadsheets save
+    it). The first row names the columns, in any order, compared without case, spaces, `_` or `-`: `email`,
+    `legal_name` (or `name`), `preferred_name`, `state`, `region` (or `province`, `county`), `country`, `city`, `zip`
+    (or `postal code`), `phone` and `us_vote_eligible` (yes or no); other columns are ignored and listed. A file without `email`, `legal_name`, and
+    `state` or `country` columns, without rows, or with more than 500 (`MAX_MEMBER_IMPORT_ROWS`) is refused whole,
+    saying why, and nothing is sent. "Download the template" gives the header row alone, so nothing in it can be
+    imported by mistake. The rows go to `POST /v1/admin/member-imports/preview`, which writes nothing and answers each
+    row as added or skipped with its reasons (`planMemberImport`): a field that breaks the rules (no or a bad email
+    address, no legal name, no state or country, an unknown state or country, a bad ZIP code or phone, a US-vote
+    answer other than yes or no), the same address as an earlier row, or an address already on the site. That is a
+    login without a membership ("they apply on the Register page": an existing login's address may never have been
+    verified, so attaching a membership to it could hand it to whoever made that login), a membership in any status,
+    or a member added before who has not signed in yet. Each skipped row counts once, under the first cause that
+    applies (`SKIP_CAUSES`: a needed field missing, an email address that is not one, another field that breaks the
+    rules, an address repeated from an earlier row, an address already on the site), and the preview gives the
+    counts (`skippedBy`, adding up to the rows skipped). The card says how many rows the file has, how many members
+    it will add and how many rows it skips, by cause ("roster.csv has 9 rows: 3 members to add, 6 rows skipped: 1
+    missing a needed field, …"), lists the skipped rows with their reasons and the rows to add, asks for one written
+    reason, and `POST /v1/admin/member-imports` adds them. Its answer has the same counts (`skippedBy`, a row taken
+    since the preview counting as already on the site), and the card shows them: "Imported 3 members from
+    roster.csv. 6 rows skipped: …", with each skipped row and its reasons.
+- **The rules** (`checkNewMember`, the same function in the browser and the api, so the form names a problem before
+  sending and the preview matches the import): the email is stored lowercase; names as on the application (§5.2); a
+  state by code or name; a country by its code or name in the application's list (`COUNTRIES`, §5.2), and a few
+  common names (USA, UK…). No country, or the United States, needs the state; a territory with its own country code
+  (Puerto Rico, Guam, American Samoa, the Northern Mariana Islands, the US Virgin Islands) is the United States and
+  that state, as on the application. Elsewhere the region column, or else the state column, is kept as the region as
+  written. A ZIP code or postcode, and a phone, as on the application.
+- **What adding does**, in transactions of 25 rows. The api plans again first, and each transaction reads the
+  addresses again, so one that signed up or was added since the preview is skipped with its reason rather than given a
+  second account; with no bylaws published it answers 409. For each member:
+  - `accounts/{accountId}` with a new UUIDv7, the address as `primaryEmail` (not verified), the preferred or legal name
+    as display name, `addedAt`, `addedBy` and `claimedAt: null`, and no login (`account_identities`);
+  - an Active member record (`memberAddition`): like a test voter persona's (§10.4), the one other first status change
+    that skips the application, ledgered as `member.status_changed` from none to `active` with the admin as actor and
+    their reason, and its history entry. It is on the bylaws version in force, which the member was not shown, so the
+    profile says "Bylaws in force when added". It has the US-vote answer if the admin gave one, the Core Ideals answer
+    "Not asked", and no email opt-ins, which are the member's own to give;
+  - where the deployment sends mail, the welcome email (below).
+
+  From then on they are members like any other: on the Members tab, on rolls approved later, and their details change
+  as §5.2 says. Election notices (§6.8) go only to verified addresses, so they reach an added member once they have
+  signed in.
+- **Setting a password.** `/set-password` ("Set your password", linked from the sign-in page and every welcome email):
+  the member enters their address and gets Identity Platform's emailed sign-in link (§4), which opens the page again
+  and signs them in. That proves the address, and `POST /v1/accounts` links the login to the added account (§4,
+  "First sign-in"). Then they choose a password under the sign-up rules (§4: 12 to 128 characters, not the address itself, refused if Have I
+  Been Pwned knows it), which Identity Platform sets (`updatePassword`) and which ends every other session of that
+  login. From then on they sign in with email and password, and may link other methods (§4). A member who uses Google
+  or Apple with the same address may simply sign in with it, since those providers verify addresses. The page also
+  serves anyone who has forgotten their password. Where two-step verification is required of members (§4), the page
+  then points them to setting up the authenticator app, as the site does for anyone; claiming needs no second factor,
+  since `POST /v1/accounts` answers without one.
+- **Why nobody can take an account by knowing an email address.** The api links an added account only to a sign-in
+  whose ID token says the address is verified (`email_verified`), which Identity Platform sets only when the person
+  opened a link sent to that address or a provider that checks addresses vouches for it. A sign-in that merely names
+  the address (a password sign-up not yet confirmed, or a provider that does not verify addresses) gets 403 and no
+  account of its own, so the membership stays waiting for whoever controls the mailbox; once they confirm the address,
+  the same `POST /v1/accounts` links it. The welcome email carries no sign-in link of ours, only the page's address.
+  An admin's typo hands the membership to whoever owns the mistyped address, as for any email; the profile shows
+  whether the member has signed in.
+- **The welcome email** goes out for each member added, whether or not the deployment sends mail:
+  - Where `MAIL_TRANSPORT` sends mail (`ses`, or the outbox with the emulators) and System Admins have welcome emails
+    switched on (Admin › Email, §6.8; these on by default, though all email starts off, §10.12), the adding transaction queues
+    `welcome_emails/{accountId}` and the worker's tick sends it (`WelcomeSender`, up to 20 a tick) through the election
+    notices' transport, from the same address: subject "Welcome to the US Transhumanist Party: set your password", a
+    greeting by preferred or legal name, that a Membership Admin added them, a link "Set your password" to
+    `/set-password` and how it works, where to ask (the notice contact, §6.8), and that the party never asks for a
+    password by email (`welcomeMessage` in `ustp-domain`). It goes to the address the admin entered, which is not
+    verified: proving it is what the email leads to. Like a test email it is claimed in a transaction before it goes,
+    a claim never finished is failed as `interrupted`, and one for a member who has signed in meanwhile is not sent
+    (`signed_in`). It is not ledgered; the adding is.
+  - Where it sends none (`MAIL_TRANSPORT=off`, dev today), or welcome emails are switched off, the api answers
+    `welcome: identity_platform` and the admin's
+    browser asks Identity Platform to email each added address its sign-in link (`sendSignInLinkToEmail`: the email
+    link template, in Identity Platform's wording), which opens `/set-password`. The browser does not remember the
+    address, so the member types it when they open the link. The card counts the links sent, lists any Identity
+    Platform refused (its rate limits may stop a long file) and sends those again on request.
+  - *(added 2026-11-08, the party's decision)* For each link Identity Platform took, the browser then tells the api
+    (`POST /v1/admin/members/{accountId}/welcome-link`, 204; Membership Admins, an added member's account only, 404
+    otherwise, 409 while a welcome email of the site's own is on its way), which records it in the email log (§10.12)
+    as a welcome caused by that admin (`mail_messages`, `handOff: true`, not counted in the deployment's rates) and as
+    the member's latest welcome (`welcome_emails`, `via: identity_platform`), so the profile says when it went. It
+    rests on the browser's word: where Identity Platform sends through Google's own mail, nothing else confirms it went
+    and no delivery report reaches it, so the log shows "Sent by Identity Platform, no reports". Where Identity Platform sends through SES (§4), its
+    report of the same email makes a record of its own; whichever comes second, within 15 minutes, is matched to the
+    first, so the log shows the welcome once, as the admin's, with what its reports said (`asWelcomeLink`). A link the
+    browser sent but could not report is still sent, and the card or the profile says it is not in the log. Links sent
+    before 2026-11-08 are not in it.
+  - **Again:** the profile of an added member who has not signed in says when they were added, that they have not
+    signed in, and how the welcome went, with "Send the welcome email again" (`POST
+    /v1/admin/members/{accountId}/welcome`): queued again where mail goes (409 while one is on its way), or the address
+    returned for the browser to ask Identity Platform; 409 once the member has signed in.
+- **Members abroad** are kept as an applicant from abroad is (§5.2): `country`, `state` null, and the region, city and
+  postcode as given, so the Members tab, the profile, the Account page and the details forms show and change them the
+  same way.
+- **Separation of duties.** An admin cannot add themselves, since their own address has a login. Adding is one
+  Membership Admin's act, as approving an application is, so a Membership Admin could add an address they control and
+  hold a second membership; every addition is in the ledger with the admin as actor and their reason, for Auditors to
+  review.
+
+### 5.14 Bills in Congress: the legislative team's search *(added 2026-11-07)*
+
+The user asked on 2026-11-07 that the "legislative team have the tool to search through" bills in Congress (their
+example: H.R. 10538 of the 119th Congress, the Ban Artificial Superintelligence Act of 2026) "and an API to search and
+sort through them". The **Bills** page finds U.S. Congress bills by words in their text, by number, by a member who
+sponsored or cosponsored them, by how far they have gone and by date; sorts what it finds; opens a bill's details,
+actions, summary and text; and keeps a watchlist the team shares, with tags and notes. `GET /v1/bills/…` answers the same
+questions for scripts. It is the first built part of the law analysis's bill picker (§5.11): reading only, no Claude.
+
+**The user's decisions (2026-11-07).**
+- *Who the legislative team is:* a team under Teams (§5.7). A System Admin picks which teams have the tool under
+  **Admin › Bills**; who is on a team stays with its leads and Membership Admins. No new role.
+- *Who may call the API:* the same people as the page, and nobody else. So the reporting MCP server (§3.4), which reads
+  only the public api, has no bill tools.
+- *What the team keeps:* one shared watchlist, each bill with tags and notes that everyone with the tool sees.
+
+**Who has the tool.** An Active member on a team the setting names (`bill_settings/current.teamIds`), the team not
+archived, and System Admins (my default: they set the tool up and look after its key, so they can see it work). Anyone
+else signed in is told the page is for the legislative team and who decides that (403 from the API, with the same
+words). The menu's **Bills** link (§10.5) is shown only to people who have the tool, as well as to the audiences the
+navigation settings give it. Until a System Admin names a team, only System Admins have it.
+
+**Where the bills come from** (checked 2026-11-07). Two official services, both free with one api.data.gov key:
+- *The Congress.gov API* (`api.congress.gov/v3`, the Library of Congress): a bill by Congress, type and number with its
+  sponsor, cosponsor count, policy area, latest action and any law it became (`/bill/{congress}/{type}/{number}`), its
+  actions, text versions and CRS summaries (`…/actions`, `…/text`, `…/summaries`), and lists of a Congress's bills sorted
+  by when they were last updated (`/bill/{congress}[/{type}]?sort=updateDate+desc`, filtered by update date with
+  `fromDateTime` and `toDateTime`), at most 250 a page. It has **no search by words**, and its lists carry no sponsor.
+  5,000 requests an hour per key, by its documentation.
+- *GovInfo's search service* (`POST api.govinfo.gov/search`, the Government Publishing Office): the full text of every
+  published version of every bill since the 103rd Congress (1993), queried as `collection:(BILLS) AND congress:119 AND
+  …` with `docclass:` (the bill type), `billversion:` (the text version: `ih` introduced, `rh` reported, `eh` engrossed,
+  `enr` enrolled…), `member:` (any member named on it, sponsor or cosponsor), `publishdate:range(from,to)` and the
+  words themselves (quoted for a phrase), sorted by relevance, publish date or title, paged by a cursor. 36,000 requests
+  an hour per key. A version's text is `GET api.govinfo.gov/packages/BILLS-{congress}{type}{number}{version}/htm`: plain
+  text in a `<pre>`.
+
+Both are works of the US government and in the public domain; Congress.gov asks for no attribution and suggests "Data
+retrieved from Congress.gov", which the page shows at its foot. Scraping congress.gov's pages is not done: the api calls
+these two services only, with the key in a header (`X-Api-Key`), never in an address. GovInfo indexes a bill once its
+text is printed, usually days after it is introduced, so the newest bills are found by number or in **Latest activity**
+before words find them.
+
+**The key** is a fourth public-records card under Admin › API keys (§5.6), **Congress.gov and GovInfo**
+(`congress`, secret `app-congress-api-key`): an api.data.gov key, 40 letters and digits, tried with one request for the
+current Congress. Each api.data.gov key works for every service behind api.data.gov, so without one the tool uses the
+FEC key in use (§5.6: the app's, else the deployment's), and without that the shared `DEMO_KEY`, which allows 30
+Congress.gov requests an hour and 50 a day per address, and 10 GovInfo searches an hour: enough to see the page work,
+not to use it. Admin › Bills and the page say which key is in use. Until Terraform has created the secret (`api_keys.tf`)
+the card says so and the tool uses the FEC key.
+
+**Finding bills** (`GET /v1/bills/search`). The search form's fields, each optional and combined with AND:
+- *Words*, matched in the text of any version, as GovInfo matches them; a phrase in double quotes. Field operators and
+  brackets typed in are dropped, so the words cannot widen the query beyond bills.
+- *Congress*, the current one (worked out from the date, a new Congress starting on 3 January of odd years) back to the
+  103rd; *type* (H.R., S., H.J.Res., S.J.Res., H.Con.Res., S.Con.Res., H.Res., S.Res.).
+- *How far it has gone*, by the furthest text version printed: introduced (`ih`, `is`), reported by a committee (`rh`,
+  `rs`), passed one chamber (`eh`, `es`, and `ath`, `ats` for a resolution agreed to), passed both (`enr`). Whether it
+  became law shows on the bill.
+- *Member*: a sponsor's or cosponsor's last name (letters, spaces, hyphens and apostrophes only).
+- *Text published* from and to (dates).
+- *Sort*: best match (only with words; the default then), newest first (the default without words), oldest first, title
+  A–Z, title Z–A.
+
+The answer is twenty versions a page with a cursor for the next, grouped by bill on the page: each bill's number,
+Congress, title, chamber and the furthest version on the page with its date. A bill whose versions span pages may show
+again on a later page, labelled with that version; the list says so.
+
+**By number.** "Go to a bill" takes `H.R. 10538`, `hr10538`, `S 12`, `H.Res. 5`, `119-hr-10538` or a congress.gov link
+to a bill (`congress.gov/bill/119th-congress/house-bill/10538[/text]`), with the Congress picked in the form when the
+number names none, and opens the bill. Anything else is refused in words without a request.
+
+**Latest activity** (`GET /v1/bills/recent`): a Congress's bills, optionally of one type, newest update first (or
+oldest), between two update dates, twenty a page, each with its latest action, from Congress.gov's list. It is how the
+team sees what moved this week, including bills too new for the word search.
+
+**A bill** (`GET /v1/bills/{congress}/{type}/{number}`, page `/bills/{congress}/{type}/{number}`). Its title, sponsor
+(name, party, state, district), cosponsor count, introduced date, policy area, latest action, every action (newest
+first, as Congress.gov lists them, up to 250), its CRS summaries (the newest shown, as text: the summary's HTML is
+reduced to paragraphs and lists in the api, so no markup from elsewhere reaches the page), its text versions, and a
+link to it on congress.gov. Its **status** is worked out from the actions and laws (`billStatus` in `ustp-domain`):
+became law, vetoed, sent to the President, passed both chambers, passed the House or the Senate, reported by a
+committee, or introduced; a law shows its number ("Public Law 119-12").
+
+**Its text.** Each version opens as plain text (`GET …/text/{version}`), from GovInfo, in a scrolling panel the
+browser's find searches, with links to its PDF and XML on congress.gov. Texts over 2,000,000 characters (an omnibus
+bill) are cut there and say so, with the PDF link. The text is the version's own, never changed.
+
+**The watchlist** (`/v1/bills/watchlist`), one list for everyone with the tool:
+- *Saving.* Anyone with the tool adds a bill, with tags (up to 10, each 1 to 30 characters, the same tag in any case
+  counting once), and changes its tags; the entry keeps the bill's number, title, sponsor, status and latest action as
+  Congress.gov gave them, who added it and when. `bill_watch/{congress}-{type}-{number}`.
+- *Kept current.* Reading the list refreshes entries last checked more than 6 hours ago, at most 25 per read, from
+  Congress.gov; one it cannot reach keeps what it had and says when that was.
+- *Sorted and filtered* by latest action (newest first, the default), when added, number or title, and by tag.
+- *Notes.* Anyone with the tool adds a note to a bill on the list (up to 2,000 characters, plain text). Its author edits
+  or deletes it; a System Admin may delete any. Each shows who wrote it and when, and that it was edited.
+  `bill_notes/{noteId}` (UUIDv7).
+- *Removing* a bill from the list deletes its notes too, which the confirmation says.
+- Saves are whole entries from the version they were edited from (409 if someone saved since). The list, tags and notes
+  are the team's working papers, not decisions of the party: they are not ledgered, and each record keeps who did what
+  and when.
+
+**Admin › Bills** (System Admins): which teams have the tool, picked from the teams that are not archived, saved from
+the version it was edited from (409 otherwise) and ledgered as `bills.settings_changed` (the team IDs before and after;
+Auditors only); and which key is in use, with a link to Admin › API keys. A team archived later loses the tool until it
+is restored; its name stays in the setting.
+
+**Limits and caching.** Each api instance keeps answers in memory: searches and lists 10 minutes, a bill 30 minutes, a
+text a day (at most 30 texts), so a team reading the same bills spends little of the key's hourly limit. When a service
+says the limit is reached (429) the api answers 429 with "Congress.gov (or GovInfo) has had too many requests with this
+key this hour; try again later", and a timeout or failure 502, saying which service. A bill that does not exist is 404.
+
+**Without the services.** With the emulators `BILLS=local` (refused outside them) answers from fixture bills,
+H.R. 10538 among them, sending nothing anywhere; the integration tests and CI use it. Otherwise the api asks the
+services.
+
+**Legislation and the scorecard** *(added 2026-11-12, group e of the user's plan to draw people to the site)*. A
+public **Legislation** page (`/legislation`) of the science, AI and longevity bills the legislative team follows, the
+latest action first, each with its own page (`/legislation/{congress}-{type}-{number}`), and a **scorecard**
+(`/scorecard`) of how each member of Congress voted on them against the party's positions, with a page per member
+(`/scorecard/{bioguideId}`). Each of the four has its own link preview (§15) and share buttons, and the list pages and
+each bill's page are in the sitemap. Anyone may read them, signed in or not, at `GET /v1/public/bills…` and
+`GET /v1/public/scorecard…`; the team's search, watchlist, tags and notes stay team-only, as decided on 2026-11-07.
+
+*The user's decisions (2026-11-12, each the option recommended):*
+- *Which bills:* the team picks them from its watchlist: a bill is shown publicly only when someone with the tool says
+  so on its page, filing it under a topic (Science, Artificial intelligence or Longevity). Nothing is shown by subject
+  or search alone.
+- *How a vote scores:* the team marks the party's position on each of the bill's roll calls, Yea or Nay (how a
+  Transhumanist would vote), or none, which shows the vote but does not score it. Positions are per roll call, not per
+  bill, since on a motion to recommit, say, Nay is the vote for the bill; the panel says so.
+- *What is said publicly:* the team's notes stay private. Each public bill has a public summary of its own (plain text,
+  up to 1,500 characters, may be empty) the team writes on purpose, shown as "Why the party follows it" beside the
+  newest CRS summary.
+- *Chambers and freshness:* both chambers from the start, and the worker reads each public bill again every six
+  hours, so visitors never wait on Congress.gov.
+
+*Showing a bill.* On a watched bill's page the team's **The public Legislation page** panel shows the bill or changes
+it (`PUT /v1/bills/watchlist/{billId}/public`: topic, summary, positions by roll call, from the version edited, 409 if
+stale; a position on anything but one of the bill's roll calls is refused) or takes it off (`DELETE …/public`, which
+deletes the votes read for it that no other public bill has). Both are ledgered as `bills.public_changed` (the bill,
+published, changed or withdrawn, and the topic, summary and positions after; Auditors only), since they are what the
+party says in public. Who on the team did it is kept in the record and the ledger and never shown. A public bill cannot
+be taken off the watchlist until it is taken off the public page (409), and at most 100 are public at once. The
+watchlist marks the public ones. `bill_public/{billId}` holds the team's fields and a copy of what Congress.gov says
+(title, sponsor, cosponsors, status, laws, the latest action, the newest 25 actions, the newest CRS summary, and the
+roll calls from the actions), with when it was read; `bill_roll_calls/{chamber}-{congress}-{session}-{roll}` each roll
+call with every member's vote.
+
+*Where the votes come from* (checked 2026-11-12). A bill's actions on Congress.gov list its roll calls
+(`recordedVotes`: chamber, Congress, session, roll number, when), each usually twice, under the chamber's action and
+the Library of Congress's, whose fuller words are kept. A House roll call's question, result and members' votes come
+from the Congress.gov API's House vote endpoints (`/house-vote/{congress}/{session}/{roll}` and `…/members`, by
+Bioguide ID, with the same api.data.gov key); a Senate roll call's from the Senate's own XML
+(`senate.gov/legislative/LIS/roll_call_votes/vote{congress}{session}/vote_{congress}_{session}_{roll}.xml`, no key),
+whose senators carry the Senate's own IDs, matched to Bioguide IDs, and representatives to their districts, through
+the `unitedstates/congress-legislators` data (§5.12), read once a day; a former senator it no longer lists keeps the
+Senate's ID. Yea and Aye count as yea, Nay and No as nay; Present and Not Voting as not voting yea or nay. A roll call,
+once held, does not change, so each is read once. Saving reads the bill and up to six of its roll calls while the team
+member waits; the worker reads the rest. Each page links the chamber's own record of the vote (the Clerk's or the
+Senate's).
+
+*The scorecard.* Every member who was in a roll call the party took a position on, on any public bill: their name,
+chamber, state, district and party as of their latest such vote, how many of their yeas and nays went the party's
+way and how many did not, and how many of those roll calls they missed or answered Present, counted apart. The score
+is the share of their yeas and nays that went the party's way ("80% (4 of 5)"); missing a vote does not lower it, and
+someone with no yea or nay scored has none. The page sorts and filters by name, state and chamber; a member's page
+lists every vote they cast on a public bill, newest first, scored or not. `scorecard` and `memberScorecard` in
+`ustp-domain`.
+
+*Kept current.* The worker's tick reads the public bills due again (six hours after the last read, half an hour after
+a failed one or while some of a bill's roll calls are unread), at most 10 a tick and for at most 20 seconds, after
+its other steps, writing only the copied fields, so the team's topic, summary and positions are never overwritten.
+The worker reads the key as the api does, so Terraform gives it read access to the Congress.gov and FEC key secrets
+and the deployment's FEC key (`api_keys.tf`, `run.tf`; *not applied to dev yet*: until then it falls back on the
+shared `DEMO_KEY`, and a bill it cannot read keeps what it had and the team's panel says since when). The api serves
+the public pages from Firestore, each instance keeping what it read for a minute (cleared on its own saves). With the
+emulators `BILLS=local` gives a made-up bill, H.R. 6100, with two House roll calls and one Senate roll call voted on
+by a few real members in made-up ways (`LocalRollCallSource`), so tests and local development send nothing anywhere.
+
+*Not yet:* the House's votes before the 118th Congress (2023), which Congress.gov's House vote endpoints do not
+have, so they show without members' votes; amendments' own roll calls that the bill's actions do not list; counting share buttons on these pages
+(§10.9 counts only news and share-kit posts); and finding one's own representatives on the scorecard from a ZIP code
+(the Candidates and Your area pages do that, §5.8, §5.12).
+
+**Not yet:** state bills (Open States has them, as §5.11 notes); emailing the team when a watched bill moves; and
+`/bill` in the members' room (§5.11), which may reuse this API.
+
+### 5.15 The join funnel *(added 2026-11-10)*
+
+Membership Admins can see where people stop on the way to taking part. Admin → Applications opens with a **Join
+funnel** card: for a period (7, 30, 90, 180 or 365 days, UTC), of the people who made an account in it, how many
+verified their email, applied to join, were approved, and then did one thing as a member, each step counted among
+those who reached the one before, with its share of the step before. It also says how many times the Register page was
+opened in the period (page opens from §10.7, not people), how many of the period's applications still wait and for how
+long the oldest has, how many were rejected, the median time from applying to a decision, and of the approved how many
+cast a ballot, started a course, joined a team, entered the members' room or posted in the forum.
+
+- **Counts only.** The report names nobody and holds no account ID; who voted is not shown, only how many of the
+  period's new members have.
+- **Nothing is stored for it.** `GET /v1/admin/join-funnel?days=` (Membership Admins) reads records that exist anyway:
+  `page_hits/register`, the accounts made in the period (at most 2,000, oldest first; a longer period is reported as
+  cut short), their applications, and for each approved account the first record that says they voted (a participation
+  record in an election that closed after the period began), started a course (`course_progress`), joined a team
+  (`team_members`), accepted the room's terms (`room_consents`) or posted (`forum_posts`, `forum_comments`).
+- **Who is left out:** accounts a Membership Admin added (§5.13) and test personas (§10.4), who never registered.
+  Bootstrap admins are accounts like any other and are counted.
+- **Verified** is the account's flag today, not when it was set (no time is kept); someone who applied counts as
+  verified, since applying needs a verified address.
+
+### 5.16 A new member's first steps *(added 2026-11-10; set by Membership Admins since 2026-11-12)*
+
+An Active member's voting home (§10.5) opens with a short **Getting started** list, so that someone just approved is
+not left to find everything alone. By default it has five steps: take a first course, join a team, say hello in the
+members' room, post or comment in the forum, cast a first ballot. Each line links to its page and says in a sentence
+what it is for.
+
+- **Membership Admins set the list** *(added 2026-11-12, at the owner's request)*. Admin → Getting started (section
+  `first_steps`, Membership Admins only, like the registration form; `GET|PUT /v1/admin/first-steps`) adds, edits,
+  removes and reorders steps, with Restore the default, a preview with its own ticks, and the same 409 as the
+  registration form when someone saved since the editor was opened. Each step has words (at most 80 characters), an
+  optional sentence on what it is for (240), a link and a way to be ticked. At most 10 steps; none at all means nobody
+  sees a list. `first_steps/current` keeps the list with a `version` counter (version 0 is the default, which nobody
+  saved), and each save that changes something is ledgered whole as `first_steps.changed` with `{ version, steps }`.
+  The rules are `checkFirstSteps` in `ustp-domain` (`membership/first-steps.ts`), checked in the browser and again by
+  the API (400).
+- **Links.** A page on this site, written as a path from its root (`/courses`, `/course/abc?lesson=2`; never `//host`
+  or a backslash), or an `https://` address, which opens in a new tab and says so to screen readers. Nothing else
+  (`http:`, `mailto:`, `javascript:`) is taken.
+- **Ticked from records, or by the member.** Each step is ticked one of two ways. By one of the site's own records,
+  the same the join funnel counts (§5.15): a course started, a place on a team, the room's terms accepted, a post or a
+  comment, a ballot cast in any election. Each of these five can tick one step only, so one thing done never ticks two
+  lines. Or, for anything the site cannot see (reading the bylaws, following the party's social accounts), **the member
+  ticks it themselves** (the owner's choice, 2026-11-12): the step has a box beside its link, and
+  `PUT /v1/me/first-steps/{id}` with `{ done }` ticks or unticks it, for an Active member only (403), and only a step on
+  the list that members tick (404 for one not on it, 409 for one the site ticks). Ticks are kept by step id in
+  `first_step_ticks/{accountId}`, so they follow the member across devices and stay when a step's words change; a step
+  taken off the list takes its ticks with it, and the member's next tick drops them. A member's ticks are their own
+  note and are not ledgered. Deleting an account deletes them (§4).
+- `GET /v1/me/first-steps` answers `{ memberSince, done, steps, ticked }`: when they became a member, which of the
+  five records they have, the list as set, and their own ticks. Someone who is not an Active member has no list.
+- **Only what they can reach.** A step whose page the navigation settings hide from the member is left out: a link to
+  `/courses` or `/course/…` needs the Course menu link, and `/teams`, `/forum`, `/room`, `/ballot` and the other menu
+  pages need their own (`firstStepMenu`). Other pages, and addresses elsewhere, are always shown.
+- **It goes away.** The list is shown until every step on it is done, or the member presses Hide, which is kept in
+  that browser only; a member who hid it does not get it back when steps are added. Once a member ticks a box the list
+  stays until they leave the page, so ticking the last step does not take it away under the pointer. It says how many
+  are done and how its steps are ticked, and each step's state is in its text for screen readers.
+- A member who joined long ago and never did a step sees it too: it is a list of what they have not tried, not a
+  welcome that expires.
+
+### 5.17 Race pages and people's pages *(added 2026-11-12)*
+
+The first group of the user's plan to draw people to the site (§15, "Link previews"): a public page for each state's
+federal races and each seat in the U.S. House, "2028 candidates in CA-12", that search engines list and people share,
+saying who runs and who holds the seat now, from the same public records as the Candidates and Your area pages
+(§5.8, §5.12), with the Transhumanist Party's own candidates first; and a page for each public-record person with an
+official ID. Decided with the user (2026-11-12): addresses `/races/ca` and `/races/ca/12`, not `/ballot/…` (the party's
+own ballots); states and House seats only, not state legislative districts (holders only with an Open States key and
+candidates only in California, so most such pages would be thin); and a page of their own, listed in search, for each
+person with an FEC candidate ID or a Congress Bioguide ID.
+
+- **Addresses.** `/races` lists every state, a link each, and reads nothing. `/races/{state}` is a state's page (its
+  two letters in lower case) and `/races/{state}/{district}` a House seat's: the district's number from 1 to the
+  state's seats with no leading zero, or `at-large` for a state with one seat, DC's and the territories' delegates
+  included. Anything else (`/races/CA`, `/races/ca/012`, `/races/wy/1`) is no page: a 404 at once, no record read, so
+  each page has one address (`racePlace`). The seats are the 2020 apportionment's (`HOUSE_SEATS`, through the 122nd
+  Congress; a test checks the 435); a seat's Census GEOID is the state's FIPS code and its two digits, `00` at large and
+  `98` for DC's and the territories' delegates (`seatGeoid`). Titles: "2028 candidates in CA-12", "2028 candidates in
+  California", "2028 candidates for Wyoming’s at-large congressional district". The year is the next federal general
+  election's (`nextFederalElectionYear`: this year's until its day is over), so after 2026's the pages are for 2028.
+- **A seat's page**: its district's outline (on the map where it is set up, §5.8); the party's candidates for the seat
+  (members' approved candidacies for that House seat, elections not over); who holds it now (the congress-legislators
+  data); who runs (the FEC's candidates who have filed for that election, are active and have reported raising money,
+  and in California the Secretary of State's list over them, as in §5.12), a public-record person who is one of the
+  party's candidates (`samePerson`) listed once, as the party's; biographies, offices held and photos from Wikipedia
+  and Wikidata (§5.12); share buttons; and when the records were read. Nobody listed from public records has been
+  reviewed or endorsed by the party, and the page says so.
+- **A state's page**: the President's race in a presidential year (or when anyone is listed), the Senate (who holds
+  both seats and who runs; when neither seat is elected that year, by the Senate's classes, `senateUp`, and nobody runs
+  in a special election, its card says there is no election for it), the statewide offices only when the state's own
+  list names candidates (California, in the years it elects them; no record the pages read lists who holds them, and
+  the communications team's entries, §5.12, are not on these pages), every one of the party's candidates in the state
+  at any level, and a line per House seat with who holds it, how many run and the party's candidates there, each
+  opening the seat's page. DC and the territories have no Senate card.
+- **A person's page**, `/people/{id}`: `id` an FEC candidate ID (`H8CA49058`) or a Bioguide ID (`L000593`)
+  (`PERSON_ID`); people only on Google's ballot or a state's list have no stable ID, and no page. It shows them as their
+  race's records list them: office and seat, party, the incumbent mark, their links (website, contact form, FEC filing
+  or Congress biography), biography, offices held and photo with its credit; their other part (a member of Congress's
+  own candidacy for the seat, or the candidate who holds it now, the same seat and the same person by `samePerson`);
+  everyone else listed for the same office and seat, each linking to their own page; their race's page; and share
+  buttons. A 404 when no record of this election lists them. Every person with a page links to it wherever they are
+  listed: on the race pages and on the Candidates and Your area pages (the badge icon by their name, and *Their own
+  page* in their dialog).
+- **The records, read once a day for everyone.** A state's records are read for all its federal races at once
+  (`ContactSource.forState`): the FEC's Senate candidates; its House candidates for the whole state in one list, 100 a
+  page, each placed in its district by number; the members of Congress; and in California the state's list (its
+  statewide offices, the Senate and each House seat, eight races at a time; not President). The presidency's are read
+  apart, from the FEC (`forNation`). What they said is kept in `race_records/{state}` and `race_records/US` (§11) with
+  when it was read and when it is read again: a day later, or an hour when a record did not answer, the last full
+  answer being kept meanwhile rather than replaced by fewer people. Every api instance shares them, each keeps the
+  latest in memory, and reads each key once at a time. So a crawler reading all 497 race pages costs the FEC a few
+  requests per state a day, well within an api.data.gov key's 1,000 an hour. Profiles are not stored (each instance
+  keeps them a day, §5.12). No ZIP code is involved, so Google's ballot data, which may not be kept (§5.12), is never
+  asked for or kept here, and Open States is not asked either (no state legislators on these pages). The routes say
+  `Cache-Control: public, max-age=300, s-maxage=3600`, so Hosting's CDN answers most reads; a candidacy approved is on
+  them within an hour.
+- **Search and sharing.** The sitemap (§15) lists `/races`, every state's and seat's page, and the page of each person
+  the records of this election hold (only their IDs are read for it), each without a date. Each page has its own link
+  preview (§15): a race page's title, who holds the seat, how many run and the party's candidates there; a person's
+  name, office, seat, party and whether they run. A preview never waits for the records, since sites wait a few seconds
+  at most: before a state's records are first read it says what the page is, without people. The share buttons are
+  §10.9's; their presses are not counted here (counts are kept for news and share kit posts).
+- **Linked from the Candidates page** (§5.8): *Every state's races for Congress, a page each*, and for an area or a
+  state chosen there, buttons to its state's page and its House seats' pages. Page visits are counted as four pages
+  (§10.7).
+- **Code.** `ustp-domain/candidacies/races.ts` (seats, addresses, Senate classes, titles, the views);
+  `apps/server/src/candidacies/`: `races.service.ts`, `race-record.repository.ts`, `race-preview.ts` and
+  `contact-source.ts` (`forState`, `forNation`; `LocalContactSource` gives everyone an ID of an official record's shape,
+  so the emulators have people's pages); `apps/web/src/candidacies/`: `RacesPage.vue`, `RacePage.vue`,
+  `PersonPage.vue` and `race-text.ts`.
+
+### 5.18 Referral links and the team leaderboard *(added 2026-11-12, the party's decisions)*
+
+Members bring in most new members, so each Active member has a link of their own to the Register page, and teams can
+see which of them brought the most people in.
+
+- **The link.** The Account page's **Invite people to join** card (Active members only) shows the member's link,
+  `/register?ref={code}`, with Copy and Share (the browser's own share sheet where it has one). The code is eight
+  letters and digits from 31 that cannot be mistaken for one another (`referralCodeFrom` in `referrals/` of
+  `ustp-domain`), made the first time the member asks (`GET /v1/me/referrals`), and kept in `referral_codes/{code}`
+  (whose it is) and `referral_links/{accountId}` (theirs). It is not the account's ID.
+- **Following it.** The web app reads `ref` from the address someone arrives at, keeps the code in that browser
+  (`localStorage`, the newest link opened winning) for `REFERRAL_KEPT_DAYS` (30), and takes it off the address, so a
+  link copied from the address bar is not someone else's. When that person applies, the Register page sends the code
+  with the application (`referralCode`); the api looks it up and records only whose link it was on the application
+  (`referredBy`). A code that is no one's, or the applicant's own, names nobody and never refuses an application. The
+  browser forgets the code once the application is in.
+- **Credit on approval** *(the party's choice)*. Someone counts for the member whose link they came by when a Membership
+  Admin approves their application, never before, so a made-up application earns nothing; each person counts once, to
+  the link of their first approval. Nothing is stored for it: the counts are read from the applications themselves
+  (`referredBy` and the decision).
+- **What the member sees.** On the card, how many joined by their link and how many applied and wait for a decision.
+  Never who: the people who came by it are not told whose link it was, and the member is not told who they are.
+- **The leaderboard** *(members only, the party's choice)*. On the Teams page, for Active members, and for the
+  Membership, System and Site Admins who run teams (403 for anyone else; `GET /v1/referrals/leaderboard?days=`, the last
+  30, 90 or 365 days or all time): the teams not archived, ranked by how many people joined in the period by the links
+  of their members who are Active now (leads included), the viewer's own teams marked, and how many joined by any
+  member's link. Someone on two teams counts for both. Teams' totals only: nobody's own count is shown to anyone else.
+- **Deleting an account** deletes its code, so the link stops naming anyone. Applications keep `referredBy` as an
+  account ID, as they keep `decidedBy`.
+- **Where visitors came from** (§10.7) counts arrivals by a referral link too, never whose.
 
 ## 6. Elections
 
@@ -2121,8 +2726,8 @@ The emails to voters (§6.8) go with the steps *(added 2026-10-27)*. In the Open
 with an arrow on to "Vote", and before the close (a day, or the lead time System Admins set) "Sends a reminder" to
 those who have not voted, before it closes voting; an election open no longer than the lead time has no reminder, so
 its lanes leave it out. In the list, after Open for voting, "Email to voters" says what the emails are ("Official
-election notices: they go out whatever members' newsletter and announcement choices. Counts only; who each went to is
-not shown.") and, for each, the line the editor's "Email to voters" card shows: how many of how many it went to, or
+election notices: they go out whatever members' newsletter and announcement choices, but not to a member who
+unsubscribed from all email or whose email an admin stopped. Counts only; who each went to is not shown.") and, for each, the line the editor's "Email to voters" card shows: how many of how many it went to, or
 when it will go, or why it will not. Their status comes from `noticeSteps` in `ustp-domain`, from the notices' counts
 (`GET …/notices`, one request shared with the card, which rereads it while an email is due or going out) and the
 election alone: sending or due now is current, sent is done, and an email that will not come is not reached: switched
@@ -2167,8 +2772,8 @@ An Election Admin requests a snapshot (implemented in M2b): eligibility criteria
 proof). The snapshot is written to `eligibility_snapshots/{snapshotId}` as `pending` with a `roll.approve` request.
 An Auditor (≠ requester, and not a candidate in the election) reviews the names and approves; the snapshot becomes
 `approved`, the election points at it, any previously approved roll is `superseded`, and `roll.approved` is ledgered.
-A rejected snapshot is marked `rejected`. The roll is frozen from then on: later status changes do not alter it (Q4).
-Every roll entry carries equal weight.
+A rejected snapshot is marked `rejected`. The roll is frozen from then on: later status changes do not alter it (Q4),
+and nor does deleting a test voter it holds (§10.4). Every roll entry carries equal weight.
 
 *Future work: a Core Ideals criterion.* The application's second membership question (§5.2) tells applicants that
 voting on platform planks and the party's structure may, at the Chairman's discretion, be limited to members who
@@ -2491,6 +3096,16 @@ writes nothing:
   (400) for anything the browser did not check.
 - **Allowed in production:** it only creates drafts, which still need a roll and an Auditor's scheduling approval.
 
+**Adding a file's questions to a draft** *(added)* (`POST /v1/admin/elections/{id}/questions/import`, Election
+Admin) takes the same file and writes only its questions, after the draft's own, in one transaction:
+
+- **The import's rules apply,** with the draft's: only a draft, by an admin who is not a candidate in it (403), at
+  most 100 questions on the ballot in all (400), and the bylaws amendments of the whole ballot, the draft's and the
+  file's, fitting the current version without conflict (409). A file with no questions is refused (400).
+- **The file's title, description, window and secrecy are not used;** the draft keeps its own.
+- **IDs:** a question or option keeps the file's `id` unless the draft already uses it, then it gets a random one, so
+  the same file can be added twice. Proposal texts are reused as on import.
+
 **Exporting** (`GET /v1/admin/elections/{id}/package`, Election Admin and Auditor) works in any state. The file gives:
 
 - the absolute window;
@@ -2501,22 +3116,38 @@ writes nothing:
 Importing an export gives the same definition, apart from the election's own ID (tested).
 
 **Web:** "Import JSON" on the Elections tab, which lists any problems by path. "Download as JSON" in the election
-editor, next to the Word ballot. Example packages, the dev seed's elections among them, are in `examples/elections` (§10.4).
+editor, next to the Word ballot, and beside it "Import JSON" on a draft *(added)*, which checks the file in the browser,
+asks before adding its questions (saying the file's title, window and secrecy are not used), saves what the ballot
+builder holds first, then starts the builder again from the stored ballot; problems are listed by path. Example
+packages, the dev seed's elections among them, are in `examples/elections` (§10.4).
+
+**The sample ballot** *(added)*: "Download sample ballot" on the Elections tab saves
+`transhumanist-sample.election.json`, `SAMPLE_BALLOT` in `ustp-domain`, for Election Admins to change and import, as a
+new draft or into a draft's ballot. It has a question of every kind the builder makes, on Transhumanist themes: Party
+Chair by ranked choice, the next convention's host city (choose one), a three-seat Science and Technology Committee
+(choose several) and three platform planks (yes, no or abstain; one by two thirds, one with a quorum). Its candidates
+are invented, from the demo elections' names (§10.4); it fills no office and links no account, so it imports on any
+deployment; each plank's text ends by saying it is not party policy, and its window opens two weeks after the import,
+for a week. `examples/elections` holds it as the download writes it (a test checks), and the dev seed imports it as a
+draft.
 
 ### 6.8 Election notices *(added)*
 
-Two emails go to an election's roll: when voting opens, everyone on it is told it is time to vote; a day before it
-closes, those who have not voted yet are reminded. Both belong to the notifications context (§3.3): the worker sends
-them through Amazon SES and keeps a record per person, and the editor shows how they went.
+Three emails go to an election's roll: when voting opens, everyone on it is told it is time to vote; a day before it
+closes, those who have not voted yet are reminded; and soon after each person votes, they are told their ballot was
+recorded *(added 2026-11-03)*. All belong to the notifications context (§3.3): the worker sends them through Amazon
+SES and keeps a record per person, and the editor shows how they went.
 
 **Who gets them.** The *voting-open notice* goes to every account on the election's approved roll, once. The
 *closing-soon reminder* goes, once, to those on the roll who had no participation record (§7.1) 24 hours before voting
 closes, and is not sent to anyone who has voted by the time their turn comes; an election open for a day or less gets
 no reminder, so it never comes with the notice that voting is open, and a reminder waits until that notice has gone.
-Each goes to the primary email address of the account, if it is verified; someone with no address, or an unverified
+The *vote confirmation* goes, once, to each person with a participation record, within a minute or so of their
+ballot (below). Each goes to the primary email address of the account, if it is verified; someone with no address, or an unverified
 one, is skipped. Both are official election notices, not marketing: they go out whatever the member's newsletter and
-announcement opt-ins (§5.2), which cover only those two kinds of mail, and there is no opt-out, since there are at
-most two per election the member may vote in. A rehearsal roll (§6.3) gets no email: where testing mode is on, each
+announcement opt-ins (§5.2), which cover only those two kinds of mail. *(Changed 2026-11-06, the party's decision:)*
+every email carries an unsubscribe link, and a member who uses it, or whose email an admin stopped, gets none of them
+(`unsubscribed`, `email_stopped`, counted as skipped; §10.12). A rehearsal roll (§6.3) gets no email: where testing mode is on, each
 test voter's notices are recorded in the outbox instead, addressed to nobody, since test voters have no address; where
 it is off, nothing is recorded. A demo election (§10.4) always has a rehearsal roll, so it mails nobody.
 
@@ -2526,8 +3157,21 @@ the mail service, and anyone who gets into that account, can learn it. It never 
 reminder's counts show Election Admins the turnout at that moment (roll size less recipients), which Q10 already
 allows them; nobody sees who was reminded.
 
-**The messages** (`votingOpenMessage` and `closingSoonMessage` in `ustp-domain`, the same code for the worker, the
-editor's preview and the tests), as plain text and simple HTML built from the same blocks, so both say the same:
+**Vote confirmations** *(added 2026-11-03)*. So that someone whose account was used to vote without them learns it at
+once, each voter is told their ballot was recorded, and when, never how: the message holds no choice, commitment or
+receipt (§7.1). The notice `notices/{electionId}_voted` starts with an election's first ballot, so an election nobody
+voted in has none; each tick, while the participation records outnumber its recipient records, the worker reads the
+records cast since a little before its last look (ten minutes, since a ballot's `castAt` is set before its record
+commits; every record, if that is not all) and adds a `pending` recipient for each, then sends as for the other
+notices, these first, so a large roll's notice never holds them up. They still go up to 24 hours after the close,
+for ballots cast just before it; one not sent by then is failed (`voting_closed`). The notice finishes, and is
+ledgered as `notice.sent`, once a look made after the close found everyone. It is never resent: it reaches each voter
+once. *What it gives away:* Amazon SES learns who voted in which election, and when to the minute, never how; anyone
+who can read the member's mailbox learns that they voted. A System Admin can switch it off like the others.
+
+**The messages** (`votingOpenMessage`, `closingSoonMessage` and `votedMessage` in `ustp-domain`, the same code for
+the worker, the editor's preview and the tests), as plain text and simple HTML built from the same blocks, so both say
+the same:
 
 - *Voting is open:* subject "Voting is open: {title}"; a greeting by the member's preferred (or legal) name; "Vote by"
   the closing time in Eastern Time; a link "Open your ballot for '{title}'" to `/ballot/{id}`; the window in a table
@@ -2538,7 +3182,10 @@ editor's preview and the tests), as plain text and simple HTML built from the sa
 - *Voting closes soon:* subject "Voting closes soon: {title}"; that the member has not voted yet and voting closes in
   about so many hours (worked out when it is sent), with thanks to anyone who has voted since; "Vote by", the ballot
   link, the closing time in the same seven zones, and how to check the vote.
-- Both end with why the member gets it (the reminder adds that only whether they had voted was used, never how), that
+- *Your vote was recorded:* subject "Your vote was recorded: {title}"; that the ballot was recorded, with when (its
+  `castAt`, in Eastern Time); that someone who did not vote should change their password and tell the party at once;
+  and how to check the vote afterwards.
+- All end with why the member gets it (the reminder adds that only whether they had voted was used, never how), that
   replies are not read and where to ask instead (`NOTICE_CONTACT`, an address or a page; until USTP names one, a
   bracketed placeholder, and the worker will not send through SES without it, so no real email carries it: Q19), and
   that the party never asks for a password or code by email. Real text and headings, no images, `lang="en"`, links
@@ -2555,33 +3202,76 @@ so an interrupted run simply repeats), and moves it to `sending`. It then sends 
 of 5,000 takes about 25 ticks. For each person it first claims the record in a transaction (`pending` → `sending`,
 with `claimedAt`), so overlapping ticks never both send it; reads the address from the account, the name from the
 member record and, for a reminder, whether they have voted since; sends; and records `sent` with SES's message ID, or
-the outcome. The address is used for that send only and stored nowhere else: not in the record, the ledger or the
-logs. SES has no idempotency key, so the client makes one attempt per send. An answer from SES, or no connection at
+the outcome. An address that bounced for good or was marked as spam is not tried: the record is `skipped`
+(`undeliverable`; see Delivery reports below). The address is used for that send only and stored nowhere else: not in
+the record, the ledger or the logs. SES has no idempotency key, so the client makes one attempt per send. An answer from SES, or no connection at
 all, means the message was not sent: SES saying "not now" (throttling, quota, paused sending, a key or domain problem)
 leaves the record `pending` for the next tick, up to three attempts, after which it is `failed` (`unavailable`), and
 the step stops for that tick; SES refusing the message itself fails it (`refused`). A timeout or a dropped connection
 leaves it unknown whether the message went: it is failed (`error`), as is a claim older than five minutes
 (`interrupted`), and neither is sent again by itself, so nobody gets two. If voting closes before someone's notice
 went, it is failed (`voting_closed`) rather than sent late. When every record of the round has an outcome, the worker
-ledgers `notice.sent` (actor `system`; election, kind, round, delivery, recipients and the counts sent, failed,
-bounced and skipped) and marks the notice `done`.
+ledgers `notice.sent` (actor `system`; election, kind, round, delivery, recipients and the counts sent (every message
+SES took, whatever it reported since), failed, bounced and skipped) and marks the notice `done`.
 
-**Bounces.** Each message carries the SES tag `notice` (the notice's ID) and goes through the configuration set
-`SES_CONFIGURATION_SET`, which publishes bounces to an SNS topic feeding an SQS queue (`SES_EVENTS_QUEUE_URL`). Every
-tick the worker reads that queue for up to five seconds, turns the `sent` record of each permanently bounced message
-`bounced` (found by its message ID), and deletes what it read; transient bounces (SES retries those), complaints and
-anything else are dropped. Nothing from outside calls the api: the worker fetches the reports. Without a queue,
-bounces are not counted.
+**Delivery reports** *(added 2026-11-03; replacing bounces alone)*. Every message the app sends (a notice, a test email,
+a welcome email, §5.13) carries two SES tags, `kind` (what it is) and `ref` (the notice, test email or added member it
+belongs to), nothing personal, and goes through the configuration set `SES_CONFIGURATION_SET`. That set publishes what
+becomes of each message (Send, Delivery, DeliveryDelay, Bounce, Complaint, Reject, Rendering Failure; never opens or
+clicks: the emails carry no tracking image and their links go straight to the site) to an SNS topic feeding an SQS
+queue (`SES_EVENTS_QUEUE_URL`). The worker keeps a record of each message SES took, `mail_messages/{messageId}`: whose
+it is, what it is and what it belongs to, who caused it *(added 2026-11-08, for the email log, §10.12)*, and its status, which only moves on (`sent`, `delayed`, `delivered`,
+`bounced`, `complained` (marked as spam), `rejected`), with when each happened and a bounce's type and subtype as
+codes, and the address it went to *(added 2026-11-09, the party's decision, for the email log, §10.12)*. Never the
+subject, the body or the mail server's text, and the logs never name an address. Every tick it reads the queue for up to ten
+seconds and applies each report: to the message's record; to the notice recipient it was, which becomes `delivered`,
+`complained` or `bounced` (a soft bounce once SES stopped trying, or a message SES rejected, counts as bounced); to
+the test email it was, so an Election Admin sees whether their own test arrived; and to the welcome email it was. A
+report comes late, twice or out of order to the same effect. Reports are deleted from the queue once recorded; one
+about a message the worker has not recorded yet comes back later, and one that keeps failing goes to the queue's
+dead-letter queue. A report from another configuration set than this deployment's is dropped. Without a queue,
+nothing is reported and every message stays `sent`.
+
+An address that bounced for good, or whose owner marked one of the emails as spam, is not mailed again:
+`mail_suppressions/{addressKey}`, keyed by a SHA-256 hash of the address (trimmed, lower case), so it holds no address,
+applies to whoever has it, and lapses a year after its last report. Every sender checks it first and skips the
+address (`undeliverable`); SES's own account-level suppression list does the same for bounces (§14). Soft bounces and
+rejections suppress nothing. Mail Identity Platform sends about an account (§4) reaches the same queue without this
+app's tags: its first report makes its record (sender `identity_platform`), found to be an account's by the address
+it went to, which the worker looks up and, since 2026-11-09, keeps as the address it went to, and named from the
+subject, which it does not keep: a
+sign-in link, an address confirmation, a password reset, or another account email.
+
+Receipts (below) say what each send did and never change; the counts in the editor are read live, so a bounce three
+days later shows there at once. Since `notice.sent` is ledgered when the round finishes, before most reports arrive,
+the worker also ledgers `notice.delivery_reported` once per round, 72 hours after it finished (actor `system`;
+election, kind, round, recipients and the counts delivered, bounced, marked as spam, and with no report). Not for a
+rehearsal. Records of messages are kept 180 days (a Firestore TTL); they go with their account when it is deleted
+(§4), and with their election.
 
 **In the election editor** ("Email to voters"), for Election Admins and Auditors (`GET
-/v1/admin/elections/{id}/notices`): for each notice, whether it went out and how, as counts (sent, still to send,
-failed, bounced, skipped), never addresses or who a status belongs to; before a notice starts, when it will; and a
+/v1/admin/elections/{id}/notices`): for each notice, whether it went out and how, as counts (delivered, sent with no
+report yet, still to send, failed, bounced, marked as spam, skipped), never addresses or who a status belongs to; before a notice starts, when it will; and a
 preview of each message with a sample name and the real contact. While voting is open and a notice's last round has
 finished, an Election Admin who is not a candidate can **resend** it to the people it failed for
 (`POST …/notices/{kind}/resend`): the notice starts round n + 1, ledgered as `notice.resend_requested` (the admin,
 kind, round, how many had failed), and the worker sends to records failed in earlier rounds; nobody it reached gets a
-second copy, and bounced addresses are not retried. Both ledger types are visible to Auditors only: they are about
+second copy, and bounced addresses are not retried. The three ledger types are visible to Auditors only: they are about
 delivering mail, not part of the election's public record (§8.2).
+
+**Checked before and after each send** *(added 2026-11-03)*. *Before:* a notice to a roll goes on only on an email
+setup check (§10.12) from the last hour, which the worker runs first where mail goes through SES and the last is
+older, in which nothing failing keeps mail from arriving or from being verified: every check but the 30-day bounce and
+complaint rates and Identity Platform's own mail (and, in the outbox, which needs none, the contact). Otherwise the
+notice is held (`held`: the failing checks, since when), nothing more of it is sent, the election's email card says
+so, and the System Admins are alerted once (the alert policy's email, through Google); it goes on by itself once a
+check passes, and once it is too late to send, what is left is failed (`voting_closed`) rather than held. A rehearsal
+is never held. *After:* each send to a roll (a tick's pass over a notice's recipients, with its receipt) is checked 30
+minutes after it finished: `notice_verifications/{receiptId}`, `pending` until then, then `ok` when every message
+reached its mail server (delivered, or delivered and marked as spam), else `short`, with how many were delivered,
+still delayed, bounced, rejected or never reported. A short send is shown on the election's email card ("Delivery
+check") and alerted to the System Admins. Counts only, never who; a rehearsal, which mails nobody, is not checked. The
+checks go with their election.
 
 **Send receipts** *(added 2026-10-27)*. Every time the worker sends election email it keeps a receipt,
 `notice_receipts/{receiptId}`, written once after the send and never changed: one per pass over a notice's recipients
@@ -2606,17 +3296,24 @@ persona has no address, and the persona is recorded as having asked. The message
 Admins' wording, the contact, the admin's own name and links to the election, marked as a test: the subject starts
 "[TEST] " and a boxed note opens it, saying it went only to them and that voters get it without the note. A reminder
 says how long is left as it will when it goes (or now, once it is due). It goes through this deployment's mail
-(`MAIL_TRANSPORT`), never the rehearsal outbox, carries its own SES tag (`{electionId}_{kind}_test`), so a bounce
-report about it matches no roll member, and leaves a receipt. The api refuses it (409) where the real email would not
-be mailed (email off, or no contact for questions), while the caller's last test of the election has not gone (one at
+(`MAIL_TRANSPORT`), never the rehearsal outbox, is tagged as a test (`kind` `notice_test`, `ref` the test's ID), so a
+report about it matches no roll member but shows on the test, and leaves a receipt. The api refuses it (409) where the real email would not
+be mailed (email off, or no contact for questions), while System Admins have test emails switched off (below), while the caller's last test of the election has not gone (one at
 a time), and (429) after ten of the election in a day; any state of the election will do, so an admin can check the
 wording before voting opens. A claim the worker never finished is failed (`interrupted`), not sent again. The card
-lists the caller's last few tests (queued, sent, or why not) and polls while one is on its way. It is not ledgered: it
+lists the caller's last few tests (queued, sent and what SES reported of it, or why not) and polls while one is on its
+way. It is not ledgered: it
 reaches only the person who asked and changes nothing about the election; the receipt records it.
 
-**Settings** *(added 2026-10-27)*. System Admins decide, in Admin › Election emails (`GET|PUT
-/v1/admin/notice-settings`, System Admin only, enforced by the API), what the emails do; the defaults are the emails as
-described above:
+**Settings** *(added 2026-10-27)*. System Admins decide, in Admin › Email (`GET|PUT
+/v1/admin/notice-settings`, System Admin only, enforced by the API), what the emails do; apart from the first, the
+defaults are the emails as described above:
+- *(added 2026-11-06)* **all email from the site**, off until a System Admin switches it on (`allEmails`; §10.12). The
+  switch saves at once, apart from the rest of the form, after asking. While it is off no notice starts, and one already
+  going out waits; what is left goes if it comes on while voting is open, and any election open at that moment starts
+  its voting-open email straight away. Off also refuses members' and Election Admins' test emails, and welcomes an added
+  member with Identity Platform's sign-in link. Not affected: Identity Platform's own emails, the setup check's messages
+  to SES's simulator, a rehearsal's outbox, and a System Admin's test to the one person they choose (§10.12);
 - each email on or off. Switching one off stops new notices of that kind from starting, and holds one already going
   out (what is left goes if it is switched back on while voting is open);
 - the reminder's lead time, 1 to 168 whole hours before the close (24 by default). An election open no longer than that
@@ -2628,10 +3325,27 @@ described above:
   hours") fill themselves in; the checks refuse any other placeholder and stray braces. The text is plain: the HTML
   escapes it, and the subject is kept to one line and 200 characters. Everything else in the emails (the greeting, the
   deadline, the ballot link, the times in every zone, how to check a vote, why the member gets it, the contact line,
-  the warning about passwords) stays as it is, filled in automatically.
+  the warning about passwords) stays as it is, filled in automatically;
+- *(added 2026-11-08)* whether each email an admin writes to members waits for a System Admin's approval
+  (`broadcastApproval`, off by default; §10.12);
+- *(added 2026-11-03)* the site's other emails, each on or off ("Other emails"): welcome emails to members a Membership
+  Admin added (§5.13; off, the admin's browser asks Identity Platform to send its sign-in link instead), Election
+  Admins' test emails (above; off, "Send test email" is refused), and members' test emails, which covers both "Send me
+  a test email" and "Try my address again" (§10.12; off, both are refused and the Account page says they are switched
+  off for now), and *(added 2026-11-08)* members' notifications by email (§10.13; off, none goes and none waits).
+  Switching one off stops new ones; one already queued still goes. The email setup check's messages to
+  SES's mailbox simulator (§10.12) always go, and Identity Platform's own sign-in, verification and reset emails are not
+  among these switches;
+- *(added 2026-11-07)* the name every email from the site comes from ("Who the emails come from"), in place of the name
+  in the deployment's `MAIL_FROM`, at the same address: a name only, on one line and at most 60 characters, without
+  `<`, `>`, `@`, quotation marks or backslashes, so that it cannot pass for another address. The worker quotes it when
+  it has characters a bare name may not, and writes a name that is not plain ASCII as RFC 2047 encoded words, as
+  Amazon SES asks. Empty, the deployment's name is used. The page shows the From header members will see, from the
+  deployment's as the last email setup check recorded it (§10.12), since only the worker has `MAIL_FROM`. Identity
+  Platform's emails keep the sender set in its own configuration.
 
-The From address is not among them: it stays in the deployment's configuration (`MAIL_FROM`), since Amazon SES must
-have verified it. The settings are one document, `notice_settings/current`, saved whole with the version they were
+The From address itself is not among them: it stays in the deployment's configuration (`MAIL_FROM`), since Amazon SES
+must have verified its domain. The settings are one document, `notice_settings/current`, saved whole with the version they were
 edited from (409 if someone saved since, as for the navigation settings, §10.5), cached for a minute by each instance,
 and every save that changes something is ledgered as `notice.settings_changed` (the System Admin, the new version, and
 each setting that changed with its old and new value; Auditors only). The election editor's card and workflow read
@@ -2640,12 +3354,17 @@ go with the lead time set, and the card's preview uses the wording set.
 
 **Delivery.** `MAIL_TRANSPORT` says how the worker sends: `ses` through Amazon SES (its region, configuration set,
 queue and an access key in `SES_*` and `AWS_SES_*`; the worker will not start without the key and `WEB_ORIGIN`), `outbox` records each message in `notice_outbox` instead of mailing it (the emulators' stand-in, refused
-elsewhere; tests act out SES through addresses at `refused.test`, `unavailable.test` and `bounce.test`), and `off`
+elsewhere; it acts out SES: an address at `refused.test` is refused, one at `unavailable.test` finds SES down, every
+other message is reported delivered, except at `bounce.test` (a permanent bounce), `soft.test` (a soft one),
+`complaint.test` (marked as spam), `delay.test` (delayed, then delivered) and `suppressed.test` (on SES's suppression
+list), and SES's mailbox simulator addresses answer as theirs do), and `off`
 sends nothing (the default in a real project; a notice then waits, and starts if email is switched on while voting is
 still open). Only the worker holds the AWS key, from Secret Manager; the api only reads counts and starts resends.
 Setting SES up (a domain identity with DKIM, leaving the sandbox, the topic and queue, an IAM user that may only send
-from the agreed address and read that queue) is in the infra README, "Election notices". Deleting an election (§6.1)
-deletes its notices, their records, its receipts, its test emails and its outbox messages after the deletion commits.
+from the agreed address and read that queue) is the separate Terraform root `infra/terraform/aws` and the infra README,
+"Email (Amazon SES)"; the email setup check (§10.12) says whether it is right. Deleting an election (§6.1)
+deletes its notices, their records, its receipts, its test emails, its outbox messages and the records of its
+messages after the deletion commits.
 
 ### 6.9 Election setup check *(added)*
 
@@ -2786,8 +3505,9 @@ Implemented in M3a (`VotingService`):
 - The **pool** document has a random server-generated ID and holds only ciphertext. No voter ID, no timestamp field.
 - The cast endpoint never logs request bodies (Fastify does not log bodies; the logger redacts `authorization` and App
   Check headers).
-- Planned with email (Amazon SES): the "you voted" email task carries `accountId` and `electionId` only — never
-  commitments.
+- *(Added 2026-11-03)* Each voter is emailed that their ballot was recorded, and when, within a minute or so (§6.8,
+  vote confirmations): the worker reads only the participation records, never ballots, and the email carries no
+  choice, commitment or receipt.
 
 ### 7.2 Sealer
 
@@ -2920,12 +3640,15 @@ entry = { v, seq, type, at, actor, subject, payload, prevHash }   hash = H(JCS(e
   `approval.requested`, `approval.decided`, `signin_method.changed`. Added since: `mfa_policy.changed`, `photo.decided`, `roll.approved`,
   `election.scheduled`, `election.opened`, `election.closed`, `election.cancelled` (M2–M3a), `ballots.sealed`,
   `election.sealed` (M3b), `results.computed` (M4a), `results.certified`, `election.pool_key_destroyed`,
-  `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed`,
-  `navigation.changed`, `home_quote.changed`, `hub.changed`, `analytics.changed`, `notice.sent`, `notice.resend_requested`, `notice.settings_changed`, `anthropic_key.changed`, `api_key.changed`, `position_term.appointed`, `registration_form.changed`, `team.changed`, `team.member_changed`, `forum.moderated`, `room.consent_changed`, `room.assistant_switched`, `room.settings_changed`, `room.door_changed`, `candidacy.changed`, `area_contact.changed`, `email_template.changed` (M5; Auditors only). The authoritative list is `LEDGER_EVENT_TYPES` in
+  `position.defined`, `position_term.created`, `position_term.ended` (M4b), `election.deleted`, `member.details_changed`, `member.email_stopped`, `notice.broadcast_requested`, `notice.broadcast_cancelled`,
+  `navigation.changed`, `home_quote.changed`, `hub.changed`, `analytics.changed`, `notice.sent`, `notice.delivery_reported`, `notice.resend_requested`, `notice.settings_changed`, `anthropic_key.changed`, `api_key.changed`, `position_term.appointed`, `registration_form.changed`, `first_steps.changed`, `team.changed`, `team.member_changed`, `forum.moderated`, `room.consent_changed`, `room.assistant_switched`, `room.settings_changed`, `room.door_changed`, `candidacy.changed`, `area_contact.changed`, `email_template.changed`, `bills.settings_changed`, `bills.public_changed` (M5; Auditors only). The authoritative list is `LEDGER_EVENT_TYPES` in
   `ustp-domain`.
+- `identity.linked` with `claimed: true` records a member a Membership Admin added signing in for the first time
+  (§4, §5.13); their addition is a `member.status_changed` from none to `active` with the admin as actor.
 - `account.deleted` (Auditors only) records an account's deletion (§4): payload `{ email, uid, reason }`, actor the
   System Admin, subject the deleted `accountId`, written with an `identity.unlinked` for each login and a `role.revoked`
-  for each active role by `POST /v1/admin/accounts/{accountId}/delete`. The first four, among seq 159–167 on dev, were
+  for each active role by `POST /v1/admin/accounts/{accountId}/delete`, and for a test voter, with `email` and `uid`
+  null, by `POST /v1/testing/personas/delete` (§10.4). The first four, among seq 159–167 on dev, were
   written by hand on 2026-11-02, before that route existed, by the api's own append (`ledger_head/main`), and the worker
   sealed them like any other entry.
 - **Selective disclosure:** member-related entries contain personal data and are visible to Auditors only. Election
@@ -3122,21 +3845,25 @@ results page, the CLI and the tests pass it that entry.
 
 ### 10.1 Roles (spec §5)
 
-| Capability | Membership Admin | Election Admin | Auditor | System Admin |
-|---|:-:|:-:|:-:|:-:|
-| Triage applications and photos; view member profiles; change member status; correct member details; change the registration form's wording (§5.2) | ● | | | |
-| Create, rename, archive and restore teams; name and remove their leads; change anything on any team (§5.7) | ● | | | |
-| Moderate the forum: remove and restore posts and comments, lock and pin threads, see and close reports (§5.9) | ● | | | |
-| Put a forum proposal on a draft election's ballot (§5.9) | | ● | | |
-| In the members' room, having accepted its terms: delete any message or memory item, change any action item, switch the assistant off and on (§5.10) | ● | | | |
-| Open or close the members' room for everyone (Admin › Members' room; §5.10) | ● | | | ● |
-| Switch the members' room's model server on or off, which decides its GPU cost (§5.10) | | | | ● |
-| Create/edit draft elections, contests, proposals; delete a cancelled election nobody voted in, or a finished rehearsal in testing mode (at once; §6.1) | | ● | | |
-| Request roll snapshot, scheduling, certification, cancellation | | ● | | |
-| Define or change offices (at once; §6.4); request an appointment to an office or the end of a term (§6.4) | ● | ● | | |
-| Approve roll, scheduling, certification, cancellation, an appointment to an office, ending a term of office | | | ● | |
-| Read full ledger, run verifications | | | ● | |
-| Grant/revoke roles (one System Admin, at once; §10.2), see who holds them (§10.3), delete an account the deployment lists (at once; §4), sign-in switches and the two-step requirement for members (§4), the Anthropic API key (§5.6), operations | | | | ● |
+| Capability | Membership Admin | Election Admin | Auditor | System Admin | Site Admin |
+|---|:-:|:-:|:-:|:-:|:-:|
+| Triage applications and photos; add members, one or from a CSV file (§5.13); view member profiles; change member status; correct member details; change the registration form's wording (§5.2) | ● | | | | |
+| Write to members and answer them as the membership team, in the membership inbox, giving, noting and closing its conversations; see the emails the site sent a member, on their record (§10.13) | ● | | | | |
+| Create, rename, archive and restore teams; name and remove their leads; change anything on any team (§5.7) | ● | | | | |
+| Moderate the forum: remove and restore posts and comments, lock and pin threads, see and close reports (§5.9) | ● | | | | |
+| Put a forum proposal on a draft election's ballot (§5.9) | | ● | | | |
+| In the members' room, having accepted its terms: delete any message or memory item, change any action item, switch the assistant off and on (§5.10) | ● | | | | |
+| Open or close the members' room for everyone (Admin › Members' room; §5.10) | ● | | | ● | ● |
+| Switch the members' room's model server on or off, which decides its GPU cost (§5.10) | | | | ● | |
+| Create/edit draft elections, contests, proposals; delete a cancelled election nobody voted in, or a finished rehearsal in testing mode (at once; §6.1) | | ● | | | |
+| Request roll snapshot, scheduling, certification, cancellation | | ● | | | |
+| Define or change offices (at once; §6.4); request an appointment to an office or the end of a term (§6.4) | ● | ● | | | |
+| Approve roll, scheduling, certification, cancellation, an appointment to an office, ending a term of office | | | ● | | |
+| Read full ledger, run verifications | | | ● | | |
+| Grant/revoke roles (one admin, at once; §10.2) and see who holds them (§10.3) | | | | ● | ● (every role but System Admin, never a System Admin's) |
+| Delete an account the deployment lists (at once; §4); in testing mode, delete test voters (at once) and use the other testing tools: personas, acting as them, demo elections (§10.4) | | | | ● | |
+| Sign-in switches, the two-step requirement for members and whether Site Admins need two-step (§4), the API keys (§5.6) | | | | ● | |
+| The navigation settings (§10.5), the link hub and the home page quote (§10.5, §10.6), the email settings, setup check, email log, test emails and approving emails to members (§6.8, §10.12), the sign-in log and site analytics (§10.7), which teams have the Bills tool (§5.14), operations | | | | ● | ● |
 
 **Content roles** *(added)*: Course Administrators run the courses: they add courses and place them on the course
 map, publish them, see how each student stands and turn each student's messages with the instructors on or off, the
@@ -3144,19 +3871,32 @@ instructors being themselves (§10.8). **Communications Admins** publish the par
 plan its social media and read suggestions from the public, and also edit the Link hub (§10.9). Neither has any
 membership, election, ballot or audit power, and Course Administrators see no learner's email.
 
-**Incompatible role pairs:** Auditor with any other role. **At most two roles per person** *(added)*
-(`MAX_ROLES_PER_ACCOUNT`): one person may combine two of Membership Admin, Election Admin and System Admin, never all
-three, so no one person both runs the membership, runs elections and controls who holds roles. `checkRoleChange` in
+**Site Admins** *(added 2026-11-08, the owner's decisions)* have most of what System Admins have, as the last four rows
+of the table show, and wherever this document gives System Admins a power those rows do not keep for them alone, Site
+Admins have it too (`SITE_ADMIN_ROLES`, `administersSite` in `ustp-domain`). They delete no account and no test voter:
+the API answers them 403 on both routes (§4, §10.4). They grant and revoke every role but System Admin, Site Admin
+included, and never change the roles of a System Admin's account, so a Site Admin can neither make a System Admin nor
+weaken one (403; §10.2). The owner kept the testing tools with System Admins; the sign-in settings, the API keys and the
+room's model server stay with System Admins too, as recommended when the owner stated no preference on those, and Site
+Admins approve emails to members like System Admins (§10.12). Like System Admins they sign in with two-step
+verification on every page (§4), unless a System Admin switches that off for Site Admins (*added 2026-11-09*, the
+owner's decision; §4), have the Bills tool (§5.14), get no test persona (§10.4), and are never made by the
+bootstrap (§4).
+
+**Incompatible role pairs:** Auditor with any other role, and System Admin with Site Admin, which would add nothing.
+**At most two roles per person** *(added)* (`MAX_ROLES_PER_ACCOUNT`): one person may combine two of Membership Admin,
+Election Admin, System Admin and Site Admin, never three, so no one person both runs the membership, runs elections and
+controls who holds roles. `checkRoleChange` in
 `ustp-domain` applies both rules to every grant (a conflict is named first when a grant breaks both); a revocation is
 always allowed, so an account granted more before the limit can be brought within it. The role-change form shows the
 refusal in words before sending, and the API refuses the grant (409). An Election Admin who is a candidate in an election may not
-act on that election (Q12; enforced on every edit, and nobody can add themselves as a candidate). All admin roles require MFA for the admin tools, and System Admins on every page (§4). The first System Admin is bootstrapped once from deployment
+act on that election (Q12; enforced on every edit, and nobody can add themselves as a candidate). All admin roles require MFA for the admin tools, and System and Site Admins on every page (§4). The first System Admin is bootstrapped once from deployment
 configuration and ledgered; the bootstrap grant keeps to the same rules, so an account that is an Auditor or already
 holds two roles is left as it is (logged) and becomes System Admin at a later sign-in once it holds one role.
 
 The admin console is in the web app's menu for whoever the navigation settings show it to: by default everyone
 (§5.2, §10.5). Signed out, it leads to sign-in and back; signed in with no role, to a page saying it is for party
-officers and that a System Admin grants roles (§10.2). Each officer sees the tabs the settings give their roles, which
+officers and that a System or Site Admin grants roles (§10.2). Each officer sees the tabs the settings give their roles, which
 are never more than the roles allow, and a page their roles do not cover (an election, for a Membership Admin) returns
 to the console.
 
@@ -3197,6 +3937,13 @@ roles it holds now (no duplicate grant, no revoking a role it does not hold, the
 change is ledgered as `role.granted` / `role.revoked` with that admin as actor and the reason in the payload, in the
 same transaction as the `role_assignments` write.
 
+**A Site Admin** *(added 2026-11-08)* changes roles the same way, under the same checks, for every role but System
+Admin, Site Admin included, and never on an account that holds System Admin: `checkCanChangeRole` refuses both as
+forbidden (403: "system_admin is granted and revoked only by a system_admin", "the roles of a system_admin are changed
+only by a system_admin"). The API checks before the change with the roles unknown and again inside its transaction with
+the roles the account holds then, so an account ID typed in gets the same answer. The role-change form offers a Site
+Admin no System Admin and no "Change roles" on a System Admin's row.
+
 This replaced a two-person rule for role changes (`role.grant` / `role.revoke`, approved by another System Admin).
 What it gives up: a single System Admin account, if compromised or misused, can take over role management and lock the
 other admins out, and the ledger records it only after the fact. Requests made under the old rule stay decidable
@@ -3205,8 +3952,8 @@ creates new ones.
 
 ### 10.3 People list
 
-System Admins need to see who holds which role, and to name the person a role change is about, without asking them
-for their account ID. `GET /v1/admin/accounts` (System Admin, so MFA and the revocation check apply like any admin
+System and Site Admins need to see who holds which role, and to name the person a role change is about, without asking
+them for their account ID. `GET /v1/admin/accounts` (System or Site Admin, so MFA and the revocation check apply like any admin
 route) lists accounts with only what that needs: accountId, display name, primary email and whether it is verified,
 when the account was created, the member status if there is a member record, and the active roles from
 `role_assignments`. It shows no legal name, state, statement, logins or photo; those stay with the Membership Admin
@@ -3217,7 +3964,7 @@ when the account was created, the member status if there is a member record, and
   the admins never means paging through every member. Pages hold up to 100 rows.
 - Roles come from one query for every unrevoked assignment: role holders are few, and the list and the role filter
   both need all of them. The query needs only single-field indexes.
-- The web app's People tab (System Admin) shows the list with role chips and an Offices column *(added)*: the offices
+- The web app's People tab (System and Site Admins) shows the list with role chips and an Offices column *(added)*: the offices
   each account holds now, from the offices list (`GET /v1/admin/positions`, readable by every role; §6.4), as the
   Members tab shows them (§5.2), so an admin sees roles and offices side by side. The role-change form picks the person from
   the same list, typing an account ID stays as a fallback, and the form explains a refusal before sending it with the
@@ -3225,8 +3972,8 @@ when the account was created, the member status if there is a member record, and
   The form sits in the People tab, under the list ("Change roles" on a row fills it in), and asks for confirmation
   before sending, because the change takes effect at once. The API still decides.
 - **Delete account** *(added)*: each row says whether the deployment lists the account for deletion
-  (`onDeletionList`, from `DELETABLE_ACCOUNT_EMAILS`; §4), and a row that is listed and not your own, member or not, gets
-  a "Delete account" button; the API refuses, with its reason, an account an election has on its roll or among those
+  (`onDeletionList`, from `DELETABLE_ACCOUNT_EMAILS`; §4), and for a System Admin a row that is listed and not their own,
+  member or not, gets a "Delete account" button (a Site Admin sees none, and the API answers them 403); the API refuses, with its reason, an account an election has on its roll or among those
   who voted. It asks for a written reason in a dialog that says the deletion happens at once, cannot be undone and
   needs no other admin, that a member's membership, its history and applications go too, and that the ledger keeps its
   entries; then it reloads the list. On a deployment
@@ -3242,19 +3989,21 @@ different account on each side. Testing mode lets one System Admin do that alone
   Dev has it on.
 - **Personas:** `POST /v1/testing/personas` (System Admin) creates whichever admin persona is missing (Test
   Membership Admin, Test Election Admin, Test Auditor, Test Course Admin, Test Communications Admin: one per role but
-  System Admin, so a role added later gets its persona the next time this runs) and adds the requested number of
+  System Admin and Site Admin, so a role added later gets its persona the next time this runs) and adds the requested number of
   numbered test voters, at most 50 per deployment. A persona is an ordinary account with no login (no email, no `account_identities`) plus a
   `testing_personas` record. Admin personas get their role directly; voters become Active members on the current
   bylaws (409 while none is published). Each persona is created in its own transaction with the ledger entry its real
   counterpart gets (`role.granted` or `member.status_changed`, reason `test persona`), naming the System Admin as the
-  actor. There is no System Admin persona: role changes stay with real System Admins, recorded under their own
-  names.
+  actor. There is no System Admin or Site Admin persona: role changes stay with real System and Site Admins, recorded
+  under their own names. The testing tools are System Admins' alone; a Site Admin gets 403 on every `/v1/testing` route
+  and on `X-Act-As`.
 - **Acting:** a request with `X-Act-As: <persona accountId>` runs as that persona. The guard checks that testing mode
   is on, that the caller is a System Admin signed in with MFA whose token is not revoked, and that the target is a
   persona; the request's account and roles are then the persona's, and the System Admin is kept as its `operator`.
   Every route behaves as it would for the persona, two-person checks included, so a rehearsal exercises the real
   rules, and ledger entries name the persona. The api logs each acting request with operator, persona, method and
-  path; that log is what ties a persona's actions to a real person. Linking and unlinking logins refuse while acting,
+  path, and the request's own line in the developer log (§14) names both; that log is what ties a persona's actions to a
+  real person. Linking and unlinking logins refuse while acting,
   and `GET /v1/me` reports `testing.enabled` and `testing.operator`.
 - **Web app:** Admin → Testing (System Admins, testing mode only) creates personas, starts acting as one and makes
   demo elections. A bar under the menu names the persona, switches to another or stops. The choice is per browser tab
@@ -3325,12 +4074,37 @@ different account on each side. Testing mode lets one System Admin do that alone
     deleted like any rehearsal once certified or cancelled (§6.1), since it seats nobody.
 - **Clearing a rehearsal away:** once certified or cancelled, a rehearsal can be deleted permanently, ballots and
   results included, unless it seated someone in an office (§6.1, "Deleting a rehearsal"). Its ledger entries stay.
+- **Deleting test voters** *(added 2026-11-03, the owner's choice of "any test voter, records kept")*: a System Admin
+  deletes test voters from Admin → Testing, one ("Delete" on its row) or every one at once ("Delete all test voters"),
+  with `POST /v1/testing/personas/delete` `{ voters: [accountId, …] }` (1 to 50, testing mode only, 404 otherwise).
+  - **Who and when:** one System Admin (never a Site Admin: 403), at once, with no second admin and no written reason, signed in with MFA within
+    the last 15 minutes as for any deletion (`checkCanDeleteTestVoters` in `ustp-domain`). Only voter personas: every
+    ID must be one (404 naming those that are not, before anything is deleted), and the admin personas stay. A voter
+    deleted meanwhile, by another System Admin, is skipped.
+  - **Whatever elections hold it:** unlike any other account (§4), a test voter is deleted even while a roll holds it
+    or after it voted, in a rehearsal or in an ordinary election (an ordinary roll takes every Active member, test
+    voters included, §6.3). Nothing in an election changes: the roll snapshot keeps its `accountIds`, count, Merkle root
+    and signature, participation records keep their IDs, and ballots, results and certifications stay as they are, so
+    every election still verifies. A deleted voter on a roll shows as "(no member record)" where the roll is listed by
+    name, gets no notices (it has no address, §6.8), and can no longer vote, since nobody can act as it.
+  - **What goes**, each voter in its own transaction, through the same steps as deleting an account (§4,
+    `AccountsService.erase`): the `account.deleted` ledger entry (Auditors only) with `{ email: null, uid: null,
+    reason: "test voter deleted under Admin → Testing" }`, the System Admin as actor and the voter as subject, and
+    `role.revoked` first for any role it was given; its account, role assignments, the requests about it, its
+    membership (member record, status history) and its `testing_personas` record; then its page visits and course
+    records. It has no logins, so Identity Platform is not called. What others wrote that names it, and its posts,
+    keep the bare `accountId`, and the ledger keeps every entry about it, its `member.status_changed` admission
+    included.
+  - **Numbers:** a voter added later takes the number after the highest remaining one, so deleting the highest
+    numbers, or all of them, gives their numbers to new accounts ("Test Voter 1" again). The ledger and rolls name
+    accounts by ID, never by label, so the two are never confused. A tab still acting as a deleted voter is refused
+    ("not a test persona") and goes back to its System Admin on its next load.
 - **Effect on the record:** what a persona does is real data in that deployment's ledger, rolls and results. That is
   acceptable only because testing mode is confined to test deployments.
 
 ### 10.5 Who sees which link, and the voting home
 
-System Admins choose which main-menu links and admin console sections each membership state and staff role is shown,
+System and Site Admins choose which main-menu links and admin console sections each membership state and staff role is shown,
 and the page each starts on (Admin → Navigation). The settings decide what the web app **shows, never what anyone may
 do**: the API's role checks (§10.1, §12) are unchanged, and a page reached by its address refuses or explains itself
 as before. They also choose the quote on the voting home, or switch it off (Admin → Home page quote; below). The home
@@ -3338,9 +4112,9 @@ page itself, `/`, is the party's link hub (§10.6).
 
 - **Columns (audiences):** signed out; signed in with no membership; each member status (applicant, Active, lapsed,
   suspended, resigned, rejected; §5.1); then each staff role. **Rows:** Register, Ballot, Verify, Offices (the public
-  list of office holders, §6.4), Candidates (members running for public office, §5.8), Teams (§5.7), Forum (§5.9), News (§10.9) and Admin; Sign in (the header's button for visitors); the admin sections (Applications,
-  Members, Photos, Bylaws, Registration form, Elections, Offices, Candidacies, Teams, Forum, Approvals, People, Sign-in methods, Claude, Election
-  emails, Audit ledger, Testing, Navigation, Communications, Link hub, Home page quote); and "Starts on". The vocabulary, defaults
+  list of office holders, §6.4), Candidates (members running for public office, §5.8), Teams (§5.7), Forum (§5.9), Bills (§5.14), News (§10.9) and Admin; Sign in (the header's button for visitors); the admin sections (Applications,
+  Members, Photos, Bylaws, Registration form, Getting started, Elections, Offices, Candidacies, Teams, Forum, Approvals, People, Sign-in methods, Claude, Election
+  emails, Audit ledger, Testing, Navigation, Communications, Link hub, Home page quote, Bills); and "Starts on". The vocabulary, defaults
   and rules are `MENU_LINKS`, `ADMIN_SECTIONS`, `AUDIENCES` and the functions beside them in `ustp-domain`
   (`governance/navigation.ts`), shared by the API and the web app.
 - **Union.** A person is shown everything their membership state is shown plus everything each role they hold is
@@ -3371,7 +4145,11 @@ page itself, `/`, is the party's link hub (§10.6).
   link to Active members only (the API refuses teams to anyone else) and the Teams section to Membership Admins,
   those saved before the Forum show its link to Active members only and its section to Membership and Election
   Admins, and those saved before News show it to everyone and the Communications section to Communications Admins
-  (§10.9).
+  (§10.9). Bills (§5.14) is shown by default to Active members and System Admins, its section to System Admins, and
+  the link only to people who have the tool, whatever the settings say: being on a team the Bills setting names is not
+  a column of the matrix, so the web app asks `GET /v1/bills/access` and hides the link from anyone else.
+  Legislation, the public bills and scorecard (§5.14), is shown to everyone by default, visitors too, and settings
+  saved before it was a row show it.
 - **Start page.** Each signed-in audience starts on the voting home (`/vote`, the start page `home`, named "Voting home"
   since the hub took `/`), their account, a menu page it is shown (Offices included),
   or (a role) one of its sections; by default Register with no membership, as signing in did before, and home otherwise. A person with
@@ -3425,7 +4203,11 @@ page itself, `/`, is the party's link hub (§10.6).
   within a day, a time never split from its AM or PM), whether the ballot is secret, where the voter stands in words
   beside an icon (voted, and when; open and not voted yet; not open yet; closed; closed and certified) and what they
   can do next: Vote now (filled: the one thing to do), View your ballot or Read the ballot, and See results first once
-  voting has closed. The ballot (`/ballot/{id}`) uses the same short dates. On the list, the ballot and its Cast dialog
+  voting has closed. Finished votes, those whose voting has closed whether or not the voter took part, stay off the
+  list until the voter switches on **Show finished votes (n)**, there whenever they have any; shown, they follow the
+  others, the latest closed first, and the choice is kept in that browser. All in the browser: `GET /v1/elections`
+  still returns them. An election the voter has voted in stays on the list until voting closes, for its ballot and
+  receipt. The ballot (`/ballot/{id}`) uses the same short dates. On the list, the ballot and its Cast dialog
   (`.ustp-touch` in `layout.css`), buttons, choices, toggles and "Read the full text" are 48 px tall at least with
   16 px text, round icon buttons 48 px across, and the dialog's text is set like the page's. On a phone (under
   600 px) a row of buttons stacks, each as wide as its card, the dialog's two share its width, Yes, No and Abstain
@@ -3614,6 +4396,8 @@ members, and how many people visit the public pages.
   the ballots under it and `/verify`: the web app never sends them and the api refuses them (404), as it refuses a path
   the app has no page for, so no visit sits beside a cast, where its time could hint at who voted when. Unlike Google
   Analytics, the sign-in, account and admin pages are tracked, so an admin opening a member's record shows.
+  *(Added 2026-11-08:)* a conversation between members (§10.13) is tracked as a page but recorded as `/messages`
+  (`recordAs`), since its address names the two accounts in it.
   - **Counted** in `page_hits/{page}`: a total, hits per UTC day, and hits per UTC day by people signed in to an account;
     nothing about who, so kept for good, as the hub's clicks are.
   - **Recorded** in `page_visits/{visitId}`, for a visit by someone signed in to an account only: the account, the
@@ -3633,12 +4417,30 @@ members, and how many people visit the public pages.
     left older ones out; the hits are always complete. Reading it is not ledgered.
   - **Personal data**, as the sign-in log: never in the ledger, and the rules deny clients (§14). Members are not told
     of it on any page yet (Q23).
+- **Where visitors came from** *(added 2026-11-12, the party's decisions: the referring site's host only, counts kept
+  for good)*. The first page a browser tab opens is an *arrival*, and the web app sends with that page's visit, as fields
+  of their own (`from` in `POST /v1/page-visits` and `POST /v1/public/page-visits`), never the address's query:
+  - the referring site (`document.referrer`) as its **host alone** (`facebook.com`): the rest of a referring address can
+    hold search words or private links, so it is never sent (browsers mostly send no more than the origin across sites
+    anyway). This site's own host is never a referrer;
+  - the landing address's `utm_source`, `utm_medium` and `utm_campaign` tags, in lower case, letters, digits and
+    `-_.~+:@!/` only (anything else becomes `_`), at most 64 characters each;
+  - whether it came by a member's referral link (§5.18), never whose.
+
+  The web app then takes the tags and the referral code (and `utm_term`, `utm_content`, `utm_id`) off the address, and
+  counts one arrival a tab (a reload keeps the tab's answer in `sessionStorage`). The api counts it, with the page
+  arrived at, in `visit_sources/{day}_{hash}`, one record per UTC day, page and combination, **naming nobody, even
+  someone signed in**, so like the pages' hits it is kept for good. A tag the api cannot use is dropped, never the
+  visit. The page-visits report has a **Where from** view: the period's arrivals, how many came from another site, with
+  campaign tags, by a referral link, or with none of these (direct or unknown), and tables of the referring sites, the
+  combinations of tags and the pages arrived at, the most first (100 rows each; a report reads at most 20,000 records
+  and says when it stopped short). Not ledgered.
 - **Google Analytics.** Off until a System Admin enters a Google Analytics 4 measurement ID under Admin › Security
   (`site_analytics/current`, versioned, saved from the version it was edited from, 409 if someone saved since,
   ledgered as `analytics.changed`, Auditors only; `GET /v1/site-analytics` is public). The web app then loads
   `gtag.js` on the first public page it may see and sends a page view per page: the path alone (no query string or
   fragment), never who someone is, with Google signals and ad personalization off. It never loads on `/ballot`,
-  `/verify`, `/signin`, `/account` or `/admin` and the pages under them, and not at all for browsers that send Global
+  `/verify`, `/signin`, `/email-action` (§4), `/account`, `/admin`, `/notifications` or `/messages` (§10.13) and the pages under them, and not at all for browsers that send Global
   Privacy Control. Google Analytics 4 does not keep IP addresses; the sign-in log does. The hub's own click counts
   (§10.6) stay as they are, without cookies; Google Analytics, where switched on, sets its cookies on the public
   pages.
@@ -3647,7 +4449,8 @@ members, and how many people visit the public pages.
 
 Courses are open to everyone: `/courses` is a catalogue of every course with the course map (but those Course
 Administrators hide), and each course has its page
-at `/course/{courseId}`, where signed-in learners take its quizzes and earn its certificate. Courses are kept apart
+at `/course/{courseId}`, where signed-in learners take its quizzes and earn its certificate, and anyone may take the
+quizzes of a course open without sign-in (below). Courses are kept apart
 from membership, elections and the ledger. Course Administrators (`course_admin`, a role that sees only Admin › Course
 by default, §10.5) pick a course in that tab and edit a draft of its lessons and futurist profiles, and **Publish new
 version** freezes the draft as an immutable `course_versions` snapshot; a learner part-way through keeps the version
@@ -3788,6 +4591,55 @@ students and messages were added 2026-10-31; before, there was the one course at
   A certificate already earned is kept when the prerequisites change later. Signed in, the map and the list say where
   the learner stands in each course: passed, locked and after which courses, how many lessons passed, or how many
   there are.
+- **Open without sign-in** *(added 2026-11-12, part of the user's plan to draw people to the site; the user's choices:
+  a switch per course with the introduction on, progress kept in the browser and claimed on signing in)*. A Course
+  Administrator opens a course's quizzes to visitors who are not signed in with the **Open without sign-in** switch in
+  its settings in the Course tab (`PUT /v1/admin/courses/{courseId}/guests`), and closes them the same way; it applies
+  at once, and the record keeps who last changed it and when. A course is open (`isOpenToGuests`) while its switch is
+  on, it is published and no course comes before it, since a visitor cannot have passed one: opening a course that
+  comes after another is refused (409, in words), and one given prerequisites later is closed while it has them. A
+  draft may be switched on; it opens once published. Courses are closed until switched on, and those from before the
+  switch are closed, but for the first course, **Transhumanism: Human Flourishing and Democratic Futures**, the
+  six-lesson introduction, opened once at the release that brings the switch (`course-open-seed.ts`, recorded as
+  `course_seeds/course-open-2026-11`, so a Course Administrator who closes it later is not overruled). The course
+  list and the course say whether a course is open (`openToGuests`); the Courses page's row says "Take it now: no
+  sign-in needed". A visitor's quiz goes to `POST /v1/public/courses/{courseId}/lessons/{lessonId}/check` with the
+  version the page shows, and is marked as a learner's would be, the score and how each answer went, but **the api
+  keeps nothing of it**: no attempt, no progress, nothing about who (403 for a course not open, 409 for a version
+  that is no longer the one learners take, when the page reloads the course). The visitor's browser keeps, in its
+  local storage only, the lessons they passed with the answers that passed them, per course and version
+  (`guest-progress.ts`); another browser or device starts again, and lessons kept for an earlier version are dropped.
+  The course page shows how many they have passed and invites them to join, and once every lesson is passed asks
+  them to create their free login to earn the certificate (to Register, whose first step that is; applying for
+  membership stays their choice) or to sign in. **On signing in**, once the account is loaded (and any second factor
+  the site requires is used, and never for a test persona), the web app sends each course's kept lessons to
+  `POST /v1/courses/{courseId}/claim`, which marks them again against the version learners take now and records them
+  as attempts made then, as quizzes submitted signed in would be, so passing every lesson issues the certificate, and
+  says so with a link to the course; then the browser forgets them. What the api refuses (a new version since, 409;
+  a course or lesson gone) is forgotten with the reason; what fails otherwise (offline) is kept for the next sign-in.
+  Claiming needs nothing a signed-in learner could not do by submitting each quiz, since the answers are public (the
+  public course api, below).
+- **Sharing a certificate** *(added 2026-11-12; the user's choices: the holder's name on its public page only if they
+  choose, certificate pages never listed by search engines, LinkedIn's issuer named in words with a setting for the
+  party's organization ID)*. A certificate's public page is `/course/certificates/{certificateId}`, which its PDF's QR
+  code and LinkedIn link to: a certificate with the course (linked, for anyone to take), the day it was issued and its
+  version, marked valid, with share buttons (§10.9, not counted) and a **Start the course** card, and the form to
+  check another number. It shows the holder's name only while they show it, and never says more about them:
+  `GET /v1/public/certificates/{id}` gives validity, the course's ID, title and version, the day and the name only
+  then (`shownHolderName`); a revoked certificate, one never issued and a number that is no certificate ID look the
+  same. Search engines never list it (`noindex`, and `UNLISTED_PREVIEW_PAGES` keeps the api's page out too, found or
+  not), but its link preview (§15) shows on the sites people share it on: "Certificate: {course}", or "{name}
+  completed {course}" while the name is shown, with a card of the course, the holder and the day. On the course page
+  the holder has **Your certificate**: the name on it, which they may change (`PUT /v1/courses/{courseId}/certificate`,
+  1 to 100 characters on one line, never an email address), since a login without a name was given its email address
+  at issue, and the PDF prints the name as it is now; the **Show my name on the certificate's public page** switch, off
+  by default and refused (409) while the name is still the email address; **Add to LinkedIn profile**, LinkedIn's own
+  Add to profile link (`linkedInAddToProfileUrl`) with the course as the certification, the party as the issuer, the
+  month issued, and the public page and number as the credential; the PDF; the public page; and share buttons. The
+  issuer is named by the party's LinkedIn organization ID once a System or Site Admin sets it on the Link hub tab
+  (`certificate_settings/current`, `PUT /v1/admin/certificate-settings`, digits only; read with each certificate,
+  cached a minute), with its page and logo, and until then in words as the U.S. Transhumanist Party. Nothing of
+  this is ledgered, as nothing in courses is.
 - **Students.** Under the course picked, the Course tab lists its students: everyone who has tried a quiz in it, or
   whose messages a Course Administrator has switched. Each shows their display name (or "Learner" and the end of their
   account ID), never their email, which the role does not see; the version they are taking; each lesson's best score
@@ -3827,14 +4679,15 @@ students and messages were added 2026-10-31; before, there was the one course at
 - **Checks before sending.** The lesson and profile editors list what still stops a save, in words ("Question 2:
   choice 3 is empty"), instead of sending it and getting the api's bare "invalid request"; the api checks it all again.
 - **Exports.** A course's `ustp.course` file (Export JSON in the Course tab) holds its content, the draft or a published
-  version; where it sits on the map, its prerequisites and whether it is hidden are not part of it. A lesson's video is in it as saved: a
+  version; where it sits on the map, its prerequisites and whether it is hidden or open without sign-in are not part of it. A lesson's video is in it as saved: a
   YouTube video's ID and start, or an upload's ID, which names a file on this site, not the file itself.
 - **Every course at once** *(added 2026-11-01; the user asked to "allow for export of course in json format" and chose
   one file with every course and the course map)*. Export all (JSON) on the Course tab's map card saves one
   `ustp.courses` file (`GET /v1/admin/course-map/package`, Course Admins only, `coursesPackage`): the map's grid, then
   every course in map order (row by row, left to right, then those off the map by title), hidden ones and those never
   published included. Each course has its square (null for off the map), its prerequisites in order, which are the
-  map's lines, one from each to it, and whether it is hidden, and its content as two whole `ustp.course` files:
+  map's lines, one from each to it, whether it is hidden and whether it is open without sign-in (a file from before
+  that switch reads as closed), and its content as two whole `ustp.course` files:
   `draft`, as last saved, and `published`, the version learners take now, null for a course never published. Both are
   in it because they differ while a course has changes not yet published, and one file of everything should hold what
   Course Administrators are editing as well as what learners take. Earlier published versions are left out: each
@@ -3855,14 +4708,16 @@ students and messages were added 2026-10-31; before, there was the one course at
   published course, its file and uploaded portraits (`/v1/public/courses…`, `/v1/public/course-images/…`) answer
   `Access-Control-Allow-Origin: *`, errors included, so another site's pages can read them from the browser; nothing
   there needs credentials, and no other route is open to other sites. The reporting MCP server serves the same files
-  (§3.4), and `examples/course-site` is a site made from them: one HTML file, quizzes checked in the page.
+  (§3.4), and `examples/course-site` is a site made from them: one HTML file, quizzes checked in the page. The course
+  embed (§10.17) is the same in a frame, offered to allied groups on the Partners page.
 
 ### 10.9 Communications: news, press, social media *(added)*
 
 The party's public relations and social media: what it says in public, what journalists need, what members share,
 what its own accounts post, what the public suggests, and which bots speak for it. A new staff role,
 **Communications Admin** (`communications_admin`), runs it under **Admin › Communications** and also edits the Link
-hub (§10.6) alongside System Admins, since the hub's links are the party's social accounts. `ustp-domain`
+hub (§10.6) alongside System Admins, since the hub's links are the party's social accounts. It keeps the party's public
+events and partner groups too (§10.17). `ustp-domain`
 (`communications/`) holds the rules; the api's `communications` context owns its collections. The user's choices
 (2026-10-28): one Communications Admin publishes alone (no two-person rule); share buttons only, never posting for
 anyone from the browser; suggestions from anyone, contact details optional; and a bot manager covering a registry,
@@ -3892,7 +4747,8 @@ news feeds for bots, Claude drafting each site's version and bots the app runs, 
   request came to) and the hub's name and tagline as the feed's title and description, kept 30 seconds per api
   instance and five minutes by browsers. The party's bots, feed readers and services such as IFTTT pick up each post
   as it is published, so the app needs no site's keys for that; Admin › Communications › Bots shows the addresses.
-- **Share buttons.** On every published post and in the share kit: X, Facebook, LinkedIn, Bluesky, Threads,
+- **Share buttons.** On every published post and in the share kit, and *(added 2026-11-12)* on the race pages and
+  people's pages (§5.17, not counted there): X, Facebook, LinkedIn, Bluesky, Threads,
   Mastodon, Reddit, Telegram, WhatsApp and email, plus Copy and the device's own share sheet. Each is a plain link to
   the site's own composer with the post filled in (`shareUrl`), opened in a new tab with `noopener noreferrer`: no
   script, button, pixel or font of those sites loads here, and nothing is posted until the person presses Post there.
@@ -3900,7 +4756,7 @@ news feeds for bots, Claude drafting each site's version and bots the app runs, 
   asks for the person's own server, kept in that browser. `shareLength` counts as each site does (X and Mastodon count
   an address as 23) so the kit can say where a post is too long. **Counts only**: each press sends
   `POST /v1/share/clicks` (`item`, `target`), kept per item and site in `share_counts` with nothing about who; only a
-  published post or kit post can be counted (404 otherwise). Whether they then posted is the site's to know.
+  published post, kit post or event (§10.17) can be counted (404 otherwise). Whether they then posted is the site's to know.
 - **Share kit** (`share_posts`) for Active members: ready-made posts (a title, shown to members and used as the email
   or Reddit subject; the words, up to 1,000; an optional link to a page here or an `https://` address; hashtags; a
   note on when or why to share; an optional last day). Publishing puts one in the kit at once and is ledgered
@@ -4030,6 +4886,433 @@ help button on every page but the hub) walks each of them through their part pag
   route and every tab one its role is shown by default, so a renamed button or moved page fails the build until the
   Guide follows it.
 
+### 10.12 Email setup check *(added 2026-11-03)*
+
+Whether Amazon SES is set up so that members get their email (§6.8), checked by the worker, which alone holds the AWS
+key, and shown to System Admins under Admin › Email, above the election emails' settings. *(Added 2026-11-06:)* with
+it, a System Admin's test email to themselves, another System Admin or a member, the switch for all the site's email,
+and who gets no email; below. *(Added 2026-11-08:)* the log of every email the site sent.
+
+- **When.** Every hour where the worker sends through SES (`MAIL_TRANSPORT=ses`), before a send of election email
+  when the last run is over an hour old (§6.8: a failing check holds the send), and on the next tick after a System
+  Admin asks (`POST /v1/admin/mail/health/check`: 202, 409 while one waits, 429 within five minutes of the last run).
+  Where email is off or recorded in the outbox it runs only when asked. A claim in `mail_health/run` keeps
+  overlapping ticks from both running it.
+- **What.** Each check says ok, warning, failing, waiting or not checked, why, and the step of the infra README
+  ("Email (Amazon SES)") that fixes it:
+  - the deployment's settings: how email is sent, `WEB_ORIGIN`, a contact for questions;
+  - the SES account (`GetAccount`): production access (out of the sandbox), sending enabled and in good standing,
+    SES's rate at least `SES_MAX_SEND_RATE`, today's quota left against the largest roll of a scheduled or open
+    election that mails its voters, and its suppression list taking bounces but not complaints;
+  - the sender domain, the From address's (`GetEmailIdentity`): verified, DKIM and the MAIL FROM domain successful,
+    and this deployment's configuration set as its default, so Identity Platform's mail is reported too;
+  - Identity Platform's email (§4), from its configuration: a warning while it comes from Google's sender; through
+    SES, failing unless it goes to this region's SMTP host from an address at the sender domain and the account has
+    left the sandbox, and a warning when none of its mail has been reported for seven days;
+  - the configuration set and its event destinations: sending, publishing every delivery report to a topic, and
+    neither opens, clicks nor engagement metrics;
+  - the delivery-report queue and its dead-letter queue (`GetQueueAttributes`): reports waiting, a redrive policy,
+    and none failed;
+  - DNS, looked up by the worker: a DMARC record for the domain or its parent, and SPF naming amazonses.com on the
+    MAIL FROM domain;
+  - the bounce and complaint rates of the last 30 days, from `mail_messages` (only mail SES really sent, not the
+    probe's, nor one SES did not try for its suppression list), judged from 100 messages: warning at 2% and 0.05%,
+    failing at 5% and 0.1%, where SES reviews an account;
+  - the probe: three messages to SES's mailbox simulator (`success+`, `bounce+` and `complaint+<id>@
+    simulator.amazonses.com`), which reach nobody and count toward neither quota nor reputation, tagged `probe`. Later
+    ticks look for their reports; it passes when they come back delivered, bounced and marked as spam, and fails
+    after 15 minutes without them, or when SES would not take them. They suppress nothing.
+  Where the outbox stands in for SES, the SES checks are not made and the outbox acts out the simulator.
+- **Kept.** The last run is `mail_health/current` (when, why, how email is sent, the domain, each check, the probe),
+  read by System Admins with `GET /v1/admin/mail/health`; the Election Admins' card shows a line when its overall
+  status is a warning or a failure. Not ledgered: it changes nothing.
+- **Alerts.** Where mail goes through SES, a check that starts failing is logged as a structured entry at severity
+  ERROR with `alert: "mail"` and the check's ID, never a member's address; a Cloud Monitoring alert policy emails the
+  deployment's `alert_emails` (at most hourly), through Google, so it still arrives when SES is what fails.
+- **Permissions.** The worker's IAM user may read the account, its sender domain, its configuration set and both
+  queues (`infra/terraform/aws`); a read it is refused or that takes over five seconds fails its checks, naming the
+  AWS error, never its text.
+
+**A member's own email.** Each signed-in person sees on their Account page ("Email from the party", `GET
+/v1/me/email`) whether party email reaches their address, and the emails sent to them in the last 90 days (the last
+50): what each was (an election notice with the election's title, a test, a welcome, a sign-in or account email) and
+what their mail server did with it (delivered, delayed, bounced, marked as spam), never its content, and the page
+says plainly that whether they opened it is never known. They can ask for a test email to themselves (`POST
+/v1/me/email/test`), and after their address bounced for good or they marked an email as spam, which stops all mail to
+it, to try it again (`POST …/retry`): the worker takes it off SES's suppression list and the app's, then sends the
+test. One request at a time, three of each a day (409, 429), and neither while System Admins have members' test emails
+switched off (409; Admin › Email, §6.8), which the view says (`requestsEnabled`); queued in `mail_requests` (30 days)
+and done on the next tick, as `member_test` mail. `GET /v1/me` says whether the address can be mailed (`mail: {state, since}`), and while it
+cannot (bounced, or marked as spam) a banner on every page sends them to the Account page.
+
+**Membership Admins** see, in the Members table, which members cannot be emailed and why (an envelope beside the name,
+a filter "Can't be emailed (N)" and a column of the CSV), and the same on a member's profile (`GET
+/v1/admin/mail/members`, Membership Admin): an address that bounced for good or was marked as spam (while it is still
+the member's address), one never confirmed, or none; and *(added 2026-11-06)* one who unsubscribed or whose email an
+admin stopped. Never which emails or when: that stays the member's own.
+
+**Who gets no email** *(added 2026-11-06, the party's decision)*. All of the app's email goes through one gate,
+`Mailer.send`, which holds to three things:
+
+- **The site's switch** (`allEmails`, §6.8), off until a System Admin switches it on, so a new deployment emails nobody.
+  The setup check warns while it is off, and the election editor's card and workflow say so.
+- **Unsubscribing.** Every email carries, in its text and HTML, the member's own link, and in its headers
+  `List-Unsubscribe` and `List-Unsubscribe-Post: List-Unsubscribe=One-Click` (RFC 8058), so a mail client's own button
+  works. After it the member gets nothing from the worker: no election notice, reminder, vote confirmation, welcome,
+  test email or notification by email (§10.13). So they are not told by email if someone votes using their account, and the page and their Account page say
+  so before they choose. The link holds a random 32-byte token (`mail_preferences.token`), made the first time an email
+  goes to the account, never the account's ID, and all it can do is unsubscribe that account. It needs no sign-in and no
+  App Check (`@Public`), since a mail client has neither. A GET never changes anything, since mail scanners
+  open links by themselves: `/unsubscribe?token=…` is a page with an Unsubscribe button (the token in the query, since page
+  visits record the path, §10.7; not listed for search engines, §15), and `GET /v1/public/unsubscribe/{token}` redirects
+  there. `POST` to that address unsubscribes, as the page's button and mail clients do; a token that is no one's gets
+  404, and nothing the routes answer says whose a token is. Only the member can undo it, on their Account page (`POST
+  /v1/me/email/unsubscribe`, `…/resubscribe`), where they can also unsubscribe; no admin can.
+- **An admin's stop.** A Membership, System or Site Admin can stop email to a member, with a written reason, from the member's
+  profile or Admin › Email (`GET|POST /v1/admin/mail/stops`, by address or ID; `POST …/stops/{accountId}/restore`, either
+  role; 409 if already so; not their own, 403). Since it could cut a voter off from election notices, it is ledgered
+  (`member.email_stopped`, the admin, the member and the reason; Auditors only), and the member sees it on their Account
+  page and cannot undo it. It leaves their own unsubscribing, if any, standing. Admin › Email is open to Membership Admins
+  for this alone; its settings and the setup check stay System and Site Admins'.
+
+The election's counts show those members as skipped, never who they are. Identity Platform's emails (a sign-in link, a
+password reset, confirming an address) stay outside all three: a member asks for them themselves, Google sends them
+without the app, and without them they could not sign in. Neither a stop nor unsubscribing is kept once the account is
+deleted; adding the address again starts over.
+
+**A System Admin's test email** *(added 2026-11-06; recipient added 2026-11-07; members added 2026-11-07, the party's
+decision)*. Since email starts off, Admin › Email lets a System or Site Admin send a test to themselves, another System or
+Site Admin or a member, and no one else (`GET|POST /v1/admin/mail/test`, System or Site Admin; queued as an `admin_test` in `mail_requests`, ten a
+day, one at a time, 409 and 429 otherwise). A member here is anyone with a member record who is an applicant, Active,
+lapsed or suspended; someone who resigned or was rejected, or an account with no member record that holds neither System
+Admin nor Site Admin, is refused as `to` (403). The System and Site Admins are listed, each labelled with which it is;
+members are found by typing part of a name, or a whole email address (`GET /v1/admin/mail/test/recipients?q=`, System or
+Site Admin: System and Site Admins whose name or address holds the text, then members by name as the member search ranks
+them, at most ten, each with their address so the admin sees where it goes). It is the one thing that goes while all email is off, so they can see that email works
+before switching it on, and nobody but the one chosen gets anything. It needs a deployment that sends mail and a
+confirmed address, and does not go to anyone who unsubscribed or whose email an admin stopped. A member who is not a
+System or Site Admin gets it in their own words: what it is, that they need do nothing, and to mark it as not spam, without the
+link to Admin › Email. The card shows what became of it from its delivery report. "Check now" on the
+setup check is a different thing: its messages go to SES's simulator and reach nobody.
+
+**The email log** *(added 2026-11-08, the party's decision)*. System and Site Admins can see every email the site sent under
+Admin › Email › Email log (`GET /v1/admin/mail/log`): the records the worker already keeps of each message the mail
+service took (`mail_messages`, §6.8), this app's and Identity Platform's, newest first, fifty at a time. Each row says
+what the email was (and the election, for an election email), whom it went to (the account's name and the address it
+went to, *added 2026-11-09*; an email sent before then kept no address, so its row shows the address the account has
+now, said so), who caused it, when it was sent, and what its delivery reports said (delivered, delayed, bounced and
+how, marked as spam). *Who caused it* is the account that asked: the admin who wrote to members, resent a notice, added a
+member or asked for a test, or the member who asked for a test; `system` for what the worker sends by itself (a notice's
+first round, vote confirmations, the setup check's probe); none for Identity Platform's mail, which the member asked for
+themselves, nor for records made before the log. The exception is an added member's welcome sign-in link, which the
+adding admin's browser asked Identity Platform for and reported to the api *(added 2026-11-08)*: it is the admin's,
+named "Welcome to an added member (Identity Platform's sign-in link)", and where Identity Platform sends through
+Google's own mail rather than SES it shows "Sent by Identity Platform, no reports" (§5.13). The log is narrowed by recipient (a member found by name or an
+account by the start of its address), by who caused it, by kind, by status and by days, and a name in a row narrows it
+to that person. Days are the admin's own: the browser names its time zone (`tz`, an IANA name; UTC when none), and a day
+runs from midnight to midnight there *(added 2026-11-09)*.
+
+- **Metadata only.** The party chose to keep no email's words in it: the records hold no subject or body, as before;
+  an email to members keeps its words in its own record (`broadcasts`, below). The address each went to is kept since
+  2026-11-09, when the party asked to see it *(the party's decision then)*: it is personal data like the account's own
+  address, seen by the same admins, kept as long as the record and deleted with its account. An email the site did not send
+  (switched off, unsubscribed, stopped, no confirmed address) has no record and is not in the log; the election card,
+  the email to members and the member's own requests count those.
+- **Kept 180 days**, the records' own life (Firestore TTL), and deleted with their account (§4) or election (§6.1). Not
+  ledgered: it changes nothing.
+- **Daily counts** *(added 2026-11-09, asked by the party to keep track of email)*. Admin › Email › Daily counts shows how
+  many emails the site sent each of the last 7, 30 or 90 days, a column a day (`GET /v1/admin/mail/days`, counted by
+  Firestore, no record read), and for a chosen day (`GET /v1/admin/mail/day`): how many in all, to how many people and
+  addresses, by what became of them and by kind, and each person's count with the addresses theirs went to, what they
+  were and what became of them, the most first. An address no account has (Identity Platform's mail to it, the setup
+  check's to the simulator) is a line of its own. A day's breakdown reads at most 20,000 records and lists at most 1,000
+  people, saying so when it stops short; the day's total counts them all. "See them in the log" opens the log narrowed
+  to that person and day. Days are the admin's own, as in the log.
+- **Reading it.** Firestore reads the records by the most selective filter given (recipient, then who caused it, then
+  kind, then status) and the days; the rest are applied to what comes back. One page reads at most 1,000 records, so a
+  filter that matches little says when it stopped short and the next page goes further back.
+- **On a member's record** *(added 2026-11-08)*. Membership Admins, who write to members from the membership inbox
+  (§10.13), see one member's rows on that member's record (`GET /v1/admin/mail/log/members/{accountId}`, Membership and
+  System Admins): the same metadata, never the words.
+
+**An email to members** *(added 2026-11-07, the party's decision)*. Membership, System and Site Admins can write to members from
+Admin › Email, the Email Administration page (`/v1/admin/mail/broadcasts`, `preview`, `member-search`, `…/{id}/cancel`,
+`…/{id}/approve`, `…/{id}/reject`).
+
+- **To whom.** All Active members, Active members in chosen US states or countries, or members picked by hand (at most 500),
+  and among them only those who opted in to the newsletter or announcements (§5.2). *(Added 2026-11-12:)* or the
+  newsletter's confirmed subscribers (§10.15), alone or with all Active members. Never by other status. Members who
+  unsubscribed or whose email an admin stopped never get one, nor an address that bounced or was marked as spam, one never
+  confirmed, or none. The form shows, as the choice changes, how many it comes to and why the rest are left out.
+- **What.** A subject of one line and plain text, which the HTML escapes, with blank lines making paragraphs. Each email
+  greets the member by name, says why they get it, and ends with the contact for questions and their own unsubscribe link,
+  in the text, the HTML and the headers. No attachments, images, tracking or scheduling.
+- **When.** Refused (409, and the page says why) where this deployment sends no mail, all email is off, no contact is set,
+  nobody in the choice can get it, or another is still going out: one at a time. Sending asks first, with the count.
+  The worker works out who gets it when it starts (`status` preparing, then sending), and sends after any election email due,
+  up to 15 seconds a tick at SES's rate, through `Mailer`, so someone who stops email meanwhile is skipped. While all email
+  is off, the contact is removed or the setup check fails, what is left waits; "Stop sending" leaves the rest unsent for
+  good. Each copy is claimed in a transaction, so it never goes twice; one a worker claimed and never finished is failed as
+  `interrupted`, never sent again.
+- **The record.** Each send is ledgered (`notice.broadcast_requested`: the admin, the subject, a hash of the body, the
+  audience, how many; `notice.broadcast_cancelled`; Auditors only), never naming a member, since the ledger cannot be erased.
+  `broadcasts` keeps the words, and the page shows them with how many were sent, delivered, bounced and marked as spam,
+  never to whom. Each member sees their own copy among their emails on the Account page.
+- **Approval** *(added 2026-11-08, the party's decision; Site Admins too, 2026-11-08)*. A System or Site Admin can
+  switch on, under Settings ("Emails to members"; `broadcastApproval` in `notice_settings`, off by default, ledgered with
+  the other settings), that each email waits for a System or Site Admin's approval before it goes. Sending then asks for
+  approval instead (`status` `awaiting_approval`; the request ledgered with `approvalRequired`), and every System and
+  Site Admin but the one who wrote it is notified in the app (§10.13), and by email if they chose to have their
+  notifications so. Any of them may approve it, *the one who wrote it included* (the party chose this over the
+  two-person rule of §10.2, so a System or Site Admin alone can still send, with one more step); a Membership Admin's
+  email needs a System or Site Admin. Each sees it on the page with its words and how many it would go to now, and
+  approves it (`POST …/{id}/approve`, System or Site Admin; refused, 409, while it
+  could not go: email off, no contact, another going out) or rejects it with a reason (`POST …/{id}/reject`). Approved,
+  it goes out as any other (`preparing`); rejected, nobody gets it (`rejected`). Both are ledgered
+  (`notice.broadcast_approved`, `notice.broadcast_rejected` with the reason; Auditors only), whoever wrote it is notified
+  unless they decided it themselves, and the other System and Site Admins' notifications about it are marked read. While it waits
+  it counts as the one email at a time, and whoever can send emails may withdraw it ("Withdraw", ledgered as
+  `notice.broadcast_cancelled` with `beforeApproval`). It does not lapse; switching approval off leaves one already
+  waiting to be decided.
+
+### 10.13 Notifications and messages between members *(added 2026-11-08, the party's decisions)*
+
+A bell in the header of every page, for whoever is signed in with an account, counts their unread notifications and
+lists the latest; each leads to what it is about, and opening it marks it read. `/notifications` lists the last 30,
+newest first, with "Mark all read". Members can also write to each other, and to the party's membership team, which
+answers them in a shared inbox. All of it is the inbox context (`packages/domain/src/inbox`, `apps/server/src/inbox`).
+
+- **What notifies.** A member writing to them ("Ada Brooks sent you a message"); for Membership Admins, a member
+  reporting a message ("A member reported a message", leading to Admin › Forum); for System Admins, an email to members
+  waiting for their approval, and for whoever wrote it, the decision (§10.12); the membership team writing to a member,
+  and for Membership Admins a member writing to the team or a conversation given to them (below). One notification stands for one thing
+  (a conversation, the reports waiting): something more about it while it is unread adds to it ("3 new"), and after it
+  was read starts it afresh. `app_notifications/{id}`, the ID a hash of the kind, the thing and the account; kept 90
+  days after it last changed (Firestore TTL); never ledgered, since it only says where to look. The bell reads the
+  count every minute while the page is in view (`GET /v1/me/notifications/unread`).
+- **Messages.** Any Active member can write to any other Active member, one to one (`/messages`, and Messages in the
+  account menu and under the bell). Each pair has one conversation, `member_threads/{a}_{b}` (the two account IDs in
+  order), whichever writes first; its messages are `member_messages`, plain text of up to 2,000 characters. Only the two
+  read it (403 to anyone else, admins included). A member is found by name among the Active members. A sender, or a
+  recipient, who is not Active is refused (403), and a member who is no longer Active is shown as such and cannot be
+  written to. At most 100 messages a day, and 20 new people a day (429). Opening a conversation marks it read and its
+  notification with it. Messages are kept a year after they were sent, the conversation a year after its last
+  message (Firestore TTL). Not ledgered: they are members' private words.
+- **Blocking.** A member can block another from the conversation: the blocked member's messages are then refused with
+  the same answer as a member who cannot get messages, so they are not told they were blocked; the one who blocked
+  cannot write to them either until they unblock (`POST|DELETE /v1/messages/blocks/{accountId}`).
+- **Reporting.** The member a message was sent to can report it, once, with a reason (`POST
+  /v1/messages/reports/{messageId}`). The report keeps a copy of that one message, who wrote it and when
+  (`message_reports`, a year), and every Membership Admin but its writer is notified. They see the reported messages
+  in Admin › Forum, under the forum's own reports, never the rest of the conversation, and close each with a note of
+  what was done (`GET /v1/admin/message-reports`, `POST …/{reportId}/close`). Not ledgered, like the forum's reports.
+- **By email.** Each member chooses on their Account page ("Notifications by email"; `GET|PUT
+  /v1/me/notification-email`): not by email (the default), as each comes, once a day or once a week
+  (`inbox_preferences/{accountId}`). *As each comes* is one email for each new thing, and none more about it until it
+  is read; one not sent within a day is not sent. A *digest* lists what they have not read that changed since the last
+  one (at most 20, and how many more), at 13:00 UTC (8 or 9 in the morning Eastern Time), weekly on Mondays; with
+  nothing unread, none goes. Each email names what happened and links to it on the site (a message, to the Messages
+  page, since a conversation's own address names both accounts), never what a member wrote;
+  it says why it came and where to change that, and carries the member's unsubscribe link. The worker sends them, a
+  step of each tick after the election emails and admins' emails, for at most 10 seconds, through `Mailer`, so they go
+  only while all email is on (§6.8), never to a member who unsubscribed or whose email an admin stopped, nor to an
+  address that bounced, is unconfirmed or missing (§10.12); System Admins can switch them off on their own ("Other
+  emails": notifications by email). While they cannot go nothing waits: what came meanwhile is on the site, and an
+  email about it later would only be noise. Each is claimed before it is sent, so none goes twice. They are in the
+  email log (§10.12) as `notification` and `notification_digest`, caused by the site, and among the member's own
+  emails on their Account page. The Account card says when its choice will not reach them, and why.
+- **Who sees what.** Page visits (§10.7) count both pages like any other, but record a visit to a conversation as
+  `/messages` alone, and Google Analytics never loads on them, since a conversation's address names both accounts in
+  it. Both pages are behind sign-in and
+  `noindex` (§15). Deleting an account (§4) deletes its notifications, its preference, every conversation it was in
+  with all of its messages (the other member's included) and the other member's notifications about them, its blocks
+  either way, and the reports of its messages or by it.
+
+**The membership inbox** *(added 2026-11-08, the party's decisions)*. The Membership Admins are the party's *membership
+team*, and share one inbox of conversations between the team and each member, for one-off messages; an email to many
+members is still Email members, with its consent and approval (§10.12).
+
+- **Either side starts one.** A Membership Admin writes to a member from Admin › Membership inbox ("Write to a member",
+  any Active member found by name) or from the member's record ("Write to this member", whatever their status). A
+  member writes to the team from their Messages page ("Write to the membership team"), whatever their status, an
+  applicant or a lapsed member included: any account with a member record. Each conversation has a subject and is with
+  one member (`membership_threads/{random}`, `membership_messages/{random}`, plain text of up to 5,000 characters).
+- **What the member sees.** Their conversations with the team, under Messages (`/messages/team/{threadId}`); the team's
+  messages are signed by the membership team, never by the admin who wrote them, and the team's notes are not there.
+  Opening one marks it read, and the team sees when. Nobody else's is there: another account's is a 404.
+- **What the team sees.** Every conversation, the latest written to first, fifty at a time: those that need an answer
+  (the member wrote last), answered (the team did), closed, or all; anyone's, the caller's or nobody's. A conversation
+  (`/admin/inbox/{threadId}`) shows each message with which Membership Admin wrote it, whether its email went and why
+  not, and whether the member has read it since. The team answers, answers and closes, or adds a **note** only the team
+  sees, which changes nothing else. It **gives** a conversation to one Membership Admin, who is told, or back to the
+  whole team; and closes one, or opens it again. A member's next message opens a closed one again. A member's record
+  lists their conversations and the emails the site sent them (§10.12).
+- **Who is told.** A member writing notifies whoever has the conversation, or else every Membership Admin but the member
+  themselves; an answer or closing marks every Membership Admin's notification about it read. The team writing notifies
+  the member.
+- **By email, as membership business** (the party's decision). Whatever the team writes to a member (not a note) is
+  emailed to them, with its words, a link to answer on the site, and why it came: whether or not they chose news and
+  announcements, but through `Mailer` (§10.12), so never while all email is off, nor to a member who unsubscribed or
+  whose email an admin stopped, nor to an address that bounced, is unconfirmed or missing. The worker sends them, a step
+  of each tick after notifications by email, for at most 10 seconds, each claimed first so none goes twice; one the mail
+  service did not take is tried again for a day. What happened is kept on the message for the team, and the
+  conversation warns before anyone writes when email would not reach the member now. Nothing waits for email to be
+  switched on: the member has it on the site. The email is in the email log as `membership_message`, caused by the admin
+  who wrote it; and since the message is itself emailed, its notification is not emailed again as it comes (a digest
+  still lists it while unread). Replies to the email are not read: the member answers on the site.
+- **Limits.** A member starts at most 3 conversations and writes at most 20 messages to the team a day; a Membership
+  Admin starts at most 50 conversations a day; a conversation holds at most 200 messages and notes (429, 409).
+- **Kept two years** after the conversation's last message (the party's decision; Firestore TTL, each new message
+  moving its earlier ones' time on too), and deleted with the member's account (§4) with the team's notifications
+  about it; what a deleted Membership Admin wrote stays in the members' conversations. Not ledgered: the conversation
+  is its own record, and its emails are in the email log.
+
+### 10.14 The weekly digest *(added 2026-11-10)*
+
+Members who do not open the site still hear what is new on it: once a week the worker writes one email saying what has
+happened since the last one, and sends it as an email to members is sent (§10.12).
+
+- **What it holds.** The votes open now (never a rehearsal, soonest to close first), the news posts published since
+  the last digest, and the courses published or published again with changes. At most eight of each, with where the
+  rest are. Plain text, each item on a line with its address. A week with nothing new sends nothing.
+- **When.** Mondays at 13:00 UTC, as members' own weekly notification digests (§10.13). `mail_digest/weekly` holds when
+  the next is due and when the last was looked at, which is what the next one covers from; the due time moves on in a
+  transaction before anything is gathered, so overlapping ticks queue one. The first time it only sets the due time:
+  a first digest covers from when it was switched on, not everything before.
+- **Who gets it.** The Active members who opted in to party email, like any email to members: never someone who
+  unsubscribed or whose email an admin stopped, and it carries the unsubscribe link.
+- **It is an email to members.** The worker queues it as a `broadcasts` record written by `system`, ledgered as
+  `notice.broadcast_requested`, and the broadcast sender takes it from there: the same gate, the same record of who got
+  it under Admin › Email (shown as written by the weekly digest), the same one-at-a-time rule (a week's digest gives way
+  to an email an admin wrote that is still going out), and **the same approval**: while System Admins have approval
+  switched on, each digest waits for one of them.
+- **Off until switched on.** Admin › Email › Settings has a Weekly digest switch, off by default. It also needs all
+  email on, a contact for questions and the site's address, as every email does.
+
+### 10.15 The newsletter *(added 2026-11-12, the party's decisions)*
+
+People not ready to join can still hear from the party: the public **Newsletter** page (`/newsletter`, linked from the
+News pages for anyone who is not an Active member, from the Register page's first step, and in the sitemap) takes an
+email address and, if they like, a name to be greeted by.
+
+- **Double opt-in** *(the party's choice)*. Signing up puts nobody on the list. The worker emails a link to confirm
+  (`newsletter_confirm` mail), whose token it makes as it sends and keeps only as a SHA-256 hash; the link opens
+  `/newsletter/confirm?token=…` (the token in the query, since page visits record the path; not listed for search
+  engines), where a GET changes nothing, since mail scanners open links by themselves, and the page's Confirm button
+  confirms (`POST /v1/public/newsletter/confirm/{token}`). Only the latest link works. A sign-up never confirmed is
+  deleted `NEWSLETTER_PENDING_DAYS` (7) after it was last asked for, by a Firestore TTL policy on `expireAt`.
+- **Saying nothing.** `POST /v1/public/newsletter` answers 202 whatever became of it, so the form never tells whether an
+  address is on the list: a confirmed address gets nothing more, and one waiting gets another link only an hour after
+  the last was asked for. A form filler's sign-up (the hidden field filled) is dropped. Each network address may sign up
+  5 times a UTC day, and everyone 500 (429), counted as the suggestions form's are, under a salted hash kept only for
+  that day (`newsletter_limits`, deleted the day after next). Signing up sends App Check where it is enforced.
+- **Only while email can go.** The form takes sign-ups only where this deployment sends mail, all email is on and a
+  contact for questions is set (`GET /v1/public/newsletter` says whether; 409 otherwise), so no confirmation waits for
+  days.
+- **A list of its own, the same senders** *(the party's choice)*. Membership, System and Site Admins write to it from
+  Admin › Email › Email members, choosing **Newsletter subscribers only**, or **All Active members** with **And the
+  newsletter's subscribers** ticked (`subscribers`, `withSubscribers` in the audience). The rest is as for an email to
+  members (§10.12): the same approval switch, one at a time, the ledger entry (with how many subscribers, never who),
+  the gate of all the site's email, the log. Each address gets one copy: a subscriber whose address is a member's who
+  gets it as a member is left out, and so is one whose address is an account's that unsubscribed or whose email an admin
+  stopped (their choice as a member holds), and one that bounced or was marked as spam; the form's count says how many of
+  each. A subscriber's copy (`newsletter` mail, `broadcast_recipients/{broadcastId}_s-{subscriberId}`) greets them by the
+  name they gave, says they get it because they signed up at the site and confirmed, and carries their own unsubscribe
+  link in its text, HTML and headers (RFC 8058). **Subscribers get nothing else**: no weekly digest, no election email.
+- **Leaving deletes the address.** A newsletter's unsubscribe link is the members' kind (`/unsubscribe?token=…`,
+  `GET|POST /v1/public/unsubscribe/{token}`), which says when it is a subscriber's (`newsletter: true`); unsubscribing
+  deletes the record, address and all, so the link stops working. Admin › Email › **Newsletter** shows Membership,
+  System and Site Admins how many are on the list, joined in the last 30 days and wait to confirm, and finds one whole
+  address at a time (`POST /v1/admin/newsletter/lookup`) to take it off (`…/remove`) for someone who writes in; never
+  the list itself.
+- **Not ledgered**: an address must be erasable. The copies' records and the email log keep the address as long as
+  every email's are (§10.12).
+
+### 10.17 Events, partners and the course embed *(added 2026-11-12, the user's decisions)*
+
+*(Group f of the user's plan to draw people to the site: a public Events page for candidate Q&As, debate nights and
+events co-hosted with partner groups, and a Partners page offering allied groups the party's courses for their own
+sites. The user chose, 2026-11-12: Communications Admins keep both, one publishing alone as with news; each event says
+how the public attends, at an outside link, at a place, or in the members' room for Active members only; recordings
+are YouTube videos or uploads, as everywhere else (§10.10); a group is named in public only once its consent is
+recorded; and the embed is an `<iframe>` snippet, with the public course api (§10.8) for groups that build their own.)*
+The site carries no audience of its own: the members' room's call is peer to peer and for Active members (§5.10), so a
+public event is a stream or a meeting elsewhere, or a place, and the site holds what is needed to find it, come to it
+and watch it afterwards. `ustp-domain` (`communications/events.ts`, `partners.ts`, `course-embed.ts`) holds the rules;
+the api's communications context owns the collections (`events.repository`).
+
+- **Events** (`events`). Five kinds: candidate Q&A, debate night, talk, meetup, other. An event has a title (140), a
+  summary (300; the list's text, its page's description, and what share buttons, link previews and calendars carry), an
+  optional text written as a news post is (10,000, `news-body.ts`), its start and end (kept in UTC, the end after the
+  start and at most 14 days on) and its own time zone (any IANA zone; the editor offers the US zones, UTC, London and
+  Berlin, and Eastern to start), which its card and calendars use and in which the editor takes its times, whatever the
+  admin's own zone. It is attended one of three ways: **online** at a link (an `https://` address of a stream or a
+  meeting, with what it is, "YouTube Live"; required), **in person** at a place (its name, required, and address), with
+  a link to watch online if it is streamed too, or **in the members' room**, the room's call for Active members, with
+  neither link nor place. It may name up to eight speakers, a line each, up to five co-hosts from the partners list
+  (400 for any other), up to five hashtags, and its recording (§10.10). Drafts are private; the address
+  (`/events/{slug}`) may change until it is first published and is fixed after, so links and calendars keep working.
+  **Publishing** needs a summary, is public at once, and is ledgered (`event.published`); changing an event the public
+  can see is ledgered with the fields that changed (`event.changed`) and its page says "updated"; **cancelling** one
+  that has not ended takes its link off, and its page and every calendar holding it say it is cancelled
+  (`event.cancelled`); it can be published again. An event that took place is not cancelled, it is changed. An event
+  that was ever published is never deleted; a draft that never was can be. Edits are saved from the version they were
+  made from (409 if stale).
+- **The Events page** (`/events`) lists what has not ended, soonest first, those on now marked "On now" and cancelled
+  ones marked until their time has passed, then what took place, newest first (the last 100), each with "Recording"
+  when it has one. **An event's page** (`/events/{slug}`) gives when it is in its own zone, and in the viewer's when that
+  differs; where it is (a place with a plain link to a Google Maps search, never a map loaded here); the way in, until
+  it is over: the outside link, opened in a new tab, or for a members' room event a button to the room for Active
+  members and to Register for everyone else; Add to calendar; the speakers, the co-hosts that are listed, the text, the
+  recording (a YouTube one plays only once pressed, §10.10), and share buttons, each press counted as `event-{slug}`
+  (§10.9). The link to join is in the api's answer only until the event is over or cancelled. Its link preview and card
+  (§15) say what kind of event it is, when (in its own zone), where, and who speaks or co-hosts, "Recording" or "Past
+  event" once it is over and "Cancelled" once cancelled.
+- **Calendars.** Each event's file, `GET /v1/public/events/{slug}/calendar.ics` (RFC 5545, `inline` so a phone offers to
+  add it): its ID as UID, its version as SEQUENCE, so a calendar that holds it takes each change, CONFIRMED or CANCELLED,
+  the place and address, the link, or the room as LOCATION, and the summary, the way in and the page as DESCRIPTION.
+  The calendar to subscribe to, `GET /v1/public/events/calendar.ics`, holds every published or cancelled event not yet
+  over or over in the last 90 days, named after the hub ("… events") and refreshed every six hours; the Events page
+  offers it as a `webcal://` link, to Google Calendar (by its `cid`), and to copy. Google Calendar and Outlook.com are
+  also offered for one event as plain links to their own forms with the event filled in, as share buttons are: nothing
+  of theirs loads here, and nothing is saved until the person saves it there. Drafts are in no calendar.
+- **Partners** (`partners`): the allied groups the party co-hosts events with and offers its courses to, kept by
+  Communications Admins: a name, what the group does (600; in its own words, if it gave some), its site, and notes for
+  the team (2,000, never shown in public). A group is **named in public only once its consent is recorded**: who at the
+  group agreed and as what ("Jo Smith, chair"), how ("by email, 10 November"), with the admin and the time, the admin
+  ticking that the group agreed. It is then on the Partners page and named on the events it co-hosts; **stop listing
+  it** clears the consent and takes it off both at once, as for a group that asks; listing it again needs consent
+  recorded again. Until then an event may still name it as a co-host, privately: its page names only listed groups.
+  Removing a group from the list leaves its ID on the events it co-hosted, naming no one. Every change is ledgered
+  (`partner.changed`: added, updated with its fields, consent recorded, consent withdrawn, removed), but a change to the
+  team's notes alone, which is not something the party says.
+- **The Partners page** (`/partners`) lists the listed groups by name, each with when it became a partner, its site and
+  the events it co-hosts, coming and past; then the course embed, with a course picker, the snippet to copy, a preview
+  and its height; then the public course api for groups that build their own, each portrait to keep its credit and
+  licence; then how to become a partner, through the suggestions form with "Events and outreach" chosen
+  (`/suggest?topic=events`).
+- **The course embed** (`/embed/courses`, `/embed/course/{courseId}`; Firebase Hosting rewrites `/embed/**` to the api)
+  is a page of its own, not the web app: no sign-in, no cookies, no analytics, and nothing read but the published course
+  it shows (or the published courses of the map, each opening in the frame), given in the page as JSON in a data block
+  (every `<` escaped) that one small script draws as text nodes, never as markup. A course's embed has its lessons
+  (each opened in turn, with its video and text), their quizzes checked in the page from the course file's answers,
+  with the explanations and the pass mark (80%), and the futurist profiles with their portraits and credits; its links
+  leave the frame (a new tab), the course's own page here among them, where the certificate is earned. Its
+  Content-Security-Policy names that one script and style by their hashes and allows only this site's videos, https
+  images (the portraits, uploaded here or open-licence images elsewhere, as the course page shows them), YouTube's
+  privacy-enhanced player once a viewer presses play, no forms and no other requests; it says `frame-ancestors *`, the
+  one page any site may frame (every other page says `'none'`, §14). Firebase Hosting gives the pages it rewrites to
+  the api its own header rules too, in place of the api's (the first release served the embed with the site's
+  `frame-ancestors 'none'`), so `firebase.json` has an `/embed/**` rule after the site's with the embed's policy, which
+  a test keeps equal to the api's (`EMBED_HEADERS`). It is cached five minutes and says `noindex`; a
+  course that is not published is a page saying so, with 404. The snippet (`courseEmbedSnippet`) is an `<iframe>` 720
+  pixels tall that scrolls inside, allowing fullscreen and autoplay for the videos, titled with the course's title.
+- **Ledger.** `event.published`, `event.changed`, `event.cancelled` and `partner.changed`, each with the Communications
+  Admin as actor, in the transaction that makes the change; for Auditors only, like the rest of §10.9. Drafts are not.
+- **Not yet.** Partners' logos; RSVPs, reminders or emails about events (the weekly digest, §10.14, could list them);
+  a menu link: the menu's links are System Admins' stored settings (§10.5), so the pages are linked from the row of
+  links on News, Press and the suggestions form, and a hub link is the admins' to add (§10.6); captions for recordings.
+
 ## 11. Data model (Firestore `(default)` database)
 
 Firestore Native mode has no namespaces. The spec's two namespaces are **module boundaries in code**: each bounded
@@ -4039,16 +5322,18 @@ Physically, registration collections are top-level and election data lives under
 | Path | Key | Mutability | Notes |
 |---|---|---|---|
 | **registration** | | | |
-| `accounts/{accountId}` | UUIDv7 | mutable; deleted only as §4 says | display name, primary email, state; `preferences` (the daily quote and joke, §4.1) |
+| `accounts/{accountId}` | UUIDv7 | mutable; deleted only as §4 says | display name, primary email, state; `preferences` (the daily quote and joke, §4.1); for a member a Membership Admin added, `addedAt`, `addedBy` and `claimedAt` (null until their first sign-in, §5.13) |
 | `account_identities/{uid}` | Identity Platform uid | create/delete | → `accountId`, provider, linkedAt |
 | `account_factors/{accountId}/factors/{factorId}` | | mutable | mirror of MFA enrollment, no secrets |
 | `sign_in_methods/{method}` | provider ID | mutable | enabled flag (auth switches) |
 | `mfa_policy/current` | `current` | replaced whole, by one System Admin | membersRequired (off by default), version, updatedAt, updatedBy (§4) *(added)* |
-| `members/{accountId}` | accountId | mutable | current status, legal and preferred name, state/district, city + ZIP + phone, email consents, the two membership answers (`usVoteEligible`, giving the class, and `agreesWithCoreIdeals`), bylaws version, memberSince; details change only as §5.2 says |
+| `members/{accountId}` | accountId | mutable | current status, legal and preferred name, country (absent: the US), state (US) or region (elsewhere), city + ZIP code or postcode + phone, email consents, the two membership answers (`usVoteEligible`, giving the class, and `agreesWithCoreIdeals`), bylaws version, memberSince; details change only as §5.2 says |
 | `member_status_history/{id}` | auto | append-only | from, to, reason, actor, ledger seq |
-| `applications/{applicationId}` | auto | status only | answers (incl. date of birth, attestations and the two membership questions, §5.2), bylaws version + hash, registration form version |
+| `applications/{applicationId}` | auto | status only | answers (incl. date of birth, attestations and the two membership questions, §5.2), bylaws version + hash, registration form version, and whose referral link the applicant came by (`referredBy`, §5.18) |
 | `registration_form/current` | `current` | replaced whole, by one Membership Admin | the registration form's wording: the page's heading, intro, both questions and their help, Core Ideals heading and list, bonus link, version, updatedAt, updatedBy (§5.2) *(added)* |
 | `registration_form_versions/{version}` | version | immutable | each saved version of that wording (§5.2) *(added)* |
+| `first_steps/current` | `current` | replaced whole, by one Membership Admin | the getting started list: each step's id, words, explanation, link and how it is ticked, in order; version, updatedAt, updatedBy (§5.16) *(added 2026-11-12)* |
+| `first_step_ticks/{accountId}` | accountId | replaced whole, by the member | the ids of the steps on that list the member ticked themselves, updatedAt (§5.16) *(added 2026-11-12)* |
 | `bylaws_versions/{version}` | version | immutable | text, content hash *(added)*; `adoptedIn` when an election's amendments gave it (§6.6) |
 | `bylaws_checks/{checkId}` | UUIDv7 | queued → running → done / failed | draft text and hash, scope and changed lines, requester, findings, references used, model, token usage (§5.4) *(added)* |
 | `bylaws_check_references/{id}` | reference ID | replaced daily | cached text of a party page, URL, read and modified times, SHA-256 (§5.4) *(added)* |
@@ -4056,12 +5341,20 @@ Physically, registration collections are top-level and election data lives under
 | `photo_checks/{checkId}` | auto | immutable | Vision signals, verdict |
 | `positions/{positionId}` | slug | Membership or Election Admin, at once | title, description, seats, term months, approval if any (§6.4) |
 | `area_contacts/{contactId}` | UUIDv7 | a Communications Admin | an office holder or candidate the Your area page lists besides public records: role, office and title, the Census district, name, party, email, contact form, website, election day, version (§5.12) |
+| `race_records/{state}` · `race_records/US` | the state's code, or `US` for the presidency | the api, as it reads the public records | what the public records said about a state's federal races (or the presidency's), for every api instance to share: the election year, when they were read and are read again, the people (as the Your area page lists them, without profiles), the seats not up, each record's state, and the IDs of the people with a page of their own; public records only, overwritten (§5.17) |
 | `email_templates/current` | fixed | a Membership or Communications Admin | the emails members send from the Your area page, in the order they are offered: each template's ID, name, offices, audience, subject, body with its placeholders and version; absent until first changed, when the ready-made ones apply (§5.12) |
 | `candidacies/{candidacyId}` | UUIDv7 | the member (declare, change, withdraw), a Membership Admin (decide, take down) | status, the published and the proposed version (office, ballot title, the Census district with its point and vintage, election day and kind, ballot label, platform, website), the decline note, `public`, version (§5.8) |
 | `position_terms/{termId}` | auto | created by certification or an approved appointment; ended two-person | holder, `basis` (election or appointment), contest and results hash or the appointment's approval and reason, start/end, status |
 | `teams/{teamId}` | slug | saved whole from the version edited (a lead: all but the name); archived, never deleted | name, description, join policy, join question, size limit, members' link, colour, symbol, archived, version, created and updated by and at (§5.7) *(added)* |
 | `team_members/{teamId}_{accountId}` | team and account | created, role changed, deleted | role (`lead`/`member`), joinedAt, addedBy (§5.7) *(added)* |
 | `team_requests/{teamId}_{accountId}` | team and account | pending → approved / declined / withdrawn; replaced by the next request | message, the team's question and the answer, askedAt, decidedAt, decidedBy, note (§5.7) *(added)* |
+| `referral_codes/{code}` | the code | made once; deleted with its account | whose referral link it is, when it was made (§5.18) *(added 2026-11-12)* |
+| `referral_links/{accountId}` | account ID | made once; deleted with its account | the member's code (§5.18) *(added 2026-11-12)* |
+| `bill_settings/current` | `current` | replaced whole, by one System Admin | teamIds (the teams that have the Bills tool), version, updatedAt, updatedBy (§5.14) *(added)* |
+| `bill_watch/{congress}-{type}-{number}` | the bill | mutable; deleted with its notes | the shared watchlist: the bill's number, title, sponsor, status, latest action as last read and checkedAt, tags, addedAt, addedBy, updatedAt, updatedBy, version (§5.14) *(added)* |
+| `bill_notes/{noteId}` | UUIDv7 | edited or deleted by its author; deleted by a System Admin or with its bill | billId, text, author, createdAt, editedAt (§5.14) *(added)* |
+| `bill_public/{congress}-{type}-{number}` | the bill | the team's fields replaced whole from the version edited; the copied fields written by the worker alone; deleted when taken off | the public Legislation page's bill: topic, summary, positions by roll call ID, a copy of Congress.gov's title, sponsor, cosponsors, introduced date, policy area, status, laws, latest action, newest 25 actions, newest CRS summary and roll calls, checkedAt, nextCheckAt, refreshFailedAt, publishedAt/By, updatedAt/By, version (§5.14) *(added)* |
+| `bill_roll_calls/{chamber}-{congress}-{session}-{roll}` | the roll call | written once when read; deleted with the last public bill that has it | chamber, congress, session, roll, date, question, result, votes (memberId, name, party, state, district, vote), sourceUrl, fetchedAt (§5.14) *(added)* |
 | `forum_posts/{postId}` | UUIDv7 | edited by its author; removed/restored, locked, pinned by Membership Admins; deleted by its author (title and text erased) | kind (`discussion`/`proposal`), title, body, authorId, up, down, score, hot, comments, lastCommentAt, pinned, lock, state, removal, feeds (the lists it is in), ballots it was put on (§5.9) *(added)* |
 | `forum_comments/{commentId}` | UUIDv7 | edited or deleted by its author; removed/restored by Membership Admins | postId, parentId, depth, body, authorId, up, down, score, state, removal (§5.9) *(added)* |
 | `forum_votes/{kind}_{targetId}_{accountId}` | target and account | set, changed, deleted | targetKind, targetId, postId, accountId, value (±1), at; never shown to anyone but the voter (§5.9) *(added)* |
@@ -4080,7 +5373,7 @@ Physically, registration collections are top-level and election data lives under
 | `elections/{electionId}` | UUIDv7 | state transitions; deleted with everything under it if cancelled with no ballot cast (§6.1) | definition, definitionHash, seed commitment, k; `amendsBylaws` once scheduled (§6.6) |
 | `elections/{id}/contests/{contestId}` | slug | frozen at schedule | contest spec (`ustp-tally` type) |
 | `elections/{id}/candidates/{candidateId}` | slug | frozen at schedule | contestId, display data, optional accountId (an Active member's when added, §6.5) |
-| `elections/{id}/roll_entries/{accountId}` | accountId | immutable | snapshotId |
+| `elections/{id}/roll_entries/{accountId}` | accountId | not written: the roll is its snapshot's `accountIds` (§6.3, §17) | snapshotId |
 | `elections/{id}/participation/{accountId}` | accountId | create-only | castAt; open mode: parts |
 | `elections/{id}/ballot_pool/{randomId}` | random | create, delete by sealer | ciphertext only |
 | `elections/{id}/sealed_blocks/{index}` | zero-padded integer | immutable | parts by contest, Merkle root, `sealedHash`, sorted commitments, ledger seq |
@@ -4091,12 +5384,31 @@ Physically, registration collections are top-level and election data lives under
 | `consistency_documents/{electionId}` | election | set by an Election Admin while the election is a draft; absent means all four; deleted with its election | the documents the election's consistency checks compare with, updatedAt, updatedBy (§5.5) *(added)* |
 | `election_checks/{checkId}` | UUIDv7 | queued → running → done / failed; deleted with its election | election, requester, what was compared (`basis`: definition hash, bylaws version and hash, offices hash), findings, quoted bylaws lines, summary, model, token usage (§6.9) *(added)* |
 | **notifications** | | | |
-| `notices/{electionId}_{kind}` | election and kind (`voting_open`, `closing_soon`) | preparing → sending → done, a round at a time; deleted with its election | delivery (`mail`/`outbox`), rehearsal, number of recipients, round, who started the round (§6.8) *(added)* |
-| `notices/{id}/recipients/{accountId}` | accountId | status per send | pending → sending → sent / failed / bounced, or skipped; round, attempts, claim time, provider message ID, outcome code; never the address *(added)* |
-| `notice_settings/current` | — | saved whole, versioned | the System Admins' settings for the election emails: each on or off, reminder lead time, contact, subject and opening (§6.8) *(added)* |
+| `notices/{electionId}_{kind}` | election and kind (`voting_open`, `closing_soon`, `voted`) | preparing → sending → done, a round at a time (vote confirmations: sending from the first ballot until a look after the close); deleted with its election | delivery (`mail`/`outbox`), rehearsal, number of recipients, round, who started the round (§6.8) *(added)* |
+| `notices/{id}/recipients/{accountId}` | accountId | status per send | pending → sending → sent → delivered / complained / bounced, or failed / skipped; round, attempts, claim time, provider message ID, outcome code; never the address *(added)* |
+| `notice_settings/current` | — | saved whole, versioned | the System Admins' settings for the election emails: each on or off, reminder lead time, contact, subject and opening; and the welcome and test emails each on or off (§6.8) *(added)* |
 | `notice_outbox/{id}` | auto | create; deleted with its election | a message recorded instead of mailed: emulators, and rehearsals in testing mode (§6.8) *(added)* |
 | `notice_receipts/{receiptId}` | auto | create; deleted with its election | one per send of election email, to the roll or a test: election, kind, test or not, notice and round, delivery, who started it, when, people handled, accepted / failed / skipped, the mail service's message IDs; never an address or a body (§6.8) *(added)* |
-| `notice_tests/{testId}` | auto | pending → sending → done; deleted with its election | an Election Admin's test email to themselves: kind, who asked, the account it goes to (theirs), when, outcome code, receipt; never the address (§6.8) *(added)* |
+| `welcome_emails/{accountId}` | accountId | pending → sending → done; started over when asked again; deleted with the account | the latest welcome email to a member a Membership Admin added, where mail is sent: who asked, when, outcome code, provider message ID; never the address (§5.13) *(added)* |
+| `notice_verifications/{receiptId}` | the send's receipt | pending → ok / short, once, 30 minutes after the send; deleted with its election | each send to a roll checked against its delivery reports: election, kind, notice, round, when it finished and is due, messages, delivered, marked as spam, delayed, bounced, rejected, no report; never who (§6.8) *(added)* |
+| `notice_tests/{testId}` | auto | pending → sending → done; deleted with its election | an Election Admin's test email to themselves: kind, who asked, the account it goes to (theirs), when, outcome code, receipt, what SES reported of it; never the address (§6.8) *(added)* |
+| `mail_messages/{messageId}` | SES message ID | its status moves on with each delivery report; TTL 180 days after sending; deleted with its account or election | each message SES took: account, kind, what it belongs to, election, sender (`app` or `identity_platform`), who caused it (an account, `system`, or null for Identity Platform's and older records; §10.12), delivery, status (sent / delayed / delivered / bounced / complained / rejected), when each happened, bounce type and subtype, whether it counts toward the rates, the address it went to (since 2026-11-09, §10.12); never the subject or body (§6.8) *(added)* |
+| `mail_suppressions/{addressKey}` | SHA-256 of the address | create, renewed by each report; TTL a year after the last; deleted with the account it was found through | an address not to mail: bounced for good or marked as spam, since when, the message that started it, the account if known; never the address (§6.8) *(added)* |
+| `mail_requests/{requestId}` | auto | pending → sending → done; TTL 30 days; deleted with its account | a member's request for a test email to themselves, or to try their address again, or a System Admin's test: kind, when, outcome code, the message's ID; never the address (§10.12) *(added)* |
+| `broadcasts/{broadcastId}` | auto | (awaiting_approval →) preparing → sending → done, or cancelled, or rejected | an email an admin wrote to members: subject, body, the audience, who it came to when prepared, by whom and when, and with approval switched on who approved or rejected it, when and why (§10.12) *(added 2026-11-07; approval 2026-11-08)* |
+| `broadcast_recipients/{broadcastId}_{accountId}` | composite | pending → sending → sent, skipped or failed; TTL 180 days; deleted with its account | one member's copy: status, outcome code, the message's ID; never the address (§10.12) *(added 2026-11-07)*; a newsletter subscriber's is `…_s-{subscriberId}`, with `subscriberId` and no account (§10.15) *(added 2026-11-12)* |
+| `newsletter_subscribers/{subscriberId}` | UUIDv7 | pending (TTL 7 days after it was last asked for) → confirmed; deleted when its owner unsubscribes or an admin takes it off | an address on the newsletter's list: the address and its key, the name given, when signed up, asked for and confirmed, whether a confirmation waits, the hash of the latest confirmation link's token, the unsubscribe link's token (§10.15) *(added 2026-11-12)* |
+| `newsletter_limits/{YYYY-MM-DD}` | UTC day | counters; deleted the day after next | a random salt, the day's total, a count per hashed sender; no address (§10.15) *(added 2026-11-12)* |
+| `app_notifications/{id}` | hash of kind, thing and account | unread → read; another event adds to an unread one; TTL 90 days after it last changed; deleted with its account | one account's notification: kind (`message`, `message_report`, `broadcast_approval`, `broadcast_decided`, the membership team's, and an application's: `application_received`, `application_approved`, `application_rejected`, `application_waiting`, §5.2), one line, the path it leads to, what it is about, how many times, read, more to say in its own email for the kinds always emailed, whether the email step has looked at it and when it went by email (§10.13) *(added 2026-11-08)* |
+| `inbox_preferences/{accountId}` | account ID | changed by the member; deleted with the account | how they have notifications by email (off, each, daily, weekly), when the next digest is due and when the last went (§10.13) *(added 2026-11-08)* |
+| `member_threads/{a}_{b}` | the two account IDs in order | written with each message; TTL a year after the last; deleted with either account | a conversation between two members: who started it, its last message's start and time, each one's unread count (§10.13) *(added 2026-11-08)* |
+| `member_messages/{messageId}` | random | written once (marked when reported); TTL a year; deleted with either account | one message: conversation, from, to, plain text, when, whether its recipient reported it (§10.13) *(added 2026-11-08)* |
+| `member_blocks/{blocker}_{blocked}` | the two account IDs | made and deleted by the one who blocked; deleted with either account | one member gets no messages from another (§10.13) *(added 2026-11-08)* |
+| `message_reports/{reportId}` | random | open → closed with a note; TTL a year; deleted with either account | a reported message: a copy of it, who wrote it, who reported it and why, who closed it (§10.13) *(added 2026-11-08)* |
+| `membership_threads/{threadId}` | random | written with each message, status change and assignment; TTL two years after the last message; deleted with the member's account | a conversation between the membership team and one member: subject, status (open, answered, closed), who has it, who started it, its last message's start and time, the member's unread count and when they last read it (§10.13) *(added 2026-11-08)* |
+| `membership_messages/{messageId}` | random | written once (its email's outcome added); TTL with its conversation; deleted with the member's account | one message or note: who wrote it for which side, plain text, when, and for a team message whether its email went and why not (§10.13) *(added 2026-11-08)* |
+| `mail_preferences/{accountId}` | accountId | made with the account's first email, unsubscribing or stop; deleted with its account | the unsubscribe link's token, when the member unsubscribed, and when and by which admin their email was stopped (§10.12) *(added 2026-11-06)* |
+| `mail_health/{current\|request\|run}` | fixed | replaced by each run | the email setup check's last run (each check's status, detail and fix, the probe), a System Admin's request for a run, and the claim on a run (§10.12) *(added)* |
 | **audit & admin** | | | |
 | `audit_events/{seq}` | zero-padded integer | append-only | ledger entries |
 | `ledger_head/main` | — | updated per append | seq, hash *(added)* |
@@ -4105,9 +5417,9 @@ Physically, registration collections are top-level and election data lives under
 | `signing_keys/{keyId}` | hash of key version | immutable | key version, public key PEM *(added)* |
 | `role_assignments/{accountId}_{role}` | composite | grant/revoke | grantedBy (approvedBy, approvalId only for two-person grants made before §10.2's change) |
 | `approval_requests/{id}` | auto | status only; pending ones go with a deleted election | two-person requests *(added)* |
-| `testing_personas/{accountId}` | accountId | immutable | kind, label, number, createdBy; testing mode only (§10.4) *(added)* |
+| `testing_personas/{accountId}` | accountId | immutable; a voter's deleted with its account (§10.4) | kind, label, number, createdBy; testing mode only (§10.4) *(added)* |
 | `anthropic_key/current` | `current` | replaced by each key a System Admin adds; deleted when the key is removed | who added the key in use and when, its Secret Manager version and last four characters; never the key, which only Secret Manager holds (§5.6) *(added)* |
-| `api_keys/{name}` | `fec`, `openstates`, `civic` | replaced by each key a System Admin adds; deleted when it is removed | the same for a public-records service's key added in the app; never the key (§5.6) *(added)* |
+| `api_keys/{name}` | `fec`, `openstates`, `civic`, `congress` | replaced by each key a System Admin adds; deleted when it is removed | the same for a public-records service's key added in the app; never the key (§5.6) *(added)* |
 | `navigation/current` | `current` | replaced whole, by one System Admin | menu links and admin sections per membership state and role, start pages, version, updatedAt, updatedBy (§10.5) *(added)* |
 | `home_quote/current` | `current` | replaced whole, by one System Admin | the voting home's quote: shown, text, attribution, source, version, updatedAt, updatedBy (§10.5) *(added)* |
 | `hub/current` | `current` | replaced whole, by one System Admin | the link hub: profile, Discord card, sections and links, version, updatedAt, updatedBy (§10.6) *(added)* |
@@ -4125,15 +5437,18 @@ Physically, registration collections are top-level and election data lives under
 | `site_analytics/current` | `current` | replaced whole, by one System Admin | measurementId (null: off), version, updatedAt, updatedBy (§10.7) *(added)* |
 | `page_hits/{page}` | a tracked page's ID (`TRACKED_PAGES`) | counters only | total, days and signedIn (a count per UTC day); nothing about who (§10.7) *(added)* |
 | `page_visits/{visitId}` | UUIDv7 | created once; deleted by TTL | accountId, page, path, at, expireAt (180 days on; §10.7) *(added)* |
+| `visit_sources/{day}_{hash}` | UTC day and a hash of page and source | counters only | arrivals that day at a page with one referring host, set of campaign tags and referral flag; nothing about who (§10.7) *(added 2026-11-12)* |
 | `news_posts/{postId}` | UUIDv7 | draft → published ⇄ withdrawn; a draft never published may be deleted | kind, slug (fixed once published), title, summary, body (plain text), dateline, hashtags, status, version, created/updated/published/edited/withdrawn by and at (§10.9) *(added)* |
 | `press_kit/current` | singleton | saved whole from the version edited | about, contact (name, office, email, phone, note), facts, assets (file ID, title, description), version, updatedAt/By (§10.9) *(added)* |
 | `press_assets/{sha256}` | hash of the stored bytes | write-once | the file (PNG or JPEG re-encoded, or a PDF as sent; at most 900 KB), contentType, bytes, width, height, fileName, uploadedAt/By (§10.9) *(added)* |
 | `share_posts/{shareId}` | UUIDv7 | draft → published → archived; a draft may be deleted | title, text, url, hashtags, note, until, status, version, created/updated/published by and at (§10.9) *(added)* |
-| `share_counts/{item}` | `news-{slug}` or `kit-{shareId}` | counters only | total, a count per site, first and last press; nothing about who (§10.9) *(added)* |
+| `share_counts/{item}` | `news-{slug}`, `kit-{shareId}` or `event-{slug}` | counters only | total, a count per site, first and last press; nothing about who (§10.9) *(added)* |
 | `calendar_items/{itemId}` | UUIDv7 | planned ⇄ posted / skipped; may be deleted | site, account, scheduledFor (UTC), text, url, assignee, notes, postedUrl/At/By, version, created/updated by and at (§10.9) *(added)* |
 | `suggestions/{suggestionId}` | UUIDv7 | new → read / answered / archived / spam; deleted a year after it arrived, or sooner by a Communications Admin | topic, message, name and email (only with consent), receivedAt, flagged (many links), note, handledAt/By (§10.9) *(added)* |
 | `suggestion_limits/{YYYY-MM-DD}` | UTC day | counters; deleted the day after next | a random salt, the day's total, a count per hashed sender; no address (§10.9) *(added)* |
 | `bots/{botId}` | UUIDv7 | added, changed, checked, removed | name, site, handle, url, purpose, operator, runsOn, status, public, notes, checkedAt/By, version, created/updated by and at; never a token (§10.9) *(added)* |
+| `events/{eventId}` | UUIDv7 | draft → published ⇄ cancelled (cancelled only before it ends); a draft never published may be deleted | kind, slug (fixed once published), title, summary, body, startsAt/endsAt (UTC), timeZone, attendance (online, in person, members' room), joinUrl, joinLabel, place, address, speakers, partnerIds, hashtags, recording, status, version (the calendars' SEQUENCE), created/updated/published/edited/cancelled by and at (§10.17) *(added)* |
+| `partners/{partnerId}` | UUIDv7 | added, changed, consent recorded ⇄ withdrawn, removed | name, description, website, notes (the team's), consent (from, note, recordedAt/By; null until given, the group named in public only while set), version, created/updated by and at (§10.17) *(added)* |
 
 The spec places `role_assignments` and `audit_events` in the voting namespace; they serve both modules, so the
 design treats them as a shared audit/admin module. Path constants and document shapes live in `ustp-domain`
@@ -4149,8 +5464,10 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | Method & path | Auth | Purpose |
 |---|---|---|
 | `GET /healthz` · `GET /v1/health` | P | liveness: `/healthz` for startup probes; `/v1/health` from outside, since Cloud Run's front end reserves some paths ending in "z". `{status, tally, commit}`, never cached: `commit` is the release's (§15), null outside released images, and every response carries it as `X-Build-Commit` |
-| `GET /robots.txt` · `GET /sitemap.xml` | P | for search engines, at the site's root through Hosting (§15): robots.txt opens the site only in prod at its own address; the sitemap lists the public pages, each published bylaws version and each certified result (rehearsals left out). Cached an hour by crawlers, not by Hosting |
-| `GET /me` · `POST /accounts` | M | current account, with where its sign-in needs a second factor; first-sign-in account creation. Both answer without a second factor where one is required (§4) |
+| `GET /robots.txt` · `GET /sitemap.xml` | P | for search engines, at the site's root through Hosting (§15): robots.txt opens the site only in prod at its own address; the sitemap lists the public pages, each published bylaws version, each certified result (rehearsals left out), each bill on the public Legislation page, every race page and the people's pages the race records hold (§5.17). Cached an hour by crawlers, not by Hosting |
+| `GET /news/{slug}` · `GET /candidates/{id}` · `GET /course/{courseId}` · `GET /course/certificates/{id}` · `GET /results/{id}` · `GET /events/{slug}` · `GET /legislation[/{billId}]` · `GET /scorecard[/{memberId}]` · `GET /races/{state}` · `GET /races/{state}/{district}` · `GET /people/{id}` | P | link previews, at the site's own addresses through Hosting (§15, "Link previews"): the web app's `index.html` with the page's title, description, canonical link and Open Graph and X tags, or as built for a page with nothing public; a certificate's page always `noindex`. Never cached |
+| `GET /public/link-cards?path=&v=` | P | a preview page's card image, 1200 × 630 PNG (§15, "Link previews"); 404 for a path with no preview. An hour in browsers, a day at the CDN |
+| `GET /me` · `POST /accounts` | M | current account, with where its sign-in needs a second factor; first-sign-in account creation, or the account a Membership Admin added for a verified address (§4, §5.13). Both answer without a second factor where one is required (§4) |
 | `POST /me/identities` · `DELETE /me/identities/{uid}` | M | link / unlink a login method |
 | `PUT /me/preferences` | M | own display choices: the daily quote and joke on or off (§4.1); not ledgered |
 | `GET /bylaws/current` | P | current bylaws version and hash |
@@ -4163,20 +5480,30 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /news` · `GET /news/{slug}` · `GET /news/feed.xml` · `GET /news/feed.json` | P | published posts, newest first; one post, or the notice that it was withdrawn (404 for a draft or nothing); the RSS 2.0 and JSON Feed 1.1 feeds of the 50 latest (§10.9) |
 | `GET /press` · `GET /press/assets/{sha256}` | P | the press kit and the public bots; a file the kit lists (404 otherwise), sandboxed, a PDF as an attachment (§10.9) |
 | `POST /suggestions` | P, with App Check where enforced | a suggestion (topic, message, optional name and email with consent); 202, also when the trap field drops it; 429 past 5 a sender or 300 a day (§10.9) |
-| `POST /share/clicks` | P | count a share button pressed on a published post or kit post (`item`, `target`); 204, 404 for anything else (§10.9) |
+| `GET /public/newsletter` · `POST /public/newsletter` | P, the POST with App Check where enforced | whether the newsletter takes sign-ups now; a sign-up (`email`, optional `name`): 202 whether or not the address was on the list, also when the trap field drops it; 409 while email cannot go; 429 past 5 a sender or 500 a day (§10.15) *(added 2026-11-12)* |
+| `GET\|POST /public/newsletter/confirm/{token}` | P | whether a confirmation link's address is confirmed; confirm it (404 for a link that is no one's) (§10.15) *(added 2026-11-12)* |
+| `POST /share/clicks` | P | count a share button pressed on a published post, kit post or event (`item`, `target`); 204, 404 for anything else (§10.9) |
+| `GET /public/events` · `GET /public/events/{slug}` | P | what has not ended, soonest first (cancelled ones marked), and what took place, newest first; one event, its link to join only until it is over or cancelled, and only its listed co-hosts (404 for a draft or nothing) (§10.17) |
+| `GET /public/events/{slug}/calendar.ics` · `GET /public/events/calendar.ics` | P | one event as an iCalendar file; the calendar to subscribe to, every event not over or over in the last 90 days (§10.17) |
+| `GET /public/partners` | P | the groups listed with their consent, by name, each with the events it co-hosts, coming and past (§10.17) |
+| `GET /embed/courses` · `GET /embed/course/{courseId}` | P | the course embed, at the site's own addresses through Hosting: a page any site may frame, with the published courses or one published course, its quizzes checked in the page; a 404 page for a course not published (§10.17) |
 | `POST /hub/clicks/{target}` | P | count a click on a link or the Discord button the hub shows (204; 404 for anything else); counts only (§10.6) |
-| `POST /page-visits` · `POST /public/page-visits` | M · P | a page opened (`path`): counted, and signed in to an account also recorded with it; 204, 404 for the ballot, the receipt check or a path the app has no page for, 429 past 60 a minute from one account or address (§10.7) |
+| `POST /page-visits` · `POST /public/page-visits` | M · P | a page opened (`path`): counted, and signed in to an account also recorded with it; with the first page of a tab, where it came from (`from`: the referring host, campaign tags, a referral link), counted naming nobody; 204, 404 for the ballot, the receipt check or a path the app has no page for, 429 past 60 a minute from one account or address (§10.7) |
 | `GET /public/courses` · `GET /courses` | P · M | the course map and list: every published course and every draft on the map (title only), but none hidden from the Courses page; signed in, also how the learner stands in each (§10.8) |
-| `GET /public/courses/{courseId}` · `GET /public/course-images/{sha256}` | P | the published course without quiz answers, with its prerequisites; an uploaded portrait, cached for good (§10.8) |
+| `GET /public/courses/{courseId}` · `GET /public/course-images/{sha256}` | P | the published course without quiz answers, with its prerequisites and whether it is open without sign-in; an uploaded portrait, cached for good (§10.8) |
+| `POST /public/courses/{courseId}/lessons/{lessonId}/check` | P | a quiz of a course open without sign-in, with the version the page shows: the score and how each answer went, as for a learner, and nothing kept (403 for a course not open, 409 for a version no longer taken, 400 and 404 as for a learner) (§10.8) |
+| `GET /public/certificates/{certificateId}` | P | a certificate's public page: valid or not, the course's ID, title and version, the day issued, and the holder's name only while they show it; a revoked certificate looks like none (§10.8) |
 | `GET /public/courses/{courseId}/package` (`?version=N`) | P | a published course as its `ustp.course` file, quiz answers included, the current version or an earlier one; 404 for a draft. This route, `GET /public/courses`, `GET /public/courses/{courseId}` and the portraits answer `Access-Control-Allow-Origin: *`, for other sites' pages (§10.8) |
 | `GET /public/videos/{videoId}` | P | an uploaded video once all its parts are in (404 before): by byte range, at most one part per answer (206), whole without a range, 416 past the end, `?download=1` as a file; cached by browsers only (§10.10) |
 | `GET /courses/{courseId}` | M | the course as the learner takes it: their version, progress, certificate, the prerequisites they still need, and whether they may message the instructors (§10.8) |
 | `POST /courses/{courseId}/lessons/{lessonId}/attempts` | M | submit a quiz, one answer per question in order (400 otherwise; 409 until the prerequisites are passed); the score, progress, any certificate, and for each question whether it was right and its explanation (§10.8) |
+| `POST /courses/{courseId}/claim` | M | the quizzes passed before signing in, kept in the browser (the version, and each lesson once with its answers): marked again against the version learners take now and recorded as attempts made now, issuing the certificate once every lesson is passed; how many passed, the progress and any certificate (409 for another version or until the prerequisites are passed) (§10.8) |
+| `PUT /courses/{courseId}/certificate` · `GET /courses/{courseId}/certificate.pdf` | M | the holder's certificate: the name on it (never an email address) and whether its public page shows it, either or both (404 without an active certificate, 409 to show a name that is an email address); the certificate as a PDF with its QR code (§10.8) |
 | `GET\|POST /courses/{courseId}/messages` | M | the learner's conversation with the instructors (reading marks their answers read); write to them, 403 while a Course Admin has not turned messaging on (§10.8) |
 | `GET /registration/form` · `GET /registration/form/{version}` | P | the registration form's wording, current or any saved version (0 is the default), without who changed it (§5.2) |
 | `POST /registration/applications` · `GET /registration/applications/me` | M | apply (against the current bylaws and form version; 409 otherwise); status |
 | `POST /me/resign` | M | resign membership |
-| `POST /me/details` | M | own preferred name, state, city, ZIP, phone and email opt-ins (§5.2) |
+| `POST /me/details` | M | own preferred name, country, state or region, city, ZIP code or postcode, phone and email opt-ins (§5.2) |
 | `PUT /me/photo` · `GET /me/photo` · `GET /me/photo/image` · `DELETE /me/photo` | M (member record) | profile photo |
 | `GET /elections` | M | elections the caller is eligible for |
 | `GET /elections/{id}/ballot` | V | ballot definition and hash |
@@ -4198,11 +5525,16 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/members` · `GET /admin/members/{accountId}/history` | Membership Admin | member list (paged), status history |
 | `GET /admin/members/{accountId}` · `POST /admin/members/{accountId}/details` | Membership Admin | member profile (record, applications with answers, history, whether the daily quote and joke is on); correct names, state, contact with a reason (§5.2, §4.1) |
 | `POST /admin/members/{accountId}/status` | Membership Admin | status changes |
+| `POST /admin/members` | Membership Admin | add one member, Active at once, with a reason; 400 naming each bad field, 409 for an address already on the site (§5.13) |
+| `POST /admin/member-imports/preview` · `POST /admin/member-imports` | Membership Admin | a CSV file's rows (at most 500) as read in the browser: what importing them would do, row by row, with the rows to add and those skipped counted by cause, writing nothing; import them with one reason, answering what was added and skipped with the same counts (§5.13) |
+| `POST /admin/members/{accountId}/welcome` | Membership Admin | send an added member's welcome email again before they sign in, or get the address for the browser to ask Identity Platform (§5.13) |
+| `POST /admin/members/{accountId}/welcome-link` | Membership Admin | record a welcome sign-in link the admin's browser just had Identity Platform send, in the email log as theirs and on the member's profile (204; 404 for an account no Membership Admin added; 409 while a welcome email of the site's own is on its way) (§5.13, §10.12) |
 | `GET /admin/photos` · `GET /admin/photos/{id}/image` · `POST /admin/photos/{id}/decision` | Membership Admin | photo review |
 | `GET /admin/elections` · `GET /admin/elections/{id}` (detail, definition hash, problems) · `GET /admin/proposals` | Election Admin, Auditor | read election setup |
 | `POST /admin/elections` · `PATCH /admin/elections/{id}` · `POST\|PUT\|DELETE …/contests[/{cid}]` · `POST\|DELETE …/contests/{cid}/candidates[/{kid}]` · `PUT …/questions/{cid}` · `PUT …/question-order` · `POST /admin/proposals` | Election Admin | edit drafts; a candidate's optional `accountId` must be an Active member's (§6.5); the ballot builder saves a question whole, under its own IDs, and the order of the questions (§6.5) |
 | `GET /admin/member-search?name=…` (`limit` ≤ 20) | Election Admin, Membership Admin | Active members whose legal or preferred name matches, to link a candidate or appoint a member: account ID, names and state only (§6.5) |
 | `POST /admin/elections/import` | Election Admin | a whole draft from a `ustp.election` file, in one transaction (400/403/409 write nothing; §6.7) |
+| `POST /admin/elections/{id}/questions/import` | Election Admin | a `ustp.election` file's questions added after a draft's own, in one transaction; its title, window and secrecy are not used (400/403/409 write nothing; §6.7) |
 | `GET /admin/elections/{id}/package` | Election Admin, Auditor | any election as a `ustp.election` file (§6.7) |
 | `GET /admin/elections/{id}/consistency-check` · `POST …` | Election Admin, Auditor | the same check from the election editor, on the election as it stands, a draft included; the same one-run record (§5.5) |
 | `GET /admin/elections/{id}/bylaws-checks` · `POST …` · `GET …/bylaws-checks/{checkId}` | Election Admin, Auditor | whether the election setup check is on, and the election's latest check (or one) with what changed since; queue one (202; 409 while one runs, when nothing has changed since the last, once voting has closed or before any bylaws are published; 429 past 20 a day; 503 when off or without a key; §6.9) |
@@ -4212,16 +5544,30 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/positions` · `POST /admin/positions` · `POST /admin/positions/{id}/terms/{termId}/end` | any admin (read); Membership or Election Admin | offices and terms; define or change an office (at once), end a term (→ approval) |
 | `POST /admin/positions/{id}/appointments` | Membership or Election Admin | appoint an Active member to a free seat: `accountId`, optional earlier `startsAt`, `endsAt` or `termMonths` (neither: a full term), reason (→ approval; 404 no such office, 409 not Active, no free seat, already a holder or dates outside the office's term; §6.4) |
 | `GET /public/positions` | P | offices and who holds them now, each term marked elected or appointed |
+| `GET /me/referrals` | M | the caller's referral link (made the first time; Active members only) and how many joined by it and wait, never who (§5.18) *(added 2026-11-12)* |
+| `GET /referrals/leaderboard?days=` | M (Active), Membership Admin, System Admin, Site Admin | teams ranked by the people who joined by their Active members' links in the last 30, 90 or 365 days or all time (`0`), teams' totals only (403 for anyone else; §5.18) *(added 2026-11-12)* |
 | `GET /teams` · `GET /teams/{teamId}` | M (Active) | every team not archived, with its leads, size and the caller's standing; one team with who is on it, and for its leads the requests waiting and anyone no longer Active (403 for anyone not an Active member; §5.7) |
 | `POST /teams/{teamId}/join` · `DELETE /teams/{teamId}/request` · `POST /teams/{teamId}/leave` | M (Active) | join an open team or ask to join one whose leads decide (`message`, `answer`; 409 closed, full, already on it or asked, an unanswered question, or within 14 days of a decline); withdraw the request; leave (409 for the last lead) |
 | `PUT /teams/{teamId}` · `POST …/requests/{accountId}/decision` · `POST …/members/{accountId}/lead` · `DELETE …/members/{accountId}` · `POST …/step-down` | the team's leads | change the settings but the name, from the version edited (409 if stale); approve or decline a request with an optional note; make a member a co-lead; remove a member (403 for a lead); step down while another lead remains. Every team route answers with the team as the caller now sees it |
 | `GET\|POST /admin/teams` · `GET\|PUT /admin/teams/{teamId}` · `POST …/archive` · `POST …/members` · `DELETE …/members/{accountId}` · `POST …/requests/{accountId}/decision` | Membership Admin | every team, archived ones too; create one with its first lead (an Active member); change any setting; archive or restore; put an Active member on it as a lead or member, or change their role; remove anyone but the last lead; decide requests; ledgered (§5.7) |
+| `GET /bills/access` | M | whether the caller has the Bills tool, the teams that give it, and which key is in use (§5.14) |
+| `GET /bills/search` | the Bills tool | bills' text versions by words, Congress, type, how far they have gone, member and publish date, sorted by best match, date or title, twenty a page with a cursor, from GovInfo (§5.14) |
+| `GET /bills/recent` | the Bills tool | a Congress's bills by when they were last updated, with their latest action, twenty a page, from Congress.gov (§5.14) |
+| `GET /bills/{congress}/{type}/{number}` · `GET …/text/{version}` | the Bills tool | one bill: details, status, actions, summaries, text versions and its watchlist entry with notes; one version's text, plain (§5.14) |
+| `GET /bills/watchlist` · `PUT /bills/watchlist/{billId}` · `DELETE /bills/watchlist/{billId}` | the Bills tool | the shared watchlist, refreshed when stale, sorted and filtered by tag; add a bill or change its tags, from the version edited (409 if stale); remove it with its notes (§5.14) |
+| `PUT /bills/watchlist/{billId}/public` · `DELETE /bills/watchlist/{billId}/public` | the Bills tool | show a watched bill on the public Legislation page with its topic, public summary and the party's position on its roll calls, or change them, from the version edited (409 if stale); take it off; both ledgered `bills.public_changed` (§5.14) |
+| `GET /public/bills?topic=` · `GET /public/bills/{billId}` | P | the bills the team shows, the latest action first, of one topic or all; one, with its roll calls (each party's votes and the party's position), CRS summary and latest actions; 404 for any other bill. Nothing of the team's tags, notes or names (§5.14) |
+| `GET /public/scorecard` · `GET /public/scorecard/{memberId}` | P | every member in a scored roll call on a public bill, with how often they voted with the party's position and how many they missed; one member's votes on the public bills, newest first; 404 for anyone in none (§5.14) |
+| `POST /bills/watchlist/{billId}/notes` · `PUT /bills/notes/{noteId}` · `DELETE /bills/notes/{noteId}` | the Bills tool | add a note to a watched bill; edit one's own; delete one's own, or any as a System or Site Admin (§5.14) |
+| `GET\|PUT /admin/bills` | System Admin, Site Admin | which teams have the Bills tool, from the version edited (409 if stale), ledgered `bills.settings_changed`; and the key in use (§5.14) |
 | `GET /public/candidacies` · `GET /public/candidacies/{id}` | P | approved candidacies for public office of members who are Active now, upcoming elections first (§5.8) |
+| `GET /public/races/{state}` · `GET /public/races/{state}/{district}` | P | a race page: a state's or a House seat's people from public records (read for the whole state once a day and shared, `race_records`), who holds and who runs, the party's candidates there, profiles, the seats not up, the state's House seats; 404 for an address that is no page. Five minutes in browsers, an hour at the CDN (§5.17) |
+| `GET /public/people/{id}` | P | a public-record person's page by FEC candidate ID or Bioguide ID: as their race's records list them, with their profile, their race, their other part and the others for the seat; 404 when no record of this election lists them. Five minutes in browsers, an hour at the CDN (§5.17) |
 | `GET /public/districts?kind=&state=` · `GET /public/districts/{kind}/{geoid}/boundary` · `GET /public/maps` | P | the Census districts of a kind in a state; a district's outline as GeoJSON (both cached an hour, a day on the CDN; 503 when TIGERweb does not answer); the Google Maps browser key, or null (§5.8) |
 | `GET /candidacies/area/contacts` | M | the Your area page: the caller's area, who holds and who runs for each office in it from public records and Communications Admins' entries, which records answered, and the email templates (§5.12) |
 | `GET /admin/area-contacts` · `POST /admin/area-contacts` · `PUT /admin/area-contacts/{id}` · `DELETE /admin/area-contacts/{id}` | Communications Admin | the office holders and candidates they enter (400 for a district the Census does not list; a change from the version edited, 409 otherwise) (§5.12) |
 | `GET /admin/email-templates` · `POST /admin/email-templates` · `PUT /admin/email-templates/{id}` · `DELETE /admin/email-templates/{id}` | Membership or Communications Admin | the Your area page's email templates: add one (409 for a name in use or a 51st), change one from the version edited (409 otherwise), remove one (404 when it is gone); 400 for an unknown placeholder (§5.12) |
-| `GET /candidacies/mine` · `GET /candidacies/area` · `POST /candidacies` · `PUT /candidacies/{id}` · `POST /candidacies/{id}/withdraw` | M (Active to declare or change) | the caller's candidacies and where each stands; the caller's own area, which the Candidates page opens on: their state and the districts their record's ZIP code reaches into, or the whole state and why (404 without a membership record); declare (400 for a district the Census does not list, 409 for a past election, the same race twice or a sixth open one); change, from the version edited (409 otherwise); withdraw (§5.8) |
+| `GET /candidacies/mine` · `GET /candidacies/area` · `POST /candidacies` · `PUT /candidacies/{id}` · `POST /candidacies/{id}/withdraw` | M (Active to declare or change) | the caller's candidacies and where each stands; the caller's own area, which the Candidates page opens on: their state and the districts their record's ZIP code reaches into, or the whole state and why (404 without a membership record, or for a member outside the US); declare (400 for a district the Census does not list, 409 for a past election, the same race twice or a sixth open one); change, from the version edited (409 otherwise); withdraw (§5.8) |
 | `GET /admin/candidacies` · `POST /admin/candidacies/{id}/decision` · `POST /admin/candidacies/{id}/remove` | Membership Admin | every candidacy, what waits for review first; approve or decline (with a note) the version reviewed, never one's own, approving only an Active member's; take down with a reason (§5.8) |
 | `GET /forum/posts` (`sort`, `feed`, `after`) · `GET /forum/posts/{postId}` | M (Active) | a page of posts, pinned first on the first; a post with its comments, scores and the caller's own votes (§5.9) |
 | `POST /forum/posts` · `PUT\|DELETE /forum/posts/{postId}` · `POST …/comments` · `PUT\|DELETE /forum/comments/{commentId}` | M (Active) | post (10 a day), comment or reply (200 a day); the author changes or deletes their own (409 once a proposal is on a ballot or removed) |
@@ -4235,10 +5581,12 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `PUT /room/messages/{id}/vote` · `PUT /room/messages/{id}/reactions` | M (Active, in the room) | one's vote on a member's message or an answer (`value` 1, -1, or 0 to take it back); one of the six reactions added or taken back (`reaction`, `on`); either returns the message, with the score and counts but never who |
 | `POST /room/decisions` · `POST /room/actions` · `PUT /room/actions/{id}` · `GET /room/memory` · `DELETE /room/memory/{id}` | M (Active, in the room) | `/decide`, `/todo` and changing an item one owns or added, `/memory` (all of it; the page searches), `/forget` an item one added, with the answers citing it |
 | `DELETE /admin/room/messages/{id}` · `PUT /admin/room/actions/{id}` · `DELETE /admin/room/memory/{id}` · `PUT /admin/room/assistant` | Membership Admin, in the room | delete any message or memory item, change any action item; the kill switch (`on`), ledgered `room.assistant_switched` |
-| `GET /admin/room/settings` · `PUT /admin/room/settings/open` | Membership Admin, System Admin | the switches, the door's words and how the room is doing; open or close the room (`on`), ledgered `room.settings_changed` |
-| `PUT /admin/room/door` | Membership Admin, System Admin | the door's intro line and terms, from the revision opened (`basedOn`); changed terms are a new version everyone accepts again; ledgered `room.door_changed` (§5.10) |
+| `GET /admin/room/settings` · `PUT /admin/room/settings/open` | Membership Admin, System Admin, Site Admin | the switches, the door's words and how the room is doing; open or close the room (`on`), ledgered `room.settings_changed` |
+| `PUT /admin/room/door` | Membership Admin, System Admin, Site Admin | the door's intro line and terms, from the revision opened (`basedOn`); changed terms are a new version everyone accepts again; ledgered `room.door_changed` (§5.10) |
 | `PUT /admin/room/settings/server` | System Admin | let the model server run, starting it, or stop anything reaching it (`on`), ledgered `room.settings_changed` (§5.10) |
 | `GET /share` | M (Active) | the share kit offered today, without who wrote it (403 for anyone not an Active member; §10.9) |
+| `GET\|POST /admin/communications/events` · `GET\|PUT\|DELETE …/events/{eventId}` · `POST …/events/{eventId}/publish` · `POST …/events/{eventId}/cancel` | Communications Admin | every event, drafts first; create a draft; change one from the version edited (its address only while never published; co-hosts from the partners list, a recording uploaded here); publish, cancel one not ended, or delete a draft never published; publishing, changing a public event and cancelling are ledgered (§10.17) |
+| `GET\|POST /admin/communications/partners` · `PUT\|DELETE …/partners/{partnerId}` · `POST …/partners/{partnerId}/consent` · `POST …/partners/{partnerId}/withdraw-consent` | Communications Admin | every partner group, listed ones first; add one (not listed); change it; record who agreed to its being listed and how, or stop listing it; remove it; all ledgered as `partner.changed` but a change to the team's notes alone (§10.17) |
 | `GET\|POST /admin/communications/news` · `GET\|PUT\|DELETE …/news/{postId}` · `POST …/news/{postId}/publish` · `POST …/news/{postId}/withdraw` | Communications Admin | every post, drafts first; create a draft; change one from the version edited (its address only while never published); publish, withdraw, or delete a draft never published; publishing, changing a published post and withdrawing are ledgered (§10.9) |
 | `GET\|POST /admin/communications/share` · `PUT\|DELETE …/share/{shareId}` · `POST …/publish` · `POST …/archive` · `GET …/share-counts` | Communications Admin | the share kit's posts; create, change, publish, archive, or delete a draft; ledgered once members can see it; each item's share counts (§10.9) |
 | `GET\|POST /admin/communications/calendar` · `PUT\|DELETE …/calendar/{itemId}` · `POST …/status` · `GET …/team` | Communications Admin | the calendar (the last 90 days and anything still planned); plan, change, mark posted, skipped or planned again, delete; the Communications Admins an item can be given to; not ledgered (§10.9) |
@@ -4247,29 +5595,55 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET\|POST /admin/communications/bots` · `PUT\|DELETE …/bots/{botId}` · `POST …/checked` | Communications Admin | the bot registry; add, change, mark checked, remove; ledgered (§10.9) |
 | `POST /mcp` (not under `/v1`; the `mcp` service, not the api) | P | the reporting MCP server's Streamable HTTP endpoint: read-only tools over the public endpoints above, election reports and course files (§3.4) |
 | `GET /admin/elections/{id}/roll` | Election Admin, Auditor | latest roll with member names, for review |
-| `GET /admin/elections/{id}/notices` | Election Admin, Auditor | the election's notices as counts (sent, still to send, failed, bounced, skipped), what the send receipts add up to per email (to the roll, and tests apart), and the caller's own last test emails; never addresses (§6.8) |
-| `GET\|PUT /admin/notice-settings` | System Admin | the election emails' settings: each on or off, the reminder's lead time, the contact, each subject and opening; saved whole against the version read (409 if stale, 400 for unknown placeholders); ledgered (§6.8) |
+| `GET /admin/elections/{id}/notices` | Election Admin, Auditor | the election's notices as counts (delivered, sent with no report yet, still to send, failed, bounced, marked as spam, skipped), what the send receipts add up to per email (to the roll, and tests apart), and the caller's own last test emails; never addresses (§6.8) |
+| `GET /me/email` | Signed in | whether party email reaches the caller's address, and the emails sent to them in 90 days with what became of each, never content (§10.12) |
+| `POST /me/email/test`, `POST /me/email/retry` | Signed in | a test email to the caller's own address, or trying an address that bounced or was marked as spam again, on the worker's next tick; 202, 409 one at a time or nothing to try, 429 after three a day (§10.12) |
+| `GET /me/notifications` · `GET /me/notifications/unread` | Signed in | the caller's last 30 notifications and how many are unread; the unread count alone, for the bell (§10.13) |
+| `POST /me/notifications/{id}/read` · `POST /me/notifications/read-all` | Signed in | marks one (403 if someone else's) or all read (§10.13) |
+| `GET\|PUT /me/notification-email` | Signed in | how the caller has notifications by email (off, each, daily, weekly), whether their address can be mailed and whether these emails are switched on (§10.13) |
+| `GET /messages` · `GET /messages/{threadId}` · `POST /messages/{threadId}/read` | Signed in | the caller's conversations, one conversation's messages (50, then `before`), and marking it read; 403 for one that is not theirs (§10.13) |
+| `GET /messages/people?name=` · `GET /messages/people/{accountId}` | Signed in | Active members by name to write to, and one person with the conversation with them if any (§10.13) |
+| `POST /messages` | Active member | a message to an Active member; 403 when either is not Active or the recipient blocked the sender (the same answer), 409 to themselves or one they blocked, 429 past 100 a day or 20 new people a day (§10.13) |
+| `POST\|DELETE /messages/blocks/{accountId}` | Signed in | block or unblock a member (§10.13) |
+| `POST /messages/reports/{messageId}` | Signed in | its recipient reports a message to the Membership Admins, once (409 again, or by its writer) (§10.13) |
+| `GET /admin/message-reports` · `POST /admin/message-reports/{id}/close` | Membership Admin | the reported messages, each alone, and closing one with a note (409 if closed already) (§10.13) |
+| `GET\|POST /admin/inbox` · `GET /admin/inbox/team` · `GET /admin/inbox/{id}` · `POST /admin/inbox/{id}/messages\|status\|assign` | Membership Admin | the membership inbox: a page of conversations (by status, whose, or one member's, with how many need an answer), the Membership Admins, writing to a member (404 without a member record, 409 to oneself, 429 past 50 a day), a conversation, answering or noting (and closing), closing or opening again, giving it to a Membership Admin (409 otherwise) (§10.13) *(added 2026-11-08)* |
+| `GET\|POST /membership-team` · `GET\|POST /membership-team/{id}` · `POST /membership-team/{id}/read` | Signed in | the caller's conversations with the membership team: listing, starting one (403 without a member record, 429 past the day's limits), reading, answering (404 for anyone else's) and marking read (§10.13) *(added 2026-11-08)* |
+| `GET /admin/mail/log/members/{accountId}` | Membership Admin, System Admin, Site Admin | one member's rows of the email log, for their record (§10.12, §10.13) *(added 2026-11-08)* |
+| `GET /admin/mail/members` | Membership Admin | members who cannot be emailed, and why: bounced, marked as spam, unconfirmed, no address (§10.12) |
+| `GET /admin/newsletter` · `POST /admin/newsletter/lookup` · `POST /admin/newsletter/remove` | Membership Admin, System Admin, Site Admin | how many are on the newsletter's list, joined in 30 days and wait to confirm; one whole address's standing; taking it off and deleting it (404 when not on it); never the list (§10.15) *(added 2026-11-12)* |
+| `GET /admin/mail/health` | System Admin, Site Admin | the email setup check's last run and a request still waiting (§10.12) |
+| `POST /admin/mail/broadcasts/{id}/approve` · `…/reject` | System Admin, Site Admin | with approval switched on, lets an email to members go, or rejects it with a reason; 409 when it is not waiting, or could not go now; ledgered (§10.12) |
+| `GET /admin/mail/log` | System Admin, Site Admin | the email log: every email sent in 180 days, newest first, 50 a page (`after`), narrowed by recipient (`account`), `causedBy`, `kind`, `status` and days (`from`, `to`, in time zone `tz`); the address each went to (since 2026-11-09), never a subject or a body (§10.12) |
+| `GET /admin/mail/days` | System Admin, Site Admin | how many emails were sent each of the last `days` days (1–90, 30 by default) in time zone `tz`, today last (§10.12) *(added 2026-11-09)* |
+| `GET /admin/mail/day` | System Admin, Site Admin | one `day`'s emails in time zone `tz`: in all, by kind, by status, and by person with the addresses each went to, the most first (§10.12) *(added 2026-11-09)* |
+| `POST /admin/mail/health/check` | System Admin, Site Admin | asks the worker to run the check on its next tick; 202, 409 while one waits, 429 within five minutes of the last run (§10.12) |
+| `GET\|PUT /admin/notice-settings` | System Admin, Site Admin | the election emails' settings: each on or off, the reminder's lead time, the contact, each subject and opening, and the name all the site's email comes from; saved whole against the version read (409 if stale, 400 for unknown placeholders); ledgered (§6.8) |
 | `POST /admin/elections/{id}/notices/{kind}/resend` | Election Admin | send the notice again to those it failed for, while voting is open and once its last round has finished (409 otherwise; §6.8) |
 | `POST /admin/elections/{id}/notices/{kind}/test` | Election Admin | queue the email, marked "[TEST]", for the caller's own address only (the System Admin's when acting as a persona); takes no address; 202; 403 for a candidate, 409 where email is off or has no contact or while their last test has not gone, 429 after ten a day (§6.8) |
 | `GET /admin/approvals` · `POST /admin/approvals/{id}/decision` | per action | two-person decisions (§10.2) |
 | `GET /admin/audit/events` · `GET /admin/audit/verify` | Auditor | ledger (paged by seq); verification of chain, blocks, signatures and anchors |
-| `GET\|PUT /admin/sign-in-methods` · `POST /admin/roles` | System Admin | auth switches; grant or revoke a role, at once (returns the account's roles afterwards; §10.2) |
-| `GET\|PUT /admin/mfa-policy` | System Admin | whether members without a role must use two-step verification, with who saved it; save it from the version it was edited from (409 if someone saved since), ledgered (§4) |
-| `GET /admin/accounts` (paged; `email` prefix, `role` filter) | System Admin | People list: accounts with member status, active roles and whether the deployment lists them for deletion, read-only (§10.3) |
-| `POST /admin/accounts/{accountId}/delete` | System Admin | permanently delete an account the deployment lists that no election has on its roll or among those who voted, with its logins, roles and membership, at once (204; 403 otherwise; §4) |
+| `GET\|PUT /admin/sign-in-methods` | System Admin | auth switches (§4) |
+| `POST /admin/roles` | System Admin, Site Admin | grant or revoke a role, at once (returns the account's roles afterwards); a Site Admin every role but System Admin, never on a System Admin's account (403; §10.2) |
+| `GET\|PUT /admin/mfa-policy` | System Admin | whether members without a role, and whether Site Admins, must use two-step verification, with who saved it; save them from the version they were edited from (409 if someone saved since; `siteAdminsRequired` left out keeps its value), ledgered (§4) |
+| `GET /admin/accounts` (paged; `email` prefix, `role` filter) | System Admin, Site Admin | People list: accounts with member status, active roles and whether the deployment lists them for deletion, read-only (§10.3) |
+| `POST /admin/accounts/{accountId}/delete` | System Admin | permanently delete an account the deployment lists that no election has on its roll or among those who voted, with its logins, roles and membership, at once (204; 403 otherwise, and to a Site Admin; §4) |
 | `GET\|PUT\|DELETE /admin/anthropic-key` | System Admin | whether a key is set, its last four characters, who added it and when, and how each Claude check is switched; add a key in place of any before it, after trying it with Anthropic (400 not an API key, 422 refused, 502 Anthropic unreachable; nothing kept); remove it (404 if none); never returns the key; ledgered (§5.6) |
-| `GET\|PUT /admin/navigation` | System Admin | the navigation settings with who saved them; save the whole matrix from the version it was edited from (409 if someone saved since, or a locked cell is switched), ledgered (§10.5) |
-| `GET /admin/security/sign-ins?days=` | System Admin, Auditor | the sign-ins of the last 1, 7, 30 (default), 90 or 180 days, newest first, at most 2,000, and whether more were left out (§10.7) |
-| `GET /admin/page-visits?days=` | System Admin, Auditor | hits per page and per UTC day over the last 1, 7, 30 (default), 90 or 180 days, and who opened each page, by name, from at most 20,000 visits, and whether more were left out (§10.7) |
-| `GET\|PUT /admin/site-analytics` | System Admin | the Google Analytics setting with who saved it; save a measurement ID or null from the version it was edited from (400 not a GA4 ID, 409 if someone saved since), ledgered (§10.7) |
-| `GET\|PUT /admin/home-quote` | System Admin | the voting home's quote with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if shown without its words or who said them, or a part over its limit), ledgered (§10.5) |
-| `GET\|PUT /admin/hub` · `PUT /admin/hub/logo` · `PUT /admin/hub/cover` · `PUT /admin/hub/background` · `GET /admin/hub/clicks` | System Admin, Communications Admin | the link hub with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if something shown is unfinished, an address, the accent, or the logo, cover banner or page background cannot be used), ledgered; upload a logo, cover banner or page background (the image as the body, giving its ID; shown once saved); each link's clicks in the last 30 days and in all (§10.6) |
+| `GET\|PUT /admin/navigation` | System Admin, Site Admin | the navigation settings with who saved them; save the whole matrix from the version it was edited from (409 if someone saved since, or a locked cell is switched), ledgered (§10.5) |
+| `GET /admin/security/sign-ins?days=` | System Admin, Site Admin, Auditor | the sign-ins of the last 1, 7, 30 (default), 90 or 180 days, newest first, at most 2,000, and whether more were left out (§10.7) |
+| `GET /admin/page-visits?days=` | System Admin, Site Admin, Auditor | hits per page and per UTC day over the last 1, 7, 30 (default), 90 or 180 days, and who opened each page, by name, from at most 20,000 visits, and whether more were left out; and where the period's arrivals came from (`sources`), naming nobody (§10.7) |
+| `GET\|PUT /admin/site-analytics` | System Admin, Site Admin | the Google Analytics setting with who saved it; save a measurement ID or null from the version it was edited from (400 not a GA4 ID, 409 if someone saved since), ledgered (§10.7) |
+| `GET\|PUT /admin/home-quote` | System Admin, Site Admin | the voting home's quote with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if shown without its words or who said them, or a part over its limit), ledgered (§10.5) |
+| `GET\|PUT /admin/hub` · `PUT /admin/hub/logo` · `PUT /admin/hub/cover` · `PUT /admin/hub/background` · `GET /admin/hub/clicks` | System Admin, Site Admin, Communications Admin | the link hub with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 if something shown is unfinished, an address, the accent, or the logo, cover banner or page background cannot be used), ledgered; upload a logo, cover banner or page background (the image as the body, giving its ID; shown once saved); each link's clicks in the last 30 days and in all (§10.6) |
 | `GET\|PUT /admin/courses/{courseId}` · `POST /admin/courses/{courseId}/lessons\|profiles` · `PUT /admin/courses/{courseId}/images` · `POST /admin/courses/{courseId}/publish` | Course Admin | the course draft; save a lesson with its quiz and any video, or a profile with its portrait (400 if a portrait is half done or names no upload, or a video names no finished upload); upload a portrait (the image as the body; shown once saved and published); publish a new version (409 while a profile lacks a complete portrait) (§10.8) |
 | `POST /admin/courses/{courseId}/videos` · `POST /admin/communications/videos` · `POST /admin/hub/videos`, each with `PUT …/videos/{videoId}/parts/{index}` | Course Admin · Communications Admin · System or Communications Admin | start uploading a video for lessons, for news and the press kit, or for the hub (type, size, file name; MP4 or WebM, at most 1 GB), then send its 8 MiB parts in order as raw bodies with its type; 404 for a part sent where its upload did not begin, 409 for one sent too soon, 400 for a wrong size or a first part that is not that kind of video, 503 until `VIDEOS_BUCKET` is set (§10.10) |
-| `GET\|POST /admin/courses` · `DELETE /admin/courses/{courseId}` · `PUT /admin/courses/{courseId}/map` · `PUT /admin/course-map` · `PUT /admin/courses/{courseId}/visibility` | Course Admin | every course, drafts and hidden ones included; add a draft course (its ID from its title); delete one never published (409 if published or another course comes after it); set where it sits on the map and its prerequisites, at once (409 for a loop, an unknown course, a taken square, or a course shown on the Courses page after a hidden one); save the board: the squares and prerequisites of up to 100 courses together, checked as one map, all or nothing (same 409s); hide the course from the Courses page or show it, at once (409 while a course shown there comes after it) (§10.8) |
+| `GET\|POST /admin/courses` · `DELETE /admin/courses/{courseId}` · `PUT /admin/courses/{courseId}/map` · `PUT /admin/course-map` · `PUT /admin/courses/{courseId}/visibility` · `PUT /admin/courses/{courseId}/guests` | Course Admin | every course, drafts and hidden ones included; add a draft course (its ID from its title); delete one never published (409 if published or another course comes after it); set where it sits on the map and its prerequisites, at once (409 for a loop, an unknown course, a taken square, or a course shown on the Courses page after a hidden one); save the board: the squares and prerequisites of up to 100 courses together, checked as one map, all or nothing (same 409s); hide the course from the Courses page or show it, at once (409 while a course shown there comes after it); open its quizzes without sign-in or close them, at once (409 to open one that comes after another) (§10.8) |
+| `POST /admin/certificates/{certificateId}/revoke` | Course Admin | revoke a certificate with a reason; its public page then says no active certificate (§10.8) |
+| `GET\|PUT /admin/certificate-settings` | System or Site Admin | the party's LinkedIn organization ID (digits) or none, which Add to profile names as the certificates' issuer (§10.8) |
 | `GET /admin/courses/{courseId}/package` (`?version=draft\|N`) · `GET /admin/course-map/package` | Course Admin | a course as its `ustp.course` file, the draft (the default) or a published version (404 for one it lacks); every course with the map as one `ustp.courses` file: each course's square, prerequisites and hide switch, its draft and the version learners take now, hidden courses and those never published included; both with the quiz answers (§10.8) |
 | `GET /admin/courses/{courseId}/learners` · `PUT /admin/courses/{courseId}/learners/{accountId}/messaging` · `GET\|POST /admin/courses/{courseId}/learners/{accountId}/messages` | Course Admin | the course's students and how they stand, without emails; turn a student's messaging on or off; read their conversation (marking it read) and answer as an instructor (409 while it is off) (§10.8) |
 | `GET\|POST /testing/personas` · header `X-Act-As` on any signed-in route | System Admin, testing mode only (404 otherwise) | test personas and acting as them (§10.4) |
+| `POST /testing/personas/delete` | System Admin, testing mode only (404 otherwise) | delete test voters `{ voters }` at once, whatever elections hold them, their election records kept; answers the personas that remain (200; 403 to re-authenticate first, 404 naming any ID that is not a test voter; §10.4) |
 | `POST /testing/demo-elections` | System Admin, testing mode only (404 otherwise, whatever the body) | make up a demo election at random and schedule it as a rehearsal, built by the Test Election Admin and approved by the Test Auditor; the scheduled election and its seed (201; 403 to re-authenticate first, 409 while no bylaws are published; §10.4) |
 
 Errors use RFC 9457 problem details. Request bodies are validated against schemas shared with the web app.
@@ -4278,13 +5652,16 @@ Errors use RFC 9457 problem details. Request bodies are validated against schema
 
 | Endpoint | Trigger | Work |
 |---|---|---|
-| `POST /tasks/tick` | Cloud Scheduler, every minute | Prepare pool keys, open/close elections on time, seal ballots (M3), tally sealed elections into signed provisional results (M4a), destroy pool keys (M4b), send election notices for at most 20 seconds and the test emails Election Admins asked for, keeping a receipt of each send, and record their bounces from SQS (§6.8), delete suggestions a year old and the suggestion limits of days gone (§10.9), delete the members' room's messages (with their votes and reactions), done action items, finished questions and call handshakes past their time, give up on questions waiting 10 minutes and drop pages gone quiet from the call (§5.10), then seal ledger blocks, sign approved rolls and anchor (M2c). Returns what it did |
+| `POST /tasks/tick` | Cloud Scheduler, every minute | Prepare pool keys, open/close elections on time, seal ballots (M3), tally sealed elections into signed provisional results (M4a), destroy pool keys (M4b), send election notices for at most 20 seconds and the test emails Election Admins asked for, keeping a receipt of each send (§6.8), send the welcome emails of members a Membership Admin added (§5.13), the links confirming newsletter sign-ups and deleting the sign-up limits of days gone (§10.15), record SES's delivery reports from SQS for at most 10 seconds and ledger each notice round's reports three days after it finished (§6.8), run the email setup check hourly where mail goes through SES or when a System Admin asks, and follow its probe, and do members' requests for a test email or to try their address again (§10.12), delete suggestions a year old and the suggestion limits of days gone (§10.9), delete the members' room's messages (with their votes and reactions), done action items, finished questions and call handshakes past their time, give up on questions waiting 10 minutes and drop pages gone quiet from the call (§5.10), then seal ledger blocks, sign approved rolls and anchor (M2c), and last read the public bills due again from Congress.gov with their new roll calls, at most 10 for at most 20 seconds (§5.14). Returns what it did |
 | `POST /tasks/bylaws-checks` | Cloud Scheduler, every minute (its own job, 300 s deadline) | Run up to three queued bylaws checks with Claude and fail any stuck for 10 minutes (§5.4). Returns `{checked, failed}`; a failed check is recorded on the check, not as a failed task |
 | `POST /tasks/consistency-checks` | Cloud Scheduler, every minute (its own job, 300 s deadline) | Run up to three queued platform consistency checks with Claude and fail any stuck for 10 minutes (§5.5). Returns `{checked, failed}`, as the bylaws checks do |
 | `POST /tasks/election-checks` | Cloud Scheduler, every minute (its own job, 300 s deadline) | Run up to three queued election setup checks with Claude and fail any stuck for 10 minutes (§6.9). Returns `{checked, failed}`, as the others do |
 | `POST /tasks/room-assistant` | Cloud Task, queued by the api for each question in the members' room | Answer the question (`{jobId}`) with the room's model and post the answer, or why there is none, in the room (§5.10). Answers 200 either way, so the task is not retried; a retry would find the question taken |
 | `POST /tasks/room-warm` | Cloud Task, queued by the api when a System Admin switches the room's model server on | Start the model server and load both models, sending nothing from the room, so the next question need not wait (§5.10). A failure is logged, not retried |
-| `POST /tasks/email` | Cloud Task | send via Amazon SES |
+| *(tick step, M5)* | every tick | each send of election email checked 30 minutes after it finished against its delivery reports, a short one alerted (§6.8); a notice held while the email setup check fails, which it runs first when over an hour old |
+| *(tick step, M5)* | every tick | vote confirmations: each voter told, within a minute or so, that their ballot was recorded (§6.8); planned as an `email` Cloud Task, which the tick made unnecessary |
+| *(tick step, M5)* | every tick | members' notifications by email, as each comes and the digests due, for at most 10 seconds after the election emails and admins' emails (§10.13) |
+| *(tick step, M5)* | every tick | the membership team's messages to members by email, for at most 10 seconds after the notifications (§10.13) *(added 2026-11-08)* |
 | *(tick step, M4b)* | every tick | destroy the ballot-pool key version of certified and cancelled elections (§7.3); planned as a `destroy-pool-key` Cloud Task, which the tick made unnecessary |
 
 Tallying is a step of the tick, not the `POST /tasks/tally` Cloud Task planned earlier: the tick already runs every
@@ -4362,12 +5739,30 @@ every 15 seconds in place of Cloud Scheduler.
   IDs. Admins see counts only, on an election they can already see. A test email goes only to the caller's own
   account, which the server chooses; the request cannot name an address. Only
   the worker holds the AWS access key, from Secret Manager (`aws-ses-*`, versions added by a person, never in
-  Terraform state); the key's IAM user may only send from the agreed address through the notices' configuration set
-  and read the bounce queue. Amazon SES learns each member's address, name and the elections they may vote in, and
-  from the reminder which members had not voted a day before the close (never how anyone voted). The outbox, which
+  Terraform state, added by `worker-key.mjs` on standard input); the key's IAM user (`ustpvote-worker-<env>`, made by
+  `infra/terraform/aws`) may only send from the environment's own address through its configuration set, read and
+  delete that environment's delivery reports, read the account, identity, configuration set and queues for the setup
+  check, and take an address off SES's suppression list. Each environment has its own sender domain, configuration set
+  and queue, so none reads another's reports. Identity Platform's SMTP user (`ustpvote-smtp-<env>`) may only send raw
+  mail from that address; its key exists only inside Identity Platform's configuration, as the SES SMTP password the
+  script derives, never in Terraform state, Secret Manager or a file. The worker reads that configuration for the
+  setup check with a role that holds only `firebaseauth.configs.get`, not the users. Amazon SES learns each member's address, name and the elections they may vote in, and
+  from the reminder which members had not voted a day before the close, and from the vote confirmations who voted
+  and when to the minute (never how anyone voted). The outbox, which
   does store messages with their addresses, is refused outside the emulators, apart from a rehearsal's notices in
   testing mode, which have no address.
-- **Logging:** structured logs with redaction; no request bodies on cast; Firestore Data Access audit logs off in
+- **Logging:** the api and worker write a developer log to Cloud Logging, for whoever runs the deployment to follow
+  what the server did (`docs/LOGGING.md`): one line for every request (method, path, route, status, time taken, the
+  handler that answered as `Controller.handler`, the caller's accountId and roles, and the operator of a test persona),
+  one for every ledger event as it is recorded (type, sequence number, actor, subject), one for each worker step that
+  did something, and one with the stack trace for every unexpected error, which Error Reporting groups. Every line
+  written while a request is handled carries its id and Cloud Trace ids, so one request's lines read together. No line
+  holds a request body, a query string (a search holds a name or an address), a header, the client's address, an email
+  address, a ledger payload, or a path with a secret in it (the unsubscribe link is written as its pattern); and **the
+  lines of the cast request never say who is calling** (§7.1; a test persona's rehearsal ballot aside, §10.4), since a voter and a time together are the link the rest
+  of the design removes. It is not the ledger: it is kept 30 days (the log bucket's default), read only by people with
+  access to the Google Cloud project (`operator_members`), proves nothing, and unlike the ledger it does record reads.
+  Firestore Data Access audit logs off in
   production (they would record write paths and times; pool encryption makes them harmless, but there is no need for
   them); KMS Data Access audit logs on. Sign-ins: the api's sign-in log with each sign-in's address, for System Admins
   and Auditors, and Identity Platform's request logs with every attempt, failed ones included, both kept 180 days
@@ -4388,8 +5783,10 @@ every 15 seconds in place of Cloud Scheduler.
   is limited to one ballot per voter by `participation/{accountId}`. Sign-up volume per IP is left to Identity
   Platform's quota and reCAPTCHA Enterprise (§4), which see the real client address; behind Hosting and Cloud Run the
   api trusts only the entries its proxies append to X-Forwarded-For (§10.7), so it records addresses for the sign-in
-  log, and limits page visits by them in memory without storing them (§10.7), but nothing else.
-- **Hosting headers:** HSTS, `frame-ancestors 'none'`, `nosniff`, strict referrer policy; CSP tightened once the
+  log, and limits page visits by them in memory without storing them (§10.7), and counts the suggestions form's and the
+  newsletter's sign-ups under a salted hash of them kept only that day (§10.9, §10.15), but nothing else.
+- **Hosting headers:** HSTS, `frame-ancestors 'none'` (but on the course embed, a page of its own any site may frame,
+  with a script-hash CSP and no sign-in, §10.17), `nosniff`, strict referrer policy; CSP tightened once the
   sign-in providers' origins are final. The hub (§10.6) adds no origin: its fonts and images are served by the site, and
   the Discord count is read by the API, not the browser.
 
@@ -4400,6 +5797,13 @@ every 15 seconds in place of Cloud Scheduler.
   Terraform in [`infra/terraform`](../infra/terraform) (Q13, adopted pending USTP's confirmation): one module, one
   root per environment, state in a `ustpvote2-<env>-tfstate` bucket, provider versions locked. CI runs
   `terraform fmt` and `validate` on every pull request; nothing has been planned or applied against a real project.
+  *(Added 2026-11-03)* A separate root, `infra/terraform/aws`, holds Amazon SES for every environment's email in one
+  AWS account (state in the prod bucket under `aws-mail`, validated in CI with the others, applied by hand with an AWS
+  login and never by a workflow): per environment a sender domain of its own (prod the party's domain, `dev.` and
+  `staging.` under it) with Easy DKIM and a MAIL FROM domain, a configuration set as that domain's default, its event
+  destination, an SNS topic, an SQS queue with a dead-letter queue, and the worker's and Identity Platform's IAM users;
+  its outputs are the DNS records to publish and each environment's queue URL. Access keys are made outside Terraform,
+  so its state holds no secret (§14).
 - **Server image:** [`apps/server/Dockerfile`](../apps/server/Dockerfile), built from the repository root. A build
   stage installs the server's workspaces from the lockfile with `--ignore-scripts` and compiles them; the runtime
   stage holds only the compiled packages and the server's production dependencies, owned by root and run as the
@@ -4454,16 +5858,57 @@ every 15 seconds in place of Cloud Scheduler.
   since a search engine renders the pages and needs their data, and every api response says `X-Robots-Tag: noindex`
   instead, so the pages are listed and not the JSON, files or images behind them. The sitemap lists the pages that
   are the same for everyone (`SITEMAP_PAGES`), each published bylaws version and each certified, non-rehearsal
-  result, with when it changed. The web app (`seo.ts`) gives each page its description and a canonical link to its
-  own address (no query), and marks with `noindex` every page behind sign-in, the sign-in page and a person's course
-  certificate; the hub is described by its own tagline and line on what it is for (§10.6). Requests made without a
+  result, with when it changed, and the race pages and people's pages (§5.17). The web app (`seo.ts`) gives each page
+  its description and a canonical link to its
+  own address (no query), and marks with `noindex` every page behind sign-in, the sign-in page, the account emails'
+  link page (§4) and a person's course certificate; the hub is described by its own tagline and line on what it is for (§10.6). Requests made without a
   sign-in skip App Check (§14), sending a suggestion apart, so a crawler, or any visitor whose browser cannot get a
   token, still sees the public pages, and none of them waits for reCAPTCHA first. Link previews (Open Graph, X) read
   `index.html` as served and run no script, so every page shares its site description and the share card, the icon's
   mark on the brand orange (`make-icons.mjs`), whose address the build makes absolute: `VITE_SITE_ORIGIN` when given,
-  otherwise the project's `https://<project>.web.app`. A production custom domain needs `web_origin` in Terraform and
-  `VITE_SITE_ORIGIN` in the release build. Pages are rendered in the browser (no prerendering): Google and Bing run
+  otherwise the project's `https://<project>.web.app`; but for the pages that have previews of their own (below). A
+  production custom domain needs `web_origin` in Terraform and `VITE_SITE_ORIGIN` in the release build. Pages are rendered in the browser (no prerendering): Google and Bing run
   the script; crawlers that do not see only the shared description.
+- **Link previews** *(added 2026-11-09, the first step of the user's plan to draw people to the site: shared links
+  that show what they point at)*: the sites people share links on (LinkedIn, X, Facebook, Bluesky, Slack, Discord,
+  messaging apps) read a page's `<head>` as served and run no script. So for the pages in `PREVIEW_PAGES`
+  (`ustp-domain`), a news post, a member's candidacy, a course, a course certificate (§10.8), an election's results,
+  an event (§10.17), the Legislation page, a public bill, the scorecard and a member's line on it (§5.14), and *(added
+  2026-11-12)* a race page and a person's page (§5.17), Firebase Hosting rewrites
+  the address to the api (`firebase.json`, before the catch-all), which serves the web app's own `index.html` with
+  that page's title, description, canonical link, Open Graph and X tags (`headWithPreview`) and a card image of its
+  own; every other page is served by Hosting as before. Each page's preview comes from a *preview source* in the
+  context that owns its data, from what its public page already shows and nothing else: a published post's title,
+  summary and date; a candidacy's name, office, district and election as approved; a published course's title,
+  summary and number of lessons; a valid certificate's course and day, and its holder's name only while they show it; an election's title and, once counted, each contest's outcome from the signed results
+  (a bar per contest, or a lone candidate contest's candidates), a rehearsal saying so; an event's kind, when in its own
+  zone, where, and its speakers or co-hosts, past or cancelled as it is; a public bill's label, title, topic and the
+  team's summary, with its newest roll call's yeas and nays as bars, the party's position drawn solid; a member's name,
+  seat and how often they voted with the party's position, as bars; a race page's title, who holds the seat and how
+  many run, from the race records already read and never waiting for them; a person's name, office, seat and party.
+  A page is fixed segments, with up to two parameters after them (`/races/:state/:district`). A page with
+  nothing public (a
+  draft, a withdrawn post or candidacy, no such page) gets `index.html` as built, and the web app says what it says
+  today. Texts are cut to `PREVIEW_LIMITS` at a word. The api fetches `index.html` from Hosting at `WEB_ORIGIN` only,
+  never from an address a request names, and again for every page with the ETag of the copy it holds (Hosting answers
+  304), so the first page after a release names the new build's scripts; when Hosting cannot be reached it serves the
+  copy it holds, else 503. These pages are never cached (`no-cache`), carry the headers Hosting gives every page
+  (`PAGE_HEADERS`, kept equal to `firebase.json` by a test), and say `noindex` except in prod at the site's own
+  address, as robots.txt does; a certificate's page says it everywhere, with or without a certificate there
+  (`UNLISTED_PREVIEW_PAGES`), as the web app's own tags do. On the first page opened the web app keeps the description the api wrote, not its
+  route's general one. **Card images** (`GET /v1/public/link-cards?path=…&v=…`, 1200 × 630 PNG) show the brand orange
+  with the site's mark and name, what the page is, its title and up to three lines or four bars, and the party and the
+  site's address at the foot. The api draws them: text set in the site's own Lato (`@fontsource/lato`, SIL Open Font
+  License) as outlines with opentype.js, rendered by sharp, so the server image needs no fonts and nothing typed
+  reaches the SVG as text; a character Lato lacks (an emoji) is left out. `v` is a hash of the card, so a changed
+  title gets a new address on sites that keep an image for days; browsers keep one an hour, Hosting's CDN a day, and
+  each api instance keeps the last 64 it drew. Outside prod robots.txt turns crawlers away, and X's obeys it, so a
+  link to dev shows no card on X: check a preview there with a tool that ignores robots.txt (Facebook's or LinkedIn's
+  inspector, or `curl`). A new preview page needs its route in `PREVIEW_PAGES`, a rewrite in `firebase.json` and a
+  source in the api's `link-previews/providers.ts`; tests check that the three and the router agree. A route is fixed
+  segments and up to two parameters after them (`/course/certificates/:id` beside `/course/:courseId`, `/scorecard`,
+  `/races/:state/:district`), matched segment by segment (`matchPreviewPage`), a page with more fixed segments before one with fewer; its
+  rewrite's `*` is one segment.
 - **The site's name** ("USTP Vote") is one build setting, `VITE_APP_NAME` in the committed `apps/web/.env`: the
   header, page titles, the sign-in heading and messages, `index.html`'s title and link preview tags, the manifest
   (the installed app's name), the author of the Word files the browser builds and the entry in authenticator apps
@@ -4556,6 +6001,7 @@ every 15 seconds in place of Cloud Scheduler.
 |---|---|---|
 | §2 Firestore "namespaces" | Module boundaries in code; top-level registration collections, election data under each election | Firestore Native mode has no namespaces |
 | §2 worker as "Cloud Run Worker / Jobs" | Cloud Run service, HTTP-triggered | Per-minute Jobs would exceed the free tier |
+| §1.1 "NIST SP 800-63B-4 Email/Password" | NIST's rules except the length: 12 characters, not the 15 it sets for a password used alone (§4) | 15 was more than members expect and are asked for elsewhere (Google, Microsoft and Apple ask for 8). 12 is PCI DSS 4.0's minimum and above OWASP ASVS 5.0's 8; breached passwords are refused, guessing is rate-limited and bot-scored, and every admin role needs a second factor, for which NIST asks only 8 |
 | §4 sealer only | + KMS encryption of pool entries with per-election key versions destroyed after certification | Sealing does not protect the pool while it exists, nor backups |
 | §4 lifecycle | + `Cancelled`; scheduling is two-person; a cancelled election nobody voted in can be deleted | Need a terminal state for aborted elections; the contest rules matter as much as the roll; elections set up by mistake or for practice should not stay in every list, and the ledger keeps their record (§6.1) |
 | §5 two-person list | + scheduling, cancellation; officer position modifications only for ending a term and appointing to an office | Same reasoning. Role changes were two-person too until USTP chose one System Admin for them (§10.2), and defining or changing an office until USTP chose one Membership or Election Admin for it (§6.4) |
@@ -4606,8 +6052,9 @@ Decisions for USTP; the design's proposed default is in brackets.
 13. **Infrastructure as code:** Terraform acceptable? [yes]
 14. **Repository visibility and license.** `ustp-tally` and `ustp-audit` are meant to be public; the repository was created private. [decide before the first release]
 15. **Email sender domain** for Amazon SES and DMARC alignment. [Decided 2026-10-26: Amazon SES, From `USTP Elections
-    <noreply@transhumanist-party.org>`, no Reply-To. Still to do: verify the domain in SES with DKIM, a custom MAIL
-    FROM domain and DMARC (infra README "Election notices")]
+    <noreply@transhumanist-party.org>`, no Reply-To. 2026-11-03: dev and staging send from `noreply@dev.` and
+    `noreply@staging.transhumanist-party.org`, each a domain of its own in SES. Still to do: apply `infra/terraform/aws`
+    in an AWS account of USTP's and publish its DKIM, MAIL FROM and DMARC records (infra README "Email (Amazon SES)")]
 16. **GCP region** for Cloud Run, Firestore and the buckets. [`us-central1`, the cheapest free-tier region]
 17. **Membership requirements:** minimum age, and the wording of the platform attestation applicants confirm. [18; "I
     support the platform and goals of the US Transhumanist Party." Decided 2026-10-28: the attestation is dropped, and
@@ -4625,7 +6072,7 @@ Decisions for USTP; the design's proposed default is in brackets.
     the party's site; the notes shown, saying they are automated; System Admins, in the app, ledgered]
 19. **Contact for election questions** in the election notices (§6.8), whose From address takes no replies: an address
     or a page members can write to about an election. [none yet: a placeholder in the emulators; nothing is mailed until
-    a System Admin sets one in Admin › Election emails, or the deployment's `NOTICE_CONTACT`]
+    a System Admin sets one in Admin › Email, or the deployment's `NOTICE_CONTACT`]
 20. **Candidacies and endorsement** (§5.8): does a Membership Admin's approval of a member's candidacy for public
     office mean the party endorses them, and should an endorsement be a separate, recorded decision (by whom: the
     Chairman, an officers' vote)? [approval only lists it; the Candidates page says listing is not an endorsement]
@@ -4671,6 +6118,6 @@ Decisions for USTP; the design's proposed default is in brackets.
 | **M0 — Foundations** *(this commit)* | Design; monorepo; `ustp-tally`, `ustp-audit`, `ustp-domain` with tests; server and web skeletons; CI |
 | **M1 — Identity & registration** | *Done:* auth guard + App Check, ledger hash chain, emulator test harness, accounts and identity linking, bylaws, applications, member status, Membership Admin triage, role changes (two-person at first, one System Admin since M5; §10.2), auth switches, Auditor ledger verification; web sign-in (Google, Microsoft, Apple, email/password, email link), registration, account and admin console. admin two-step verification (authenticator-app setup, code step at sign-in, re-authentication for approvals, typed MFA/re-auth problems); profile photos (normalized upload, automatic checks, admin review). *Still to exercise against a real project:* authenticator-app setup and sign-in (TOTP), and Cloud Vision photo checks — neither has an emulator |
 | **M2 — Election setup & ledger** | *M2a done:* draft elections, contests (all three kinds), candidates, proposal texts, live definition hash and readiness checks, recusal; Election Admin console, Auditor read-only view. *M2b done:* roll snapshots, two-person scheduling (definition re-verified, tie-break seed committed) and cancellation; approvals generalized into per-action handlers. *M2c done:* signed ledger blocks sealed by the worker tick, roll signatures, anchors in a write-once bucket, public blocks/keys/anchors and entry inclusion proofs, Auditor verification of chain, blocks, signatures and anchors (and in-browser block checks). *Still to exercise against a real project:* Cloud KMS signing and the locked anchors bucket — neither has an emulator |
-| **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email |
+| **M3 — Casting & secrecy** | *M3a done:* the worker's election clock (pool key preparation, open/close on time with the definition re-verified, ledgered); voter endpoints and the cast endpoint (roll check, revocation check, duplicate-vote guard); hybrid pool encryption to a per-election asymmetric key; roll-call ballots; ballot page with in-browser integrity checks, commitments computed before sending, and downloadable receipts. *M3b done:* the sealer (k-anonymous sealed blocks while open, the rest at close, roll-call at close, `ballots.sealed` / `election.sealed` ledgered), the published election record with block contents after close and inclusion proofs, `/verify` checking a saved, downloaded or pasted receipt through to the signed, anchored ledger. *Still to exercise against a real project:* Cloud KMS pool keys. *Moved to M5 with email (Amazon SES):* the "you voted" email, done there as vote confirmations (§6.8) |
 | **M4 — Tally & certification** | *M4a done:* the tally as a tick step after sealing (seed read from the secret store and checked against its commitment, tie-break orders derived from it, `ustp-tally` over the sealed blocks with the roll size), the signed provisional results bundle in `results/{electionId}` ledgered as `results.computed`, `GET /v1/public/elections/{id}/results` and the results status in the public record, and a results page that shows every contest (IRV rounds and tie-breaks included) and re-tallies in the browser, checking the hash, signature, seed and ledger entry. *`ustp-verify` CLI done:* ledger, anchors, election record, receipts and results (full re-tally) from public artifacts only (§16). *M4b done:* two-person certification (`results.certified`, election Certified), offices defined and terms ended through `position.modify`, contests tied to offices, terms of office created at certification, public office holders, ballot-pool key destruction for certified and cancelled elections, certification in `checkResults` (results page, CLI). *CSV export done:* `GET /v1/public/elections/{id}/results.csv` from the signed bundle, with a download button and a Google Sheets `IMPORTDATA` formula on the results page (§9). *Word export done:* the ballot and results as a `.docx` built in the browser, for Word and Google Docs, from the results page, the ballot page and the election editor (§9). *Synopsis done:* the results in brief, as the party publishes them, first on the results page (printable) and first in the Word file (§9). *Still to exercise against a real project:* Cloud KMS key destruction; that the CSV's links name the site's domain behind Hosting |
-| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity, releasing everything from one commit in one run: Firestore rules and indexes (waiting until every index is ready), the api, worker and MCP server, then the web app on Hosting (§15); open pages comparing their commit with the api's and offering a reload, and explaining a request refused by a newer api (§15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2), and at most two roles per person, the Auditor holding no other (§10.1); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4), and demo elections on Transhumanist themes, made up at random and scheduled as rehearsals in one click, mailing nobody (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, state and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list, and the emails to voters beside them from their counts (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); the home page laid out as a sign-in landing page, a quote about voting over a sunrise drawn for the project beside the sign-in card or the signed-in cards, the quote FDR's from his 1938 Marietta, Ohio address with its source recorded, changed or switched off by one System Admin and ledgered as `home_quote.changed` (§10.5), since moved to `/vote` as the voting home; the home page `/` as the party's link hub, managed by System Admins (profile, accent and default theme, sections and links with an icon row and a star, the Discord card with an online count the API reads from Discord), ledgered as `hub.changed`, with click counts per link and no personal data, self-hosted fonts and a light and a dark theme (§10.6), and a cover banner over the hub's profile and a photo behind every other page in place of the sunrise, under a scrim that keeps text at 4.5:1, uploaded by System Admins (§10.6); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES with bounces read from SQS, and System Admins' settings for them (each on or off, the reminder's lead time, the contact, each subject and opening; ledgered), and an outbox in place of mail with the emulators (§6.8; SES itself not yet set up in any project); the platform consistency check with Claude, once per person per election, from the ballot for voters on the roll and from the election editor for Election Admins and Auditors, comparing the proposals with each other and with the documents an Election Admin chooses for the election, any of the USTP Constitution (its Article VI is the Platform), the Transhumanist Bill of Rights, the bylaws in force and the US Constitution, each result keeping what it was compared with (§5.5; off in real projects until Q18 is settled, and not yet run against Anthropic's API); the Anthropic API key added, replaced or removed by a System Admin under Admin › Claude, tried with Anthropic first and kept in Secret Manager, where the api can store it but not read it, ledgered as `anthropic_key.changed` (§5.6), on the tab renamed Admin › API keys (2026-11-01), which also takes the FEC, Open States and Google Civic keys, each optional and used in place of the deployment's (§5.6); the election setup check with Claude, run once per version of an election by an Election Admin or Auditor, comparing its rules, offices and proposal texts with the bylaws, with its notes beside the contests on the ballot, the results and in the editor once the election is scheduled, and non-blocking seat advisories (§6.9; off in real projects until Q18 is settled, and not yet run against Anthropic's API); appointments to offices without an election, for first holders and between elections, requested by a Membership or Election Admin and approved by an Auditor, only an Active member and only to a free seat, ledgered as the public `position_term.appointed`, with Appoint in the Offices tab and on the member profile and a public Offices page (§6.4), in everyone's menu by default, the menu bar keeping one row by putting the links that do not fit behind a More button (§10.5); every page but the hub and the voting home styled like the voting home, its picture behind and the page on one card lifted off it, with 16 px text and larger headings (§10.5); the ballot list as a card per election in the voting home's style, and the list, the ballot and its Cast dialog by touch: 48 px buttons and choices, as wide as their card on a phone (§10.5); the Register page's heading and intro and the application's two membership questions, eligibility to vote in US elections (a United States or an Allied Member) and agreement with the Core Ideals, neither ever refusing an application, all worded by Membership Admins under Admin › Registration form, each version kept and ledgered as `registration_form.changed`, with the class in the Members table, its filter and CSV (§5.2); teams that Active members join (at once, by asking a lead, or only when a Membership Admin adds them), each with its own description, question for people asking, size limit, members' link, colour and symbol, created, renamed and archived by Membership Admins with a first lead, and run by their leads, who decide requests, remove members and make co-leads, always keeping one lead; ledgered as `team.changed` and `team.member_changed` (§5.7); members' candidacies for public office, each declaration and change approved by a Membership Admin before the public Candidates page shows it, on a Google map of its Census district (§5.8; the map needs a Terraform apply for its key), the page opening for a signed-in member on their own area, the districts the ZIP code on their record reaches into, worked out each time and never stored (§5.8), and a Your area page listing who holds and who runs for each office there, from the FEC, the congress-legislators data and Open States and from Communications Admins' entries, each with an email the member picks from a list of templates that Membership and Communications Admins keep, fills in and sends from their own email app, and a map of their districts with who holds and runs for each (§5.12; the FEC and Open States keys need a Terraform apply), with biographies and offices held from Wikipedia and Wikidata, matched by FEC or Bioguide ID, and the ballot's contests from Google's Civic Information API while an election is loaded, the ones in no Census district listed apart, and the same candidates from public records on the public Candidates page, kept apart from members' candidacies and on the map as a ring per district, for the member's own area or any ZIP code typed (§5.8, §5.12; the Civic key needs a Terraform apply), every office of the area on both pages as compact cards, each with its district's outline drawn small and on the map, who is in office as well as who runs in the member's own area, and each person opened with their district on the map (§5.8), and in California the candidates on the state's ballot from its Secretary of State, with the seats not up this year (§5.8, §5.12), and on both pages the area's people in three sections, the Transhumanist Party's candidates first, then the member's representatives, then everyone else running, each person badged *Transhumanist* or *Your representative* and someone who is both listed in both, four people to an office's card with *Show N more* (§5.8); a sign-in log for System Admins and Auditors, each sign-in with its login, method, second factor, address and browser, kept 180 days and never ledgered, with Identity Platform's request logs (every attempt, failed ones included) kept as long in their own log bucket, and Google Analytics 4 on the public pages once a System Admin sets a measurement ID, never on the ballot, receipts, sign-in, account or admin pages, ledgered as `analytics.changed` (§10.7), and page visits: hits per page and day, and signed-in members' visits by name kept 180 days, never on the ballot or the receipt check, read by System Admins and Auditors under Admin › Security with a chart, pages, people and a CSV (§10.7); search engines: robots.txt and a sitemap from the api, open only in prod at the site's own address, `noindex` on the api and on pages behind sign-in, a description and canonical link per page, and link preview tags with a share card (§15); the course's quizzes edited freely by Course Administrators (1 to 10 questions of 2 to 6 choices), learners told after each try which answers were right and why, and futurist portraits uploaded and kept on the site, with dead links flagged (§10.8); many courses on a course map, the party's eight added as drafts, prerequisites locking a course's quizzes (never its lessons) until the courses before it are passed, a course picker for learners and Course Administrators, each course's students with their scores, attempts, last activity and certificate but not their email, and a private conversation per student and course with the instructors (the Course Administrators), off until a Course Administrator turns it on for that student (§10.8), and the Course tab's board, where courses are dragged between squares and lines drawn from a course to the one after it, arranged as an org chart in one click, and saved together with Save map (§10.8), and a switch per course that hides it from the Courses page while it stays published and open at its address (§10.8), and five of the map's courses combined into two, Allies with The Coalition and the New York introduction with Why the New York party and Left Transhumanism, once at a release (§10.8), and every course exported at once with the course map, as one `ustp.courses` JSON file, by Course Administrators (§10.8); communications, run by a new Communications Admin role that also edits the Link hub: news and press releases published by one admin and ledgered, with RSS and JSON feeds for the party's bots; share buttons that open each site's own composer, counted with nothing about who; a share kit of ready-made posts for Active members; a social media calendar for the party's accounts; a public suggestions form, its senders' contact details optional and every suggestion deleted after a year; a press kit with files to download; and a registry of the party's bots, the public ones listed on the Press page (§10.9); a Reddit-style forum for Active members, discussions and proposals with threaded comments and private up and down votes (hot, new and top), moderated by Membership Admins with reasons and reports and ledgered as `forum.moderated`, from which an Election Admin puts a proposal on a draft election's ballot (§5.9); the members' room, a chat for Active members who accept its AI terms at the door (ledgered as `room.consent_changed`), kept current by long polling, with an assistant on a self-hosted model that answers `/ask` from the room's messages, decisions and action items by vector search with cited sources, `/decide`, `/todo`, `/memory` and `/forget`, a kill switch for Membership Admins ledgered as `room.assistant_switched`, Admin › Members' room where Membership and System Admins open and close the room and System Admins switch its model server on (starting it) or off (no GPU cost), ledgered as `room.settings_changed`, and edit the door's intro and terms, new terms sending everyone back to accept them, ledgered as `room.door_changed`, and messages kept 90 days, and its peer-to-peer call with whoever is speaking shown and the assistant's spoken `/joke` (§5.10; the model needs a Terraform apply with `room_model_enabled`), with an emoji picker in the composer, six emoji reactions and up and down votes on messages, totals shown and never who, going with their message (§5.10); a System Admin switch that requires two-step verification of every member, System Admins needing it on every page whatever it says (§4); the Guide, page-by-page walkthroughs for a Voter, an Election Admin and an Auditor, followed from a panel at the foot of every page (§10.11). *Still to do:* the members' room's political analysis with Claude, then the rest of voice (§5.10); the law analysis, proposed and not started, switched on and off by System Admins for the people they choose, admins first, with settings and a budget to keep it cheap (§5.11, Q22); Claude drafting each site's version of a post, and bots the app runs itself (§10.9); a roll criterion on the Core Ideals answer (§6.3); the "you voted" email (Amazon SES); a screen-reader pass; load test; external review; mock election |
+| **M5 — Hardening & launch gates** | *Done:* Terraform for dev, staging and prod (validated in CI with locked providers, applied for dev; §15) including the Binary Authorization policy; the server image (`apps/server/Dockerfile`, built and smoke-tested in CI); the release workflow and its keyless `ustp-release` identity, releasing everything from one commit in one run: Firestore rules and indexes (waiting until every index is ready), the api, worker and MCP server, then the web app on Hosting (§15); open pages comparing their commit with the api's and offering a reload, and explaining a request refused by a newer api (§15); installable PWA (manifest, icons, a service worker that caches only the app shell, never `/v1/**`); WCAG 2.2 AA accessibility pass (`docs/ACCESSIBILITY.md`); the System Admins' People list, who holds which role, and picking the person in the role-change form (§10.3); role changes by one System Admin, taking effect at once, with the form in the People tab (§10.2), and at most two roles per person, the Auditor holding no other (§10.1); offices defined or changed by one Membership or Election Admin, at once (§6.4); testing mode for rehearsing elections, with test personas a System Admin acts as, on in dev and never in prod (§10.4), and demo elections on Transhumanist themes, made up at random and scheduled as rehearsals in one click, mailing nobody (§10.4), and test voters deleted by one System Admin, one or all at once, whatever elections hold them, their rolls, ballots and results kept (§10.4); the advisory bylaws check with Claude, run by the worker, with flagged lines highlighted in the draft editor (§5.4; off in real projects until Q18 is settled, and not yet run against Anthropic's API); registering as one flow, from creating the login to a submitted application, with the email verified while the form is filled in (§5.2); permanent deletion of a cancelled election nobody voted in, by one Election Admin, ledgered as `election.deleted` (§6.1), and in testing mode of a finished rehearsal with its ballots and results (§6.1, §10.4); a voting window as an iCalendar event from the public record, at a public address no page links to since the ballot pages dropped "Add to calendar" (§6.1); member profiles for Membership Admins with every application answer, members changing their own details and email opt-ins, and Membership Admin corrections with a reason, ledgered as `member.details_changed` (§5.2); the Members tab as one table over every member, with search, location and status filters with counts, offices held, sorting, and a CSV export built in the browser (§5.2); the election editor's workflow, swim lanes of who does each step (Election Admin, Auditor, the worker, the voters) showing where the election is and what its next step waits on, with the same steps as a list, and the emails to voters beside them from their counts (§6.1); who sees which link: System Admins choose the menu links, admin sections and start page of each membership state and role, within what the API allows and never locking themselves out, ledgered as `navigation.changed`, with a home page of what each signed-in person can do (§10.5); the home page laid out as a sign-in landing page, a quote about voting over a sunrise drawn for the project beside the sign-in card or the signed-in cards, the quote FDR's from his 1938 Marietta, Ohio address with its source recorded, changed or switched off by one System Admin and ledgered as `home_quote.changed` (§10.5), since moved to `/vote` as the voting home; the home page `/` as the party's link hub, managed by System Admins (profile, accent and default theme, sections and links with an icon row and a star, the Discord card with an online count the API reads from Discord), ledgered as `hub.changed`, with click counts per link and no personal data, self-hosted fonts and a light and a dark theme (§10.6), and a cover banner over the hub's profile and a photo behind every other page in place of the sunrise, under a scrim that keeps text at 4.5:1, uploaded by System Admins (§10.6); dev brought up: Terraform applied, Identity Platform configured, the api and worker released to Cloud Run with the worker ticking every minute, and the web app on Firebase Hosting (§15); the voting-open email to everyone on an election's roll, once each, recorded per person without addresses, with counts, a preview and resending in the election editor, a reminder a day before the close to those who have not voted, both through Amazon SES, and System Admins' settings for them (each on or off, the reminder's lead time, the contact, each subject and opening; ledgered), and the name all the site's email comes from (ledgered too), and for the site's other emails (welcome emails, Election Admins' and members' test emails, each on or off; ledgered), and an outbox in place of mail with the emulators, and SES's delivery reports read from SQS for every email the app sends and for Identity Platform's: each message's record (delivered, delayed, bounced, marked as spam, rejected, never opens or clicks), live counts in the editor, an Election Admin's test showing whether it arrived, addresses that bounced for good or were marked as spam not mailed again, and each round's reports ledgered after three days as `notice.delivery_reported` (§6.8), Amazon SES for every environment as the separate Terraform root `infra/terraform/aws` with a sender domain, configuration set, queue and IAM users per environment (§15), and the email setup check under Admin › Email, hourly where mail goes through SES and on request, from the SES account, sender domain, DNS, configuration set, queues and rates to three messages to SES's mailbox simulator, with each failure emailed to the alert addresses through Google (§10.12), Identity Platform's sign-in links, address confirmations and password resets sent through SES from each environment's own address once its check passes, switched by a script that keeps the SMTP key out of every file and state (§4), each member's own list of the emails sent to them and what became of each on their Account page, with a test email to themselves and trying a bounced address again, a banner while theirs is not mailed, and for Membership Admins a "Can't be emailed" flag, filter and CSV column in the Members table and on profiles (§10.12), and vote confirmations, each voter told within a minute or so that their ballot was recorded and when, never how, from the first ballot of an election to a day after its close (§6.8), and each send of election email checked before it goes (held, with the System Admins alerted, while the email setup check fails) and 30 minutes after (a send whose emails did not all reach their mail servers shown on the election's email card and alerted) (§6.8) (SES itself not yet set up in any project); the platform consistency check with Claude, once per person per election, from the ballot for voters on the roll and from the election editor for Election Admins and Auditors, comparing the proposals with each other and with the documents an Election Admin chooses for the election, any of the USTP Constitution (its Article VI is the Platform), the Transhumanist Bill of Rights, the bylaws in force and the US Constitution, each result keeping what it was compared with (§5.5; off in real projects until Q18 is settled, and not yet run against Anthropic's API); the Anthropic API key added, replaced or removed by a System Admin under Admin › Claude, tried with Anthropic first and kept in Secret Manager, where the api can store it but not read it, ledgered as `anthropic_key.changed` (§5.6), on the tab renamed Admin › API keys (2026-11-01), which also takes the FEC, Open States and Google Civic keys, each optional and used in place of the deployment's (§5.6); the election setup check with Claude, run once per version of an election by an Election Admin or Auditor, comparing its rules, offices and proposal texts with the bylaws, with its notes beside the contests on the ballot, the results and in the editor once the election is scheduled, and non-blocking seat advisories (§6.9; off in real projects until Q18 is settled, and not yet run against Anthropic's API); appointments to offices without an election, for first holders and between elections, requested by a Membership or Election Admin and approved by an Auditor, only an Active member and only to a free seat, ledgered as the public `position_term.appointed`, with Appoint in the Offices tab and on the member profile and a public Offices page (§6.4), in everyone's menu by default, the menu bar keeping one row by putting the links that do not fit behind a More button (§10.5); every page but the hub and the voting home styled like the voting home, its picture behind and the page on one card lifted off it, with 16 px text and larger headings (§10.5); the ballot list as a card per election in the voting home's style, and the list, the ballot and its Cast dialog by touch: 48 px buttons and choices, as wide as their card on a phone (§10.5), with finished votes hidden until the voter shows them (§10.5); the Register page's heading and intro and the application's two membership questions, eligibility to vote in US elections (a United States or an Allied Member) and agreement with the Core Ideals, neither ever refusing an application, all worded by Membership Admins under Admin › Registration form, each version kept and ledgered as `registration_form.changed`, with the class in the Members table, its filter and CSV (§5.2), and applicants outside the United States, who give their country and need no state, city or ZIP code, with one Staying in touch box ticked to start in the US only (§5.2); teams that Active members join (at once, by asking a lead, or only when a Membership Admin adds them), each with its own description, question for people asking, size limit, members' link, colour and symbol, created, renamed and archived by Membership Admins with a first lead, and run by their leads, who decide requests, remove members and make co-leads, always keeping one lead; ledgered as `team.changed` and `team.member_changed` (§5.7); members' candidacies for public office, each declaration and change approved by a Membership Admin before the public Candidates page shows it, on a Google map of its Census district (§5.8; the map needs a Terraform apply for its key), the page opening for a signed-in member on their own area, the districts the ZIP code on their record reaches into, worked out each time and never stored (§5.8), and a Your area page listing who holds and who runs for each office there, from the FEC, the congress-legislators data and Open States and from Communications Admins' entries, each with an email the member picks from a list of templates that Membership and Communications Admins keep, fills in and sends from their own email app, and a map of their districts with who holds and runs for each (§5.12; the FEC and Open States keys need a Terraform apply), with biographies and offices held from Wikipedia and Wikidata, matched by FEC or Bioguide ID, and the ballot's contests from Google's Civic Information API while an election is loaded, the ones in no Census district listed apart, and the same candidates from public records on the public Candidates page, kept apart from members' candidacies and on the map as a ring per district, for the member's own area or any ZIP code typed (§5.8, §5.12; the Civic key needs a Terraform apply), every office of the area on both pages as compact cards, each with its district's outline drawn small and on the map, who is in office as well as who runs in the member's own area, and each person opened with their district on the map (§5.8), and in California the candidates on the state's ballot from its Secretary of State, with the seats not up this year (§5.8, §5.12), and on both pages the area's people in three sections, the Transhumanist Party's candidates first, then the member's representatives, then everyone else running, each person badged *Transhumanist* or *Your representative* and someone who is both listed in both, four people to an office's card with *Show N more* (§5.8); a sign-in log for System Admins and Auditors, each sign-in with its login, method, second factor, address and browser, kept 180 days and never ledgered, with Identity Platform's request logs (every attempt, failed ones included) kept as long in their own log bucket, and Google Analytics 4 on the public pages once a System Admin sets a measurement ID, never on the ballot, receipts, sign-in, account or admin pages, ledgered as `analytics.changed` (§10.7), and page visits: hits per page and day, and signed-in members' visits by name kept 180 days, never on the ballot or the receipt check, read by System Admins and Auditors under Admin › Security with a chart, pages, people and a CSV (§10.7); search engines: robots.txt and a sitemap from the api, open only in prod at the site's own address, `noindex` on the api and on pages behind sign-in, a description and canonical link per page, and link preview tags with a share card (§15), and link previews of their own, with a card image the api draws, for news posts, candidacies, courses, course certificates, election results, events, the Legislation page, public bills, the scorecard and members' lines on it (§15, §10.17, §5.14); race pages, an indexable page with its own link preview for each state's federal races and each House seat, "2028 candidates in CA-12", who holds the seat and who runs from public records read for the whole state once a day and shared by every api instance, the party's own candidates first, in the sitemap and linked from the Candidates page, and a page of their own for each public-record person with an FEC or Bioguide ID, with share buttons (§5.17); the course's quizzes edited freely by Course Administrators (1 to 10 questions of 2 to 6 choices), learners told after each try which answers were right and why, and futurist portraits uploaded and kept on the site, with dead links flagged (§10.8); many courses on a course map, the party's eight added as drafts, prerequisites locking a course's quizzes (never its lessons) until the courses before it are passed, a course picker for learners and Course Administrators, each course's students with their scores, attempts, last activity and certificate but not their email, and a private conversation per student and course with the instructors (the Course Administrators), off until a Course Administrator turns it on for that student (§10.8), and the Course tab's board, where courses are dragged between squares and lines drawn from a course to the one after it, arranged as an org chart in one click, and saved together with Save map (§10.8), and a switch per course that hides it from the Courses page while it stays published and open at its address (§10.8), and five of the map's courses combined into two, Allies with The Coalition and the New York introduction with Why the New York party and Left Transhumanism, once at a release (§10.8), and every course exported at once with the course map, as one `ustp.courses` JSON file, by Course Administrators (§10.8), and the introduction taken without signing in, its quizzes marked by the api and kept in the browser until the visitor signs in, when they move into the account and earn the certificate, with a switch per course for Course Administrators (§10.8), and certificates to share: a public page with the holder's name only if they choose and never in search results, its link preview, share buttons and LinkedIn's Add to profile, the issuer named by an organization ID System and Site Admins set (§10.8); communications, run by a new Communications Admin role that also edits the Link hub: news and press releases published by one admin and ledgered, with RSS and JSON feeds for the party's bots; share buttons that open each site's own composer, counted with nothing about who; a share kit of ready-made posts for Active members; a social media calendar for the party's accounts; a public suggestions form, its senders' contact details optional and every suggestion deleted after a year; a press kit with files to download; and a registry of the party's bots, the public ones listed on the Press page (§10.9); public events kept by Communications Admins (candidate Q&As, debate nights, talks and meetups), each attended at an outside link, at a place or in the members' room, with its own page, calendar file, Google and Outlook buttons, share buttons, link preview and card, a calendar to subscribe to, and its recording once it is over, a YouTube video or an upload; partner groups named in public only once their consent is recorded, with the events they co-host; and the course embed, a page any site may frame, offered on the Partners page as an `<iframe>` snippet with the public course api (§10.17); a Reddit-style forum for Active members, discussions and proposals with threaded comments and private up and down votes (hot, new and top), moderated by Membership Admins with reasons and reports and ledgered as `forum.moderated`, from which an Election Admin puts a proposal on a draft election's ballot (§5.9); the members' room, a chat for Active members who accept its AI terms at the door (ledgered as `room.consent_changed`), kept current by long polling, with an assistant on a self-hosted model that answers `/ask` from the room's messages, decisions and action items by vector search with cited sources, `/decide`, `/todo`, `/memory` and `/forget`, a kill switch for Membership Admins ledgered as `room.assistant_switched`, Admin › Members' room where Membership and System Admins open and close the room and System Admins switch its model server on (starting it) or off (no GPU cost), ledgered as `room.settings_changed`, and edit the door's intro and terms, new terms sending everyone back to accept them, ledgered as `room.door_changed`, and messages kept 90 days, and its peer-to-peer call with whoever is speaking shown and the assistant's spoken `/joke` (§5.10; the model needs a Terraform apply with `room_model_enabled`), with an emoji picker in the composer, six emoji reactions and up and down votes on messages, totals shown and never who, going with their message (§5.10); a System Admin switch that requires two-step verification of every member, System Admins needing it on every page whatever it says (§4); the Guide, page-by-page walkthroughs for a Voter, an Election Admin and an Auditor, followed from a panel at the foot of every page (§10.11); a file's questions added to a draft's ballot with the editor's Import JSON, and a sample ballot on Transhumanist themes with a question of every kind, downloaded from the Elections tab (§6.7); the legislative team's Bills page and `/v1/bills`: bills in Congress found by words in their text, number, member, how far they have gone and date, sorted, opened with their actions, summaries and text, and a watchlist the team shares with tags and notes, for the teams a System Admin names, from Congress.gov and GovInfo with one api.data.gov key (§5.14), and the public Legislation page of the science, AI and longevity bills the team picks from its watchlist, each with a topic and a public summary of the team's, and a scorecard of how each member of Congress voted on their roll calls against the positions the team marks for the party, House votes from Congress.gov and Senate votes from the Senate's XML, read again by the worker every six hours, with link previews of their own and ledgered as `bills.public_changed` (§5.14; the worker's read access to the key needs a Terraform apply); the email log, every email the site sent with whom it went to, who caused it and what became of it, for System Admins under Admin › Email (§10.12), added members' welcome sign-in links from Identity Platform among them, as the adding admin's (§5.13); a bell in the header with each signed-in person's notifications, messages between Active members with blocking and reports to the Membership Admins, and notifications by email as each comes or in a daily or weekly digest, as each member chooses (§10.13); a switch by which each email to members waits for a System Admin's approval, the System Admins notified (§10.12); a Site Admin role with most of a System Admin's powers, changing every role but System Admin and never a System Admin's, the navigation, link hub, quote, email, security and Bills settings, but deleting no account or test voter (403), and none of the sign-in settings, API keys, the room's model server or the testing tools (§10.1), and a System Admin switch that lets Site Admins sign in without two-step verification, on by default (§4); passwords reset from the sign-in form on the app's own page and changed on the Account page, each new password checked as at sign-up (§4; the reset page needs Identity Platform's action URL set by hand); a newsletter for people not ready to join, confirmed by email, a list of its own that Membership, System and Site Admins write to from Admin › Email alone or with the members, leaving it deleting the address (§10.15), referral links for Active members credited when the application they brought is approved, with a team leaderboard for Active members (§5.18), and where visitors came from, the referring site's host and the campaign tags, counted naming nobody in the page-visits report (§10.7). *Still to do:* the members' room's political analysis with Claude, then the rest of voice (§5.10); the law analysis, proposed and not started, switched on and off by System Admins for the people they choose, admins first, with settings and a budget to keep it cheap (§5.11, Q22); Claude drafting each site's version of a post, and bots the app runs itself (§10.9); stopping a member's messaging after reports, and deleting one's own message (§10.13); a roll criterion on the Core Ideals answer (§6.3); a screen-reader pass; load test; external review; mock election |

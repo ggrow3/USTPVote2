@@ -123,10 +123,32 @@ export interface TickResult {
   readonly noticesSent: number;
   /** Test emails sent to the Election Admins who asked for them (design §6.8). */
   readonly testEmailsSent: number;
-  /** Notice recipients the mail provider reported as bounced since the last tick (design §6.8). */
-  readonly bouncesRecorded: number;
+  /** Welcome emails sent (or recorded in the outbox) to members a Membership Admin added (design §5.13). */
+  readonly welcomeEmailsSent: number;
+  /** Delivery reports from the mail provider that changed what is known of a message (design §6.8). */
+  readonly mailEventsRecorded: number;
+  /** Notice rounds whose delivery reports were added up and ledgered as `notice.delivery_reported` (design §6.8). */
+  readonly deliveryReports: number;
+  /** Sends of election email checked against their delivery reports, 30 minutes after each (design §6.8). */
+  readonly sendsVerified: number;
+  /** Whether the email setup check ran (hourly, or when a System Admin asked; design §10.12). */
+  readonly mailChecked: boolean;
+  /** Members' requests done: test emails, and addresses tried again (design §10.12). */
+  readonly memberEmailsSent: number;
+  /** Copies of an email an admin wrote to members (design §10.12). */
+  readonly broadcastEmailsSent: number;
+  /** Emails confirming a newsletter sign-up (design §10.15). */
+  readonly newsletterConfirmationsSent: number;
+  /** Weekly digests queued as an email to members (design §10.14): 0, or 1 when one was due with something new. */
+  readonly digestsQueued: number;
+  /** Notifications emailed as they came, and digests (design §10.13). */
+  readonly notificationEmailsSent: number;
+  /** The membership team's messages emailed to members (design §10.13). */
+  readonly membershipEmailsSent: number;
   /** Suggestions a year old, and the form's limits for days gone, deleted (design §10.9). */
   readonly suggestionsDeleted: number;
   /** The room's messages, done action items and finished questions past their time, and questions given up on (design §5.10). */
   readonly roomExpired: number;
+  /** Public bills read again from Congress.gov, with any new roll calls, every six hours (design §5.14). */
+  readonly publicBillsRefreshed: number;
 }

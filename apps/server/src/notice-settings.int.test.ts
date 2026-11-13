@@ -1,10 +1,13 @@
-import { DEFAULT_NOTICE_SETTINGS, type NoticeSettings, type OutboxMessageRecord } from 'ustp-domain';
+import { DEFAULT_NOTICE_SETTINGS, type MyEmailView, type NoticeSettings, type OutboxMessageRecord } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { NoticeSettingsService } from './notifications/notice-settings.js';
 import { minutes, seedElection, type SeededElection } from './testing/elections.js';
 import { resetEmulators, TestApi, TestWorker, type User } from './testing/emulator.js';
 
-/** System Admins' settings for the election emails (design §6.8): who may change them, and that the worker follows them. */
+/**
+ * System Admins' settings for the site's emails (design §6.8): who may change them, and that the worker and the api follow
+ * them: the election emails, and the switches for welcome and test emails.
+ */
 
 let api: TestApi;
 let worker: TestWorker;
@@ -40,10 +43,12 @@ const settingsOf = (over: Partial<NoticeSettings> & { votingOpen?: Partial<Notic
   const { votingOpen, closingSoon, ...rest } = over;
   return {
     ...DEFAULT_NOTICE_SETTINGS,
+    allEmails: true, // as `resetEmulators` leaves it; these tests are about what each setting does while email is on
     ...rest,
     kinds: {
       voting_open: { ...DEFAULT_NOTICE_SETTINGS.kinds.voting_open, ...votingOpen },
       closing_soon: { ...DEFAULT_NOTICE_SETTINGS.kinds.closing_soon, ...closingSoon },
+      voted: DEFAULT_NOTICE_SETTINGS.kinds.voted,
     },
   };
 };
@@ -52,7 +57,8 @@ describe('the election email settings', () => {
   it('are the defaults until a System Admin saves, and only a System Admin may read or change them', async () => {
     const read = await api.call('GET', URL, sa1);
     expect(read.status).toBe(200);
-    expect(read.body).toEqual({ ...DEFAULT_NOTICE_SETTINGS, version: 0, updatedAt: null, updatedBy: null });
+    // `resetEmulators` leaves email on; a new site's is off (mail-preferences.int.test.ts).
+    expect(read.body).toEqual({ ...DEFAULT_NOTICE_SETTINGS, allEmails: true, version: 0, updatedAt: null, updatedBy: null });
     expect((await api.call('GET', URL, electionAdmin)).status).toBe(403);
     expect((await api.call('GET', URL, voters[0]!)).status).toBe(403);
     expect((await save(settingsOf({ reminderHours: 48 }), 0, electionAdmin)).status).toBe(403);
@@ -90,13 +96,87 @@ describe('the election email settings', () => {
     const election = await seedElection(api, { voters: voters.map((v) => v.accountId) });
     expect((await api.call('GET', `/v1/admin/elections/${election.electionId}/notices`, electionAdmin)).body).toMatchObject({
       contact: null,
-      settings: DEFAULT_NOTICE_SETTINGS,
+      settings: { ...DEFAULT_NOTICE_SETTINGS, allEmails: true },
     });
     await save(settingsOf({ contact: 'https://transhumanist-party.org/contact/' }), 0);
     expect((await api.call('GET', `/v1/admin/elections/${election.electionId}/notices`, electionAdmin)).body).toMatchObject({
       contact: 'https://transhumanist-party.org/contact/',
       settings: { contact: 'https://transhumanist-party.org/contact/' },
     });
+  });
+});
+
+describe('the other emails’ switches', () => {
+  const off = { ...DEFAULT_NOTICE_SETTINGS.emails, welcome: false, electionTests: false, memberTests: false, notifications: false };
+
+  it('are on until a System Admin switches one off, each switch ledgered, and kept by a save that leaves them out', async () => {
+    expect((await api.call('GET', URL, sa1)).body.emails).toEqual(DEFAULT_NOTICE_SETTINGS.emails);
+    expect(DEFAULT_NOTICE_SETTINGS.emails).toMatchObject({ welcome: true, notifications: true, applicationApproved: true, weeklyDigest: false });
+    expect((await save(settingsOf({ emails: { ...DEFAULT_NOTICE_SETTINGS.emails, memberTests: false } }), 0)).status).toBe(200);
+    const entries = (await api.firebase.db.collection('audit_events').where('type', '==', 'notice.settings_changed').get()).docs.map((d) => d.data());
+    expect(entries[0]!.payload.changes).toEqual([{ field: 'emails.memberTests', from: true, to: false }]);
+
+    // A page opened before the switches existed saves without them, and changes none.
+    const { emails: _emails, ...older } = settingsOf({ reminderHours: 36 });
+    const saved = await api.call('PUT', URL, sa1, { basedOn: 1, ...older });
+    expect(saved.body).toMatchObject({ version: 2, reminderHours: 36, emails: { welcome: true, electionTests: true, memberTests: false, notifications: true } });
+
+    // One opened before the notifications' switch saves the others, and keeps it as it was.
+    const { notifications: _notifications, ...three } = { ...DEFAULT_NOTICE_SETTINGS.emails, welcome: false };
+    const keeps = await api.call('PUT', URL, sa1, { ...settingsOf({ reminderHours: 36 }), basedOn: 2, emails: three });
+    expect(keeps.body).toMatchObject({ version: 3, emails: { welcome: false, notifications: true } });
+  });
+
+  it('switched off, leave a Membership Admin’s new member to Identity Platform’s sign-in link', async () => {
+    const membershipAdmin = await api.member('ma@example.test');
+    await api.grant(membershipAdmin.accountId, 'membership_admin', sa1);
+    await api.call('POST', '/v1/admin/bylaws', membershipAdmin, { version: '2026.1', title: 'USTP Bylaws', text: 'Article I. Name.\n' });
+    await save(settingsOf({ emails: { ...DEFAULT_NOTICE_SETTINGS.emails, welcome: false } }), 0);
+
+    const added = await api.call('POST', '/v1/admin/members', membershipAdmin, { email: 'ada@example.test', legalName: 'Ada Lovelace', state: 'NY', city: 'Albany', postalCode: '12207', reason: 'Roster' });
+    expect(added).toMatchObject({ status: 201, body: { welcome: 'identity_platform' } });
+    const accountId = added.body.added[0].accountId as string;
+    const queued = async () => (await api.firebase.db.collection('welcome_emails').doc(accountId).get()).exists;
+    expect(await queued()).toBe(false);
+    const again = await api.call('POST', `/v1/admin/members/${accountId}/welcome`, membershipAdmin);
+    expect(again.body).toEqual({ welcome: 'identity_platform', email: 'ada@example.test' });
+    expect(await queued()).toBe(false);
+
+    // Back on, asking again queues one for the worker.
+    await save(settingsOf({}), 1);
+    expect((await api.call('POST', `/v1/admin/members/${accountId}/welcome`, membershipAdmin)).body).toEqual({ welcome: 'mail', email: 'ada@example.test' });
+    expect(await queued()).toBe(true);
+  });
+
+  it('switched off, refuse Election Admins’ test emails, and say so in the notices view', async () => {
+    const election = await seedElection(api, { voters: voters.map((v) => v.accountId), state: 'scheduled', opensAt: minutes(60), closesAt: minutes(60 * 24 * 3) });
+    const askTest = () => api.call('POST', `/v1/admin/elections/${election.electionId}/notices/voting_open/test`, electionAdmin);
+    await save(settingsOf({ emails: { ...DEFAULT_NOTICE_SETTINGS.emails, electionTests: false } }), 0);
+
+    const refused = await askTest();
+    expect(refused.status).toBe(409);
+    expect(refused.body.detail).toMatch(/switched test emails off/);
+    expect((await api.call('GET', `/v1/admin/elections/${election.electionId}/notices`, electionAdmin)).body.settings.emails.electionTests).toBe(false);
+    expect((await api.firebase.db.collection('notice_tests').get()).size).toBe(0);
+
+    await save(settingsOf({}), 1);
+    expect((await askTest()).status).toBe(202);
+  });
+
+  it('switched off, refuse members’ test emails and retries, while one already asked for still goes', async () => {
+    const ada = await api.member('ada@example.test');
+    const mine = async () => (await api.call('GET', '/v1/me/email', ada)).body as MyEmailView;
+    expect((await mine()).requestsEnabled).toBe(true);
+    expect((await api.call('POST', '/v1/me/email/test', ada)).status).toBe(202);
+
+    await save(settingsOf({ emails: off }), 0);
+    workerSees();
+    expect((await mine()).requestsEnabled).toBe(false);
+    expect((await worker.tick()).body).toMatchObject({ memberEmailsSent: 1 });
+    const refused = await api.call('POST', '/v1/me/email/test', ada);
+    expect(refused.status).toBe(409);
+    expect(refused.body.detail).toMatch(/switched these emails off/);
+    expect((await api.call('POST', '/v1/me/email/retry', ada)).status).toBe(409);
   });
 });
 
@@ -144,6 +224,32 @@ describe('the worker', () => {
     expect(message!.text).toMatch(/^Hello,\n\nThe polls are open until \w+day, .+ \(Eastern Time\)\.\n\nVote by /);
     expect(message!.text).toContain('Replies to this email are not read; write to elections@example.org.');
     expect(message!.from).toBe('USTP Elections <noreply@transhumanist-party.org>');
+  });
+
+  it('sends from the name the System Admins set, at the deployment’s address, and keeps it when a page that predates it saves', async () => {
+    const named = await save(settingsOf({ senderName: 'U.S. Transhumanist Party, Elections' }), 0);
+    expect(named.body).toMatchObject({ version: 1, senderName: 'U.S. Transhumanist Party, Elections' });
+    const entries = (await api.firebase.db.collection('audit_events').where('type', '==', 'notice.settings_changed').get()).docs.map((d) => d.data());
+    expect(entries[0]!.payload.changes).toEqual([{ field: 'senderName', from: null, to: 'U.S. Transhumanist Party, Elections' }]);
+    expect((await save(settingsOf({ senderName: 'Elections <boss@example.org>' }), 1)).status).toBe(400);
+    const { senderName: _name, ...older } = settingsOf({ reminderHours: 36 });
+    expect((await api.call('PUT', URL, sa1, { basedOn: 1, ...older })).body).toMatchObject({ version: 2, senderName: 'U.S. Transhumanist Party, Elections' });
+
+    workerSees();
+    const election = await seedElection(api, { voters: voters.map((v) => v.accountId) });
+    await worker.tick();
+    const messages = await outbox(election);
+    expect(messages).toHaveLength(3);
+    for (const m of messages) expect(m.from).toBe('"U.S. Transhumanist Party, Elections" <noreply@transhumanist-party.org>');
+
+    // Emptied, the deployment's name is back.
+    await save({ ...settingsOf({ reminderHours: 36 }), senderName: null }, 2);
+    workerSees();
+    const ada = await api.member('ada@example.test');
+    expect((await api.call('POST', '/v1/me/email/test', ada)).status).toBe(202);
+    await worker.tick();
+    const test = (await api.firebase.db.collection('notice_outbox').where('accountId', '==', ada.accountId).get()).docs.map((d) => d.data() as OutboxMessageRecord);
+    expect(test.map((m) => m.from)).toEqual(['USTP Elections <noreply@transhumanist-party.org>']);
   });
 
   it('reminds as long before the close as the System Admins set', async () => {

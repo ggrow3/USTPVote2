@@ -94,7 +94,7 @@ export class PublicHomeQuoteController {
 
 /** System Admins change the home page quote or switch it off (design §10.5). */
 @Controller('v1/admin/home-quote')
-@Roles('system_admin')
+@Roles('system_admin', 'site_admin')
 export class HomeQuoteAdminController {
   constructor(private readonly quote: HomeQuoteService) {}
 

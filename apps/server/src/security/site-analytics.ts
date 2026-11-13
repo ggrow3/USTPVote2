@@ -94,7 +94,7 @@ export class PublicSiteAnalyticsController {
 
 /** System Admins set or clear the site's Google Analytics measurement ID (design §10.7). */
 @Controller('v1/admin/site-analytics')
-@Roles('system_admin')
+@Roles('system_admin', 'site_admin')
 export class SiteAnalyticsAdminController {
   constructor(private readonly analytics: SiteAnalyticsService) {}
 

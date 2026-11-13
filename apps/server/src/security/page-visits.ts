@@ -14,11 +14,17 @@ import {
   trackedPage,
   uuidv7,
   visitDay,
+  visitSource,
+  visitSourceId,
+  visitSourcesReport,
+  VISIT_SOURCES_READ_MAX,
   type AccountRecord,
   type PageHitsRecord,
   type PageVisitInput,
   type PageVisitRecord,
   type PageVisitReport,
+  type VisitFromInput,
+  type VisitSourceRecord,
 } from 'ustp-domain';
 import { Ctx, MfaExempt, Public, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
@@ -73,6 +79,7 @@ export class PageVisitsService {
   constructor(
     private readonly firebase: Firebase,
     private readonly members: MemberDirectory,
+    @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
   /** One more visit from `key` (an account or an address) this minute, or 429. */
@@ -80,8 +87,11 @@ export class PageVisitsService {
     if (!this.limiter.take(key)) throw new HttpException('too many page visits; slow down', HttpStatus.TOO_MANY_REQUESTS);
   }
 
-  /** Counts a visit to the page at `path`, and records it with `accountId` when there is one. 404 for an untracked path. */
-  async record(path: string, accountId: string | null, now: Date = new Date()): Promise<void> {
+  /**
+   * Counts a visit to the page at `path`, and records it with `accountId` when there is one. 404 for an untracked path.
+   * With `from` (the first page of a tab), the arrival is counted by where it came from, naming nobody (design §10.7).
+   */
+  async record(path: string, accountId: string | null, now: Date = new Date(), from?: VisitFromInput): Promise<void> {
     const tracked = trackedPage(path);
     if (!tracked) throw new NotFoundException('no tracked page at that path');
     const db = this.firebase.db;
@@ -106,7 +116,24 @@ export class PageVisitsService {
       };
       batch.create(db.collection(Collections.pageVisits).doc(uuidv7(now.getTime())), visit);
     }
+    if (from) {
+      const source = visitSource(from, this.ownHost());
+      batch.set(
+        db.collection(Collections.visitSources).doc(visitSourceId(day, tracked.page.id, source)),
+        { ...source, day, page: tracked.page.id, count: FieldValue.increment(1) },
+        { merge: true },
+      );
+    }
     await batch.commit();
+  }
+
+  /** This site's host, which is never counted as a referrer. */
+  private ownHost(): string | null {
+    try {
+      return this.config.webOrigin ? new URL(this.config.webOrigin).hostname : null;
+    } catch {
+      return null;
+    }
   }
 
   /** Hits per page over the last `days` UTC days, and who opened each page, by name. */
@@ -114,15 +141,17 @@ export class PageVisitsService {
     const db = this.firebase.db;
     const today = visitDay(now);
     const from = `${periodDays(today, days)[0]!}T00:00:00.000Z`;
-    const [hitsSnap, visitsSnap] = await Promise.all([
+    const dayList = periodDays(today, days);
+    const [hitsSnap, visitsSnap, sourcesSnap] = await Promise.all([
       db.collection(Collections.pageHits).get(),
       db.collection(Collections.pageVisits).where('at', '>=', from).orderBy('at', 'desc').limit(PAGE_VISIT_LOG_MAX + 1).get(),
+      db.collection(Collections.visitSources).where('day', '>=', dayList[0]!).orderBy('day', 'desc').limit(VISIT_SOURCES_READ_MAX + 1).get(),
     ]);
     const visits = visitsSnap.docs.slice(0, PAGE_VISIT_LOG_MAX).map((doc) => {
       const { expireAt: _expires, ...visit } = doc.data() as Stored;
       return visit;
     });
-    return pageVisitReport({
+    const report = pageVisitReport({
       days,
       today,
       hits: new Map(hitsSnap.docs.map((d) => [d.id, d.data() as Partial<PageHitsRecord>])),
@@ -130,6 +159,12 @@ export class PageVisitsService {
       people: await this.people([...new Set(visits.map((v) => v.accountId))]),
       truncated: visitsSnap.size > PAGE_VISIT_LOG_MAX,
     });
+    const sources = visitSourcesReport({
+      dayList,
+      records: sourcesSnap.docs.slice(0, VISIT_SOURCES_READ_MAX).map((d) => d.data() as VisitSourceRecord),
+      truncated: sourcesSnap.size > VISIT_SOURCES_READ_MAX,
+    });
+    return { ...report, sources };
   }
 
   /**
@@ -177,7 +212,7 @@ export class PageVisitsController {
   async visit(@Ctx() ctx: RequestContext, @Body(new ZodPipe(pageVisitSchema)) body: PageVisitInput): Promise<void> {
     const accountId = ctx.operator ?? ctx.accountId;
     this.visits.limit(accountId ? `account:${accountId}` : `login:${ctx.principal.uid}`);
-    await this.visits.record(body.path, accountId);
+    await this.visits.record(body.path, accountId, new Date(), body.from);
   }
 }
 
@@ -198,7 +233,7 @@ export class PublicPageVisitsController {
   async visit(@Body(new ZodPipe(pageVisitSchema)) body: PageVisitInput, @Req() request: FastifyRequest): Promise<void> {
     const { ip } = clientAddress(request.headers['x-forwarded-for'], request.socket?.remoteAddress, this.config.trustedProxyHops);
     this.visits.limit(`address:${ip ?? 'unknown'}`);
-    await this.visits.record(body.path, null);
+    await this.visits.record(body.path, null, new Date(), body.from);
   }
 }
 
@@ -208,7 +243,7 @@ export class PageVisitsAdminController {
   constructor(private readonly visits: PageVisitsService) {}
 
   @Get()
-  @Roles('system_admin', 'auditor')
+  @Roles('system_admin', 'site_admin', 'auditor')
   report(@Query('days') days?: string): Promise<PageVisitReport> {
     const n = Number(days);
     return this.visits.report((PAGE_VISIT_PERIODS as readonly number[]).includes(n) ? n : 30);

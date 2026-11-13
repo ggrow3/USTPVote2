@@ -83,13 +83,14 @@ const voter: readonly TourStep[] = [
     id: 'ballots',
     title: 'Your ballots',
     page: '/ballot',
-    about: 'Every election you are on the voter roll for, and where you stand in each.',
+    about: 'Every election you are on the voter roll for that has not finished, and where you stand in each.',
     todo: [
       'Find the election. Its card shows when voting opens and closes, and whether the ballot is secret or roll-call.',
       'Press “Vote now” while voting is open. Before it opens, “Read the ballot” lets you read it.',
     ],
     notes: [
       '“Roll-call” means how you vote is published with your name. On a “Secret ballot” nobody can see how you voted.',
+      'Elections whose voting has closed are hidden until you switch on “Show finished votes”.',
       'No elections listed? You are not on the roll of a current election. Rolls are frozen when an election is set up, so becoming Active later does not add you to it.',
     ],
   },
@@ -118,7 +119,7 @@ const voter: readonly TourStep[] = [
     pick: {
       page: '/ballot',
       title: 'Your ballots',
-      how: 'The receipt shows on the ballot after you cast it: press “View your ballot” on the election’s card.',
+      how: 'The receipt shows on the ballot after you cast it: press “View your ballot” on the election’s card. Once voting has closed, switch on “Show finished votes” first.',
     },
     about: 'Once you have voted, the page shows your receipt: a commitment to each answer, with which you can check later that your vote was counted.',
     todo: [
@@ -152,7 +153,7 @@ const voter: readonly TourStep[] = [
     pick: {
       page: '/ballot',
       title: 'Your ballots',
-      how: 'Once voting has closed, press “See results” on the election’s card in Your ballots.',
+      how: 'Once voting has closed, switch on “Show finished votes” in Your ballots and press “See results” on the election’s card.',
     },
     about: 'The count, which your browser checks again from the published ballots.',
     todo: [
@@ -190,7 +191,7 @@ const electionAdmin: readonly TourStep[] = [
     todo: [
       'Press “New election”. Give it a “Title”, choose “Secret ballot” or “Open roll-call”, and set when voting opens and closes.',
       'Press “Create draft”: the election editor opens.',
-      'Or press “Import JSON” to start from a ustp.election file.',
+      'Or press “Import JSON” to start from a ustp.election file. “Download sample ballot” gives one with a question of every kind, to change first.',
     ],
     notes: ['To work on an election already listed, press it.', 'To tie a contest to an office, define the office first in Admin › Offices.'],
   },
@@ -209,6 +210,7 @@ const electionAdmin: readonly TourStep[] = [
     notes: [
       'You cannot stand in an election you administer, and a candidate in an election cannot administer it.',
       'Forum proposals are put on a draft’s ballot from Admin › Forum, with “Put on a ballot”.',
+      'Questions from a ustp.election file, such as the sample ballot, are added after the ballot’s own with “Import JSON” beside “Download as JSON”.',
     ],
   },
   {

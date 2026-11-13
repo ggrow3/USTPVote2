@@ -24,7 +24,7 @@ describe('People list route (GET /v1/admin/accounts)', () => {
       loadConfig({ ...emulators, APP_CHECK_ENFORCED: 'false', ADMIN_MFA_REQUIRED: 'true' }),
       { isEnabled: async () => true } as unknown as SignInMethodsService,
       { accountIdForUid: async () => 'a1', activeRoles: async () => roles } as unknown as DirectoryService,
-      { current: async () => ({ membersRequired: false }) } as unknown as MfaPolicyService,
+      { current: async () => ({ membersRequired: false, siteAdminsRequired: true }) } as unknown as MfaPolicyService,
     );
     const context = {
       getHandler: () => handler,
@@ -38,18 +38,22 @@ describe('People list route (GET /v1/admin/accounts)', () => {
     }
   }
 
-  it('admits System Admins signed in with a second factor, and nobody else', async () => {
+  it('admits System and Site Admins signed in with a second factor, and nobody else', async () => {
     expect(await admit(['system_admin'])).toBe(true);
+    expect(await admit(['site_admin'])).toBe(true);
     for (const roles of [[], ['membership_admin', 'election_admin'], ['auditor']] as Role[][]) {
-      expect(await admit(roles)).toMatchObject({ message: 'requires role system_admin' });
+      expect(await admit(roles)).toMatchObject({ message: 'requires role system_admin or site_admin' });
     }
     expect(await admit(['system_admin'], { mfa: false })).toMatchObject({ type: PROBLEM_TYPES.mfaRequired });
+    expect(await admit(['site_admin'], { mfa: false })).toMatchObject({ type: PROBLEM_TYPES.mfaRequired });
   });
 
-  it('keeps deleting an account to System Admins signed in with a second factor (design §4)', async () => {
+  it('keeps deleting an account to System Admins signed in with a second factor, never a Site Admin (design §4)', async () => {
     const handler = AccountsAdminController.prototype.delete;
     expect(await admit(['system_admin'], { handler })).toBe(true);
     expect(await admit(['membership_admin', 'election_admin'], { handler })).toMatchObject({ message: 'requires role system_admin' });
+    expect(await admit(['site_admin'], { handler })).toMatchObject({ statusCode: 403, message: 'requires role system_admin' });
+    expect(await admit(['site_admin', 'membership_admin'], { handler })).toMatchObject({ statusCode: 403, message: 'requires role system_admin' });
     expect(await admit(['system_admin'], { mfa: false, handler })).toMatchObject({ type: PROBLEM_TYPES.mfaRequired });
   });
 });

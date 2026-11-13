@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import type { Transaction } from 'firebase-admin/firestore';
-import { Collections, type AccountRecord, type IdentityRecord, type Role, type RoleAssignmentRecord } from 'ustp-domain';
+import { Collections, SITE_ADMIN_ROLES, type AccountRecord, type IdentityRecord, type Role, type RoleAssignmentRecord, type SiteAdminRole } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 
 /** Lookups every request needs: which account a login belongs to and which roles that account holds. */
@@ -44,6 +44,32 @@ export class DirectoryService {
     return found;
   }
 
+  /**
+   * The account an email address belongs to, for a delivery report about mail Identity Platform sent (design §6.8): the
+   * account whose primary email it is, else the one with a login of that address. Null when none, or more than one, has
+   * it.
+   */
+  async accountWithEmail(address: string): Promise<string | null> {
+    const email = address.trim().toLowerCase();
+    const db = this.firebase.db;
+    const [accounts, identities] = await Promise.all([
+      db.collection(Collections.accounts).where('primaryEmail', '==', email).select().limit(2).get(),
+      db.collection(Collections.accountIdentities).where('email', '==', email).select('accountId').limit(2).get(),
+    ]);
+    if (accounts.size === 1) return accounts.docs[0]!.id;
+    const owners = new Set(identities.docs.map((d) => d.get('accountId') as string));
+    return owners.size === 1 ? [...owners][0]! : null;
+  }
+
+  /**
+   * Accounts whose primary email is not verified, or who have none, with the address if any: for the Membership Admins'
+   * list of members who cannot be emailed (design §10.12).
+   */
+  async unverifiedMailboxes(): Promise<{ accountId: string; email: string | null }[]> {
+    const snap = await this.firebase.db.collection(Collections.accounts).where('emailVerified', '==', false).select('primaryEmail').get();
+    return snap.docs.map((d) => ({ accountId: d.id, email: (d.get('primaryEmail') as string | null) ?? null }));
+  }
+
   /** Each account's display name, by accountId, where it has one (never its email); for naming staff who need no membership. */
   async displayNames(accountIds: readonly string[]): Promise<Map<string, string>> {
     const db = this.firebase.db;
@@ -54,6 +80,15 @@ export class DirectoryService {
       if (account?.displayName) found.set(account.accountId, account.displayName);
     }
     return found;
+  }
+
+  /**
+   * System and Site Admins, by name, each with which of the two they are: who approves emails to members and can get an
+   * admin's test email (design §10.12).
+   */
+  async siteAdministrators(): Promise<{ accountId: string; name: string; role: SiteAdminRole }[]> {
+    const lists = await Promise.all(SITE_ADMIN_ROLES.map(async (role) => (await this.roleHolders(role)).map((h) => ({ ...h, role }))));
+    return lists.flat().sort((a, b) => a.name.localeCompare(b.name));
   }
 
   /** Who holds a role now, by name (or email, for an account without one), in name order. */

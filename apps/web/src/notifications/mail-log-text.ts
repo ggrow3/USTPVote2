@@ -1,0 +1,105 @@
+import { MAIL_CAUSED_BY_SYSTEM, type MailDayPerson, type MailKind, type MailKindCount, type MailLogRow, type MailStatus } from 'ustp-domain';
+
+/** Wording for the email log in Admin › Email (design §10.12), in an administrator's words rather than the member's. */
+
+export const LOG_KIND_LABELS: Readonly<Record<MailKind, string>> = {
+  voting_open: 'Election notice: voting is open',
+  closing_soon: 'Election reminder: voting closes soon',
+  voted: 'Vote confirmation',
+  notice_test: 'Test of an election email',
+  welcome: 'Welcome to an added member',
+  probe: 'Setup check (to Amazon’s simulator)',
+  member_test: 'Test a member asked for',
+  admin_test: 'Admin’s test',
+  broadcast: 'Email to members',
+  newsletter_confirm: 'Newsletter sign-up confirmation',
+  newsletter: 'Email to a newsletter subscriber',
+  membership_message: 'From the membership team',
+  notification: 'Notification by email, as it came',
+  notification_digest: 'Digest of notifications',
+  sign_in_link: 'Sign-in link (Identity Platform)',
+  address_verification: 'Address confirmation (Identity Platform)',
+  password_reset: 'Password reset (Identity Platform)',
+  account_email: 'Other account email (Identity Platform)',
+};
+
+export const LOG_STATUS_LABELS: Readonly<Record<MailStatus, string>> = {
+  sent: 'Sent, no report yet',
+  delayed: 'Delayed',
+  delivered: 'Delivered',
+  bounced: 'Bounced',
+  complained: 'Marked as spam',
+  rejected: 'Not sent after all',
+};
+
+/** A row's status, in words: a welcome link no report reaches says so rather than waiting for one. */
+export function logStatus(row: Pick<MailLogRow, 'status' | 'handOff'>): string {
+  return row.handOff && row.status === 'sent' ? 'Sent by Identity Platform, no reports' : LOG_STATUS_LABELS[row.status];
+}
+
+/** What an email was, as the log names it: a welcome says when it was Identity Platform's sign-in link. */
+export function logKind(row: Pick<MailLogRow, 'kind' | 'sender'>): string {
+  return row.kind === 'welcome' && row.sender === 'identity_platform' ? `${LOG_KIND_LABELS.welcome} (Identity Platform’s sign-in link)` : LOG_KIND_LABELS[row.kind];
+}
+
+/** Quasar colours for a status chip, which also carries the words, so colour is never the only sign. */
+export const LOG_STATUS_COLOURS: Readonly<Record<MailStatus, string>> = {
+  sent: 'grey-7',
+  delayed: 'orange-9',
+  delivered: 'positive',
+  bounced: 'negative',
+  complained: 'negative',
+  rejected: 'negative',
+};
+
+/**
+ * Whom an email went to, as the log shows it: the account's name with the address it went to, or, for an email sent
+ * before addresses were kept (2026-11-09), the address the account has now, said so.
+ */
+export function logRecipient(row: Pick<MailLogRow, 'kind' | 'accountId' | 'accountName' | 'accountEmail' | 'to'>): string {
+  if (row.kind === 'probe') return 'Amazon’s mailbox simulator (nobody)';
+  if (!row.accountId) return row.to ? `${row.to} (no account has this address)` : 'An address no account has';
+  const name = row.accountName ?? 'An account with no name';
+  if (row.to) return row.to.toLowerCase() === name.toLowerCase() ? row.to : `${name} (${row.to})`;
+  return row.accountEmail && row.accountEmail !== name ? `${name} (address now: ${row.accountEmail})` : name;
+}
+
+/** A day's person, by name: an address no account has by itself. */
+export function dayPersonName(person: Pick<MailDayPerson, 'accountId' | 'name' | 'addresses' | 'kinds'>): string {
+  if (person.accountId) return person.name ?? 'An account with no name';
+  if (person.kinds.every((k) => k.kind === 'probe')) return 'Amazon’s mailbox simulator (nobody)';
+  return person.addresses.length ? 'No account has this address' : 'Addresses no account has (not kept)';
+}
+
+/** The addresses a day's emails to a person went to, in words. */
+export function dayPersonAddresses(person: Pick<MailDayPerson, 'addresses' | 'addressNow'>): string {
+  if (person.addresses.length) return person.addresses.join(', ');
+  if (person.addressNow) return `${person.addressNow} (the address now: sent before addresses were kept)`;
+  return 'Address not kept';
+}
+
+/** What a person's emails were, the commonest first: “2 × Vote confirmation, Email to members”. */
+export function kindCounts(kinds: readonly MailKindCount[]): string {
+  return kinds.map((k) => (k.count > 1 ? `${k.count} × ${LOG_KIND_LABELS[k.kind]}` : LOG_KIND_LABELS[k.kind])).join(', ');
+}
+
+/** A number of emails, in words. */
+export function emailCount(n: number): string {
+  return `${n.toLocaleString()} ${n === 1 ? 'email' : 'emails'}`;
+}
+
+/** Who caused it, as the log shows it. */
+export function logCause(row: Pick<MailLogRow, 'sender' | 'causedBy' | 'causedByName'>): string {
+  // Identity Platform's own emails, unless an admin's browser asked for it (a welcome link).
+  if (row.sender === 'identity_platform' && !row.causedBy) return 'Identity Platform, when the member asked';
+  if (row.causedBy === MAIL_CAUSED_BY_SYSTEM) return 'The site, by itself';
+  if (!row.causedBy) return 'Not recorded';
+  return row.causedByName ?? 'A deleted account';
+}
+
+/** A bounce, as a short note; null for anything else. */
+export function logBounce(row: Pick<MailLogRow, 'bounce'>): string | null {
+  if (!row.bounce) return null;
+  const type = row.bounce.type === 'permanent' ? 'for good' : row.bounce.type === 'transient' ? 'for now' : 'for an unknown reason';
+  return `Bounced ${type} (${row.bounce.subType})`;
+}

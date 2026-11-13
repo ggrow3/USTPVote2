@@ -1,15 +1,13 @@
 import type { CreateApplicationInput, DecisionInput } from '../api.js';
 import { OK, refuse, type Check, type Outcome } from '../check.js';
 import type { BylawsRecord } from '../records.js';
-import { memberStatusTransition, type StatusTransition } from './member.js';
+import { memberStatusTransition, storedPlace, type StatusTransition } from './member.js';
 import { checkStatusChange } from './member-status.js';
 import type { ApplicationRecord, MemberRecord } from './records.js';
 import {
   APPLICATION_WINDOW_DAYS,
   MAX_APPLICATIONS_PER_WINDOW,
   MINIMUM_MEMBER_AGE,
-  normalizePhone,
-  normalizePostalCode,
 } from './registration.js';
 
 /**
@@ -51,6 +49,8 @@ export function submitApplication(args: {
   readonly recent: number;
   readonly current: MemberRecord | null;
   readonly at: string;
+  /** Whose referral link the applicant came by, from `input.referralCode` (design §5.18); null when none or no one's. */
+  readonly referredBy?: string | null;
 }): Outcome<ApplicationChange> {
   const { accountId, input, bylaws, current, at } = args;
   if (!bylaws) return refuse('conflict', 'no bylaws have been published yet');
@@ -83,12 +83,7 @@ export function submitApplication(args: {
     formVersion: input.formVersion,
     usVoteEligible: input.usVoteEligible,
     agreesWithCoreIdeals: input.agreesWithCoreIdeals,
-    state: input.state,
-    contact: {
-      city: input.city,
-      postalCode: normalizePostalCode(input.postalCode),
-      phone: input.phone ? normalizePhone(input.phone) : null,
-    },
+    ...storedPlace(input),
     communications: { newsletter: input.newsletter ? at : null, announcements: input.announcements ? at : null },
     statement: input.statement || null,
     interests: input.interests || null,
@@ -96,6 +91,8 @@ export function submitApplication(args: {
     volunteer: input.volunteer ?? false,
     runForOffice: input.runForOffice ?? false,
     referral: input.referral || null,
+    // Never the applicant's own link.
+    referredBy: args.referredBy && args.referredBy !== accountId ? args.referredBy : null,
     decidedBy: null,
     decidedAt: null,
     decisionReason: null,
@@ -111,7 +108,9 @@ export function submitApplication(args: {
     profile: {
       legalName: application.legalName,
       preferredName: application.preferredName,
+      country: application.country,
       state: application.state,
+      region: application.region,
       contact: application.contact,
       communications: application.communications,
       usVoteEligible: input.usVoteEligible,

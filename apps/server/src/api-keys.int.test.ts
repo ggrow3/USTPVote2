@@ -56,9 +56,10 @@ describe('the public-records services’ keys (design §5.6)', () => {
   it('start as the deployment has them: its Civic key, and none for the FEC (its demo key) or Open States', async () => {
     expect(await status()).toEqual({
       keys: [
-        { name: 'fec', source: 'none', addedAt: null, addedBy: null, hint: null, deploymentKey: false },
-        { name: 'openstates', source: 'none', addedAt: null, addedBy: null, hint: null, deploymentKey: false },
-        { name: 'civic', source: 'deployment', addedAt: null, addedBy: null, hint: null, deploymentKey: true },
+        { name: 'fec', source: 'none', addedAt: null, addedBy: null, hint: null, deploymentKey: false, unavailable: null },
+        { name: 'openstates', source: 'none', addedAt: null, addedBy: null, hint: null, deploymentKey: false, unavailable: null },
+        { name: 'civic', source: 'deployment', addedAt: null, addedBy: null, hint: null, deploymentKey: true, unavailable: null },
+        { name: 'congress', source: 'none', addedAt: null, addedBy: null, hint: null, deploymentKey: false, unavailable: null },
       ],
       tried: false,
     });
@@ -88,7 +89,7 @@ describe('the public-records services’ keys (design §5.6)', () => {
 
     const removed = await api.call('DELETE', `${route}/fec`, sa1);
     expect(removed.status).toBe(200);
-    expect(await one('fec')).toEqual({ name: 'fec', source: 'none', addedAt: null, addedBy: null, hint: null, deploymentKey: false });
+    expect(await one('fec')).toEqual({ name: 'fec', source: 'none', addedAt: null, addedBy: null, hint: null, deploymentKey: false, unavailable: null });
     expect(await keys().contactKeys()).toMatchObject({ fec: 'DEMO_KEY' });
     expect((await ledger()).at(-1)).toMatchObject({ type: 'api_key.changed', payload: { key: 'fec', change: 'removed' } });
 
@@ -107,5 +108,17 @@ describe('the public-records services’ keys (design §5.6)', () => {
     expect((await api.call('PUT', `${route}/fec`, sa1, { key: FEC, extra: 1 })).status).toBe(400);
     expect((await status()).keys.every((k) => k.source !== 'app')).toBe(true);
     expect((await ledger()).filter((e) => e.type === 'api_key.changed')).toEqual([]);
+  });
+
+  it('give the Bills page its own key, else the FEC key in use, else the demo key (design §5.14)', async () => {
+    expect(await keys().billsKey()).toEqual({ key: 'DEMO_KEY', source: 'demo' });
+    await api.call('PUT', `${route}/fec`, sa1, { key: FEC });
+    expect(await keys().billsKey()).toEqual({ key: FEC, source: 'fec' });
+    expect((await api.call('PUT', `${route}/congress`, sa1, { key: 'DEMO_KEY' })).status).toBe(400);
+    expect((await api.call('PUT', `${route}/congress`, sa1, { key: NEW_FEC })).status).toBe(200);
+    expect(await keys().billsKey()).toEqual({ key: NEW_FEC, source: 'congress' });
+    expect(await one('congress')).toMatchObject({ source: 'app', deploymentKey: false, hint: 'abcd' });
+    await api.call('DELETE', `${route}/congress`, sa1);
+    expect(await keys().billsKey()).toEqual({ key: FEC, source: 'fec' });
   });
 });

@@ -19,6 +19,7 @@ const DOC_ID = 'current';
 function record(data: Partial<MfaPolicyRecord> | undefined): MfaPolicyRecord {
   return {
     membersRequired: data?.membersRequired ?? DEFAULT_MFA_POLICY.membersRequired,
+    siteAdminsRequired: data?.siteAdminsRequired ?? DEFAULT_MFA_POLICY.siteAdminsRequired,
     version: data?.version ?? 0,
     updatedAt: data?.updatedAt ?? null,
     updatedBy: data?.updatedBy ?? null,
@@ -26,8 +27,8 @@ function record(data: Partial<MfaPolicyRecord> | undefined): MfaPolicyRecord {
 }
 
 /**
- * Whether members without an admin role must sign in with a second factor (design §4). The AuthGuard reads it on every
- * request without one, so it is cached for a minute, as the sign-in switches are; another api instance picks up a
+ * Whether members without an admin role, and whether Site Admins, must sign in with a second factor (design §4). The
+ * AuthGuard reads it on every request without one, so it is cached for a minute, as the sign-in switches are; another api instance picks up a
  * change within that minute.
  */
 @Injectable()
@@ -50,7 +51,7 @@ export class MfaPolicyService {
     return current;
   }
 
-  /** Switches the member requirement if nobody saved since `basedOn`, and ledgers who did it. Saving no change writes nothing. */
+  /** Switches the requirements if nobody saved since `basedOn`, and ledgers who did it. Saving no change writes nothing. */
   async update(ctx: RequestContext, input: MfaPolicyInput): Promise<MfaPolicyRecord> {
     const actor = requireAccount(ctx);
     const saved = await this.firebase.db.runTransaction(async (tx) => {
@@ -58,14 +59,16 @@ export class MfaPolicyService {
       if (input.basedOn !== before.version) {
         throw new ConflictException('someone else changed the two-step setting since you opened it; reload to see their change');
       }
-      if (input.membersRequired === before.membersRequired) return before;
+      const siteAdminsRequired = input.siteAdminsRequired ?? before.siteAdminsRequired;
+      if (input.membersRequired === before.membersRequired && siteAdminsRequired === before.siteAdminsRequired) return before;
       const next: MfaPolicyRecord = {
         membersRequired: input.membersRequired,
+        siteAdminsRequired,
         version: before.version + 1,
         updatedAt: new Date().toISOString(),
         updatedBy: actor,
       };
-      const payload: MfaPolicyChangedPayload = { version: next.version, membersRequired: next.membersRequired };
+      const payload: MfaPolicyChangedPayload = { version: next.version, membersRequired: next.membersRequired, siteAdminsRequired };
       await this.ledger.record(tx, [{ type: 'mfa_policy.changed', actor, subject: null, payload: { ...payload } }]);
       tx.set(this.doc, next);
       return next;
@@ -79,7 +82,7 @@ export class MfaPolicyService {
   }
 }
 
-/** System Admins switch the member requirement on and off (design §4); System Admins themselves always need it. */
+/** System Admins switch the member and Site Admin requirements on and off (design §4); System Admins themselves always need it. */
 @Controller('v1/admin/mfa-policy')
 @Roles('system_admin')
 export class MfaPolicyController {

@@ -80,7 +80,7 @@ describe('Transhumanism course', () => {
     expect(verified.body).toMatchObject({ valid: true, courseVersion: 1 });
     expect(verified.body).not.toHaveProperty('recipientName');
     await api.call('POST', `/v1/admin/certificates/${certificateId}/revoke`, editor, { reason: 'test revocation' });
-    expect((await api.call('GET', `/v1/public/certificates/${certificateId}`)).body).toEqual({ valid: false, courseTitle: null, courseVersion: null, issuedAt: null });
+    expect((await api.call('GET', `/v1/public/certificates/${certificateId}`)).body).toEqual({ valid: false, courseId: null, courseTitle: null, courseVersion: null, issuedAt: null, holderName: null });
   });
 
   it('exports the draft or a published version as a ustp.course JSON file, for Course Administrators only', async () => {

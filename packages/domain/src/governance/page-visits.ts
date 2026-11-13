@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { VisitSourcesReport } from './visit-sources.js';
 
 /**
  * Page visits (design §10.7): how often each page of the web app is opened, and which signed-in people open it. Hits
@@ -19,6 +20,11 @@ export interface TrackedPage {
   /** The route, as the web app's router writes it: `:name` is one segment, `:name?` an optional last one. */
   readonly pattern: string;
   readonly label: string;
+  /**
+   * The path recorded for every visit to it, in place of the path opened, for a page whose address says too much: a
+   * conversation's names the two accounts in it (design §10.13), so its visits are recorded as `/messages`.
+   */
+  readonly recordAs?: string;
 }
 
 /** Every page the web app's router has but the untracked ones, more specific routes first. */
@@ -26,8 +32,17 @@ export const TRACKED_PAGES: readonly TrackedPage[] = [
   { id: 'hub', pattern: '/', label: 'Link hub' },
   { id: 'vote', pattern: '/vote', label: 'Voting home' },
   { id: 'signin', pattern: '/signin', label: 'Sign in' },
+  { id: 'email-action', pattern: '/email-action', label: 'Account email link' },
   { id: 'register', pattern: '/register', label: 'Register' },
+  { id: 'set-password', pattern: '/set-password', label: 'Set your password' },
+  { id: 'unsubscribe', pattern: '/unsubscribe', label: 'Unsubscribe' },
+  { id: 'newsletter', pattern: '/newsletter', label: 'Newsletter sign-up' },
+  { id: 'newsletter-confirm', pattern: '/newsletter/confirm', label: 'Newsletter confirmation' },
   { id: 'account', pattern: '/account', label: 'Account' },
+  { id: 'notifications', pattern: '/notifications', label: 'Notifications' },
+  { id: 'messages-team', pattern: '/messages/team/:threadId', label: 'A conversation with the membership team' },
+  { id: 'messages-conversation', pattern: '/messages/:threadId', label: 'A conversation (recorded as Messages)', recordAs: '/messages' },
+  { id: 'messages', pattern: '/messages', label: 'Messages' },
   { id: 'guide', pattern: '/guide', label: 'Guide' },
   { id: 'courses', pattern: '/courses', label: 'Courses' },
   { id: 'course-certificate', pattern: '/course/certificates/:id', label: 'A course certificate' },
@@ -40,18 +55,32 @@ export const TRACKED_PAGES: readonly TrackedPage[] = [
   { id: 'candidates-area', pattern: '/candidates/area', label: 'Your area' },
   { id: 'candidacy-edit', pattern: '/candidates/:candidacyId/edit', label: 'Edit a candidacy' },
   { id: 'candidate', pattern: '/candidates/:id', label: 'A candidate' },
+  { id: 'races', pattern: '/races', label: 'Races' },
+  { id: 'race-state', pattern: '/races/:state', label: 'A state’s races' },
+  { id: 'race-seat', pattern: '/races/:state/:district', label: 'A House seat’s race' },
+  { id: 'person', pattern: '/people/:id', label: 'A person in the public records' },
   { id: 'teams', pattern: '/teams', label: 'Teams' },
   { id: 'team', pattern: '/teams/:teamId', label: 'A team' },
   { id: 'forum', pattern: '/forum', label: 'Forum' },
   { id: 'forum-post', pattern: '/forum/:postId', label: 'A forum post' },
   { id: 'room', pattern: '/room', label: "Members' room" },
+  { id: 'bills', pattern: '/bills', label: 'Bills in Congress' },
+  { id: 'bill', pattern: '/bills/:congress/:type/:number', label: 'A bill in Congress' },
+  { id: 'legislation', pattern: '/legislation', label: 'Legislation' },
+  { id: 'public-bill', pattern: '/legislation/:billId', label: 'A bill on the Legislation page' },
+  { id: 'scorecard', pattern: '/scorecard', label: 'The scorecard' },
+  { id: 'scorecard-member', pattern: '/scorecard/:memberId', label: 'A member’s scorecard' },
   { id: 'news', pattern: '/news', label: 'News' },
   { id: 'news-post', pattern: '/news/:slug', label: 'A news post' },
+  { id: 'events', pattern: '/events', label: 'Events' },
+  { id: 'event', pattern: '/events/:slug', label: 'An event' },
+  { id: 'partners', pattern: '/partners', label: 'Partners' },
   { id: 'press', pattern: '/press', label: 'Press kit' },
   { id: 'suggest', pattern: '/suggest', label: 'Suggestions' },
   { id: 'share', pattern: '/share', label: 'Share kit' },
   { id: 'admin', pattern: '/admin', label: 'Admin console' },
   { id: 'admin-member', pattern: '/admin/members/:accountId', label: "A member's record (admin)" },
+  { id: 'admin-inbox-thread', pattern: '/admin/inbox/:threadId', label: 'A membership inbox conversation (admin)' },
   { id: 'admin-team', pattern: '/admin/teams/:teamId', label: 'A team (admin)' },
   { id: 'admin-forum-post', pattern: '/admin/forum/posts/:postId', label: 'A forum post (moderators)' },
   { id: 'admin-election-preview', pattern: '/admin/elections/:id/preview', label: 'Ballot preview (admin)' },
@@ -89,11 +118,28 @@ export function trackedPage(path: string): { readonly page: TrackedPage; readonl
   const tidy = path.length > 1 && path.endsWith('/') ? path.slice(0, -1) : path;
   if (PAGE_VISITS_UNTRACKED.some((p) => tidy === p || tidy.startsWith(`${p}/`))) return null;
   const match = MATCHERS.find((m) => m.regex.test(tidy));
-  return match ? { page: match.page, path: tidy } : null;
+  return match ? { page: match.page, path: match.page.recordAs ?? tidy } : null;
 }
 
-/** `POST /v1/page-visits` and `POST /v1/public/page-visits`: the path of the page opened. */
-export const pageVisitSchema = z.object({ path: z.string().min(1).max(PAGE_PATH_MAX) });
+/**
+ * Where an arrival came from (design §10.7), sent with the first page of a tab only: the referring site's host, the
+ * landing address's campaign tags and whether it was a member's referral link, each as a field of its own. Loose here,
+ * made tidy (or dropped) by `visitSource`, so a strange tag never loses the visit.
+ */
+export const visitFromSchema = z.object({
+  referrer: z.string().max(500).optional(),
+  source: z.string().max(500).optional(),
+  medium: z.string().max(500).optional(),
+  campaign: z.string().max(500).optional(),
+  referral: z.boolean().optional(),
+});
+export type VisitFromInput = z.infer<typeof visitFromSchema>;
+
+/**
+ * `POST /v1/page-visits` and `POST /v1/public/page-visits`: the path of the page opened, and with the first page of a
+ * tab where it came from (`from`, design §10.7), never the address's query.
+ */
+export const pageVisitSchema = z.object({ path: z.string().min(1).max(PAGE_PATH_MAX), from: visitFromSchema.optional() });
 export type PageVisitInput = z.infer<typeof pageVisitSchema>;
 
 /** At most this many visits a minute from one account or address, per api instance; more are refused (429). */
@@ -174,6 +220,8 @@ export interface PageVisitReport {
   readonly visitors: readonly PageVisitor[];
   /** More visits naming people happened in the period than `PAGE_VISIT_LOG_MAX` (the oldest are left out). */
   readonly truncated: boolean;
+  /** Where the period's arrivals came from (design §10.7); absent from a report built without them. */
+  readonly sources?: VisitSourcesReport;
 }
 
 const countsOn = (days: Readonly<Record<string, number>> | undefined, dayList: readonly string[]) =>

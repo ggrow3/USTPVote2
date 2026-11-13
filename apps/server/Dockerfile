@@ -9,7 +9,7 @@
 #   docker build -f apps/server/Dockerfile -t ustp-server .
 
 # Node 26 LTS (.nvmrc), pinned by digest (design §14). Dependabot keeps both stages on the same digest.
-FROM node:26.12.1-trixie-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8a4c0b879c1c12f22761ec AS build
+FROM node:26.13.0-trixie-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39 AS build
 WORKDIR /src
 
 # Locked dependencies, no install scripts (spec §7; .npmrc sets ignore-scripts too). npm ci checks the lockfile against
@@ -46,8 +46,8 @@ RUN --mount=type=cache,target=/root/.npm \
       if [ -d "$ws/node_modules" ]; then cp -a --parents "$ws/node_modules" /out/; fi; \
     done
 
-FROM node:26.12.1-trixie-slim@sha256:36793bcbb160a6a16cede1e62b93f84e26b78a972a8a4c0b879c1c12f22761ec
-# Stack traces point into the TypeScript sources; Nest's startup log is plain text for Cloud Logging.
+FROM node:26.13.0-trixie-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39
+# Stack traces point into the TypeScript sources; every log line is JSON for Cloud Logging (docs/LOGGING.md).
 ENV NODE_ENV=production \
     NODE_OPTIONS=--enable-source-maps \
     NO_COLOR=1

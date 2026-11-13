@@ -8,7 +8,7 @@ end, so every example here is known to import, vote, count, certify and verify.
 | `manifest.json` | `ustp.examples` v1 | What is here and how the seed uses it: the offices, the base bylaws, and each election with its votes files |
 | `bylaws/ustp-bylaws-2026.1.txt` | text | Example bylaws (not the party's), published as version 2026.1 by the seed and the tests |
 | `bylaws/ustp-bylaws-2026.1-amended.txt` | text | The same bylaws once amendments A and B of `bylaws-amendments` pass |
-| `elections/*.election.json` | `ustp.election` v1 | Elections to import (Admin → Elections → Import JSON, or `POST /v1/admin/elections/import`) |
+| `elections/*.election.json` | `ustp.election` v1 | Elections to import (Admin → Elections → Import JSON, or `POST /v1/admin/elections/import`), or whose questions to add to a draft (the election editor's Import JSON) |
 | `votes/*.votes.json` | `ustp.test-votes` v1 | Ballots for test voters in a rehearsal, and the results they must give |
 
 ## Elections
@@ -16,6 +16,9 @@ end, so every example here is known to import, vote, count, certify and verify.
 - **The dev seed's elections**, moved here unchanged: `2026-officer-election`, `bylaw-amendment-3`,
   `platform-vote-9`, `committee-elections`, `2027-platform-convention` and `2027-bylaws-review` (a draft).
 - **`bylaws-amendments`**: three amendments to lines of the example bylaws, two of them on adjacent lines.
+- **`transhumanist-sample`** (a draft): the sample ballot Admin → Elections offers as "Download sample ballot", a
+  question of every kind on Transhumanist themes with invented candidates. It is `SAMPLE_BALLOT` in `ustp-domain`
+  written out; `apps/web/src/election-files.test.ts` checks the download is this file.
 
 Windows are relative (`opensInSeconds`, `votingSeconds`), so an election imported now opens soon after.
 

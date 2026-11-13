@@ -1,5 +1,5 @@
-import { deny, OK, type Check } from './check.js';
-import { checkRoleChange, type Role } from './roles.js';
+import { deny, OK, refuse, type Check } from './check.js';
+import { administersSite, checkRoleChange, type Role } from './roles.js';
 
 interface ApprovalRule {
   readonly requesters: readonly Role[];
@@ -59,9 +59,11 @@ export function checkCanRequest(action: TwoPersonAction, requester: Actor, subje
 /**
  * Whether `changer` may grant or revoke `role` for `subject` (design §10.2). A role change needs no second admin: one
  * System Admin, signed in with MFA within the last 15 minutes, changes the roles of anyone but themselves, and it
- * takes effect at once. The API checks this before the change and checks the roles held again inside its
- * transaction; the web app runs it, in the same order and with the same reasons, to explain a refusal before
- * sending. `roles` is null when the roles held are not known (an account ID typed in), which skips that check.
+ * takes effect at once. A Site Admin does the same for every role but System Admin, and never on a System Admin's
+ * account (both refused as forbidden, 403). The API checks this before the change and again inside its transaction
+ * with the roles held then; the web app runs it, in the same order and with the same reasons, to explain a refusal
+ * before sending. `roles` is null when the roles held are not known (an account ID typed in), which skips the checks
+ * that need them.
  */
 export function checkCanChangeRole(
   changer: Actor,
@@ -70,8 +72,12 @@ export function checkCanChangeRole(
   role: Role,
 ): Check {
   if (!changer.mfa) return deny('admin actions require multi-factor sign-in', 'mfaRequired');
-  if (!changer.roles.includes('system_admin')) return deny('roles are changed by system_admin');
+  if (!administersSite(changer.roles)) return deny('roles are changed by system_admin or site_admin');
   if (subject.accountId === changer.accountId) return deny('you cannot change the roles of your own account');
+  if (!changer.roles.includes('system_admin')) {
+    if (role === 'system_admin') return refuse('forbidden', 'system_admin is granted and revoked only by a system_admin');
+    if (subject.roles?.includes('system_admin')) return refuse('forbidden', 'the roles of a system_admin are changed only by a system_admin');
+  }
   const fits = subject.roles ? checkRoleChange(subject.roles, change, role) : OK;
   if (!fits.ok) return fits;
   if (changer.authAgeSeconds > APPROVAL_MAX_AUTH_AGE_SECONDS) return deny('sign in again to change roles', 'reauthRequired');
@@ -82,17 +88,31 @@ export function checkCanChangeRole(
  * Deleting an account (design §4): one System Admin, signed in with MFA within the last 15 minutes, deletes an account
  * whose primary email is on the deployment's `DELETABLE_ACCOUNT_EMAILS`, member or not, unless it is on an election's
  * roll or has voted, never their own, and it takes effect at once. The API checks this again inside its transaction.
+ * A Site Admin deletes no account (403).
  */
 export function checkCanDeleteAccount(
   deleter: Actor,
   subject: { readonly accountId: string; readonly onDeletionList: boolean; readonly inElections: boolean },
 ): Check {
   if (!deleter.mfa) return deny('admin actions require multi-factor sign-in', 'mfaRequired');
-  if (!deleter.roles.includes('system_admin')) return deny('accounts are deleted by system_admin');
+  if (!deleter.roles.includes('system_admin')) return refuse('forbidden', 'accounts are deleted by system_admin');
   if (subject.accountId === deleter.accountId) return deny('you cannot delete your own account');
   if (!subject.onDeletionList) return deny("only accounts whose email is on the deployment's deletion list can be deleted");
   if (subject.inElections) return deny('an account on an election roll, or that has voted, cannot be deleted');
   if (deleter.authAgeSeconds > APPROVAL_MAX_AUTH_AGE_SECONDS) return deny('sign in again to delete an account', 'reauthRequired');
+  return OK;
+}
+
+/**
+ * Deleting test voters (design §10.4): one System Admin, signed in with MFA within the last 15 minutes, at once, and
+ * never a Site Admin (403). Unlike
+ * other accounts, whatever elections hold them, so there is nothing about the voters to check here; the API checks that
+ * each is a test voter, and answers 404 where testing mode is off.
+ */
+export function checkCanDeleteTestVoters(deleter: Actor): Check {
+  if (!deleter.mfa) return deny('admin actions require multi-factor sign-in', 'mfaRequired');
+  if (!deleter.roles.includes('system_admin')) return refuse('forbidden', 'test voters are deleted by system_admin');
+  if (deleter.authAgeSeconds > APPROVAL_MAX_AUTH_AGE_SECONDS) return deny('sign in again to delete test voters', 'reauthRequired');
   return OK;
 }
 

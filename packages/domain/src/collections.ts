@@ -15,6 +15,10 @@ export const Collections = {
   registrationForm: 'registration_form',
   /** `registration_form_versions/{version}`: each saved version of that wording, never changed afterwards. */
   registrationFormVersions: 'registration_form_versions',
+  /** `first_steps/current`: the getting started list new members see, as Membership Admins set it (design §5.16). */
+  firstSteps: 'first_steps',
+  /** `first_step_ticks/{accountId}`: the steps on that list a member ticked themselves. */
+  firstStepTicks: 'first_step_ticks',
   bylawsChecks: 'bylaws_checks',
   bylawsCheckReferences: 'bylaws_check_references',
   profilePhotos: 'profile_photos',
@@ -25,10 +29,22 @@ export const Collections = {
   areaContacts: 'area_contacts',
   /** `email_templates/{office}`: the emails members send from the Your area page, one per kind of office (design §5.12). */
   emailTemplates: 'email_templates',
+  /** `race_records/{state}`: what public records said about a state's federal races, or `US` the presidency's, shared a day (design §5.17). */
+  raceRecords: 'race_records',
   positions: 'positions',
   positionTerms: 'position_terms',
   /** `teams/{teamId}`: working groups members join (design §5.7). */
   teams: 'teams',
+  /** `bill_settings/current`: which teams have the Bills tool (design §5.14). */
+  billSettings: 'bill_settings',
+  /** `bill_watch/{congress}-{type}-{number}`: the legislative team's shared watchlist (design §5.14). */
+  billWatch: 'bill_watch',
+  /** `bill_notes/{noteId}`: the team's notes on watched bills (design §5.14). */
+  billNotes: 'bill_notes',
+  /** `bill_public/{congress}-{type}-{number}`: the bills the team shows on the public Legislation page (design §5.14). */
+  billPublic: 'bill_public',
+  /** `bill_roll_calls/{chamber}-{congress}-{session}-{roll}`: each roll call on a public bill, every member's vote (design §5.14). */
+  billRollCalls: 'bill_roll_calls',
   /** `team_members/{teamId}_{accountId}`: who is on each team, as a lead or a member. */
   teamMembers: 'team_members',
   /** `team_requests/{teamId}_{accountId}`: each member's latest request to join a team. */
@@ -41,6 +57,16 @@ export const Collections = {
   forumVotes: 'forum_votes',
   /** `forum_reports/{kind}_{targetId}_{accountId}`: each member's report of a post or comment, for Membership Admins. */
   forumReports: 'forum_reports',
+  // The inbox (design §10.13): in-app notifications, messages between members, and how each wants notifications by email.
+  appNotifications: 'app_notifications',
+  inboxPreferences: 'inbox_preferences',
+  memberThreads: 'member_threads',
+  memberMessages: 'member_messages',
+  memberBlocks: 'member_blocks',
+  messageReports: 'message_reports',
+  // The membership inbox (design §10.13): conversations between the membership team and each member.
+  membershipThreads: 'membership_threads',
+  membershipMessages: 'membership_messages',
   /** `room_consents/{accountId}`: each member's acceptance of the room's terms, or its withdrawal (design §5.10). */
   roomConsents: 'room_consents',
   /** `room_messages/{messageId}`: the room's messages, the assistant's answers and notices; kept 90 days. */
@@ -89,6 +115,8 @@ export const Collections = {
   courseProgress: 'course_progress',
   courseAttempts: 'course_attempts',
   courseCertificates: 'course_certificates',
+  /** `certificate_settings/current`: what System Admins set about certificates, the party's LinkedIn organization. */
+  certificateSettings: 'certificate_settings',
   /** `course_images/{sha256}`: portraits uploaded by Course Administrators, as stored after re-encoding. */
   courseImages: 'course_images',
   /** `course_seeds/{seed}`: which starter courses have been added, so a course deleted later is not added again. */
@@ -125,6 +153,8 @@ export const Collections = {
   pageHits: 'page_hits',
   /** `page_visits/{visitId}`: a signed-in person's visit to a page, naming their account; expires (design §10.7). */
   pageVisits: 'page_visits',
+  /** `visit_sources/{day}_{hash}`: arrivals per UTC day by where they came from and their campaign tags; nothing about who (§10.7). */
+  visitSources: 'visit_sources',
   // communications (design §10.9)
   /** `news_posts/{postId}`: news, statements and press releases, drafts too. */
   newsPosts: 'news_posts',
@@ -146,6 +176,10 @@ export const Collections = {
   suggestionLimits: 'suggestion_limits',
   /** `bots/{botId}`: the registry of the party's bots. */
   bots: 'bots',
+  /** `events/{eventId}`: the party's public events, drafts too (design §10.17). */
+  events: 'events',
+  /** `partners/{partnerId}`: partner groups, listed in public only with their consent (design §10.17). */
+  partners: 'partners',
   // notifications (design §6.8)
   notices: 'notices',
   noticeOutbox: 'notice_outbox',
@@ -154,6 +188,35 @@ export const Collections = {
   noticeReceipts: 'notice_receipts',
   /** `notice_tests/{testId}`: an Election Admin's test email to themselves, queued for the worker (design §6.8). */
   noticeTests: 'notice_tests',
+  /** `notice_verifications/{receiptId}`: each send to a roll, checked 30 minutes after it finished (design §6.8). */
+  noticeVerifications: 'notice_verifications',
+  /** `welcome_emails/{accountId}`: the welcome email to a member a Membership Admin added, queued for the worker (§5.13). */
+  welcomeEmails: 'welcome_emails',
+  /** `mail_messages/{messageId}`: each message the mail service took and what its delivery reports said, kept 180 days (§6.8). */
+  mailMessages: 'mail_messages',
+  /** `mail_suppressions/{addressKey}`: addresses not to mail, because they bounced for good or were marked as spam (§6.8). */
+  mailSuppressions: 'mail_suppressions',
+  /** `mail_health/current` and `mail_health/request`: the email setup check's last run, and a System Admin's request (§10.12). */
+  mailHealth: 'mail_health',
+  /** `mail_requests/{requestId}`: a member's request for a test email, or to try their address again, kept 30 days (§10.12). */
+  mailRequests: 'mail_requests',
+  /** `mail_preferences/{accountId}`: whether a member unsubscribed or an admin stopped their email, and their link's token (§10.12). */
+  mailPreferences: 'mail_preferences',
+  /** `broadcasts/{broadcastId}`: an email an admin wrote to members, and who it came to in terms of the audience (§10.12). */
+  broadcasts: 'broadcasts',
+  /** `broadcast_recipients/{broadcastId}_{accountId}`: one member's copy of it, kept 180 days (§10.12). */
+  broadcastRecipients: 'broadcast_recipients',
+  /** `mail_digest/weekly`: when the weekly digest is next due (design §10.14). */
+  mailDigest: 'mail_digest',
+  /** `newsletter_subscribers/{subscriberId}`: an address on the newsletter's list, or waiting to be confirmed (§10.15). */
+  newsletterSubscribers: 'newsletter_subscribers',
+  /** `newsletter_limits/{YYYY-MM-DD}`: each day's salt and counts for the sign-up form's limits (§10.15). */
+  newsletterLimits: 'newsletter_limits',
+  // referrals (design §5.18)
+  /** `referral_codes/{code}`: whose referral link a code is. */
+  referralCodes: 'referral_codes',
+  /** `referral_links/{accountId}`: a member's referral code. */
+  referralLinks: 'referral_links',
   // testing mode (design §10.4)
   testingPersonas: 'testing_personas',
 } as const;

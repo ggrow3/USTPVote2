@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
+  canConfirmVote,
   isClaimable,
   isRehearsalRoll,
   isReminderDue,
@@ -7,13 +8,18 @@ import {
   isTestInFlight,
   isVotingOpen,
   MAX_SEND_ATTEMPTS,
+  NOTICE_REPORT_HOURS,
   noticeDelivery,
   noticeId,
   noticeMessage,
   noticeReceipt,
+  pendingVerification,
   reminderTime,
-  testNoticeTag,
+  sendGate,
+  VOTED_SCAN_OVERLAP_MINUTES,
   type ElectionRecord,
+  type MailCheckId,
+  type NoticeDeliveryReportedPayload,
   type NoticeKind,
   type NoticeOutcome,
   type NoticeRecipientRecord,
@@ -29,7 +35,10 @@ import { ElectionReader } from '../elections/election-reader.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { MemberDirectory } from '../membership/member-directory.js';
-import { BOUNCE_SOURCE, MAIL_TRANSPORT, MailNotSent, OutboxTransport, type BounceSource, type MailTransport } from './mail-transport.js';
+import { alertLog } from '../common/logging.js';
+import { MailHealthChecker } from './mail-health.js';
+import { MAIL_TRANSPORT, OutboxTransport, type MailTransport } from './mail-transport.js';
+import { Mailer } from './mailer.js';
 import { NoticeSettingsService } from './notice-settings.js';
 import { NoticeRepository } from './notice.repository.js';
 
@@ -41,9 +50,6 @@ const BATCH = 10;
 
 /** How long one tick may spend sending, so a large roll never holds up the rest of the tick for long. */
 export const NOTICE_TICK_BUDGET_MS = 20_000;
-
-/** How long one tick may spend reading bounce reports. */
-export const BOUNCE_TICK_BUDGET_MS = 5_000;
 
 /** Test emails a tick sends at most; each goes to one Election Admin. */
 const TESTS_PER_TICK = 10;
@@ -76,11 +82,13 @@ export class NoticeSender {
     private readonly directory: DirectoryService,
     private readonly members: MemberDirectory,
     private readonly settings: NoticeSettingsService,
+    private readonly mailer: Mailer,
+    private readonly health: MailHealthChecker,
     @Inject(MAIL_TRANSPORT) private readonly transport: MailTransport | null,
-    @Inject(BOUNCE_SOURCE) private readonly bounces: BounceSource | null,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {
-    this.outbox = new OutboxTransport(firebase.db);
+    // Acts out the provider's reports only as the emulators' stand-in, not for a rehearsal's notices on a real project.
+    this.outbox = new OutboxTransport(firebase.db, { actOut: config.mailTransport === 'outbox', configurationSet: config.ses.configurationSet });
   }
 
   /** Starts the notices of elections that have opened and sends what is due. Returns how many messages went. */
@@ -94,9 +102,14 @@ export class NoticeSender {
     for (const election of await this.elections.inState('open')) {
       await this.start(election, 'voting_open');
       await this.start(election, 'closing_soon');
+      await this.start(election, 'voted');
     }
+    // A first ballot cast just before the close still gets its confirmation.
+    for (const election of await this.elections.inState('closed')) await this.start(election, 'voted');
     let sent = 0;
-    for (const notice of await this.notices.unfinished()) sent += await this.work(notice, deadline);
+    // Vote confirmations first: a large roll's notice never holds up telling a voter their ballot was recorded.
+    const unfinished = (await this.notices.unfinished()).sort((a, b) => Number(b.kind === 'voted') - Number(a.kind === 'voted'));
+    for (const notice of unfinished) sent += await this.work(notice, deadline);
     return sent;
   }
 
@@ -114,9 +127,16 @@ export class NoticeSender {
     const now = new Date();
     const { settings } = this.run!;
     if (!settings.kinds[kind].enabled) return;
-    const due = kind === 'voting_open' ? isVotingOpen(election, now) : isReminderDue(election, now, settings.reminderHours);
+    const due =
+      kind === 'closing_soon'
+        ? isReminderDue(election, now, settings.reminderHours)
+        : kind === 'voted'
+          ? canConfirmVote(election, now)
+          : isVotingOpen(election, now);
     const id = noticeId(election.electionId, kind);
     if (!due || (await this.notices.find(id))) return;
+    // Vote confirmations start with the first ballot, so an election nobody voted in has none.
+    if (kind === 'voted' && (await this.elections.voterCount(election.electionId)) === 0) return;
     if (kind === 'closing_soon') {
       // The reminder comes after the voting-open notice has gone, never with it.
       const opening = await this.notices.find(noticeId(election.electionId, 'voting_open'));
@@ -134,6 +154,8 @@ export class NoticeSender {
       transport: this.transport?.delivery ?? 'none',
     });
     if (!delivery) return;
+    // All email switched off: nothing starts, and it can still start if it comes on in time. A rehearsal mails nobody.
+    if (!rehearsal && !settings.allEmails) return;
     if (delivery === 'mail' && !this.run!.contact) {
       this.logger.warn(`no notice for ${election.electionId} yet: no contact for election questions is set (NOTICE_CONTACT or the app's setting)`);
       return;
@@ -145,9 +167,12 @@ export class NoticeSender {
       kind,
       delivery,
       rehearsal,
-      // Replaced by the number of recipient records once they are written; a reminder's leave out those who voted.
-      recipients: roll.count,
-      status: 'preparing',
+      // Replaced by the number of recipient records once they are written; a reminder's leave out those who voted, and
+      // vote confirmations count voters as they vote.
+      recipients: kind === 'voted' ? 0 : roll.count,
+      // Vote confirmations have no list to prepare: voters are added as they vote, from the opening on.
+      status: kind === 'voted' ? 'sending' : 'preparing',
+      ...(kind === 'voted' && { scannedTo: election.opensAt }),
       round: 1,
       roundRequestedBy: 'system',
       createdAt: at,
@@ -172,11 +197,16 @@ export class NoticeSender {
       return 0;
     }
     // Switched off by a System Admin, or nowhere for members to ask: what is left waits, and goes if that changes.
+    if (!notice.rehearsal && !this.run!.settings.allEmails) return 0;
     if (!this.run!.settings.kinds[notice.kind].enabled) return 0;
     if (notice.delivery === 'mail' && !this.run!.contact) {
       this.logger.warn(`notice ${notice.noticeId} is waiting: no contact for election questions is set (NOTICE_CONTACT or the app's setting)`);
       return 0;
     }
+    // Checked before it goes (design §6.8): never into a setup the email check finds failing. A rehearsal mails nobody,
+    // and once it is too late to send, what is left is failed below rather than held.
+    const sendable = notice.kind === 'voted' ? canConfirmVote(election, new Date()) : isVotingOpen(election, new Date());
+    if (!notice.rehearsal && sendable && !(await this.mayGo(notice, election))) return 0;
     if (notice.status === 'preparing') {
       const roll = (await this.elections.approvedRoll(election))?.accountIds ?? [];
       // The reminder goes to those who have not voted: participation records say who did, never how.
@@ -188,9 +218,11 @@ export class NoticeSender {
         tx.update(this.notices.ref(notice.noticeId), { status: 'sending', recipients });
       });
     }
+    if (notice.kind === 'voted') notice = await this.syncVoters(notice, election);
     await this.failInterrupted(notice);
 
-    const open = isVotingOpen(election, new Date());
+    // Too late to send: voting closed (for a vote confirmation, a day after it closed).
+    const open = notice.kind === 'voted' ? canConfirmVote(election, new Date()) : isVotingOpen(election, new Date());
     const startedAt = new Date().toISOString();
     const results: SendResult[] = [];
     try {
@@ -210,8 +242,61 @@ export class NoticeSender {
       // What went, even when a later batch failed.
       await this.keepReceipt(notice, transport, startedAt, results);
     }
-    await this.finishRound(notice);
+    await this.finishRound(notice, election);
     return results.filter((r) => r.status === 'sent').length;
+  }
+
+  /**
+   * Adds a recipient record for each voter the vote confirmations have not reached yet (design §6.8): when the
+   * participation records outnumber the recipients, it reads those cast since a little before its last look (a ballot's
+   * `castAt` is set before its record commits), and, if that is not all of them, every one. It records when it looked;
+   * a look after voting closed lets the notice finish.
+   */
+  private async syncVoters(notice: NoticeRecord, election: ElectionRecord): Promise<NoticeRecord> {
+    const now = new Date().toISOString();
+    const [voters, recipients] = await Promise.all([this.elections.voterCount(election.electionId), this.notices.total(notice.noticeId)]);
+    let total = recipients;
+    if (voters > recipients) {
+      const from = new Date(Date.parse(notice.scannedTo ?? election.opensAt) - VOTED_SCAN_OVERLAP_MINUTES * 60_000).toISOString();
+      await this.notices.addRecipients(notice.noticeId, await this.elections.votedSince(election.electionId, from), now);
+      total = await this.notices.total(notice.noticeId);
+      if (total < voters) {
+        await this.notices.addRecipients(notice.noticeId, [...(await this.elections.voted(election.electionId))], now);
+        total = await this.notices.total(notice.noticeId);
+      }
+    }
+    await this.notices.ref(notice.noticeId).update({ scannedTo: now, recipients: total });
+    return { ...notice, scannedTo: now, recipients: total };
+  }
+
+  /**
+   * Whether the notice may go on now: on a setup check from the last hour (run first when the last is older, where mail
+   * goes through SES) with nothing failing that keeps mail from arriving or from being verified. Otherwise it is held,
+   * with why on the notice, and the System Admins are alerted once; it goes on by itself once the check passes.
+   */
+  private async mayGo(notice: NoticeRecord, election: ElectionRecord): Promise<boolean> {
+    const now = new Date();
+    const mail = notice.delivery === 'mail';
+    let gate = sendGate(await this.health.current(), now, mail);
+    if (gate.stale) gate = sendGate(await this.health.ensureFresh(now), now, mail);
+    if (gate.stale) return false; // another worker is running the check: go next tick
+    const ref = this.notices.ref(notice.noticeId);
+    if (!gate.failing.length) {
+      if (notice.held) await ref.update({ held: null });
+      return true;
+    }
+    if (JSON.stringify(notice.held?.checks) !== JSON.stringify(gate.failing)) {
+      await ref.update({ held: { checks: gate.failing, since: notice.held?.since ?? now.toISOString() } });
+      this.warnHeld(notice, election, gate.failing);
+    }
+    return false;
+  }
+
+  /** Tells the System Admins a notice is held (their alert email, through Google, where mail goes through SES). */
+  private warnHeld(notice: NoticeRecord, election: ElectionRecord, failing: readonly MailCheckId[]): void {
+    const line = `election email held: the ${notice.kind} email of "${election.title}" waits while the email setup check fails (${failing.join(', ')}); see Admin › Email`;
+    if (notice.delivery === 'mail') alertLog('mail', line, { check: 'send_held', election: election.electionId });
+    else this.logger.warn(line);
   }
 
   /** The receipt of one pass over a notice's recipients, if it handled anyone. */
@@ -231,7 +316,22 @@ export class NoticeSender {
       finishedAt: new Date().toISOString(),
       results,
     });
-    if (receipt) await ref.create(receipt);
+    if (!receipt) return;
+    await ref.create(receipt);
+    // Checked after it goes, once its delivery reports have had time to come in (design §6.8). A rehearsal mails nobody.
+    if (!notice.rehearsal && receipt.accepted > 0) {
+      await this.notices.verificationRef(receipt.receiptId).create(
+        pendingVerification({
+          receiptId: receipt.receiptId,
+          electionId: notice.electionId,
+          kind: notice.kind,
+          noticeId: notice.noticeId,
+          round: notice.round,
+          finishedAt: receipt.finishedAt,
+          messages: receipt.accepted,
+        }),
+      );
+    }
   }
 
   private async sendBatch(
@@ -242,10 +342,11 @@ export class NoticeSender {
   ): Promise<SendResult[]> {
     const claimed = (await Promise.all(batch.map((r) => this.claim(notice, r.accountId, null)))).filter((r) => r !== null);
     const ids = claimed.map((r) => r.accountId);
-    const [mailboxes, members, voted] = await Promise.all([
+    const [mailboxes, members, voted, castAt] = await Promise.all([
       this.directory.mailboxes(ids),
       this.members.findMany(ids),
       notice.kind === 'closing_soon' ? this.elections.voted(election.electionId, ids) : new Set<string>(),
+      notice.kind === 'voted' ? this.elections.castTimes(election.electionId, ids) : new Map<string, string>(),
     ]);
     return Promise.all(
       claimed.map(async (r, i): Promise<SendResult> => {
@@ -254,7 +355,8 @@ export class NoticeSender {
           return { status: 'skipped', outcome: 'voted' };
         }
         const member = members[i];
-        return this.deliver(notice, election, transport, r, mailboxes.get(r.accountId), member?.preferredName || member?.legalName || null);
+        const name = member?.preferredName || member?.legalName || null;
+        return this.deliver(notice, election, transport, r, mailboxes.get(r.accountId), name, castAt.get(r.accountId));
       }),
     );
   }
@@ -297,6 +399,7 @@ export class NoticeSender {
     recipient: NoticeRecipientRecord,
     mailbox: Mailbox | undefined,
     name: string | null,
+    castAt?: string,
   ): Promise<SendResult> {
     const finish = (fields: Partial<NoticeRecipientRecord>) => this.finish(notice, recipient.accountId, fields);
     const skip = (outcome: NoticeOutcome) => finish({ status: 'skipped', outcome }).then((): SendResult => ({ status: 'skipped', outcome }));
@@ -306,6 +409,7 @@ export class NoticeSender {
       if (!mailbox.verified) return skip('unverified_address');
     }
     const { settings, contact } = this.run!;
+    const links = notice.rehearsal ? null : await this.mailer.links(recipient.accountId);
     const message = noticeMessage(notice.kind, {
       election,
       origin: this.config.webOrigin!,
@@ -313,29 +417,26 @@ export class NoticeSender {
       contact,
       now: new Date(),
       text: settings.kinds[notice.kind],
+      castAt,
+      unsubscribe: links?.page,
     });
-    try {
-      const { messageId } = await transport.send({
-        to: notice.rehearsal ? null : mailbox!.email,
-        from: this.config.mailFrom,
-        replyTo: this.config.mailReplyTo,
-        ...message,
-        tags: { noticeId: notice.noticeId, electionId: notice.electionId, accountId: recipient.accountId },
-      });
-      await finish({ status: 'sent', sentAt: new Date().toISOString(), messageId, outcome: null });
-      return { status: 'sent', messageId };
-    } catch (e) {
-      if (e instanceof MailNotSent && e.outcome === 'unavailable') {
-        const retry = recipient.attempts < MAX_SEND_ATTEMPTS;
-        await finish({ status: retry ? 'pending' : 'failed', outcome: 'unavailable' });
-        return { status: 'failed', outcome: 'unavailable' };
-      }
-      // Never the error's text, which can quote the address.
-      this.logger.error(`notice ${notice.noticeId} to account ${recipient.accountId} not sent (${errorName(e)})`);
-      const outcome = e instanceof MailNotSent ? e.outcome : 'error';
-      await finish({ status: 'failed', outcome });
-      return { status: 'failed', outcome };
+    const result = await this.mailer.send(transport, {
+      to: notice.rehearsal ? null : mailbox!.email,
+      replyTo: this.config.mailReplyTo,
+      listUnsubscribe: links?.oneClick,
+      ...message,
+      meta: { kind: notice.kind, ref: notice.noticeId, electionId: notice.electionId, accountId: recipient.accountId, causedBy: notice.roundRequestedBy },
+    });
+    if (result.status === 'sent') {
+      await finish({ status: 'sent', sentAt: new Date().toISOString(), messageId: result.messageId, outcome: null });
+    } else if (result.status === 'skipped') {
+      await finish({ status: 'skipped', outcome: result.outcome });
+    } else {
+      // The provider could not take it yet: try again next tick, a few times.
+      const retry = result.outcome === 'unavailable' && recipient.attempts < MAX_SEND_ATTEMPTS;
+      await finish({ status: retry ? 'pending' : 'failed', outcome: result.outcome });
     }
+    return result;
   }
 
   /**
@@ -415,7 +516,7 @@ export class NoticeSender {
     const transport = this.transport;
     const { settings, contact } = this.run!;
     // Email switched off, or the contact removed, since it was asked for: nothing goes, as for the real email.
-    if (!transport || (transport.delivery === 'mail' && !contact)) return { status: 'failed', outcome: 'unavailable' };
+    if (!transport || !settings.allEmails || (transport.delivery === 'mail' && !contact)) return { status: 'failed', outcome: 'unavailable' };
     const mailbox = (await this.directory.mailboxes([test.accountId])).get(test.accountId);
     if (!mailbox?.email) return { status: 'skipped', outcome: 'no_address' };
     if (!mailbox.verified) return { status: 'skipped', outcome: 'unverified_address' };
@@ -424,6 +525,7 @@ export class NoticeSender {
     // The reminder says how long is left: as it will say when it goes, or now, once it is due.
     const hours = settings.reminderHours;
     const at = test.kind === 'closing_soon' && !isReminderDue(election, now, hours) ? reminderTime(election, hours) : now;
+    const links = await this.mailer.links(test.accountId);
     const message = noticeMessage(test.kind, {
       election,
       origin: this.config.webOrigin!,
@@ -432,53 +534,20 @@ export class NoticeSender {
       now: at,
       text: settings.kinds[test.kind],
       test: true,
+      unsubscribe: links.page,
     });
-    try {
-      const { messageId } = await transport.send({
-        to: mailbox.email,
-        from: this.config.mailFrom,
-        replyTo: this.config.mailReplyTo,
-        ...message,
-        tags: { noticeId: testNoticeTag(test.electionId, test.kind), electionId: test.electionId, accountId: test.accountId },
-      });
-      return { status: 'sent', messageId };
-    } catch (e) {
-      this.logger.error(`test email ${test.testId} to account ${test.accountId} not sent (${errorName(e)})`);
-      return { status: 'failed', outcome: e instanceof MailNotSent ? e.outcome : 'error' };
-    }
+    return this.mailer.send(transport, {
+      to: mailbox.email,
+      replyTo: this.config.mailReplyTo,
+      listUnsubscribe: links.oneClick,
+      ...message,
+      meta: { kind: 'notice_test', ref: test.testId, electionId: test.electionId, accountId: test.accountId, causedBy: test.requestedBy },
+    });
   }
 
   /** Records a claimed recipient's outcome and releases the claim. */
   private async finish(notice: NoticeRecord, accountId: string, fields: Partial<NoticeRecipientRecord>): Promise<void> {
     await this.notices.recipientRef(notice.noticeId, accountId).update({ ...fields, claimedAt: null, updatedAt: new Date().toISOString() });
-  }
-
-  /**
-   * Reads the provider's bounce reports (design §6.8) for up to `budgetMs` and marks each bounced message's recipient
-   * `bounced`. Reports about anything else are dropped. Returns how many recipients it marked.
-   */
-  async recordBounces(budgetMs: number = BOUNCE_TICK_BUDGET_MS): Promise<number> {
-    if (!this.bounces) return 0;
-    const deadline = Date.now() + budgetMs;
-    let recorded = 0;
-    while (Date.now() < deadline) {
-      const { bounces, receipts } = await this.bounces.receive();
-      if (!receipts.length) break;
-      for (const { noticeId: id, messageId } of bounces) {
-        const recipient = await this.notices.byMessageId(id, messageId);
-        if (!recipient) continue;
-        const ref = this.notices.recipientRef(id, recipient.accountId);
-        const marked = await this.firebase.db.runTransaction(async (tx) => {
-          const current = (await tx.get(ref)).data() as NoticeRecipientRecord | undefined;
-          if (current?.status !== 'sent' || current.messageId !== messageId) return false; // recorded already
-          tx.update(ref, { status: 'bounced', updatedAt: new Date().toISOString() });
-          return true;
-        });
-        if (marked) recorded++;
-      }
-      await this.bounces.acknowledge(receipts);
-    }
-    return recorded;
   }
 
   /** Claims older than the claim limit were interrupted: failed, so the message is never sent twice. */
@@ -495,24 +564,29 @@ export class NoticeSender {
     }
   }
 
-  /** Once every recipient of the round has an outcome: ledger the counts and mark the notice done, once. */
-  private async finishRound(notice: NoticeRecord): Promise<void> {
+  /**
+   * Once every recipient of the round has an outcome: ledger the counts and mark the notice done, once. Vote
+   * confirmations go on while voting is open, so they finish only after a look for voters made once it closed.
+   */
+  private async finishRound(notice: NoticeRecord, election: ElectionRecord): Promise<void> {
     await this.firebase.db.runTransaction(async (tx) => {
       const current = await this.notices.find(notice.noticeId, tx);
       if (!current || current.status !== 'sending' || current.round !== notice.round) return;
+      if (current.kind === 'voted' && !(current.scannedTo && current.scannedTo >= election.closesAt && election.state !== 'open')) return;
       const [counts, retry] = await Promise.all([
         this.notices.counts(notice.noticeId, tx),
         current.round > 1 ? this.notices.failedBefore(notice.noticeId, current.round, tx) : 0,
       ]);
       if (counts.pending > 0 || retry > 0) return;
-      const { sent, failed, bounced, skipped } = counts;
+      const { failed, bounced, skipped } = counts;
       const payload: NoticeSentPayload = {
         electionId: current.electionId,
         kind: current.kind,
         round: current.round,
         delivery: current.delivery,
         recipients: current.recipients,
-        sent,
+        // Taken by the provider, whatever it has reported of them since.
+        sent: counts.sent + counts.delivered + counts.complained,
         failed,
         bounced,
         skipped,
@@ -521,9 +595,38 @@ export class NoticeSender {
       tx.update(this.notices.ref(notice.noticeId), { status: 'done', completedAt: new Date().toISOString() });
     });
   }
-}
 
-/** What went wrong, as a code: never the error's text, which can quote the address. */
-function errorName(e: unknown): string {
-  return e instanceof MailNotSent ? e.outcome : e instanceof Error ? e.name : 'error';
+  /**
+   * Ledgers what the provider's reports said of each finished round (`notice.delivery_reported`), once per round,
+   * `NOTICE_REPORT_HOURS` after it finished, since bounces and complaints come after `notice.sent`. Not for a rehearsal,
+   * whose test voters have no address to report on. Returns how many rounds it ledgered.
+   */
+  async reportDelivery(): Promise<number> {
+    const due = Date.now() - NOTICE_REPORT_HOURS * 3_600_000;
+    const isDue = (n: NoticeRecord) =>
+      n.status === 'done' && !n.rehearsal && !!n.completedAt && Date.parse(n.completedAt) <= due && (n.reportedRound ?? 0) < n.round;
+    let reported = 0;
+    for (const notice of (await this.notices.done()).filter(isDue)) {
+      const ledgered = await this.firebase.db.runTransaction(async (tx) => {
+        const current = await this.notices.find(notice.noticeId, tx);
+        if (!current || !isDue(current)) return false;
+        const counts = await this.notices.counts(notice.noticeId, tx);
+        const payload: NoticeDeliveryReportedPayload = {
+          electionId: current.electionId,
+          kind: current.kind,
+          round: current.round,
+          recipients: current.recipients,
+          delivered: counts.delivered,
+          bounced: counts.bounced,
+          complained: counts.complained,
+          noReport: counts.sent,
+        };
+        await this.ledger.record(tx, [{ type: 'notice.delivery_reported', actor: 'system', subject: current.electionId, payload: { ...payload } }]);
+        tx.update(this.notices.ref(notice.noticeId), { reportedRound: current.round });
+        return true;
+      });
+      if (ledgered) reported++;
+    }
+    return reported;
+  }
 }

@@ -8,12 +8,16 @@ import { describe, expect, it } from 'vitest';
  */
 const CONTEXTS: Readonly<Record<string, { readonly collections: readonly string[]; readonly repositories: readonly string[] }>> = {
   membership: {
-    collections: ['members', 'memberStatusHistory', 'applications', 'registrationForm', 'registrationFormVersions'],
-    repositories: ['member.repository', 'application.repository'],
+    collections: ['members', 'memberStatusHistory', 'applications', 'registrationForm', 'registrationFormVersions', 'firstSteps', 'firstStepTicks'],
+    repositories: ['member.repository', 'application.repository', 'first-steps.repository'],
   },
   notifications: {
-    collections: ['notices', 'noticeOutbox', 'noticeSettings', 'noticeReceipts', 'noticeTests'],
-    repositories: ['notice.repository'],
+    collections: ['notices', 'noticeOutbox', 'noticeSettings', 'noticeReceipts', 'noticeTests', 'noticeVerifications', 'mailMessages', 'mailSuppressions', 'mailHealth', 'mailRequests', 'mailPreferences', 'broadcasts', 'broadcastRecipients', 'mailDigest', 'newsletterSubscribers', 'newsletterLimits'],
+    repositories: ['notice.repository', 'mail.repository', 'broadcast.repository', 'newsletter.repository'],
+  },
+  inbox: {
+    collections: ['appNotifications', 'inboxPreferences', 'memberThreads', 'memberMessages', 'memberBlocks', 'messageReports', 'membershipThreads', 'membershipMessages'],
+    repositories: ['inbox.repository', 'membership-inbox.repository'],
   },
   candidacies: {
     collections: ['candidacies'],
@@ -23,6 +27,10 @@ const CONTEXTS: Readonly<Record<string, { readonly collections: readonly string[
     collections: ['teams', 'teamMembers', 'teamRequests'],
     repositories: ['team.repository'],
   },
+  referrals: {
+    collections: ['referralCodes', 'referralLinks'],
+    repositories: ['referral.repository'],
+  },
   forum: {
     collections: ['forumPosts', 'forumComments', 'forumVotes', 'forumReports'],
     repositories: ['forum.repository'],
@@ -31,9 +39,13 @@ const CONTEXTS: Readonly<Record<string, { readonly collections: readonly string[
     collections: ['roomConsents', 'roomMessages', 'roomMemory', 'roomJobs', 'roomState'],
     repositories: ['room.repository'],
   },
+  bills: {
+    collections: ['billSettings', 'billWatch', 'billNotes', 'billPublic', 'billRollCalls'],
+    repositories: ['bill.repository'],
+  },
   communications: {
-    collections: ['newsPosts', 'pressKit', 'pressAssets', 'sharePosts', 'shareCounts', 'calendarItems', 'suggestions', 'suggestionLimits', 'bots'],
-    repositories: ['communications.repository'],
+    collections: ['newsPosts', 'pressKit', 'pressAssets', 'sharePosts', 'shareCounts', 'calendarItems', 'suggestions', 'suggestionLimits', 'bots', 'events', 'partners'],
+    repositories: ['communications.repository', 'events.repository'],
   },
 };
 

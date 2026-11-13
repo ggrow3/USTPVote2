@@ -100,6 +100,25 @@ export class ElectionReader {
     return new Set((await participation.select().get()).docs.map((d) => d.id));
   }
 
+  /** How many have voted in the election, counted by Firestore. */
+  async voterCount(electionId: string): Promise<number> {
+    const participation = this.firebase.db.collection(Collections.elections).doc(electionId).collection(ElectionCollections.participation);
+    return (await participation.count().get()).data().count;
+  }
+
+  /** Who has voted since `from`, by the participation records' `castAt` (vote confirmations, design §6.8). */
+  async votedSince(electionId: string, from: string): Promise<string[]> {
+    const participation = this.firebase.db.collection(Collections.elections).doc(electionId).collection(ElectionCollections.participation);
+    return (await participation.where('castAt', '>=', from).select().get()).docs.map((d) => d.id);
+  }
+
+  /** When each of these accounts voted, those who have (vote confirmations say when, never how). */
+  async castTimes(electionId: string, accountIds: readonly string[]): Promise<Map<string, string>> {
+    const participation = this.firebase.db.collection(Collections.elections).doc(electionId).collection(ElectionCollections.participation);
+    const snaps = accountIds.length ? await this.firebase.db.getAll(...accountIds.map((id) => participation.doc(id)), { fieldMask: ['castAt'] }) : [];
+    return new Map(snaps.filter((s) => s.exists).map((s) => [s.id, s.get('castAt') as string]));
+  }
+
   /** The offices the contests fill (design §6.4), for the advisories and the election setup check (§6.9). */
   async positions(contests: readonly { readonly positionId?: string | null }[]): Promise<PositionRecord[]> {
     const db = this.firebase.db;
@@ -122,15 +141,17 @@ export class ElectionReader {
     return !standing.empty;
   }
 
-  /** Whether the account is on any election's roll or has voted in one, so is never deleted (design §4). */
+  /**
+   * Whether the account is on any election's roll (a snapshot an Auditor has not rejected: pending, approved or
+   * superseded) or has voted in one, so is never deleted (design §4).
+   */
   async inAnyElection(accountId: string, tx?: Transaction): Promise<boolean> {
     const db = this.firebase.db;
-    const query = db.collection(Collections.elections).select();
-    const elections = tx ? await tx.get(query) : await query.get();
-    const refs = elections.docs.flatMap((e) => [
-      e.ref.collection(ElectionCollections.rollEntries).doc(accountId),
-      e.ref.collection(ElectionCollections.participation).doc(accountId),
-    ]);
+    const rolls = db.collection(Collections.eligibilitySnapshots).where('accountIds', 'array-contains', accountId).select('status');
+    const elections = db.collection(Collections.elections).select();
+    const [onRolls, all] = await Promise.all([tx ? tx.get(rolls) : rolls.get(), tx ? tx.get(elections) : elections.get()]);
+    if (onRolls.docs.some((s) => (s.get('status') as RollSnapshotRecord['status']) !== 'rejected')) return true;
+    const refs = all.docs.map((e) => e.ref.collection(ElectionCollections.participation).doc(accountId));
     if (!refs.length) return false;
     const found = tx ? await tx.getAll(...refs) : await db.getAll(...refs);
     return found.some((s) => s.exists);

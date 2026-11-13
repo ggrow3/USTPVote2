@@ -17,7 +17,7 @@ export const PERSONA_KINDS = [
   'course_admin',
   'communications_admin',
   'voter',
-] as const satisfies readonly (Exclude<Role, 'system_admin'> | 'voter')[];
+] as const satisfies readonly (Exclude<Role, 'system_admin' | 'site_admin'> | 'voter')[];
 export type PersonaKind = (typeof PERSONA_KINDS)[number];
 
 /**
@@ -34,6 +34,9 @@ export const ADMIN_PERSONAS: readonly { readonly kind: Exclude<PersonaKind, 'vot
 
 /** Voter personas a deployment may hold in all. */
 export const MAX_TEST_VOTERS = 50;
+
+/** The reason in a deleted test voter's `account.deleted` entry (design §10.4); the System Admin writes none. */
+export const TEST_VOTER_DELETION_REASON = 'test voter deleted under Admin → Testing';
 
 export function voterPersonaLabel(n: number): string {
   return `Test Voter ${n}`;

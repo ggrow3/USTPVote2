@@ -275,7 +275,10 @@ export interface ElectionDetail {
   readonly officeTerms: number | null;
 }
 
-/** `GET /v1/admin/elections/{id}/roll`: the latest roll with names, for review before approval. */
+/**
+ * `GET /v1/admin/elections/{id}/roll`: the latest roll with names, for review before approval, and where each voter
+ * lives (`placeText`: the state's code in the US, the country's name elsewhere).
+ */
 export interface RollView {
   readonly snapshot: Omit<RollSnapshotRecord, 'accountIds'>;
   readonly entries: readonly { readonly accountId: string; readonly legalName: string; readonly state: string }[];

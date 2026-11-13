@@ -117,6 +117,23 @@ test. Keep it current when pages change.
   Save stays disabled until it is fixed; the count of unsaved changes is shown beside Save. The previews are plain text
   in a `pre` that wraps, so at 375 px nothing scrolls sideways; captions are `#b0b0b0` on `#1d1d1d` in the dark theme.
   An Election Admin does not get the tab, and `?tab=email` falls back to their first section.
+- **Added 2026-11-07, the sender's name in Admin › Email › Settings** (design §6.8; against the emulators on private
+  ports as admin1@example.test; 1100 px light, 375 px light and dark, by pointer and keyboard): "Who the emails come
+  from" is a `section` named by its `h3`, right after the site-wide switch, and Tab from that switch goes to its one
+  field, labelled "Sender name". The deployment's name is the placeholder, and the hint says in words what members will
+  see ("Emails will come from: U.S. Transhumanist Party, Elections <noreply@…>"), following what is typed. A name the
+  checks refuse (one with an address in it) is said under the field in the error colour and Save stays disabled. The
+  hint reads 4.61:1 on the light theme's card and about 8.8:1 on the dark theme's (`rgba(255,255,255,.7)` on
+  `#1d1d1d`), read back from the computed styles; at 375 px it wraps and nothing scrolls sideways.
+- **Added 2026-11-07, choosing who gets a test email in Admin › Email › Setup and test** (design §10.12; against the
+  emulators on private ports as admin1@example.test; 1100 px dark, 375 px dark and light, by pointer and keyboard): "Send
+  it to" is a combobox named by its label, described by the line under it, which says who it goes to ("Goes to Ben Cruz
+  (v2@example.test), a member.") or how to choose. With nothing typed it lists the System Admins; typing searches once
+  typing pauses and, as the member picker does, announces how many match (from the code; no screen reader was used). Each option is the name and address, with a caption of System Admin,
+  member status and place. By keyboard alone, typing an address, Down and Enter chose the member, focus stayed in the
+  field and "Send test email" came on; typing anything else clears the choice and turns the button off again. The line
+  under the field reads 7.8:1 on the dark theme's card (`#b0b0b0` on `#1d1d1d`) and 4.61:1 on the light theme's, read
+  back from the computed styles; at 375 px the field is 40 px tall and nothing scrolls sideways.
 - **Added 2026-10-27, the emails in the election workflow** (against the emulators as elections@example.test: an open
   election with its reminder to come, then due, then sent; a scheduled one-day election with email switched off; light
   at desktop width, dark at 375 px): the list has an "Email to voters" item after Open for voting, with its status in
@@ -373,6 +390,14 @@ election) open with focus on Cancel.
   wide as the card, a ranked row puts its three buttons under the name, and nothing scrolls sideways; the dialog's
   Back and Cast ballot share its width (144 px each at 375 px). Text is 16 px with 14 px captions, in the dialog too.
   Focus order and the announcements are unchanged.
+- **Added 2026-11-06, finished votes shown and hidden on the ballot list** (design §10.5; against the emulators on
+  private ports as v1@example.test; 1100 px dark and light, 375 px dark, by pointer and keyboard): "Show finished votes
+  (3)" is a `switch` named by its label with its state in `aria-checked`, comes before the list in reading order, and
+  measured 48 px tall. Tab reaches it with a visible focus ring and the next Tab goes to the first card's button; Space
+  turns it on and off, focus staying on it and the page not moving. Its label reads 16.86:1 on the dark theme's card and
+  21:1 on the light theme's, read back from the computed styles. At 375 px nothing scrolls sideways. With everything
+  hidden, the page says "Nothing to vote on right now." on the same banner colours as the page's other empty message.
+  A screen reader is still to come (item 12 of the pass below).
 - **Added 2026-10-28, the matrix without its dashes** (design §10.5; against the emulators on private ports as
   admin1@example.test; 1600 and 320 px, light and dark, by keyboard): cells with nothing to set are no longer a dash
   each. With the Membership columns, the Admin sections row group keeps its `th scope="rowgroup"` and has one row, a
@@ -677,3 +702,5 @@ Android if time allows), on staging or the emulators:
 11. The ballot builder: each question read as a section with its heading, the option fields by number, the
     announcements after adding, moving, deleting and undoing, a failed save read once, and the member suggestions
     reached with the down arrow; Preview as voter read as the ballot with its banner first.
+12. The ballot list: "Show finished votes (n)" read as a switch with its state, and the cards it adds or removes found
+    by moving on from it (nothing announces them).

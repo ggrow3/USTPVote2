@@ -8,7 +8,7 @@ import { apiFieldErrors, validate, type FieldErrors } from '../forms.js';
 import { refreshMe, session } from '../session.js';
 import DetailsFields from './DetailsFields.vue';
 import { updateMyDetails } from './api.js';
-import { consentText, detailsForm, stateName, type DetailsForm } from './member-text.js';
+import { consentText, detailsForm, placeFacts, placeInput, type DetailsForm } from './member-text.js';
 
 /**
  * The signed-in member's own details and email opt-ins (design §5.2), for the account page. The legal name is shown
@@ -42,13 +42,15 @@ function stop() {
 }
 
 async function save() {
+  if (!form.details) return;
   if (JSON.stringify(form) === original) {
     errors.value = { _: 'Nothing has changed.' };
     return;
   }
   const checked = validate(memberDetailsSchema, {
-    ...form.details,
-    state: form.details?.state ?? '',
+    preferredName: form.details.preferredName,
+    ...placeInput(form.details),
+    phone: form.details.phone,
     newsletter: form.newsletter,
     announcements: form.announcements,
   });
@@ -89,12 +91,10 @@ async function save() {
         <dd>{{ m.legalName }}</dd>
         <dt>Preferred name</dt>
         <dd :class="{ 'text-grey-7': !m.preferredName }">{{ m.preferredName ?? NOT_GIVEN }}</dd>
-        <dt>State or territory</dt>
-        <dd>{{ stateName(m.state) }}</dd>
-        <dt>City</dt>
-        <dd :class="{ 'text-grey-7': !m.contact }">{{ m.contact?.city ?? NOT_GIVEN }}</dd>
-        <dt>ZIP code</dt>
-        <dd :class="{ 'text-grey-7': !m.contact }">{{ m.contact?.postalCode ?? NOT_GIVEN }}</dd>
+        <template v-for="fact in placeFacts(m)" :key="fact.label">
+          <dt>{{ fact.label }}</dt>
+          <dd :class="{ 'text-grey-7': !fact.value }">{{ fact.value ?? NOT_GIVEN }}</dd>
+        </template>
         <dt>Phone</dt>
         <dd :class="{ 'text-grey-7': !m.contact?.phone }">{{ m.contact?.phone ?? NOT_GIVEN }}</dd>
         <dt>USTP newsletter</dt>

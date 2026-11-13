@@ -94,7 +94,7 @@ export class PublicNavigationController {
 
 /** System Admins edit who sees which link (design §10.5). */
 @Controller('v1/admin/navigation')
-@Roles('system_admin')
+@Roles('system_admin', 'site_admin')
 export class NavigationAdminController {
   constructor(private readonly navigation: NavigationService) {}
 

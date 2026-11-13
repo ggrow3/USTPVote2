@@ -2,18 +2,23 @@
 import { useQuasar } from 'quasar';
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { adminStatusChanges, memberCorrectionSchema, type MemberDetail, type MemberStatus } from 'ustp-domain';
+import { adminStatusChanges, memberCorrectionSchema, type MailAddressState, type MemberDetail, type MemberStatus } from 'ustp-domain';
 import { focusFirstInvalid, usePageTitle } from '../a11y.js';
 import { ApiError, errorMessage } from '../api.js';
 import PageShell from '../components/PageShell.vue';
 import { askReason, attempt } from '../dialogs.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../forms.js';
+import MemberCorrespondence from '../inbox/MemberCorrespondence.vue';
 import MemberOffices from '../offices/MemberOffices.vue';
 import { session } from '../session.js';
 import ApplicationAnswers from './ApplicationAnswers.vue';
 import DetailsFields from './DetailsFields.vue';
-import { changeMemberStatus, correctMemberDetails, member as fetchMember } from './api.js';
-import { answerText, classOf, consentText, detailsForm, memberClassText, stateName, type DetailsForm } from './member-text.js';
+import { auth } from '../firebase.js';
+import { sendWelcomeLink } from '../sign-in.js';
+import { memberMailFlags, restoreMemberEmail, stopMemberEmail } from '../notifications/api.js';
+import { FLAG_LABELS } from '../notifications/my-email-text.js';
+import { changeMemberStatus, correctMemberDetails, member as fetchMember, welcomeAgain, welcomeLinkSent } from './api.js';
+import { answerText, classOf, consentText, detailsForm, memberClassText, placeFacts, placeInput, type DetailsForm } from './member-text.js';
 
 /** One member as a Membership Admin sees them (design §5.2): details, every application's answers, status history. */
 const $q = useQuasar();
@@ -31,11 +36,18 @@ const date = (iso: string) => new Date(iso).toLocaleDateString();
 const dateTime = (iso: string) => new Date(iso).toLocaleString();
 const NOT_GIVEN = 'Not given';
 
+/** Why this member cannot be emailed (design §10.12); null when they can, or before it is known. */
+const mailProblem = ref<string | null>(null);
+const mailState = ref<MailAddressState | null>(null);
+
 async function load() {
   const id = accountId.value;
   try {
-    const found = await fetchMember(id);
+    const [found, flags] = await Promise.all([fetchMember(id), memberMailFlags().catch(() => [])]);
     if (id !== accountId.value) return;
+    const flag = flags.find((f) => f.accountId === id);
+    mailProblem.value = flag ? FLAG_LABELS[flag.state] : null;
+    mailState.value = flag?.state ?? null;
     detail.value = found;
     loadState.value = 'ready';
   } catch (e) {
@@ -45,12 +57,85 @@ async function load() {
   }
 }
 
+/** No more email to this member, or email again (design §10.12): ledgered, with a reason, and shown to the member. */
+async function stopEmail() {
+  const reason = await askReason(
+    'Stop email to this member',
+    `${m.value?.legalName} will get no email from the party, election notices included, until an admin restores it. They will see this on their Account page, and it is recorded in the audit ledger.`,
+  );
+  if (reason === null) return;
+  if (await attempt(() => stopMemberEmail({ accountId: accountId.value, reason }), 'Email stopped')) await load();
+}
+
+async function restoreEmail() {
+  const reason = await askReason('Restore email to this member', `${m.value?.legalName} will get email from the party again, unless they unsubscribed themselves.`);
+  if (reason === null) return;
+  if (await attempt(() => restoreMemberEmail(accountId.value, { reason }), 'Email restored')) await load();
+}
+
 async function changeStatus(to: MemberStatus) {
   const member = m.value;
   if (!member) return;
   const reason = await askReason(`Change status to ${to}`, `${member.legalName}: ${member.status} → ${to}.`);
   if (reason === null) return;
   if (await attempt(() => changeMemberStatus(accountId.value, { to, reason }), 'Status changed')) await load();
+}
+
+// A member a Membership Admin added (design §5.13): whether they have signed in, and their welcome email.
+const WELCOME_OUTCOMES: Readonly<Record<string, string>> = {
+  refused: 'the mail service refused the address',
+  unavailable: 'the mail service was unavailable',
+  interrupted: 'interrupted; it may or may not have gone',
+  error: 'an error',
+  no_address: 'the account has no address',
+  undeliverable: 'the address bounced before, or was marked as spam',
+  signed_in: 'they had signed in already',
+  unsubscribed: 'they have unsubscribed from email',
+  email_stopped: 'an admin has stopped email to them',
+};
+/** What the mail service reported of a welcome email it took. */
+const WELCOME_DELIVERY: Readonly<Record<string, string>> = {
+  delayed: ', delayed so far',
+  delivered: ', delivered',
+  bounced: ', and it bounced: check the address',
+  complained: ', delivered, and marked as spam',
+  rejected: ', but the mail service did not send it after all',
+};
+const welcomeText = computed(() => {
+  const w = detail.value?.added?.welcome;
+  if (!w) return "Identity Platform's sign-in link, sent from the adding admin's browser";
+  if (w.status === 'pending') return 'Waiting to be sent';
+  if (w.status === 'sending') return 'Being sent';
+  if (w.outcome) return `Not sent: ${WELCOME_OUTCOMES[w.outcome] ?? w.outcome}`;
+  const delivery = w.delivery ? (WELCOME_DELIVERY[w.delivery] ?? '') : '';
+  if (w.via === 'identity_platform') return `Identity Platform's sign-in link, sent ${dateTime(w.doneAt ?? w.requestedAt)} from an admin's browser${delivery}`;
+  return `Sent ${dateTime(w.doneAt ?? w.requestedAt)}${delivery}`;
+});
+const welcoming = ref(false);
+
+async function sendWelcome() {
+  welcoming.value = true;
+  try {
+    const again = await welcomeAgain(accountId.value);
+    let logged = true;
+    if (again.welcome === 'identity_platform') {
+      await sendWelcomeLink(auth, again.email);
+      // The link went: only the email log's record of it can still fail.
+      logged = await welcomeLinkSent(accountId.value).then(
+        () => true,
+        () => false,
+      );
+    }
+    $q.notify({
+      type: logged ? 'positive' : 'warning',
+      message: logged ? `Welcome email sent again to ${again.email}` : `Welcome email sent again to ${again.email}, but not recorded in the email log`,
+    });
+    await load();
+  } catch (e) {
+    $q.notify({ type: 'negative', message: errorMessage(e) });
+  } finally {
+    welcoming.value = false;
+  }
 }
 
 // Correcting details: names, state and contact, never the member's email opt-ins.
@@ -73,10 +158,12 @@ async function saveCorrection() {
     errors.value = { _: 'Nothing has changed.' };
     return;
   }
+  if (!correction.details) return;
   const checked = validate(memberCorrectionSchema, {
     legalName: correction.legalName,
-    ...correction.details,
-    state: correction.details?.state ?? '',
+    preferredName: correction.details.preferredName,
+    ...placeInput(correction.details),
+    phone: correction.details.phone,
     reason: correction.reason,
   });
   if (!checked.ok) {
@@ -145,6 +232,11 @@ watch(
             <dl class="ustp-facts">
               <dt>Status</dt>
               <dd><q-badge :label="m.status" /></dd>
+              <dt>Email</dt>
+              <dd>
+                <q-chip v-if="mailProblem" dense color="orange-2" text-color="black" icon="unsubscribe" :label="`Can't be emailed: ${mailProblem}`" />
+                <template v-else>Can be emailed</template>
+              </dd>
               <dt>Class</dt>
               <dd :class="{ 'text-grey-7': classOf(m) === null }">{{ memberClassText(m.usVoteEligible) }}</dd>
               <dt>Agrees with the Core Ideals</dt>
@@ -153,13 +245,34 @@ watch(
               <dd>{{ m.memberSince ? date(m.memberSince) : 'Not yet' }}</dd>
               <dt>Status changed</dt>
               <dd>{{ dateTime(m.statusChangedAt) }}</dd>
-              <dt>Bylaws agreed to</dt>
+              <dt>{{ detail.added ? 'Bylaws in force when added' : 'Bylaws agreed to' }}</dt>
               <dd>Version {{ m.bylawsVersion }}</dd>
+              <template v-if="detail.added">
+                <dt>Added</dt>
+                <dd>By a Membership Admin, {{ dateTime(detail.added.at) }}</dd>
+                <dt>Signed in</dt>
+                <dd :class="{ 'text-grey-7': !detail.added.signedInAt }">
+                  {{ detail.added.signedInAt ? `First on ${dateTime(detail.added.signedInAt)}` : 'Not yet: they have not set a password' }}
+                </dd>
+                <template v-if="!detail.added.signedInAt">
+                  <dt>Welcome email</dt>
+                  <dd>{{ welcomeText }}</dd>
+                </template>
+              </template>
             </dl>
           </q-card-section>
+          <q-card-actions v-if="detail.added && !detail.added.signedInAt" class="q-px-md q-pb-md">
+            <q-btn outline no-caps color="primary" icon="mail" label="Send the welcome email again" :loading="welcoming" @click="sendWelcome" />
+          </q-card-actions>
+          <q-card-actions v-if="!isSelf" class="q-px-md q-pb-md">
+            <q-btn v-if="mailState === 'email_stopped'" outline no-caps color="primary" icon="mail" label="Restore email to this member" @click="restoreEmail" />
+            <q-btn v-else flat no-caps color="primary" icon="unsubscribe" label="Stop email to this member" @click="stopEmail" />
+          </q-card-actions>
         </q-card>
 
         <MemberOffices :member="m" :is-self="isSelf" />
+
+        <MemberCorrespondence :account-id="accountId" :name="m.preferredName || m.legalName" :is-self="isSelf" />
 
         <q-card flat bordered>
           <q-card-section class="ustp-header">
@@ -175,12 +288,10 @@ watch(
               <dd>{{ m.legalName }}</dd>
               <dt>Preferred name</dt>
               <dd :class="{ 'text-grey-7': !m.preferredName }">{{ m.preferredName ?? NOT_GIVEN }}</dd>
-              <dt>State or territory</dt>
-              <dd>{{ stateName(m.state) }}</dd>
-              <dt>City</dt>
-              <dd :class="{ 'text-grey-7': !m.contact }">{{ m.contact?.city ?? NOT_GIVEN }}</dd>
-              <dt>ZIP code</dt>
-              <dd :class="{ 'text-grey-7': !m.contact }">{{ m.contact?.postalCode ?? NOT_GIVEN }}</dd>
+              <template v-for="fact in placeFacts(m)" :key="fact.label">
+                <dt>{{ fact.label }}</dt>
+                <dd :class="{ 'text-grey-7': !fact.value }">{{ fact.value ?? NOT_GIVEN }}</dd>
+              </template>
               <dt>Phone</dt>
               <dd :class="{ 'text-grey-7': !m.contact?.phone }">{{ m.contact?.phone ?? NOT_GIVEN }}</dd>
               <dt>USTP newsletter</dt>

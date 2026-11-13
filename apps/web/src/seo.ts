@@ -23,10 +23,25 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   '/bylaws/:version?': 'The bylaws of the U.S. Transhumanist Party, every published version, with a way to check a copy.',
   '/results/:id': 'Results of a U.S. Transhumanist Party election, from its published record, which anyone can verify.',
   '/offices': 'Who holds each U.S. Transhumanist Party office now, and how they came to hold it.',
+  '/newsletter': "Get the U.S. Transhumanist Party's newsletter by email: news, elections, campaigns and events, for anyone not ready to join.",
+  '/events': 'U.S. Transhumanist Party events: candidate Q&As, debate nights, talks and meetups, with recordings of past events.',
+  '/events/:slug': 'An event of the U.S. Transhumanist Party: when and where, how to take part, and its recording once it is over.',
+  '/partners': 'Groups the U.S. Transhumanist Party works with, the events they co-host, and its free courses for other sites to show.',
+  '/legislation': 'The science, AI and longevity bills in Congress the U.S. Transhumanist Party follows, as they move, with how Congress voted on them.',
+  '/legislation/:billId': 'A bill in Congress the U.S. Transhumanist Party follows: why it matters, how far it has gone and how Congress voted on it.',
+  '/scorecard': 'How each member of Congress voted on the science, AI and longevity bills the U.S. Transhumanist Party follows, against the party’s positions.',
+  '/scorecard/:memberId': 'How a member of Congress voted on the science, AI and longevity bills the U.S. Transhumanist Party follows, against the party’s positions.',
+  '/races': 'Who is running for Congress, and for President in a presidential year, in every state and House seat, and who holds each seat now.',
+  '/races/:state': 'Who is running in this state for the U.S. Senate and the U.S. House, and for President in a presidential year, and who holds those seats now.',
+  '/races/:state/:district': 'Who is running for this seat in the U.S. House, and who holds it now, from public records, with the Transhumanist Party’s own candidates first.',
+  '/people/:id': 'A member of Congress or a candidate for federal office, from public records: their seat, party, biography and who else is listed for it.',
 };
 
-/** Pages open to everyone that still stay out of search results: signing in, and one person's course certificate. */
-const NOT_LISTED: ReadonlySet<string> = new Set(['/signin', '/course/certificates/:id']);
+/**
+ * Pages open to everyone that still stay out of search results: signing in, the account emails' links, one person's
+ * course certificate, unsubscribing, and confirming a newsletter sign-up.
+ */
+const NOT_LISTED: ReadonlySet<string> = new Set(['/signin', '/email-action', '/course/certificates/:id', '/unsubscribe', '/newsletter/confirm']);
 
 /** The route paths this module names, for its test to find in router.ts. */
 export const DESCRIBED_ROUTES = [...Object.keys(DESCRIPTIONS), ...NOT_LISTED];
@@ -52,15 +67,38 @@ export function canonicalUrl(origin: string, path: string): string {
   return origin + (path.replace(/\/+$/, '') || '/');
 }
 
+/**
+ * The description the api wrote into the page's `<head>` for its link preview (design §15, "Link previews"), when the
+ * head was written for `path`: its `og:url` is that page. index.html as built has no `og:url`.
+ */
+export function servedDescription(ogUrl: string | null | undefined, description: string | null | undefined, path: string): string | null {
+  const served = ogUrl ? URL.parse(ogUrl) : null;
+  if (!served || !description) return null;
+  const bare = (p: string) => p.replace(/\/+$/, '') || '/';
+  return bare(served.pathname) === bare(path) ? description : null;
+}
+
 let routeDescription = SITE_DESCRIPTION;
 let descriptionOwner: object | null = null;
+let firstPage = true;
 
-/** After each navigation: the route's description, canonical link and robots tag. */
+/**
+ * After each navigation: the route's description, canonical link and robots tag. On the first page opened, a
+ * description the api wrote for it (a news post's summary, say) is kept in place of the route's general one.
+ */
 export function applyRouteSeo(route: Route & Pick<RouteLocationNormalized, 'path'>): void {
   const seo = pageSeo(route);
-  routeDescription = seo.description;
+  const served = firstPage
+    ? servedDescription(
+        document.head.querySelector<HTMLMetaElement>('meta[property="og:url"]')?.content,
+        document.head.querySelector<HTMLMetaElement>('meta[name="description"]')?.content,
+        route.path,
+      )
+    : null;
+  firstPage = false;
+  routeDescription = served ?? seo.description;
   descriptionOwner = null;
-  setMeta('description', seo.description);
+  setMeta('description', routeDescription);
   setMeta('robots', seo.listed ? null : 'noindex');
   setCanonical(seo.listed ? canonicalUrl(location.origin, route.path) : null);
 }

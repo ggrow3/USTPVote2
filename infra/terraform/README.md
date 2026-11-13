@@ -6,8 +6,8 @@ buckets (§5.3, §8.4, §10.10), Firestore, both Cloud Run services, the Cloud S
 queue (§13), Binary Authorization (§14), the release workflow's identity, KMS audit logs and a break-glass alert.
 Design open question Q13 (Terraform) and Q16 (`us-central1`) are assumed.
 
-Not managed here, and described [below](#manual-steps): Identity Platform (providers, MFA, password policy), adding
-Firebase to the project and the App Check web registration. Firestore rules and indexes and the web app on Firebase
+Not managed here, and described [below](#manual-steps): Identity Platform (providers, MFA, password policy, the email
+action URL), adding Firebase to the project and the App Check web registration. Firestore rules and indexes and the web app on Firebase
 Hosting are deployed by the [release workflow](#release-workflow), with the server, from the same commit.
 
 ## Layout
@@ -18,10 +18,12 @@ Hosting are deployed by the [release workflow](#release-workflow), with the serv
 | [`envs/dev`](envs/dev) | `ustpvote2-dev`: anchors retention unlocked, Binary Authorization in dry run |
 | [`envs/staging`](envs/staging) | `ustpvote2-staging`: production settings except the retention lock |
 | [`envs/prod`](envs/prod) | `ustpvote2-prod`: Binary Authorization enforced, no human data access, retention lock stated explicitly |
+| [`aws`](aws) | Amazon SES for every environment's email, in USTP's AWS account: applied by hand, never by a workflow ("Email (Amazon SES)") |
 
-Each root keeps its state in the GCS bucket `ustpvote2-<env>-tfstate` and needs Terraform 1.9 or newer and the
+Each environment root keeps its state in the GCS bucket `ustpvote2-<env>-tfstate` and needs Terraform 1.9 or newer and the
 `hashicorp/google` provider 8.x. Each root's `.terraform.lock.hcl` pins the provider, with hashes for Linux, macOS and
-Windows; Dependabot updates the three together. Copy `terraform.tfvars.example` to `terraform.tfvars` (git-ignored: it
+Windows; Dependabot updates the three together. The `aws` root keeps its state in the prod bucket under the prefix
+`aws-mail`, needs the `hashicorp/aws` provider 6.x, and is validated in CI alongside them. Copy `terraform.tfvars.example` to `terraform.tfvars` (git-ignored: it
 holds people's addresses). CI runs these on every pull request, without a backend or credentials:
 
 ```bash
@@ -42,7 +44,7 @@ API-side limits are only checked by Google on the first apply.
 | | Delete Identity Platform users (custom role `ustpLoginDeleter`: `firebaseauth.users.delete` only) | A System Admin deleting an account on `DELETABLE_ACCOUNT_EMAILS` deletes its logins first (§4) |
 | | Create secrets; add versions to `tiebreak-seed-*` secrets only (IAM condition) | Tie-break seed per scheduling attempt (§6.1); it never reads a seed back |
 | | `secretVersionManager` on `anthropic-api-key` only: add, list and destroy versions, never read one | Keeps the key a System Admin adds under Admin › API keys (§5.6); it cannot read it back |
-| | `secretVersionManager` and `secretAccessor` on `app-fec-api-key`, `app-openstates-api-key` and `app-civic-api-key` only | Keeps the public-records keys a System Admin adds under Admin › API keys (§5.6), and reads them to ask those services |
+| | `secretVersionManager` and `secretAccessor` on `app-fec-api-key`, `app-openstates-api-key`, `app-civic-api-key` and `app-congress-api-key` only | Keeps the public-records keys a System Admin adds under Admin › API keys (§5.6, §5.14), and reads them to ask those services |
 | | `publicKeyViewer` on `ballot-pool` | Encrypts ballots locally to an election's public key; cannot decrypt (§7.3) |
 | | Read, write, delete objects in the photos bucket | Profile photos (§5.3) |
 | | Create and read objects in the videos bucket; never delete | Uploaded videos for lessons, news, the press kit and the hub, stored a part at a time and played back by byte range (§10.10) |
@@ -119,12 +121,13 @@ for running the server locally against a real project. Variable names are those 
 |---|---|:-:|:-:|
 | `GOOGLE_CLOUD_PROJECT` | in `api_env` / `worker_env` | ● | ● |
 | `DEPLOYMENT_ENVIRONMENT` | the `environment` variable (`dev`, `staging`, `prod`) | ● | ● |
+| `LOG_LEVEL` | in `api_env` / `worker_env` only when the module's `log_level` variable is not `info`: the least severe developer log lines written (`docs/LOGGING.md`) | ● | ● |
 | `TESTING_MODE` | `true` only when the `testing_mode` variable is (dev sets it; prod refuses it); the worker sends a rehearsal's election notice to the outbox only then (design §6.8) | ● | ● |
 | `WEB_ORIGIN` | in `worker_env`: the `web_origin` variable, else `https://<project>.web.app`; election notices link to it | | ● |
 | `MAIL_TRANSPORT`, `NOTICE_CONTACT` | in `api_env` / `worker_env`: `ses` or `off` from `mail_transport`, and `notice_contact` when set, the default for the app's own setting (the api shows them in the election editor; only the worker sends) | ● | ● |
 | `MAIL_FROM`, `MAIL_REPLY_TO` | in `worker_env`: the `mail_from` variable, and `mail_reply_to` when set (it is not, as agreed) | | ● |
-| `SES_REGION`, `SES_CONFIGURATION_SET`, `SES_MAX_SEND_RATE`, `SES_EVENTS_QUEUE_URL` | in `worker_env` when `mail_transport` is `ses` (the queue when `ses_events_queue_url` is set) | | ● |
-| `AWS_SES_ACCESS_KEY_ID`, `AWS_SES_SECRET_ACCESS_KEY` | not output: the `aws-ses-*` secrets' latest versions, when `mail_transport` is `ses` ("Election notices") | | ● |
+| `SES_REGION`, `SES_CONFIGURATION_SET`, `SES_MAX_SEND_RATE`, `SES_EVENTS_QUEUE_URL` | in `worker_env` when `mail_transport` is `ses`; the configuration set and queue from the `aws` root's outputs | | ● |
+| `AWS_SES_ACCESS_KEY_ID`, `AWS_SES_SECRET_ACCESS_KEY` | not output: the `aws-ses-*` secrets' latest versions, when `mail_transport` is `ses` ("Email (Amazon SES)") | | ● |
 | `AUDIT_SIGNING_KEY_VERSION` | `audit_signing_key_version` (`…/cryptoKeys/audit-signing/cryptoKeyVersions/1`) | | ● |
 | `BALLOT_POOL_KEY` | `ballot_pool_key` (`…/cryptoKeys/ballot-pool`) | ● | ● |
 | `ANCHORS_BUCKET` | `anchors_bucket` (`<project>-anchors`) | ● | ● |
@@ -302,11 +305,13 @@ sets email sign-in with a password or an email link, phone and anonymous sign-in
 factors with `adjacentIntervals: 5` and no SMS (design §4), and the authorized domains: `ustpvote2-<env>.web.app`,
 `ustpvote2-<env>.firebaseapp.com`, and `localhost` outside production. Per project, by hand:
 
-- **Password policy** (§4, NIST SP 800-63B-4): minimum length 15, up to 4096, no composition rules, enforced. The
-  provider cannot set it; with an Owner's credentials:
+- **Password policy** (§4): minimum length 12, up to 4096, no composition rules, enforced, existing passwords not
+  forced to change. It must not ask for more than the web app's `MIN_PASSWORD_LENGTH`, or sign-ups the form accepts
+  fail; when lowering the minimum, change it here before releasing the web app. The provider cannot set it; with an
+  Owner's credentials:
 
   ```bash
-  curl -X PATCH "https://identitytoolkit.googleapis.com/admin/v2/projects/ustpvote2-dev/config?updateMask=passwordPolicyConfig" -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "x-goog-user-project: ustpvote2-dev" -H "Content-Type: application/json" -d '{"passwordPolicyConfig":{"passwordPolicyEnforcementState":"ENFORCE","forceUpgradeOnSignin":false,"passwordPolicyVersions":[{"customStrengthOptions":{"minPasswordLength":15,"maxPasswordLength":4096}}]}}'
+  curl -X PATCH "https://identitytoolkit.googleapis.com/admin/v2/projects/ustpvote2-dev/config?updateMask=passwordPolicyConfig" -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "x-goog-user-project: ustpvote2-dev" -H "Content-Type: application/json" -d '{"passwordPolicyConfig":{"passwordPolicyEnforcementState":"ENFORCE","forceUpgradeOnSignin":false,"passwordPolicyVersions":[{"customStrengthOptions":{"minPasswordLength":12,"maxPasswordLength":4096}}]}}'
   ```
 
 - **Email-enumeration protection** (§4): the same answer for a wrong password and an unknown address. API-only:
@@ -338,7 +343,22 @@ factors with `adjacentIntervals: 5` and no SMS (design §4), and the authorized 
 - **Google, Microsoft and Apple sign-in** (§4): each needs an OAuth client registered with that company. Google's is
   one click in the Firebase console (Authentication → Sign-in method → Google), which creates the client. The admin
   sign-in switches turn a provider off in the api without touching this configuration.
-- **Email sender** and templates once the sender domain is decided (Q15).
+- **Password-reset links** (§4): point the email templates' action URL at the web app's `/email-action` page, so a new
+  password gets the same checks as at sign-up (Firebase's own page skips the breach screen). Identity Platform has one
+  action URL for every template (`notification.sendEmail.callbackUri`), so address-verification and email sign-in
+  links go there too; the page sends those on to Identity Platform's own page, where they work as before. Release a
+  web app that has the page first: before that, the address opens the link hub and the link is lost. Then, with an
+  Owner's credentials (for prod, the site's own address once it has one):
+
+  ```bash
+  curl -X PATCH "https://identitytoolkit.googleapis.com/admin/v2/projects/ustpvote2-dev/config?updateMask=notification.sendEmail.callbackUri" -H "Authorization: Bearer $(gcloud auth print-access-token)" -H "x-goog-user-project: ustpvote2-dev" -H "Content-Type: application/json" -d '{"notification":{"sendEmail":{"callbackUri":"https://ustpvote2-dev.web.app/email-action"}}}'
+  ```
+
+  The Firebase console sets the same thing (Authentication → Templates → edit any template → Customize action URL).
+  To back out, set it to the default, `https://ustpvote2-<env>.firebaseapp.com/__/auth/action`. Check it by asking for
+  a reset from the sign-in page: the email's link should start with the new address.
+- **Email sender** and templates once the sender domain is decided (Q15). Sending them through Amazon SES from the
+  environment's own domain is "Email (Amazon SES)" › "SES sign-in mail".
 
 ### App Check and the web build
 
@@ -495,6 +515,16 @@ Statewide, county and city offices, and state and local candidates outside an el
 Communications Admins enter them under Admin › Communications. With the emulators (`DISTRICTS=local`) the api uses
 made-up people, ballot and biographies instead of these records.
 
+### Bills in Congress (design §5.14)
+
+The legislative team's Bills page asks the Congress.gov API and GovInfo's search service, both with one api.data.gov key
+sent in a header. Nothing has to be set: without a key of its own it uses the FEC key in use (any api.data.gov key works
+for both), and without that the shared `DEMO_KEY` (30 Congress.gov requests an hour). A System Admin can give it a key of
+its own under **Admin › API keys** (the Congress.gov and GovInfo card), kept as the only live version of
+`app-congress-api-key` (`api_keys.tf`). Until that secret exists (a targeted apply of `api_keys.tf` on an environment
+created before 2026-11-08) the card says so and the page uses the FEC key; the other cards are unaffected. With the
+emulators `BILLS=local` answers from a few fixture bills and sends nothing.
+
 ### Members' room model
 
 The members' room (design §5.10) answers `/ask` with a self-hosted model, so nothing said in the room goes to an AI
@@ -537,85 +567,133 @@ that Docker Hub has `ollama/ollama` at the pinned tag (the release the developer
 Locally the emulators use a stand-in (`ROOM_MODEL=local`); to try the real models, run Ollama on your machine, pull both
 models, and start the api with `ROOM_MODEL=ollama ROOM_MODEL_URL=http://localhost:11434`.
 
-### Election notices
+### Email (Amazon SES)
 
-The worker emails everyone on an election's roll when voting opens, and a day before it closes reminds those who have
-not voted (design §6.8), through **Amazon SES**. Until `mail_transport = "ses"` nothing is sent. The AWS side is set up
-by hand; this Terraform creates only the two empty secrets (`aws-ses-access-key-id`, `aws-ses-secret-access-key`), and
-the key never passes through Terraform or its state. USTP has no AWS account or verified domain for this yet. In the
-commands, `us-east-1` is `ses_region`, `<account>` the AWS account ID, `<env>` the environment.
+The worker emails everyone on an election's roll when voting opens, a day before it closes reminds those who have not
+voted, and sends Election Admins' test emails and added members' welcome emails (design §6.8, §5.13), through **Amazon
+SES**, and reads what became of each message from SES's delivery reports. Until `mail_transport = "ses"` nothing is
+sent. The AWS side is the separate root [`aws`](aws), in one AWS account for every environment; each environment gets
+its own sender domain (prod `transhumanist-party.org`, the others `dev.` and `staging.` under it), configuration set,
+SNS topic, SQS queue with a dead-letter queue, and two IAM users. Nothing secret is in its state: access keys are made
+by hand below. This Google Terraform creates only the two empty secrets the worker's key goes into
+(`aws-ses-access-key-id`, `aws-ses-secret-access-key`). USTP has no AWS account or verified domain for this yet.
 
-1. **AWS account and SES identity.** In an AWS account of USTP's, open SES in `us-east-1` and verify the domain
-   `transhumanist-party.org` (Identities → Create identity → Domain, Easy DKIM, RSA 2048): publish the three DKIM `CNAME`
-   records it lists in the domain's DNS. For SPF alignment set a custom MAIL FROM domain (`mail.transhumanist-party.org`:
-   the `MX` and `TXT` records SES lists). If the domain has no DMARC record yet, add one (`_dmarc` `TXT`
-   `v=DMARC1; p=none; rua=mailto:<a mailbox USTP reads>`), and tighten it later.
-2. **Leave the sandbox.** A new account may only send to verified addresses, 200 a day. Request production access
-   (Account dashboard → Request production access): transactional mail, election notices to party members who are
-   registered voters in the party's elections, one or two a member per election, bounces handled automatically. The
-   sending quota (often 50,000 a day, 14 a second) must exceed the largest roll; `ses_max_send_rate` (10 a second) must
-   stay under the rate.
-3. **Bounce queue.** Bounces reach the worker through SNS and SQS, so nothing outside calls the api:
-   ```
-   aws sns create-topic --name ustp-notice-events-<env>
-   aws sqs create-queue --queue-name ustp-notice-events-<env> --attributes MessageRetentionPeriod=1209600
-   ```
-   Give the queue an access policy that lets only that topic send to it (`sqs:SendMessage`, condition `aws:SourceArn` =
-   the topic's ARN), then subscribe the queue to the topic with raw message delivery:
-   `aws sns subscribe --topic-arn <topic arn> --protocol sqs --notification-endpoint <queue arn> --attributes RawMessageDelivery=true`.
-   Create the configuration set and send its bounces (and complaints, which the worker ignores) to the topic:
-   ```
-   aws sesv2 create-configuration-set --configuration-set-name ustp-notices
-   aws sesv2 create-configuration-set-event-destination --configuration-set-name ustp-notices \
-     --event-destination-name to-sqs \
-     --event-destination 'Enabled=true,MatchingEventTypes=BOUNCE,COMPLAINT,SnsDestination={TopicArn=<topic arn>}'
-   ```
-   One configuration set per AWS account is enough; give each environment its own topic and queue, or the environments'
-   workers would take each other's reports.
-4. **An access key that can do only this.** Create an IAM user `ustpvote-worker-<env>` with no console access and this
-   inline policy, then an access key for it:
-   ```json
-   {
-     "Version": "2012-10-17",
-     "Statement": [
-       {
-         "Effect": "Allow",
-         "Action": "ses:SendEmail",
-         "Resource": [
-           "arn:aws:ses:us-east-1:<account>:identity/transhumanist-party.org",
-           "arn:aws:ses:us-east-1:<account>:configuration-set/ustp-notices"
-         ],
-         "Condition": { "StringEquals": { "ses:FromAddress": "noreply@transhumanist-party.org" } }
-       },
-       {
-         "Effect": "Allow",
-         "Action": ["sqs:ReceiveMessage", "sqs:DeleteMessage"],
-         "Resource": "arn:aws:sqs:us-east-1:<account>:ustp-notice-events-<env>"
-       }
-     ]
-   }
-   ```
-5. **The key into Secret Manager**, typed or pasted on standard input so it stays out of shell history:
-   `gcloud secrets versions add aws-ses-access-key-id --project <project> --data-file=-`, and the same for
-   `aws-ses-secret-access-key`. Cloud Run will not start the worker with `mail_transport = "ses"` until both have a
-   version.
-6. **Switch it on** in the environment's `terraform.tfvars`: `mail_transport = "ses"`, `ses_events_queue_url` (the
-   queue's URL), `ses_region` if not `us-east-1`, `web_origin` if the web app is not at `https://<project>.web.app`,
-   and optionally `notice_contact` (where members ask about an election: an address or an https page; the emails say
-   replies are not read). Apply. The From address is `mail_from` (default `USTP Elections
-   <noreply@transhumanist-party.org>`), with no Reply-To. The worker refuses to start without the key or the web
-   origin.
-7. **In the app**, a System Admin opens Admin › Election emails: each email on or off, the reminder's lead time (a
-   day by default), the contact for questions (it overrides `notice_contact`; with neither, nothing is mailed) and each
-   email's subject and opening. Changes are ledgered as `notice.settings_changed`.
+The steps below are in order, and each has a heading of its own: the app's email setup check (Admin › Email) names the
+one to go back to when something is not right.
 
-Then send yourself one: in testing mode, a rehearsal records its notices in the outbox only; to see a real one, put an
-account of your own on a small election's roll. The election editor's "Email to voters" card shows how many went,
-failed, bounced or were skipped.
+#### SES account and Terraform
 
-To rotate the key, create a new one for the IAM user, add it as new versions of both secrets, roll the worker, then
-delete the old key in IAM. To stop sending, set `mail_transport = "off"` and apply: notices already started wait, and
-resume if it is switched back on while voting is still open.
+In an AWS account of USTP's, with an AWS login that may manage SES, SNS, SQS and IAM (and a gcloud login that may read
+the prod state bucket), apply the root:
+
+```bash
+cd infra/terraform/aws
+cp terraform.tfvars.example terraform.tfvars   # list fewer environments to set up only some
+terraform init
+terraform apply
+```
+
+It turns on SES's account-level suppression list for bounces (complaints are kept by the app, which only governs its
+own mail: an account-level complaint would also stop a member's sign-in links), and creates for each environment the
+domain identity with Easy DKIM (RSA 2048) and the MAIL FROM domain `mail.<domain>`, the configuration set
+`ustp-mail-<env>` (reputation metrics on; opens, clicks and engagement metrics off) as the domain's default set, its
+event destination (send, reject, bounce, complaint, delivery, delivery delay, rendering failure) to the topic
+`ustp-mail-events-<env>`, the queue of the same name (14 days, redrive to `-dlq` after five receives), and the IAM users
+`ustpvote-worker-<env>` and `ustpvote-smtp-<env>`.
+
+#### SES DNS records
+
+`terraform output dns_records` lists, for each environment, the records to publish wherever the party's domain is
+served: three DKIM `CNAME`s, the MAIL FROM domain's `MX` and SPF `TXT`, and an advised DMARC `TXT` (`p=none`; leave it
+out where the domain has one, and tighten it once reports look right; `dmarc_report_address` adds `rua`). SES checks
+them on its own; the identity says verified, and DKIM and MAIL FROM say success, within hours.
+
+#### SES production access
+
+A new account may only send to verified addresses, 200 a day. Request production access (SES console → Account
+dashboard → Request production access): transactional mail; election notices to party members who are registered
+voters in the party's elections, one to three per member per election; sign-in and address-confirmation emails;
+bounces and complaints handled automatically. The sending quota (often 50,000 a day, 14 a second) must exceed the
+largest roll, and `ses_max_send_rate` (10 a second) stay under the rate.
+
+#### SES worker key
+
+Give the environment's worker an access key: the script creates one for `ustpvote-worker-<env>` and adds it on
+standard input as the newest version of both secrets, so it is never printed or written down.
+
+```bash
+node infra/terraform/aws/scripts/worker-key.mjs --env dev --project ustpvote2-dev
+```
+
+The worker's key may only send from the environment's address through its configuration set, read and delete its
+queue's reports, read the account, identity, configuration set and both queues for the setup check, and take an
+address off the suppression list when its owner asks.
+
+#### SES switch on
+
+In the environment's `terraform.tfvars`: `mail_transport = "ses"`, `ses_events_queue_url` (the `aws` root's
+`queue_urls` output), `ses_region` if not `us-east-1`, `web_origin` if the web app is not at
+`https://<project>.web.app`, and optionally `notice_contact` (where members ask about an election: an address or an
+https page; the emails say replies are not read). `mail_from` and `ses_configuration_set` default to the environment's
+(`noreply@<its domain>`, `ustp-mail-<env>`). Apply. The worker refuses to start without the key or the web origin, and
+Terraform refuses `ses` without the configuration set or the queue.
+
+#### SES in the app
+
+A System Admin opens Admin › Email. **All email from the site is off until they switch it on** there ("Send email"), so
+setting SES up mails nobody by itself; switching it on starts the voting-open email of any election open at that moment.
+First send a test (Setup and test on that tab, "Send test email"), which goes only to the System Admin you choose, even
+while email is off, and says whether their mail server took it. The same tab has each email on or off, the reminder's lead time (a day by
+default), the contact for questions (it overrides `notice_contact`; with neither, nothing is mailed) and each email's
+subject and opening. Changes are ledgered as `notice.settings_changed`. Once it is on, "Send test email" on an election's
+"Email to voters" card sends you that election's email. The card's counts (delivered, no report yet, bounced, marked as
+spam, skipped) come from SES's delivery reports; an address that bounced for good or was marked as spam is not mailed
+again.
+
+The same tab's **email setup check** runs every hour by itself, or now with "Check now": it reads the account, the
+sender domain, the configuration set, both queues and the DNS records, works out the bounce and complaint rates, and
+sends three messages to SES's mailbox simulator to see their reports come back. Each check that is not right names the
+step above that fixes it. With `alert_emails` set, a check that starts failing also emails those addresses (alert
+policy `mail`, through Google, not SES). The same policy carries two warnings about election email itself: a notice
+held because the check is failing (it goes on by itself once the check passes), and a send whose emails did not all
+reach their mail servers within 30 minutes; Election Admins see both on the election's "Email to voters" card.
+
+#### SES sign-in mail
+
+Identity Platform's own email (sign-in links, address confirmations, password resets) can go through SES's SMTP
+interface too, from the environment's address, so it is DKIM-signed by the party's domain and its delivery reports
+reach the worker like the app's: each member sees theirs on their Account page. Identity Platform cannot name a
+configuration set, so the sender domain's default one (set by the `aws` root) publishes its reports. Switch it over in
+this order, one environment at a time, dev first:
+
+1. The DNS records are published, and the setup check shows the domain verified, DKIM and MAIL FROM successful.
+2. Production access is granted: while the account is in the sandbox, sign-in links would reach almost nobody, and the
+   check fails.
+3. The worker sends through SES, the check's probe passes, and your own test email shows delivered.
+4. Switch Identity Platform over. A new access key for the environment's SMTP user goes straight into the script on
+   standard input, which derives the SES SMTP password from it and sets Identity Platform's custom SMTP; neither is
+   printed or stored anywhere else:
+
+   ```bash
+   aws iam create-access-key --user-name ustpvote-smtp-dev --query 'AccessKey.[AccessKeyId,SecretAccessKey]' --output text \
+     | node infra/terraform/aws/scripts/identity-platform-smtp.mjs --project ustpvote2-dev --from noreply@dev.transhumanist-party.org
+   ```
+
+5. Send yourself a sign-in link, a password reset and an address confirmation; each shows on your Account page as
+   delivered, and the check's "Sign-in email through SES" turns ok.
+6. Staging after a clean week, then prod.
+
+To switch back to Google's sender at once: `node infra/terraform/aws/scripts/identity-platform-smtp.mjs --project
+<project> --off`. The email action handler (`callbackUri`, "Identity Platform") is a separate setting and is left as it
+is. The worker reads Identity Platform's configuration for the check with the custom role `ustpAuthConfigViewer`
+(`firebaseauth.configs.get` only).
+
+#### SES key rotation
+
+Run the worker-key script again (an IAM user holds two keys at most), roll the worker so it reads the new versions,
+then delete the old key: `aws iam list-access-keys --user-name ustpvote-worker-<env>`, `aws iam delete-access-key`. To
+stop sending, set `mail_transport = "off"` and apply: notices already started wait, and resume if it is switched back
+on while voting is still open.
 
 ## Things to know
 

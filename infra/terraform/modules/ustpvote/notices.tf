@@ -1,6 +1,7 @@
-# Election notices by Amazon SES (design §6.8): the worker emails each roll when voting opens, reminds those who have
-# not voted a day before it closes, and reads bounce reports from an SQS queue. The AWS side (domain identity,
-# configuration set, SNS topic, SQS queue, IAM user) is set up by hand in AWS (README "Election notices").
+# The app's email by Amazon SES (design §6.8): the worker emails each roll when voting opens, reminds those who have
+# not voted a day before it closes, and reads delivery reports from an SQS queue. The AWS side (sender domain,
+# configuration set, SNS topic, SQS queue, IAM users) is the separate Terraform root infra/terraform/aws, applied by hand
+# (README "Email (Amazon SES)").
 #
 # The worker's AWS access key lives in these two secrets. Terraform creates them but never their values: a person adds
 # each as a version, so the key stays out of Terraform state. Only the worker reads them (worker_secret_accessor), as
@@ -39,16 +40,16 @@ locals {
     var.notice_contact != "" ? { NOTICE_CONTACT = var.notice_contact } : {},
   )
 
-  # Worker only: the headers, SES and its bounce queue. The access key comes from the secrets above (run.tf).
+  # Worker only: the headers, SES and its delivery-report queue. The access key comes from the secrets above (run.tf).
   notices_worker_env = merge(
     { MAIL_FROM = var.mail_from },
     var.mail_reply_to != "" ? { MAIL_REPLY_TO = var.mail_reply_to } : {},
     local.ses ? {
       SES_REGION            = var.ses_region
       SES_CONFIGURATION_SET = var.ses_configuration_set
+      SES_EVENTS_QUEUE_URL  = var.ses_events_queue_url
       SES_MAX_SEND_RATE     = tostring(var.ses_max_send_rate)
     } : {},
-    local.ses && var.ses_events_queue_url != "" ? { SES_EVENTS_QUEUE_URL = var.ses_events_queue_url } : {},
   )
 
   # Mounted only when the worker sends through SES: Cloud Run will not start with a secret that has no version.

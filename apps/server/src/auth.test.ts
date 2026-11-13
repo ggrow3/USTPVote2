@@ -7,7 +7,7 @@ import { AuthGuard } from './auth/auth.guard.js';
 import { AppChecked, CheckRevoked, MfaExempt, Public, Roles } from './auth/decorators.js';
 import type { DirectoryService } from './auth/directory.service.js';
 import type { MfaPolicyService } from './auth/mfa-policy.js';
-import { actorOf, principalFromToken } from './auth/principal.js';
+import { actorOf, principalFromToken, type RequestContext } from './auth/principal.js';
 import type { SignInMethodsService } from './auth/sign-in-methods.service.js';
 import type { Firebase } from './infra/firebase.js';
 import { assertCheck } from './common/validation.js';
@@ -15,9 +15,9 @@ import { loadConfig } from './config.js';
 
 const emulators = { FIRESTORE_EMULATOR_HOST: '127.0.0.1:8085', FIREBASE_AUTH_EMULATOR_HOST: '127.0.0.1:9099' };
 
-/** The member two-step requirement (design §4), on or off. */
-const policy = (membersRequired: boolean) =>
-  ({ current: async () => ({ membersRequired, version: 0, updatedAt: null, updatedBy: null }) }) as unknown as MfaPolicyService;
+/** The member and Site Admin two-step requirements (design §4), on or off. */
+const policy = (membersRequired: boolean, siteAdminsRequired = true) =>
+  ({ current: async () => ({ membersRequired, siteAdminsRequired, version: 0, updatedAt: null, updatedBy: null }) }) as unknown as MfaPolicyService;
 
 describe('loadConfig', () => {
   it('allows testing mode only against the emulators or on a dev or staging deployment', () => {
@@ -104,6 +104,8 @@ describe('principal', () => {
     const ctx = { principal, accountId: 'a1', roles: ['auditor' as const], operator: null };
     expect(actorOf(ctx, true, 1_600_000)).toEqual({ accountId: 'a1', roles: ['auditor'], mfa: false, authAgeSeconds: 600 });
     expect(actorOf(ctx, false, 1_600_000).mfa).toBe(true);
+    // A Site Admin the guard let in without a second factor (design §4).
+    expect(actorOf({ ...ctx, roles: ['site_admin'], secondFactorWaived: true }, true, 1_600_000).mfa).toBe(true);
   });
 });
 
@@ -248,12 +250,21 @@ describe('AuthGuard two-step requirement', () => {
     me() {}
     @Roles('election_admin')
     admin() {}
+    @Roles('system_admin', 'site_admin')
+    people() {}
   }
 
-  /** What the guard does with a sign-in: true, or the refusal's body. */
+  /** What the guard does with a sign-in: true, 'waived' when it let a Site Admin in without a second factor, or the refusal's body. */
   async function admit(
-    handler: 'read' | 'me' | 'admin',
-    { roles = [] as Role[], mfa = false, membersRequired = false, mfaSwitch = true, accountId = 'a1' as string | null } = {},
+    handler: 'read' | 'me' | 'admin' | 'people',
+    {
+      roles = [] as Role[],
+      mfa = false,
+      membersRequired = false,
+      siteAdminsRequired = true,
+      mfaSwitch = true,
+      accountId = 'a1' as string | null,
+    } = {},
   ): Promise<unknown> {
     const token = { uid: 'u1', firebase: { sign_in_provider: 'password', ...(mfa && { sign_in_second_factor: 'totp' }) } };
     const activeRoles = vi.fn(async () => roles);
@@ -263,15 +274,17 @@ describe('AuthGuard two-step requirement', () => {
       loadConfig({ ...emulators, APP_CHECK_ENFORCED: 'false', ADMIN_MFA_REQUIRED: String(mfaSwitch) }),
       { isEnabled: async () => true } as unknown as SignInMethodsService,
       { accountIdForUid: async () => accountId, activeRoles } as unknown as DirectoryService,
-      policy(membersRequired),
+      policy(membersRequired, siteAdminsRequired),
     );
+    const request = { headers: { authorization: 'Bearer t' } } as { headers: object; ctx?: RequestContext };
     const context = {
       getHandler: () => Routes.prototype[handler],
       getClass: () => Routes,
-      switchToHttp: () => ({ getRequest: () => ({ headers: { authorization: 'Bearer t' } }) }),
+      switchToHttp: () => ({ getRequest: () => request }),
     } as unknown as ExecutionContext;
     try {
-      return await guard.canActivate(context);
+      const admitted = await guard.canActivate(context);
+      return admitted && request.ctx?.secondFactorWaived ? 'waived' : admitted;
     } catch (e) {
       return (e as HttpException).getResponse();
     }
@@ -310,6 +323,29 @@ describe('AuthGuard two-step requirement', () => {
     }
     // A login with no account yet too: it creates one (exempt) and sets up its second factor first.
     expect(await admit('read', { accountId: null, membersRequired: true })).toMatchObject(refused);
+  });
+
+  it('keeps Site Admins to a second factor on every route while their setting is on', async () => {
+    expect(await admit('read', { roles: ['site_admin'] })).toMatchObject({
+      ...refused,
+      message: 'Site Admins must sign in with two-step verification',
+    });
+    expect(await admit('people', { roles: ['site_admin'] })).toMatchObject(refused);
+    expect(await admit('people', { roles: ['site_admin'], mfa: true })).toBe(true);
+  });
+
+  it('lets a Site Admin in without one while their setting is off, marking the admin route waived (design §4)', async () => {
+    const relaxed = { siteAdminsRequired: false };
+    expect(await admit('read', { roles: ['site_admin'], ...relaxed })).toBe(true);
+    expect(await admit('people', { roles: ['site_admin'], ...relaxed })).toBe('waived');
+    // Another admin role keeps its own rule, the member requirement holds everyone, and System Admins always need one.
+    expect(await admit('people', { roles: ['site_admin', 'election_admin'], ...relaxed })).toMatchObject(refused);
+    expect(await admit('read', { roles: ['site_admin'], membersRequired: true, ...relaxed })).toMatchObject({
+      ...refused,
+      message: 'this site requires two-step verification; set it up on your account page',
+    });
+    expect(await admit('people', { roles: ['system_admin'], ...relaxed })).toMatchObject(refused);
+    expect(await admit('people', { roles: ['site_admin'], mfa: true, ...relaxed })).toBe(true);
   });
 
   it('asks nobody for a second factor where the deployment switches MFA off (emulators only)', async () => {

@@ -5,16 +5,25 @@ import {
   InternalServerErrorException,
   Logger,
   NotFoundException,
-  NotImplementedException,
-  Param,
   Post,
 } from '@nestjs/common';
 import type { BylawsRunResult, ConsistencyRunResult, ElectionRunResult, TickResult } from 'ustp-domain';
+import { PublicBills } from '../bills/public-bills.js';
 import { BylawsCheckRunner } from '../bylaws-check/bylaws-check-runner.js';
 import { SuggestionsService } from '../communications/suggestions.service.js';
 import { ConsistencyCheckRunner } from '../consistency-check/consistency-check-runner.js';
 import { ElectionCheckRunner } from '../election-check/election-check-runner.js';
+import { MailEventRecorder } from '../notifications/mail-events.js';
+import { MailHealthChecker } from '../notifications/mail-health.js';
+import { MembershipMailer } from '../inbox/membership-mailer.js';
+import { NotificationMailer } from '../inbox/notification-mailer.js';
+import { BroadcastSender } from '../notifications/broadcast-sender.js';
+import { MailRequestSender } from '../notifications/mail-requests.js';
+import { NewsletterSender } from '../notifications/newsletter-sender.js';
 import { NoticeSender } from '../notifications/notice-sender.js';
+import { SendVerifier } from '../notifications/send-verification.js';
+import { WeeklyDigest } from '../notifications/weekly-digest.js';
+import { WelcomeSender } from '../notifications/welcome-sender.js';
 import { RoomAssistant } from '../room/room-assistant.js';
 import { RoomRetention } from '../room/room-retention.js';
 import { BallotSealer } from './ballot-sealer.js';
@@ -26,7 +35,7 @@ import { Tallier } from './tallier.js';
  * Worker task endpoints (design §13), invoked by Cloud Scheduler and Cloud Tasks. The worker's Cloud Run service only
  * admits their OIDC tokens (IAM invoker), so these routes have no sign-in of their own.
  */
-export const WORKER_TASKS = ['tick', 'bylaws-checks', 'consistency-checks', 'election-checks', 'room-assistant', 'room-warm', 'email'] as const;
+export const WORKER_TASKS = ['tick', 'bylaws-checks', 'consistency-checks', 'election-checks', 'room-assistant', 'room-warm'] as const;
 export type WorkerTask = (typeof WORKER_TASKS)[number];
 
 @Controller('tasks')
@@ -42,28 +51,48 @@ export class TasksController {
     private readonly consistencyChecks: ConsistencyCheckRunner,
     private readonly electionChecks: ElectionCheckRunner,
     private readonly notices: NoticeSender,
+    private readonly welcomes: WelcomeSender,
+    private readonly mailEvents: MailEventRecorder,
+    private readonly mailHealth: MailHealthChecker,
+    private readonly mailRequests: MailRequestSender,
+    private readonly broadcasts: BroadcastSender,
+    private readonly newsletter: NewsletterSender,
+    private readonly digest: WeeklyDigest,
+    private readonly notificationMail: NotificationMailer,
+    private readonly membershipMail: MembershipMailer,
+    private readonly sendChecks: SendVerifier,
     private readonly suggestions: SuggestionsService,
     private readonly roomRetention: RoomRetention,
     private readonly roomAssistant: RoomAssistant,
+    private readonly publicBills: PublicBills,
   ) {}
 
   /**
    * Every minute: prepare ballot-pool keys, open and close elections on time, seal ballots, tally elections that are
    * now fully sealed, destroy the pool keys of certified and cancelled elections, send election notices (for at most
-   * 20 seconds) and the test emails Election Admins asked for, and record their bounces, delete suggestions a year old
+   * 20 seconds, vote confirmations first), the weekly digest when it is due (§10.14) and the emails admins wrote to members (§10.12), the
+   * links confirming newsletter sign-ups (§10.15), the test emails Election Admins asked for and the welcome emails of added members (§5.13), record what
+   * the mail provider reported of them and ledger each notice round's reports after three days, check how email is set
+   * up every hour or when a System Admin asks (§10.12), delete suggestions a year old
    * (design §10.9) and the members' room's records past their time (§5.10), then seal new ledger entries (including those) into a signed block, sign approved rolls and anchor
-   * new blocks. Each step runs even if an earlier one failed.
+   * new blocks, and last read the public bills due again from Congress.gov, for at most 20 seconds (§5.14). Each step
+   * runs even if an earlier one failed.
    */
   @Post('tick')
   @HttpCode(200)
   async tick(): Promise<TickResult> {
     const failures: string[] = [];
     const step = async <T>(name: string, run: () => Promise<T>, fallback: T): Promise<T> => {
+      const started = Date.now();
       try {
-        return await run();
+        const done = await run();
+        // A step that did something is worth a line; the others, every minute, only at LOG_LEVEL=debug.
+        const did = Array.isArray(done) ? done.length : done;
+        this.logger[did ? 'log' : 'debug']({ message: `tick: ${name}`, step: name, done: did, ms: Date.now() - started });
+        return done;
       } catch (e) {
         const message = e instanceof Error ? e.message : String(e);
-        this.logger.error(`tick: ${name} failed: ${message}`);
+        this.logger.error({ message: `tick: ${name} failed: ${message}`, step: name, ms: Date.now() - started });
         failures.push(`${name}: ${message}`);
         return fallback;
       }
@@ -77,12 +106,23 @@ export class TasksController {
       poolKeysDestroyed: await step('destroy pool keys', () => this.clock.destroyPoolKeys(), 0),
       noticesSent: await step('send notices', () => this.notices.sendDue(), 0),
       testEmailsSent: await step('send test emails', () => this.notices.sendTests(), 0),
-      bouncesRecorded: await step('record bounces', () => this.notices.recordBounces(), 0),
+      welcomeEmailsSent: await step('send welcome emails', () => this.welcomes.sendDue(), 0),
+      memberEmailsSent: await step("do members' email requests", () => this.mailRequests.sendDue(), 0),
+      digestsQueued: await step('queue the weekly digest', () => this.digest.queueDue(), 0),
+      broadcastEmailsSent: await step("send admins' emails to members", () => this.broadcasts.sendDue(), 0),
+      newsletterConfirmationsSent: await step('confirm newsletter sign-ups', () => this.newsletter.sendDue(), 0),
+      notificationEmailsSent: await step('email notifications', () => this.notificationMail.sendDue(), 0),
+      membershipEmailsSent: await step("email the membership team's messages", () => this.membershipMail.sendDue(), 0),
+      mailEventsRecorded: await step('record mail events', () => this.mailEvents.record(), 0),
+      deliveryReports: await step('report delivery', () => this.notices.reportDelivery(), 0),
+      sendsVerified: await step('verify sends', () => this.sendChecks.verifyDue(), 0),
+      mailChecked: await step('check mail setup', () => this.mailHealth.runDue(), false),
       suggestionsDeleted: await step('delete old suggestions', () => this.suggestions.deleteExpired(), 0),
       roomExpired: await step('expire room records', () => this.roomRetention.run(), 0),
       blocksSealed: (await step('seal blocks', () => this.sealer.sealBlocks(), [])).length,
       rollsSigned: await step('sign rolls', () => this.sealer.signRolls(), 0),
       anchored: await step('anchor blocks', () => this.sealer.anchorBlocks(), 0),
+      publicBillsRefreshed: await step('read public bills again', () => this.publicBills.refreshDue(), 0),
     };
     if (failures.length) throw new InternalServerErrorException(`tick incomplete (${JSON.stringify(result)}): ${failures.join('; ')}`);
     return result;
@@ -138,12 +178,5 @@ export class TasksController {
       this.logger.warn(`room model warm-up failed: ${e instanceof Error ? e.message : e}`);
       return { warmed: false };
     }
-  }
-
-  @Post(':task')
-  @HttpCode(202)
-  run(@Param('task') task: string) {
-    if (!(WORKER_TASKS as readonly string[]).includes(task)) throw new NotFoundException(`unknown task ${task}`);
-    throw new NotImplementedException(`task ${task} is not implemented yet`);
   }
 }

@@ -28,6 +28,12 @@ const application = () => ({
   newsletter: true,
 });
 
+/** An application from outside the US: the country, and none of the state, city and ZIP code a US one needs. */
+const abroad = () => {
+  const { state: _, city: __, postalCode: ___, ...rest } = application();
+  return { ...rest, country: 'GB', region: 'Greater London', phone: '+44 20 7946 0958' };
+};
+
 beforeEach(async () => {
   await resetEmulators();
   const [sa1, sa2] = await api.systemAdmins();
@@ -110,6 +116,44 @@ describe('applications', () => {
       agreesWithCoreIdeals: true,
     });
     expect(member).not.toHaveProperty('dateOfBirth');
+  });
+
+  it('takes an application from outside the US without a state, city or ZIP code, and keeps the country', async () => {
+    const robin = await api.member('robin@example.test');
+    const res = await api.call('POST', '/v1/registration/applications', robin, abroad());
+    expect(res.status).toBe(201);
+    const place = {
+      country: 'GB',
+      state: null,
+      region: 'Greater London',
+      contact: { city: null, postalCode: null, phone: '+442079460958' },
+    };
+    expect(res.body).toMatchObject(place);
+    expect((await api.call('GET', '/v1/me', robin)).body.member).toMatchObject({ status: 'applicant', ...place });
+  });
+
+  it('still needs the state, city and ZIP code of an applicant in the US, the country they get when none is given', async () => {
+    const robin = await api.member('robin@example.test');
+    const { state: _, city: __, postalCode: ___, ...nowhere } = application();
+    const res = await api.call('POST', '/v1/registration/applications', robin, { ...nowhere, country: 'US' });
+    expect(res.status).toBe(400);
+    expect(res.body.errors.map((e: { path: string }) => e.path)).toEqual(['state', 'city', 'postalCode']);
+    const unknown = await api.call('POST', '/v1/registration/applications', robin, { ...application(), country: 'ZZ' });
+    expect(unknown).toMatchObject({ status: 400, body: { errors: [{ path: 'country', message: 'choose your country' }] } });
+
+    const { body: app } = await api.call('POST', '/v1/registration/applications', robin, application());
+    expect(app).toMatchObject({ country: 'US', state: 'CA', region: null });
+  });
+
+  it('records the one Staying in touch box as both opt-ins, or as neither when it is unticked', async () => {
+    const robin = await api.member('robin@example.test');
+    const ticked = await api.call('POST', '/v1/registration/applications', robin, { ...application(), announcements: true });
+    expect(ticked.body.communications).toEqual({ newsletter: ticked.body.submittedAt, announcements: ticked.body.submittedAt });
+
+    const sam = await api.member('sam@example.test');
+    const unticked = await api.call('POST', '/v1/registration/applications', sam, { ...abroad(), newsletter: false, announcements: false });
+    expect(unticked.body.communications).toEqual({ newsletter: null, announcements: null });
+    expect((await api.call('GET', '/v1/me', sam)).body.member.communications).toEqual({ newsletter: null, announcements: null });
   });
 
   it('refuses applicants under the minimum age, a missing attestation and an unanswered question', async () => {
@@ -303,6 +347,19 @@ describe('member profiles and details', () => {
     });
     expect(JSON.stringify(entry)).not.toContain('Portland');
 
+    const moved = await api.call('POST', '/v1/me/details', robin, {
+      preferredName: 'Rob',
+      country: 'DE',
+      region: 'Berlin',
+      newsletter: false,
+      announcements: true,
+    });
+    expect(moved.status).toBe(201);
+    expect(moved.body).toMatchObject({ country: 'DE', state: null, region: 'Berlin', contact: { city: null, postalCode: null } });
+    expect((await lastEntry()).payload.fields).toEqual(['country', 'state', 'region', 'contact.city', 'contact.postalCode']);
+    const back = await api.call('POST', '/v1/me/details', robin, { preferredName: 'Rob', ...where, newsletter: false, announcements: true });
+    expect(back.body).toMatchObject({ country: 'US', state: 'OR', region: null });
+
     const same = await api.call('POST', '/v1/me/details', robin, { preferredName: 'Rob', ...where, newsletter: false, announcements: true });
     expect(same.status).toBe(409);
     const legal = await api.call('POST', '/v1/me/details', robin, { ...where, legalName: 'Someone Else', newsletter: false, announcements: false });
@@ -327,5 +384,25 @@ describe('member profiles and details', () => {
     expect((await api.call('POST', path, admin, { ...correction, newsletter: false })).status).toBe(400);
     expect((await api.call('POST', path, robin, correction)).status).toBe(403);
     expect((await api.call('POST', `/v1/admin/members/${admin.accountId}/details`, admin, correction)).status).toBe(403);
+  });
+});
+
+describe('the applications queue', () => {
+  it('tells Membership Admins how many wait and since when, and nobody else', async () => {
+    const summary = () => api.call('GET', '/v1/admin/applications/summary', admin);
+    expect((await summary()).body).toEqual({ pending: 0, oldestSubmittedAt: null });
+
+    const first = await api.member('first@example.test');
+    const second = await api.member('second@example.test');
+    const one = await api.call('POST', '/v1/registration/applications', first, application());
+    expect((await api.call('POST', '/v1/registration/applications', second, application())).status).toBe(201);
+    expect((await summary()).body).toEqual({ pending: 2, oldestSubmittedAt: one.body.submittedAt });
+
+    const decided = await api.call('POST', `/v1/admin/applications/${one.body.applicationId}/decision`, admin, { decision: 'approve', reason: 'reviewed' });
+    expect(decided.status).toBe(201);
+    expect((await summary()).body).toMatchObject({ pending: 1 });
+
+    expect((await api.call('GET', '/v1/admin/applications/summary', second)).status).toBe(403);
+    expect((await api.call('GET', '/v1/admin/applications/summary')).status).toBe(401);
   });
 });

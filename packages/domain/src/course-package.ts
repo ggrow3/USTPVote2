@@ -162,6 +162,8 @@ export interface PackagedCourse {
   readonly courseId: string;
   /** Left off the Courses page, though it stays published and open at its address. */
   readonly hidden: boolean;
+  /** Its quizzes may be taken without signing in, while it is published and comes after no other course. */
+  readonly openToGuests: boolean;
   /** The courses to pass before this one's quizzes open, in the order it lists them. */
   readonly prerequisites: readonly string[];
   /** Its square on the map, or null for off it. */
@@ -190,7 +192,7 @@ export interface CourseContent {
   readonly published: CourseVersionRecord | null;
 }
 
-/** Every course with the map; records saved before the map or the hide switch read as off it and shown. */
+/** Every course with the map; records saved before the map or the switches read as off it, shown and closed to guests. */
 export function coursesPackage(courses: readonly CourseContent[], exportedAt: string): CoursesPackage {
   return {
     format: COURSES_PACKAGE_FORMAT,
@@ -198,11 +200,12 @@ export function coursesPackage(courses: readonly CourseContent[], exportedAt: st
     exportedAt,
     map: { rows: COURSE_MAP.rows, columns: COURSE_MAP.columns },
     courses: courses
-      .map((content) => ({ ...content, course: { ...content.course, ...placementOf(content.course), hidden: content.course.hidden === true } }))
+      .map((content) => ({ ...content, course: { ...content.course, ...placementOf(content.course), hidden: content.course.hidden === true, openToGuests: content.course.openToGuests === true } }))
       .sort((a, b) => courseMapOrder(a.course, b.course))
       .map(({ course, lessons, profiles, published }) => ({
         courseId: course.courseId,
         hidden: course.hidden,
+        openToGuests: course.openToGuests,
         prerequisites: course.prerequisites,
         position: course.position,
         draft: draftCoursePackage(course, lessons, profiles, exportedAt),
@@ -235,6 +238,8 @@ export const coursesPackageSchema = z
         z.strictObject({
           courseId: courseIdSchema,
           hidden: z.boolean(),
+          // Files exported before the switch have none: closed.
+          openToGuests: z.boolean().default(false),
           prerequisites: courseMapSchema.shape.prerequisites,
           position: z.strictObject({ row: z.number().int().min(0), column: z.number().int().min(0) }).nullable(),
           draft: coursePackageSchema,

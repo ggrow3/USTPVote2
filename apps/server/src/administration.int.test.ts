@@ -113,6 +113,77 @@ describe('role changes (one System Admin)', () => {
   });
 });
 
+describe('role changes by a Site Admin', () => {
+  let site: Member;
+  let kim: Member;
+
+  beforeEach(async () => {
+    site = await api.member('site@example.test');
+    kim = await api.member('kim@example.test');
+    await api.grant(site.accountId, 'site_admin', sa1);
+  });
+
+  it('take effect at once for every role but System Admin, Site Admin included, ledgered with the Site Admin as actor', async () => {
+    expect(await changeRole(site, pat.accountId, 'membership_admin')).toMatchObject({ status: 201, body: { roles: ['membership_admin'] } });
+    expect(await changeRole(site, kim.accountId, 'site_admin')).toMatchObject({ status: 201, body: { roles: ['site_admin'] } });
+    expect((await changeRole(site, kim.accountId, 'site_admin', 'revoke')).status).toBe(201);
+    expect((await changeRole(site, pat.accountId, 'membership_admin', 'revoke')).status).toBe(201);
+    expect((await changeRole(site, pat.accountId, 'auditor')).status).toBe(201);
+    expect(await rolesOf(pat)).toEqual(['auditor']);
+    const last = (await api.firebase.db.collection('audit_events').orderBy('seq', 'desc').limit(1).get()).docs[0]!.data();
+    expect(last).toMatchObject({ type: 'role.granted', actor: site.accountId, subject: pat.accountId, payload: { role: 'auditor', reason: 'staffing' } });
+  });
+
+  it('refuse System Admin and a System Admin’s roles (403), the rules every grant keeps (409), and their own roles', async () => {
+    expect(await changeRole(site, pat.accountId, 'system_admin')).toMatchObject({
+      status: 403,
+      body: { detail: 'system_admin is granted and revoked only by a system_admin' },
+    });
+    expect((await changeRole(site, sa2.accountId, 'system_admin', 'revoke')).status).toBe(403);
+    // The account ID alone says nothing about its roles: the API reads them inside the change.
+    expect(await changeRole(site, sa2.accountId, 'membership_admin')).toMatchObject({
+      status: 403,
+      body: { detail: 'the roles of a system_admin are changed only by a system_admin' },
+    });
+    expect(await rolesOf(sa2)).toEqual(['system_admin']);
+    expect(await changeRole(site, site.accountId, 'site_admin', 'revoke')).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/own account/) } });
+
+    await api.grant(pat.accountId, 'auditor', sa1);
+    expect(await changeRole(site, pat.accountId, 'site_admin')).toMatchObject({ status: 409, body: { detail: /cannot be held together/ } });
+    expect(await changeRole(sa1, site.accountId, 'system_admin')).toMatchObject({
+      status: 409,
+      body: { detail: 'system_admin cannot be held together with site_admin' },
+    });
+    await api.grant(kim.accountId, 'membership_admin', sa1);
+    await api.grant(kim.accountId, 'election_admin', sa1);
+    expect(await changeRole(site, kim.accountId, 'site_admin')).toMatchObject({ status: 409, body: { detail: /at most 2 roles/ } });
+  });
+
+  it('see the People list, but never delete an account or a test voter (403)', async () => {
+    expect((await api.call('GET', '/v1/admin/accounts', site)).status).toBe(200);
+    const leaving = await api.member('leaving@example.test');
+    const remove = await api.call('POST', `/v1/admin/accounts/${leaving.accountId}/delete`, site, { reason: 'demo account, no longer used' });
+    expect(remove).toMatchObject({ status: 403, body: { detail: 'requires role system_admin' } });
+    expect((await api.firebase.db.collection('accounts').doc(leaving.accountId).get()).exists).toBe(true);
+    expect((await api.firebase.auth.getUser(leaving.uid)).uid).toBe(leaving.uid);
+    // Test voters too, and the testing tools, which stay with System Admins.
+    const voters = await api.call('POST', '/v1/testing/personas/delete', site, { voters: [kim.accountId] });
+    expect(voters).toMatchObject({ status: 403, body: { detail: 'requires role system_admin' } });
+    expect((await api.call('GET', '/v1/testing/personas', site)).status).toBe(403);
+    // And the sign-in settings, the API keys and the room's model server.
+    expect((await api.call('GET', '/v1/admin/sign-in-methods', site)).status).toBe(403);
+    expect((await api.call('GET', '/v1/admin/mfa-policy', site)).status).toBe(403);
+    expect((await api.call('GET', '/v1/admin/api-keys', site)).status).toBe(403);
+    expect((await api.call('PUT', '/v1/admin/room/settings/server', site, { on: true })).status).toBe(403);
+  });
+
+  it('use the other System Admin settings: navigation, email, the room, the sign-in log', async () => {
+    for (const path of ['/v1/admin/navigation', '/v1/admin/notice-settings', '/v1/admin/mail/log', '/v1/admin/room/settings', '/v1/admin/security/sign-ins']) {
+      expect((await api.call('GET', path, site)).status, path).toBe(200);
+    }
+  });
+});
+
 describe('audit ledger', () => {
   it('verifies the chain end to end and detects an edited entry', async () => {
     await api.grant(pat.accountId, 'auditor', sa1);
@@ -163,14 +234,16 @@ describe('People list (GET /v1/admin/accounts)', () => {
     return byAccount;
   }
 
-  it('is for System Admins only', async () => {
+  it('is for System and Site Admins only', async () => {
     await api.grant(pat.accountId, 'membership_admin', sa1);
     await api.grant(kim.accountId, 'auditor', sa1);
     expect((await list(undefined)).status).toBe(401);
     expect((await list(lee)).status).toBe(403);
-    expect(await list(pat)).toMatchObject({ status: 403, body: { detail: 'requires role system_admin' } });
+    expect(await list(pat)).toMatchObject({ status: 403, body: { detail: 'requires role system_admin or site_admin' } });
     expect((await list(kim)).status).toBe(403);
     expect((await list(sa1)).status).toBe(200);
+    await api.grant(pat.accountId, 'site_admin', sa1);
+    expect((await list(pat)).status).toBe(200);
   });
 
   it('shows the roles each account holds in role_assignments, and only what the list needs', async () => {
@@ -300,20 +373,23 @@ describe('deleting an account (POST /v1/admin/accounts/{accountId}/delete)', () 
     expect((await api.call('GET', '/v1/admin/audit/verify', auditor)).body).toMatchObject({ ok: true });
   });
 
-  it('deletes a listed member with their membership: member record, status history and applications', async () => {
+  it('deletes a listed member with their membership: member record, status history, applications and ticked first steps', async () => {
     const member = { accountId: leaving.accountId, status: 'active' };
     await db().collection('members').doc(leaving.accountId).set(member);
     await db().collection('member_status_history').doc('h1').set({ accountId: leaving.accountId, from: null, to: 'applicant' });
     await db().collection('member_status_history').doc('h2').set({ accountId: leaving.accountId, from: 'applicant', to: 'active' });
     await db().collection('applications').doc('a1').set({ accountId: leaving.accountId, status: 'approved' });
+    await db().collection('first_step_ticks').doc(leaving.accountId).set({ ticked: ['bylaws'], updatedAt: '2026-11-12T00:00:00.000Z' });
     await db().collection('members').doc(pat.accountId).set({ accountId: pat.accountId, status: 'active' });
-    // An election in which the account is on no roll and has not voted does not stop it.
+    // An election in which the account is on no roll and has not voted does not stop it, nor does a rejected roll.
     await db().collection('elections').doc('e1').set({ electionId: 'e1' });
-    await db().collection('elections').doc('e1').collection('roll_entries').doc(pat.accountId).set({ snapshotId: 's1' });
+    await db().collection('eligibility_snapshots').doc('s1').set({ electionId: 'e1', status: 'approved', accountIds: [pat.accountId] });
+    await db().collection('eligibility_snapshots').doc('s2').set({ electionId: 'e1', status: 'rejected', accountIds: [leaving.accountId] });
 
     expect((await remove(sa1, leaving.accountId)).status).toBe(204);
 
     expect((await db().collection('members').doc(leaving.accountId).get()).exists).toBe(false);
+    expect((await db().collection('first_step_ticks').doc(leaving.accountId).get()).exists).toBe(false);
     for (const c of ['member_status_history', 'applications']) {
       expect((await db().collection(c).where('accountId', '==', leaving.accountId).get()).size).toBe(0);
     }
@@ -322,18 +398,26 @@ describe('deleting an account (POST /v1/admin/accounts/{accountId}/delete)', () 
   });
 
   it('refuses accounts not on the list, on an election roll or that voted, your own, and anyone but a System Admin', async () => {
+    const site = await api.member('site@example.test');
+    await api.grant(site.accountId, 'site_admin', sa1);
     const onRoll = await api.member('leaving-member@example.test');
     await db().collection('elections').doc('e1').set({ electionId: 'e1' });
-    await db().collection('elections').doc('e1').collection('roll_entries').doc(onRoll.accountId).set({ snapshotId: 's1' });
+    const roll = db().collection('eligibility_snapshots').doc('s1');
     await api.grant(pat.accountId, 'membership_admin', sa1);
 
     expect(await remove(sa1, pat.accountId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/deletion list/) } });
-    expect(await remove(sa1, onRoll.accountId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/election roll/) } });
-    await db().collection('elections').doc('e1').collection('roll_entries').doc(onRoll.accountId).delete();
+    // On a roll waiting for an Auditor, approved, or approved and later replaced.
+    for (const status of ['pending', 'approved', 'superseded']) {
+      await roll.set({ electionId: 'e1', status, accountIds: [pat.accountId, onRoll.accountId] });
+      expect(await remove(sa1, onRoll.accountId), status).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/election roll/) } });
+    }
+    await roll.delete();
     await db().collection('elections').doc('e1').collection('participation').doc(onRoll.accountId).set({ castAt: '2026-11-02T12:00:00.000Z' });
     expect(await remove(sa1, onRoll.accountId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/voted/) } });
     expect(await remove(sa1, sa1.accountId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/own account/) } });
     expect(await remove(pat, leaving.accountId)).toMatchObject({ status: 403, body: { detail: 'requires role system_admin' } });
+    expect(await remove(site, leaving.accountId)).toMatchObject({ status: 403, body: { detail: 'requires role system_admin' } });
+    expect(await remove(site, '01a00000-0000-7000-8000-000000000000')).toMatchObject({ status: 403 });
     expect((await remove(sa1, '01a00000-0000-7000-8000-000000000000')).status).toBe(404);
     expect((await api.call('POST', `/v1/admin/accounts/${leaving.accountId}/delete`, sa1, { reason: ' ' })).status).toBe(400);
 

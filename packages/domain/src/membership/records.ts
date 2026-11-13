@@ -1,13 +1,16 @@
 import type { AccountPreferences } from '../daily.js';
+import type { MailStatus } from '../notifications/mail.js';
+import type { WelcomeEmailRecord, WelcomeVia } from '../notifications/welcome.js';
 import type { MemberStatus } from './member-status.js';
 
 /** Document shapes of the membership context (design §5.1, §5.2, §11). */
 
-/** How to reach a member. City and ZIP code only: the street address is never collected (design §5.2). */
+/** How to reach a member. City and ZIP code or postcode only: the street address is never collected (design §5.2). */
 export interface MemberContact {
-  readonly city: string;
-  /** `12345` or `12345-6789`. */
-  readonly postalCode: string;
+  /** Always given in the US; optional elsewhere, and null when not given. */
+  readonly city: string | null;
+  /** In the US the ZIP code, `12345` or `12345-6789`; elsewhere the postcode (`SW1A 1AA`), or null if not given. */
+  readonly postalCode: string | null;
   /** E.164 (`+15551234567`), or null. */
   readonly phone: string | null;
 }
@@ -24,8 +27,18 @@ export interface MemberRecord {
   readonly status: MemberStatus;
   readonly legalName: string;
   readonly preferredName: string | null;
-  /** Two-letter state code; the street address is never stored (design §5.2). */
-  readonly state: string;
+  /**
+   * ISO 3166-1 alpha-2 code (`countryOf`). Records made before the country was asked have none, and are in the
+   * United States.
+   */
+  readonly country?: string;
+  /**
+   * In the US, the two-letter state or territory code; null elsewhere. The street address is never stored (design
+   * §5.2).
+   */
+  readonly state: string | null;
+  /** Outside the US, the state, province or county as given, or null; absent on older records. */
+  readonly region?: string | null;
   /** Null for members who applied before contact details were collected. */
   readonly contact: MemberContact | null;
   readonly communications: CommunicationConsents | null;
@@ -82,7 +95,12 @@ export interface ApplicationRecord {
   readonly usVoteEligible?: boolean;
   /** Agrees with the Core Ideals listed on the form. */
   readonly agreesWithCoreIdeals?: boolean;
-  readonly state: string;
+  /** ISO 3166-1 alpha-2 code; absent on applications made before it was asked, which are all from the United States. */
+  readonly country?: string;
+  /** In the US, the state or territory code; null elsewhere. */
+  readonly state: string | null;
+  /** Outside the US, the state, province or county as given, or null. */
+  readonly region?: string | null;
   readonly contact: MemberContact;
   readonly communications: CommunicationConsents;
   readonly statement: string | null;
@@ -92,6 +110,8 @@ export interface ApplicationRecord {
   readonly runForOffice: boolean;
   /** How they heard about USTP. */
   readonly referral: string | null;
+  /** The member whose referral link they came by (design §5.18); null or absent when none. */
+  readonly referredBy?: string | null;
   readonly decidedBy: string | null;
   readonly decidedAt: string | null;
   readonly decisionReason: string | null;
@@ -106,4 +126,17 @@ export interface MemberDetail {
   readonly history: readonly StatusHistoryRecord[];
   /** The account's display choices, so a Membership Admin sees whether the daily quote and joke is on (design §4.1). */
   readonly preferences: AccountPreferences;
+  /**
+   * For a member a Membership Admin added (design §5.13): when, by whom, when they first signed in (null until then),
+   * and how their latest welcome email went: the site's own, or Identity Platform's sign-in link (`via`), which is
+   * recorded only since 2026-11-08 (null when none is). Null for everyone who registered themselves.
+   */
+  readonly added: {
+    readonly at: string;
+    readonly by: string;
+    readonly signedInAt: string | null;
+    readonly welcome:
+      | (Pick<WelcomeEmailRecord, 'status' | 'requestedAt' | 'doneAt' | 'outcome'> & { readonly delivery: MailStatus | null; readonly via: WelcomeVia })
+      | null;
+  } | null;
 }

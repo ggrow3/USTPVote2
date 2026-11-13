@@ -1,6 +1,6 @@
 export type { Check, Outcome, Refusal, Refused } from './check.js';
 export { uuidv7, isUuidV7, uuidv7Timestamp } from './ids.js';
-export { ROLES, MAX_ROLES_PER_ACCOUNT, conflictingRoles, isRole, checkRoleChange } from './roles.js';
+export { ROLES, SITE_ADMIN_ROLES, MAX_ROLES_PER_ACCOUNT, administersSite, conflictingRoles, isRole, checkRoleChange, type SiteAdminRole } from './roles.js';
 export type { Role } from './roles.js';
 export {
   COURSE_STATUSES,
@@ -16,7 +16,25 @@ export {
   saveFuturistProfileSchema,
   courseMetadataSchema,
   submitCourseQuizSchema,
+  courseGuestsSchema,
+  checkCourseQuizSchema,
+  claimCourseProgressSchema,
+  CLAIM_LIMIT,
+  isOpenToGuests,
+  courseOpeningProblem,
 } from './course.js';
+export {
+  CERTIFICATE_ISSUER,
+  CERTIFICATE_NAME_MAX,
+  certificateDate,
+  certificateHolderSchema,
+  certificateNameProblem,
+  certificatePagePath,
+  certificateSettingsSchema,
+  linkedInAddToProfileUrl,
+  shownHolderName,
+} from './course-certificates.js';
+export type { AddToProfile, CertificateHolderInput, CertificateSettings, CertificateSettingsInput, CertificateSettingsRecord } from './course-certificates.js';
 export type {
   CourseStatus,
   FuturistCategory,
@@ -40,6 +58,11 @@ export type {
   SaveFuturistProfileInput,
   CourseMetadataInput,
   SubmitCourseQuizInput,
+  CourseGuestsInput,
+  CheckCourseQuizInput,
+  ClaimCourseProgressInput,
+  GuestQuizResult,
+  LearnerCertificate,
 } from './course.js';
 export {
   VIDEO_AREAS,
@@ -124,14 +147,19 @@ export type {
   PackagedLesson,
   PackagedProfile,
 } from './course-package.js';
+export { courseEmbed, courseEmbedPath, courseEmbedSnippet, coursesEmbed, EMBED_HEIGHT, EMBED_ROUTES, embedLink } from './course-embed.js';
+export type { CourseEmbed, CoursesEmbed, Embed, EmbedLesson, EmbedProfile, EmbedQuestion, EmbedSite, EmbedVideo } from './course-embed.js';
 export * from './membership/index.js';
 export * from './teams/index.js';
+export * from './referrals/index.js';
+export * from './bills/index.js';
 export { voteSchema, NO_VOTES, changeVote } from './votes.js';
 export type { VoteValue, VoteTally } from './votes.js';
 export * from './forum/index.js';
 export * from './room/index.js';
 export * from './communications/index.js';
 export * from './notifications/index.js';
+export * from './inbox/index.js';
 export * from './governance/index.js';
 export * from './candidacies/index.js';
 export { diffLines, splitLines } from './text-diff.js';
@@ -162,7 +190,7 @@ export type {
   NamedAmendment,
   ProposalOutcome,
 } from './amendments.js';
-export { ACT_AS_HEADER, ADMIN_PERSONAS, MAX_TEST_VOTERS, PERSONA_KINDS, voterPersonaLabel } from './testing.js';
+export { ACT_AS_HEADER, ADMIN_PERSONAS, MAX_TEST_VOTERS, PERSONA_KINDS, TEST_VOTER_DELETION_REASON, voterPersonaLabel } from './testing.js';
 export { BUILD_COMMIT_HEADER, buildCommit } from './build.js';
 export type { HealthStatus } from './build.js';
 export type { PersonaKind, PersonaRecord, PersonaSummary } from './testing.js';
@@ -179,6 +207,7 @@ export {
   checkCanApprove,
   checkCanChangeRole,
   checkCanDeleteAccount,
+  checkCanDeleteTestVoters,
 } from './approvals.js';
 export type { TwoPersonAction, Actor, PendingApproval } from './approvals.js';
 export { Collections, ElectionCollections, NOTICE_RECIPIENTS, electionDocPath, sequenceId } from './collections.js';
@@ -245,10 +274,12 @@ export {
   contestRecord,
   electionPackageFrom,
   electionPackageSchema,
+  packageContestRecords,
   packageProposals,
   packageRecords,
   packageWindow,
 } from './election-package.js';
+export { SAMPLE_BALLOT, SAMPLE_BALLOT_FILE_NAME, SAMPLE_BALLOT_NOTE } from './sample-ballot.js';
 export type { ElectionPackage, ElectionPackageInput, PackageContest, PackageProposal } from './election-package.js';
 export {
   MAX_QUESTION_OPTIONS,
@@ -307,6 +338,7 @@ export { buildResultsBundle, resultsHash, resultsSigningInput, tieBreakOrders, m
 export type { ResultsBundle, ResultsRecord, ResultsSummary, ContestOutcome } from './results.js';
 export { checkResults } from './results-check.js';
 export { csvCell, resultsCsv, RESULTS_CSV_NOTICE } from './results-csv.js';
+export { readCsv } from './csv-read.js';
 export { comparedPercents, percent, resultsSynopsis, synopsisTally } from './results-synopsis.js';
 export type {
   CandidateLine,

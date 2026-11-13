@@ -34,15 +34,17 @@ function edit(base: NavigationSettings, change: (s: { -readonly [K in keyof Navi
 const viewer = (membership: Viewer['membership'], ...roles: Role[]): Viewer => ({ membership, roles });
 
 describe('defaults', () => {
-  it('show Register, Ballot, Verify, Offices, Candidates, News, Course and Admin to everyone, Teams, Forum and Room to Active members, and Sign in while signed out', () => {
-    const all = ['register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin'];
-    const withTeams = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'news', 'course', 'admin'];
+  it('show Register, Ballot, Verify, Offices, Candidates, News, Legislation, Course and Admin to everyone, Teams, Forum, Room and Bills to Active members, and Sign in while signed out', () => {
+    const all = ['register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'legislation', 'course', 'admin'];
+    const withTeams = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'bills', 'news', 'legislation', 'course', 'admin'];
     expect(shownTo(DEFAULT_NAVIGATION, viewer('signed_out')).menu).toEqual([...all, 'signin']);
     for (const membership of ['no_membership', ...MEMBER_STATUSES] as const) {
       expect(shownTo(DEFAULT_NAVIGATION, viewer(membership)).menu).toEqual(membership === 'active' ? withTeams : all);
     }
     expect(shownTo(DEFAULT_NAVIGATION, viewer('active', 'election_admin')).menu).toEqual(withTeams);
     expect(shownTo(DEFAULT_NAVIGATION, viewer('applicant', 'membership_admin')).menu).toEqual(all);
+    // Bills is for the legislative team: System Admins see its link too, other roles only as Active members (design §5.14).
+    expect(shownTo(DEFAULT_NAVIGATION, viewer('applicant', 'system_admin')).menu).toEqual(['register', 'ballot', 'verify', 'offices', 'candidates', 'bills', 'news', 'legislation', 'course', 'admin']);
   });
 
   it('let every role keep Ballot, Verify, Offices, Candidates, News and Course without a membership', () => {
@@ -51,12 +53,14 @@ describe('defaults', () => {
     }
   });
 
-  it('give each role the console tabs it had, System Admins the link hub and the home page quote, and Security to both', () => {
+  it('give each role the console tabs it had, System Admins the link hub, the home page quote and Bills, and Security to both', () => {
     const tabs = (role: Role) => shownTo(DEFAULT_NAVIGATION, viewer('active', role)).sections;
-    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'photos', 'bylaws', 'registration', 'offices', 'candidacies', 'teams', 'forum', 'room', 'approvals']);
+    expect(tabs('membership_admin')).toEqual(['applications', 'members', 'inbox', 'photos', 'bylaws', 'registration', 'first_steps', 'offices', 'candidacies', 'teams', 'forum', 'room', 'approvals', 'email']);
     expect(tabs('election_admin')).toEqual(['elections', 'offices', 'forum', 'approvals']);
     expect(tabs('auditor')).toEqual(['elections', 'offices', 'approvals', 'audit', 'security']);
-    expect(tabs('system_admin')).toEqual(['room', 'approvals', 'people', 'signin', 'claude', 'email', 'security', 'testing', 'navigation', 'hub', 'quote']);
+    expect(tabs('system_admin')).toEqual(['room', 'approvals', 'people', 'signin', 'claude', 'email', 'security', 'testing', 'navigation', 'hub', 'quote', 'bills']);
+    // Site Admins: System Admins' tabs but Sign-in methods, API keys and Testing (design §10.1).
+    expect(tabs('site_admin')).toEqual(['room', 'approvals', 'people', 'email', 'security', 'navigation', 'hub', 'quote', 'bills']);
     expect(tabs('course_admin')).toEqual(['course']);
     expect(tabs('communications_admin')).toEqual(['communications', 'hub']);
   });
@@ -74,6 +78,15 @@ describe('defaults', () => {
     expect(resolveNavigation(stored).sections.membership_admin.registration).toBe(true);
     for (const role of ['election_admin', 'auditor', 'system_admin'] as const) {
       expect(sectionLock(role, 'registration')).toBe('not_permitted');
+    }
+  });
+
+  it('give settings saved before the Getting started section existed its default', () => {
+    const { first_steps: _, ...saved } = DEFAULT_NAVIGATION.sections.membership_admin;
+    const stored = { ...DEFAULT_NAVIGATION, sections: { ...DEFAULT_NAVIGATION.sections, membership_admin: saved } };
+    expect(resolveNavigation(stored).sections.membership_admin.first_steps).toBe(true);
+    for (const role of ['election_admin', 'auditor', 'system_admin', 'site_admin'] as const) {
+      expect(sectionLock(role, 'first_steps')).toBe('not_permitted');
     }
   });
 
@@ -141,7 +154,7 @@ describe('defaults', () => {
     const resolved = resolveNavigation(before);
     expect(AUDIENCES.filter((a) => !resolved.menu[a].news)).toEqual([]);
     expect(ROLES.filter((r) => resolved.sections[r].communications)).toEqual(['communications_admin']);
-    expect(ROLES.filter((r) => resolved.sections[r].hub)).toEqual(['system_admin', 'communications_admin']);
+    expect(ROLES.filter((r) => resolved.sections[r].hub)).toEqual(['system_admin', 'site_admin', 'communications_admin']);
     for (const role of ['membership_admin', 'election_admin', 'auditor', 'system_admin', 'course_admin'] as const) {
       expect(sectionLock(role, 'communications')).toBe('not_permitted');
     }
@@ -183,6 +196,12 @@ describe('locked cells', () => {
   it('lock on Navigation and People for System Admins, and nothing else', () => {
     const guarded = ROLES.flatMap((r) => ADMIN_SECTIONS.filter((s) => sectionLock(r, s) === 'guarded').map((s) => `${r}:${s}`));
     expect(guarded).toEqual(['system_admin:people', 'system_admin:navigation']);
+  });
+
+  it('lock Sign-in methods, API keys and Testing off for Site Admins', () => {
+    for (const section of ['signin', 'claude', 'testing'] as const) expect(sectionLock('site_admin', section)).toBe('not_permitted');
+    expect(sectionLock('site_admin', 'people')).toBeNull();
+    expect(sectionLock('site_admin', 'navigation')).toBeNull();
   });
 
   it("make a role's Admin link follow its sections, and leave the other links free", () => {
@@ -260,9 +279,11 @@ describe('what a person sees', () => {
     expect(shownTo(resolved, viewer('applicant', 'membership_admin', 'election_admin')).sections).toEqual([
       'applications',
       'members',
+      'inbox',
       'photos',
       'bylaws',
       'registration',
+      'first_steps',
       'elections',
       'offices',
       'candidacies',
@@ -270,6 +291,7 @@ describe('what a person sees', () => {
       'forum',
       'room',
       'approvals',
+      'email',
     ]);
   });
 
@@ -293,7 +315,7 @@ describe('start pages', () => {
   });
 
   it('offer home, account and what the audience sees', () => {
-    expect(startPageOptions(DEFAULT_NAVIGATION, 'applicant')).toEqual(['home', 'account', 'register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course']);
+    expect(startPageOptions(DEFAULT_NAVIGATION, 'applicant')).toEqual(['home', 'account', 'register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'legislation', 'course']);
     expect(startPageOptions(DEFAULT_NAVIGATION, 'election_admin')).toEqual([
       'home',
       'account',
@@ -302,6 +324,7 @@ describe('start pages', () => {
       'offices',
       'candidates',
       'news',
+      'legislation',
       'course',
       'admin/elections',
       'admin/offices',
@@ -346,11 +369,21 @@ describe('saved settings', () => {
       teams: false,
       forum: false,
       room: false,
+      bills: false,
       news: true,
+      legislation: true,
       course: true,
       admin: true,
       signin: true,
     });
+  });
+
+  it('show Legislation to everyone when saved before it was a row (design §5.14)', () => {
+    const before = edit(DEFAULT_NAVIGATION, (s) => {
+      for (const a of AUDIENCES) delete (s.menu[a] as Partial<Record<string, boolean>>).legislation;
+    });
+    const resolved = resolveNavigation(before);
+    expect(AUDIENCES.every((a) => resolved.menu[a].legislation)).toBe(true);
   });
 
   it('show Offices as its default when saved before it was a row, keeping every other saved cell', () => {

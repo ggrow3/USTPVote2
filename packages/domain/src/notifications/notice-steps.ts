@@ -13,11 +13,12 @@ import {
 } from './notices.js';
 
 /**
- * Why an email will not come: `off` (a System Admin switched it off), `not_set_up` (the deployment sends no email),
+ * Why an email will not come: `all_off` (a System Admin switched all the site's email off), `off` (a System Admin
+ * switched this one off), `not_set_up` (the deployment sends no email),
  * `no_contact` (no contact for questions is set, so nothing is mailed), `rehearsal` (a rehearsal outside testing
  * mode), `short_window` (voting is open no longer than the reminder's lead time), `closed` (voting ended first).
  */
-export type NoticeAbsence = 'off' | 'not_set_up' | 'no_contact' | 'rehearsal' | 'short_window' | 'closed';
+export type NoticeAbsence = 'all_off' | 'off' | 'not_set_up' | 'no_contact' | 'rehearsal' | 'short_window' | 'closed';
 
 /**
  * The election emails' place in the election editor's workflow (design §6.1, §6.8): for each, whether it has gone, is
@@ -55,16 +56,18 @@ export function noticeSteps(input: {
       ? input.rehearsal
         ? 'rehearsal'
         : 'not_set_up'
-      : !settings.kinds[kind].enabled
-        ? 'off'
-        : delivery === 'mail' && view && !view.contact
-          ? 'no_contact'
-          : kind === 'closing_soon' && !hasReminder(election, hours)
-            ? 'short_window'
-            : null;
+      : view && !input.rehearsal && !settings.allEmails
+        ? 'all_off'
+        : !settings.kinds[kind].enabled
+          ? 'off'
+          : delivery === 'mail' && view && !view.contact
+            ? 'no_contact'
+            : kind === 'closing_soon' && !hasReminder(election, hours)
+              ? 'short_window'
+              : null;
     if (absent) return { kind, status: 'not_reached', notice: null, absent };
     if (election.state === 'draft' || election.state === 'scheduled') return { kind, status: 'upcoming', notice: null, absent: null };
-    const due = kind === 'voting_open' ? isVotingOpen(election, now) : isReminderDue(election, now, hours);
+    const due = kind === 'closing_soon' ? isReminderDue(election, now, hours) : isVotingOpen(election, now);
     if (due) return { kind, status: 'current', notice: null, absent: null };
     return kind === 'closing_soon' && isVotingOpen(election, now)
       ? { kind, status: 'upcoming', notice: null, absent: null }

@@ -47,7 +47,7 @@ onMounted(load);
       <h2 class="text-subtitle1">Pending two-person requests</h2>
       <q-btn flat dense icon="refresh" aria-label="Refresh requests" @click="load" />
     </div>
-    <p v-if="hasRole('system_admin')" class="text-grey-7">
+    <p v-if="hasRole('system_admin', 'site_admin')" class="text-grey-7">
       Role changes no longer come here: make them in the People tab, where they take effect at once.
     </p>
     <div v-if="listState === 'failed'" class="text-grey-7">Could not load requests.</div>

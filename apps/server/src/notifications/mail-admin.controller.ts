@@ -1,0 +1,167 @@
+import { Body, Controller, Get, HttpCode, Injectable, Param, Post, Query } from '@nestjs/common';
+import { z } from 'zod';
+import {
+  adminTestSchema,
+  checkMailHealthRequest,
+  mailDayQuerySchema,
+  mailDaysQuerySchema,
+  mailLogQuerySchema,
+  mailRestoreSchema,
+  mailStopSchema,
+  type AdminTestInput,
+  type MailCheckStatus,
+  type MailDayQuery,
+  type MailDaysQuery,
+  type MailDaysView,
+  type MailDayView,
+  type MailHealthView,
+  type MailLogQuery,
+  type MailRestoreInput,
+  type MailStopInput,
+  type MailStopRow,
+  type MemberMailFlag,
+} from 'ustp-domain';
+import { Ctx, requireAccount, Roles } from '../auth/decorators.js';
+import type { RequestContext } from '../auth/principal.js';
+import { assertCheck, parseQuery, ZodPipe } from '../common/validation.js';
+import { Firebase } from '../infra/firebase.js';
+import { MailLogService } from './mail-log.js';
+import { MailPreferences } from './mail-preferences.js';
+import { MailRepository } from './mail.repository.js';
+import { MyEmailService } from './my-email.js';
+
+/**
+ * The email setup check as the api shows it (design §10.12): the worker's last run for System Admins, and their request
+ * for a run now, which the worker takes on its next tick (the api holds no AWS key).
+ */
+@Injectable()
+export class MailHealthService {
+  constructor(
+    private readonly firebase: Firebase,
+    private readonly mail: MailRepository,
+  ) {}
+
+  async view(): Promise<MailHealthView> {
+    const [health, request] = await Promise.all([this.mail.health(), this.mail.healthRequest()]);
+    return { health, requested: request?.status === 'pending' ? request : null };
+  }
+
+  /** How the last run went, in a word, for the election editor's email card. */
+  async overall(): Promise<MailCheckStatus | null> {
+    return (await this.mail.health())?.overall ?? null;
+  }
+
+  /** Asks the worker to run the check on its next tick: one request at a time, not within minutes of the last run. */
+  async request(ctx: RequestContext): Promise<MailHealthView> {
+    const actor = requireAccount(ctx);
+    await this.firebase.db.runTransaction(async (tx) => {
+      const [current, request] = await Promise.all([this.mail.health(tx), this.mail.healthRequest(tx)]);
+      const now = new Date();
+      assertCheck(checkMailHealthRequest(current, request, now));
+      this.mail.setHealthRequest(tx, { requestedBy: actor, requestedAt: now.toISOString(), status: 'pending' });
+    });
+    return this.view();
+  }
+}
+
+/**
+ * System Admins see whether email is set up properly, ask for a check now, and read the log of every email sent; Membership Admins see which members
+ * cannot be emailed; both see who gets no email, and stop or restore an admin's stop (design §10.12).
+ */
+@Controller('v1/admin/mail')
+@Roles('system_admin', 'site_admin')
+export class MailAdminController {
+  constructor(
+    private readonly health: MailHealthService,
+    private readonly email: MyEmailService,
+    private readonly preferences: MailPreferences,
+    private readonly log: MailLogService,
+  ) {}
+
+  /** The email log: every email the site sent, newest first, a page at a time (design §10.12). */
+  @Get('log')
+  logPage(@Query(new ZodPipe(mailLogQuerySchema)) query: MailLogQuery) {
+    return this.log.page(query);
+  }
+
+  /** How many emails the site sent each of the last days, in the admin's time zone (design §10.12). */
+  @Get('days')
+  days(@Query(new ZodPipe(mailDaysQuerySchema)) query: MailDaysQuery): Promise<MailDaysView> {
+    return this.log.days(query);
+  }
+
+  /** One day's emails: how many in all, by kind, by what became of them, and to each person and address (§10.12). */
+  @Get('day')
+  day(@Query(new ZodPipe(mailDayQuerySchema)) query: MailDayQuery): Promise<MailDayView> {
+    return this.log.day(query);
+  }
+
+  /**
+   * One member's emails, for their record (design §10.13): what the email log has of them, for the Membership Admins who
+   * write to them as well as System and Site Admins.
+   */
+  @Get('log/members/:accountId')
+  @Roles('membership_admin', 'system_admin', 'site_admin')
+  memberLog(@Param('accountId') accountId: string, @Query('after') after?: string) {
+    return this.log.page({
+      account: parseQuery(z.string().trim().min(1).max(64), accountId, 'accountId'),
+      after: parseQuery(z.string().trim().min(1).max(200).optional(), after, 'after'),
+    });
+  }
+
+  @Get('members')
+  @Roles('membership_admin')
+  members(): Promise<MemberMailFlag[]> {
+    return this.email.flags();
+  }
+
+  @Get('stops')
+  @Roles('membership_admin', 'system_admin', 'site_admin')
+  stops(): Promise<MailStopRow[]> {
+    return this.preferences.stops();
+  }
+
+  @Post('stops')
+  @HttpCode(204)
+  @Roles('membership_admin', 'system_admin', 'site_admin')
+  stop(@Ctx() ctx: RequestContext, @Body(new ZodPipe(mailStopSchema)) body: MailStopInput) {
+    return this.preferences.stop(ctx, body);
+  }
+
+  @Post('stops/:accountId/restore')
+  @HttpCode(204)
+  @Roles('membership_admin', 'system_admin', 'site_admin')
+  restore(@Ctx() ctx: RequestContext, @Param('accountId') accountId: string, @Body(new ZodPipe(mailRestoreSchema)) body: MailRestoreInput) {
+    return this.preferences.restore(ctx, accountId, body);
+  }
+
+  /** Who a test email can go to, and how the caller's last one went. */
+  @Get('test')
+  testView(@Ctx() ctx: RequestContext) {
+    return this.email.adminTestView(ctx);
+  }
+
+  /** System Admins and members a test email can go to, by name or by email address. */
+  @Get('test/recipients')
+  testRecipients(@Query('q') q?: string) {
+    return this.email.adminTestRecipients(parseQuery(z.string().trim().min(1).max(200), q, 'q'));
+  }
+
+  /** A test email to a System Admin or a member, the caller by default, on the worker's next tick, even while all email is off. */
+  @Post('test')
+  @HttpCode(202)
+  test(@Ctx() ctx: RequestContext, @Body(new ZodPipe(adminTestSchema)) body: AdminTestInput) {
+    return this.email.requestAdminTest(ctx, body?.to);
+  }
+
+  @Get('health')
+  view() {
+    return this.health.view();
+  }
+
+  @Post('health/check')
+  @HttpCode(202)
+  check(@Ctx() ctx: RequestContext) {
+    return this.health.request(ctx);
+  }
+}

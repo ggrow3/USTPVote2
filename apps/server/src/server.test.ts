@@ -66,8 +66,8 @@ describe('worker', () => {
   afterAll(() => app.close());
 
   // `tick` needs Firestore, so it is covered by the integration tests (ledger.int.test.ts, tally.int.test.ts).
-  it('knows the design §13 tasks; those after tick come with email and certification', async () => {
-    expect((await app.inject({ method: 'POST', url: '/tasks/email' })).statusCode).toBe(501);
+  it('knows the design §13 tasks; email is a step of the tick, not a task of its own', async () => {
+    expect((await app.inject({ method: 'POST', url: '/tasks/email' })).statusCode).toBe(404);
     // Tallying is a step of the tick, not a task of its own.
     expect((await app.inject({ method: 'POST', url: '/tasks/tally' })).statusCode).toBe(404);
     expect((await app.inject({ method: 'POST', url: '/tasks/nope' })).statusCode).toBe(404);

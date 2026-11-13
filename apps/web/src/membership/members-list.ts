@@ -1,4 +1,16 @@
-import { csvCell, MEMBER_STATUSES, type MemberClass, type MemberRecord, type MemberStatus, type PositionsView } from 'ustp-domain';
+import {
+  countryName,
+  countryOf,
+  csvCell,
+  DEFAULT_COUNTRY,
+  MEMBER_STATUSES,
+  type MemberClass,
+  type MemberMailFlag,
+  type MemberRecord,
+  type MemberStatus,
+  type PositionsView,
+} from 'ustp-domain';
+import { FLAG_LABELS } from '../notifications/my-email-text.js';
 import { answerText, CLASS_NOT_ASKED, classOf, MEMBER_CLASS_LABELS } from './class-text.js';
 
 /**
@@ -25,6 +37,8 @@ export interface MemberRow {
   readonly member: MemberRecord;
   /** Active terms of office tied to the member's account, by office title. */
   readonly offices: readonly HeldOffice[];
+  /** Why the member cannot be emailed (design §10.12); null when they can. */
+  readonly mail: MemberMailFlag | null;
 }
 
 /**
@@ -43,10 +57,16 @@ export function heldOffices(view: PositionsView): Map<string, HeldOffice[]> {
   return held;
 }
 
-/** Each member with the offices their account holds now. */
-export function memberRows(members: readonly MemberRecord[], view: PositionsView): MemberRow[] {
+/** Each member with the offices their account holds now, and why they cannot be emailed, if they cannot. */
+export function memberRows(members: readonly MemberRecord[], view: PositionsView, flags: readonly MemberMailFlag[] = []): MemberRow[] {
   const held = heldOffices(view);
-  return members.map((member) => ({ member, offices: held.get(member.accountId) ?? [] }));
+  const mail = new Map(flags.map((f) => [f.accountId, f]));
+  return members.map((member) => ({ member, offices: held.get(member.accountId) ?? [], mail: mail.get(member.accountId) ?? null }));
+}
+
+/** Why a member cannot be emailed, in a few words; null when they can. */
+export function mailFlagText(flag: MemberMailFlag | null): string | null {
+  return flag ? FLAG_LABELS[flag.state] : null;
 }
 
 /** What the Position column says for someone with no office: "Member" while they have a membership, else nothing. */
@@ -72,25 +92,37 @@ export const CLASS_FILTERS: readonly { readonly value: ClassFilter; readonly lab
   { value: 'not_asked', label: 'Not asked' },
 ];
 
+/**
+ * The Location column's and filter's key: a US member's state as an ISO 3166-2 code (`US-NY`), anyone else's country
+ * (`CA`), so that California and Canada stay apart.
+ */
+export function placeKey(member: Pick<MemberRecord, 'country' | 'state'>): string {
+  const country = countryOf(member);
+  return country === DEFAULT_COUNTRY ? `US-${member.state ?? ''}` : country;
+}
+
 export interface MemberFilter {
   /** Part of the legal or preferred name, in any case and with or without accents. */
   readonly search: string;
-  /** A two-letter state code, or '' for every state. */
-  readonly state: string;
+  /** A `placeKey`, or '' for everywhere. */
+  readonly place: string;
   /** A member class, or '' (or nothing) for every class. */
   readonly memberClass?: ClassFilter | '';
+  /** `unreachable`: only members who cannot be emailed; '' (or nothing) for everyone. */
+  readonly mail?: 'unreachable' | '';
 }
 
 const folded = (text: string) => text.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
 
-/** The rows matching the search, state and class; the status pills then count and filter these. */
+/** The rows matching the search, location and class; the status pills then count and filter these. */
 export function filterRows(rows: readonly MemberRow[], filter: MemberFilter): MemberRow[] {
   const search = folded(filter.search.trim());
   const wanted = filter.memberClass || null;
   return rows.filter(
-    ({ member: m }) =>
-      (!filter.state || m.state === filter.state) &&
+    ({ member: m, mail }) =>
+      (!filter.place || placeKey(m) === filter.place) &&
       (!wanted || (classOf(m) ?? 'not_asked') === wanted) &&
+      (!filter.mail || mail !== null) &&
       (!search || folded(m.legalName).includes(search) || (m.preferredName !== null && folded(m.preferredName).includes(search))),
   );
 }
@@ -121,6 +153,12 @@ export type SortKey = 'name' | 'position' | 'state' | 'class' | 'status' | 'sinc
 const collator = new Intl.Collator(undefined, { sensitivity: 'base', numeric: true });
 const compare = (a: string, b: string) => collator.compare(a, b);
 
+/** US members by state first, then everyone else by country. */
+const placeSortKey = (m: MemberRecord) => {
+  const country = countryOf(m);
+  return country === DEFAULT_COUNTRY ? `0 ${m.state ?? ''}` : `1 ${countryName(country)}`;
+};
+
 /**
  * The rows in column order, ties by name. Members without an office, a class or a member-since date come after the
  * others in either direction.
@@ -139,7 +177,7 @@ export function sortRows(rows: readonly MemberRow[], key: SortKey, descending: b
         return sign * compare(x, y);
       }
       case 'state':
-        return sign * compare(a.member.state, b.member.state);
+        return sign * compare(placeSortKey(a.member), placeSortKey(b.member));
       case 'class': {
         const [x, y] = [classCellText(a.member), classCellText(b.member)];
         if (x === null || y === null) return x === y ? 0 : x === null ? 1 : -1;
@@ -181,24 +219,27 @@ function localDate(d: Date): string {
 }
 
 /**
- * The rows as CSV for a spreadsheet: the table's own columns, the account ID and the answer about the Core Ideals,
- * nothing from the member's contact details. RFC 4180 with CRLF line ends; cells a spreadsheet would read as a formula
+ * The rows as CSV for a spreadsheet: the table's own columns (the location as the US state, if any, and the country),
+ * the account ID, the answer about the Core Ideals and whether the member can be emailed, nothing from the member's
+ * contact details. RFC 4180 with CRLF line ends; cells a spreadsheet would read as a formula
  * start with `'`. Member since is the reader's own date, as the table shows it.
  */
 export function membersCsv(rows: readonly MemberRow[]): string {
   const lines = [
-    ['Name', 'Account ID', 'Offices', 'State', 'Class', 'Agrees with the Core Ideals', 'Status', 'Member since'],
-    ...rows.map(({ member: m, offices }) => {
+    ['Name', 'Account ID', 'Offices', 'State', 'Country', 'Class', 'Agrees with the Core Ideals', 'Status', 'Member since', 'Can be emailed'],
+    ...rows.map(({ member: m, offices, mail }) => {
       const c = classOf(m);
       return [
         m.legalName,
         m.accountId,
         offices.map((o) => o.title).join('; '),
-        m.state,
+        m.state ?? '',
+        countryName(countryOf(m)),
         c ? MEMBER_CLASS_LABELS[c] : CLASS_NOT_ASKED,
         answerText(m.agreesWithCoreIdeals),
         STATUS_LABELS[m.status],
         m.memberSince ? localDate(new Date(m.memberSince)) : '',
+        mail ? `No: ${FLAG_LABELS[mail.state]}` : 'Yes',
       ];
     }),
   ];

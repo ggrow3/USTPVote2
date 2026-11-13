@@ -34,8 +34,9 @@ interface ChangedBy {
 }
 
 /**
- * Role changes (design §10.2): one System Admin grants or revokes a role and it takes effect at once, ledgered as
- * `role.granted` / `role.revoked` with that admin as actor. Also the handler for `role.grant` / `role.revoke`
+ * Role changes (design §10.2): one System Admin, or a Site Admin for every role but System Admin and on anyone not a
+ * System Admin, grants or revokes a role and it takes effect at once, ledgered as `role.granted` / `role.revoked` with
+ * that admin as actor. Also the handler for `role.grant` / `role.revoke`
  * requests made while role changes were two-person, so those can still be decided until they expire.
  */
 @Injectable()
@@ -54,7 +55,7 @@ export class RoleChanges implements ApprovalHandler {
     assertCheck(checkCanChangeRole(actor, { accountId: input.accountId, roles: null }, input.change, input.role), ForbiddenException);
     const payload: RoleChangePayload = { accountId: input.accountId, role: input.role, change: input.change };
     return this.firebase.db.runTransaction(async (tx) => {
-      const held = await this.assertAllowed(tx, payload);
+      const held = await this.assertAllowed(tx, payload, actor);
       await this.ledger.record(tx, [
         {
           type: payload.change === 'grant' ? 'role.granted' : 'role.revoked',
@@ -69,12 +70,19 @@ export class RoleChanges implements ApprovalHandler {
     });
   }
 
-  /** The account exists and the change is compatible with the roles it holds now, which are returned. */
-  async assertAllowed(tx: Transaction, payload: RoleChangePayload): Promise<Role[]> {
+  /**
+   * The account exists and the change is compatible with the roles it holds now, which are returned. With the admin
+   * making the change, also that they may change these roles (a Site Admin never a System Admin's; 403).
+   */
+  async assertAllowed(tx: Transaction, payload: RoleChangePayload, changer?: Actor): Promise<Role[]> {
     const account = await tx.get(this.firebase.db.collection(Collections.accounts).doc(payload.accountId));
     if (!account.exists) throw new NotFoundException('no such account');
     const held = await this.directory.activeRoles(payload.accountId, tx);
-    assertCheck(checkRoleChange(held, payload.change, payload.role));
+    assertCheck(
+      changer
+        ? checkCanChangeRole(changer, { accountId: payload.accountId, roles: held }, payload.change, payload.role)
+        : checkRoleChange(held, payload.change, payload.role),
+    );
     return held;
   }
 

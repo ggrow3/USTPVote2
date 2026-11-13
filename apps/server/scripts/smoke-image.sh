@@ -20,6 +20,15 @@ for pkg in typescript vitest firebase-tools vue; do
   fi
 done
 
+# Link previews' card images (design §15) set their text in Lato with opentype.js and render it with sharp: draw one in
+# the image, which has no fonts of its own, to show all three are there and work.
+docker run --rm "$image" node --input-type=module -e "
+  const { renderCard } = await import('/app/apps/server/dist/link-previews/card-image.js');
+  const png = await renderCard({ kicker: 'Smoke test', title: 'A card drawn in the image', lines: ['Ünïcödé'] }, { name: 'USTP Vote', party: 'U.S. Transhumanist Party', host: 'vote.example.org' });
+  if (png.length < 5000 || png.subarray(1, 4).toString() !== 'PNG') throw new Error('no card');
+  console.log('card image: ' + png.length + ' bytes');
+"
+
 cleanup() { docker rm -f ustp-api ustp-worker ustp-mcp >/dev/null 2>&1 || true; }
 trap cleanup EXIT
 

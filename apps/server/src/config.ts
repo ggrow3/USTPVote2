@@ -72,6 +72,11 @@ export interface ServerConfig {
    */
   readonly districtSource: 'census' | 'local';
   /**
+   * Where the Bills page's bills come from (design §5.14): `congress`, the Congress.gov API and GovInfo, or `local` (the
+   * emulator-only stand-in, a few real bills in memory, for tests that must not reach the internet).
+   */
+  readonly billSource: 'congress' | 'local';
+  /**
    * The browser key for Google Maps on the Candidates page (design §5.8), restricted by Terraform to the Maps JavaScript
    * API and the web app's origins; it is public by nature. Null leaves the page without its map.
    */
@@ -204,6 +209,9 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
   const districtSource = (env.DISTRICTS ?? 'census') as ServerConfig['districtSource'];
   if (districtSource !== 'census' && districtSource !== 'local') throw new Error('DISTRICTS must be "census" or "local"');
   if (districtSource === 'local' && !usingEmulators) throw new Error('DISTRICTS=local is only allowed with the Firebase emulators');
+  const billSource = (env.BILLS ?? 'congress') as ServerConfig['billSource'];
+  if (billSource !== 'congress' && billSource !== 'local') throw new Error('BILLS must be "congress" or "local"');
+  if (billSource === 'local' && !usingEmulators) throw new Error('BILLS=local is only allowed with the Firebase emulators');
   const roomModel = (env.ROOM_MODEL ?? (usingEmulators ? 'local' : 'off')) as ServerConfig['roomModel'];
   if (!['ollama', 'local', 'off'].includes(roomModel)) throw new Error('ROOM_MODEL must be "ollama", "local" or "off"');
   if (roomModel === 'local' && !usingEmulators) throw new Error('ROOM_MODEL=local is only allowed with the Firebase emulators');
@@ -245,6 +253,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): ServerConfig {
     noticeContact: env.NOTICE_CONTACT?.trim() || null,
     webOrigin,
     districtSource,
+    billSource,
     googleMapsKey: env.GOOGLE_MAPS_BROWSER_KEY?.trim() || null,
     fecApiKey: env.FEC_API_KEY?.trim() || 'DEMO_KEY',
     openStatesApiKey: env.OPENSTATES_API_KEY?.trim() || null,

@@ -1,6 +1,80 @@
 {
   "indexes": [
     {
+      "collectionGroup": "notice_verifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "dueAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "mail_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "sender", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "mail_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountId", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "mail_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "causedBy", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "mail_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "kind", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "mail_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "mail_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "counted", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "mail_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "counted", "order": "ASCENDING" },
+        { "fieldPath": "bounce.type", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "mail_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "counted", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "ASCENDING" }
+      ]
+    },
+    {
       "collectionGroup": "applications",
       "queryScope": "COLLECTION",
       "fields": [
@@ -253,6 +327,130 @@
         { "fieldPath": "to", "order": "ASCENDING" },
         { "fieldPath": "seq", "order": "ASCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "app_notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountId", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "app_notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountId", "order": "ASCENDING" },
+        { "fieldPath": "readAt", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "app_notifications",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "emailPending", "order": "ASCENDING" },
+        { "fieldPath": "updatedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "member_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "members", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "lastMessageAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "member_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "createdBy", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "member_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "threadId", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "member_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "from", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "membership_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "lastMessageAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "membership_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "assignedTo", "order": "ASCENDING" },
+        { "fieldPath": "lastMessageAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "membership_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "assignedTo", "order": "ASCENDING" },
+        { "fieldPath": "lastMessageAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "membership_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "accountId", "order": "ASCENDING" },
+        { "fieldPath": "lastMessageAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "membership_threads",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "createdBy", "order": "ASCENDING" },
+        { "fieldPath": "startedBy", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "membership_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "threadId", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "membership_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "authorId", "order": "ASCENDING" },
+        { "fieldPath": "from", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "membership_messages",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "emailPending", "order": "ASCENDING" },
+        { "fieldPath": "sentAt", "order": "ASCENDING" }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -263,6 +461,14 @@
     { "collectionGroup": "sign_ins", "fieldPath": "forwardedFor", "indexes": [] },
     { "collectionGroup": "sign_ins", "fieldPath": "userAgent", "indexes": [] },
     { "collectionGroup": "page_visits", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "mail_messages", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "mail_suppressions", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "mail_requests", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "broadcast_recipients", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "newsletter_subscribers", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "newsletter_limits", "fieldPath": "senders", "indexes": [] },
+    { "collectionGroup": "race_records", "fieldPath": "contacts", "indexes": [] },
+    { "collectionGroup": "race_records", "fieldPath": "notUp", "indexes": [] },
     { "collectionGroup": "page_hits", "fieldPath": "days", "indexes": [] },
     { "collectionGroup": "page_hits", "fieldPath": "signedIn", "indexes": [] },
     { "collectionGroup": "participation", "fieldPath": "parts", "indexes": [] },
@@ -287,6 +493,15 @@
     { "collectionGroup": "room_memory", "fieldPath": "text", "indexes": [] },
     { "collectionGroup": "room_memory", "fieldPath": "quote", "indexes": [] },
     { "collectionGroup": "room_jobs", "fieldPath": "question", "indexes": [] },
-    { "collectionGroup": "room_signals", "fieldPath": "sdp", "indexes": [] }
+    { "collectionGroup": "room_signals", "fieldPath": "sdp", "indexes": [] },
+    { "collectionGroup": "app_notifications", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "member_threads", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "member_messages", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "message_reports", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "member_messages", "fieldPath": "body", "indexes": [] },
+    { "collectionGroup": "message_reports", "fieldPath": "body", "indexes": [] },
+    { "collectionGroup": "membership_threads", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "membership_messages", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "membership_messages", "fieldPath": "body", "indexes": [] }
   ]
 }

@@ -1,6 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import type { DocumentReference, Transaction } from 'firebase-admin/firestore';
-import { Collections, MAX_APPLICATIONS_PER_WINDOW, type ApplicationRecord, type ApplicationStatus } from 'ustp-domain';
+import {
+  Collections,
+  MAX_APPLICATIONS_PER_WINDOW,
+  type ApplicationQueueSummary,
+  type ApplicationRecord,
+  type ApplicationStatus,
+  type ReferredApplication,
+} from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 
 /** Storage of the MembershipApplication aggregate (design §5.2, §11): `applications/{applicationId}`. */
@@ -40,6 +47,29 @@ export class ApplicationRepository {
   async list(status: ApplicationStatus, limit: number): Promise<ApplicationRecord[]> {
     const snap = await this.applications().where('status', '==', status).orderBy('submittedAt').limit(limit).get();
     return snap.docs.map((d) => d.data() as ApplicationRecord);
+  }
+
+  /** How many applications wait for a decision, and when the oldest of them was submitted. */
+  async queue(): Promise<ApplicationQueueSummary> {
+    const pending = this.applications().where('status', '==', 'pending');
+    const [count, oldest] = await Promise.all([pending.count().get(), pending.orderBy('submittedAt').limit(1).get()]);
+    return {
+      pending: count.data().count,
+      oldestSubmittedAt: (oldest.docs[0]?.data() as ApplicationRecord | undefined)?.submittedAt ?? null,
+    };
+  }
+
+  /**
+   * The applications that came by a member's referral link (design §5.18), or by `referrer`'s only: who applied, by
+   * whose link, and what became of it; no answer.
+   */
+  async referred(referrer?: string): Promise<ReferredApplication[]> {
+    const query = referrer ? this.applications().where('referredBy', '==', referrer) : this.applications().where('referredBy', '>', '');
+    const snap = await query.select('accountId', 'referredBy', 'status', 'submittedAt', 'decidedAt').get();
+    return snap.docs.map((d) => {
+      const a = d.data() as Pick<ApplicationRecord, 'accountId' | 'referredBy' | 'status' | 'submittedAt' | 'decidedAt'>;
+      return { accountId: a.accountId, referredBy: a.referredBy!, status: a.status, submittedAt: a.submittedAt, decidedAt: a.decidedAt };
+    });
   }
 
   create(tx: Transaction, application: ApplicationRecord): void {

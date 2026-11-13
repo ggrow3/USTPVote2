@@ -21,6 +21,7 @@ import {
   type HomeCardKey,
 } from '../home.js';
 import { applications } from '../membership/api.js';
+import FirstStepsCard from '../membership/FirstStepsCard.vue';
 import { session } from '../session.js';
 
 /**
@@ -140,6 +141,9 @@ watch(signedIn, (now) => now && focusSoon('main h1'));
           <q-card-section>
             <h1 class="text-h5">{{ name ? `Welcome, ${name}` : 'Welcome' }}</h1>
             <div class="text-caption text-grey-7">{{ who }}</div>
+          </q-card-section>
+          <q-card-section v-if="membership === 'active'" class="q-pb-none">
+            <FirstStepsCard />
           </q-card-section>
           <q-card-section>
             <ul class="ustp-home__cards" aria-label="What you can do">

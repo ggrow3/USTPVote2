@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { SITEMAP_PAGES } from 'ustp-domain';
+import { PREVIEW_PAGES, SITEMAP_PAGES, UNLISTED_PREVIEW_PAGES } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
-import { canonicalUrl, DESCRIBED_ROUTES, pageSeo, SITE_DESCRIPTION } from './seo.js';
+import { canonicalUrl, DESCRIBED_ROUTES, pageSeo, servedDescription, SITE_DESCRIPTION } from './seo.js';
 
 const route = (path: string, meta: Record<string, unknown> = {}) => ({ matched: [{ path: '/' }, { path }], meta });
 
@@ -17,8 +17,9 @@ describe('pageSeo', () => {
     expect(pageSeo(route('/admin/elections/:id', { requiresAuth: true, roles: ['election_admin'] })).listed).toBe(false);
   });
 
-  it('keeps signing in and certificates out too, though anyone may open them', () => {
+  it('keeps signing in, account email links and certificates out too, though anyone may open them', () => {
     expect(pageSeo(route('/signin')).listed).toBe(false);
+    expect(pageSeo(route('/email-action')).listed).toBe(false);
     expect(pageSeo(route('/course/certificates/:id')).listed).toBe(false);
   });
 
@@ -31,6 +32,16 @@ describe('canonicalUrl', () => {
   it('drops a trailing slash but keeps the root', () => {
     expect(canonicalUrl('https://vote.example.org', '/vote/')).toBe('https://vote.example.org/vote');
     expect(canonicalUrl('https://vote.example.org', '/')).toBe('https://vote.example.org/');
+  });
+});
+
+describe('servedDescription', () => {
+  it("keeps the description the api wrote for the page opened, and only for that page", () => {
+    expect(servedDescription('https://vote.example.org/news/hello', 'A post', '/news/hello')).toBe('A post');
+    expect(servedDescription('https://vote.example.org/news/hello', 'A post', '/news/hello/')).toBe('A post');
+    expect(servedDescription('https://vote.example.org/news/hello', 'A post', '/news/other')).toBeNull();
+    expect(servedDescription(undefined, SITE_DESCRIPTION, '/news/hello')).toBeNull();
+    expect(servedDescription('not a url', 'A post', '/news/hello')).toBeNull();
   });
 });
 
@@ -57,5 +68,20 @@ describe('the routes', () => {
       expect(path, page).toBeDefined();
       expect(pageSeo(route(path!)).listed, page).toBe(true);
     }
+  });
+});
+
+describe('link previews', () => {
+  it('are written by the api for public pages of the router (design §15, "Link previews")', () => {
+    const router = readFileSync(join(import.meta.dirname, 'router.ts'), 'utf8');
+    for (const page of PREVIEW_PAGES) {
+      const line = router.split('\n').find((l) => l.includes(`path: '${page.slice(1)}'`));
+      expect(line, page).toBeDefined();
+      expect(line, page).not.toMatch(/requiresAuth|roles/);
+    }
+  });
+
+  it('of pages the api never lets search engines list are kept out by the web app too', () => {
+    for (const page of UNLISTED_PREVIEW_PAGES) expect(pageSeo(route(page)).listed, page).toBe(false);
   });
 });
