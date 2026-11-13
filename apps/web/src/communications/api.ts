@@ -9,6 +9,9 @@ import type {
   CreatePartnerInput,
   EventRecord,
   CreateSharePostInput,
+  DiscordAdminView,
+  DiscordFeedKind,
+  DiscordSettingsInput,
   MemberSharePost,
   NewsPostRecord,
   PartnerConsentInput,
@@ -139,3 +142,9 @@ export const addBot = (input: CreateBotInput) => api<BotRecord>('POST', `${ADMIN
 export const saveBot = (botId: string, input: UpdateBotInput) => api<BotRecord>('PUT', `${ADMIN}/bots/${id(botId)}`, input);
 export const botChecked = (botId: string, basedOn: number) => api<BotRecord>('POST', `${ADMIN}/bots/${id(botId)}/checked`, { basedOn });
 export const removeBot = (botId: string) => api<void>('DELETE', `${ADMIN}/bots/${id(botId)}`);
+
+/** The Discord bot (design §10.18): where it posts, a test post, and what it posted lately. Communications Admins only. */
+const DISCORD = '/v1/admin/discord';
+export const discordView = () => api<DiscordAdminView>('GET', DISCORD);
+export const saveDiscordSettings = (input: DiscordSettingsInput) => api<DiscordAdminView>('PUT', `${DISCORD}/settings`, input);
+export const sendDiscordTest = (kind: DiscordFeedKind) => api<DiscordAdminView>('POST', `${DISCORD}/test`, { kind });

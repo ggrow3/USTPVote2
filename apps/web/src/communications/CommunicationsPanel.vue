@@ -5,6 +5,7 @@ import AreaContactsAdmin from '../candidacies/AreaContactsAdmin.vue';
 import EmailTemplatesAdmin from '../candidacies/EmailTemplatesAdmin.vue';
 import BotsAdmin from './BotsAdmin.vue';
 import CalendarAdmin from './CalendarAdmin.vue';
+import DiscordAdmin from './DiscordAdmin.vue';
 import EventsAdmin from './EventsAdmin.vue';
 import NewsAdmin from './NewsAdmin.vue';
 import PartnersAdmin from './PartnersAdmin.vue';
@@ -15,11 +16,11 @@ import { suggestions } from './api.js';
 
 /**
  * Communications, for Communications Admins (design §10.9): news and press releases, events and partner groups
- * (§10.17), the share kit for members, the social media calendar, suggestions from the public, the press kit, the party's bots, and the office holders,
+ * (§10.17), the share kit for members, the social media calendar, suggestions from the public, the press kit, the party's bots, the Discord bot the app runs (§10.18), and the office holders,
  * candidates and email templates of members' Your area page (design §5.12). The home page's Link hub,
  * with the party's social accounts, is its own section beside this one.
  */
-type View = 'news' | 'events' | 'partners' | 'share' | 'calendar' | 'suggestions' | 'press' | 'bots' | 'people' | 'templates';
+type View = 'news' | 'events' | 'partners' | 'share' | 'calendar' | 'suggestions' | 'press' | 'bots' | 'discord' | 'people' | 'templates';
 const unread = ref(0);
 const TABS: readonly { name: View; label: string; icon: string }[] = [
   { name: 'news', label: 'News', icon: 'article' },
@@ -30,6 +31,7 @@ const TABS: readonly { name: View; label: string; icon: string }[] = [
   { name: 'suggestions', label: 'Suggestions', icon: 'lightbulb' },
   { name: 'press', label: 'Press kit', icon: 'mic' },
   { name: 'bots', label: 'Bots', icon: 'smart_toy' },
+  { name: 'discord', label: 'Discord', icon: 'forum' },
   { name: 'people', label: 'Officials & candidates', icon: 'how_to_vote' },
   { name: 'templates', label: 'Email templates', icon: 'mail' },
 ];
@@ -66,6 +68,7 @@ onMounted(async () => {
       </q-tab-panel>
       <q-tab-panel id="comms-panel-press" name="press" aria-labelledby="comms-tab-press" class="q-px-none"><PressKitAdmin /></q-tab-panel>
       <q-tab-panel id="comms-panel-bots" name="bots" aria-labelledby="comms-tab-bots" class="q-px-none"><BotsAdmin /></q-tab-panel>
+      <q-tab-panel id="comms-panel-discord" name="discord" aria-labelledby="comms-tab-discord" class="q-px-none"><DiscordAdmin /></q-tab-panel>
       <q-tab-panel id="comms-panel-people" name="people" aria-labelledby="comms-tab-people" class="q-px-none"><AreaContactsAdmin /></q-tab-panel>
       <q-tab-panel id="comms-panel-templates" name="templates" aria-labelledby="comms-tab-templates" class="q-px-none"><EmailTemplatesAdmin /></q-tab-panel>
     </q-tab-panels>

@@ -11,6 +11,7 @@ import type { BylawsRunResult, ConsistencyRunResult, ElectionRunResult, TickResu
 import { PublicBills } from '../bills/public-bills.js';
 import { BylawsCheckRunner } from '../bylaws-check/bylaws-check-runner.js';
 import { SuggestionsService } from '../communications/suggestions.service.js';
+import { DiscordFeed } from '../discord/discord-feed.js';
 import { ConsistencyCheckRunner } from '../consistency-check/consistency-check-runner.js';
 import { ElectionCheckRunner } from '../election-check/election-check-runner.js';
 import { MailEventRecorder } from '../notifications/mail-events.js';
@@ -63,6 +64,7 @@ export class TasksController {
     private readonly roomRetention: RoomRetention,
     private readonly roomAssistant: RoomAssistant,
     private readonly publicBills: PublicBills,
+    private readonly discordFeed: DiscordFeed,
   ) {}
 
   /**
@@ -72,7 +74,8 @@ export class TasksController {
    * the mail provider reported of them and ledger each notice round's reports after three days, check how email is set
    * up every hour or when a System Admin asks (§10.12), delete suggestions a year old
    * (design §10.9) and the members' room's records past their time (§5.10), then seal new ledger entries (including those) into a signed block, sign approved rolls and anchor
-   * new blocks, and last read the public bills due again from Congress.gov, for at most 20 seconds (§5.14). Each step
+   * new blocks, read the public bills due again from Congress.gov, for at most 20 seconds (§5.14), and last post what is
+   * new to the party's Discord (§10.18). Each step
    * runs even if an earlier one failed.
    */
   @Post('tick')
@@ -119,6 +122,7 @@ export class TasksController {
       rollsSigned: await step('sign rolls', () => this.sealer.signRolls(), 0),
       anchored: await step('anchor blocks', () => this.sealer.anchorBlocks(), 0),
       publicBillsRefreshed: await step('read public bills again', () => this.publicBills.refreshDue(), 0),
+      discordPosts: await step('post to Discord', () => this.discordFeed.postDue(), 0),
     };
     if (failures.length) throw new InternalServerErrorException(`tick incomplete (${JSON.stringify(result)}): ${failures.join('; ')}`);
     return result;

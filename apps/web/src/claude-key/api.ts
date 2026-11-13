@@ -1,4 +1,4 @@
-import type { AnthropicKeyStatus, ApiKeyName, ApiKeysStatus } from 'ustp-domain';
+import type { AnthropicKeyStatus, ApiKeyName, ApiKeysStatus, DiscordTokenStatus } from 'ustp-domain';
 import { api } from '../api.js';
 
 /** The Anthropic API key for the Claude checks (design §5.6). System Admins only; no route ever returns the key. */
@@ -31,4 +31,20 @@ export function addApiKey(name: ApiKeyName, key: string): Promise<ApiKeysStatus>
 
 export function removeApiKey(name: ApiKeyName): Promise<ApiKeysStatus> {
   return api<ApiKeysStatus>('DELETE', `${KEYS}/${name}`);
+}
+
+/** The Discord bot's token (design §10.18). System Admins only; no route ever returns the token. */
+const DISCORD_TOKEN = '/v1/admin/discord-token';
+
+export function discordTokenStatus(): Promise<DiscordTokenStatus> {
+  return api<DiscordTokenStatus>('GET', DISCORD_TOKEN);
+}
+
+/** Tries the token with Discord and keeps it in place of any before it; refused (422, 502) if Discord will not take it. */
+export function addDiscordToken(token: string): Promise<DiscordTokenStatus> {
+  return api<DiscordTokenStatus>('PUT', DISCORD_TOKEN, { token });
+}
+
+export function removeDiscordToken(): Promise<DiscordTokenStatus> {
+  return api<DiscordTokenStatus>('DELETE', DISCORD_TOKEN);
 }
