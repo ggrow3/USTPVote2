@@ -46,6 +46,8 @@ locals {
     var.openstates_api_key != "" ? { OPENSTATES_API_KEY = var.openstates_api_key } : {},
     # The members' room: which model it runs, and the queue its questions go to (room_model.tf).
     local.room_api_env,
+    # Where Discord sends the bot's slash commands, shown on the Discord admin page (discord_commands.tf).
+    local.discord_env,
   )
 
   # worker: Secret Manager (reading seeds at tally), signing ledger blocks and rolls, pool key versions and sealing,
@@ -74,6 +76,8 @@ locals {
     # The deployment's FEC key, which the worker falls back on to read the public bills from Congress.gov, as the api
     # does (design §5.14; api_keys.tf), set only when given.
     var.fec_api_key != "" ? { FEC_API_KEY = var.fec_api_key } : {},
+    # Where Discord sends the bot's slash commands: the worker tells Discord (design §10.18; discord_commands.tf).
+    local.discord_env,
   )
 
   # The api queues the checks and the worker runs them, so both must agree. Each waits for a key (design §5.6).
@@ -292,9 +296,10 @@ resource "google_cloud_run_v2_service_iam_member" "worker_invoker" {
 # who may invoke it; Binary Authorization still refuses any image without an attestation.
 resource "google_cloud_run_v2_service_iam_member" "release" {
   for_each = local.deploy ? {
-    api    = google_cloud_run_v2_service.api[0].name
-    worker = google_cloud_run_v2_service.worker[0].name
-    mcp    = google_cloud_run_v2_service.mcp[0].name
+    api     = google_cloud_run_v2_service.api[0].name
+    worker  = google_cloud_run_v2_service.worker[0].name
+    mcp     = google_cloud_run_v2_service.mcp[0].name
+    discord = google_cloud_run_v2_service.discord[0].name
   } : {}
 
   project  = var.project_id

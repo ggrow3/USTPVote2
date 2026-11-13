@@ -108,6 +108,7 @@ flowchart LR
 | `packages/domain` (`ustp-domain`) | Pure TypeScript | The domain layer (§3.3): shared types, state machines, role rules, two-person checks, aggregate commands, Firestore path constants, sealed blocks, results bundles, and the receipt and results checks the browser, the CLI and the tests share. |
 | `packages/verify` (`ustp-verify`) | Node CLI, depends only on `ustp-audit` and `ustp-domain` | Independent verification from public artifacts only (§16). |
 | `apps/mcp` (`ustp-mcp`) *(added)* | Node, the MCP TypeScript SDK, `ustp-verify` and `ustp-domain`; the server image's third entrypoint as Cloud Run service `mcp`, at `<site>/mcp` through Hosting, or over stdio on someone's machine | Read-only reports for any AI assistant (Claude, Gemini, ChatGPT): election status, turnout, results and audit reports, from the public api only (§3.4). |
+| `apps/discord` (`ustp-discord`) *(added 2026-11-13)* | Node, `node:http`, `node:crypto` and `ustp-domain`; the server image's fourth entrypoint as Cloud Run service `discord`, at its own `run.app` address | The Discord bot's slash commands: answers Discord's signed requests from the public api only, and holds no credentials (§10.18). |
 
 **Why one server package with two entrypoints:** the API and worker share Firestore repositories, KMS adapters and
 domain logic. One package and one container image keep them in lockstep; two Cloud Run services with different
@@ -125,6 +126,7 @@ account — one per environment). One-off work (photo checks, emails, tally) goe
 apps/server        NestJS on Fastify — src/main-api.ts, src/main-worker.ts
 apps/web           Vue 3 + Quasar 2 SPA/PWA
 apps/mcp           ustp-mcp     read-only MCP server for AI-assisted election reports (§3.4)
+apps/discord       ustp-discord the Discord bot's slash commands, from the public api only (§10.18)
 packages/tally     ustp-tally   (public)
 packages/audit     ustp-audit   (public)
 packages/domain    ustp-domain  (internal)
@@ -5430,7 +5432,8 @@ an invite link and an online count on the hub (§10.6). The app now runs the par
 for people who link their site account; **an activity feed, slash commands and engagement loops** first, and no AI
 assistant; **the bot before Projects** (volunteer projects members join, to be designed as their own section); and that
 the bot **names a member only if they opted in**, everyone else counting only in totals. It is built in stages; this
-section describes the first, the activity feed, and lists the rest under "Not yet".
+section describes the first two, the activity feed and the slash commands *(added 2026-11-13)*, and lists the rest
+under "Not yet".
 
 - **What it posts.** One card per thing that happened: a title that links to its page on the site, and a line under
   it. News and press releases published; voting opened, voting closing within 24 hours (once, and not for a vote
@@ -5463,20 +5466,48 @@ section describes the first, the activity feed, and lists the rest under "Not ye
   between Discord taking it and the record) is not tried again: a missing post is better than a double one.
 - **A test post** is queued (`discord_state/test`) for the worker, since the api cannot read the token, and goes within
   a minute whether or not the bot is switched on, as a System Admin's test email does while email is off (§10.12).
+- **Slash commands** *(added 2026-11-13)*. `/vote` (votes open now and when each closes), `/events`, `/news`, `/bills`,
+  `/courses`, `/join` and `/help`. Each answers with one card: a title linking to the site's page, and up to five
+  lines, each a link. The answer is shown **only to the person who ran the command**, with a **Post in channel**
+  button under it that posts the same card for everyone (not under `/help`). A command takes no words from the person
+  and reads nothing about them: every answer comes from what the site shows anyone (the public routes for news,
+  events, bills and courses, and `GET /public/discord/votes`, the votes open now without rehearsals, each already
+  public on the ledger). Titles admins wrote are escaped, so they stay plain text, and nothing can mention anyone.
+  The list of commands is `DISCORD_COMMANDS` in `packages/domain/src/discord/commands.ts`. The commands work whether
+  or not the bot's switch is on: the switch is for what the bot posts by itself.
+- **The commands service.** Discord sends each command and button press as a signed HTTPS request and waits three
+  seconds, which the api's cold start can miss, so they go to a small service of its own: `apps/discord`
+  (`ustp-discord`), the server image's fourth entrypoint, Cloud Run service `discord`, at its `run.app` address
+  (`/interactions`; not through Hosting, which would add a hop). Like the MCP server (§3.4) it **holds no credentials**:
+  its service account has no role, it reads the site's public api as any visitor does, and keeps what it read for a
+  minute. It checks Discord's Ed25519 signature on every request (over the timestamp header and the body as it
+  arrived) and answers 401 to anything else; the key it checks with is the application's public key, which it reads
+  from `GET /public/discord/app`. If the site has not answered 2.2 seconds after the request arrived, the person is
+  told the site is waking up and to try again; the read goes on, so the next try is answered from it.
+- **Telling Discord.** Nobody pastes anything into Discord's Developer Portal. A step of the worker's tick, when a
+  token is set and the deployment has a commands service (`DISCORD_INTERACTIONS_URL`, set by Terraform to the
+  service's address): reads the application from Discord (`GET /applications/@me`: its ID and public key), keeps the
+  key in `discord_state/app`, gives Discord the address (`PATCH /applications/@me`; Discord calls the address at once,
+  with a good and a bad signature, which is why the key is kept first), and replaces the list of commands
+  (`PUT /applications/{id}/commands`). It has work only when the token, the commands or the address are new; a try
+  Discord refused is made again after two minutes (the first can find the commands service and the api both starting
+  cold when Discord calls), and the Discord admin page says where it stands and why. Telling
+  Discord is not ledgered: it follows from the token, whose changes are.
 - **The deployment's switch.** `DISCORD`: `live` (the default outside the emulators), `stub` (emulators only: posts are
   recorded in `discord_outbox`) or `off`. Live does nothing until an admin switches the bot on and a token is added.
   Posts need the site's own address (`WEB_ORIGIN`) for their links.
 - **Hosting.** Google Cloud Run, with everything else (§15), rather than a second cloud. The bot keeps no connection
-  open to Discord: posting is plain HTTPS from the worker, and the slash commands to come arrive as HTTPS requests, so
+  open to Discord: posting is plain HTTPS from the worker, and the slash commands arrive as HTTPS requests, so
   nothing runs between ticks and requests. The price is that the bot cannot see who joins the server or read what is
   said there, which it should not do anyway.
 - **Ledger.** `discord.settings_changed` (each setting that changed, with its old and new value), by the Communications
   Admin; `discord.token_changed` (added or removed, never the token), by the System Admin; `discord.posted` (what it
   was about, the channel and Discord's message ID), by `system`. For Auditors only, like the rest of §10.9. A test post
   is not ledgered.
-- **Not yet.** *Slash commands* (`/vote`, `/events`, `/news`, `/bills`, `/course`, `/rep`, `/join`, `/link`), answered
-  from the public API by a small service of its own that holds no secret, as the MCP server does (§3.4): Discord wants
-  an answer within three seconds, which the api's cold start can miss. *Linking a Discord account* on the Account page
+- **Not yet.** *More commands*: `/rep` (who represents a ZIP code: the public lookup is limited per caller's address,
+  and every Discord user would share this service's), `/scorecard`, and `/link`, which comes with linking. *Tried
+  against Discord itself*: the commands were built against Discord's documentation and a stand-in. *Linking a Discord
+  account* on the Account page
   (Discord's own sign-in; the page says plainly that linking tells Discord you are a member), which gives the Member
   role and its channels, taken away when a membership lapses. *Loops*: a Monday digest post (the weekly digest's
   content, §10.14), a question of the week as a Discord poll, a weekly "what members did" in totals, naming only
@@ -5626,6 +5657,7 @@ Physically, registration collections are top-level and election data lives under
 | `discord_settings/current` | fixed | saved by a Communications Admin | enabled, channels (a Discord channel ID or null for each of news, votes, events, legislation, courses), version, updatedAt/By (§10.18) *(added 2026-11-12)* |
 | `discord_settings/token` | fixed | set when a System Admin adds the bot's token, deleted when they remove it | version (the Secret Manager version), hint (last four characters), botName, addedAt, addedBy, addedByName; never the token (§10.18) |
 | `discord_state/feed` | fixed | set when the bot is switched on, moved on by the worker | seq (the last ledger entry read), since (courses published from then are still to post) (§10.18) |
+| `discord_state/app` | fixed | set by the worker when it tells Discord of the commands | tokenVersion, fingerprint (the commands and the address it was done for), applicationId, publicKey, endpointSet, registered, problem, triedAt (§10.18) |
 | `discord_state/test` | fixed | set by a Communications Admin's test post, finished by the worker | kind, channelId, requestedBy/At, status (waiting, sent, failed), problem, doneAt (§10.18) |
 | `discord_posts/{what:id}` | what happened and to what | created once by the worker before it posts, then marked | kind, ref, title, text, url, status (sending, sent, failed), channelId, messageId, problem, createdAt, sentAt (§10.18) |
 | `events/{eventId}` | UUIDv7 | draft → published ⇄ cancelled (cancelled only before it ends); a draft never published may be deleted | kind, slug (fixed once published), title, summary, body, startsAt/endsAt (UTC), timeZone, attendance (online, in person, members' room), joinUrl, joinLabel, place, address, speakers, partnerIds, hashtags, recording, status, version (the calendars' SEQUENCE), created/updated/published/edited/cancelled by and at (§10.17) *(added)* |
@@ -5778,6 +5810,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET\|PUT /admin/communications/press-kit` · `PUT …/press-kit/assets?name=` · `GET …/press-kit/assets/{sha256}` | Communications Admin | the press kit; save it whole from the version edited (400 for a file not uploaded here), ledgered; upload a file as the body (image/png, image/jpeg, image/webp or application/pdf); any uploaded file, to preview (§10.9) |
 | `GET\|POST /admin/communications/bots` · `PUT\|DELETE …/bots/{botId}` · `POST …/checked` | Communications Admin | the bot registry; add, change, mark checked, remove; ledgered (§10.9) |
 | `GET\|POST /admin/communications/polls` · `PUT\|DELETE …/polls/{pollId}` · `POST …/publish` · `POST …/close` | Communications Admin | every issue poll, drafts first, with its running results and share count; create a draft; change it from the version edited; publish; close early; delete it with its counts and marks; not ledgered (§10.16) |
+| `GET /public/discord/app` · `GET /public/discord/votes` | P | for the Discord bot's commands service (§10.18): the application's public key (null until the worker has read it from Discord), and the votes open now (ID, title, when each closes), soonest first, without rehearsals; cached for a minute |
 | `GET /admin/discord` · `PUT /admin/discord/settings` · `POST /admin/discord/test` | Communications Admin | the Discord bot: its switch, each kind's channel, whether a token is set, the last 20 posts; save (ledgered; 409 from an older copy); queue a test post to a kind's channel (409 without a saved channel or a token) (§10.18) *(added 2026-11-12)* |
 | `GET\|PUT\|DELETE /admin/discord-token` | System Admin | the Discord bot's token: whether one is set, its last four characters, the bot's name and who added it, never the token; add (tried with Discord first: 400 not shaped like one, 422 refused, 502 Discord unreachable) or remove; ledgered (§10.18) |
 | `POST /mcp` (not under `/v1`; the `mcp` service, not the api) | P | the reporting MCP server's Streamable HTTP endpoint: read-only tools over the public endpoints above, election reports and course files (§3.4) |
@@ -5850,6 +5883,7 @@ Errors use RFC 9457 problem details. Request bodies are validated against schema
 | *(tick step, M5)* | every tick | members' notifications by email, as each comes and the digests due, for at most 10 seconds after the election emails and admins' emails (§10.13) |
 | *(tick step, M5)* | every tick | the membership team's messages to members by email, for at most 10 seconds after the notifications (§10.13) *(added 2026-11-08)* |
 | *(tick step)* | every tick, last | the Discord bot: a waiting test post, then what is new since the last tick (ledger entries on its allow-list, courses published, votes closing and events starting within a day), at most 10 posts, each recorded once and ledgered (§10.18) *(added 2026-11-12)* |
+| *(tick step)* | every tick, after the posts | the Discord bot's commands: when the token, the list of commands or the commands service's address is new, tells Discord the address and the commands and keeps the application's public key (`discord_state/app`); a refused try again after two minutes (§10.18) |
 | *(tick step, M4b)* | every tick | destroy the ballot-pool key version of certified and cancelled elections (§7.3); planned as a `destroy-pool-key` Cloud Task, which the tick made unnecessary |
 
 Tallying is a step of the tick, not the `POST /tasks/tally` Cloud Task planned earlier: the tick already runs every

@@ -1,0 +1,16 @@
+{
+  "name": "ustp-discord",
+  "version": "0.1.0",
+  "description": "The Discord bot's slash commands (design §10.18): answers Discord's signed requests from the site's public api only, and holds no credentials",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "start": "node dist/main.js"
+  },
+  "dependencies": {
+    "ustp-domain": "^0.1.0"
+  }
+}

@@ -19,12 +19,14 @@ import {
   checkDiscordToken,
   Collections,
   DISCORD_BOT_TOKEN_SECRET,
+  discordCommandsStatus,
   discordSettingsSchema,
   discordTestSchema,
   discordTokenHint,
   discordTokenSchema,
   type AccountRecord,
   type DiscordAdminView,
+  type DiscordAppState,
   type DiscordPostRecord,
   type DiscordSettingsInput,
   type DiscordTestInput,
@@ -63,12 +65,13 @@ export class DiscordAdminService {
   async view(): Promise<DiscordAdminView> {
     const db = this.firebase.db;
     this.settings.invalidate();
-    const [settings, version, tokenSnap, testSnap, posts] = await Promise.all([
+    const [settings, version, tokenSnap, testSnap, posts, appSnap] = await Promise.all([
       this.settings.current(),
       this.tokenVersion(),
       db.collection(Collections.discordSettings).doc('token').get(),
       this.testRef().get(),
       db.collection(Collections.discordPosts).orderBy('createdAt', 'desc').limit(RECENT_POSTS).get(),
+      db.collection(Collections.discordState).doc('app').get(),
     ]);
     const tokenRecord = tokenSnap.data() as DiscordTokenRecord | undefined;
     return {
@@ -79,6 +82,7 @@ export class DiscordAdminService {
       canLink: !!this.config.webOrigin,
       test: (testSnap.data() as DiscordTestRecord | undefined) ?? null,
       recent: posts.docs.map((d) => d.data() as DiscordPostRecord),
+      commands: discordCommandsStatus(this.config.discord === 'off' ? null : this.config.discordInteractionsUrl, appSnap.data() as DiscordAppState | undefined),
     };
   }
 

@@ -418,6 +418,18 @@ variable "mcp_max_instances" {
   default     = 2
 }
 
+variable "discord_max_instances" {
+  description = "Upper bound on instances of the Discord bot's commands service (design §10.18); caps what a flood of calls can cost."
+  type        = number
+  default     = 2
+}
+
+variable "discord_min_instances" {
+  description = "Instances of the Discord bot's commands service kept running. 0 costs nothing while nobody runs a command, but the first command after a quiet spell may go unanswered while an instance starts (Discord waits three seconds); 1 answers every command."
+  type        = number
+  default     = 0
+}
+
 variable "sign_in_log_retention_days" {
   description = "Days the sign-in-traffic log bucket keeps Identity Platform's request logs; the app's own sign-in log keeps 180 (design §10.7)."
   type        = number

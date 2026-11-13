@@ -1,7 +1,11 @@
 import {
   Collections,
   DISCORD_BOT_TOKEN_SECRET,
+  discordCommandsFingerprint,
+  discordCommandsPayload,
   type DiscordAdminView,
+  type DiscordAppState,
+  type DiscordAppView,
   type DiscordFeedKind,
   type DiscordPostRecord,
   type DiscordTokenStatus,
@@ -10,9 +14,13 @@ import {
   type NewsPostRecord,
 } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { STUB_UNKNOWN_CHANNEL } from './discord/discord-api.js';
+import { CONFIG, type ServerConfig } from './config.js';
+import { DISCORD_API, STUB_APPLICATION, STUB_UNKNOWN_CHANNEL, type DiscordApi } from './discord/discord-api.js';
+import { DiscordCommandSync } from './discord/discord-commands.js';
+import { DiscordToken } from './discord/discord-token.js';
 import { DiscordFeed } from './discord/discord-feed.js';
 import { DiscordSettingsService } from './discord/discord-settings.js';
+import { Firebase } from './infra/firebase.js';
 import { SECRET_STORE, type SecretStore } from './infra/secret-store.js';
 import { LedgerService } from './ledger/ledger.service.js';
 import { resetEmulators, TestApi, TestWorker, type User } from './testing/emulator.js';
@@ -323,5 +331,100 @@ describe('a test post', () => {
     const { test } = await view();
     expect(test!.status).toBe('failed');
     expect(test!.problem).toContain('no such channel');
+  });
+});
+
+describe('the slash commands', () => {
+  const ENDPOINT = 'https://discord.example.test/interactions';
+  /** The worker's step, as a deployment with a commands service runs it (the emulators have none). */
+  const sync = (discord: Partial<DiscordApi> = {}, at = '2026-11-13T12:00:00.000Z', endpoint: string | null = ENDPOINT) => {
+    const stub = worker.app.get<DiscordApi>(DISCORD_API);
+    const api_: DiscordApi = {
+      whoAmI: (t) => stub.whoAmI(t),
+      send: (t, c, m) => stub.send(t, c, m),
+      application: (t) => stub.application(t),
+      setInteractionsUrl: (t, u) => stub.setInteractionsUrl(t, u),
+      setCommands: (t, a, c) => stub.setCommands(t, a, c),
+      ...discord,
+    };
+    const config = { ...worker.app.get<ServerConfig>(CONFIG), discordInteractionsUrl: endpoint };
+    return new DiscordCommandSync(worker.app.get(Firebase), worker.app.get(DiscordToken), api_, config).sync(new Date(at));
+  };
+  const state = async () => (await db().collection(Collections.discordState).doc('app').get()).data() as DiscordAppState | undefined;
+  const publicKey = async () => ((await api.call('GET', '/v1/public/discord/app')).body as DiscordAppView).publicKey;
+
+  it('tells Discord nothing without a token or a commands service', async () => {
+    expect(await sync()).toBe(false);
+    await addToken();
+    expect(await sync({}, undefined, null)).toBe(false);
+    expect(await state()).toBeUndefined();
+    expect(await publicKey()).toBeNull();
+    expect((await worker.tick()).status).toBe(200);
+  });
+
+  it('tells Discord once of the address and the commands, and gives the key to anyone', async () => {
+    await addToken();
+    const told: unknown[] = [];
+    const discord: Partial<DiscordApi> = {
+      setInteractionsUrl: async (_t, url) => (told.push(url), { ok: true }),
+      setCommands: async (_t, applicationId, commands) => (told.push([applicationId, commands]), { ok: true }),
+    };
+    expect(await sync(discord)).toBe(true);
+    expect(told).toEqual([ENDPOINT, [STUB_APPLICATION.applicationId, discordCommandsPayload()]]);
+    expect(await state()).toMatchObject({ ...STUB_APPLICATION, endpointSet: true, registered: true, problem: null, fingerprint: discordCommandsFingerprint(ENDPOINT) });
+    expect(await publicKey()).toBe(STUB_APPLICATION.publicKey);
+    // Even while the bot is switched off: the switch is for what it posts by itself.
+    expect((await view()).settings.enabled).toBe(false);
+
+    expect(await sync(discord, '2026-11-14T12:00:00.000Z')).toBe(false);
+    expect(told).toHaveLength(2);
+    // A new address, or a new token, is told again.
+    expect(await sync(discord, '2026-11-14T12:01:00.000Z', 'https://other.example.test/interactions')).toBe(true);
+    await addToken();
+    expect(await sync(discord, '2026-11-14T12:02:00.000Z', 'https://other.example.test/interactions')).toBe(true);
+    expect(told).toHaveLength(6);
+  });
+
+  it('keeps the key before Discord calls the address, and tries a refused step again after two minutes', async () => {
+    await addToken();
+    let keyAtCall: string | null = null;
+    const refusing: Partial<DiscordApi> = {
+      setInteractionsUrl: async () => {
+        keyAtCall = await publicKey();
+        return { ok: false, problem: 'Discord called the commands address and did not get the answers it checks for' };
+      },
+    };
+    expect(await sync(refusing)).toBe(true);
+    expect(keyAtCall).toBe(STUB_APPLICATION.publicKey);
+    expect(await state()).toMatchObject({ endpointSet: false, registered: false, problem: expect.stringContaining('commands address') });
+    expect(await sync(refusing, '2026-11-13T12:01:00.000Z')).toBe(false);
+    expect(await sync({}, '2026-11-13T12:03:00.000Z')).toBe(true);
+    expect(await state()).toMatchObject({ endpointSet: true, registered: true, problem: null });
+  });
+
+  it('says so when Discord will not describe the application', async () => {
+    await addToken();
+    expect(await sync({ application: async () => ({ ok: false, problem: "Discord did not accept the bot's token" }) })).toBe(true);
+    expect(await state()).toMatchObject({ applicationId: null, publicKey: null, registered: false, problem: "Discord did not accept the bot's token" });
+    expect(await publicKey()).toBeNull();
+  });
+
+  it('shows Communications Admins where commands go and whether Discord was told', async () => {
+    // The emulators have no commands service.
+    expect((await view()).commands).toEqual({ endpoint: null, registered: false, endpointSet: false, problem: null, triedAt: null });
+  });
+
+  it('lists the votes open now for anyone, soonest to close first, without rehearsals or votes past closing', async () => {
+    await election('later', 'Closes later', { closesAt: '2099-12-01T00:00:00.000Z' });
+    await election('sooner', 'Closes sooner', { closesAt: '2099-06-01T00:00:00.000Z' });
+    await election('practice', 'A rehearsal', { rehearsal: true, closesAt: '2099-06-01T00:00:00.000Z' });
+    await election('over', 'Past closing', { closesAt: '2020-01-01T00:00:00.000Z' });
+    await db().collection(Collections.elections).doc('draft').set({ electionId: 'draft', title: 'A draft', state: 'draft', closesAt: '2099-06-01T00:00:00.000Z' });
+    const res = await api.call('GET', '/v1/public/discord/votes');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual([
+      { electionId: 'sooner', title: 'Closes sooner', closesAt: '2099-06-01T00:00:00.000Z' },
+      { electionId: 'later', title: 'Closes later', closesAt: '2099-12-01T00:00:00.000Z' },
+    ]);
   });
 });

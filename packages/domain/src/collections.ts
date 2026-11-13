@@ -178,7 +178,7 @@ export const Collections = {
   bots: 'bots',
   /** `discord_settings/current` and `discord_settings/token`: the Discord bot's switch and channels, and who added its token (design §10.18). */
   discordSettings: 'discord_settings',
-  /** `discord_state/feed` and `discord_state/test`: how far the bot has read, and a test post waiting for the worker (design §10.18). */
+  /** `discord_state/feed`, `discord_state/test` and `discord_state/app`: how far the bot has read, a test post waiting for the worker, and what Discord was told of the commands (design §10.18). */
   discordState: 'discord_state',
   /** `discord_posts/{id}`: each post the bot made, once (design §10.18). */
   discordPosts: 'discord_posts',

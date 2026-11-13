@@ -1,4 +1,4 @@
-import type { DiscordAdminView, DiscordPostRecord, DiscordTestRecord, DiscordTokenStatus } from 'ustp-domain';
+import { DISCORD_COMMANDS, type DiscordAdminView, type DiscordCommandsStatus, type DiscordPostRecord, type DiscordTestRecord, type DiscordTokenStatus } from 'ustp-domain';
 
 /** The Discord bot's pages in words (design §10.18), apart from the pages so they can be tested. */
 
@@ -35,6 +35,20 @@ export function discordStateText(view: Pick<DiscordAdminView, 'mode' | 'tokenSet
   if (view.mode === 'stub') return `${who} is a stand-in here: posts are recorded for testing, and nothing goes to Discord.`;
   if (!view.settings.enabled) return `${who} is switched off: nothing is posted.`;
   return discordBlockers(view).length ? `${who} is switched on, but cannot post yet.` : `${who} is switched on and posts within a minute of each thing happening.`;
+}
+
+export const COMMANDS_INTRO =
+  `People in the server can ask the bot with ${DISCORD_COMMANDS.map((c) => `/${c.name}`).join(', ')}. Each answer comes from what ` +
+  'the site shows anyone, and only the person who asked sees it unless they press Post in channel. The commands work ' +
+  'whether or not the switch above is on.';
+
+/** Where the slash commands stand, in a sentence. */
+export function commandsText(commands: DiscordCommandsStatus, tokenSet: boolean | null, locale?: string): string {
+  if (!commands.endpoint) return 'This deployment has no commands service yet, so the bot has no commands.';
+  if (!tokenSet) return 'Discord is told of the commands once the bot’s token is added.';
+  if (commands.problem) return `Discord has not taken the commands yet: ${commands.problem}. The site tries again every two minutes.`;
+  if (!commands.registered || !commands.triedAt) return 'Discord is being told of the commands; that takes a minute or two.';
+  return `Discord was told of the commands on ${when(commands.triedAt, locale)}. A new command can take a few minutes to appear in Discord.`;
 }
 
 export function testText(test: DiscordTestRecord, locale?: string): string {

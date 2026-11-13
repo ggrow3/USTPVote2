@@ -11,10 +11,24 @@ export type DiscordTrial =
 /** Whether Discord took a post. `retry`: it may take it later (it was busy, or could not be reached). */
 export type DiscordSend = { readonly ok: true; readonly messageId: string } | { readonly ok: false; readonly retry: boolean; readonly problem: string };
 
-/** What the app asks of Discord (design §10.18): whose a token is, and to post a message in a channel. */
+/** The bot's application, as Discord gives it: its ID and the key Discord signs each command with. */
+export type DiscordApplication = { readonly ok: true; readonly applicationId: string; readonly publicKey: string } | { readonly ok: false; readonly problem: string };
+
+/** Whether Discord took a change to the application. */
+export type DiscordDone = { readonly ok: true } | { readonly ok: false; readonly problem: string };
+
+/**
+ * What the app asks of Discord (design §10.18): whose a token is, to post a message in a channel, and, for the slash
+ * commands, what the application is, where to send its commands, and which commands it has.
+ */
 export interface DiscordApi {
   whoAmI(token: string): Promise<DiscordTrial>;
   send(token: string, channelId: string, message: Readonly<Record<string, unknown>>): Promise<DiscordSend>;
+  application(token: string): Promise<DiscordApplication>;
+  /** Discord calls the address before it answers, and refuses one that does not check its signature. */
+  setInteractionsUrl(token: string, url: string): Promise<DiscordDone>;
+  /** Replaces the application's commands, everywhere it is installed. */
+  setCommands(token: string, applicationId: string, commands: readonly unknown[]): Promise<DiscordDone>;
 }
 
 export const DISCORD_API = Symbol('DiscordApi');
@@ -60,8 +74,34 @@ export class HttpDiscordApi implements DiscordApi {
     return { ok: false, retry: false, problem: `Discord refused the post (${res.status})` };
   }
 
+  async application(token: string): Promise<DiscordApplication> {
+    const res = await this.call(token, 'GET', '/applications/@me');
+    if (!res) return { ok: false, problem: 'Discord could not be reached' };
+    if (!res.ok) return { ok: false, problem: res.status === 401 ? "Discord did not accept the bot's token" : `Discord would not describe the application (${res.status})` };
+    const body = (await res.json().catch(() => null)) as { id?: unknown; verify_key?: unknown } | null;
+    if (typeof body?.id !== 'string' || typeof body.verify_key !== 'string' || !/^[0-9a-f]{64}$/i.test(body.verify_key)) {
+      return { ok: false, problem: 'Discord described the application without its ID or key' };
+    }
+    return { ok: true, applicationId: body.id, publicKey: body.verify_key.toLowerCase() };
+  }
+
+  async setInteractionsUrl(token: string, url: string): Promise<DiscordDone> {
+    const res = await this.call(token, 'PATCH', '/applications/@me', { interactions_endpoint_url: url });
+    if (!res) return { ok: false, problem: 'Discord could not be reached' };
+    if (res.ok) return { ok: true };
+    // Discord calls the address with a signed and a wrongly signed request before it accepts it.
+    if (res.status === 400) return { ok: false, problem: 'Discord called the commands address and did not get the answers it checks for' };
+    return { ok: false, problem: `Discord would not take the commands address (${res.status})` };
+  }
+
+  async setCommands(token: string, applicationId: string, commands: readonly unknown[]): Promise<DiscordDone> {
+    const res = await this.call(token, 'PUT', `/applications/${encodeURIComponent(applicationId)}/commands`, commands);
+    if (!res) return { ok: false, problem: 'Discord could not be reached' };
+    return res.ok ? { ok: true } : { ok: false, problem: `Discord would not take the list of commands (${res.status})` };
+  }
+
   /** The response, or null when Discord could not be reached in time. */
-  private async call(token: string, method: 'GET' | 'POST', path: string, body?: unknown): Promise<Response | null> {
+  private async call(token: string, method: 'GET' | 'POST' | 'PATCH' | 'PUT', path: string, body?: unknown): Promise<Response | null> {
     try {
       return await this.fetcher(`${BASE}${path}`, {
         method,
@@ -82,7 +122,13 @@ export class HttpDiscordApi implements DiscordApi {
 /** A channel the stand-in refuses as Discord refuses one it does not know, so that can be tried without Discord. */
 export const STUB_UNKNOWN_CHANNEL = '000000000000000000';
 
-/** Emulator-only stand-in: each post is recorded in `discord_outbox` instead of sent. Refused outside the emulators. */
+/** The stand-in's application: an ID and a key no real application has. */
+export const STUB_APPLICATION = { applicationId: '100000000000000001', publicKey: '0f'.repeat(32) } as const;
+
+/**
+ * Emulator-only stand-in: each post is recorded in `discord_outbox` instead of sent, and the commands are taken
+ * without a word. Refused outside the emulators.
+ */
 export class RecordingDiscordApi implements DiscordApi {
   constructor(private readonly db: Firestore) {}
 
@@ -95,6 +141,18 @@ export class RecordingDiscordApi implements DiscordApi {
     const ref = this.db.collection(Collections.discordOutbox).doc();
     await ref.create({ channelId, message, at: new Date().toISOString() });
     return { ok: true, messageId: ref.id };
+  }
+
+  async application(): Promise<DiscordApplication> {
+    return { ok: true, ...STUB_APPLICATION };
+  }
+
+  async setInteractionsUrl(): Promise<DiscordDone> {
+    return { ok: true };
+  }
+
+  async setCommands(): Promise<DiscordDone> {
+    return { ok: true };
   }
 }
 
