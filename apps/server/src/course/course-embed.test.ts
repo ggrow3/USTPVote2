@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { courseEmbedSnippet, type CoursesEmbed } from 'ustp-domain';
 import { EMBED_CSP, EMBED_HEADERS, embedPage, scriptJson } from './course-embed.js';
@@ -39,6 +41,25 @@ describe('the course embed page', () => {
     expect(EMBED_CSP).toContain("form-action 'none'");
     expect(EMBED_CSP).not.toContain('unsafe-inline');
     expect(EMBED_CSP).not.toContain('connect-src');
+  });
+});
+
+describe('Firebase Hosting', () => {
+  const firebase = JSON.parse(readFileSync(join(import.meta.dirname, '../../../../firebase.json'), 'utf8')) as {
+    hosting: { headers: { source: string; headers: { key: string; value: string }[] }[] };
+  };
+
+  // Hosting puts its header rules on the pages it rewrites to the api, over the api's own: the embed needs its own rule,
+  // after the site's, or it is served with the site's frame-ancestors 'none'.
+  it('gives the embed its own policy and permissions, after the site-wide rule, as the api does', () => {
+    const rules = firebase.hosting.headers;
+    const at = rules.findIndex((r) => r.source === '/embed/**');
+    expect(at).toBeGreaterThan(rules.findIndex((r) => r.source === '**'));
+    const headers = Object.fromEntries(rules[at]!.headers.map((h) => [h.key, h.value]));
+    expect(headers).toEqual({
+      'Content-Security-Policy': EMBED_HEADERS['Content-Security-Policy'],
+      'Permissions-Policy': EMBED_HEADERS['Permissions-Policy'],
+    });
   });
 });
 
