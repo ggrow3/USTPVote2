@@ -23,6 +23,10 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   '/bylaws/:version?': 'The bylaws of the U.S. Transhumanist Party, every published version, with a way to check a copy.',
   '/results/:id': 'Results of a U.S. Transhumanist Party election, from its published record, which anyone can verify.',
   '/offices': 'Who holds each U.S. Transhumanist Party office now, and how they came to hold it.',
+  '/legislation': 'The science, AI and longevity bills in Congress the U.S. Transhumanist Party follows, as they move, with how Congress voted on them.',
+  '/legislation/:billId': 'A bill in Congress the U.S. Transhumanist Party follows: why it matters, how far it has gone and how Congress voted on it.',
+  '/scorecard': 'How each member of Congress voted on the science, AI and longevity bills the U.S. Transhumanist Party follows, against the party’s positions.',
+  '/scorecard/:memberId': 'How a member of Congress voted on the science, AI and longevity bills the U.S. Transhumanist Party follows, against the party’s positions.',
 };
 
 /**

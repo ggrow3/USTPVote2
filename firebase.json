@@ -18,6 +18,10 @@
       { "source": "/candidates/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/course/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/results/*", "run": { "serviceId": "api", "region": "us-central1" } },
+      { "source": "/legislation", "run": { "serviceId": "api", "region": "us-central1" } },
+      { "source": "/legislation/*", "run": { "serviceId": "api", "region": "us-central1" } },
+      { "source": "/scorecard", "run": { "serviceId": "api", "region": "us-central1" } },
+      { "source": "/scorecard/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "**", "destination": "/index.html" }
     ],
     "headers": [

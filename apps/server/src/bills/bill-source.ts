@@ -6,6 +6,7 @@ import {
   isBillType,
   packageId,
   parsePackageId,
+  parseRollCallId,
   STAGE_VERSIONS,
   validBillRef,
   versionLabel,
@@ -27,6 +28,7 @@ import {
   type BillTextVersion,
   type BillType,
   type BillVersionRef,
+  type RecordedVote,
 } from 'ustp-domain';
 
 /** A Congress's bills by when they were last updated (`GET /v1/bills/recent`), settled. */
@@ -56,7 +58,8 @@ export interface BillSource {
 
 export const BILL_SOURCE = Symbol('BillSource');
 
-export type BillService = 'Congress.gov' | 'GovInfo';
+/** The services the bills context reads: Congress.gov and GovInfo with the key, the Senate's roll call XML without. */
+export type BillService = 'Congress.gov' | 'GovInfo' | 'Senate.gov';
 
 /** A service could not answer: its hourly limit reached (429), the key refused, or a failure or timeout (502). */
 export class BillSourceError extends Error {
@@ -66,7 +69,9 @@ export class BillSourceError extends Error {
   ) {
     super(
       kind === 'rate_limited'
-        ? `${service} has had too many requests with this key this hour; try again later`
+        ? service === 'Senate.gov'
+          ? `${service} has had too many requests just now; try again later`
+          : `${service} has had too many requests with this key this hour; try again later`
         : kind === 'key_refused'
           ? `${service} refused the api.data.gov key; a System Admin checks it under Admin › API keys`
           : `${service} could not be reached just now; try again shortly`,
@@ -253,11 +258,29 @@ interface CongressBill {
   readonly laws?: readonly { readonly type?: string; readonly number?: string }[];
 }
 
+interface CongressRecordedVote {
+  readonly chamber?: string;
+  readonly congress?: number | string;
+  readonly sessionNumber?: number | string;
+  readonly rollNumber?: number | string;
+  readonly date?: string;
+}
+
 interface CongressAction {
   readonly actionDate?: string;
   readonly text?: string;
   readonly type?: string;
   readonly sourceSystem?: { readonly name?: string } | null;
+  readonly recordedVotes?: readonly CongressRecordedVote[];
+}
+
+/** An action's roll calls (design §5.14, "Legislation and the scorecard"); one whose parts are not a roll call is left out. */
+export function recordedVotesOf(votes: readonly CongressRecordedVote[] | undefined): RecordedVote[] {
+  return (votes ?? []).flatMap((v): RecordedVote[] => {
+    const chamber = /^house$/i.test(v.chamber ?? '') ? 'house' : /^senate$/i.test(v.chamber ?? '') ? 'senate' : null;
+    const ref = chamber ? parseRollCallId(`${chamber}-${v.congress}-${v.sessionNumber}-${v.rollNumber}`) : null;
+    return ref && v.date ? [{ ...ref, date: v.date }] : [];
+  });
 }
 
 interface CongressTextVersion {
@@ -408,7 +431,10 @@ export class PublicBillSource implements BillSource {
         laws: (b.laws ?? []).filter((l) => l.number).map((l): BillLaw => ({ type: l.type ?? 'Public Law', number: l.number! })),
         actions: (actions?.actions ?? [])
           .filter((a) => a.actionDate && a.text)
-          .map((a): BillAction => ({ date: a.actionDate!, text: a.text!.trim(), type: a.type ?? null, source: a.sourceSystem?.name ?? null })),
+          .map((a): BillAction => {
+            const votes = recordedVotesOf(a.recordedVotes);
+            return { date: a.actionDate!, text: a.text!.trim(), type: a.type ?? null, source: a.sourceSystem?.name ?? null, ...(votes.length ? { votes } : {}) };
+          }),
         summaries: (summaries?.summaries ?? [])
           .map(summaryOf)
           .filter((s): s is BillSummary => s !== null)

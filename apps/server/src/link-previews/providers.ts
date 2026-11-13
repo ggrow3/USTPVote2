@@ -1,4 +1,5 @@
 import type { Provider } from '@nestjs/common';
+import { LegislationPreviews, PublicBillPreviews, ScorecardMemberPreviews, ScorecardPreviews } from '../bills/legislation-preview.js';
 import { CandidacyPreviews } from '../candidacies/candidacy-preview.js';
 import { NewsPreviews } from '../communications/news-preview.js';
 import { CoursePreviews } from '../course/course-preview.js';
@@ -10,7 +11,16 @@ import { HostedIndexHtml, INDEX_HTML, LINK_PREVIEW_SOURCES, LinkCardImages, Link
  * Each preview page's source (design §15, "Link previews"), one per entry of `PREVIEW_PAGES`; the service refuses to
  * start with one missing. A new preview page adds its source here and to `PREVIEW_PAGES` and `firebase.json`.
  */
-const SOURCES = [NewsPreviews, CandidacyPreviews, CoursePreviews, ResultsPreviews];
+const SOURCES = [
+  NewsPreviews,
+  CandidacyPreviews,
+  CoursePreviews,
+  ResultsPreviews,
+  LegislationPreviews,
+  PublicBillPreviews,
+  ScorecardPreviews,
+  ScorecardMemberPreviews,
+];
 
 export const LINK_PREVIEW_PROVIDERS: Provider[] = [
   ...SOURCES,

@@ -1,11 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import type { Transaction } from 'firebase-admin/firestore';
-import { Collections, DEFAULT_BILL_SETTINGS, type BillNoteRecord, type BillSettingsRecord, type BillWatchRecord } from 'ustp-domain';
+import {
+  Collections,
+  DEFAULT_BILL_SETTINGS,
+  type BillNoteRecord,
+  type BillSettingsRecord,
+  type BillWatchRecord,
+  type PublicBillRecord,
+  type PublicBillSnapshot,
+  type RollCallRecord,
+} from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 
 /**
- * Storage of the Bills tool (design §5.14, §11): its setting, the shared watchlist and its notes. Only the bills context
- * uses it. Queries are on one field each, so they need no composite index; results are sorted by the caller.
+ * Storage of the Bills tool (design §5.14, §11): its setting, the shared watchlist and its notes, the bills shown on the
+ * public Legislation page and their roll calls. Only the bills context uses it. Queries are on one field each, so they need no composite index; results are sorted by the caller.
  */
 @Injectable()
 export class BillRepository {
@@ -21,6 +30,14 @@ export class BillRepository {
 
   private notes() {
     return this.firebase.db.collection(Collections.billNotes);
+  }
+
+  private publicBills() {
+    return this.firebase.db.collection(Collections.billPublic);
+  }
+
+  private rollCalls() {
+    return this.firebase.db.collection(Collections.billRollCalls);
   }
 
   async settings(): Promise<BillSettingsRecord> {
@@ -102,5 +119,86 @@ export class BillRepository {
 
   deleteNote(tx: Transaction, noteId: string): void {
     tx.delete(this.notes().doc(noteId));
+  }
+
+  // --- The public Legislation page and scorecard ------------------------------------------------------------------
+
+  async allPublic(): Promise<PublicBillRecord[]> {
+    return (await this.publicBills().get()).docs.map((d) => d.data() as PublicBillRecord);
+  }
+
+  /** The IDs of the bills shown publicly, without reading the rest of them. */
+  async publicIds(): Promise<Set<string>> {
+    return new Set((await this.publicBills().select().get()).docs.map((d) => d.id));
+  }
+
+  async findPublic(billId: string): Promise<PublicBillRecord | null> {
+    return ((await this.publicBills().doc(billId).get()).data() as PublicBillRecord | undefined) ?? null;
+  }
+
+  async getPublic(tx: Transaction, billId: string): Promise<PublicBillRecord | null> {
+    return ((await tx.get(this.publicBills().doc(billId))).data() as PublicBillRecord | undefined) ?? null;
+  }
+
+  async allPublicIn(tx: Transaction): Promise<PublicBillRecord[]> {
+    return (await tx.get(this.publicBills())).docs.map((d) => d.data() as PublicBillRecord);
+  }
+
+  setPublic(tx: Transaction, record: PublicBillRecord): void {
+    tx.set(this.publicBills().doc(record.billId), record);
+  }
+
+  deletePublic(tx: Transaction, billId: string): void {
+    tx.delete(this.publicBills().doc(billId));
+  }
+
+  /** Public bills due a read from Congress.gov, the most overdue first. */
+  async publicDue(now: string, limit: number): Promise<PublicBillRecord[]> {
+    return (await this.publicBills().where('nextCheckAt', '<=', now).orderBy('nextCheckAt').limit(limit).get()).docs.map((d) => d.data() as PublicBillRecord);
+  }
+
+  /**
+   * What Congress.gov says of a public bill now, written over those fields only, so the team's topic, summary and
+   * positions saved at the same moment are kept. False when it is no longer public.
+   */
+  async refreshPublic(billId: string, fields: PublicBillSnapshot & Pick<PublicBillRecord, 'nextCheckAt' | 'refreshFailedAt'>): Promise<boolean> {
+    return this.updateIfThere(billId, { ...fields });
+  }
+
+  /** A failed read: when to try again. False when it is no longer public. */
+  async publicReadFailed(billId: string, fields: Pick<PublicBillRecord, 'nextCheckAt' | 'refreshFailedAt'>): Promise<boolean> {
+    return this.updateIfThere(billId, { ...fields });
+  }
+
+  private async updateIfThere(billId: string, fields: Record<string, unknown>): Promise<boolean> {
+    try {
+      await this.publicBills().doc(billId).update(fields);
+      return true;
+    } catch (e) {
+      if ((e as { code?: number }).code === 5) return false;
+      throw e;
+    }
+  }
+
+  /** The roll calls kept of these, read at once. */
+  async rollCallsFor(voteIds: readonly string[]): Promise<RollCallRecord[]> {
+    if (!voteIds.length) return [];
+    const snaps = await this.firebase.db.getAll(...voteIds.map((id) => this.rollCalls().doc(id)));
+    return snaps.filter((s) => s.exists).map((s) => s.data() as RollCallRecord);
+  }
+
+  /** Which of these roll calls are kept already. */
+  async rollCallsKept(voteIds: readonly string[]): Promise<Set<string>> {
+    if (!voteIds.length) return new Set();
+    const snaps = await this.firebase.db.getAll(...voteIds.map((id) => this.rollCalls().doc(id)), { fieldMask: ['voteId'] });
+    return new Set(snaps.filter((s) => s.exists).map((s) => s.id));
+  }
+
+  async setRollCall(record: RollCallRecord): Promise<void> {
+    await this.rollCalls().doc(record.voteId).set(record);
+  }
+
+  deleteRollCall(tx: Transaction, voteId: string): void {
+    tx.delete(this.rollCalls().doc(voteId));
   }
 }

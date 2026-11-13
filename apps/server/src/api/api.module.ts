@@ -97,7 +97,7 @@ import {
   ShareController,
 } from '../communications/communications.controller.js';
 import { TEAMS_PROVIDERS } from '../teams/providers.js';
-import { BillsAdminController, BillsController } from '../bills/bills.controller.js';
+import { BillsAdminController, BillsController, PublicBillsController } from '../bills/bills.controller.js';
 import { BILLS_PROVIDERS } from '../bills/providers.js';
 import { TeamsAdminController, TeamsController } from '../teams/teams.controller.js';
 import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previews/providers.js';
@@ -159,6 +159,7 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     TeamsAdminController,
     BillsController,
     BillsAdminController,
+    PublicBillsController,
     ForumController,
     ForumAdminController,
     RoomController,

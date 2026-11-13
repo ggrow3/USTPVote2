@@ -80,6 +80,7 @@ describe('ledger blocks and anchors', () => {
       blocksSealed: 0,
       rollsSigned: 0,
       anchored: 0,
+      publicBillsRefreshed: 0,
     });
 
     const [block1] = (await api.call('GET', '/v1/public/ledger/blocks')).body as LedgerBlockRecord[];

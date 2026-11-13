@@ -34,9 +34,9 @@ function edit(base: NavigationSettings, change: (s: { -readonly [K in keyof Navi
 const viewer = (membership: Viewer['membership'], ...roles: Role[]): Viewer => ({ membership, roles });
 
 describe('defaults', () => {
-  it('show Register, Ballot, Verify, Offices, Candidates, News, Course and Admin to everyone, Teams, Forum, Room and Bills to Active members, and Sign in while signed out', () => {
-    const all = ['register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course', 'admin'];
-    const withTeams = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'bills', 'news', 'course', 'admin'];
+  it('show Register, Ballot, Verify, Offices, Candidates, News, Legislation, Course and Admin to everyone, Teams, Forum, Room and Bills to Active members, and Sign in while signed out', () => {
+    const all = ['register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'legislation', 'course', 'admin'];
+    const withTeams = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'bills', 'news', 'legislation', 'course', 'admin'];
     expect(shownTo(DEFAULT_NAVIGATION, viewer('signed_out')).menu).toEqual([...all, 'signin']);
     for (const membership of ['no_membership', ...MEMBER_STATUSES] as const) {
       expect(shownTo(DEFAULT_NAVIGATION, viewer(membership)).menu).toEqual(membership === 'active' ? withTeams : all);
@@ -44,7 +44,7 @@ describe('defaults', () => {
     expect(shownTo(DEFAULT_NAVIGATION, viewer('active', 'election_admin')).menu).toEqual(withTeams);
     expect(shownTo(DEFAULT_NAVIGATION, viewer('applicant', 'membership_admin')).menu).toEqual(all);
     // Bills is for the legislative team: System Admins see its link too, other roles only as Active members (design §5.14).
-    expect(shownTo(DEFAULT_NAVIGATION, viewer('applicant', 'system_admin')).menu).toEqual(['register', 'ballot', 'verify', 'offices', 'candidates', 'bills', 'news', 'course', 'admin']);
+    expect(shownTo(DEFAULT_NAVIGATION, viewer('applicant', 'system_admin')).menu).toEqual(['register', 'ballot', 'verify', 'offices', 'candidates', 'bills', 'news', 'legislation', 'course', 'admin']);
   });
 
   it('let every role keep Ballot, Verify, Offices, Candidates, News and Course without a membership', () => {
@@ -305,7 +305,7 @@ describe('start pages', () => {
   });
 
   it('offer home, account and what the audience sees', () => {
-    expect(startPageOptions(DEFAULT_NAVIGATION, 'applicant')).toEqual(['home', 'account', 'register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'course']);
+    expect(startPageOptions(DEFAULT_NAVIGATION, 'applicant')).toEqual(['home', 'account', 'register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'legislation', 'course']);
     expect(startPageOptions(DEFAULT_NAVIGATION, 'election_admin')).toEqual([
       'home',
       'account',
@@ -314,6 +314,7 @@ describe('start pages', () => {
       'offices',
       'candidates',
       'news',
+      'legislation',
       'course',
       'admin/elections',
       'admin/offices',
@@ -360,10 +361,19 @@ describe('saved settings', () => {
       room: false,
       bills: false,
       news: true,
+      legislation: true,
       course: true,
       admin: true,
       signin: true,
     });
+  });
+
+  it('show Legislation to everyone when saved before it was a row (design §5.14)', () => {
+    const before = edit(DEFAULT_NAVIGATION, (s) => {
+      for (const a of AUDIENCES) delete (s.menu[a] as Partial<Record<string, boolean>>).legislation;
+    });
+    const resolved = resolveNavigation(before);
+    expect(AUDIENCES.every((a) => resolved.menu[a].legislation)).toBe(true);
   });
 
   it('show Offices as its default when saved before it was a row, keeping every other saved cell', () => {

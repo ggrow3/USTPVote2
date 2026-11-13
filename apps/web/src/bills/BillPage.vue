@@ -1,17 +1,30 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { BILL_LIMITS, checkTags, congressLabel, lawLabel, tidyTags, type BillDetail, type BillNoteView, type BillRef, type BillText } from 'ustp-domain';
+import {
+  BILL_LIMITS,
+  checkTags,
+  congressLabel,
+  lawLabel,
+  tidyTags,
+  type BillDetail,
+  type BillNoteView,
+  type BillRef,
+  type BillText,
+  type PublicBillTeamView,
+} from 'ustp-domain';
 import { announce, focusSoon, usePageTitle } from '../a11y.js';
 import { ApiError, errorMessage } from '../api.js';
 import PageShell from '../components/PageShell.vue';
 import { attempt, dialog } from '../dialogs.js';
 import { addBillNote, deleteBillNote, editBillNote, getBill, getBillText, unwatchBill, watchBill } from './api.js';
 import { day, editedLine, latestActionLine, STATUS_COLORS, statusLabel, unwatchConfirmText } from './bill-text.js';
+import PublicBillPanel from './PublicBillPanel.vue';
 
 /**
  * One bill (design §5.14): its sponsor, status and latest action, its place on the team's watchlist with tags and
- * notes, its CRS summary, the text of each printed version, and every action, from Congress.gov and GovInfo.
+ * notes, and on the public Legislation page, its CRS summary, the text of each printed version, and every action, from
+ * Congress.gov and GovInfo.
  */
 const route = useRoute();
 const ref_ = computed<BillRef>(() => ({ congress: Number(route.params.congress), type: String(route.params.type) as BillRef['type'], number: Number(route.params.number) }));
@@ -79,6 +92,12 @@ function unwatch() {
       await focusSoon('#bill-watch');
     }
   });
+}
+
+/* The public page. */
+function publicChanged(view: PublicBillTeamView | null) {
+  if (!bill.value) return;
+  bill.value = { ...bill.value, public: view, watch: bill.value.watch && { ...bill.value.watch, public: view !== null } };
 }
 
 /* Notes. */
@@ -308,6 +327,8 @@ watch(
             </form>
           </q-card-section>
         </q-card>
+
+        <PublicBillPanel :bill="bill" @changed="publicChanged" />
 
         <!-- Summary -->
         <q-card v-if="bill.summaries.length" flat bordered tag="section" aria-labelledby="bill-summary-heading">

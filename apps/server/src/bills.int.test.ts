@@ -158,9 +158,9 @@ describe('finding bills', () => {
   it('lists the latest activity by update date', async () => {
     const res = await api.call('GET', '/v1/bills/recent', lea);
     expect(res.status).toBe(200);
-    expect(res.body.items.map((i: { label: string }) => i.label)).toEqual(['S. 5493', 'H.R. 10538', 'H.R. 997', 'S.Res. 918', 'H.R. 10515']);
+    expect(res.body.items.map((i: { label: string }) => i.label)).toEqual(['H.R. 6100', 'S. 5493', 'H.R. 10538', 'H.R. 997', 'S.Res. 918', 'H.R. 10515']);
     const houseOldest = await api.call('GET', '/v1/bills/recent?type=hr&sort=updated_oldest', lea);
-    expect(houseOldest.body.items.map((i: { label: string }) => i.label)).toEqual(['H.R. 10515', 'H.R. 997', 'H.R. 10538']);
+    expect(houseOldest.body.items.map((i: { label: string }) => i.label)).toEqual(['H.R. 10515', 'H.R. 997', 'H.R. 10538', 'H.R. 6100']);
   });
 
   it('opens a bill with its status, actions, summaries and text versions, and its text', async () => {

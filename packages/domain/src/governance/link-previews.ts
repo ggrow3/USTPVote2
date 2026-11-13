@@ -10,7 +10,16 @@
  * The pages whose link previews the api writes, as their route paths in the web app's router (`router.ts`). Each also
  * needs a rewrite in `firebase.json` (before the catch-all) and a preview source in the api; tests check both.
  */
-export const PREVIEW_PAGES = ['/news/:slug', '/candidates/:id', '/course/:courseId', '/results/:id'] as const;
+export const PREVIEW_PAGES = [
+  '/news/:slug',
+  '/candidates/:id',
+  '/course/:courseId',
+  '/results/:id',
+  '/legislation',
+  '/legislation/:billId',
+  '/scorecard',
+  '/scorecard/:memberId',
+] as const;
 export type PreviewPage = (typeof PREVIEW_PAGES)[number];
 
 /** A bar on a card: a choice and its share, for results and polls. */
