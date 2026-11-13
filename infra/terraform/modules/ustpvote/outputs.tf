@@ -74,12 +74,18 @@ output "mcp_url" {
   value       = one(google_cloud_run_v2_service.mcp[*].uri)
 }
 
+output "discord_interactions_url" {
+  description = "Where Discord sends the bot's slash commands (null until server_image is set). The worker tells Discord this address itself."
+  value       = try(local.discord_env.DISCORD_INTERACTIONS_URL, null)
+}
+
 output "service_accounts" {
-  description = "Runtime identities: api, worker, the reporting MCP server, and the invoker used by Cloud Scheduler and Cloud Tasks."
+  description = "Runtime identities: api, worker, the reporting MCP server, the Discord commands service, and the invoker used by Cloud Scheduler and Cloud Tasks."
   value = {
     api     = google_service_account.api.email
     worker  = google_service_account.worker.email
     mcp     = google_service_account.mcp.email
+    discord = google_service_account.discord.email
     invoker = google_service_account.invoker.email
   }
 }

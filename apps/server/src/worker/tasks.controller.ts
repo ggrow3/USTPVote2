@@ -12,6 +12,7 @@ import { PublicBills } from '../bills/public-bills.js';
 import { BylawsCheckRunner } from '../bylaws-check/bylaws-check-runner.js';
 import { PollsService } from '../communications/polls.service.js';
 import { SuggestionsService } from '../communications/suggestions.service.js';
+import { DiscordCommandSync } from '../discord/discord-commands.js';
 import { DiscordFeed } from '../discord/discord-feed.js';
 import { ConsistencyCheckRunner } from '../consistency-check/consistency-check-runner.js';
 import { ElectionCheckRunner } from '../election-check/election-check-runner.js';
@@ -69,6 +70,7 @@ export class TasksController {
     private readonly roomAssistant: RoomAssistant,
     private readonly publicBills: PublicBills,
     private readonly discordFeed: DiscordFeed,
+    private readonly discordCommands: DiscordCommandSync,
   ) {}
 
   /**
@@ -80,7 +82,7 @@ export class TasksController {
    * up every hour or when a System Admin asks (§10.12), delete suggestions a year old and closed issue polls' marks (§10.16)
    * (design §10.9) and the members' room's records past their time (§5.10), then seal new ledger entries (including those) into a signed block, sign approved rolls and anchor
    * new blocks, read the public bills due again from Congress.gov, for at most 20 seconds (§5.14), and last post what is
-   * new to the party's Discord (§10.18). Each step
+   * new to the party's Discord and tell Discord of the bot's commands when they or its token changed (§10.18). Each step
    * runs even if an earlier one failed.
    */
   @Post('tick')
@@ -131,6 +133,7 @@ export class TasksController {
       publicBillsRefreshed: await step('read public bills again', () => this.publicBills.refreshDue(), 0),
       discordPosts: await step('post to Discord', () => this.discordFeed.postDue(), 0),
     };
+    await step('tell Discord of the commands', () => this.discordCommands.sync(), false);
     if (failures.length) throw new InternalServerErrorException(`tick incomplete (${JSON.stringify(result)}): ${failures.join('; ')}`);
     return result;
   }

@@ -1,6 +1,6 @@
 import { DEFAULT_DISCORD_SETTINGS, type DiscordAdminView, type DiscordTokenStatus } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
-import { discordBlockers, discordStateText, postStatusText, testText, tokenStatusText } from './discord-text.js';
+import { commandsText, discordBlockers, discordStateText, postStatusText, testText, tokenStatusText } from './discord-text.js';
 
 const settings = { ...DEFAULT_DISCORD_SETTINGS, version: 0, updatedAt: null, updatedBy: null };
 const ready: Pick<DiscordAdminView, 'mode' | 'tokenSet' | 'canLink' | 'settings' | 'botName'> = {
@@ -34,6 +34,20 @@ describe('where the Discord bot stands', () => {
     expect(testText({ ...test, status: 'failed', problem: 'Discord knows no such channel' })).toBe('The test post was not sent: Discord knows no such channel.');
     expect(postStatusText({ status: 'failed', sentAt: null, createdAt: '2026-11-12T10:00:00.000Z', problem: 'no permission' })).toBe('Not posted: no permission');
     expect(postStatusText({ status: 'sent', sentAt: '2026-11-12T10:00:00.000Z', createdAt: '2026-11-12T10:00:00.000Z', problem: null }, 'en-US')).toMatch(/^Posted Nov 1[12]/);
+  });
+});
+
+describe('the slash commands, in words', () => {
+  const told = { endpoint: 'https://discord.example/interactions', registered: true, endpointSet: true, problem: null, triedAt: '2026-11-13T12:00:00.000Z' };
+
+  it('says where they stand', () => {
+    expect(commandsText({ ...told, endpoint: null }, true)).toBe('This deployment has no commands service yet, so the bot has no commands.');
+    expect(commandsText(told, false)).toBe('Discord is told of the commands once the bot’s token is added.');
+    expect(commandsText({ ...told, registered: false, triedAt: null }, true)).toBe('Discord is being told of the commands; that takes a minute or two.');
+    expect(commandsText({ ...told, registered: false, problem: 'Discord could not be reached' }, true)).toBe(
+      'Discord has not taken the commands yet: Discord could not be reached. The site tries again every two minutes.',
+    );
+    expect(commandsText(told, true, 'en-GB')).toMatch(/^Discord was told of the commands on 13 Nov/);
   });
 });
 

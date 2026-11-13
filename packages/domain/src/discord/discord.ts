@@ -390,6 +390,8 @@ export interface DiscordAdminView {
   readonly test: DiscordTestRecord | null;
   /** The newest posts, newest first. */
   readonly recent: readonly DiscordPostRecord[];
+  /** The slash commands: where Discord sends them, and whether it has been told. */
+  readonly commands: import('./commands.js').DiscordCommandsStatus;
 }
 
 /** What Discord is sent for a post: one embed, and no mention in it pings anyone. */

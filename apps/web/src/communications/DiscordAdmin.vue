@@ -12,11 +12,11 @@ import { announce, focusFirstInvalid } from '../a11y.js';
 import { attempt } from '../dialogs.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../forms.js';
 import { discordView, saveDiscordSettings, sendDiscordTest } from './api.js';
-import { CHANNEL_HELP, DISCORD_INTRO, DISCORD_NEVER, discordBlockers, discordStateText, postStatusText, testText } from './discord-text.js';
+import { CHANNEL_HELP, COMMANDS_INTRO, commandsText, DISCORD_INTRO, DISCORD_NEVER, discordBlockers, discordStateText, postStatusText, testText } from './discord-text.js';
 
 /**
  * The Discord bot (design §10.18), for Communications Admins: whether the app posts to the party's Discord server, the
- * channel for each kind of post, a test post to each, and what it posted lately. The bot's token is a System Admin's to
+ * channel for each kind of post, a test post to each, where its slash commands stand, and what it posted lately. The bot's token is a System Admin's to
  * add, under Admin › API keys.
  */
 const view = ref<DiscordAdminView | null>(null);
@@ -157,6 +157,14 @@ onBeforeUnmount(() => {
         </q-form>
       </q-card-section>
     </q-card>
+
+    <section aria-labelledby="discord-commands-heading">
+      <h2 id="discord-commands-heading" class="text-subtitle1">Slash commands</h2>
+      <p class="text-body2 q-mt-none">{{ COMMANDS_INTRO }}</p>
+      <p class="q-mb-none" role="status">
+        <q-icon :name="view.commands.registered ? 'check_circle' : view.commands.problem ? 'warning' : 'info'" size="20px" aria-hidden="true" class="q-mr-xs" />{{ commandsText(view.commands, view.tokenSet) }}
+      </p>
+    </section>
 
     <section aria-labelledby="discord-recent-heading">
       <h2 id="discord-recent-heading" class="text-subtitle1">What the bot posted lately</h2>
