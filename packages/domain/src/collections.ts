@@ -25,6 +25,8 @@ export const Collections = {
   areaContacts: 'area_contacts',
   /** `email_templates/{office}`: the emails members send from the Your area page, one per kind of office (design §5.12). */
   emailTemplates: 'email_templates',
+  /** `race_records/{state}`: what public records said about a state's federal races, or `US` the presidency's, shared a day (design §5.17). */
+  raceRecords: 'race_records',
   positions: 'positions',
   positionTerms: 'position_terms',
   /** `teams/{teamId}`: working groups members join (design §5.7). */

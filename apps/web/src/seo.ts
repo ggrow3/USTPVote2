@@ -23,6 +23,10 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   '/bylaws/:version?': 'The bylaws of the U.S. Transhumanist Party, every published version, with a way to check a copy.',
   '/results/:id': 'Results of a U.S. Transhumanist Party election, from its published record, which anyone can verify.',
   '/offices': 'Who holds each U.S. Transhumanist Party office now, and how they came to hold it.',
+  '/races': 'Who is running for Congress, and for President in a presidential year, in every state and House seat, and who holds each seat now.',
+  '/races/:state': 'Who is running in this state for the U.S. Senate and the U.S. House, and for President in a presidential year, and who holds those seats now.',
+  '/races/:state/:district': 'Who is running for this seat in the U.S. House, and who holds it now, from public records, with the Transhumanist Party’s own candidates first.',
+  '/people/:id': 'A member of Congress or a candidate for federal office, from public records: their seat, party, biography and who else is listed for it.',
 };
 
 /**

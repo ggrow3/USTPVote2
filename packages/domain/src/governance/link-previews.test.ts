@@ -43,16 +43,20 @@ describe('matchPreviewPage', () => {
     expect(matchPreviewPage('/candidates/abc123/')).toEqual({ page: '/candidates/:id', params: { id: 'abc123' } });
     expect(matchPreviewPage('/course/transhumanism')).toEqual({ page: '/course/:courseId', params: { courseId: 'transhumanism' } });
     expect(matchPreviewPage('/results/e%20x')).toEqual({ page: '/results/:id', params: { id: 'e x' } });
+    expect(matchPreviewPage('/races/ca')).toEqual({ page: '/races/:state', params: { state: 'ca' } });
+    expect(matchPreviewPage('/races/ca/12')).toEqual({ page: '/races/:state/:district', params: { state: 'ca', district: '12' } });
+    expect(matchPreviewPage('/races/wy/at-large/')).toEqual({ page: '/races/:state/:district', params: { state: 'wy', district: 'at-large' } });
+    expect(matchPreviewPage('/people/H8CA49058')).toEqual({ page: '/people/:id', params: { id: 'H8CA49058' } });
   });
 
   it('matches nothing else', () => {
-    for (const path of ['/', '/news', '/news/a/b', '/course/certificates/abc', '/candidates/a%2Fb', '/news/%E0%A4%A', '/news/a%5Cb', '/results/%00', '/other/x']) {
+    for (const path of ['/', '/news', '/news/a/b', '/course/certificates/abc', '/candidates/a%2Fb', '/news/%E0%A4%A', '/news/a%5Cb', '/results/%00', '/other/x', '/races', '/races/ca/12/x', '/races/ca/%2F', '/people']) {
       expect(matchPreviewPage(path), path).toBeNull();
     }
   });
 
-  it('every page has one parameter after a fixed first segment', () => {
-    for (const page of PREVIEW_PAGES) expect(page).toMatch(/^\/[a-z]+\/:[A-Za-z]+$/);
+  it('every page has a fixed first segment, then one or two parameters', () => {
+    for (const page of PREVIEW_PAGES) expect(page).toMatch(/^\/[a-z]+(\/:[A-Za-z]+){1,2}$/);
   });
 });
 
