@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { brightAccent, effectiveAccent, hubChanges, type Hub, type HubClickCount, type HubRecord } from 'ustp-domain';
+import CertificateSettingsCard from '../academy/CertificateSettingsCard.vue';
 import { attempt } from '../dialogs.js';
+import { hasRole } from '../session.js';
 import { hubClicks, hubSettings, saveHub } from './api.js';
 import { applyHub } from './hub.js';
 import { describeHubChange } from './hub-text.js';
@@ -108,6 +110,9 @@ onMounted(load);
         <HubAnalyticsTab :saved="saved" :clicks="clicks" @refresh="reloadClicks" />
       </q-tab-panel>
     </q-tab-panels>
+
+    <!-- The party's LinkedIn organization, for course certificates (design §10.8): System and Site Admins only. -->
+    <CertificateSettingsCard v-if="hasRole('system_admin', 'site_admin')" />
   </div>
 </template>
 

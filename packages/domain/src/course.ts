@@ -40,6 +40,14 @@ export interface CourseRecord {
   /** Who last hid or showed it, and when; absent until someone does. */
   readonly hiddenChangedAt?: string;
   readonly hiddenChangedBy?: string;
+  /**
+   * Its quizzes may be taken without signing in (design §10.8, "Open without sign-in"), while it is published and no
+   * course comes before it (`isOpenToGuests`). Off by default; records from before the switch have none and are closed.
+   */
+  readonly openToGuests: boolean;
+  /** Who last opened or closed it to guests, and when; absent until someone does. */
+  readonly openChangedAt?: string;
+  readonly openChangedBy?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly updatedBy: string;
@@ -156,8 +164,15 @@ export interface CourseCertificateRecord {
   readonly courseId: string;
   readonly courseVersion: number;
   readonly accountId: string;
-  /** Captured on issue, so later account-profile edits do not change an earned credential. */
+  /**
+   * Captured on issue, so later account-profile edits do not change an earned credential. The holder may correct it
+   * (design §10.8), since a login without a name was given its email address.
+   */
   readonly recipientName: string;
+  /** The certificate's public page shows the name only while the holder turns this on; absent on older ones, so off. */
+  readonly nameShown?: boolean;
+  /** When the holder last changed the name or whether it is shown; absent until they do. */
+  readonly holderChangedAt?: string;
   readonly issuedAt: string;
   readonly revokedAt: string | null;
   readonly revokedBy: string | null;
@@ -170,11 +185,21 @@ export interface CourseCatalog {
   readonly profiles: readonly FuturistProfile[];
   /** The courses to pass before this one's quizzes open, in the order the course lists them. */
   readonly prerequisites: readonly CourseLink[];
+  /** Whether its quizzes can be taken without signing in now (`isOpenToGuests`). */
+  readonly openToGuests: boolean;
+}
+
+/** A learner's own certificate as their course page shows it, with what they need to share it. */
+export interface LearnerCertificate extends Pick<CourseCertificateRecord, 'certificateId' | 'issuedAt' | 'courseVersion' | 'recipientName'> {
+  /** Whether its public page shows the name (`shownHolderName`). */
+  readonly nameShown: boolean;
+  /** The party's LinkedIn organization, for Add to profile, once a System Admin has set it. */
+  readonly linkedInOrganizationId: string | null;
 }
 
 export interface LearnerCourseView extends CourseCatalog {
   readonly progress: CourseProgressRecord | null;
-  readonly certificate: Pick<CourseCertificateRecord, 'certificateId' | 'issuedAt' | 'courseVersion'> | null;
+  readonly certificate: LearnerCertificate | null;
   /** The prerequisites this learner has not passed yet; while any are left they can read but not take quizzes. */
   readonly missingPrerequisites: readonly CourseLink[];
   /** Whether they may write to the course's instructors now (a Course Administrator turns it on for them). */
@@ -188,11 +213,41 @@ export interface CourseQuizFeedback {
   readonly explanation: string;
 }
 
+/**
+ * A certificate as its public page shows it (`GET /v1/public/certificates/{id}`): valid or not, the course, and the
+ * holder's name only while they show it (design §10.8). A revoked certificate and one never issued look the same.
+ */
 export interface CertificateVerification {
   readonly valid: boolean;
+  readonly courseId: string | null;
   readonly courseTitle: string | null;
   readonly courseVersion: number | null;
   readonly issuedAt: string | null;
+  readonly holderName: string | null;
+}
+
+/** How a quiz taken without signing in went (`POST /v1/public/courses/{courseId}/lessons/{lessonId}/check`). */
+export interface GuestQuizResult {
+  readonly version: number;
+  readonly score: number;
+  readonly passed: boolean;
+  readonly feedback: readonly CourseQuizFeedback[];
+}
+
+/**
+ * Whether a course's quizzes may be taken without signing in now (design §10.8): its switch is on, it is published,
+ * and no course comes before it, since a visitor cannot have passed one. Records from before the switch are closed.
+ */
+export function isOpenToGuests(
+  course: Pick<CourseRecord, 'publishedVersion'> & { readonly prerequisites?: readonly string[]; readonly openToGuests?: boolean },
+): boolean {
+  return course.openToGuests === true && course.publishedVersion !== null && !(course.prerequisites ?? []).length;
+}
+
+/** What stops a course being opened to guests, in words, or null: a course before it. Closing is always allowed. */
+export function courseOpeningProblem(course: Pick<CourseRecord, 'prerequisites'>, open: boolean): string | null {
+  if (!open || !course.prerequisites.length) return null;
+  return 'a course that comes after another cannot be open without signing in, since visitors cannot have passed the one before it';
 }
 
 /**
@@ -314,4 +369,31 @@ export const submitCourseQuizSchema = z.strictObject({
     .max(QUIZ_LIMITS.maxQuestions),
 });
 export type SubmitCourseQuizInput = z.infer<typeof submitCourseQuizSchema>;
+
+/** `PUT /v1/admin/courses/{courseId}/guests`: opens the course's quizzes to visitors not signed in, or closes them, at once. */
+export const courseGuestsSchema = z.strictObject({ openToGuests: z.boolean() });
+export type CourseGuestsInput = z.infer<typeof courseGuestsSchema>;
+
+const versionNumber = z.number().int().min(1);
+
+/** A quiz taken without signing in: the answers, and the version of the course the page shows, which marks them. */
+export const checkCourseQuizSchema = z.strictObject({ version: versionNumber, answers: submitCourseQuizSchema.shape.answers });
+export type CheckCourseQuizInput = z.infer<typeof checkCourseQuizSchema>;
+
+/** At most this many lessons are claimed at once, more than any course has. */
+export const CLAIM_LIMIT = 100;
+
+/**
+ * `POST /v1/courses/{courseId}/claim`: the quizzes a learner passed before signing in, kept in their browser, marked
+ * again and recorded in their account as if taken now (design §10.8). Each lesson once.
+ */
+export const claimCourseProgressSchema = z.strictObject({
+  version: versionNumber,
+  lessons: z
+    .array(z.strictObject({ lessonId: z.string().trim().min(1).max(80), answers: submitCourseQuizSchema.shape.answers }))
+    .min(1)
+    .max(CLAIM_LIMIT)
+    .refine((lessons) => new Set(lessons.map((lesson) => lesson.lessonId)).size === lessons.length, 'a lesson is claimed twice'),
+});
+export type ClaimCourseProgressInput = z.infer<typeof claimCourseProgressSchema>;
 

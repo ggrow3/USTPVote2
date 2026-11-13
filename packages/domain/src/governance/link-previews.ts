@@ -14,6 +14,7 @@ export const PREVIEW_PAGES = [
   '/news/:slug',
   '/candidates/:id',
   '/course/:courseId',
+  '/course/certificates/:id',
   '/results/:id',
   '/polls/:id',
   '/events/:slug',
@@ -26,6 +27,12 @@ export const PREVIEW_PAGES = [
   '/people/:id',
 ] as const;
 export type PreviewPage = (typeof PREVIEW_PAGES)[number];
+
+/**
+ * Preview pages search engines never list, whatever is there (none found included), as the web app keeps them out:
+ * one person's course certificate (design §10.8). Their previews still show where links are shared.
+ */
+export const UNLISTED_PREVIEW_PAGES: readonly PreviewPage[] = ['/course/certificates/:id'];
 
 /** A bar on a card: a choice and its share, for results and polls. */
 export interface CardBar {
@@ -79,14 +86,23 @@ export interface PreviewMatch {
   readonly params: Readonly<Record<string, string>>;
 }
 
+/** The preview pages with the most fixed segments first, so `/course/certificates/:id` is tried before a `/course/:x/:y`. */
+const BY_FIXED_SEGMENTS = [...PREVIEW_PAGES].sort((a, b) => fixedSegments(b) - fixedSegments(a));
+
+function fixedSegments(page: string): number {
+  return page.split('/').filter((part) => part && !part.startsWith(':')).length;
+}
+
 /**
  * The preview page a path is, if any: a page of as many segments, each fixed one the same and each parameter
- * (`/races/:state/:district` has two) one segment, decoded. A segment that does not decode, or decodes to one holding a
- * slash, a backslash or a control character, matches nothing (design §14: `%2F` in IDs).
+ * (`/races/:state/:district` has two) one segment, decoded, so `/course/certificates/abc` is the certificate page and
+ * `/course/abc` the course's; where two pages could match, the one with more fixed segments wins. A segment that does
+ * not decode, or decodes to one holding a slash, a backslash or a control character, matches nothing (design §14:
+ * `%2F` in IDs).
  */
 export function matchPreviewPage(path: string): PreviewMatch | null {
   const segments = path.replace(/\/+$/, '').split('/');
-  for (const page of PREVIEW_PAGES) {
+  for (const page of BY_FIXED_SEGMENTS) {
     const parts = page.split('/');
     if (parts.length !== segments.length) continue;
     const params: Record<string, string> = {};

@@ -116,6 +116,23 @@ async function seedCandidacy(api: TestApi, candidacyId: string, open: boolean) {
   });
 }
 
+/** Who holds each certificate `earnCertificate` made, to change it as them. */
+const holderOf = new Map<string, Awaited<ReturnType<TestApi['member']>>>();
+
+/** A member who passed the intro's quizzes, through the claim a guest makes on signing in; their certificate's ID. */
+async function earnCertificate(api: TestApi, email: string): Promise<string> {
+  const pkg = await api.call('GET', '/v1/public/courses/transhumanism/package');
+  const lessons = pkg.body.lessons.map((lesson: { lessonId: string; questions: { correctIndex: number }[] }) => ({
+    lessonId: lesson.lessonId,
+    answers: lesson.questions.map((question) => question.correctIndex),
+  }));
+  const learner = await api.member(email);
+  const claimed = await api.call('POST', '/v1/courses/transhumanism/claim', learner, { version: 1, lessons });
+  const certificateId = claimed.body.certificate.certificateId as string;
+  holderOf.set(certificateId, learner);
+  return certificateId;
+}
+
 describe('link previews outside production', () => {
   let index: IndexServer;
   let api: TestApi;
@@ -272,6 +289,30 @@ describe('link previews outside production', () => {
     expect(meta(html, 'og:url')).toBe(`${index.origin}/course/transhumanism`);
   });
 
+  it("previews a certificate, with its holder's name only while they show it, and never for search engines", async () => {
+    const certificateId = await earnCertificate(api, 'previewed@example.test');
+    const page = `/course/certificates/${certificateId}`;
+    const before = (await get(api, page)).body;
+    expect(meta(before, 'og:title')).toBe('Certificate: Transhumanism: Human Flourishing and Democratic Futures');
+    expect(meta(before, 'og:image:alt')).toBe('Course certificate: Transhumanism: Human Flourishing and Democratic Futures');
+    expect(meta(before, 'description')).toMatch(/^A learner completed Transhumanism: .* a free course from the U\.S\. Transhumanist Party, on /);
+    expect(meta(before, 'robots')).toBe('noindex');
+    expect(meta(before, 'og:url')).toBe(`${index.origin}${page}`);
+    expect(before).not.toContain('previewed@example.test');
+
+    expect((await api.call('PUT', '/v1/courses/transhumanism/certificate', holderOf.get(certificateId), { recipientName: 'Ada Lovelace', nameShown: true })).status).toBe(200);
+    const after = (await get(api, page)).body;
+    expect(meta(after, 'og:title')).toBe('Ada Lovelace completed Transhumanism: Human Flourishing and Democratic Futures');
+    const image = meta(after, 'og:image')!;
+    expect(image).not.toBe(meta(before, 'og:image'));
+    const card = await api.app.inject({ method: 'GET', url: image.replace(index.origin, '') });
+    expect(card.statusCode).toBe(200);
+    expect(card.headers['content-type']).toBe('image/png');
+
+    // Revoked, or never issued: index.html as built.
+    expect((await get(api, '/course/certificates/019a0000-0000-7000-8000-000000000000')).body).toBe(INDEX);
+  });
+
   it("previews an election's results page before it is counted, a rehearsal saying so", async () => {
     const open = await seedElection(api, { voters: [], state: 'open' });
     const rehearsal = await seedElection(api, { voters: [], state: 'open', rehearsal: true });
@@ -324,5 +365,13 @@ describe('link previews in production', () => {
     expect((await getHere('/news/longevity')).headers['x-robots-tag']).toBeUndefined();
     expect((await getHere('/news/nothing')).headers['x-robots-tag']).toBeUndefined();
     expect((await get(api, '/news/longevity', 'ustpvote2-prod.firebaseapp.com')).headers['x-robots-tag']).toBe('noindex');
+  });
+
+  it('never lets search engines list a certificate page, one with nothing there included', async () => {
+    const certificateId = await earnCertificate(api, 'listed@example.test');
+    const found = await getHere(`/course/certificates/${certificateId}`);
+    expect(found.headers['x-robots-tag']).toBe('noindex');
+    expect(meta(found.body, 'robots')).toBe('noindex');
+    expect((await getHere('/course/certificates/019a0000-0000-7000-8000-000000000000')).headers['x-robots-tag']).toBe('noindex');
   });
 });

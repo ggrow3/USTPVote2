@@ -4,6 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { queueBadge } from 'ustp-domain';
 import { focusElement, liveRegions } from '../a11y.js';
 import { acting } from '../acting.js';
+import { claimGuestProgress } from '../academy/claim-guest-progress.js';
 import { APP_NAME } from '../app-name.js';
 import UpdateBanner from '../components/UpdateBanner.vue';
 import { applicationQueue, refreshApplicationQueue } from '../membership/queue.js';
@@ -49,6 +50,16 @@ const links = computed(() =>
 watch(
   () => [session.me?.roles.join(','), route.path],
   () => void refreshApplicationQueue(),
+  { immediate: true },
+);
+
+// Quizzes passed before signing in move into the account once it is loaded (design §10.8), never into a test persona's
+// and not before a second factor the site requires is set up.
+watch(
+  () => (session.me?.account && !acting.persona && !secondFactorMissing() ? session.me.account.accountId : null),
+  (accountId) => {
+    if (accountId) void claimGuestProgress((path) => void router.push(path));
+  },
   { immediate: true },
 );
 

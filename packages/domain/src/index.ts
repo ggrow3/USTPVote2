@@ -16,7 +16,25 @@ export {
   saveFuturistProfileSchema,
   courseMetadataSchema,
   submitCourseQuizSchema,
+  courseGuestsSchema,
+  checkCourseQuizSchema,
+  claimCourseProgressSchema,
+  CLAIM_LIMIT,
+  isOpenToGuests,
+  courseOpeningProblem,
 } from './course.js';
+export {
+  CERTIFICATE_ISSUER,
+  CERTIFICATE_NAME_MAX,
+  certificateDate,
+  certificateHolderSchema,
+  certificateNameProblem,
+  certificatePagePath,
+  certificateSettingsSchema,
+  linkedInAddToProfileUrl,
+  shownHolderName,
+} from './course-certificates.js';
+export type { AddToProfile, CertificateHolderInput, CertificateSettings, CertificateSettingsInput, CertificateSettingsRecord } from './course-certificates.js';
 export type {
   CourseStatus,
   FuturistCategory,
@@ -40,6 +58,11 @@ export type {
   SaveFuturistProfileInput,
   CourseMetadataInput,
   SubmitCourseQuizInput,
+  CourseGuestsInput,
+  CheckCourseQuizInput,
+  ClaimCourseProgressInput,
+  GuestQuizResult,
+  LearnerCertificate,
 } from './course.js';
 export {
   VIDEO_AREAS,

@@ -40,6 +40,7 @@ import { ApiKeys } from '../api-keys/api-keys.js';
 import { ApiKeysAdminService, ApiKeysController } from '../api-keys/api-keys-admin.js';
 import { API_KEY_TESTER, PublicApiKeyTester, UntriedApiKeyTester } from '../api-keys/key-tester.js';
 import { HealthController } from '../common/health.controller.js';
+import { CertificateSettingsController, CertificateSettingsService } from '../course/certificate-settings.js';
 import { CourseEmbedController } from '../course/course-embed.controller.js';
 import { CourseController } from '../course/course.controller.js';
 import { CourseService } from '../course/course.service.js';
@@ -214,6 +215,7 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     PersonasController,
     DemoElectionsController,
     CourseController,
+    CertificateSettingsController,
     CourseEmbedController,
     VideosController,
   ],
@@ -259,6 +261,7 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     PersonasService,
     DemoElectionsService,
     CourseService,
+    CertificateSettingsService,
     VideosService,
     CourseLearnersService,
     ...LINK_PREVIEW_PROVIDERS,
