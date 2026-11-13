@@ -7,14 +7,22 @@ import type {
   BillSearchPage,
   BillSettingsView,
   BillText,
+  BillTopic,
   BillWatchEntry,
   BillWatchSort,
+  PartyPosition,
+  PublicBillCard,
+  PublicBillTeamView,
+  PublicBillView,
+  ScorecardMemberView,
+  ScorecardView,
 } from 'ustp-domain';
 import { api } from '../api.js';
 
 /**
  * The bills context's API (design §5.14, §12): the only place its routes are written. The legislative team uses
- * `/v1/bills`; System Admins name the teams that have it at `/v1/admin/bills`.
+ * `/v1/bills`; System Admins name the teams that have it at `/v1/admin/bills`; everyone reads the public Legislation
+ * page and scorecard at `/v1/public/bills` and `/v1/public/scorecard`.
  */
 
 const enc = encodeURIComponent;
@@ -76,3 +84,17 @@ export const deleteBillNote = (noteId: string) => api<{ deleted: true }>('DELETE
 export const billSettings = () => api<BillSettingsView>('GET', '/v1/admin/bills');
 
 export const saveBillSettings = (teamIds: readonly string[], basedOn: number) => api<BillSettingsView>('PUT', '/v1/admin/bills', { teamIds, basedOn });
+
+/** Shows a watched bill on the public Legislation page (`basedOn` null), or changes what the public sees of it. */
+export const savePublicBill = (id: string, body: { topic: BillTopic; summary: string; positions: Record<string, PartyPosition>; basedOn: number | null }) =>
+  api<PublicBillTeamView>('PUT', `/v1/bills/watchlist/${enc(id)}/public`, body);
+
+export const withdrawPublicBill = (id: string) => api<{ withdrawn: true }>('DELETE', `/v1/bills/watchlist/${enc(id)}/public`);
+
+export const publicBills = (topic: BillTopic | null) => api<PublicBillCard[]>('GET', `/v1/public/bills${query({ topic })}`);
+
+export const publicBill = (id: string) => api<PublicBillView>('GET', `/v1/public/bills/${enc(id)}`);
+
+export const publicScorecard = () => api<ScorecardView>('GET', '/v1/public/scorecard');
+
+export const scorecardMember = (memberId: string) => api<ScorecardMemberView>('GET', `/v1/public/scorecard/${enc(memberId)}`);

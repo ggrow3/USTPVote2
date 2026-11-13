@@ -43,6 +43,10 @@ describe('matchPreviewPage', () => {
     expect(matchPreviewPage('/candidates/abc123/')).toEqual({ page: '/candidates/:id', params: { id: 'abc123' } });
     expect(matchPreviewPage('/course/transhumanism')).toEqual({ page: '/course/:courseId', params: { courseId: 'transhumanism' } });
     expect(matchPreviewPage('/results/e%20x')).toEqual({ page: '/results/:id', params: { id: 'e x' } });
+    expect(matchPreviewPage('/legislation')).toEqual({ page: '/legislation', params: {} });
+    expect(matchPreviewPage('/legislation/119-hr-10538')).toEqual({ page: '/legislation/:billId', params: { billId: '119-hr-10538' } });
+    expect(matchPreviewPage('/scorecard/')).toEqual({ page: '/scorecard', params: {} });
+    expect(matchPreviewPage('/scorecard/A000370')).toEqual({ page: '/scorecard/:memberId', params: { memberId: 'A000370' } });
   });
 
   it('matches a page with two fixed segments before its parameter, apart from the one-segment page beside it', () => {
@@ -58,6 +62,7 @@ describe('matchPreviewPage', () => {
       '/',
       '/news',
       '/news/a/b',
+      '/legislation/a/b',
       '/course/certificates/abc/more',
       '/course/other/abc',
       '/course/certificates/a%2Fb',
@@ -71,8 +76,8 @@ describe('matchPreviewPage', () => {
     }
   });
 
-  it('every page is fixed lower-case segments then one parameter', () => {
-    for (const page of PREVIEW_PAGES) expect(page).toMatch(/^(\/[a-z]+)+\/:[A-Za-z]+$/);
+  it('every page is fixed lower-case segments, with at most one parameter after them', () => {
+    for (const page of PREVIEW_PAGES) expect(page).toMatch(/^(?:\/[a-z]+)+(?:\/:[A-Za-z]+)?$/);
   });
 });
 
