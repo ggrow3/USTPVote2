@@ -406,7 +406,10 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
   with no console switch for email/password (infra README "Identity Platform").
 - **MFA.** Required for every admin role: admin endpoints reject tokens without `firebase.sign_in_second_factor`
   (problem type `/problems/mfa-required`), and approvals additionally require `auth_time` within the last 15 minutes
-  (`/problems/reauth-required`; the web app re-authenticates and retries once).
+  (`/problems/reauth-required`; the web app re-authenticates and retries once). *(Added 2026-11-13.)* Google's and
+  Microsoft's re-authentication window opens on the signed-in account (`login_hint`), so a browser signed in to
+  several accounts does not offer another; one chosen anyway (`auth/user-mismatch`) is refused with which account to
+  choose.
   - **Who needs it where** *(added)* (`secondFactorScope` in `ustp-domain`): **System Admins on every signed-in
     route**, always, whatever the settings below say, since they change roles, the sign-in switches and these settings;
     **Site Admins** likewise while the Site Admins' setting below is on, as it is by default, since they change roles too

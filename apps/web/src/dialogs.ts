@@ -57,9 +57,17 @@ export async function confirmIdentity(): Promise<boolean> {
     if (password === null) return false;
     return await withAuthenticatorCode(user, () => reauthenticate(user, { password }));
   } catch (e) {
-    Notify.create({ type: 'negative', message: errorMessage(e) });
+    Notify.create({ type: 'negative', message: reauthError(e, user.email) });
     return false;
   }
+}
+
+/** What a failed confirmation says: for another account chosen in the sign-in window, which one to choose instead. */
+export function reauthError(error: unknown, email: string | null): string {
+  if ((error as { code?: unknown } | null)?.code === 'auth/user-mismatch' && email) {
+    return `That is a different account. In the sign-in window, choose ${email}, the account you are signed in with, and try again.`;
+  }
+  return errorMessage(error);
 }
 
 /**
