@@ -330,6 +330,11 @@ export function notificationEmailMessage(input: {
   readonly items: readonly { readonly title: string; readonly link: string }[];
   /** How many more unread there are than the items listed. */
   readonly more?: number;
+  /**
+   * For one about the member's own application to join (design §5.2), which goes whatever they chose: more to say,
+   * as paragraphs separated by blank lines, and the email says it comes because they applied.
+   */
+  readonly application?: { readonly detail: string | null };
 }): NoticeMessage {
   const site = `${input.origin}/`;
   const first = input.items[0];
@@ -340,7 +345,15 @@ export function notificationEmailMessage(input: {
   const how = { each: 'as each comes', daily: 'once a day', weekly: 'once a week' }[input.period];
   const listed: Block[] =
     input.period === 'each' && first
-      ? [{ p: `${oneLine(first.title)}.` }, { link: `${input.origin}${first.link}`, label: 'Open it on the site', after: ' (you will be asked to sign in).' }]
+      ? [
+          { p: `${oneLine(first.title)}.` },
+          ...(input.application?.detail ?? '')
+            .split(/\n\s*\n/)
+            .map((paragraph) => oneLine(paragraph))
+            .filter(Boolean)
+            .map((paragraph): Block => ({ p: paragraph })),
+          { link: `${input.origin}${first.link}`, label: 'Open it on the site', after: ' (you will be asked to sign in).' },
+        ]
       : [
           { p: input.items.length === 1 ? 'You have one notification you have not read:' : `You have ${input.items.length + (input.more ?? 0)} notifications you have not read:` },
           ...input.items.map((item): Block => ({ link: `${input.origin}${item.link}`, label: oneLine(item.title), after: '' })),
@@ -349,11 +362,15 @@ export function notificationEmailMessage(input: {
   const blocks: Block[] = [
     greeting(input.name),
     ...listed,
-    { p: 'What a member wrote is never in these emails: read it on the site.' },
-    { hr: true },
-    { small: `You are getting this email because you chose, on your Account page, to have your notifications by email ${how}.` },
-    { link: `${input.origin}/account`, label: 'Change that on your Account page', after: '.' },
-    ...footer(input.contact, site, input, 'your notifications'),
+    ...(input.application
+      ? ([{ hr: true }, { small: 'You are getting this email because you applied to join the US Transhumanist Party.' }] satisfies Block[])
+      : ([
+          { p: 'What a member wrote is never in these emails: read it on the site.' },
+          { hr: true },
+          { small: `You are getting this email because you chose, on your Account page, to have your notifications by email ${how}.` },
+          { link: `${input.origin}/account`, label: 'Change that on your Account page', after: '.' },
+        ] satisfies Block[])),
+    ...footer(input.contact, site, input, input.application ? 'your application' : 'your notifications'),
   ];
   return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
 }

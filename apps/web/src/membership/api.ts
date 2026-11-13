@@ -1,9 +1,12 @@
 import type {
+  ApplicationQueueSummary,
   AddMemberInput,
   ApplicationRecord,
   ApplicationStatus,
   CreateApplicationInput,
   DecisionInput,
+  FirstStepsView,
+  JoinFunnelReport,
   MemberCorrectionInput,
   MemberDetail,
   MemberDetailsInput,
@@ -56,6 +59,21 @@ export function updateMyDetails(input: MemberDetailsInput): Promise<MemberRecord
 /** Applications in a status, oldest first. */
 export function applications(status: ApplicationStatus): Promise<ApplicationRecord[]> {
   return api<ApplicationRecord[]>('GET', `/v1/admin/applications?status=${status}`);
+}
+
+/** The signed-in member's first steps and which they have done (design §5.16). */
+export function myFirstSteps(): Promise<FirstStepsView> {
+  return api<FirstStepsView>('GET', '/v1/me/first-steps');
+}
+
+/** The join funnel over the last `days` days (design §5.15). */
+export function joinFunnel(days: number): Promise<JoinFunnelReport> {
+  return api<JoinFunnelReport>('GET', `/v1/admin/join-funnel?days=${days}`);
+}
+
+/** How many applications wait for a decision, and since when the oldest (design §5.2). */
+export function applicationQueueSummary(): Promise<ApplicationQueueSummary> {
+  return api<ApplicationQueueSummary>('GET', '/v1/admin/applications/summary');
 }
 
 export function decideApplication(applicationId: string, input: DecisionInput): Promise<ApplicationRecord> {

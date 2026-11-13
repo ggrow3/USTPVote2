@@ -424,6 +424,17 @@ variable "sign_in_log_retention_days" {
   default     = 180
 }
 
+variable "log_level" {
+  description = "The least severe developer log lines the api and worker write (design §14, Logging): info has a line per request and action; debug adds health checks, idle worker steps and Nest's start-up lines."
+  type        = string
+  default     = "info"
+
+  validation {
+    condition     = contains(["trace", "debug", "info", "warn", "error"], var.log_level)
+    error_message = "log_level is one of trace, debug, info, warn, error."
+  }
+}
+
 variable "deletion_protection" {
   description = "Refuse to delete the Cloud Run services and the Firestore database."
   type        = bool

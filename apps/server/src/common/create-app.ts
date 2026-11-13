@@ -1,28 +1,70 @@
 import 'reflect-metadata';
-import { NestFactory, type IEntryNestModule } from '@nestjs/core';
+import { randomUUID } from 'node:crypto';
+import { NestFactory, Reflector, type IEntryNestModule } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
+import { LogController } from 'fastify';
 import { BUILD_COMMIT_HEADER, buildCommit, PRESS_ASSET_MAX_BYTES, VIDEO_UPLOAD } from 'ustp-domain';
 import { ACCEPTED_TYPES, MAX_PHOTO_BYTES } from '../photos/image.js';
-import { loggerOptions } from './logging.js';
+import { ActionInterceptor } from './action.interceptor.js';
+import { errorFields, JsonNestLogger, loggerOptions, parseTrace, requestContext, requestLine, type LogContext } from './logging.js';
 import { ProblemDetailsFilter } from './problem.filter.js';
 
 /** The public routes any site may read from a browser: the course list, published courses and their portraits. */
 const OPEN_TO_EVERY_ORIGIN = ['/v1/public/courses', '/v1/public/course-images/'];
 
 export interface CreateAppOptions {
-  /** Disable request logging (tests). */
+  /** Disable logging (tests). */
   readonly quiet?: boolean;
+  /** Where log lines go instead of standard output (tests of the logging itself). */
+  readonly logStream?: { write(line: string): void };
+}
+
+declare module 'fastify' {
+  interface FastifyRequest {
+    /** What the log lines of this request say about it (design §14). */
+    logContext?: LogContext;
+  }
 }
 
 export async function createFastifyApp(
   module: IEntryNestModule,
   options: CreateAppOptions = {},
 ): Promise<NestFastifyApplication> {
-  const adapter = new FastifyAdapter({ logger: options.quiet ? false : loggerOptions(), trustProxy: true });
+  const adapter = new FastifyAdapter({
+    logger: options.quiet ? false : loggerOptions(options.logStream),
+    // Fastify's own request lines hold the client's address and the query string; `requestLine` is written instead.
+    logController: new LogController({ disableRequestLogging: true }),
+    genReqId: () => randomUUID(),
+    trustProxy: true,
+  });
+  const fastify = adapter.getInstance();
+  // Every line written while a request is handled carries its id and trace (design §14, "Logging"). Entered again
+  // before the handler, because a request body is read from stream events, outside the first hook's context.
+  fastify.addHook('onRequest', (req, _reply, done) => {
+    req.logContext = { requestId: req.id, ...parseTrace(req.headers, process.env.GOOGLE_CLOUD_PROJECT) };
+    requestContext.run(req.logContext, done);
+  });
+  fastify.addHook('preHandler', (req, _reply, done) => {
+    if (req.logContext) requestContext.run(req.logContext, done);
+    else done();
+  });
+  // One line per request, when it has been answered: what, who, which handler, the status and how long it took.
+  fastify.addHook('onResponse', (req, reply, done) => {
+    const context = req.logContext;
+    const line = requestLine(
+      { method: req.method, url: req.url, route: req.routeOptions?.url, status: reply.statusCode, elapsedMs: reply.elapsedTime },
+      context,
+    );
+    const write = () => fastify.log[line.level](line.fields, line.message);
+    if (context) requestContext.run(context, write);
+    else write();
+    done();
+  });
   const app = await NestFactory.create<NestFastifyApplication>(module, adapter, {
-    logger: options.quiet ? false : ['log', 'warn', 'error'],
+    logger: options.quiet ? false : new JsonNestLogger(fastify.log),
   });
   app.useGlobalFilters(new ProblemDetailsFilter());
+  app.useGlobalInterceptors(new ActionInterceptor(app.get(Reflector)));
   app.enableShutdownHooks();
   // Every response, errors included, says which build answered (design §15): a page built from another commit offers a
   // reload, and explains a refused request by it. Released images only; BUILD_COMMIT is baked in by the release workflow.
@@ -85,5 +127,11 @@ export async function createFastifyApp(
 
 /** Cloud Run provides PORT and expects the server on all interfaces. */
 export async function listen(app: NestFastifyApplication): Promise<void> {
+  // An error nothing caught, a rejected promise nobody awaited included, ends the process (Node's default); say why
+  // first, as an entry Error Reporting groups. Cloud Run starts another instance.
+  process.on('uncaughtException', (error, origin) => {
+    app.getHttpAdapter().getInstance().log.fatal(errorFields(error), `${origin}: ${error instanceof Error ? error.message : String(error)}`);
+    process.exit(1);
+  });
   await app.listen(Number(process.env.PORT ?? 8080), '0.0.0.0');
 }

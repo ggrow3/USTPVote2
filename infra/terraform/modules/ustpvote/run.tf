@@ -10,6 +10,9 @@
 # election_check.tf), and ROOM_MODEL "ollama" or "off" (room_model.tf), never the emulator-only stand-ins.
 
 locals {
+  # The developer log's level (design §14, Logging), set only when it is not the server's default.
+  log_env = var.log_level != "info" ? { LOG_LEVEL = var.log_level } : {}
+
   # api: Secret Manager (creating tie-break seeds, and keeping the Anthropic API key a System Admin adds, which it tries
   # with Anthropic first), encrypting ballots to an election's pool key, Auditor verification of anchors, profile
   # photos, uploaded videos, bootstrap System Admins, the accounts System Admins may delete, testing mode, which the
@@ -32,6 +35,7 @@ locals {
     },
     local.notices_env,
     var.testing_mode ? { TESTING_MODE = "true" } : {},
+    local.log_env,
     # Accounts a System Admin may delete (design §4): people's addresses, set only when listed, kept out of api_env.
     length(var.deletable_account_emails) > 0 ? { DELETABLE_ACCOUNT_EMAILS = join(",", var.deletable_account_emails) } : {},
     # The provider marks every key string sensitive, but this one is public by nature (maps.tf), and a sensitive value
@@ -64,6 +68,7 @@ locals {
     local.notices_worker_env,
     # Rehearsals' notices go to the outbox in testing mode (design §10.4), so the worker must know it is on too.
     var.testing_mode ? { TESTING_MODE = "true" } : {},
+    local.log_env,
     # The members' room's model, which the worker calls to answer questions (room_model.tf).
     local.room_worker_env,
   )

@@ -107,10 +107,11 @@ describe('the election email settings', () => {
 });
 
 describe('the other emails’ switches', () => {
-  const off = { welcome: false, electionTests: false, memberTests: false, notifications: false };
+  const off = { ...DEFAULT_NOTICE_SETTINGS.emails, welcome: false, electionTests: false, memberTests: false, notifications: false };
 
   it('are on until a System Admin switches one off, each switch ledgered, and kept by a save that leaves them out', async () => {
-    expect((await api.call('GET', URL, sa1)).body.emails).toEqual({ welcome: true, electionTests: true, memberTests: true, notifications: true });
+    expect((await api.call('GET', URL, sa1)).body.emails).toEqual(DEFAULT_NOTICE_SETTINGS.emails);
+    expect(DEFAULT_NOTICE_SETTINGS.emails).toMatchObject({ welcome: true, notifications: true, applicationApproved: true, weeklyDigest: false });
     expect((await save(settingsOf({ emails: { ...DEFAULT_NOTICE_SETTINGS.emails, memberTests: false } }), 0)).status).toBe(200);
     const entries = (await api.firebase.db.collection('audit_events').where('type', '==', 'notice.settings_changed').get()).docs.map((d) => d.data());
     expect(entries[0]!.payload.changes).toEqual([{ field: 'emails.memberTests', from: true, to: false }]);

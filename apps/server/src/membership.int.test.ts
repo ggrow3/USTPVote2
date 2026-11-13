@@ -386,3 +386,23 @@ describe('member profiles and details', () => {
     expect((await api.call('POST', `/v1/admin/members/${admin.accountId}/details`, admin, correction)).status).toBe(403);
   });
 });
+
+describe('the applications queue', () => {
+  it('tells Membership Admins how many wait and since when, and nobody else', async () => {
+    const summary = () => api.call('GET', '/v1/admin/applications/summary', admin);
+    expect((await summary()).body).toEqual({ pending: 0, oldestSubmittedAt: null });
+
+    const first = await api.member('first@example.test');
+    const second = await api.member('second@example.test');
+    const one = await api.call('POST', '/v1/registration/applications', first, application());
+    expect((await api.call('POST', '/v1/registration/applications', second, application())).status).toBe(201);
+    expect((await summary()).body).toEqual({ pending: 2, oldestSubmittedAt: one.body.submittedAt });
+
+    const decided = await api.call('POST', `/v1/admin/applications/${one.body.applicationId}/decision`, admin, { decision: 'approve', reason: 'reviewed' });
+    expect(decided.status).toBe(201);
+    expect((await summary()).body).toMatchObject({ pending: 1 });
+
+    expect((await api.call('GET', '/v1/admin/applications/summary', second)).status).toBe(403);
+    expect((await api.call('GET', '/v1/admin/applications/summary')).status).toBe(401);
+  });
+});

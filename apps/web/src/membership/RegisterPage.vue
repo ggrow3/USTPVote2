@@ -413,7 +413,7 @@ async function submit() {
           <h2 id="application-status" class="text-subtitle1">Your application is being reviewed</h2>
           <div class="text-caption text-grey-7">
             Submitted {{ applications[0] ? new Date(applications[0].submittedAt).toLocaleString() : '' }}. A Membership
-            Admin will decide it; you will see the outcome here.
+            Admin will decide it; you will see the outcome here and in your notifications.
           </div>
         </q-card-section>
         <q-card-section>

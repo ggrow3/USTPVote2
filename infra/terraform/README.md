@@ -120,6 +120,7 @@ for running the server locally against a real project. Variable names are those 
 |---|---|:-:|:-:|
 | `GOOGLE_CLOUD_PROJECT` | in `api_env` / `worker_env` | ● | ● |
 | `DEPLOYMENT_ENVIRONMENT` | the `environment` variable (`dev`, `staging`, `prod`) | ● | ● |
+| `LOG_LEVEL` | in `api_env` / `worker_env` only when the module's `log_level` variable is not `info`: the least severe developer log lines written (`docs/LOGGING.md`) | ● | ● |
 | `TESTING_MODE` | `true` only when the `testing_mode` variable is (dev sets it; prod refuses it); the worker sends a rehearsal's election notice to the outbox only then (design §6.8) | ● | ● |
 | `WEB_ORIGIN` | in `worker_env`: the `web_origin` variable, else `https://<project>.web.app`; election notices link to it | | ● |
 | `MAIL_TRANSPORT`, `NOTICE_CONTACT` | in `api_env` / `worker_env`: `ses` or `off` from `mail_transport`, and `notice_contact` when set, the default for the app's own setting (the api shows them in the election editor; only the worker sends) | ● | ● |

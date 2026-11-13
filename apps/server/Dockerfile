@@ -47,7 +47,7 @@ RUN --mount=type=cache,target=/root/.npm \
     done
 
 FROM node:26.13.0-trixie-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68cdc8a1414862790a02c39
-# Stack traces point into the TypeScript sources; Nest's startup log is plain text for Cloud Logging.
+# Stack traces point into the TypeScript sources; every log line is JSON for Cloud Logging (docs/LOGGING.md).
 ENV NODE_ENV=production \
     NODE_OPTIONS=--enable-source-maps \
     NO_COLOR=1

@@ -50,9 +50,22 @@ export interface NoticeKindSettings {
  * the admin's browser sends Identity Platform's sign-in link instead. `electionTests`: "Send test email" on an election's
  * email card. `memberTests`: "Send me a test email" and "Try my address again" on the Account page (§10.12).
  * `notifications`: members' in-app notifications by email, as each comes or in a digest, for those who chose it (§10.13).
+ * `applicationReceived`, `applicationApproved`, `applicationRejected`: to an applicant, that their application to join
+ * arrived, and what a Membership Admin decided (§5.2); these go whatever they chose for their notifications.
+ * `weeklyDigest`: once a week, what is new on the site, to the Active members who opted in (§10.14); off until a System
+ * Admin switches it on.
  * Switching one off stops new ones; one already queued still goes.
  */
-export const OTHER_EMAILS = ['welcome', 'electionTests', 'memberTests', 'notifications'] as const;
+export const OTHER_EMAILS = [
+  'welcome',
+  'electionTests',
+  'memberTests',
+  'notifications',
+  'applicationReceived',
+  'applicationApproved',
+  'applicationRejected',
+  'weeklyDigest',
+] as const;
 export type OtherEmail = (typeof OTHER_EMAILS)[number];
 export type OtherEmailSettings = Readonly<Record<OtherEmail, boolean>>;
 
@@ -90,7 +103,16 @@ export const DEFAULT_NOTICE_SETTINGS: NoticeSettings = {
     closing_soon: { enabled: true, subject: null, intro: null },
     voted: { enabled: true, subject: null, intro: null },
   },
-  emails: { welcome: true, electionTests: true, memberTests: true, notifications: true },
+  emails: {
+    welcome: true,
+    electionTests: true,
+    memberTests: true,
+    notifications: true,
+    applicationReceived: true,
+    applicationApproved: true,
+    applicationRejected: true,
+    weeklyDigest: false,
+  },
   broadcastApproval: false,
   reminderHours: REMINDER_HOURS_BEFORE_CLOSE,
   contact: null,
@@ -217,7 +239,20 @@ export const noticeSettingsSchema = z.strictObject({
   // Vote confirmations came later: a page opened before them saves without them, and keeps what was set.
   kinds: z.strictObject({ voting_open: kindSettings, closing_soon: kindSettings, voted: kindSettings.optional() }),
   // Likewise the other emails' switches: a page opened before them keeps what was set.
-  emails: z.strictObject({ welcome: z.boolean(), electionTests: z.boolean(), memberTests: z.boolean(), notifications: z.boolean().optional() }).optional(),
+  emails: z
+    .strictObject({
+      welcome: z.boolean(),
+      electionTests: z.boolean(),
+      memberTests: z.boolean(),
+      notifications: z.boolean().optional(),
+      // An application's emails came later still (design §5.2).
+      applicationReceived: z.boolean().optional(),
+      applicationApproved: z.boolean().optional(),
+      applicationRejected: z.boolean().optional(),
+      // And the weekly digest (design §10.14).
+      weeklyDigest: z.boolean().optional(),
+    })
+    .optional(),
   // Approval of emails to members came later too: a page opened before it keeps what was set.
   broadcastApproval: z.boolean().optional(),
   reminderHours: z.number().int().min(MIN_REMINDER_HOURS).max(MAX_REMINDER_HOURS),

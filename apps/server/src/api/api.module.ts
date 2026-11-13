@@ -61,6 +61,7 @@ import { VotingService } from '../elections/voting.service.js';
 import { ballotPoolKeysProvider } from '../infra/ballot-pool.js';
 import { secretStoreProvider } from '../infra/secret-store.js';
 import { PublicLedgerController } from '../ledger/ledger.controller.js';
+import { JoinFunnelController } from '../membership/join-funnel.js';
 import { MembershipAdminController, RegistrationController } from '../membership/membership.controller.js';
 import { MEMBERSHIP_PROVIDERS } from '../membership/providers.js';
 import { PublicRegistrationFormController, RegistrationFormAdminController } from '../membership/registration-form.js';
@@ -119,6 +120,7 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     AccountsController,
     RegistrationController,
     MembershipAdminController,
+    JoinFunnelController,
     PublicRegistrationFormController,
     RegistrationFormAdminController,
     BylawsChecksController,

@@ -1,6 +1,7 @@
 import { sha256Hex } from 'ustp-audit';
 import { z } from 'zod';
 import type { MailAddressState } from '../notifications/my-email.js';
+import type { OtherEmail } from '../notifications/notice-settings.js';
 
 /**
  * In-app notifications (design §10.13): what the bell in the header counts and lists, for any signed-in account. One
@@ -15,6 +16,8 @@ import type { MailAddressState } from '../notifications/my-email.js';
  * `broadcast_approval`: for System Admins, an email to members waits for their approval (§10.12). `broadcast_decided`:
  * for whoever wrote it, a System Admin approved or rejected it. `membership_message`: the membership team wrote to the
  * member. `membership_inbox`: for Membership Admins, a member wrote to the team, or a conversation was assigned to them.
+ * `application_received`, `application_approved`, `application_rejected`: for an applicant, their application to join
+ * arrived or was decided (§5.2). `application_waiting`: for Membership Admins, an application waits for a decision.
  */
 export const APP_NOTIFICATION_KINDS = [
   'message',
@@ -23,6 +26,10 @@ export const APP_NOTIFICATION_KINDS = [
   'broadcast_decided',
   'membership_message',
   'membership_inbox',
+  'application_received',
+  'application_approved',
+  'application_rejected',
+  'application_waiting',
 ] as const;
 export type AppNotificationKind = (typeof APP_NOTIFICATION_KINDS)[number];
 
@@ -31,6 +38,17 @@ export type AppNotificationKind = (typeof APP_NOTIFICATION_KINDS)[number];
  * email as each comes would only repeat it. A digest still lists them while unread.
  */
 export const EMAILED_ON_THEIR_OWN: readonly AppNotificationKind[] = ['membership_message'];
+
+/**
+ * Kinds that go by email whatever the member chose for their notifications, each with the switch in Admin › Email that
+ * turns it off (design §5.2): news of someone's own application to join, which they asked for by applying and may
+ * never open the site to see. They still pass the gate of all the site's email (§10.12).
+ */
+export const ALWAYS_EMAILED: Readonly<Partial<Record<AppNotificationKind, OtherEmail>>> = {
+  application_received: 'applicationReceived',
+  application_approved: 'applicationApproved',
+  application_rejected: 'applicationRejected',
+};
 
 /** `app_notifications/{notificationId}`: one account's notification. Kept 90 days after it last changed. */
 export interface AppNotificationRecord {
@@ -44,6 +62,11 @@ export interface AppNotificationRecord {
   readonly link: string;
   /** What it is about: a conversation, a report. */
   readonly ref: string;
+  /**
+   * More to say in its own email, as plain paragraphs separated by blank lines (what happens next, a decision's reason).
+   * Only on the kinds that are always emailed; the bell shows the title alone.
+   */
+  readonly detail?: string;
   /** How many times it happened while unread. */
   readonly count: number;
   readonly createdAt: string;
@@ -59,6 +82,7 @@ export const APP_NOTIFICATION_RETENTION_DAYS = 90;
 /** The latest shown in the bell's list and on the Notifications page. */
 export const APP_NOTIFICATIONS_SHOWN = 30;
 export const MAX_NOTIFICATION_TITLE = 200;
+export const MAX_NOTIFICATION_DETAIL = 2000;
 
 /**
  * One notification per account and thing, so another event about it finds the one there is: a hash, short enough for
@@ -74,10 +98,19 @@ export function appNotificationId(accountId: string, kind: AppNotificationKind, 
  */
 export function nextAppNotification(
   current: AppNotificationRecord | null,
-  input: { readonly accountId: string; readonly kind: AppNotificationKind; readonly ref: string; readonly title: string; readonly link: string; readonly at: string },
+  input: {
+    readonly accountId: string;
+    readonly kind: AppNotificationKind;
+    readonly ref: string;
+    readonly title: string;
+    readonly link: string;
+    readonly detail?: string;
+    readonly at: string;
+  },
 ): AppNotificationRecord {
   const title = oneLine(input.title).slice(0, MAX_NOTIFICATION_TITLE);
-  if (current && !current.readAt) return { ...current, title, link: input.link, count: current.count + 1, updatedAt: input.at };
+  const detail = input.detail === undefined ? {} : { detail: input.detail.slice(0, MAX_NOTIFICATION_DETAIL) };
+  if (current && !current.readAt) return { ...current, title, link: input.link, ...detail, count: current.count + 1, updatedAt: input.at };
   return {
     notificationId: appNotificationId(input.accountId, input.kind, input.ref),
     accountId: input.accountId,
@@ -85,6 +118,7 @@ export function nextAppNotification(
     title,
     link: input.link,
     ref: input.ref,
+    ...detail,
     count: 1,
     createdAt: input.at,
     updatedAt: input.at,
