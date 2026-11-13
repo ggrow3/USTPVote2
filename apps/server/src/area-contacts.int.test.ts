@@ -71,7 +71,7 @@ describe('the Your area page', () => {
       'sos candidate state_lower@06001 Ana Assembly',
     ]);
     // The ballot adds the challenger's website and a State Senate race; a school board is listed apart.
-    expect(v.contacts.find((c) => c.contactId === 'fec:C0601')).toMatchObject({ website: 'https://cass.example', election: expect.stringMatching(/-11-03$/) });
+    expect(v.contacts.find((c) => c.contactId === 'fec:H0CA01002')).toMatchObject({ website: 'https://cass.example', election: expect.stringMatching(/-11-03$/) });
     expect(v.ballot.map((b) => [b.office, b.district, b.candidates.map((c) => c.name)])).toEqual([
       ['Governing Board Member', 'Example Unified School District, Trustee Area 2', ['Sal School']],
     ]);

@@ -60,6 +60,11 @@ describe('sitemap', () => {
     expect(entries.at(-1)).toEqual({ path: '/legislation/119-hr-10538', lastModified: '2026-11-01T00:00:00.000Z' });
   });
 
+  it('lists the race pages after the rest, with no date', () => {
+    const entries = sitemapEntries([], [], [], ['/races/ca', '/people/H8CA49058']);
+    expect(entries.slice(-2)).toEqual([{ path: '/races/ca' }, { path: '/people/H8CA49058' }]);
+  });
+
   it('has no date for the bylaws page before any are published', () => {
     expect(sitemapEntries([], []).find((e) => e.path === '/bylaws')).toEqual({ path: '/bylaws' });
   });

@@ -21,6 +21,9 @@ export const PREVIEW_PAGES = [
   '/legislation/:billId',
   '/scorecard',
   '/scorecard/:memberId',
+  '/races/:state',
+  '/races/:state/:district',
+  '/people/:id',
 ] as const;
 export type PreviewPage = (typeof PREVIEW_PAGES)[number];
 
@@ -90,11 +93,11 @@ function fixedSegments(page: string): number {
 }
 
 /**
- * The preview page a path is, if any. A page's path is any number of fixed segments and parameters, matched segment by
- * segment, so `/course/certificates/abc` is the certificate page and `/course/abc` the course's; where two pages could
- * match, the one with more fixed segments wins. A parameter is one path segment, decoded; a segment that does not
- * decode, or decodes to one holding a slash, a backslash or a control character, matches nothing (design §14: `%2F`
- * in IDs).
+ * The preview page a path is, if any: a page of as many segments, each fixed one the same and each parameter
+ * (`/races/:state/:district` has two) one segment, decoded, so `/course/certificates/abc` is the certificate page and
+ * `/course/abc` the course's; where two pages could match, the one with more fixed segments wins. A segment that does
+ * not decode, or decodes to one holding a slash, a backslash or a control character, matches nothing (design §14:
+ * `%2F` in IDs).
  */
 export function matchPreviewPage(path: string): PreviewMatch | null {
   const segments = path.replace(/\/+$/, '').split('/');

@@ -28,6 +28,8 @@ const props = defineProps<{
   photo: ContactPhoto | null;
   initials: string;
   links: readonly PersonLink[];
+  /** Their own page (design §5.17), where they have one. */
+  page?: string | null;
 }>();
 const open = defineModel<boolean>({ required: true });
 
@@ -91,6 +93,7 @@ const mapShown = ref(false);
         </template>
       </q-card-section>
       <q-card-actions align="right">
+        <q-btn v-if="page" flat no-caps color="primary" icon="badge" label="Their own page" :to="page" />
         <q-btn v-close-popup flat no-caps label="Close" />
       </q-card-actions>
     </q-card>

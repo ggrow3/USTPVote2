@@ -43,6 +43,15 @@ export interface ContactSource {
    * for by the five-digit ZIP code, which is all of the address that leaves the api; none, no ballot.
    */
   forArea(state: string, districts: readonly District[], electionYear: number, options: { readonly zip: string | null; readonly holders: boolean }): Promise<AreaRecords>;
+  /**
+   * Everyone the records list for a state's federal races, for its race pages (design §5.17): who runs for its Senate
+   * seats and every one of its House seats (`house`, the state's congressional districts), from the FEC in one list for
+   * the whole state, and who holds them now; in California, the statewide offices too, from the state's own list of who
+   * is on the ballot. No Open States and no ballot from Google, which is asked by ZIP code only.
+   */
+  forState(state: string, house: readonly District[], electionYear: number): Promise<AreaRecords>;
+  /** Who runs for President, from the FEC, in a presidential year; nobody in others. */
+  forNation(electionYear: number): Promise<AreaRecords>;
 }
 
 export const CONTACT_SOURCE = Symbol('ContactSource');
@@ -54,6 +63,11 @@ const CIVIC = 'https://www.googleapis.com/civicinfo/v2/voterinfo';
 const TIMEOUT_MS = 15_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_CACHED = 2000;
+/** The FEC answers 100 a page: a state's House candidates for one election, California's or Texas's, fit in a few. */
+const FEC_PAGE = 100;
+const FEC_MAX_PAGES = 10;
+/** California's list is asked race by race: at most this many at once. */
+const SOS_AT_ONCE = 8;
 
 const NATION: ContactDistrict = { kind: 'nation', geoid: NATION_ID, state: null, name: 'United States' };
 const stateDistrict = (state: string): ContactDistrict => ({ kind: 'state', geoid: STATE_FIPS[state] ?? state, state, name: state });
@@ -75,11 +89,51 @@ function houseTitle(state: string): string {
 /** "REPUBLICAN PARTY" → "Republican Party". */
 const titleCase = (text: string) => text.toLowerCase().replace(/(^|[\s-])(\p{L})/gu, (_m, before: string, letter: string) => before + letter.toUpperCase());
 
+/** DC and the territories have no senators. */
+const NO_SENATE: ReadonlySet<string> = new Set(['DC', 'AS', 'GU', 'MP', 'PR', 'VI']);
+
+/** One of the FEC's candidates, as the pages list them, linked to their filing. */
+function fecContact(c: FecCandidate, office: PublicOffice, district: ContactDistrict, year: number): AreaContact {
+  return {
+    contactId: `fec:${c.candidate_id}`,
+    source: 'fec',
+    role: 'candidate',
+    office,
+    officeTitle: office === 'us_house' ? houseTitle(district.state ?? '') : DEFAULT_OFFICE_TITLES[office],
+    district,
+    name: fecDisplayName(c.name),
+    party: c.party_full ? titleCase(c.party_full) : null,
+    email: null,
+    contactUrl: null,
+    website: null,
+    sourceUrl: `https://www.fec.gov/data/candidate/${encodeURIComponent(c.candidate_id)}/`,
+    election: String(year),
+    incumbent: c.incumbent_challenge === 'I',
+    ...NO_PROFILE,
+  };
+}
+
 interface FecCandidate {
   readonly candidate_id: string;
   readonly name: string;
   readonly party_full?: string | null;
   readonly incumbent_challenge?: string | null;
+  /** A House candidate's district, two digits: `00` for an at-large seat. */
+  readonly district?: string | null;
+}
+
+/** `fn` over the items, at most `limit` at once, the answers in the items' order. */
+async function inTurn<T, R>(items: readonly T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array<R>(items.length);
+  let next = 0;
+  const worker = async () => {
+    while (next < items.length) {
+      const i = next++;
+      results[i] = await fn(items[i]!);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(limit, items.length) }, worker));
+  return results;
 }
 
 interface Legislator {
@@ -297,15 +351,7 @@ export class PublicContactSource implements ContactSource {
       civic: keys.civic && options.zip ? 'ok' : 'off',
       sos: state === 'CA' ? 'ok' : 'off',
     };
-    const ask = async <T>(feed: ContactFeed, found: () => Promise<T>, none: T): Promise<T> => {
-      try {
-        return await found();
-      } catch (e) {
-        this.logger.warn(`${feed} unavailable: ${e instanceof Error ? e.message : String(e)}`);
-        feeds[feed] = 'unavailable';
-        return none;
-      }
-    };
+    const ask = this.asker(feeds);
     const house = districts.filter((d) => d.kind === 'congressional');
     const legislature = districts.filter((d) => (d.kind === 'state_upper' || d.kind === 'state_lower') && d.point);
     const [lists, ballot, list] = await Promise.all([
@@ -331,13 +377,50 @@ export class PublicContactSource implements ContactSource {
     return { contacts: mergeStateList(mergeBallot(lists.flat(), placed.contacts), list.contacts, list.notUp), ballot: placed.unplaced, notUp: list.notUp, feeds };
   }
 
+  async forState(state: string, house: readonly District[], electionYear: number): Promise<AreaRecords> {
+    const keys = typeof this.keys === 'function' ? await this.keys() : this.keys;
+    const feeds: Record<ContactFeed, ContactFeedState> = { fec: 'ok', congress: 'ok', openstates: 'off', civic: 'off', sos: state === 'CA' ? 'ok' : 'off' };
+    const ask = this.asker(feeds);
+    const [lists, list] = await Promise.all([
+      Promise.all([
+        ...(NO_SENATE.has(state) ? [] : [ask('fec', () => this.fec(keys.fec, 'us_senate', stateDistrict(state), { office: 'S', state }, electionYear), [])]),
+        ask('fec', () => this.fecHouse(keys.fec, state, house, electionYear), []),
+        ask('congress', async () => (await this.congress(state, house)).flat(), []),
+      ]),
+      feeds.sos === 'ok' ? ask('sos', () => this.california(house, electionYear, { president: false }), NO_LIST) : Promise.resolve(NO_LIST),
+    ]);
+    if (feeds.sos === 'ok' && !list.current) feeds.sos = 'off';
+    return { contacts: mergeStateList(lists.flat(), list.contacts, list.notUp), ballot: [], notUp: list.notUp, feeds };
+  }
+
+  async forNation(electionYear: number): Promise<AreaRecords> {
+    const keys = typeof this.keys === 'function' ? await this.keys() : this.keys;
+    const feeds: Record<ContactFeed, ContactFeedState> = { fec: 'ok', congress: 'off', openstates: 'off', civic: 'off', sos: 'off' };
+    const contacts =
+      electionYear % 4 === 0 ? await this.asker(feeds)('fec', () => this.fec(keys.fec, 'us_president', NATION, { office: 'P' }, electionYear), []) : [];
+    return { contacts, ballot: [], notUp: [], feeds };
+  }
+
+  /** Asks one record; on a failure, logs it, marks its feed unavailable and answers `none`. */
+  private asker(feeds: Record<ContactFeed, ContactFeedState>) {
+    return async <T>(feed: ContactFeed, found: () => Promise<T>, none: T): Promise<T> => {
+      try {
+        return await found();
+      } catch (e) {
+        this.logger.warn(`${feed} unavailable: ${e instanceof Error ? e.message : String(e)}`);
+        feeds[feed] = 'unavailable';
+        return none;
+      }
+    };
+  }
+
   /**
    * California's own list of who is on the ballot, for the area's races: the statewide offices, the U.S. Senate (and
    * President in a presidential year), and its House, State Senate and Assembly districts. A seat the list does not
    * have is not on the ballot, when the list answered for the area's other races of this election; when none of them
    * answered, the list failed.
    */
-  private async california(districts: readonly District[], electionYear: number): Promise<StateList> {
+  private async california(districts: readonly District[], electionYear: number, { president = true } = {}): Promise<StateList> {
     const ca = stateDistrict('CA');
     const seat = (d: District) => Number(d.geoid.slice(2));
     type Race = { readonly race: string; readonly office: PublicOffice; readonly title: string; readonly district: ContactDistrict };
@@ -351,10 +434,10 @@ export class PublicContactSource implements ContactSource {
     const races: Race[] = [
       ...CA_STATEWIDE.map(([race, title]): Race => ({ race, office: 'statewide', title, district: ca })),
       { race: 'us-senate', office: 'us_senate', title: DEFAULT_OFFICE_TITLES.us_senate, district: ca },
-      ...(electionYear % 4 === 0 ? [{ race: 'president', office: 'us_president', title: DEFAULT_OFFICE_TITLES.us_president, district: NATION } satisfies Race] : []),
+      ...(president && electionYear % 4 === 0 ? [{ race: 'president', office: 'us_president', title: DEFAULT_OFFICE_TITLES.us_president, district: NATION } satisfies Race] : []),
       ...districts.flatMap(ofDistrict),
     ];
-    const answers = await Promise.all(races.map((r) => this.caRace(r.race)));
+    const answers = await inTurn(races, SOS_AT_ONCE, (r) => this.caRace(r.race));
     const thisElection = (a: SosAnswer) => a.up && a.year === electionYear;
     if (!answers.some(thisElection)) {
       if (answers.some((a) => a.up)) return NO_LIST;
@@ -433,25 +516,39 @@ export class PublicContactSource implements ContactSource {
     });
     return this.kept(`fec:${office}:${district.geoid}:${year}`, async () => {
       const body = await this.json<{ results?: FecCandidate[] }>(`${FEC}?${params}`);
-      return (body.results ?? []).map(
-        (c): AreaContact => ({
-          contactId: `fec:${c.candidate_id}`,
-          source: 'fec',
-          role: 'candidate',
-          office,
-          officeTitle: office === 'us_house' ? houseTitle(district.state ?? '') : DEFAULT_OFFICE_TITLES[office],
-          district,
-          name: fecDisplayName(c.name),
-          party: c.party_full ? titleCase(c.party_full) : null,
-          email: null,
-          contactUrl: null,
-          website: null,
-          sourceUrl: `https://www.fec.gov/data/candidate/${encodeURIComponent(c.candidate_id)}/`,
-          election: String(year),
-          incumbent: c.incumbent_challenge === 'I',
-          ...NO_PROFILE,
-        }),
-      );
+      return (body.results ?? []).map((c) => fecContact(c, office, district, year));
+    });
+  }
+
+  /**
+   * The FEC's House candidates for every district of a state, in one list (a page per hundred), each placed in its
+   * district by number; one whose district is not among `house` is left out.
+   */
+  private fecHouse(apiKey: string, state: string, house: readonly District[], year: number): Promise<AreaContact[]> {
+    const byNumber = new Map(house.map((d) => [houseDistrictNumber(d.geoid), d]));
+    return this.kept(`fec:us_house:${state}:all:${year}`, async () => {
+      const found: AreaContact[] = [];
+      for (let page = 1; page <= FEC_MAX_PAGES; page++) {
+        const params = new URLSearchParams({
+          office: 'H',
+          state,
+          api_key: apiKey,
+          election_year: String(year),
+          candidate_status: 'C',
+          is_active_candidate: 'true',
+          has_raised_funds: 'true',
+          sort: 'name',
+          per_page: String(FEC_PAGE),
+          page: String(page),
+        });
+        const body = await this.json<{ results?: FecCandidate[]; pagination?: { pages?: number } }>(`${FEC}?${params}`);
+        for (const c of body.results ?? []) {
+          const district = c.district && /^\d{1,2}$/.test(c.district) ? byNumber.get(Number(c.district)) : undefined;
+          if (district) found.push(fecContact(c, 'us_house', contactDistrict(district), year));
+        }
+        if (page >= (body.pagination?.pages ?? 1)) break;
+      }
+      return found;
     });
   }
 
@@ -639,31 +736,102 @@ export function ballotContacts(ballot: Ballot, state: string, districts: readonl
   return { contacts, unplaced };
 }
 
+const LOCAL_BASE = { email: null, contactUrl: null, website: null, sourceUrl: null, election: null, incumbent: false, ...NO_PROFILE } as const;
+
+/**
+ * The made-up federal people of a state, each with an ID in the shape of the real records' (an FEC candidate ID, a
+ * Bioguide ID), so that each has a page of their own (design §5.17): two senators and a Senate candidate (none in DC and
+ * the territories), and a representative who runs again against a challenger in each congressional district.
+ */
+function localFederal(state: string, house: readonly District[], electionYear: number): AreaContact[] {
+  const s = stateDistrict(state);
+  const fips = STATE_FIPS[state] ?? '00';
+  const senate = { ...LOCAL_BASE, office: 'us_senate', officeTitle: 'U.S. Senator', district: s } as const;
+  const contacts: AreaContact[] = NO_SENATE.has(state)
+    ? []
+    : [
+        { ...senate, contactId: `congress:S${fips}0001`, source: 'congress', role: 'holder', name: 'Sam Senator', party: 'Democrat' },
+        { ...senate, contactId: `congress:S${fips}0002`, source: 'congress', role: 'holder', name: 'Sky Senator', party: 'Republican' },
+        { ...senate, contactId: `fec:S0${state}00001`, source: 'fec', role: 'candidate', name: 'Sid Hopeful', party: 'Independent', election: String(electionYear) },
+      ];
+  for (const d of house) {
+    const rep = { ...LOCAL_BASE, office: 'us_house', officeTitle: houseTitle(state), district: contactDistrict(d), name: 'Hal House', party: 'Democrat' } as const;
+    const seat = d.geoid.slice(2);
+    contacts.push(
+      { ...rep, contactId: `congress:H${d.geoid}00`, source: 'congress', role: 'holder', contactUrl: 'https://house.example/contact', website: 'https://house.example' },
+      { ...rep, contactId: `fec:H0${state}${seat}001`, source: 'fec', role: 'candidate', election: String(electionYear), incumbent: true },
+      { ...rep, contactId: `fec:H0${state}${seat}002`, source: 'fec', role: 'candidate', name: 'Cass Challenger', party: 'Republican', election: String(electionYear) },
+    );
+  }
+  return contacts;
+}
+
+/** California's own list, made up: a governor's race. */
+function localGovernorRace(electionYear: number): AreaContact[] {
+  const race = {
+    ...LOCAL_BASE,
+    source: 'sos',
+    role: 'candidate',
+    sourceUrl: CA_SOS_PAGE,
+    election: String(electionYear),
+    office: 'statewide',
+    officeTitle: 'Governor',
+    district: stateDistrict('CA'),
+  } as const;
+  return [
+    { ...race, contactId: 'sos:CA:governor:gil-governor', name: 'Gil Governor', party: 'Democratic' },
+    { ...race, contactId: 'sos:CA:governor:rita-rival', name: 'Rita Rival', party: 'Republican' },
+  ];
+}
+
+const localFeeds = (): Record<ContactFeed, ContactFeedState> => Object.fromEntries(CONTACT_FEEDS.map((f) => [f, 'ok'])) as Record<ContactFeed, ContactFeedState>;
+
 /**
  * Made-up people for the emulators (`DISTRICTS=local`): two senators and a Senate candidate per state, a representative
  * who runs again against a challenger in each congressional district, and a state legislator with an email address in
  * each legislative district. With a ZIP code, the ballot too: the challenger with a website, a State Senate race, and
- * a school board contest that is in no Census district.
+ * a school board contest that is in no Census district. In a presidential year, two candidates for President.
  */
 export class LocalContactSource implements ContactSource {
+  async forState(state: string, house: readonly District[], electionYear: number): Promise<AreaRecords> {
+    const feeds = localFeeds();
+    feeds.openstates = feeds.civic = 'off';
+    if (state !== 'CA') feeds.sos = 'off';
+    const contacts = mergeStateList(localFederal(state, house, electionYear), state === 'CA' ? localGovernorRace(electionYear) : [], []);
+    return { contacts, ballot: [], notUp: [], feeds };
+  }
+
+  async forNation(electionYear: number): Promise<AreaRecords> {
+    const feeds: Record<ContactFeed, ContactFeedState> = { ...localFeeds(), congress: 'off', openstates: 'off', civic: 'off', sos: 'off' };
+    const race = {
+      ...LOCAL_BASE,
+      source: 'fec',
+      role: 'candidate',
+      office: 'us_president',
+      officeTitle: DEFAULT_OFFICE_TITLES.us_president,
+      district: NATION,
+      election: String(electionYear),
+    } as const;
+    const contacts: AreaContact[] =
+      electionYear % 4 === 0
+        ? [
+            { ...race, contactId: 'fec:P00000001', name: 'Pat President', party: 'Independent' },
+            { ...race, contactId: 'fec:P00000002', name: 'Rae Runner', party: 'Libertarian Party' },
+          ]
+        : [];
+    return { contacts, ballot: [], notUp: [], feeds };
+  }
+
   async forArea(state: string, districts: readonly District[], electionYear: number, options: { readonly zip: string | null; readonly holders: boolean }): Promise<AreaRecords> {
-    const base = { email: null, contactUrl: null, website: null, sourceUrl: null, election: null, incumbent: false, ...NO_PROFILE } as const;
-    const s = stateDistrict(state);
-    const contacts: AreaContact[] = [
-      { ...base, contactId: `congress:S1${state}`, source: 'congress', role: 'holder', office: 'us_senate', officeTitle: 'U.S. Senator', district: s, name: 'Sam Senator', party: 'Democrat' },
-      { ...base, contactId: `congress:S2${state}`, source: 'congress', role: 'holder', office: 'us_senate', officeTitle: 'U.S. Senator', district: s, name: 'Sky Senator', party: 'Republican' },
-      { ...base, contactId: `fec:S${state}`, source: 'fec', role: 'candidate', office: 'us_senate', officeTitle: 'U.S. Senator', district: s, name: 'Sid Hopeful', party: 'Independent', election: String(electionYear) },
-    ];
+    const base = LOCAL_BASE;
+    const contacts: AreaContact[] = localFederal(
+      state,
+      districts.filter((d) => d.kind === 'congressional'),
+      electionYear,
+    );
     for (const d of districts) {
       const district = contactDistrict(d);
-      if (d.kind === 'congressional') {
-        const rep = { ...base, office: 'us_house', officeTitle: 'U.S. Representative', district, name: 'Hal House', party: 'Democrat' } as const;
-        contacts.push(
-          { ...rep, contactId: `congress:H${d.geoid}`, source: 'congress', role: 'holder', contactUrl: 'https://house.example/contact', website: 'https://house.example' },
-          { ...rep, contactId: `fec:H${d.geoid}`, source: 'fec', role: 'candidate', election: String(electionYear), incumbent: true },
-          { ...rep, contactId: `fec:C${d.geoid}`, source: 'fec', role: 'candidate', name: 'Cass Challenger', party: 'Republican', election: String(electionYear) },
-        );
-      } else if (d.kind === 'state_upper' || d.kind === 'state_lower') {
+      if (d.kind === 'state_upper' || d.kind === 'state_lower') {
         const upper = d.kind === 'state_upper';
         contacts.push({
           ...base,
@@ -708,17 +876,14 @@ export class LocalContactSource implements ContactSource {
       : NO_BALLOT;
     const placed = ballotContacts(ballot, state, districts);
     const kept = options.holders ? contacts : contacts.filter((c) => c.role === 'candidate');
-    const feeds = Object.fromEntries(CONTACT_FEEDS.map((f) => [f, 'ok'])) as Record<ContactFeed, ContactFeedState>;
+    const feeds = localFeeds();
     if (!options.holders) feeds.congress = feeds.openstates = 'off';
     if (!options.zip) feeds.civic = 'off';
     // California's own list: a governor's race, and the State House race of the first district, whose member runs again.
     const listed: AreaContact[] = [];
     if (state === 'CA') {
       const race = { ...base, source: 'sos', role: 'candidate', sourceUrl: CA_SOS_PAGE, election: String(electionYear) } as const;
-      listed.push(
-        { ...race, contactId: 'sos:CA:governor:gil-governor', office: 'statewide', officeTitle: 'Governor', district: s, name: 'Gil Governor', party: 'Democratic' },
-        { ...race, contactId: 'sos:CA:governor:rita-rival', office: 'statewide', officeTitle: 'Governor', district: s, name: 'Rita Rival', party: 'Republican' },
-      );
+      listed.push(...localGovernorRace(electionYear));
       const lower = districts.find((d) => d.kind === 'state_lower');
       if (lower) {
         const district = contactDistrict(lower);

@@ -25,6 +25,9 @@
       { "source": "/legislation/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/scorecard", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/scorecard/*", "run": { "serviceId": "api", "region": "us-central1" } },
+      { "source": "/races/*", "run": { "serviceId": "api", "region": "us-central1" } },
+      { "source": "/races/*/*", "run": { "serviceId": "api", "region": "us-central1" } },
+      { "source": "/people/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "**", "destination": "/index.html" }
     ],
     "headers": [
