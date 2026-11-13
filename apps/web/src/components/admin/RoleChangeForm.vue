@@ -1,13 +1,20 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
-import { checkCanChangeRole, ROLES, roleChangeSchema, type AccountSummary, type Actor, type Role } from 'ustp-domain';
+import { ROLES, roleChangeSchema, type AccountSummary, type Actor, type Role } from 'ustp-domain';
 import { focusSoon } from '../../a11y.js';
+import { acting } from '../../acting.js';
 import { api } from '../../api.js';
 import { roleLabel } from '../../approval-text.js';
 import { attempt, dialog } from '../../dialogs.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../../forms.js';
+import { roleChangeBlocker } from '../../role-change.js';
 import { hasRole, session } from '../../session.js';
 
+/**
+ * While this tab acts as a test persona, the accountIds of every persona (design §10.4), or null until the People tab
+ * has them: the persona changes test personas' roles only.
+ */
+const props = defineProps<{ personaIds: ReadonlySet<string> | null }>();
 const emit = defineEmits<{ changed: [] }>();
 
 /** A Site Admin grants and revokes every role but System Admin (design §10.2), so it is not offered to them. */
@@ -33,17 +40,11 @@ const actor = computed<Actor>(() => ({
   authAgeSeconds: 0,
 }));
 
-/**
- * Why the API would refuse this change, mirroring its checks (design §10.2); roles are unknown for a typed ID. The
- * reason is the API's, with role names as people read them ("Membership Admin", not `membership_admin`).
- */
+/** Why the API would refuse this change, mirroring its checks (design §10.2, §10.4); roles are unknown for a typed ID. */
 const blocker = computed(() => {
   if (!subjectId.value) return null;
   const subject = { accountId: subjectId.value, roles: byId.value ? null : (picked.value?.roles ?? null) };
-  const check = checkCanChangeRole(actor.value, subject, request.change, request.role);
-  if (check.ok) return null;
-  const reason = ROLES.reduce((text, r) => text.replaceAll(r, roleLabel(r)), check.reason);
-  return `${reason[0]!.toUpperCase()}${reason.slice(1)}.`;
+  return roleChangeBlocker(actor.value, subject, request.change, request.role, acting.persona ? { personaIds: props.personaIds } : null);
 });
 
 const personLabel = (a: AccountSummary) => a.primaryEmail ?? a.displayName ?? a.accountId;
@@ -127,6 +128,10 @@ async function submit() {
         A person may hold at most two roles, an Auditor holds no other role, and a System Admin is not also a Site Admin.
         <template v-if="!systemAdmin">
           As a Site Admin you change every role but System Admin, for anyone who is not a System Admin.
+        </template>
+        <template v-if="acting.persona">
+          Acting as {{ acting.persona.label }}, you change the roles of test personas only; stop acting to change a
+          real account's roles.
         </template>
       </div>
     </q-card-section>

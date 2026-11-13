@@ -137,6 +137,8 @@ export interface TickResult {
   readonly memberEmailsSent: number;
   /** Copies of an email an admin wrote to members (design §10.12). */
   readonly broadcastEmailsSent: number;
+  /** Emails confirming a newsletter sign-up (design §10.15). */
+  readonly newsletterConfirmationsSent: number;
   /** Weekly digests queued as an email to members (design §10.14): 0, or 1 when one was due with something new. */
   readonly digestsQueued: number;
   /** Notifications emailed as they came, and digests (design §10.13). */
@@ -145,6 +147,8 @@ export interface TickResult {
   readonly membershipEmailsSent: number;
   /** Suggestions a year old, and the form's limits for days gone, deleted (design §10.9). */
   readonly suggestionsDeleted: number;
+  /** Issue polls' "has answered" marks deleted once their polls closed, and address counts of days gone (design §10.16). */
+  readonly pollMarksDeleted: number;
   /** The room's messages, done action items and finished questions past their time, and questions given up on (design §5.10). */
   readonly roomExpired: number;
   /** Public bills read again from Congress.gov, with any new roll calls, every six hours (design §5.14). */

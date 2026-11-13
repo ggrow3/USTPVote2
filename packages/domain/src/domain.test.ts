@@ -14,7 +14,7 @@ import { checkElectionDeletable, electionTransitionAuthority, isTerminal } from 
 import { isUuidV7, uuidv7, uuidv7Timestamp } from './ids.js';
 import { checkStatusChange, mayApply, type MemberStatus } from './membership/member-status.js';
 import { administersSite, checkRoleChange, conflictingRoles, MAX_ROLES_PER_ACCOUNT, ROLES } from './roles.js';
-import { ADMIN_PERSONAS, MAX_TEST_VOTERS } from './testing.js';
+import { ADMIN_PERSONAS, checkActingRoleChange, MAX_TEST_VOTERS } from './testing.js';
 
 describe('uuidv7', () => {
   it('produces RFC 9562 version 7 IDs that embed the timestamp', () => {
@@ -169,8 +169,17 @@ describe('roles', () => {
     expect(administersSite([])).toBe(false);
   });
 
-  it('has a test persona for every role but System Admin and Site Admin', () => {
-    expect(ADMIN_PERSONAS.map((p) => p.kind)).toEqual(ROLES.filter((r) => r !== 'system_admin' && r !== 'site_admin'));
+  it('has a test persona for every role but System Admin, in role order', () => {
+    expect(ADMIN_PERSONAS.map((p) => p.kind)).toEqual(ROLES.filter((r) => r !== 'system_admin'));
+    expect(ADMIN_PERSONAS.find((p) => p.kind === 'site_admin')?.label).toBe('Test Site Admin');
+  });
+
+  it('lets a System Admin acting as a test persona change the roles of test personas only', () => {
+    expect(checkActingRoleChange(false, false).ok).toBe(true);
+    expect(checkActingRoleChange(true, true).ok).toBe(true);
+    // Not known yet (the web app before it has the personas): the API decides.
+    expect(checkActingRoleChange(true, null).ok).toBe(true);
+    expect(checkActingRoleChange(true, false)).toMatchObject({ ok: false, refusal: 'forbidden', reason: /test personas only/ });
   });
 });
 

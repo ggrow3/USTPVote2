@@ -8,12 +8,12 @@ import { targetIcon } from './comms-text.js';
 
 /**
  * Share buttons (design §10.9): each is a plain link to a site's own composer with the post filled in, opened in a new
- * tab; the person sharing presses Post there. Nothing from those sites loads here. Each press on a news post or a share
- * kit post is counted, nothing more; elsewhere (the race pages, §5.17) nothing is.
+ * tab; the person sharing presses Post there. Nothing from those sites loads here. Each press on a news post, a share
+ * kit post, an event or an issue poll is counted, nothing more; elsewhere (results, the race pages, §5.17) nothing is.
  */
 const props = defineProps<{
   item: Shareable;
-  /** What the presses are counted against; uncounted without it (the public bills and scorecard, design §5.14; the race pages and people's pages, §5.17). */
+  /** What the presses are counted against; uncounted without it (a course certificate, §10.8; results, §10.16; the public bills and scorecard, design §5.14; the race pages and people's pages, §5.17). */
   countAs?: ShareItem;
   /** Show under each button what the site will make of the post (too long, link only): for the share kit. */
   fit?: boolean;

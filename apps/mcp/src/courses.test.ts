@@ -70,8 +70,9 @@ const MAP: CourseMap = {
       lessonCount: 3,
       prerequisites: [],
       position: { row: 0, column: 0 },
+      openToGuests: true,
     },
-    { courseId: 'allies', title: 'Allies', summary: null, published: false, lessonCount: 0, prerequisites: ['transhumanism'], position: { row: 1, column: 0 } },
+    { courseId: 'allies', title: 'Allies', summary: null, published: false, lessonCount: 0, prerequisites: ['transhumanism'], position: { row: 1, column: 0 }, openToGuests: false },
   ],
 };
 

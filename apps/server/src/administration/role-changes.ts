@@ -1,6 +1,7 @@
 import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { Transaction } from 'firebase-admin/firestore';
 import {
+  checkActingRoleChange,
   checkCanChangeRole,
   checkRoleChange,
   Collections,
@@ -36,8 +37,9 @@ interface ChangedBy {
 /**
  * Role changes (design §10.2): one System Admin, or a Site Admin for every role but System Admin and on anyone not a
  * System Admin, grants or revokes a role and it takes effect at once, ledgered as `role.granted` / `role.revoked` with
- * that admin as actor. Also the handler for `role.grant` / `role.revoke`
- * requests made while role changes were two-person, so those can still be decided until they expire.
+ * that admin as actor. A System Admin acting as the Test Site Admin changes test personas' roles only (design §10.4).
+ * Also the handler for `role.grant` / `role.revoke` requests made while role changes were two-person, so those can still
+ * be decided until they expire.
  */
 @Injectable()
 export class RoleChanges implements ApprovalHandler {
@@ -55,6 +57,11 @@ export class RoleChanges implements ApprovalHandler {
     assertCheck(checkCanChangeRole(actor, { accountId: input.accountId, roles: null }, input.change, input.role), ForbiddenException);
     const payload: RoleChangePayload = { accountId: input.accountId, role: input.role, change: input.change };
     return this.firebase.db.runTransaction(async (tx) => {
+      if (ctx.operator) {
+        // Acting as a test persona: a real account's roles change under a real admin's name (design §10.4).
+        const persona = await tx.get(this.firebase.db.collection(Collections.testingPersonas).doc(payload.accountId));
+        assertCheck(checkActingRoleChange(true, persona.exists));
+      }
       const held = await this.assertAllowed(tx, payload, actor);
       await this.ledger.record(tx, [
         {

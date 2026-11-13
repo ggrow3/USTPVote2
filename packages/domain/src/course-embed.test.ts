@@ -72,8 +72,8 @@ describe('the course embed’s view of a course', () => {
   it('lists the published courses of the map, each opening in the frame', () => {
     const map = {
       courses: [
-        { courseId: 'a', title: 'A', summary: 'About A', published: true, lessonCount: 3, prerequisites: [], position: null },
-        { courseId: 'b', title: 'B', summary: null, published: false, lessonCount: 0, prerequisites: [], position: null },
+        { courseId: 'a', title: 'A', summary: 'About A', published: true, lessonCount: 3, prerequisites: [], position: null, openToGuests: true },
+        { courseId: 'b', title: 'B', summary: null, published: false, lessonCount: 0, prerequisites: [], position: null, openToGuests: false },
       ],
     };
     expect(coursesEmbed(map, SITE)).toEqual({

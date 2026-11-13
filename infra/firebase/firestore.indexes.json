@@ -465,6 +465,8 @@
     { "collectionGroup": "mail_suppressions", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
     { "collectionGroup": "mail_requests", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
     { "collectionGroup": "broadcast_recipients", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "newsletter_subscribers", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
+    { "collectionGroup": "newsletter_limits", "fieldPath": "senders", "indexes": [] },
     { "collectionGroup": "race_records", "fieldPath": "contacts", "indexes": [] },
     { "collectionGroup": "race_records", "fieldPath": "notUp", "indexes": [] },
     { "collectionGroup": "page_hits", "fieldPath": "days", "indexes": [] },

@@ -4,15 +4,18 @@ import { session } from '../session.js';
 
 /**
  * The links between the public communications pages (design §10.9, §10.17): News, Events, Partners, the Press page,
- * the share kit (shown to Active members, the only people it is for) and the suggestions form.
+ * issue polls (§10.16), the share kit (shown to Active members, the only people it is for), the suggestions form and
+ * the newsletter's sign-up (design §10.15), which is for people who are not members.
  */
 const links = computed(() => [
   { to: '/news', label: 'News', icon: 'article' },
   { to: '/events', label: 'Events', icon: 'event_available' },
   { to: '/partners', label: 'Partners', icon: 'handshake' },
   { to: '/press', label: 'Press', icon: 'mic' },
+  { to: '/polls', label: 'Polls', icon: 'poll' },
   ...(session.me?.member?.status === 'active' ? [{ to: '/share', label: 'Share kit', icon: 'share' }] : []),
   { to: '/suggest', label: 'Send a suggestion', icon: 'lightbulb' },
+  ...(session.me?.member?.status === 'active' ? [] : [{ to: '/newsletter', label: 'Newsletter', icon: 'mail' }]),
 ]);
 </script>
 

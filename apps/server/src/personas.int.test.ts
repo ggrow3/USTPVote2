@@ -40,10 +40,11 @@ describe('test personas', () => {
       ['Test Membership Admin', 'membership_admin', ['membership_admin'], null, sa1.accountId],
       ['Test Election Admin', 'election_admin', ['election_admin'], null, sa1.accountId],
       ['Test Auditor', 'auditor', ['auditor'], null, sa1.accountId],
+      ['Test Site Admin', 'site_admin', ['site_admin'], null, sa1.accountId],
       ['Test Course Admin', 'course_admin', ['course_admin'], null, sa1.accountId],
       ['Test Communications Admin', 'communications_admin', ['communications_admin'], null, sa1.accountId],
     ]);
-    expect((await api.call('POST', '/v1/testing/personas', sa2, {})).body).toHaveLength(5);
+    expect((await api.call('POST', '/v1/testing/personas', sa2, {})).body).toHaveLength(6);
     expect((await api.call('GET', '/v1/testing/personas', sa2)).body).toEqual(first.body);
 
     const grants = await api.firebase.db.collection('audit_events').where('type', '==', 'role.granted').get();
@@ -52,6 +53,7 @@ describe('test personas', () => {
       { role: 'membership_admin', reason: 'test persona' },
       { role: 'election_admin', reason: 'test persona' },
       { role: 'auditor', reason: 'test persona' },
+      { role: 'site_admin', reason: 'test persona' },
       { role: 'course_admin', reason: 'test persona' },
       { role: 'communications_admin', reason: 'test persona' },
     ]);
@@ -67,15 +69,92 @@ describe('test personas', () => {
     expect((await api.call('GET', '/v1/admin/courses/transhumanism', sa1, undefined, comms)).status).toBe(403);
   });
 
-  it('adds an admin persona for a role that had none when the others were made', async () => {
+  it.each(['course_admin', 'site_admin'] as const)('adds the %s persona to a deployment whose other personas were made before it', async (kind) => {
     const before = (await api.call('POST', '/v1/testing/personas', sa1, {})).body as PersonaSummary[];
-    const course = before.find((p) => p.kind === 'course_admin')!;
-    await api.firebase.db.collection('testing_personas').doc(course.accountId).delete();
+    const added = before.find((p) => p.kind === kind)!;
+    // As a deployment whose personas were made before this kind existed: no persona record, account or role for it.
+    const db = api.firebase.db;
+    await Promise.all([
+      db.collection('testing_personas').doc(added.accountId).delete(),
+      db.collection('accounts').doc(added.accountId).delete(),
+      db.collection('role_assignments').doc(`${added.accountId}_${kind}`).delete(),
+    ]);
+    const older = (await api.call('GET', '/v1/testing/personas', sa1)).body as PersonaSummary[];
+    expect(older.map((p) => p.kind)).not.toContain(kind);
 
     const after = (await api.call('POST', '/v1/testing/personas', sa1, {})).body as PersonaSummary[];
     expect(after.map((p) => p.kind)).toEqual(before.map((p) => p.kind));
-    expect(after.find((p) => p.kind === 'course_admin')!.accountId).not.toBe(course.accountId);
-    expect(after.filter((p) => p.kind !== 'course_admin')).toEqual(before.filter((p) => p.kind !== 'course_admin'));
+    const made = after.find((p) => p.kind === kind)!;
+    expect(made).toMatchObject({ roles: [kind], createdBy: sa1.accountId });
+    expect(made.accountId).not.toBe(added.accountId);
+    expect(after.filter((p) => p.kind !== kind)).toEqual(older);
+  });
+
+  it("lets a System Admin act as the Test Site Admin, with a Site Admin's tools and nothing more", async () => {
+    const personas = (await api.call('POST', '/v1/testing/personas', sa1, {})).body as PersonaSummary[];
+    const siteAdmin = as(idOf(personas, 'Test Site Admin'));
+    const call = (method: 'GET' | 'POST', path: string, body?: unknown) => api.call(method, path, sa1, body, siteAdmin);
+
+    expect((await call('GET', '/v1/me')).body).toMatchObject({
+      account: { displayName: 'Test Site Admin', primaryEmail: null },
+      roles: ['site_admin'],
+      testing: { enabled: true, operator: sa1.accountId },
+    });
+    // A Site Admin's tools.
+    for (const path of ['/v1/admin/accounts', '/v1/admin/navigation', '/v1/admin/security/sign-ins']) {
+      expect((await call('GET', path)).status, path).toBe(200);
+    }
+    // Nothing more: no testing tools, sign-in settings or API keys, no account or test voter deleted.
+    for (const path of ['/v1/testing/personas', '/v1/admin/sign-in-methods', '/v1/admin/api-keys']) {
+      expect((await call('GET', path)).status, path).toBe(403);
+    }
+    expect((await call('POST', '/v1/testing/personas', { voters: 1 })).status).toBe(403);
+    expect((await call('POST', '/v1/testing/demo-elections', {})).status).toBe(403);
+    const pat = await api.member('pat@example.test');
+    expect(await call('POST', `/v1/admin/accounts/${pat.accountId}/delete`, { reason: 'test' })).toMatchObject({
+      status: 403,
+      body: { detail: 'requires role system_admin' },
+    });
+    expect((await api.firebase.db.collection('accounts').doc(pat.accountId).get()).exists).toBe(true);
+  });
+
+  it('changes the roles of test personas only while acting as the Test Site Admin, ledgered under the persona', async () => {
+    const personas = (await api.call('POST', '/v1/testing/personas', sa1, {})).body as PersonaSummary[];
+    const siteAdminId = idOf(personas, 'Test Site Admin');
+    const course = idOf(personas, 'Test Course Admin');
+    const change = (accountId: string, role: string, change: 'grant' | 'revoke' = 'grant') =>
+      api.call('POST', '/v1/admin/roles', sa1, { accountId, role, change, reason: 'rehearsal' }, as(siteAdminId));
+    const rolesOf = async (accountId: string) =>
+      ((await api.call('GET', '/v1/testing/personas', sa1)).body as PersonaSummary[]).find((p) => p.accountId === accountId)?.roles;
+
+    // On another persona: at once, ledgered with the persona as actor, as a real Site Admin's change would be.
+    expect(await change(course, 'communications_admin')).toMatchObject({ status: 201, body: { roles: ['communications_admin', 'course_admin'] } });
+    const granted = await api.firebase.db.collection('audit_events').where('type', '==', 'role.granted').where('subject', '==', course).get();
+    expect(granted.docs.map((d) => [d.data().actor, d.data().payload])).toContainEqual([
+      siteAdminId,
+      { role: 'communications_admin', reason: 'rehearsal' },
+    ]);
+    // The same rules as for anyone: at most two roles, never System Admin, never its own account.
+    expect(await change(course, 'membership_admin')).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/at most 2 roles/) } });
+    expect(await change(course, 'system_admin')).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/only by a system_admin/) } });
+    expect((await change(siteAdminId, 'course_admin')).status).toBe(403);
+    expect((await change(course, 'communications_admin', 'revoke')).status).toBe(201);
+    expect(await rolesOf(course)).toEqual(['course_admin']);
+
+    // Never on a real account, a System Admin's or anyone else's, nor an ID that is no account.
+    const pat = await api.member('pat@example.test');
+    for (const accountId of [pat.accountId, sa2.accountId, '01a00000-0000-7000-8000-000000000000']) {
+      expect(await change(accountId, 'course_admin'), accountId).toMatchObject({
+        status: 403,
+        body: { detail: expect.stringMatching(/test personas only/) },
+      });
+    }
+    expect((await change(sa2.accountId, 'system_admin', 'revoke')).status).toBe(403);
+    expect((await api.call('GET', '/v1/me', pat)).body.roles).toEqual([]);
+    expect((await api.call('GET', '/v1/me', sa2)).body.roles).toEqual(['system_admin']);
+    // The System Admin, as themselves, still changes real accounts' roles under their own name.
+    const real = { accountId: pat.accountId, role: 'course_admin', change: 'grant', reason: 'real' };
+    expect((await api.call('POST', '/v1/admin/roles', sa1, real)).status).toBe(201);
   });
 
   it('adds numbered voters as Active members once bylaws are published', async () => {

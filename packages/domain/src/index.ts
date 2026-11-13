@@ -16,7 +16,25 @@ export {
   saveFuturistProfileSchema,
   courseMetadataSchema,
   submitCourseQuizSchema,
+  courseGuestsSchema,
+  checkCourseQuizSchema,
+  claimCourseProgressSchema,
+  CLAIM_LIMIT,
+  isOpenToGuests,
+  courseOpeningProblem,
 } from './course.js';
+export {
+  CERTIFICATE_ISSUER,
+  CERTIFICATE_NAME_MAX,
+  certificateDate,
+  certificateHolderSchema,
+  certificateNameProblem,
+  certificatePagePath,
+  certificateSettingsSchema,
+  linkedInAddToProfileUrl,
+  shownHolderName,
+} from './course-certificates.js';
+export type { AddToProfile, CertificateHolderInput, CertificateSettings, CertificateSettingsInput, CertificateSettingsRecord } from './course-certificates.js';
 export type {
   CourseStatus,
   FuturistCategory,
@@ -40,6 +58,11 @@ export type {
   SaveFuturistProfileInput,
   CourseMetadataInput,
   SubmitCourseQuizInput,
+  CourseGuestsInput,
+  CheckCourseQuizInput,
+  ClaimCourseProgressInput,
+  GuestQuizResult,
+  LearnerCertificate,
 } from './course.js';
 export {
   VIDEO_AREAS,
@@ -128,6 +151,7 @@ export { courseEmbed, courseEmbedPath, courseEmbedSnippet, coursesEmbed, EMBED_H
 export type { CourseEmbed, CoursesEmbed, Embed, EmbedLesson, EmbedProfile, EmbedQuestion, EmbedSite, EmbedVideo } from './course-embed.js';
 export * from './membership/index.js';
 export * from './teams/index.js';
+export * from './referrals/index.js';
 export * from './bills/index.js';
 export { voteSchema, NO_VOTES, changeVote } from './votes.js';
 export type { VoteValue, VoteTally } from './votes.js';
@@ -167,7 +191,15 @@ export type {
   NamedAmendment,
   ProposalOutcome,
 } from './amendments.js';
-export { ACT_AS_HEADER, ADMIN_PERSONAS, MAX_TEST_VOTERS, PERSONA_KINDS, TEST_VOTER_DELETION_REASON, voterPersonaLabel } from './testing.js';
+export {
+  ACT_AS_HEADER,
+  ADMIN_PERSONAS,
+  checkActingRoleChange,
+  MAX_TEST_VOTERS,
+  PERSONA_KINDS,
+  TEST_VOTER_DELETION_REASON,
+  voterPersonaLabel,
+} from './testing.js';
 export { BUILD_COMMIT_HEADER, buildCommit } from './build.js';
 export type { HealthStatus } from './build.js';
 export type { PersonaKind, PersonaRecord, PersonaSummary } from './testing.js';

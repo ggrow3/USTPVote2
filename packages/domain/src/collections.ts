@@ -115,6 +115,8 @@ export const Collections = {
   courseProgress: 'course_progress',
   courseAttempts: 'course_attempts',
   courseCertificates: 'course_certificates',
+  /** `certificate_settings/current`: what System Admins set about certificates, the party's LinkedIn organization. */
+  certificateSettings: 'certificate_settings',
   /** `course_images/{sha256}`: portraits uploaded by Course Administrators, as stored after re-encoding. */
   courseImages: 'course_images',
   /** `course_seeds/{seed}`: which starter courses have been added, so a course deleted later is not added again. */
@@ -151,6 +153,8 @@ export const Collections = {
   pageHits: 'page_hits',
   /** `page_visits/{visitId}`: a signed-in person's visit to a page, naming their account; expires (design §10.7). */
   pageVisits: 'page_visits',
+  /** `visit_sources/{day}_{hash}`: arrivals per UTC day by where they came from and their campaign tags; nothing about who (§10.7). */
+  visitSources: 'visit_sources',
   // communications (design §10.9)
   /** `news_posts/{postId}`: news, statements and press releases, drafts too. */
   newsPosts: 'news_posts',
@@ -180,6 +184,17 @@ export const Collections = {
   discordPosts: 'discord_posts',
   /** `discord_outbox/{id}`: the emulators' stand-in for Discord, which records each post instead of sending it. */
   discordOutbox: 'discord_outbox',
+  // issue polls (design §10.16): non-binding, apart from elections, never ledgered
+  /** `polls/{pollId}`: the public issue polls Communications Admins write, drafts too. */
+  polls: 'polls',
+  /** `poll_tallies/{pollId}_{shard}`: each poll's counts, split over a few documents so many can vote at once. */
+  pollTallies: 'poll_tallies',
+  /** `poll_marks/{pollId}_{a|b}{hash}`: that an account or a browser has answered a poll, never what; deleted at the close. */
+  pollMarks: 'poll_marks',
+  /** `poll_limits/{YYYY-MM-DD}`: each day's salt for counting voters' addresses; deleted the day after next. */
+  pollLimits: 'poll_limits',
+  /** `poll_address_counts/{day}_{pollId}_{hash}`: answers from one address to one poll that day; deleted the day after next. */
+  pollAddressCounts: 'poll_address_counts',
   /** `events/{eventId}`: the party's public events, drafts too (design §10.17). */
   events: 'events',
   /** `partners/{partnerId}`: partner groups, listed in public only with their consent (design §10.17). */
@@ -212,6 +227,15 @@ export const Collections = {
   broadcastRecipients: 'broadcast_recipients',
   /** `mail_digest/weekly`: when the weekly digest is next due (design §10.14). */
   mailDigest: 'mail_digest',
+  /** `newsletter_subscribers/{subscriberId}`: an address on the newsletter's list, or waiting to be confirmed (§10.15). */
+  newsletterSubscribers: 'newsletter_subscribers',
+  /** `newsletter_limits/{YYYY-MM-DD}`: each day's salt and counts for the sign-up form's limits (§10.15). */
+  newsletterLimits: 'newsletter_limits',
+  // referrals (design §5.18)
+  /** `referral_codes/{code}`: whose referral link a code is. */
+  referralCodes: 'referral_codes',
+  /** `referral_links/{accountId}`: a member's referral code. */
+  referralLinks: 'referral_links',
   // testing mode (design §10.4)
   testingPersonas: 'testing_personas',
 } as const;

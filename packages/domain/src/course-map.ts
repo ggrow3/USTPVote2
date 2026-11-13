@@ -282,6 +282,8 @@ export interface CourseMapEntry {
   readonly lessonCount: number;
   readonly prerequisites: readonly string[];
   readonly position: CoursePosition | null;
+  /** Its quizzes can be taken without signing in (`isOpenToGuests`). */
+  readonly openToGuests: boolean;
 }
 
 export const LEARNER_COURSE_STATES = ['not_started', 'in_progress', 'passed', 'locked'] as const;

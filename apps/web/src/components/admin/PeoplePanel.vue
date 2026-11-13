@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import { useQuasar } from 'quasar';
 import { computed, onMounted, ref } from 'vue';
-import { ROLES, type AccountSummary, type Role } from 'ustp-domain';
+import { ROLES, type AccountSummary, type PersonaSummary, type Role } from 'ustp-domain';
 import { announce } from '../../a11y.js';
+import { acting } from '../../acting.js';
 import { api } from '../../api.js';
 import { roleLabel } from '../../approval-text.js';
 import { askReason, attempt } from '../../dialogs.js';
@@ -64,8 +65,30 @@ const nameOf = (a: AccountSummary) => a.displayName ?? a.primaryEmail ?? a.accou
  */
 const deletable = (a: AccountSummary) => systemAdmin.value && a.onDeletionList && a.accountId !== me.value;
 
-/** Not your own; a Site Admin leaves a System Admin's roles to System Admins. */
-const changeable = (a: AccountSummary) => a.accountId !== me.value && (systemAdmin.value || !a.roles.includes('system_admin'));
+/**
+ * While this tab acts as a test persona, the accountIds of every persona, loaded as yourself (design §10.4): acting as
+ * the Test Site Admin you change test personas' roles only. Null when not acting, or until loaded.
+ */
+const personaIds = ref<ReadonlySet<string> | null>(null);
+
+async function loadPersonas() {
+  if (!acting.persona) return;
+  try {
+    const personas = await api<PersonaSummary[]>('GET', '/v1/testing/personas', undefined, { actAs: null });
+    personaIds.value = new Set(personas.map((p) => p.accountId));
+  } catch {
+    personaIds.value = null; // every row keeps "Change roles", and the API refuses a real account's with its reason
+  }
+}
+
+/**
+ * Not your own; a Site Admin leaves a System Admin's roles to System Admins; acting as a test persona, test personas
+ * only.
+ */
+const changeable = (a: AccountSummary) =>
+  a.accountId !== me.value &&
+  (systemAdmin.value || !a.roles.includes('system_admin')) &&
+  (!acting.persona || !personaIds.value || personaIds.value.has(a.accountId));
 
 /** One System Admin's word is enough, so the dialog says plainly what is about to happen before it does. */
 async function remove(a: AccountSummary) {
@@ -94,6 +117,7 @@ async function loadOffices() {
 onMounted(() => {
   void load();
   void loadOffices();
+  void loadPersonas();
 });
 </script>
 
@@ -182,6 +206,6 @@ onMounted(() => {
       </tbody>
     </q-markup-table>
     <q-btn v-if="more" flat no-caps label="Load more" @click="load(false)" />
-    <RoleChangeForm ref="form" @changed="load()" />
+    <RoleChangeForm ref="form" :persona-ids="personaIds" @changed="load()" />
   </div>
 </template>

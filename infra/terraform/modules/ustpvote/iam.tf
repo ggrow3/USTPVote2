@@ -44,6 +44,23 @@ resource "google_project_iam_member" "api_auth_viewer" {
   member  = google_service_account.api.member
 }
 
+# Deleting an account on the deployment's deletion list deletes its logins from Identity Platform first (design §4).
+# roles/firebaseauth.admin would also let it create and change users and read the password hash config.
+resource "google_project_iam_custom_role" "login_deleter" {
+  project     = var.project_id
+  role_id     = "ustpLoginDeleter"
+  title       = "USTPVote login deleter"
+  description = "Delete Identity Platform users; the api deletes only the logins of an account it deletes (design §4)."
+  permissions = ["firebaseauth.users.delete"]
+  depends_on  = [google_project_service.this]
+}
+
+resource "google_project_iam_member" "api_login_deleter" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.login_deleter.name
+  member  = google_service_account.api.member
+}
+
 # Tie-break seeds (design §6.1): the api creates one secret per scheduling attempt and adds the seed as its version.
 # No predefined role holds only secrets.create; it creates an empty secret and reveals nothing.
 resource "google_project_iam_custom_role" "secret_creator" {

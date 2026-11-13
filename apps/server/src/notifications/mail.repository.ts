@@ -165,6 +165,16 @@ export class MailRepository {
     return snap.docs.map((d) => withoutExpiry(d.data() as Stored<MailSuppressionRecord>));
   }
 
+  /** Of these addresses (`mailAddressKey`), the ones not to mail. */
+  async suppressedAmong(addressKeys: readonly string[]): Promise<Set<string>> {
+    const found = new Set<string>();
+    for (let i = 0; i < addressKeys.length; i += 300) {
+      const snaps = await this.firebase.db.getAll(...addressKeys.slice(i, i + 300).map((key) => this.suppressionRef(key)));
+      for (const snap of snaps) if (snap.exists) found.add(snap.id);
+    }
+    return found;
+  }
+
   /** Takes an address off the app's list of addresses not to mail (its owner asked to try it again). */
   async deleteSuppression(addressKey: string): Promise<void> {
     await this.suppressionRef(addressKey).delete();

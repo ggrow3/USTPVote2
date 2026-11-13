@@ -1,6 +1,6 @@
 import { Controller, Get, Inject, NotFoundException, Query, Req, Res } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import { cardAlt, crawlAllowed, headWithPreview, LINK_CARD_ROUTE, PREVIEW_PAGES, PREVIEW_PARTY, siteNameOf } from 'ustp-domain';
+import { cardAlt, crawlAllowed, headWithPreview, LINK_CARD_ROUTE, matchPreviewPage, PREVIEW_PAGES, PREVIEW_PARTY, siteNameOf, UNLISTED_PREVIEW_PAGES } from 'ustp-domain';
 import { Public } from '../auth/decorators.js';
 import { requestOrigin } from '../common/request-origin.js';
 import { CONFIG, type ServerConfig } from '../config.js';
@@ -45,7 +45,10 @@ export class LinkPreviewPagesController {
     const [html, found] = await Promise.all([this.index.get(), this.previews.find(path)]);
     // Never kept by Hosting's CDN or a browser: a release changes the scripts index.html names.
     void reply.headers({ ...PAGE_HEADERS, 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-cache' });
-    const listed = (found?.preview.listed ?? true) && crawlAllowed({ environment: this.config.deploymentEnvironment, webOrigin: this.config.webOrigin }, requestOrigin(req));
+    // A page of a kind never listed stays out with nothing found there too, as the web app keeps it.
+    const page = matchPreviewPage(path)?.page;
+    const unlisted = !!page && UNLISTED_PREVIEW_PAGES.includes(page);
+    const listed = !unlisted && (found?.preview.listed ?? true) && crawlAllowed({ environment: this.config.deploymentEnvironment, webOrigin: this.config.webOrigin }, requestOrigin(req));
     // Every api response says noindex (create-app.ts); a page search engines may list must not.
     if (listed) void reply.removeHeader('X-Robots-Tag');
     if (!found) return html;

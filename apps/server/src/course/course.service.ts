@@ -1,29 +1,41 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import type { DocumentData } from 'firebase-admin/firestore';
 import {
+  certificateNameProblem,
   Collections,
   courseBoardProblem,
   courseHidingProblem,
   courseIdFromTitle,
   courseMapOrder,
+  courseOpeningProblem,
   coursePlacementProblem,
   coursesPackage,
   courseThreadId,
   draftCoursePackage,
   isCourseId,
   isCourseImageId,
+  isOpenToGuests,
+  isUuidV7,
   learnerCourseState,
   missingPrerequisites,
   PASS_PERCENT,
   placementOf,
   portraitProblem,
   publishedCoursePackage,
+  shownHolderName,
   uploadedVideoIds,
   uuidv7,
   withBoardChanges,
+  type CertificateHolderInput,
+  type CertificateSettings,
   type CertificateVerification,
+  type CheckCourseQuizInput,
+  type ClaimCourseProgressInput,
+  type CourseGuestsInput,
+  type GuestQuizResult,
+  type LearnerCertificate,
   type CourseLink,
   type CourseMap,
   type CourseMapEntry,
@@ -51,9 +63,11 @@ import {
 } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 import { VideosService } from '../videos/videos.js';
+import { CertificateSettingsService } from './certificate-settings.js';
 import { CONTENT_SEEDS, SEED_SOURCE, SEEDED_AT, type SeededCourse } from './content-seed.js';
 import { COMBINE_SEED, COMBINE_SOURCE, combinedCourses } from './course-combine-seed.js';
 import { DRAFT_SUMMARY, FIRST_COURSE_POSITION, MAP_SEED, mapCourses } from './course-map-seed.js';
+import { OPEN_SEED, OPEN_SOURCE, openCourses } from './course-open-seed.js';
 import { normalizePortrait } from './portrait.js';
 import { transhumanismCourse, transhumanismLessons, transhumanismProfiles } from './transhumanism-seed.js';
 
@@ -78,37 +92,57 @@ export interface UploadedCourseImage {
   readonly height: number;
 }
 
+/** What claiming a guest's quizzes did: how many lessons it passed, and the learner's progress and any certificate. */
+export interface ClaimResult {
+  readonly claimed: number;
+  readonly progress: CourseProgressRecord;
+  readonly certificate: Pick<CourseCertificateRecord, 'certificateId' | 'issuedAt' | 'courseVersion'> | null;
+}
+
+/** A quiz marked: its score, whether it passed, and how each answer went. */
+interface MarkedQuiz {
+  readonly lessonId: string;
+  readonly score: number;
+  readonly passed: boolean;
+  readonly feedback: readonly CourseQuizFeedback[];
+}
+
+const NO_CERTIFICATE: CertificateVerification = { valid: false, courseId: null, courseTitle: null, courseVersion: null, issuedAt: null, holderName: null };
+
 /** First-party course storage. Drafts are editable; public learning always reads a frozen published snapshot. */
 @Injectable()
 export class CourseService {
   constructor(
     private readonly firebase: Firebase,
     private readonly videos: VideosService,
+    private readonly certificateSettings: CertificateSettingsService,
   ) {}
 
   async catalog(courseId: string): Promise<CourseCatalog> {
     const { course, version } = await this.publishedCourse(courseId);
-    return this.catalogOf(version, await this.links(course.prerequisites));
+    return this.catalogOf(version, await this.links(course.prerequisites), isOpenToGuests(course));
   }
 
-  private catalogOf(version: CourseVersionRecord, prerequisites: readonly CourseLink[]): CourseCatalog {
+  private catalogOf(version: CourseVersionRecord, prerequisites: readonly CourseLink[], openToGuests: boolean): CourseCatalog {
     return {
       course: { courseId: version.courseId, title: version.title, summary: version.summary, publishedVersion: version.version },
       lessons: version.lessons.map(publicLesson),
       profiles: version.profiles.map(withPortraitImage),
       prerequisites,
+      openToGuests,
     };
   }
 
   async learner(courseId: string, accountId: string): Promise<LearnerCourseView> {
     const db = this.firebase.db;
     const { course, version: currentVersion } = await this.publishedCourse(courseId);
-    const [progress, certificate, thread, prerequisites, passed] = await Promise.all([
+    const [progress, certificate, thread, prerequisites, passed, settings] = await Promise.all([
       db.collection(Collections.courseProgress).doc(progressId(courseId, accountId)).get(),
       db.collection(Collections.courseCertificates).doc(progressId(courseId, accountId)).get(),
       db.collection(Collections.courseThreads).doc(courseThreadId(courseId, accountId)).get(),
       this.links(course.prerequisites),
       this.passedCourses(accountId, course.prerequisites),
+      this.certificateSettings.current(),
     ]);
     const savedProgress = progress.data() as CourseProgressRecord | undefined;
     const savedCertificate = certificate.data() as CourseCertificateRecord | undefined;
@@ -116,11 +150,11 @@ export class CourseService {
     // immutable version they started, while people who have already finished see the current catalogue and can still
     // download their earlier credential.
     const learningVersion = savedProgress && savedProgress.version !== currentVersion.version ? await this.version(courseId, savedProgress.version) : currentVersion;
-    const catalog = this.catalogOf(learningVersion, prerequisites);
+    const catalog = this.catalogOf(learningVersion, prerequisites, isOpenToGuests(course));
     return {
       ...catalog,
       progress: savedProgress?.version === learningVersion.version ? savedProgress : null,
-      certificate: savedCertificate && savedCertificate.revokedAt === null ? pickCertificate(savedCertificate) : null,
+      certificate: savedCertificate && savedCertificate.revokedAt === null ? learnerCertificate(savedCertificate, settings) : null,
       missingPrerequisites: prerequisites.filter((link) => !passed.has(link.courseId)),
       messaging: (thread.data() as CourseThreadRecord | undefined)?.messaging ?? false,
     };
@@ -146,6 +180,7 @@ export class CourseService {
           lessonCount: listed?.lessons ?? 0,
           prerequisites: record.prerequisites,
           position: record.position,
+          openToGuests: !!listed && isOpenToGuests(record),
         };
       });
     if (!accountId) return { courses };
@@ -207,6 +242,7 @@ export class CourseService {
         prerequisites: [],
         position: null,
         hidden: false,
+        openToGuests: false,
         createdAt: now,
         updatedAt: now,
         updatedBy: accountId,
@@ -303,6 +339,55 @@ export class CourseService {
       tx.update(db.collection(Collections.courses).doc(courseId), change);
       return { ...course, ...change };
     });
+  }
+
+  /**
+   * Opens a course's quizzes to visitors not signed in, or closes them, at once (design §10.8, "Open without sign-in").
+   * Opening is refused (409, in words) while a course comes before it. A draft may be opened; it opens once published.
+   */
+  async setOpenToGuests(courseId: string, input: CourseGuestsInput, accountId: string): Promise<CourseRecord> {
+    await this.ensureSeeded();
+    const db = this.firebase.db;
+    const ref = db.collection(Collections.courses).doc(courseId);
+    return db.runTransaction(async (tx) => {
+      const snap = await tx.get(ref);
+      if (!snap.exists) throw new NotFoundException('course not found');
+      const course = withPlacement(snap.data() as CourseRecord);
+      if (course.openToGuests === input.openToGuests) return course;
+      const problem = courseOpeningProblem(course, input.openToGuests);
+      if (problem) throw new ConflictException(problem);
+      const change = { openToGuests: input.openToGuests, openChangedAt: new Date().toISOString(), openChangedBy: accountId };
+      tx.update(ref, change);
+      return { ...course, ...change };
+    });
+  }
+
+  /**
+   * Marks a quiz taken without signing in (design §10.8), against the version the page shows, and keeps nothing: the
+   * visitor's browser keeps what they passed, to claim once they sign in. 403 unless the course is open to guests, 409
+   * when the course has a newer version than the page.
+   */
+  async checkGuestQuiz(courseId: string, lessonId: string, input: CheckCourseQuizInput): Promise<GuestQuizResult> {
+    const { course, version } = await this.publishedCourse(courseId);
+    if (!isOpenToGuests(course)) throw new ForbiddenException("sign in to take this course's quizzes");
+    if (input.version !== version.version) throw new ConflictException('this course has a new version since the page was opened: reload it to take the new quizzes');
+    const { score, passed, feedback } = markQuiz(version, lessonId, input.answers);
+    return { version: version.version, score, passed, feedback };
+  }
+
+  /**
+   * Records in the learner's account the quizzes they passed before signing in, kept in their browser (design §10.8):
+   * each marked again against the version learners take now and recorded as an attempt made now, as `submitQuiz`
+   * would, so passing them all issues the certificate. 409 when the course has a new version since, or until the
+   * prerequisites are passed. Any course may be claimed, as any course's quizzes may be submitted.
+   */
+  async claim(courseId: string, input: ClaimCourseProgressInput, accountId: string): Promise<ClaimResult> {
+    const { course, version: published } = await this.publishedCourse(courseId);
+    if (input.version !== published.version) throw new ConflictException('this course has a new version since those quizzes were taken: take them again');
+    await this.requirePrerequisites(course, accountId);
+    const marked = input.lessons.map((lesson) => markQuiz(published, lesson.lessonId, lesson.answers));
+    const { progress, certificate } = await this.recordAttempts(published, marked, accountId);
+    return { claimed: marked.filter((quiz) => quiz.passed).length, progress, certificate };
   }
 
   /** A course's record, placement included (404 for an ID that is no course). */
@@ -538,38 +623,42 @@ export class CourseService {
 
   async submitQuiz(courseId: string, lessonId: string, input: SubmitCourseQuizInput, accountId: string): Promise<QuizResult> {
     const { course, version: published } = await this.publishedCourse(courseId);
+    await this.requirePrerequisites(course, accountId);
+    const marked = markQuiz(published, lessonId, input.answers);
+    const { attempts, progress, certificate } = await this.recordAttempts(published, [marked], accountId);
+    return { attempt: attempts[0]!, progress, certificate, feedback: marked.feedback };
+  }
+
+  /** 409, naming them, until the learner has passed the course's prerequisites. */
+  private async requirePrerequisites(course: CourseRecord, accountId: string): Promise<void> {
     const missing = missingPrerequisites(course.prerequisites, await this.passedCourses(accountId, course.prerequisites));
-    if (missing.length) {
-      const titles = (await this.links(missing)).map((link) => link.title);
-      throw new ConflictException(`pass ${titles.join(' and ')} first: this course's quizzes open once you have`);
-    }
-    const lesson = published.lessons.find((candidate) => candidate.lessonId === lessonId);
-    if (!lesson) throw new NotFoundException('lesson not found');
-    if (input.answers.length !== lesson.questions.length) {
-      throw new BadRequestException(`answer every question: this quiz has ${lesson.questions.length}`);
-    }
-    if (lesson.questions.some((question, index) => input.answers[index]! >= question.choices.length)) {
-      throw new BadRequestException("an answer is not one of its question's choices");
-    }
-    const feedback: CourseQuizFeedback[] = lesson.questions.map((question, index) => ({
-      questionId: question.questionId,
-      correct: question.correctIndex === input.answers[index],
-      explanation: question.explanation,
-    }));
-    const correct = feedback.filter((answer) => answer.correct).length;
-    const score = Math.round((correct / lesson.questions.length) * 100);
-    const passed = score >= PASS_PERCENT;
+    if (!missing.length) return;
+    const titles = (await this.links(missing)).map((link) => link.title);
+    throw new ConflictException(`pass ${titles.join(' and ')} first: this course's quizzes open once you have`);
+  }
+
+  /**
+   * Records marked quizzes of the version learners take now as attempts made now: each lesson's best score, the
+   * lessons passed, and the certificate once every lesson is passed. Progress on an earlier version starts again.
+   */
+  private async recordAttempts(
+    published: CourseVersionRecord,
+    marked: readonly MarkedQuiz[],
+    accountId: string,
+  ): Promise<{ attempts: CourseAttemptRecord[]; progress: CourseProgressRecord; certificate: ClaimResult['certificate'] }> {
     const db = this.firebase.db;
-    const attempt: CourseAttemptRecord = {
+    const { courseId } = published;
+    const attemptedAt = new Date().toISOString();
+    const attempts: CourseAttemptRecord[] = marked.map((quiz) => ({
       attemptId: uuidv7(),
       courseId,
       version: published.version,
-      lessonId,
+      lessonId: quiz.lessonId,
       accountId,
-      score,
-      passed,
-      attemptedAt: new Date().toISOString(),
-    };
+      score: quiz.score,
+      passed: quiz.passed,
+      attemptedAt,
+    }));
     const progressRef = db.collection(Collections.courseProgress).doc(progressId(courseId, accountId));
     const certificateRef = db.collection(Collections.courseCertificates).doc(progressId(courseId, accountId));
     return db.runTransaction(async (tx) => {
@@ -579,18 +668,21 @@ export class CourseService {
         tx.get(db.collection(Collections.accounts).doc(accountId)),
       ]);
       const existing = progressSnap.data() as CourseProgressRecord | undefined;
-      const current: CourseProgressRecord =
+      const start: CourseProgressRecord =
         existing?.version === published.version
           ? existing
-          : { courseId, accountId, version: published.version, bestScores: {}, completedLessonIds: [], updatedAt: attempt.attemptedAt };
-      const bestScores = { ...current.bestScores, [lessonId]: Math.max(current.bestScores[lessonId] ?? 0, score) };
-      const completedLessonIds = passed && !current.completedLessonIds.includes(lessonId) ? [...current.completedLessonIds, lessonId].sort() : current.completedLessonIds;
-      const progress: CourseProgressRecord = { ...current, bestScores, completedLessonIds, updatedAt: attempt.attemptedAt };
-      tx.create(db.collection(Collections.courseAttempts).doc(attempt.attemptId), attempt);
+          : { courseId, accountId, version: published.version, bestScores: {}, completedLessonIds: [], updatedAt: attemptedAt };
+      const progress = attempts.reduce<CourseProgressRecord>((current, attempt) => {
+        const bestScores = { ...current.bestScores, [attempt.lessonId]: Math.max(current.bestScores[attempt.lessonId] ?? 0, attempt.score) };
+        const completedLessonIds =
+          attempt.passed && !current.completedLessonIds.includes(attempt.lessonId) ? [...current.completedLessonIds, attempt.lessonId].sort() : current.completedLessonIds;
+        return { ...current, bestScores, completedLessonIds, updatedAt: attemptedAt };
+      }, start);
+      for (const attempt of attempts) tx.create(db.collection(Collections.courseAttempts).doc(attempt.attemptId), attempt);
       tx.set(progressRef, progress);
 
       let certificate = certificateSnap.data() as CourseCertificateRecord | undefined;
-      if (!certificate && published.lessons.every((item) => completedLessonIds.includes(item.lessonId))) {
+      if (!certificate && published.lessons.every((item) => progress.completedLessonIds.includes(item.lessonId))) {
         const account = accountSnap.data() as { displayName: string | null; primaryEmail: string | null } | undefined;
         certificate = {
           certificateId: uuidv7(),
@@ -598,19 +690,38 @@ export class CourseService {
           courseVersion: published.version,
           accountId,
           recipientName: account?.displayName || account?.primaryEmail || 'Course learner',
-          issuedAt: attempt.attemptedAt,
+          nameShown: false,
+          issuedAt: attemptedAt,
           revokedAt: null,
           revokedBy: null,
           revocationReason: null,
         };
         tx.create(certificateRef, certificate);
       }
-      return {
-        attempt,
-        progress,
-        certificate: certificate && certificate.revokedAt === null ? pickCertificate(certificate) : null,
-        feedback,
-      };
+      return { attempts, progress, certificate: certificate && certificate.revokedAt === null ? pickCertificate(certificate) : null };
+    });
+  }
+
+  /**
+   * The holder changes the name on their certificate (its PDF and public page) or whether its public page shows the
+   * name, or both (design §10.8, "Sharing a certificate"). 404 without an active certificate; 409 to show a name that
+   * is an email address, which a login without a name was given.
+   */
+  async setCertificateHolder(courseId: string, accountId: string, input: CertificateHolderInput): Promise<LearnerCertificate> {
+    const db = this.firebase.db;
+    const ref = db.collection(Collections.courseCertificates).doc(progressId(courseId, accountId));
+    const settings = await this.certificateSettings.current();
+    return db.runTransaction(async (tx) => {
+      const certificate = (await tx.get(ref)).data() as CourseCertificateRecord | undefined;
+      if (!certificate || certificate.revokedAt) throw new NotFoundException('no active course certificate');
+      const recipientName = input.recipientName ?? certificate.recipientName;
+      const nameShown = input.nameShown ?? certificate.nameShown === true;
+      if (nameShown && certificateNameProblem(recipientName)) {
+        throw new ConflictException('put your name on the certificate before showing it: it has your email address now');
+      }
+      const change = { recipientName, nameShown, holderChangedAt: new Date().toISOString() };
+      tx.update(ref, change);
+      return learnerCertificate({ ...certificate, ...change }, settings);
     });
   }
 
@@ -621,13 +732,25 @@ export class CourseService {
     return certificatePdf(certificate, version, `${origin}/course/certificates/${encodeURIComponent(certificate.certificateId)}`);
   }
 
+  /**
+   * A certificate as its public page shows it: valid or not, its course, and the holder's name only while they show it
+   * (design §10.8). A revoked certificate, one never issued and a number that could be none look the same.
+   */
   async verifyCertificate(certificateId: string): Promise<CertificateVerification> {
+    if (!isUuidV7(certificateId)) return NO_CERTIFICATE;
     await this.ensureSeeded();
     const found = await this.firebase.db.collection(Collections.courseCertificates).where('certificateId', '==', certificateId).limit(1).get();
     const certificate = found.docs[0]?.data() as CourseCertificateRecord | undefined;
-    if (!certificate || certificate.revokedAt !== null) return { valid: false, courseTitle: null, courseVersion: null, issuedAt: null };
+    if (!certificate || certificate.revokedAt !== null) return NO_CERTIFICATE;
     const version = await this.version(certificate.courseId, certificate.courseVersion);
-    return { valid: true, courseTitle: version.title, courseVersion: certificate.courseVersion, issuedAt: certificate.issuedAt };
+    return {
+      valid: true,
+      courseId: certificate.courseId,
+      courseTitle: version.title,
+      courseVersion: certificate.courseVersion,
+      issuedAt: certificate.issuedAt,
+      holderName: shownHolderName(certificate),
+    };
   }
 
   async revokeCertificate(certificateId: string, reason: string, accountId: string): Promise<void> {
@@ -682,16 +805,39 @@ export class CourseService {
    */
   private async ensureSeeded(): Promise<void> {
     const db = this.firebase.db;
-    const [first, map, combined, ...content] = await db.getAll(
+    const [first, map, combined, opened, ...content] = await db.getAll(
       db.collection(Collections.courses).doc(COURSE_ID),
       db.collection(Collections.courseSeeds).doc(MAP_SEED),
       db.collection(Collections.courseSeeds).doc(COMBINE_SEED),
+      db.collection(Collections.courseSeeds).doc(OPEN_SEED),
       ...CONTENT_SEEDS.map(({ seed }) => db.collection(Collections.courseSeeds).doc(seed)),
     );
     if (!first!.exists) await this.seedTranshumanism();
     if (!map!.exists) await this.seedMap();
     for (const [index, { seed, courses }] of CONTENT_SEEDS.entries()) if (!content[index]!.exists) await this.seedContent(seed, courses);
     if (!combined!.exists) await this.combineCourses();
+    if (!opened!.exists) await this.openSeededCourses();
+  }
+
+  /**
+   * Opens the courses `openCourses` names to guests, once (design §10.8, "Open without sign-in"): each that exists and
+   * comes after no other course. Recorded as `course_seeds/course-open-2026-11`, so a course a Course Administrator
+   * closes later stays closed.
+   */
+  private async openSeededCourses(): Promise<void> {
+    const db = this.firebase.db;
+    const markerRef = db.collection(Collections.courseSeeds).doc(OPEN_SEED);
+    const refs = openCourses.map((courseId) => db.collection(Collections.courses).doc(courseId));
+    await db.runTransaction(async (tx) => {
+      const [marker, ...courses] = await tx.getAll(markerRef, ...refs);
+      if (marker!.exists) return;
+      const now = new Date().toISOString();
+      for (const snap of courses) {
+        if (!snap.exists || withPlacement(snap.data() as CourseRecord).prerequisites.length) continue;
+        tx.update(snap.ref, { openToGuests: true, openChangedAt: now, openChangedBy: OPEN_SOURCE });
+      }
+      tx.create(markerRef, { seed: OPEN_SEED, seededAt: now });
+    });
   }
 
   /**
@@ -800,6 +946,7 @@ export class CourseService {
             prerequisites: seed.placement.prerequisites.filter((id) => courses.has(id)),
             position,
             hidden: false,
+            openToGuests: false,
             createdAt: SEEDED_AT,
             updatedAt: SEEDED_AT,
             updatedBy: SEED_SOURCE,
@@ -860,8 +1007,46 @@ const publicLesson = (lesson: CourseLesson): PublicCourseLesson => ({
   video: lesson.video ?? null,
   questions: lesson.questions.map(({ questionId, prompt, choices }) => ({ questionId, prompt, choices })),
 });
-/** Courses saved before the map have no prerequisites or position, and those saved before the hide switch no `hidden`. */
-const withPlacement = (course: CourseRecord): CourseRecord => ({ ...course, ...placementOf(course), hidden: course.hidden === true });
+/**
+ * Courses saved before the map have no prerequisites or position, those saved before the hide switch no `hidden`, and
+ * those before the guest switch no `openToGuests`, so closed.
+ */
+const withPlacement = (course: CourseRecord): CourseRecord => ({
+  ...course,
+  ...placementOf(course),
+  hidden: course.hidden === true,
+  openToGuests: course.openToGuests === true,
+});
+
+/**
+ * A quiz of the version marked: 404 for a lesson it lacks, 400 unless there is one answer per question and each is one
+ * of its question's choices. A score of `PASS_PERCENT` passes.
+ */
+function markQuiz(version: CourseVersionRecord, lessonId: string, answers: readonly number[]): MarkedQuiz {
+  const lesson = version.lessons.find((candidate) => candidate.lessonId === lessonId);
+  if (!lesson) throw new NotFoundException('lesson not found');
+  if (answers.length !== lesson.questions.length) throw new BadRequestException(`answer every question: this quiz has ${lesson.questions.length}`);
+  if (lesson.questions.some((question, index) => answers[index]! >= question.choices.length)) {
+    throw new BadRequestException("an answer is not one of its question's choices");
+  }
+  const feedback: CourseQuizFeedback[] = lesson.questions.map((question, index) => ({
+    questionId: question.questionId,
+    correct: question.correctIndex === answers[index],
+    explanation: question.explanation,
+  }));
+  const score = Math.round((feedback.filter((answer) => answer.correct).length / lesson.questions.length) * 100);
+  return { lessonId, score, passed: score >= PASS_PERCENT, feedback };
+}
+
+/** The holder's own certificate, as their course page shows it. */
+const learnerCertificate = (certificate: CourseCertificateRecord, settings: CertificateSettings): LearnerCertificate => ({
+  certificateId: certificate.certificateId,
+  issuedAt: certificate.issuedAt,
+  courseVersion: certificate.courseVersion,
+  recipientName: certificate.recipientName,
+  nameShown: certificate.nameShown === true,
+  linkedInOrganizationId: settings.linkedInOrganizationId,
+});
 /** Lessons and profiles in the order a course shows them. */
 const byOrder = (a: DocumentData, b: DocumentData) => (a.order as number) - (b.order as number);
 

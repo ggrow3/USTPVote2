@@ -1,5 +1,6 @@
 import { onUnmounted, toValue, watchEffect, type MaybeRefOrGetter } from 'vue';
 import type { RouteLocationNormalized } from 'vue-router';
+import { LINK_CARD_ROUTE } from 'ustp-domain';
 
 /**
  * What search engines are told about each page (design §15, "Search engines"): its description, its canonical address,
@@ -23,6 +24,9 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   '/bylaws/:version?': 'The bylaws of the U.S. Transhumanist Party, every published version, with a way to check a copy.',
   '/results/:id': 'Results of a U.S. Transhumanist Party election, from its published record, which anyone can verify.',
   '/offices': 'Who holds each U.S. Transhumanist Party office now, and how they came to hold it.',
+  '/polls': 'Polls from the U.S. Transhumanist Party anyone may answer: say what you think, see what others think, and share the results.',
+  '/polls/:id': 'A poll from the U.S. Transhumanist Party anyone may answer. It decides nothing; the party decides in its elections.',
+  '/newsletter': "Get the U.S. Transhumanist Party's newsletter by email: news, elections, campaigns and events, for anyone not ready to join.",
   '/events': 'U.S. Transhumanist Party events: candidate Q&As, debate nights, talks and meetups, with recordings of past events.',
   '/events/:slug': 'An event of the U.S. Transhumanist Party: when and where, how to take part, and its recording once it is over.',
   '/partners': 'Groups the U.S. Transhumanist Party works with, the events they co-host, and its free courses for other sites to show.',
@@ -38,9 +42,9 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
 
 /**
  * Pages open to everyone that still stay out of search results: signing in, the account emails' links, one person's
- * course certificate, and unsubscribing.
+ * course certificate, unsubscribing, and confirming a newsletter sign-up.
  */
-const NOT_LISTED: ReadonlySet<string> = new Set(['/signin', '/email-action', '/course/certificates/:id', '/unsubscribe']);
+const NOT_LISTED: ReadonlySet<string> = new Set(['/signin', '/email-action', '/course/certificates/:id', '/unsubscribe', '/newsletter/confirm']);
 
 /** The route paths this module names, for its test to find in router.ts. */
 export const DESCRIBED_ROUTES = [...Object.keys(DESCRIPTIONS), ...NOT_LISTED];
@@ -76,6 +80,13 @@ export function servedDescription(ogUrl: string | null | undefined, description:
   const bare = (p: string) => p.replace(/\/+$/, '') || '/';
   return bare(served.pathname) === bare(path) ? description : null;
 }
+
+/**
+ * A preview page's card image (design §15, "Link previews"), as its link preview shows it, for the page to show and offer
+ * too. `v` only tells caches apart, as the preview's own image address does: an open poll's card changes at its close,
+ * an election's when its results are certified.
+ */
+export const cardSrc = (path: string, v: string) => `${LINK_CARD_ROUTE}?path=${encodeURIComponent(path)}&v=${encodeURIComponent(v)}`;
 
 let routeDescription = SITE_DESCRIPTION;
 let descriptionOwner: object | null = null;

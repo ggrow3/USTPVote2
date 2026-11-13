@@ -37,6 +37,8 @@ export interface ApiOptions {
    * (`@AppChecked`, the suggestions form, design §10.9).
    */
   readonly appCheck?: boolean;
+  /** More headers for the request: a signed-out browser's poll token (design §10.16). */
+  readonly headers?: Readonly<Record<string, string>>;
 }
 
 /** The current ID token and App Check token, and the test persona the request acts as, if any. */
@@ -55,7 +57,7 @@ async function authHeaders({ actAs = acting.persona?.accountId ?? null, appCheck
 
 /** Calls the same-origin API with JSON in and out. */
 export async function api<T>(method: Method, path: string, body?: unknown, options?: ApiOptions): Promise<T> {
-  const headers: Record<string, string> = { ...(await authHeaders(options)), accept: 'application/json' };
+  const headers: Record<string, string> = { ...options?.headers, ...(await authHeaders(options)), accept: 'application/json' };
   if (body !== undefined) headers['content-type'] = 'application/json';
   const res = await fetch(path, { method, headers, body: body === undefined ? undefined : JSON.stringify(body), keepalive: options?.keepalive });
   return readJson<T>(res);
@@ -84,6 +86,7 @@ const AUTH_MESSAGES: Record<string, string> = {
   'auth/invalid-credential': "That email and password don't match. Check them, or use “Email me a link”.",
   'auth/invalid-login-credentials': "That email and password don't match. Check them, or use “Email me a link”.",
   'auth/too-many-requests': 'Too many attempts. Wait a few minutes, then try again.',
+  'auth/user-mismatch': 'That is a different account. In the sign-in window, choose the account you are signed in with, and try again.',
   'auth/email-already-in-use': 'An account already uses this email. Sign in instead.',
   'auth/invalid-email': 'Enter a valid email address.',
   'auth/network-request-failed': 'Could not reach the sign-in service. Check your connection and try again.',
