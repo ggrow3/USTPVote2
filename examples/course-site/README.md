@@ -5,6 +5,9 @@ and no server of its own. It lists the courses of an election site, and shows ea
 `ustp.course` file: the lessons with their videos, the quizzes, graded in the page from the file's answers, and the
 futurist profiles with their credited portraits. Certificates stay on the course's own site, which each course links to.
 
+To show a course on another site without building anything, frame the course embed instead: the election site's
+Partners page (`/partners`) gives the `<iframe>` snippet for each course (design §10.17).
+
 Open it from anywhere: a file on your computer, GitHub Pages, any static host. It reads
 `https://ustpvote2-dev.web.app` unless the address names another site:
 
