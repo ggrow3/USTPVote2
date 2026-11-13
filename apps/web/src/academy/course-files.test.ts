@@ -13,6 +13,7 @@ const record = (courseId: string, title: string, publishedVersion: number | null
   prerequisites: [],
   position: null,
   hidden: false,
+  openToGuests: false,
   createdAt: AT,
   updatedAt: AT,
   updatedBy: '01a1-editor',

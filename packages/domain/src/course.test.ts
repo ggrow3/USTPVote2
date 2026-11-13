@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import {
+  checkCourseQuizSchema,
+  CLAIM_LIMIT,
+  claimCourseProgressSchema,
+  courseOpeningProblem,
   coursePortraitSrc,
+  isOpenToGuests,
   portraitProblem,
   saveCourseLessonSchema,
   saveFuturistProfileSchema,
@@ -84,5 +89,36 @@ describe('futurist portraits', () => {
     expect(portraitProblem({ ...profile, ...withPhoto, portraitAlt: '' })).toBe('the portrait needs alt text');
     expect(portraitProblem({ ...profile, ...withPhoto, portraitCredit: null })).toBe('the portrait needs a credit and a licence');
     expect(portraitProblem({ ...profile, ...withPhoto })).toBeNull();
+  });
+});
+
+describe('open without sign-in', () => {
+  it('is open only while switched on, published and after no other course', () => {
+    const course = { openToGuests: true, publishedVersion: 1, prerequisites: [] as string[] };
+    expect(isOpenToGuests(course)).toBe(true);
+    expect(isOpenToGuests({ ...course, openToGuests: false })).toBe(false);
+    expect(isOpenToGuests({ publishedVersion: 1, prerequisites: [] })).toBe(false);
+    expect(isOpenToGuests({ ...course, publishedVersion: null })).toBe(false);
+    expect(isOpenToGuests({ ...course, prerequisites: ['fundamental-questions'] })).toBe(false);
+  });
+
+  it('refuses to open a course that comes after another, and always lets one close', () => {
+    expect(courseOpeningProblem({ prerequisites: [] }, true)).toBeNull();
+    expect(courseOpeningProblem({ prerequisites: ['allies'] }, true)).toMatch(/comes after another/);
+    expect(courseOpeningProblem({ prerequisites: ['allies'] }, false)).toBeNull();
+  });
+
+  it('checks a guest quiz against a published version', () => {
+    expect(checkCourseQuizSchema.safeParse({ version: 1, answers: [0, 1] }).success).toBe(true);
+    expect(checkCourseQuizSchema.safeParse({ version: 0, answers: [0] }).success).toBe(false);
+    expect(checkCourseQuizSchema.safeParse({ answers: [0] }).success).toBe(false);
+  });
+
+  it('claims each lesson once, at most CLAIM_LIMIT of them', () => {
+    const lessons = (ids: string[]) => ids.map((lessonId) => ({ lessonId, answers: [0] }));
+    expect(claimCourseProgressSchema.safeParse({ version: 2, lessons: lessons(['a', 'b']) }).success).toBe(true);
+    expect(claimCourseProgressSchema.safeParse({ version: 2, lessons: lessons(['a', 'a']) }).error?.issues[0]?.message).toMatch(/twice/);
+    expect(claimCourseProgressSchema.safeParse({ version: 2, lessons: [] }).success).toBe(false);
+    expect(claimCourseProgressSchema.safeParse({ version: 2, lessons: lessons(Array.from({ length: CLAIM_LIMIT + 1 }, (_, i) => `l${i}`)) }).success).toBe(false);
   });
 });

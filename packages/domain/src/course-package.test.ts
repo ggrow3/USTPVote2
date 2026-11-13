@@ -23,6 +23,7 @@ const course: CourseRecord = {
   prerequisites: [],
   position: { row: 0, column: 0 },
   hidden: true,
+  openToGuests: true,
   createdAt: '2026-10-01T00:00:00.000Z',
   updatedAt: '2026-10-28T00:00:00.000Z',
   updatedBy: '01a1-editor',
@@ -138,7 +139,7 @@ describe('every course at once', () => {
     publishedBy: '01a1-editor',
   };
   const other = (courseId: string, title: string, fields: Partial<CourseRecord> = {}): CourseContent => ({
-    course: { ...course, courseId, title, status: 'draft', version: 0, publishedVersion: null, prerequisites: [], position: null, hidden: false, ...fields },
+    course: { ...course, courseId, title, status: 'draft', version: 0, publishedVersion: null, prerequisites: [], position: null, hidden: false, openToGuests: false, ...fields },
     lessons: [{ ...lesson(`${courseId}-1`, 1), courseId }],
     profiles: [],
     published: null,
@@ -156,19 +157,25 @@ describe('every course at once', () => {
     // Row by row, then those off the map by title, hidden ones and drafts included.
     expect(pkg.courses.map((c) => c.courseId)).toEqual(['transhumanism', 'allies', 'archive', 'futures-lab']);
     const [first, second, hidden] = pkg.courses;
-    expect(first).toMatchObject({ courseId: 'transhumanism', hidden: false, prerequisites: [], position: { row: 0, column: 0 } });
+    expect(first).toMatchObject({ courseId: 'transhumanism', hidden: false, openToGuests: true, prerequisites: [], position: { row: 0, column: 0 } });
     expect(first!.draft).toEqual(draftCoursePackage(course, [lesson('later', 2), lesson('first', 1)], [profile], AT));
     expect(first!.published).toEqual(publishedCoursePackage(published, AT));
     expect(second).toMatchObject({ prerequisites: ['transhumanism'], position: { row: 1, column: 0 }, published: null });
-    expect(hidden).toMatchObject({ hidden: true, position: null });
+    expect(hidden).toMatchObject({ hidden: true, openToGuests: false, position: null });
     expect(JSON.stringify(pkg)).not.toContain('01a1-editor');
     expect(coursesPackageSchema.safeParse(pkg).error?.issues ?? []).toEqual([]);
   });
 
-  it('read records from before the map and the hide switch as off it and shown', () => {
-    const { prerequisites: _, position: _p, hidden: _h, ...old } = other('old', 'Old').course;
+  it('read records from before the map and the switches as off it, shown and closed to guests', () => {
+    const { prerequisites: _, position: _p, hidden: _h, openToGuests: _o, ...old } = other('old', 'Old').course;
     const pkg = coursesPackage([{ ...other('old', 'Old'), course: old as CourseRecord }], AT);
-    expect(pkg.courses[0]).toMatchObject({ hidden: false, prerequisites: [], position: null });
+    expect(pkg.courses[0]).toMatchObject({ hidden: false, openToGuests: false, prerequisites: [], position: null });
+  });
+
+  it('read files exported before the guest switch as closed to guests', () => {
+    const pkg = coursesPackage(contents, AT);
+    const before = { ...pkg, courses: pkg.courses.map(({ openToGuests: _, ...rest }) => rest) };
+    expect(coursesPackageSchema.parse(before).courses.map((c) => c.openToGuests)).toEqual([false, false, false, false]);
   });
 
   it('are named for the day', () => {

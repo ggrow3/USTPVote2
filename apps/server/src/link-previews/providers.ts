@@ -4,6 +4,7 @@ import { CandidacyPreviews } from '../candidacies/candidacy-preview.js';
 import { EventPreviews } from '../communications/event-preview.js';
 import { PersonPreviews, SeatRacePreviews, StateRacePreviews } from '../candidacies/race-preview.js';
 import { NewsPreviews } from '../communications/news-preview.js';
+import { CertificatePreviews } from '../course/certificate-preview.js';
 import { CoursePreviews } from '../course/course-preview.js';
 import { ResultsPreviews } from '../elections/results-preview.js';
 import { LinkCardsController, LinkPreviewPagesController } from './link-previews.controller.js';
@@ -17,6 +18,7 @@ const SOURCES = [
   NewsPreviews,
   CandidacyPreviews,
   CoursePreviews,
+  CertificatePreviews,
   ResultsPreviews,
   EventPreviews,
   LegislationPreviews,

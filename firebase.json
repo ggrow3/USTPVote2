@@ -16,6 +16,7 @@
       { "source": "/sitemap.xml", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/news/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/candidates/*", "run": { "serviceId": "api", "region": "us-central1" } },
+      { "source": "/course/certificates/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/course/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/results/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/events/*", "run": { "serviceId": "api", "region": "us-central1" } },

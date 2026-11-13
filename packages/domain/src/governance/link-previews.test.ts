@@ -53,14 +53,39 @@ describe('matchPreviewPage', () => {
     expect(matchPreviewPage('/people/H8CA49058')).toEqual({ page: '/people/:id', params: { id: 'H8CA49058' } });
   });
 
+  it('matches a page with two fixed segments before its parameter, apart from the one-segment page beside it', () => {
+    const id = '019a7b2c-1d2e-7f00-8a00-0123456789ab';
+    expect(matchPreviewPage(`/course/certificates/${id}`)).toEqual({ page: '/course/certificates/:id', params: { id } });
+    expect(matchPreviewPage(`/course/certificates/${id}/`)).toEqual({ page: '/course/certificates/:id', params: { id } });
+    // One segment fewer is the course page, as the router has it: there is no course called "certificates".
+    expect(matchPreviewPage('/course/certificates')).toEqual({ page: '/course/:courseId', params: { courseId: 'certificates' } });
+  });
+
   it('matches nothing else', () => {
-    for (const path of ['/', '/news', '/news/a/b', '/legislation/a/b', '/course/certificates/abc', '/candidates/a%2Fb', '/news/%E0%A4%A', '/news/a%5Cb', '/results/%00', '/other/x', '/races', '/races/ca/12/x', '/races/ca/%2F', '/people']) {
+    for (const path of [
+      '/',
+      '/news',
+      '/news/a/b',
+      '/legislation/a/b',
+      '/course/certificates/abc/more',
+      '/course/other/abc',
+      '/course/certificates/a%2Fb',
+      '/candidates/a%2Fb',
+      '/news/%E0%A4%A',
+      '/news/a%5Cb',
+      '/results/%00',
+      '/other/x',
+      '/races',
+      '/races/ca/12/x',
+      '/races/ca/%2F',
+      '/people',
+    ]) {
       expect(matchPreviewPage(path), path).toBeNull();
     }
   });
 
-  it('every page is a fixed first segment, with at most two parameters after it', () => {
-    for (const page of PREVIEW_PAGES) expect(page).toMatch(/^\/[a-z]+(?:\/:[A-Za-z]+){0,2}$/);
+  it('every page is fixed lower-case segments, with at most two parameters after them', () => {
+    for (const page of PREVIEW_PAGES) expect(page).toMatch(/^(?:\/[a-z]+)+(?:\/:[A-Za-z]+){0,2}$/);
   });
 });
 
