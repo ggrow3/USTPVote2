@@ -88,12 +88,15 @@ describe('adding one member', () => {
     expect((await add({ ...ada, email: 'x@example.test', reason: 'x' }, someone)).status).toBe(403);
   });
 
-  it('needs published bylaws', async () => {
+  it('adds a member while no bylaws are in force, on none', async () => {
     await resetEmulators();
     const [sa1] = await api.systemAdmins();
     admin = await api.member('membership.admin@example.test');
     await api.grant(admin.accountId, 'membership_admin', sa1);
-    expect(await add({ ...ada, reason: 'x' })).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/publish the bylaws/) } });
+    const res = await add({ ...ada, reason: 'x' });
+    expect(res.status).toBe(201);
+    const added = await api.firebase.db.collection('members').where('legalName', '==', ada.legalName).get();
+    expect(added.docs.map((d) => d.data().bylawsVersion)).toEqual([null]);
   });
 });
 

@@ -78,6 +78,50 @@ describe('bylaws', () => {
     expect((await api.call('GET', '/v1/bylaws/current')).body.version).toBe('2026.2');
     expect((await api.call('GET', '/v1/bylaws/9999')).status).toBe(404);
   });
+
+  it('clears the bylaws with a blank version, ledgered, after which applicants agree to none', async () => {
+    const blank = { version: '2026.2', title: 'USTP Bylaws', text: '  \n', amends: '2026.1' };
+    const cleared = await api.call('POST', '/v1/admin/bylaws', admin, blank);
+    expect(cleared).toMatchObject({ status: 201, body: { version: '2026.2', text: '', amends: '2026.1' } });
+    const published = await api.firebase.db.collection('audit_events').where('type', '==', 'bylaws.published').get();
+    expect(published.docs.map((d) => d.data().payload.version).sort()).toEqual(['2026.1', '2026.2']);
+    expect((await api.call('GET', '/v1/bylaws/current')).body).toMatchObject({ version: '2026.2', text: '' });
+    // Already blank: nothing to clear.
+    expect(await api.call('POST', '/v1/admin/bylaws', admin, { ...blank, version: '2026.3', amends: '2026.2' })).toMatchObject({
+      status: 409,
+      body: { detail: expect.stringMatching(/already blank/) },
+    });
+
+    const robin = await api.member('robin@example.test');
+    // A page that still showed version 2026.1 is sent back to read the application again.
+    expect(await api.call('POST', '/v1/registration/applications', robin, application())).toMatchObject({
+      status: 409,
+      body: { detail: expect.stringMatching(/none are in force/) },
+    });
+    const res = await api.call('POST', '/v1/registration/applications', robin, { ...application(), bylawsVersion: null, bylawsHash: null });
+    expect(res).toMatchObject({ status: 201, body: { bylawsVersion: null, bylawsHash: null } });
+    expect((await api.call('GET', '/v1/me', robin)).body.member).toMatchObject({ status: 'applicant', bylawsVersion: null });
+
+    // Bylaws again: applicants agree to them once more, and an application agreeing to none is refused.
+    const again = await api.call('POST', '/v1/admin/bylaws', admin, { version: '2026.3', title: 'USTP Bylaws', text: 'Article I. Name.\n', amends: '2026.2' });
+    expect(again.status).toBe(201);
+    const sam = await api.member('sam@example.test');
+    expect(await api.call('POST', '/v1/registration/applications', sam, { ...application(), bylawsVersion: null, bylawsHash: null })).toMatchObject({
+      status: 409,
+      body: { detail: expect.stringMatching(/bylaws have changed/) },
+    });
+  });
+});
+
+describe('with no bylaws published', () => {
+  it('takes an application agreeing to none', async () => {
+    await resetEmulators();
+    await api.systemAdmins();
+    const robin = await api.member('robin@example.test');
+    expect((await api.call('GET', '/v1/bylaws/current')).status).toBe(404);
+    const res = await api.call('POST', '/v1/registration/applications', robin, { ...application(), bylawsVersion: null, bylawsHash: null });
+    expect(res).toMatchObject({ status: 201, body: { status: 'pending', bylawsVersion: null } });
+  });
 });
 
 describe('applications', () => {

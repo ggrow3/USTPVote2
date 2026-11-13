@@ -190,12 +190,15 @@ describe('a demo election', () => {
     expect(title).toMatch(/^\[Demo\] /);
   });
 
-  it('needs published bylaws to add its test voters, and leaves nothing behind when it cannot be made', async () => {
+  it('is made with no bylaws in force too, its test voters joining on none', async () => {
     await resetEmulators();
     [sa1] = await api.systemAdmins();
     const res = await createDemo();
-    expect(res).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/publish bylaws/) } });
-    expect((await db().collection('elections').get()).empty).toBe(true);
+    expect(res.status).toBe(201);
+    const voters = (await db().collection('testing_personas').where('kind', '==', 'voter').get()).docs.map((d) => d.id);
+    expect(voters).toHaveLength(5);
+    const members = await Promise.all(voters.map(async (id) => (await db().collection('members').doc(id).get()).data()));
+    expect(members.map((m) => m?.bylawsVersion)).toEqual([null, null, null, null, null]);
   });
 
   it('asks for a fresh sign-in before it writes anything, as the approvals it makes would', async () => {

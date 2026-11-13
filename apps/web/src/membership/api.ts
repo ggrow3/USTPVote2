@@ -3,6 +3,8 @@ import type {
   AddMemberInput,
   ApplicationRecord,
   ApplicationStatus,
+  BylawsRecord,
+  BylawsVersionSummary,
   CreateApplicationInput,
   DecisionInput,
   FirstStepsRecord,
@@ -20,12 +22,13 @@ import type {
   MemberStatus,
   MemberStatusInput,
   PublicRegistrationForm,
+  PublishBylawsInput,
   RegistrationFormInput,
   RegistrationFormRecord,
   StatusHistoryRecord,
   WelcomeAgain,
 } from 'ustp-domain';
-import { api } from '../api.js';
+import { api, ApiError } from '../api.js';
 
 /**
  * The membership context's API (design §5.1, §5.2, §12): applications to join and members' status. The only place its
@@ -162,4 +165,22 @@ export function registrationFormSettings(): Promise<RegistrationFormRecord> {
 /** Saves the wording; refused (409) if someone saved since version `basedOn`. */
 export function saveRegistrationForm(input: RegistrationFormInput): Promise<RegistrationFormRecord> {
   return api<RegistrationFormRecord>('PUT', '/v1/admin/registration-form', input);
+}
+
+/** The newest published bylaws version, blank or not; null before any is published (design §5.2). */
+export function currentBylaws(): Promise<BylawsRecord | null> {
+  return api<BylawsRecord>('GET', '/v1/bylaws/current').catch((e: unknown) => {
+    if (e instanceof ApiError && e.status === 404) return null;
+    throw e;
+  });
+}
+
+/** Every published bylaws version without its text, newest first. */
+export function bylawsVersions(): Promise<BylawsVersionSummary[]> {
+  return api<BylawsVersionSummary[]>('GET', '/v1/bylaws');
+}
+
+/** Publishes the next bylaws version (Membership Admins): permanent and ledgered; blank text clears the bylaws. */
+export function publishBylaws(input: PublishBylawsInput): Promise<BylawsRecord> {
+  return api<BylawsRecord>('POST', '/v1/admin/bylaws', input);
 }

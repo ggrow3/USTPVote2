@@ -1,24 +1,21 @@
 <script setup lang="ts">
-import { useQuasar } from 'quasar';
 import { computed, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { diffLines, type BylawsRecord, type BylawsVersionSummary } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { api, errorMessage } from '../api.js';
-import { downloadBylawsDocx, matchCopy } from '../bylaws-files.js';
 import PageShell from '../components/PageShell.vue';
 
-/** Public bylaws: any published version, its hash and history, a stamped Word copy, and a check for copies (design §5.2). */
-const $q = useQuasar();
+/**
+ * Public bylaws: any published version, its hash, what changed from the one before, and the history (design §5.2). A
+ * version with blank text is how the bylaws were cleared: from it on, none are in force.
+ */
 const route = useRoute();
 const versions = ref<BylawsVersionSummary[]>([]);
 const shown = ref<BylawsRecord | null>(null);
 const previous = ref<BylawsRecord | null>(null);
 const error = ref<string | null>(null);
 const showChanges = ref(false);
-const checking = ref(false);
-const copyFile = ref<File | null>(null);
-const copyResult = ref<{ version: BylawsVersionSummary | null; hash: string } | null>(null);
 
 usePageTitle(() => (shown.value ? `${shown.value.title} ${shown.value.version}` : 'Bylaws'));
 
@@ -46,27 +43,6 @@ watch(
   { immediate: true },
 );
 
-async function download() {
-  if (!shown.value) return;
-  try {
-    await downloadBylawsDocx(shown.value);
-  } catch (e) {
-    $q.notify({ type: 'negative', message: errorMessage(e) });
-  }
-}
-
-async function check(file: File | null) {
-  copyResult.value = null;
-  if (!file) return;
-  checking.value = true;
-  try {
-    copyResult.value = await matchCopy(file, versions.value);
-  } catch (e) {
-    $q.notify({ type: 'negative', message: errorMessage(e) });
-  } finally {
-    checking.value = false;
-  }
-}
 </script>
 
 <template>
@@ -90,10 +66,8 @@ async function check(file: File | null) {
             SHA-256 of the text: <code>{{ shown.contentHash }}</code>
           </div>
         </div>
-        <div class="ustp-actions">
-          <q-btn color="primary" icon="download" label="Download stamped .docx" no-caps @click="download" />
+        <div v-if="previous" class="ustp-actions">
           <q-btn
-            v-if="previous"
             flat
             no-caps
             color="primary"
@@ -121,48 +95,21 @@ async function check(file: File | null) {
 
         <q-card flat bordered>
           <!-- A focusable region, so the text can be scrolled with the keyboard too (WCAG 2.1.1). -->
-          <div class="q-pa-md" style="white-space: pre-wrap" tabindex="0" role="region" :aria-label="`${shown.title}, version ${shown.version}`">
+          <div
+            v-if="shown.text.trim()"
+            class="q-pa-md"
+            style="white-space: pre-wrap"
+            tabindex="0"
+            role="region"
+            :aria-label="`${shown.title}, version ${shown.version}`"
+          >
             {{ shown.text }}
+          </div>
+          <div v-else class="q-pa-md text-grey-7">
+            This version is blank: it cleared the bylaws, so from it on none are in force and applicants agree to none.
           </div>
         </q-card>
       </template>
-
-      <q-card flat bordered>
-        <q-card-section>
-          <h2 class="text-subtitle1">Check a copy</h2>
-          <div class="text-caption text-grey-7">
-            Choose a Word copy you were given. Its text is compared, by SHA-256, with every published version; nothing is
-            uploaded.
-          </div>
-        </q-card-section>
-        <q-card-section class="ustp-form">
-          <q-file
-            v-model="copyFile"
-            outlined
-            dense
-            accept=".docx"
-            label="Word document (.docx)"
-            :loading="checking"
-            @update:model-value="check"
-          />
-          <q-banner
-            v-if="copyResult"
-            rounded
-            :class="copyResult.version ? 'bg-green-1 text-black' : 'bg-orange-1 text-black'"
-            role="status"
-          >
-            <template v-if="copyResult.version">
-              This copy's text matches
-              <router-link :to="`/bylaws/${encodeURIComponent(copyResult.version.version)}`">version {{ copyResult.version.version }}</router-link>
-              exactly.
-            </template>
-            <template v-else>
-              This copy's text does not match any published version (SHA-256 <code>{{ copyResult.hash.slice(0, 16) }}…</code>). It
-              may have been edited.
-            </template>
-          </q-banner>
-        </q-card-section>
-      </q-card>
 
       <q-card v-if="versions.length" flat bordered>
         <q-card-section>

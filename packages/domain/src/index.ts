@@ -243,6 +243,7 @@ export type {
   TickResult,
 } from './ledger.js';
 export type * from './records.js';
+export { bylawsInForce, nextBylawsVersion, publishedBylawsText } from './bylaws.js';
 export { PROBLEM_TYPES } from './problems.js';
 export { LIKELIHOODS, MIN_FACE_CONFIDENCE, PHOTO_FLAGS, photoVerdict, isLikelihood } from './photos.js';
 export {

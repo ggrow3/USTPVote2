@@ -153,8 +153,8 @@ onMounted(load);
         <h2 class="text-subtitle1">Rehearse an election</h2>
         <ol class="q-mt-sm q-mb-none q-pl-md">
           <li>
-            If no bylaws are published, act as the Test Membership Admin and publish them under Admin → Bylaws. Test
-            voters join on the current bylaws.
+            Test voters join on the bylaws in force, or on none while there are none. To give them bylaws, act as the
+            Test Membership Admin and fill in the bylaws under Admin → Registration form first.
           </li>
           <li>Stop acting, come back here and add test voters.</li>
           <li>

@@ -47,7 +47,7 @@ export class ElectionChecksService {
     await this.assertEnabled();
     const { election, basis } = await this.materials.load(electionId);
     if (!checkable(election.state)) throw new ConflictException(`the election is ${election.state}; its setup can be checked until voting closes`);
-    if (!basis) throw new ConflictException('no bylaws have been published yet, so there is nothing to check against');
+    if (!basis) throw new ConflictException('no bylaws are in force, so there is nothing to check against');
 
     const now = new Date();
     const recent = await this.recent(electionId);

@@ -8,7 +8,7 @@ import {
   type ElectionState,
   type ResultsRecord,
 } from 'ustp-domain';
-import { saveDocx, saveFile } from './bylaws-files.js';
+import { saveDocx, saveFile } from './save-file.js';
 import type { ProposalText } from './election-docx.js';
 import { electionSlug, fileDate } from './election-text.js';
 

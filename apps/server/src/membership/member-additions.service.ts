@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Transaction } from 'firebase-admin/firestore';
 import {
+  bylawsInForce,
   checkNewMember,
   Collections,
   existingEmailReason,
@@ -133,8 +134,8 @@ export class MemberAdditions {
   private async addSome(actor: string, rows: readonly PlannedMemberRow[], reason: string, welcome: WelcomeDelivery) {
     const db = this.firebase.db;
     return db.runTransaction(async (tx) => {
-      const bylaws = await this.membership.currentBylaws(tx);
-      if (!bylaws) throw new ConflictException('publish the bylaws before adding members (Admin › Bylaws)');
+      // On the bylaws in force, or none while none are (design §5.2, §5.13).
+      const bylawsVersion = bylawsInForce(await this.membership.currentBylaws(tx))?.version ?? null;
       const taken = await this.existing(
         rows.map((r) => r.email),
         tx,
@@ -143,7 +144,7 @@ export class MemberAdditions {
       const fresh = rows.filter((r) => !taken.has(r.email));
       const additions = fresh.map((row) => {
         const accountId = uuidv7();
-        return { row, accountId, transition: memberAddition({ accountId, member: row.member!, actor, reason, bylawsVersion: bylaws.version, at }) };
+        return { row, accountId, transition: memberAddition({ accountId, member: row.member!, actor, reason, bylawsVersion, at }) };
       });
       await this.members.recordAll(
         tx,

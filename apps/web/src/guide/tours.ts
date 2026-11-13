@@ -45,7 +45,7 @@ const voter: readonly TourStep[] = [
     about: 'Only members vote: each election’s voter roll is taken from the Active members when it is set up.',
     todo: [
       'Create your login first if you have none (“Create login and continue”).',
-      'Read the bylaws and tick “I have read these bylaws and agree to abide by them.”',
+      'If the page shows the bylaws, read them and tick “I have read these bylaws and agree to abide by them.”',
       'Fill in the sections, from About you to Confirmations, and press “Submit application”. Confirm your email address first if the page asks.',
     ],
     notes: [
