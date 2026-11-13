@@ -5493,6 +5493,12 @@ under "Not yet".
   Discord refused is made again after two minutes (the first can find the commands service and the api both starting
   cold when Discord calls), and the Discord admin page says where it stands and why. Telling
   Discord is not ledgered: it follows from the token, whose changes are.
+- **Kept awake** *(added 2026-11-13)*. Cloud Run stops the commands service when no request has come for a while, and
+  it takes longer to start than the three seconds Discord waits. So the worker's tick, once Discord has the address,
+  asks the service for its `/health` every minute: a few cents a month, where an instance kept running
+  (`discord_min_instances = 1`) costs dollars. It is a help, not a promise: Cloud Run may stop the service anyway, and
+  each release starts a new one; a command that arrives then goes unanswered, and the next ping starts the service.
+  A service that does not answer the ping is logged and does not fail the tick.
 - **The deployment's switch.** `DISCORD`: `live` (the default outside the emulators), `stub` (emulators only: posts are
   recorded in `discord_outbox`) or `off`. Live does nothing until an admin switches the bot on and a token is added.
   Posts need the site's own address (`WEB_ORIGIN`) for their links.
