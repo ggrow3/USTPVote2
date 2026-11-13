@@ -19,6 +19,7 @@ import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { MemberDirectory } from '../membership/member-directory.js';
 import { MailRepository } from './mail.repository.js';
+import { NewsletterRepository } from './newsletter.repository.js';
 
 /**
  * Who gets none of the site's email (design §10.12): members who unsubscribed, by an email's link or on their Account
@@ -33,6 +34,7 @@ export class MailPreferences {
     private readonly ledger: LedgerService,
     private readonly directory: DirectoryService,
     private readonly members: MemberDirectory,
+    private readonly newsletter: NewsletterRepository,
   ) {}
 
   find(accountId: string): Promise<MailPreferenceRecord | null> {
@@ -72,18 +74,29 @@ export class MailPreferences {
     });
   }
 
-  /** Whether a link's account has unsubscribed; null for a link that is no one's. */
+  /**
+   * Whether a link's account has unsubscribed, or that it is a newsletter subscriber's (design §10.15), who is on the
+   * list while the link works; null for a link that is no one's (a subscriber's once they unsubscribed, as the address
+   * was deleted).
+   */
   async linkStatus(token: string): Promise<UnsubscribeStatus | null> {
     const found = await this.mail.preferenceByToken(token);
-    return found && { unsubscribed: !!found.unsubscribedAt };
+    if (found) return { unsubscribed: !!found.unsubscribedAt };
+    return (await this.newsletter.byUnsubscribeToken(token)) ? { unsubscribed: false, newsletter: true } : null;
   }
 
-  /** Unsubscribes a link's account; false for a link that is no one's. Saying so again changes nothing. */
-  async unsubscribeLink(token: string): Promise<boolean> {
+  /**
+   * Unsubscribes a link's account, or takes a newsletter subscriber off the list and deletes their address (design
+   * §10.15); null for a link that is no one's. Saying so again changes nothing for a member.
+   */
+  async unsubscribeLink(token: string): Promise<UnsubscribeStatus | null> {
     const found = await this.mail.preferenceByToken(token);
-    if (!found) return false;
-    await this.setUnsubscribed(found.accountId, true);
-    return true;
+    if (found) {
+      await this.setUnsubscribed(found.accountId, true);
+      return { unsubscribed: true };
+    }
+    const subscriber = await this.newsletter.byUnsubscribeToken(token);
+    return subscriber && (await this.newsletter.delete(subscriber.subscriberId)) ? { unsubscribed: true, newsletter: true } : null;
   }
 
   /** Everyone who gets no email because of this, latest first, for Membership and System Admins. */
@@ -163,7 +176,8 @@ export class UnsubscribeController {
   @Post(':token')
   @HttpCode(200)
   async unsubscribe(@Param('token') token: string): Promise<UnsubscribeStatus> {
-    if (!isUnsubscribeToken(token) || !(await this.preferences.unsubscribeLink(token))) throw new NotFoundException('this unsubscribe link is not valid');
-    return { unsubscribed: true };
+    const done = isUnsubscribeToken(token) ? await this.preferences.unsubscribeLink(token) : null;
+    if (!done) throw new NotFoundException('this unsubscribe link is not valid');
+    return done;
   }
 }

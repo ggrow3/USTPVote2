@@ -28,4 +28,4 @@ export const MEMBERSHIP_PROVIDERS: Provider[] = [
 ];
 
 /** For a module that only reads members, as the worker does for election notices (design §6.8). */
-export const MEMBER_DIRECTORY_PROVIDERS: Provider[] = [MemberRepository, MemberDirectory];
+export const MEMBER_DIRECTORY_PROVIDERS: Provider[] = [MemberRepository, ApplicationRepository, MemberDirectory];

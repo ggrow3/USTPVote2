@@ -278,6 +278,68 @@ export function broadcastMessage(input: {
 }
 
 /**
+ * A copy of an email to members for someone on the newsletter list (design §10.15): the same words, a greeting by the
+ * name they gave (if any), why they get it, and their own link off the list, which deletes their address.
+ */
+export function newsletterMessage(input: {
+  readonly origin: string;
+  readonly name: string | null;
+  readonly contact: string | null;
+  readonly subject: string;
+  readonly body: string;
+  readonly unsubscribe?: string | null;
+}): NoticeMessage {
+  const site = `${input.origin}/`;
+  const subject = capped(oneLine(input.subject));
+  const blocks: Block[] = [
+    greeting(input.name),
+    ...paragraphs(input.body).map((p) => ({ p })),
+    { hr: true },
+    { small: `You are getting this email because you signed up for the US Transhumanist Party's newsletter at ${site} and confirmed your address. It came from a party administrator.` },
+    { contact: input.contact, about: 'this email' },
+    {
+      link: input.unsubscribe ?? `${input.origin}${UNSUBSCRIBE_PATH}`,
+      label: 'Leave the newsletter',
+      after: ' (your address is deleted, and nothing more comes).',
+    },
+    { small: 'We never ask for a password or a payment by email. If you are unsure about this message, go to ' + `${site} yourself instead of following its links.` },
+    { small: 'US Transhumanist Party' },
+  ];
+  return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
+}
+
+/**
+ * The email that confirms a newsletter sign-up (design §10.15, double opt-in): the link that puts the address on the
+ * list, and what to do if someone else typed it. Nothing more goes to an address that never confirms, and it is deleted.
+ */
+export function newsletterConfirmMessage(input: {
+  readonly origin: string;
+  readonly name: string | null;
+  readonly contact: string | null;
+  /** The confirmation page, with its token. */
+  readonly confirm: string;
+  readonly pendingDays: number;
+}): NoticeMessage {
+  const site = `${input.origin}/`;
+  const subject = "Confirm your sign-up for the US Transhumanist Party's newsletter";
+  const blocks: Block[] = [
+    greeting(input.name),
+    { p: `Someone, we hope you, asked for the US Transhumanist Party's newsletter to come to this address from ${site}.` },
+    { link: input.confirm, before: 'To get it, open ', label: 'the confirmation page', after: ' and press Confirm there.' },
+    {
+      p:
+        `If it was not you, do nothing: without confirming you are never on the list, nothing more is sent, and the ` +
+        `address is deleted within ${input.pendingDays} days.`,
+    },
+    { hr: true },
+    { contact: input.contact, about: 'the newsletter' },
+    { small: 'We never ask for a password or a payment by email. If you are unsure about this message, go to ' + `${site} yourself instead of following its links.` },
+    { small: 'US Transhumanist Party' },
+  ];
+  return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
+}
+
+/**
  * The membership team's message to a member (design §10.13): its words, as plain text that the HTML escapes, signed by
  * the team rather than the admin who wrote it, with a link to the conversation on the site, where the member answers.
  * It goes as membership business, whether or not the member chose to get news and announcements, and says so.

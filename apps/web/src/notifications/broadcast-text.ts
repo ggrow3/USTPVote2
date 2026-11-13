@@ -1,9 +1,9 @@
-import { countryName, usStateName, type BroadcastPreview, type BroadcastSkip, type BroadcastSummary } from 'ustp-domain';
+import { countryName, usStateName, type BroadcastPreview, type BroadcastSkip, type BroadcastSummary, type SubscriberPreview, type SubscriberSkip } from 'ustp-domain';
 
 /** Wording for the emails admins write to members (design §10.12). */
 
 export const RECIPIENT_RULE =
-  'An email from you to members. It goes only to Active members who opted in to the newsletter or announcements, never to anyone who unsubscribed or whose email an admin stopped. Every email sent is recorded in the audit ledger.';
+  'An email from you to members, and if you choose to the newsletter’s subscribers. It goes only to Active members who opted in to the newsletter or announcements, and to people who signed up for the newsletter and confirmed their address, never to anyone who unsubscribed or whose email an admin stopped. Every email sent is recorded in the audit ledger.';
 
 const count = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
@@ -17,17 +17,42 @@ const SKIP_TEXT: Readonly<Record<BroadcastSkip, string>> = {
   undeliverable: 'have an address that bounced or marked email as spam',
 };
 
+/** Why a subscriber does not get it. */
+const SUBSCRIBER_SKIP_TEXT: Readonly<Record<SubscriberSkip, string>> = {
+  member_copy: 'get it as members',
+  stopped: 'are members who unsubscribed or whose email an admin stopped',
+  undeliverable: 'have an address that bounced or marked email as spam',
+};
+
 /** "Goes to 40 of the 55 members chosen: 12 did not opt in, 3 unsubscribed." */
-export function previewText(preview: BroadcastPreview): string {
+function membersText(preview: BroadcastPreview): string {
   if (!preview.matched) return 'That choice takes in no Active members.';
   const rest = (Object.keys(SKIP_TEXT) as BroadcastSkip[]).filter((k) => preview.skipped[k]).map((k) => `${preview.skipped[k]} ${SKIP_TEXT[k]}`);
   const to = `Goes to ${preview.willGet} of the ${count(preview.matched, 'member')} chosen`;
   return rest.length ? `${to}. Left out: ${rest.join(', ')}.` : `${to}.`;
 }
 
+/** "And to 30 of the 32 newsletter subscribers: 2 get it as members." */
+function subscribersText(subscribers: SubscriberPreview, alone: boolean): string {
+  if (!subscribers.listed) return alone ? 'Nobody has confirmed a newsletter sign-up yet.' : 'No newsletter subscribers yet.';
+  const rest = (Object.keys(SUBSCRIBER_SKIP_TEXT) as SubscriberSkip[])
+    .filter((k) => subscribers.skipped[k])
+    .map((k) => `${subscribers.skipped[k]} ${SUBSCRIBER_SKIP_TEXT[k]}`);
+  const to = `${alone ? 'Goes' : 'And'} to ${subscribers.willGet} of the ${count(subscribers.listed, 'newsletter subscriber')}`;
+  return rest.length ? `${to}. Left out: ${rest.join(', ')}.` : `${to}.`;
+}
+
+/** Who a choice comes to: members, and the newsletter's subscribers when it takes them in (design §10.15). */
+export function previewText(preview: BroadcastPreview, membersChosen = true): string {
+  if (!preview.subscribers) return membersText(preview);
+  if (!membersChosen) return subscribersText(preview.subscribers, true);
+  return `${membersText(preview)} ${subscribersText(preview.subscribers, false)}`;
+}
+
 /** Who an email was for, never by name. */
 export function audienceText(audience: BroadcastSummary['audience']): string {
-  if (audience.kind === 'all_active') return 'To all Active members who opted in';
+  if (audience.kind === 'subscribers') return 'To the newsletter’s subscribers';
+  if (audience.kind === 'all_active') return audience.withSubscribers ? 'To all Active members who opted in, and the newsletter’s subscribers' : 'To all Active members who opted in';
   if (audience.kind === 'picked') return `To ${count(audience.count, 'member')} picked by hand, those who opted in`;
   const places = [...audience.states.map(usStateName), ...audience.countries.map(countryName)];
   return `To Active members who opted in, in ${places.join(', ')}`;
@@ -41,8 +66,11 @@ export function approvalText(b: Pick<BroadcastSummary, 'approval'>): string | nu
 }
 
 /** Where an email stands: its copies, and what the mail service has said of them. */
-export function broadcastStatusText(b: Pick<BroadcastSummary, 'status' | 'counts' | 'held' | 'preview' | 'completedAt' | 'approval'>): string {
+export function broadcastStatusText(
+  b: Pick<BroadcastSummary, 'status' | 'counts' | 'held' | 'preview' | 'completedAt' | 'approval'> & { readonly audience?: BroadcastSummary['audience'] },
+): string {
   const { counts } = b;
+  const subscribers = b.audience?.kind === 'subscribers' || (b.audience?.kind === 'all_active' && !!b.audience.withSubscribers);
   const reports = [
     counts.delivered && `${counts.delivered} delivered`,
     counts.bounced && `${counts.bounced} bounced`,
@@ -64,6 +92,6 @@ export function broadcastStatusText(b: Pick<BroadcastSummary, 'status' | 'counts
     case 'cancelled':
       return `Stopped: ${counts.sent} sent, ${counts.pending} not sent.${detail}`;
     case 'done':
-      return `Sent to ${count(counts.sent, 'member')}.${detail}`;
+      return `Sent to ${subscribers ? count(counts.sent, 'person', 'people') : count(counts.sent, 'member')}.${detail}`;
   }
 }

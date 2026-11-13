@@ -3,6 +3,7 @@ import { computed, onActivated, onMounted, onUnmounted, ref, watch } from 'vue';
 import {
   broadcastAudienceSchema,
   broadcastMessage,
+  broadcastTotal,
   COUNTRIES,
   MAX_BROADCAST_BODY,
   MAX_BROADCAST_PICKED,
@@ -25,6 +26,8 @@ import { approvalText, audienceText, broadcastStatusText, previewText, RECIPIENT
  * the emails sent so far and how each went, and a way to stop one still going out.
  */
 const kind = ref<BroadcastAudience['kind']>('all_active');
+/** With all Active members, the newsletter's subscribers too (design §10.15). */
+const withSubscribers = ref(false);
 const countries = ref<string[]>([]);
 const states = ref<string[]>([]);
 const picked = ref<MemberMatch[]>([]);
@@ -49,8 +52,10 @@ const filterStates = filter(STATE_OPTIONS, stateOptions);
 const audience = computed<BroadcastAudience | null>(() => {
   const chosen: BroadcastAudience =
     kind.value === 'all_active'
-      ? { kind: 'all_active' }
-      : kind.value === 'place'
+      ? { kind: 'all_active', ...(withSubscribers.value && { withSubscribers: true }) }
+      : kind.value === 'subscribers'
+        ? { kind: 'subscribers' }
+        : kind.value === 'place'
         ? { kind: 'place', countries: countries.value, states: states.value }
         : { kind: 'picked', accountIds: picked.value.map((m) => m.accountId) };
   return broadcastAudienceSchema.safeParse(chosen).success ? chosen : null;
@@ -90,11 +95,13 @@ const message = computed(() =>
   }),
 );
 
-const ready = computed(() => !!audience.value && !!preview.value?.willGet && !!subject.value.trim() && !!body.value.trim() && !view.value?.blocked);
+/** Every copy the choice comes to, members and subscribers. */
+const total = computed(() => (preview.value ? broadcastTotal(preview.value) : 0));
+const ready = computed(() => !!audience.value && !!total.value && !!subject.value.trim() && !!body.value.trim() && !view.value?.blocked);
 const hint = computed(() => {
   if (view.value?.blocked) return null;
   if (!audience.value) return 'Choose who it goes to.';
-  if (preview.value && !preview.value.willGet) return 'Nobody in that choice can get this email.';
+  if (preview.value && !total.value) return 'Nobody in that choice can get this email.';
   if (!subject.value.trim() || !body.value.trim()) return 'Write a subject and the email.';
   return null;
 });
@@ -106,12 +113,13 @@ async function load() {
 }
 
 function send() {
-  const count = preview.value?.willGet ?? 0;
+  const count = total.value;
   if (!audience.value || !count) return;
   const chosen = audience.value;
   const approval = !!view.value?.approvalRequired;
+  const who = preview.value?.subscribers ? (count === 1 ? 'person' : 'people') : count === 1 ? 'member' : 'members';
   dialog({
-    title: approval ? `Ask to send this email to ${count} ${count === 1 ? 'member' : 'members'}?` : `Send this email to ${count} ${count === 1 ? 'member' : 'members'}?`,
+    title: approval ? `Ask to send this email to ${count} ${who}?` : `Send this email to ${count} ${who}?`,
     message: approval
       ? `“${subject.value.trim()}” waits for a System or Site Admin’s approval, and they are notified. Nothing goes until one approves it. It is recorded in the audit ledger.`
       : `“${subject.value.trim()}” goes out straight away, and is recorded in the audit ledger. You can stop what has not gone yet, but not take back what has.`,
@@ -131,7 +139,7 @@ function approve(broadcast: BroadcastSummary) {
   const n = broadcast.willGetNow ?? 0;
   dialog({
     title: 'Approve this email?',
-    message: `“${broadcast.subject}” goes out to ${n} ${n === 1 ? 'member' : 'members'} straight away. Your approval is recorded in the audit ledger.`,
+    message: `“${broadcast.subject}” goes out to ${n} ${n === 1 ? 'person' : 'people'} straight away. Your approval is recorded in the audit ledger.`,
     cancel: true,
     ok: { label: `Approve and send to ${n}`, color: 'primary', noCaps: true },
   }).onOk(() => {
@@ -222,8 +230,14 @@ onUnmounted(() => clearInterval(timer));
             { value: 'all_active', label: 'All Active members' },
             { value: 'place', label: 'Active members in chosen states or countries' },
             { value: 'picked', label: 'Members I pick' },
+            { value: 'subscribers', label: 'Newsletter subscribers only' },
           ]"
           aria-label="Who it goes to"
+        />
+        <q-checkbox
+          v-if="kind === 'all_active'"
+          v-model="withSubscribers"
+          label="And the newsletter's subscribers (people not members who signed up on the Newsletter page)"
         />
         <template v-if="kind === 'place'">
           <q-select v-model="states" outlined dense multiple use-chips use-input input-debounce="0" emit-value map-options :options="stateOptions" label="US states" @filter="filterStates" />
@@ -235,7 +249,7 @@ onUnmounted(() => clearInterval(timer));
             <q-chip v-for="m in picked" :key="m.accountId" dense removable :label="m.preferredName || m.legalName" @remove="unpick(m.accountId)" />
           </div>
         </template>
-        <p v-if="audience && preview" class="q-my-none" role="status">{{ previewText(preview) }}</p>
+        <p v-if="audience && preview" class="q-my-none" role="status">{{ previewText(preview, kind !== 'subscribers') }}</p>
       </q-card-section>
     </q-card>
 
@@ -243,7 +257,7 @@ onUnmounted(() => clearInterval(timer));
       <q-card-section>
         <h3 id="send-what" class="text-subtitle2 q-my-none">The email</h3>
         <div class="text-caption text-grey-7">
-          Plain text. A blank line starts a new paragraph. Each email greets the member by name, and ends with where to ask questions and their own unsubscribe link.
+          Plain text. A blank line starts a new paragraph. Each email greets the member by name (a subscriber by the name they gave, if any), and ends with where to ask questions and their own unsubscribe link.
         </div>
       </q-card-section>
       <q-card-section class="ustp-form q-pt-none">
@@ -263,7 +277,7 @@ onUnmounted(() => clearInterval(timer));
         color="primary"
         no-caps
         icon="send"
-        :label="view?.approvalRequired ? 'Send for approval' : preview?.willGet ? `Send to ${preview.willGet}` : 'Send'"
+        :label="view?.approvalRequired ? 'Send for approval' : total ? `Send to ${total}` : 'Send'"
         :disable="!ready"
         @click="send"
       />
@@ -281,7 +295,7 @@ onUnmounted(() => clearInterval(timer));
               <q-item-label caption>{{ when(b.createdAt) }}<template v-if="b.createdByName">, by {{ b.createdByName }}</template>. {{ audienceText(b.audience) }}.</q-item-label>
               <q-item-label caption>{{ broadcastStatusText(b) }}</q-item-label>
               <q-item-label v-if="approvalText(b)" caption>{{ approvalText(b) }}</q-item-label>
-              <q-item-label v-if="waiting(b) && b.willGetNow !== null" caption>It would go to {{ b.willGetNow }} {{ b.willGetNow === 1 ? 'member' : 'members' }} now. Open it to read it.</q-item-label>
+              <q-item-label v-if="waiting(b) && b.willGetNow !== null" caption>It would go to {{ b.willGetNow }} {{ b.willGetNow === 1 ? 'person' : 'people' }} now. Open it to read it.</q-item-label>
             </q-item-section>
             <q-item-section v-if="going(b)" side>
               <q-btn flat no-caps color="negative" label="Stop sending" @click.stop="stop(b)" />

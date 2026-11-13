@@ -1,4 +1,4 @@
-import type { PageVisitReport, PublicSiteAnalytics, SignInLog, SiteAnalyticsInput, SiteAnalyticsRecord } from 'ustp-domain';
+import type { PageVisitReport, PublicSiteAnalytics, SignInLog, SiteAnalyticsInput, SiteAnalyticsRecord, VisitFromInput } from 'ustp-domain';
 import { api } from '../api.js';
 
 /** The sign-ins of the last `days` days, newest first (System Admins and Auditors). */
@@ -23,10 +23,10 @@ export function pageVisitReport(days: number): Promise<PageVisitReport> {
 
 /**
  * Tells the api a page was opened (design §10.7): signed in, as the person themself even while acting as a test
- * persona; signed out, to be counted only.
+ * persona; signed out, to be counted only. With the first page of a tab, where it came from (`from`), never the query.
  */
-export function sendPageVisit(path: string, signedIn: boolean): Promise<void> {
-  return api<void>('POST', signedIn ? '/v1/page-visits' : '/v1/public/page-visits', { path }, { actAs: null });
+export function sendPageVisit(path: string, signedIn: boolean, from?: VisitFromInput | null): Promise<void> {
+  return api<void>('POST', signedIn ? '/v1/page-visits' : '/v1/public/page-visits', { path, ...(from && { from }) }, { actAs: null });
 }
 
 /** What every page needs to load Google Analytics, signed in or not. */

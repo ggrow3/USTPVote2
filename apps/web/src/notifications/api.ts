@@ -26,6 +26,11 @@ import type {
   NoticeSummary,
   NoticeTestSummary,
   UnsubscribeStatus,
+  NewsletterConfirmStatus,
+  NewsletterLookup,
+  NewsletterOpen,
+  NewsletterSignupInput,
+  NewsletterSummary,
 } from 'ustp-domain';
 import { api } from '../api.js';
 
@@ -202,4 +207,39 @@ export function unsubscribeLinkStatus(token: string): Promise<UnsubscribeStatus>
 /** Unsubscribes the member an email's link was sent to. Needs no sign-in. */
 export function unsubscribeLink(token: string): Promise<UnsubscribeStatus> {
   return api<UnsubscribeStatus>('POST', `/v1/public/unsubscribe/${encodeURIComponent(token)}`, undefined, { actAs: null });
+}
+
+/** Whether the newsletter's form takes sign-ups now (design §10.15). Needs no sign-in. */
+export function newsletterOpen(): Promise<NewsletterOpen> {
+  return api<NewsletterOpen>('GET', '/v1/public/newsletter', undefined, { actAs: null });
+}
+
+/** Signs an address up for the newsletter; the answer is the same whether or not it was on the list. */
+export function signUpForNewsletter(input: NewsletterSignupInput): Promise<{ received: true }> {
+  return api<{ received: true }>('POST', '/v1/public/newsletter', input, { actAs: null, appCheck: true });
+}
+
+/** Whether a confirmation link's address is confirmed (opening the link changes nothing). */
+export function newsletterConfirmStatus(token: string): Promise<NewsletterConfirmStatus> {
+  return api<NewsletterConfirmStatus>('GET', `/v1/public/newsletter/confirm/${encodeURIComponent(token)}`, undefined, { actAs: null });
+}
+
+/** Confirms a newsletter sign-up: the address is on the list from now. */
+export function confirmNewsletter(token: string): Promise<NewsletterConfirmStatus> {
+  return api<NewsletterConfirmStatus>('POST', `/v1/public/newsletter/confirm/${encodeURIComponent(token)}`, undefined, { actAs: null });
+}
+
+/** How many are on the newsletter's list (Membership, System and Site Admins). */
+export function newsletterSummary(): Promise<NewsletterSummary> {
+  return api<NewsletterSummary>('GET', '/v1/admin/newsletter');
+}
+
+/** Whether one address is on the list or waiting. */
+export function lookUpSubscriber(email: string): Promise<NewsletterLookup> {
+  return api<NewsletterLookup>('POST', '/v1/admin/newsletter/lookup', { email });
+}
+
+/** Takes one address off the list and deletes it. */
+export function removeSubscriber(email: string): Promise<void> {
+  return api<void>('POST', '/v1/admin/newsletter/remove', { email });
 }

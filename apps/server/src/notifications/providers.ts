@@ -14,6 +14,9 @@ import { MailRecords } from './mail-records.js';
 import { MAIL_EVENT_SOURCE, MAIL_TRANSPORT, OutboxMailEvents, OutboxTransport, type MailEventSource, type MailTransport } from './mail-transport.js';
 import { MailRepository } from './mail.repository.js';
 import { Mailer } from './mailer.js';
+import { NewsletterService } from './newsletter.js';
+import { NewsletterRepository } from './newsletter.repository.js';
+import { NewsletterSender } from './newsletter-sender.js';
 import { NoticeSettingsService } from './notice-settings.js';
 import { NoticeSender } from './notice-sender.js';
 import { NoticeRepository } from './notice.repository.js';
@@ -38,6 +41,8 @@ export const NOTIFICATION_API_PROVIDERS: Provider[] = [
   MailRepository,
   MailRecords,
   MailPreferences,
+  NewsletterRepository,
+  NewsletterService,
   BroadcastRepository,
   BroadcastAudienceReader,
   BroadcastsService,
@@ -55,6 +60,8 @@ export const NOTIFICATION_WORKER_PROVIDERS: Provider[] = [
   NoticeSettingsService,
   MailPreferences,
   Mailer,
+  NewsletterRepository,
+  NewsletterSender,
   BroadcastRepository,
   BroadcastAudienceReader,
   BroadcastSender,

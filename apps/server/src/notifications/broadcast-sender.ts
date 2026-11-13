@@ -1,5 +1,15 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { broadcastMessage, isStaleClaim, MAX_SEND_ATTEMPTS, sendGate, type BroadcastRecipientRecord, type BroadcastRecord } from 'ustp-domain';
+import {
+  broadcastMessage,
+  broadcastRecipientKey,
+  isStaleClaim,
+  MAX_SEND_ATTEMPTS,
+  newsletterMessage,
+  sendGate,
+  unsubscribeLinks,
+  type BroadcastRecipientRecord,
+  type BroadcastRecord,
+} from 'ustp-domain';
 import { DirectoryService } from '../auth/directory.service.js';
 import { alertLog } from '../common/logging.js';
 import { CONFIG, type ServerConfig } from '../config.js';
@@ -8,7 +18,8 @@ import { BroadcastRepository } from './broadcast.repository.js';
 import { BroadcastAudienceReader } from './broadcasts.js';
 import { MailHealthChecker } from './mail-health.js';
 import { MAIL_TRANSPORT, type MailTransport } from './mail-transport.js';
-import { Mailer } from './mailer.js';
+import { Mailer, type MailResult } from './mailer.js';
+import { NewsletterRepository } from './newsletter.repository.js';
 import { NoticeSettingsService } from './notice-settings.js';
 
 /** At most this long a tick, after the election emails, which come first. */
@@ -33,6 +44,7 @@ export class BroadcastSender {
     private readonly members: MemberDirectory,
     private readonly settings: NoticeSettingsService,
     private readonly health: MailHealthChecker,
+    private readonly newsletter: NewsletterRepository,
     @Inject(MAIL_TRANSPORT) private readonly transport: MailTransport | null,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
@@ -76,14 +88,14 @@ export class BroadcastSender {
   private async work(broadcast: BroadcastRecord, contact: string, deadline: number): Promise<number> {
     const id = broadcast.broadcastId;
     if (broadcast.status === 'preparing') {
-      const { to, preview } = await this.audience.resolve(broadcast.audience);
-      await this.broadcasts.addRecipients(id, to, new Date().toISOString());
+      const { to, subscribers, preview } = await this.audience.resolve(broadcast.audience);
+      await this.broadcasts.addRecipients(id, to, new Date().toISOString(), subscribers);
       await this.broadcasts.update(id, { status: 'sending', preview });
     }
     for (const r of await this.broadcasts.sending(id)) {
       if (isStaleClaim(r, new Date())) {
-        await this.broadcasts.finish(id, r.accountId, { status: 'failed', outcome: 'interrupted' });
-        this.logger.warn(`email ${id} to account ${r.accountId} was interrupted; whether it went is unknown`);
+        await this.broadcasts.finish(id, broadcastRecipientKey(r), { status: 'failed', outcome: 'interrupted' });
+        this.logger.warn(`email ${id} to ${r.subscriberId ? `subscriber ${r.subscriberId}` : `account ${r.accountId}`} was interrupted; whether it went is unknown`);
       }
     }
     let sent = 0;
@@ -105,29 +117,11 @@ export class BroadcastSender {
 
   private async send(broadcast: BroadcastRecord, recipient: BroadcastRecipientRecord, contact: string): Promise<boolean> {
     const id = broadcast.broadcastId;
-    const { accountId } = recipient;
-    const claimed = await this.broadcasts.claim(id, accountId, new Date());
+    const key = broadcastRecipientKey(recipient);
+    const claimed = await this.broadcasts.claim(id, key, new Date());
     if (!claimed) return false;
-    const finish = (fields: Partial<BroadcastRecipientRecord>) => this.broadcasts.finish(id, accountId, fields);
-    const mailbox = (await this.directory.mailboxes([accountId])).get(accountId);
-    if (!mailbox?.email) return finish({ status: 'skipped', outcome: 'no_address' }).then(() => false);
-    if (!mailbox.verified) return finish({ status: 'skipped', outcome: 'unverified_address' }).then(() => false);
-    const [[member], links] = await Promise.all([this.members.findMany([accountId]), this.mailer.links(accountId)]);
-    const message = broadcastMessage({
-      origin: this.config.webOrigin!,
-      name: member?.preferredName || member?.legalName || null,
-      contact,
-      subject: broadcast.subject,
-      body: broadcast.body,
-      unsubscribe: links.page,
-    });
-    const result = await this.mailer.send(this.transport!, {
-      to: mailbox.email,
-      replyTo: this.config.mailReplyTo,
-      listUnsubscribe: links.oneClick,
-      ...message,
-      meta: { kind: 'broadcast', ref: id, electionId: null, accountId, causedBy: broadcast.createdBy },
-    });
+    const finish = (fields: Partial<BroadcastRecipientRecord>) => this.broadcasts.finish(id, key, fields);
+    const result = recipient.subscriberId ? await this.toSubscriber(broadcast, recipient.subscriberId, contact) : await this.toMember(broadcast, recipient.accountId!, contact);
     if (result.status === 'sent') {
       await finish({ status: 'sent', messageId: result.messageId, outcome: null });
       return true;
@@ -140,5 +134,53 @@ export class BroadcastSender {
     const retry = result.outcome === 'unavailable' && claimed.attempts < MAX_SEND_ATTEMPTS;
     await finish({ status: retry ? 'pending' : 'failed', outcome: result.outcome });
     return false;
+  }
+
+  /** A member's copy. */
+  private async toMember(broadcast: BroadcastRecord, accountId: string, contact: string): Promise<MailResult | { readonly status: 'skipped'; readonly outcome: 'no_address' | 'unverified_address' }> {
+    const mailbox = (await this.directory.mailboxes([accountId])).get(accountId);
+    if (!mailbox?.email) return { status: 'skipped', outcome: 'no_address' };
+    if (!mailbox.verified) return { status: 'skipped', outcome: 'unverified_address' };
+    const [[member], links] = await Promise.all([this.members.findMany([accountId]), this.mailer.links(accountId)]);
+    const message = broadcastMessage({
+      origin: this.config.webOrigin!,
+      name: member?.preferredName || member?.legalName || null,
+      contact,
+      subject: broadcast.subject,
+      body: broadcast.body,
+      unsubscribe: links.page,
+    });
+    return this.mailer.send(this.transport!, {
+      to: mailbox.email,
+      replyTo: this.config.mailReplyTo,
+      listUnsubscribe: links.oneClick,
+      ...message,
+      meta: { kind: 'broadcast', ref: broadcast.broadcastId, electionId: null, accountId, causedBy: broadcast.createdBy },
+    });
+  }
+
+  /**
+   * A newsletter subscriber's copy (design §10.15), with their own link off the list. Someone who unsubscribed since the
+   * email was prepared is no longer on the list, and gets nothing.
+   */
+  private async toSubscriber(broadcast: BroadcastRecord, subscriberId: string, contact: string): Promise<MailResult> {
+    const subscriber = (await this.newsletter.stillConfirmed([subscriberId])).get(subscriberId);
+    if (!subscriber?.unsubscribeToken) return { status: 'skipped', outcome: 'unsubscribed' };
+    const links = unsubscribeLinks(this.config.webOrigin!, subscriber.unsubscribeToken);
+    const message = newsletterMessage({
+      origin: this.config.webOrigin!,
+      name: subscriber.name,
+      contact,
+      subject: broadcast.subject,
+      body: broadcast.body,
+      unsubscribe: links.page,
+    });
+    return this.mailer.send(this.transport!, {
+      to: subscriber.email,
+      replyTo: this.config.mailReplyTo,
+      listUnsubscribe: links.oneClick,
+      ...message,
+      meta: { kind: 'newsletter', ref: broadcast.broadcastId, electionId: null, accountId: null, causedBy: broadcast.createdBy },
+    });
   }
 }

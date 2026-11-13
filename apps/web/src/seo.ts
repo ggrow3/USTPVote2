@@ -23,13 +23,14 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   '/bylaws/:version?': 'The bylaws of the U.S. Transhumanist Party, every published version, with a way to check a copy.',
   '/results/:id': 'Results of a U.S. Transhumanist Party election, from its published record, which anyone can verify.',
   '/offices': 'Who holds each U.S. Transhumanist Party office now, and how they came to hold it.',
+  '/newsletter': "Get the U.S. Transhumanist Party's newsletter by email: news, elections, campaigns and events, for anyone not ready to join.",
 };
 
 /**
  * Pages open to everyone that still stay out of search results: signing in, the account emails' links, one person's
- * course certificate, and unsubscribing.
+ * course certificate, unsubscribing, and confirming a newsletter sign-up.
  */
-const NOT_LISTED: ReadonlySet<string> = new Set(['/signin', '/email-action', '/course/certificates/:id', '/unsubscribe']);
+const NOT_LISTED: ReadonlySet<string> = new Set(['/signin', '/email-action', '/course/certificates/:id', '/unsubscribe', '/newsletter/confirm']);
 
 /** The route paths this module names, for its test to find in router.ts. */
 export const DESCRIBED_ROUTES = [...Object.keys(DESCRIPTIONS), ...NOT_LISTED];
