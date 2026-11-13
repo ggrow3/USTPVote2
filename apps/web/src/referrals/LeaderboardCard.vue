@@ -6,7 +6,7 @@ import TeamBadge from '../teams/TeamBadge.vue';
 import { referralLeaderboard } from './api.js';
 
 /**
- * The team leaderboard (design §5.17), for Active members on the Teams page: teams ranked by how many people joined by
+ * The team leaderboard (design §5.18), for Active members on the Teams page: teams ranked by how many people joined by
  * their members' referral links, over a period. Only teams' totals: nobody's own count is shown to anyone else.
  */
 const days = ref<ReferralPeriod>(90);

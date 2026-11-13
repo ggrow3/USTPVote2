@@ -35,7 +35,7 @@ export class MemberDirectory {
     return this.members.activeIds(tx);
   }
 
-  /** Applications that came by a member's referral link, or by `referrer`'s (design §5.17): who, by whose link, what became of it. */
+  /** Applications that came by a member's referral link, or by `referrer`'s (design §5.18): who, by whose link, what became of it. */
   referredApplications(referrer?: string): Promise<ReferredApplication[]> {
     return this.applications.referred(referrer);
   }

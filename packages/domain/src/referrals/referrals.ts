@@ -1,7 +1,7 @@
 import type { TeamColor, TeamIcon } from '../teams/team.js';
 
 /**
- * Referral links and the team leaderboard (design §5.17, the party's decisions of 2026-11-12). Each Active member has a
+ * Referral links and the team leaderboard (design §5.18, the party's decisions of 2026-11-12). Each Active member has a
  * link of their own to the Register page; someone who opens it and later applies names, without knowing it, the member
  * whose link it was, and the member is credited once a Membership Admin approves the application. The member sees how
  * many joined by their link and how many applied and still wait; Active members see teams ranked by the people their

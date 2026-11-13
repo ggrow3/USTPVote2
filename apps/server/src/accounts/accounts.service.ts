@@ -272,7 +272,7 @@ export class AccountsService {
   /**
    * A deleted account's sign-ins (by account, and by login for those seen before it had one), page visits, its
    * courses' progress, attempts, certificates and messages, the welcome email of an added member (§5.13), and the
-   * records of the email sent to it (§6.8), its notifications and messages (§10.13), and its referral code (§5.17).
+   * records of the email sent to it (§6.8), its notifications and messages (§10.13), and its referral code (§5.18).
    */
   async forgetActivity(accountId: string, uids: readonly string[]): Promise<void> {
     const db = this.firebase.db;

@@ -7,7 +7,7 @@ import { errorMessage } from '../api.js';
 import { myReferrals } from './api.js';
 
 /**
- * A member's own referral link (design §5.17) on their Account page: copy it or share it, and see how many joined by
+ * A member's own referral link (design §5.18) on their Account page: copy it or share it, and see how many joined by
  * it and how many applied and wait. Never who: the people who came by it are not told it was the member's link, nor is
  * the member told who they are.
  */

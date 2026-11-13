@@ -29,6 +29,7 @@ import {
   PublicAreaCandidatesController,
   PublicCandidaciesController,
   PublicDistrictsController,
+  PublicRacesController,
 } from '../candidacies/candidacies.controller.js';
 import { CANDIDACIES_PROVIDERS } from '../candidacies/providers.js';
 import { BylawsChecksService } from '../bylaws-check/bylaws-checks.service.js';
@@ -162,6 +163,7 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     PublicCandidaciesController,
     PublicAreaCandidatesController,
     PublicDistrictsController,
+    PublicRacesController,
     AreaContactsAdminController,
     EmailTemplatesAdminController,
     TeamsController,

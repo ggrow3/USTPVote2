@@ -27,7 +27,7 @@ import { ReferralRepository } from './referral.repository.js';
 const CODE_TRIES = 5;
 
 /**
- * Whose referral link a code is (design §5.17): the referrals context's port for membership, which records it on an
+ * Whose referral link a code is (design §5.18): the referrals context's port for membership, which records it on an
  * application as `referredBy`. A code that is no one's names nobody.
  */
 @Injectable()
@@ -46,7 +46,7 @@ export class ReferralCodes {
 }
 
 /**
- * Members' referral links and the team leaderboard (design §5.17, the party's decisions of 2026-11-12): an Active member's
+ * Members' referral links and the team leaderboard (design §5.18, the party's decisions of 2026-11-12): an Active member's
  * link and how many joined by it and wait, and teams ranked by the people their members brought in, for Active members
  * only. Credits come from the applications themselves (`referredBy`, approved), so nothing is stored but the codes.
  */
@@ -111,7 +111,7 @@ export class ReferralsService {
   }
 }
 
-/** A member's own referral link and counts (design §5.17). */
+/** A member's own referral link and counts (design §5.18). */
 @Controller('v1/me/referrals')
 export class MyReferralsController {
   constructor(private readonly referrals: ReferralsService) {}
@@ -122,7 +122,7 @@ export class MyReferralsController {
   }
 }
 
-/** The team leaderboard (design §5.17): Active members, and the Membership and System Admins who run teams. */
+/** The team leaderboard (design §5.18): Active members, and the Membership and System Admins who run teams. */
 @Controller('v1/referrals/leaderboard')
 export class ReferralLeaderboardController {
   constructor(private readonly referrals: ReferralsService) {}

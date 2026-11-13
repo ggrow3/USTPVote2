@@ -1,7 +1,7 @@
 import type { MyReferrals, ReferralLeaderboard, ReferralPeriod } from 'ustp-domain';
 import { api } from '../api.js';
 
-/** The referrals context's API (design §5.17, §12): the only place its routes are written. */
+/** The referrals context's API (design §5.18, §12): the only place its routes are written. */
 
 /** The caller's own referral link and how many joined by it and wait. */
 export function myReferrals(): Promise<MyReferrals> {

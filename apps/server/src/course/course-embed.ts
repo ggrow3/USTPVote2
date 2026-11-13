@@ -202,7 +202,11 @@ export const EMBED_CSP = [
   'frame-ancestors *',
 ].join('; ');
 
-/** The headers the embed is served with: the site's own, but framing allowed, and kept briefly by caches. */
+/**
+ * The headers the embed is served with: the site's own, but framing allowed, and kept briefly by caches. Firebase
+ * Hosting puts its own header rules on the pages it rewrites here, over these, so `firebase.json` gives `/embed/**` the
+ * same policy and permissions after the site's `**` rule; a test keeps them equal.
+ */
 export const EMBED_HEADERS: Readonly<Record<string, string>> = {
   'Content-Type': 'text/html; charset=utf-8',
   'Content-Security-Policy': EMBED_CSP,

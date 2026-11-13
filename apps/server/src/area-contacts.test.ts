@@ -39,6 +39,18 @@ function fakeRecords(seen: Seen[], down: string[] = [], sos?: Record<string, unk
     }
     if (host === 'api.open.fec.gov') {
       const q = new URL(url).searchParams;
+      // A whole state's House candidates, a page at a time, each with their district.
+      if (q.get('office') === 'H' && !q.get('district')) {
+        const page = Number(q.get('page'));
+        const candidate = (id: string, name: string, district: string) => ({ candidate_id: id, name, party_full: 'DEMOCRATIC PARTY', district });
+        const results =
+          q.get('state') === 'DC'
+            ? [candidate('H8DC00010', 'NORTON, ELEANOR HOLMES', '00')]
+            : page === 1
+              ? [{ ...candidate('H8CA49058', 'LEVIN, MIKE', '49'), incumbent_challenge: 'I' }, candidate('H6CA49169', 'KURDIAN, ARMEN', '49'), candidate('H8CA12001', 'ELSEWHERE, ED', '12')]
+              : [candidate('H8CA50001', 'PAGE, TWO', '50')];
+        return json({ results, pagination: { pages: q.get('state') === 'DC' ? 1 : 2, page } });
+      }
       if (q.get('office') === 'H') {
         return json({
           results: [
@@ -141,6 +153,76 @@ describe('the public records for a member’s area', () => {
     expect(houseDistrictNumber('0649')).toBe(49);
     expect(houseDistrictNumber('0200')).toBe(0);
     expect(houseDistrictNumber('1198')).toBe(0);
+  });
+
+  it('for a state’s race pages: the Senate race, every House seat from one FEC list a page at a time, and who holds each seat', async () => {
+    const seen: Seen[] = [];
+    const CA50: District = { ...CA49, geoid: '0650', name: 'Congressional District 50' };
+    const source = new PublicContactSource({ fec: 'fec-key', openStates: 'os-key', civic: 'civic-key' }, fakeRecords(seen));
+    const { contacts, feeds, notUp } = await source.forState('CA', [CA49, CA50], 2028);
+    // California's list here is the 2024 election's, so it is not used; Open States and Google are never asked.
+    expect(feeds).toEqual({ fec: 'ok', congress: 'ok', openstates: 'off', civic: 'off', sos: 'off' });
+    expect(notUp).toEqual([]);
+    expect(contacts.map((c) => `${c.source} ${c.role} ${c.office}@${c.district.geoid} ${c.name}`)).toEqual([
+      'fec candidate us_house@0649 Mike Levin',
+      'fec candidate us_house@0649 Armen Kurdian',
+      'fec candidate us_house@0650 Two Page',
+      'congress holder us_senate@06 Alex Padilla',
+      'congress holder us_house@0649 Mike Levin',
+      'congress holder us_house@0650 Other Rep',
+    ]);
+    const fec = seen.filter((r) => r.url.startsWith('https://api.open.fec.gov')).map((r) => new URL(r.url).searchParams);
+    expect(fec.map((q) => `${q.get('office')} ${q.get('state')} ${q.get('district')} ${q.get('page')}`)).toEqual(['S CA null null', 'H CA null 1', 'H CA null 2']);
+    expect([fec[1]!.get('per_page'), fec[1]!.get('election_year'), fec[1]!.get('has_raised_funds')]).toEqual(['100', '2028', 'true']);
+    expect(seen.some((r) => /openstates|googleapis/.test(r.url))).toBe(false);
+    // The state's own list, race by race: its statewide offices, the Senate and the House seats, never President here.
+    const sos = seen.filter((r) => r.url.startsWith('https://api.sos.ca.gov')).map((r) => r.url.replace('https://api.sos.ca.gov/returns/', ''));
+    expect(sos).toHaveLength(8 + 1 + 2);
+    expect(sos).toEqual(expect.arrayContaining(['us-senate', 'us-rep/district/49', 'us-rep/district/50']));
+    expect(sos).not.toContain('president');
+    // Kept a day, the whole state's House list too.
+    const asked = seen.length;
+    await source.forState('CA', [CA49, CA50], 2028);
+    expect(seen).toHaveLength(asked);
+  });
+
+  it('for DC and the territories, no Senate race, and the delegate’s seat at large', async () => {
+    const seen: Seen[] = [];
+    const DC: District = { kind: 'congressional', geoid: '1198', state: 'DC', name: 'Delegate District (at Large)', point: null, vintage: null };
+    const { contacts } = await new PublicContactSource({ fec: 'k', openStates: null, civic: null }, fakeRecords(seen)).forState('DC', [DC], 2028);
+    expect(contacts.filter((c) => c.source === 'fec').map((c) => `${c.office}@${c.district.geoid} ${c.officeTitle}: ${c.name}`)).toEqual([
+      'us_house@1198 Delegate to the U.S. House: Eleanor Holmes Norton',
+    ]);
+    expect(seen.some((r) => new URL(r.url).searchParams.get('office') === 'S')).toBe(false);
+  });
+
+  it('for the presidency: the FEC’s candidates in a presidential year, nobody asked in others', async () => {
+    const seen: Seen[] = [];
+    const source = new PublicContactSource({ fec: 'k', openStates: null, civic: null }, fakeRecords(seen));
+    expect((await source.forNation(2028)).contacts.map((c) => `${c.office}@${c.district.geoid} ${c.name}`)).toEqual(['us_president@US Jane Doe']);
+    expect(await source.forNation(2026)).toMatchObject({ contacts: [], feeds: { fec: 'ok' } });
+    expect(seen).toHaveLength(1);
+    const down = await new PublicContactSource({ fec: 'k', openStates: null, civic: null }, fakeRecords([], ['api.open.fec.gov'])).forNation(2028);
+    expect(down).toMatchObject({ contacts: [], feeds: { fec: 'unavailable' } });
+  });
+
+  it('the local stand-in for race pages: everyone with an ID of an official record’s shape, President in a presidential year', async () => {
+    const local = new LocalContactSource();
+    const { contacts, feeds } = await local.forState('CA', [CA49], 2028);
+    expect(contacts.map((c) => `${c.contactId} ${c.office} ${c.name}`)).toEqual([
+      'congress:S060001 us_senate Sam Senator',
+      'congress:S060002 us_senate Sky Senator',
+      'fec:S0CA00001 us_senate Sid Hopeful',
+      'congress:H064900 us_house Hal House',
+      'fec:H0CA49001 us_house Hal House',
+      'fec:H0CA49002 us_house Cass Challenger',
+      'sos:CA:governor:gil-governor statewide Gil Governor',
+      'sos:CA:governor:rita-rival statewide Rita Rival',
+    ]);
+    expect(feeds).toEqual({ fec: 'ok', congress: 'ok', openstates: 'off', civic: 'off', sos: 'ok' });
+    expect((await local.forState('DC', [], 2028)).contacts).toEqual([]);
+    expect((await local.forNation(2028)).contacts.map((c) => c.contactId)).toEqual(['fec:P00000001', 'fec:P00000002']);
+    expect((await local.forNation(2030)).contacts).toEqual([]);
   });
 
   it('the local stand-in: senators, a House race and legislators with email addresses', async () => {

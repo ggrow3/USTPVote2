@@ -28,7 +28,7 @@ export interface VisitSource {
   readonly source: string | null;
   readonly medium: string | null;
   readonly campaign: string | null;
-  /** It came by a member's referral link (design §5.17); never whose. */
+  /** It came by a member's referral link (design §5.18); never whose. */
   readonly referral: boolean;
 }
 

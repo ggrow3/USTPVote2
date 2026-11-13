@@ -52,7 +52,7 @@ export class MembershipApplications {
   async submit(ctx: RequestContext, input: CreateApplicationInput): Promise<ApplicationRecord> {
     const accountId = requireAccount(ctx);
     assertCheck(checkApplicantEmail(ctx.principal.emailVerified));
-    // Whose referral link the applicant came by (design §5.17); a code that is no one's names nobody.
+    // Whose referral link the applicant came by (design §5.18); a code that is no one's names nobody.
     const referredBy = await this.referrals.owner(input.referralCode);
     const submitted = await this.firebase.db.runTransaction(async (tx) => {
       const now = new Date();

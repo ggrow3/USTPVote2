@@ -7,6 +7,9 @@ import {
   currentContent,
   inCandidateArea,
   personMarks,
+  raceCode,
+  racePath,
+  seatOfGeoid,
   STATE_FIPS,
   type AreaCandidatesView,
   type AreaContact,
@@ -116,6 +119,13 @@ const stateOptions = computed(() => {
     { label: 'All states', value: 'all' },
     ...[...codes].map((code) => ({ label: stateName(code), value: code })).sort((a, b) => a.label.localeCompare(b.label)),
   ];
+});
+/** The race pages of the area or state the page is narrowed to (design §5.17): its state's, and its House seats'. */
+const racePages = computed(() => {
+  const state = shownArea.value?.state ?? (where.value !== 'all' && where.value !== 'zip' && where.value !== 'area' ? where.value : null);
+  if (!state) return [];
+  const seats = (shownArea.value?.districts ?? []).filter((d) => d.kind === 'congressional').flatMap((d) => seatOfGeoid(d.geoid) ?? []);
+  return [{ state, seat: null }, ...seats].map((p) => ({ label: p.seat === null ? stateName(p.state) : raceCode(p), to: racePath(p) }));
 });
 const areaNote = computed(() => {
   if (where.value === 'zip') return areaText(typed.value!.view.area, typed.value!.zip);
@@ -285,6 +295,7 @@ function withdraw(c: MyCandidacy) {
           your area, or type a ZIP code, to see everyone else running there too, from public records, and in your own area
           who represents you.
         </div>
+        <q-btn flat no-caps color="primary" icon="ballot" label="Every state’s races for Congress, a page each" to="/races" class="q-mt-xs" />
       </div>
 
       <q-card v-if="session.user && (active || mine.length)" flat bordered>
@@ -367,6 +378,10 @@ function withdraw(c: MyCandidacy) {
             to="/candidates/area"
             class="q-mt-xs"
           />
+        </div>
+        <div v-if="racePages.length" class="row items-center q-gutter-xs">
+          <span class="text-grey-7">Race pages to share:</span>
+          <q-btn v-for="r in racePages" :key="r.to" outline dense no-caps color="primary" icon="ballot" :label="r.label" :to="r.to" />
         </div>
         <div id="candidates-map">
           <DistrictMap :markers="markers" :outline="outline" :label="mapLabel" @ready="mapLoaded = true" @select="selectMarker" />

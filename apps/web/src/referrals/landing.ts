@@ -1,7 +1,7 @@
 import { isReferralCode, landingFrom, REFERRAL_KEPT_DAYS, withoutLandingParams, type VisitFromInput } from 'ustp-domain';
 
 /**
- * What the web app takes from the address someone arrives at (design §5.17, §10.7): a member's referral code, kept in
+ * What the web app takes from the address someone arrives at (design §5.18, §10.7): a member's referral code, kept in
  * this browser until they apply (at most `REFERRAL_KEPT_DAYS`), and where the arrival came from, sent with the first
  * page of the tab as fields of their own, never the query. Both are then taken off the address, so a link copied or a
  * page reloaded is not counted again.

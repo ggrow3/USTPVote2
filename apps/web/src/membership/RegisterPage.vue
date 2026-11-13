@@ -274,7 +274,7 @@ async function submit() {
     volunteer: form.volunteer,
     runForOffice: form.runForOffice,
     referral: optional(form.referral),
-    // The member's referral link they came by, if any (design §5.17).
+    // The member's referral link they came by, if any (design §5.18).
     referralCode: keptReferral() ?? undefined,
     newsletter: form.keepInTouch,
     announcements: form.keepInTouch,

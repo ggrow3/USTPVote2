@@ -15,7 +15,7 @@ export interface RosterTeam {
 /**
  * The teams context's port for the others (design §3.3): which teams there are and who is on them, read only. The Bills
  * tool (§5.14) is given to the teams a System Admin names, so it asks here which teams someone is on; the referral
- * leaderboard (§5.17) ranks the teams by their members' referrals.
+ * leaderboard (§5.18) ranks the teams by their members' referrals.
  */
 @Injectable()
 export class TeamRoster {
@@ -31,7 +31,7 @@ export class TeamRoster {
       .sort((a, b) => a.name.localeCompare(b.name, 'en', { sensitivity: 'base' }));
   }
 
-  /** Every place on every team: who is on which, as a member or a lead (the referral leaderboard, design §5.17). */
+  /** Every place on every team: who is on which, as a member or a lead (the referral leaderboard, design §5.18). */
   async places(): Promise<{ readonly teamId: string; readonly accountId: string }[]> {
     return (await this.teams.placesOn()).map((p) => ({ teamId: p.teamId, accountId: p.accountId }));
   }

@@ -467,6 +467,8 @@
     { "collectionGroup": "broadcast_recipients", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
     { "collectionGroup": "newsletter_subscribers", "fieldPath": "expireAt", "ttl": true, "indexes": [] },
     { "collectionGroup": "newsletter_limits", "fieldPath": "senders", "indexes": [] },
+    { "collectionGroup": "race_records", "fieldPath": "contacts", "indexes": [] },
+    { "collectionGroup": "race_records", "fieldPath": "notUp", "indexes": [] },
     { "collectionGroup": "page_hits", "fieldPath": "days", "indexes": [] },
     { "collectionGroup": "page_hits", "fieldPath": "signedIn", "indexes": [] },
     { "collectionGroup": "participation", "fieldPath": "parts", "indexes": [] },

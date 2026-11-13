@@ -1,4 +1,4 @@
-import { Collections } from 'ustp-domain';
+import { Collections, racePath, racePlaces } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { seedElection } from './testing/elections.js';
 import { resetEmulators, TestApi } from './testing/emulator.js';
@@ -49,7 +49,9 @@ describe('outside production', () => {
     expect(res.statusCode).toBe(200);
     expect(res.headers['content-type']).toBe('application/xml; charset=utf-8');
     const urls = [...res.body.matchAll(/<url><loc>([^<]+)<\/loc>(?:<lastmod>([^<]+)<\/lastmod>)?<\/url>/g)].map((m) => [m[1], m[2]]);
-    expect(urls).toEqual([
+    // Then every race page (design §5.17); no person's yet, since no race's records have been read.
+    expect(urls.slice(16)).toEqual(racePlaces().map((p) => [`https://vote.example.org${racePath(p)}`, undefined]));
+    expect(urls.slice(0, 16)).toEqual([
       ['https://vote.example.org/', undefined],
       ['https://vote.example.org/vote', undefined],
       ['https://vote.example.org/register', undefined],
@@ -63,6 +65,7 @@ describe('outside production', () => {
       ['https://vote.example.org/partners', undefined],
       ['https://vote.example.org/legislation', undefined],
       ['https://vote.example.org/scorecard', undefined],
+      ['https://vote.example.org/races', undefined],
       ['https://vote.example.org/bylaws/2026.1', '2026-10-01T12:00:00.000Z'],
       [`https://vote.example.org/results/${certified.electionId}`, '2026-10-20T18:00:00.000Z'],
     ]);

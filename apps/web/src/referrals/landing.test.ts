@@ -18,7 +18,7 @@ class MemoryStorage {
 
 const g = globalThis as unknown as { window?: unknown };
 
-describe('what the web app takes from the landing address (design §5.17, §10.7)', () => {
+describe('what the web app takes from the landing address (design §5.18, §10.7)', () => {
   beforeEach(() => {
     g.window = { localStorage: new MemoryStorage(), sessionStorage: new MemoryStorage() };
   });

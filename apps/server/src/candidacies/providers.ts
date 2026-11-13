@@ -8,13 +8,17 @@ import { CandidacyRepository } from './candidacy.repository.js';
 import { CONTACT_SOURCE, LocalContactSource, PublicContactSource } from './contact-source.js';
 import { CensusDistrictSource, DISTRICT_SOURCE, LocalDistrictSource } from './district-source.js';
 import { LocalProfileSource, PROFILE_SOURCE, WikipediaProfileSource } from './profile-source.js';
+import { RaceRecordRepository } from './race-record.repository.js';
+import { RacesService } from './races.service.js';
 
-/** Everything the candidacies context provides, for the API module to register (design §3.3, §5.8). */
+/** Everything the candidacies context provides, for the API module to register (design §3.3, §5.8, §5.12, §5.17). */
 export const CANDIDACIES_PROVIDERS: Provider[] = [
   CandidacyRepository,
   CandidaciesService,
   AreaContactRepository,
   AreaContactsService,
+  RaceRecordRepository,
+  RacesService,
   {
     provide: CONTACT_SOURCE,
     inject: [CONFIG, ApiKeys],

@@ -110,7 +110,7 @@ export interface ApplicationRecord {
   readonly runForOffice: boolean;
   /** How they heard about USTP. */
   readonly referral: string | null;
-  /** The member whose referral link they came by (design §5.17); null or absent when none. */
+  /** The member whose referral link they came by (design §5.18); null or absent when none. */
   readonly referredBy?: string | null;
   readonly decidedBy: string | null;
   readonly decidedAt: string | null;

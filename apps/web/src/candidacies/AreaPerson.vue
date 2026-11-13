@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { AreaContact, PersonMarks } from 'ustp-domain';
+import { personPath, type AreaContact, type PersonMarks } from 'ustp-domain';
 import { personCaption } from './candidacy-text.js';
 import PersonBadges from './PersonBadges.vue';
 import PersonDialog, { type PersonLink } from './PersonDialog.vue';
@@ -10,7 +10,8 @@ import PersonProfile from './PersonProfile.vue';
  * One person on the Candidates or Your area page (design §5.12), kept to two lines so a whole area fits on a screen:
  * a small photo where the records have one, their name and what they are to the member (the party's candidate, their
  * representative), then party, source and election, with their links as small icons, each named in full on hover and
- * for screen readers: their site, email address, contact form, public record and who to credit for the photo. *About*
+ * for screen readers: their own page here (design §5.17), their site, email address, contact form, public record and
+ * who to credit for the photo. *About*
  * unfolds their biography and experience; their photo or name opens them larger, with the area they represent (or
  * would) drawn. The default slot takes the item's side, such as the Your area page's Write button.
  */
@@ -47,6 +48,9 @@ const links = computed<PersonLink[]>(() => {
   ].filter((l): l is PersonLink => l !== null);
 });
 
+/** Their own page (design §5.17), for someone a record lists by an FEC or Congress ID. */
+const page = computed(() => personPath(props.person.contactId));
+
 /** The person opened larger, with their district. */
 const shown = ref(false);
 
@@ -72,7 +76,11 @@ const aboutId = computed(() => `about-${props.person.contactId.replace(/[^A-Za-z
       </q-item-label>
       <q-item-label caption class="area-person__line">
         <span>{{ caption }}</span>
-        <span v-if="links.length || person.profile" class="area-person__links">
+        <span v-if="links.length || person.profile || page" class="area-person__links">
+          <router-link v-if="page" :to="page" :aria-label="`${person.name}: their own page, to share`" class="area-person__link">
+            <q-icon name="badge" size="16px" />
+            <q-tooltip>Their own page, to share</q-tooltip>
+          </router-link>
           <template v-for="l in links" :key="l.icon">
             <a
               v-if="l.href"
@@ -106,7 +114,7 @@ const aboutId = computed(() => `about-${props.person.contactId.replace(/[^A-Za-z
       <PersonProfile v-if="about && person.profile" :id="aboutId" :person="{ name: person.name, photo, profile: person.profile }" />
     </q-item-section>
     <slot />
-    <PersonDialog v-model="shown" :person="person" :marks="marks ?? NO_MARKS" :photo="photo" :initials="initials" :links="links" />
+    <PersonDialog v-model="shown" :person="person" :marks="marks ?? NO_MARKS" :photo="photo" :initials="initials" :links="links" :page="page" />
   </q-item>
 </template>
 

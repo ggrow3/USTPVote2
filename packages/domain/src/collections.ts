@@ -29,6 +29,8 @@ export const Collections = {
   areaContacts: 'area_contacts',
   /** `email_templates/{office}`: the emails members send from the Your area page, one per kind of office (design §5.12). */
   emailTemplates: 'email_templates',
+  /** `race_records/{state}`: what public records said about a state's federal races, or `US` the presidency's, shared a day (design §5.17). */
+  raceRecords: 'race_records',
   positions: 'positions',
   positionTerms: 'position_terms',
   /** `teams/{teamId}`: working groups members join (design §5.7). */
@@ -208,7 +210,7 @@ export const Collections = {
   newsletterSubscribers: 'newsletter_subscribers',
   /** `newsletter_limits/{YYYY-MM-DD}`: each day's salt and counts for the sign-up form's limits (§10.15). */
   newsletterLimits: 'newsletter_limits',
-  // referrals (design §5.17)
+  // referrals (design §5.18)
   /** `referral_codes/{code}`: whose referral link a code is. */
   referralCodes: 'referral_codes',
   /** `referral_links/{accountId}`: a member's referral code. */

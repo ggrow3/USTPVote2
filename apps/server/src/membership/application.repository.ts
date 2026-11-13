@@ -60,7 +60,7 @@ export class ApplicationRepository {
   }
 
   /**
-   * The applications that came by a member's referral link (design §5.17), or by `referrer`'s only: who applied, by
+   * The applications that came by a member's referral link (design §5.18), or by `referrer`'s only: who applied, by
    * whose link, and what became of it; no answer.
    */
   async referred(referrer?: string): Promise<ReferredApplication[]> {

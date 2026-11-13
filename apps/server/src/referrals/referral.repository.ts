@@ -3,7 +3,7 @@ import type { Transaction } from 'firebase-admin/firestore';
 import { Collections, type ReferralCodeRecord, type ReferralLinkRecord } from 'ustp-domain';
 import { Firebase } from '../infra/firebase.js';
 
-/** Members' referral codes (design §5.17): `referral_codes/{code}` and `referral_links/{accountId}`. The only code that knows their paths. */
+/** Members' referral codes (design §5.18): `referral_codes/{code}` and `referral_links/{accountId}`. The only code that knows their paths. */
 @Injectable()
 export class ReferralRepository {
   constructor(private readonly firebase: Firebase) {}

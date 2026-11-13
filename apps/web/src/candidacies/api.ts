@@ -14,7 +14,9 @@ import type {
   EmailTemplateInput,
   MapsConfig,
   MyCandidacy,
+  PersonView,
   PublicCandidacy,
+  RaceView,
 } from 'ustp-domain';
 import { api } from '../api.js';
 
@@ -30,6 +32,17 @@ export function publicCandidacies(): Promise<PublicCandidacy[]> {
 
 export function publicCandidacy(candidacyId: string): Promise<PublicCandidacy> {
   return api<PublicCandidacy>('GET', `/v1/public/candidacies/${encodeURIComponent(candidacyId)}`);
+}
+
+/** A race page (design §5.17): a state's, or one House seat's (`district` its number or `at-large`); public. */
+export function raceView(state: string, district?: string): Promise<RaceView> {
+  const path = [state, district].filter((p): p is string => p !== undefined).map(encodeURIComponent).join('/');
+  return api<RaceView>('GET', `/v1/public/races/${path}`);
+}
+
+/** A public-record person's own page, by their FEC candidate ID or Bioguide ID; public. */
+export function personPage(id: string): Promise<PersonView> {
+  return api<PersonView>('GET', `/v1/public/people/${encodeURIComponent(id)}`);
 }
 
 /** The signed-in member's own candidacies, newest first. */

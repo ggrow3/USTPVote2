@@ -4,7 +4,7 @@ import { PageVisitsService } from './security/page-visits.js';
 import { resetEmulators, TestApi, type User } from './testing/emulator.js';
 
 /**
- * Referral links and the team leaderboard (design §5.17), and where visitors came from (§10.7): a member's link names
+ * Referral links and the team leaderboard (design §5.18), and where visitors came from (§10.7): a member's link names
  * them on the application of someone who came by it, credited once the application is approved; arrivals are counted
  * by referring site and campaign tags, naming nobody.
  */
@@ -83,7 +83,7 @@ async function team(teamId: string, lead: Member, ...members: Member[]): Promise
   }
 }
 
-describe('referral links (design §5.17)', () => {
+describe('referral links (design §5.18)', () => {
   it('are for Active members, made once, and lead to the Register page', async () => {
     const applicant = await api.member('applicant@example.test');
     expect(await mine(applicant)).toEqual({ eligible: false, code: null, link: null, joined: 0, waiting: 0 });

@@ -49,7 +49,7 @@ export function submitApplication(args: {
   readonly recent: number;
   readonly current: MemberRecord | null;
   readonly at: string;
-  /** Whose referral link the applicant came by, from `input.referralCode` (design §5.17); null when none or no one's. */
+  /** Whose referral link the applicant came by, from `input.referralCode` (design §5.18); null when none or no one's. */
   readonly referredBy?: string | null;
 }): Outcome<ApplicationChange> {
   const { accountId, input, bylaws, current, at } = args;
