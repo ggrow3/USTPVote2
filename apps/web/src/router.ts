@@ -82,6 +82,11 @@ export const router = createRouter({
         // The legislative team's Bills page: the teams a System Admin names, and System Admins; it says so to anyone else (design §5.14).
         { path: 'bills', component: () => import('./bills/BillsPage.vue'), meta: { requiresAuth: true } },
         { path: 'bills/:congress/:type/:number', component: () => import('./bills/BillPage.vue'), meta: { requiresAuth: true } },
+        // The public Legislation page and scorecard (design §5.14), for everyone.
+        { path: 'legislation', component: () => import('./bills/LegislationPage.vue') },
+        { path: 'legislation/:billId', component: () => import('./bills/PublicBillPage.vue') },
+        { path: 'scorecard', component: () => import('./bills/ScorecardPage.vue') },
+        { path: 'scorecard/:memberId', component: () => import('./bills/ScorecardMemberPage.vue') },
         // News, the press kit and the suggestions form are for everyone; the share kit for Active members (design §10.9).
         { path: 'news', component: () => import('./communications/NewsPage.vue') },
         { path: 'news/:slug', component: () => import('./communications/NewsPostPage.vue') },

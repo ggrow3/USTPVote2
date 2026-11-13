@@ -407,6 +407,7 @@ const stageChip = (stage: string | null) => (stage ? STAGE_LABELS[stage as keyof
                 <div class="bill-tags">
                   <q-chip v-for="t in e.tags" :key="t" dense size="sm" color="primary" text-color="white" :label="t" />
                   <q-chip v-if="e.notes" dense size="sm" icon="sticky_note_2" :label="e.notes === 1 ? '1 note' : `${e.notes} notes`" />
+                  <q-chip v-if="e.public" dense size="sm" icon="public" color="teal-9" text-color="white" label="On the Legislation page" />
                 </div>
               </q-item-section>
               <q-item-section side top>

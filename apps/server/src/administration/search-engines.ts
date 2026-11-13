@@ -3,6 +3,7 @@ import type { FastifyRequest } from 'fastify';
 import { crawlAllowed, robotsTxt, sitemapEntries, sitemapXml } from 'ustp-domain';
 import { Public } from '../auth/decorators.js';
 import { requestOrigin } from '../common/request-origin.js';
+import { PublicBills } from '../bills/public-bills.js';
 import { RacesService } from '../candidacies/races.service.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { ElectionReader } from '../elections/election-reader.js';
@@ -25,6 +26,7 @@ export class SearchEnginesController {
     @Inject(CONFIG) private readonly config: ServerConfig,
     private readonly membership: MembershipService,
     private readonly elections: ElectionReader,
+    private readonly bills: PublicBills,
     private readonly races: RacesService,
   ) {}
 
@@ -40,7 +42,12 @@ export class SearchEnginesController {
   @Header('Content-Type', 'application/xml; charset=utf-8')
   @Header('Cache-Control', CACHE)
   async sitemap(@Req() req: FastifyRequest): Promise<string> {
-    const [bylaws, results, races] = await Promise.all([this.membership.bylawsVersions(), this.elections.certifiedResults(), this.races.sitemapPaths()]);
-    return sitemapXml(requestOrigin(req), sitemapEntries(bylaws, results, races));
+    const [bylaws, results, bills, races] = await Promise.all([
+      this.membership.bylawsVersions(),
+      this.elections.certifiedResults(),
+      this.bills.sitemap(),
+      this.races.sitemapPaths(),
+    ]);
+    return sitemapXml(requestOrigin(req), sitemapEntries(bylaws, results, bills, races));
   }
 }

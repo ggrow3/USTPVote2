@@ -17,6 +17,8 @@ export const SITEMAP_PAGES = [
   '/verify',
   '/events',
   '/partners',
+  '/legislation',
+  '/scorecard',
   '/races',
 ] as const;
 
@@ -59,13 +61,15 @@ export interface SitemapEntry {
 }
 
 /**
- * The sitemap's pages: the pages for everyone, each published bylaws version, each election's certified results, which
- * stay public for good, and the race pages and people's pages (design §5.17, `raceSitemapPaths`), whose records change
- * daily and so carry no date. The bylaws page shows the newest version, so it changed when that was published.
+ * The sitemap's pages: the pages for everyone, each published bylaws version, each election's certified results,
+ * which stay public for good, each bill on the public Legislation page, and the race pages and people's pages
+ * (design §5.17, `raceSitemapPaths`), whose records change daily and so carry no date. The bylaws page shows the
+ * newest version, so it changed when that was published.
  */
 export function sitemapEntries(
   bylaws: readonly { readonly version: string; readonly publishedAt: string }[],
   results: readonly { readonly electionId: string; readonly certifiedAt: string | null }[],
+  bills: readonly { readonly billId: string; readonly lastModified: string }[] = [],
   races: readonly string[] = [],
 ): SitemapEntry[] {
   const newest = bylaws.reduce<string | undefined>((latest, b) => (!latest || b.publishedAt > latest ? b.publishedAt : latest), undefined);
@@ -74,6 +78,8 @@ export function sitemapEntries(
     ...SITEMAP_PAGES.map((path) => dated(path, path === '/bylaws' ? newest : undefined)),
     ...bylaws.map((b) => dated(`/bylaws/${encodeURIComponent(b.version)}`, b.publishedAt)),
     ...results.map((r) => dated(`/results/${encodeURIComponent(r.electionId)}`, r.certifiedAt)),
+    // The bills on the public Legislation page (design §5.14), each last changed when it moved or the team edited it.
+    ...bills.map((b) => dated(`/legislation/${encodeURIComponent(b.billId)}`, b.lastModified)),
     ...races.map((path) => ({ path })),
   ];
 }

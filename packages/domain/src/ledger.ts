@@ -147,4 +147,6 @@ export interface TickResult {
   readonly suggestionsDeleted: number;
   /** The room's messages, done action items and finished questions past their time, and questions given up on (design §5.10). */
   readonly roomExpired: number;
+  /** Public bills read again from Congress.gov, with any new roll calls, every six hours (design §5.14). */
+  readonly publicBillsRefreshed: number;
 }
