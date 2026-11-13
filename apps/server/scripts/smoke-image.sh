@@ -39,7 +39,8 @@ docker run -d --name ustp-worker -p 18081:8080 -e PORT=8080 -e GOOGLE_CLOUD_PROJ
 docker run -d --name ustp-mcp -p 18082:8080 -e PORT=8080 -e USTP_SITE=https://vote.example.org "$image" \
   node /app/apps/mcp/dist/main.js --http --host 0.0.0.0 >/dev/null
 
-docker run -d --name ustp-discord -p 18083:8080 -e PORT=8080 -e USTP_SITE=https://vote.example.org "$image" \n  node /app/apps/discord/dist/main.js --host 0.0.0.0 >/dev/null
+docker run -d --name ustp-discord -p 18083:8080 -e PORT=8080 -e USTP_SITE=https://vote.example.org "$image" \
+  node /app/apps/discord/dist/main.js --host 0.0.0.0 >/dev/null
 
 # The mcp and the Discord commands service serve /health, not /healthz.
 for target in ustp-api:18080:healthz ustp-worker:18081:healthz ustp-mcp:18082:health ustp-discord:18083:health; do
