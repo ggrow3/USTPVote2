@@ -103,7 +103,7 @@ import { EventsAdminController, PublicEventsController, PublicPartnersController
 import { TEAMS_PROVIDERS } from '../teams/providers.js';
 import { REFERRALS_PROVIDERS } from '../referrals/providers.js';
 import { MyReferralsController, ReferralLeaderboardController } from '../referrals/referrals.js';
-import { BillsAdminController, BillsController } from '../bills/bills.controller.js';
+import { BillsAdminController, BillsController, PublicBillsController } from '../bills/bills.controller.js';
 import { BILLS_PROVIDERS } from '../bills/providers.js';
 import { TeamsAdminController, TeamsController } from '../teams/teams.controller.js';
 import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previews/providers.js';
@@ -170,6 +170,7 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     ReferralLeaderboardController,
     BillsController,
     BillsAdminController,
+    PublicBillsController,
     ForumController,
     ForumAdminController,
     RoomController,

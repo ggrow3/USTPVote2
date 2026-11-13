@@ -40,7 +40,7 @@ const CONTEXTS: Readonly<Record<string, { readonly collections: readonly string[
     repositories: ['room.repository'],
   },
   bills: {
-    collections: ['billSettings', 'billWatch', 'billNotes'],
+    collections: ['billSettings', 'billWatch', 'billNotes', 'billPublic', 'billRollCalls'],
     repositories: ['bill.repository'],
   },
   communications: {

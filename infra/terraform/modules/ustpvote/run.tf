@@ -50,8 +50,8 @@ locals {
 
   # worker: Secret Manager (reading seeds at tally), signing ledger blocks and rolls, pool key versions and sealing,
   # writing anchors, running the bylaws, consistency and election setup checks (reading the Anthropic API key from
-  # Secret Manager), and sending election notices, which link to the web app (design §6.8; notices.tf, and the AWS key
-  # from Secret Manager, below).
+  # Secret Manager), sending election notices, which link to the web app (design §6.8; notices.tf, and the AWS key
+  # from Secret Manager, below), and reading the public bills again from Congress.gov (design §5.14; api_keys.tf).
   worker_env = merge(
     {
       GOOGLE_CLOUD_PROJECT      = var.project_id
@@ -71,6 +71,9 @@ locals {
     local.log_env,
     # The members' room's model, which the worker calls to answer questions (room_model.tf).
     local.room_worker_env,
+    # The deployment's FEC key, which the worker falls back on to read the public bills from Congress.gov, as the api
+    # does (design §5.14; api_keys.tf), set only when given.
+    var.fec_api_key != "" ? { FEC_API_KEY = var.fec_api_key } : {},
   )
 
   # The api queues the checks and the worker runs them, so both must agree. Each waits for a key (design §5.6).

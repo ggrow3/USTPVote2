@@ -55,6 +55,11 @@ describe('sitemap', () => {
     expect(entries.at(-1)?.lastModified).toBe('2026-10-27T22:30:00.000Z');
   });
 
+  it('lists the bills on the public Legislation page after them', () => {
+    const entries = sitemapEntries(bylaws, results, [{ billId: '119-hr-10538', lastModified: '2026-11-01T00:00:00.000Z' }]);
+    expect(entries.at(-1)).toEqual({ path: '/legislation/119-hr-10538', lastModified: '2026-11-01T00:00:00.000Z' });
+  });
+
   it('has no date for the bylaws page before any are published', () => {
     expect(sitemapEntries([], []).find((e) => e.path === '/bylaws')).toEqual({ path: '/bylaws' });
   });

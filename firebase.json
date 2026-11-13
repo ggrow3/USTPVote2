@@ -20,6 +20,10 @@
       { "source": "/results/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/events/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "/embed/**", "run": { "serviceId": "api", "region": "us-central1" } },
+      { "source": "/legislation", "run": { "serviceId": "api", "region": "us-central1" } },
+      { "source": "/legislation/*", "run": { "serviceId": "api", "region": "us-central1" } },
+      { "source": "/scorecard", "run": { "serviceId": "api", "region": "us-central1" } },
+      { "source": "/scorecard/*", "run": { "serviceId": "api", "region": "us-central1" } },
       { "source": "**", "destination": "/index.html" }
     ],
     "headers": [

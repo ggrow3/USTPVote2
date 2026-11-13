@@ -58,8 +58,9 @@ of 2026".
 const action = (date: string, text: string, type: string) => ({ date, text, type, source: 'Library of Congress' });
 
 /**
- * Real bills of the 119th Congress as Congress.gov and GovInfo described them on 2026-11-07, trimmed: enough for the
- * integration tests and local development to search, sort, open and watch bills without the internet.
+ * Real bills of the 119th Congress as Congress.gov and GovInfo described them on 2026-11-07, trimmed, and one made up
+ * with roll calls: enough for the integration tests and local development to search, sort, open, watch and show bills
+ * publicly without the internet.
  */
 const FIXTURES: readonly Fixture[] = [
   {
@@ -203,6 +204,60 @@ const FIXTURES: readonly Fixture[] = [
       eh: 'AN ACT To amend the Internal Revenue Code of 1986 to provide the National Taxpayer Advocate with legal counsel.',
       enr: 'AN ACT To amend the Internal Revenue Code of 1986 to provide the National Taxpayer Advocate with legal counsel. (enrolled)',
     },
+  },
+  {
+    // Made up, unlike the others: a bill with House and Senate roll calls, for the scorecard (design §5.14,
+    // "Legislation and the scorecard"). LocalRollCallSource has its roll calls' votes.
+    record: {
+      congress: 119,
+      type: 'hr',
+      number: 6100,
+      title: 'Longevity Research Acceleration Act (a local fixture)',
+      chamber: 'House',
+      introducedDate: '2026-03-02',
+      updatedAt: '2026-10-20T20:00:00Z',
+      policyArea: 'Health',
+      sponsors: [{ bioguideId: 'K000389', fullName: 'Rep. Khanna, Ro [D-CA-17]', party: 'D', state: 'CA', district: 17 }],
+      cosponsors: 3,
+      latestAction: { date: '2026-10-20', text: 'Passed Senate without amendment by Yea-Nay Vote. 3 - 1. Record Vote Number: 250.' },
+      laws: [],
+      actions: [
+        {
+          date: '2026-10-20',
+          text: 'Passed Senate without amendment by Yea-Nay Vote. 3 - 1. Record Vote Number: 250.',
+          type: 'Floor',
+          source: 'Senate',
+          votes: [{ chamber: 'senate', congress: 119, session: 2, roll: 250, date: '2026-10-20T19:30:00Z' }],
+        },
+        {
+          ...action('2026-10-20', 'Passed/agreed to in Senate: Passed Senate without amendment by Yea-Nay Vote. 3 - 1. Record Vote Number: 250.', 'Floor'),
+          votes: [{ chamber: 'senate', congress: 119, session: 2, roll: 250, date: '2026-10-20T19:30:00Z' }],
+        },
+        {
+          ...action('2026-06-10', 'Passed/agreed to in House: On passage Passed by the Yeas and Nays: 3 - 2 (Roll no. 301).', 'Floor'),
+          votes: [{ chamber: 'house', congress: 119, session: 2, roll: 301, date: '2026-06-10T21:00:00Z' }],
+        },
+        {
+          date: '2026-06-10',
+          text: 'On motion to recommit Failed by the Yeas and Nays: 2 - 3 (Roll no. 300).',
+          type: 'Floor',
+          source: 'House floor actions',
+          votes: [{ chamber: 'house', congress: 119, session: 2, roll: 300, date: '2026-06-10T20:40:00Z' }],
+        },
+        action('2026-05-01', 'Reported by the Committee on Energy and Commerce.', 'Committee'),
+        action('2026-03-02', 'Introduced in House', 'IntroReferral'),
+      ],
+      summaries: [
+        {
+          versionLabel: 'Introduced in House',
+          date: '2026-03-02',
+          paragraphs: ['This made-up bill stands in for a real one in local development and tests: it would fund research into the biology of aging.'],
+        },
+      ],
+      textVersions: [{ version: 'ih', label: 'Introduced in House', date: '2026-03-02', pdfUrl: null, xmlUrl: null, htmlUrl: null }],
+    },
+    members: ['Khanna'],
+    texts: { ih: 'A BILL To accelerate research into the biology of aging, and for other purposes. (A local fixture.)' },
   },
 ];
 

@@ -1,6 +1,8 @@
-import { Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Query } from '@nestjs/common';
 import {
   billNoteSchema,
+  isBillTopic,
+  publicBillSchema,
   billRecentSchema,
   billSearchSchema,
   billSettingsSchema,
@@ -11,12 +13,14 @@ import {
   type BillSearchInput,
   type BillSettingsInput,
   type BillWatchQuery,
+  type PublicBillInput,
   type WatchBillInput,
 } from 'ustp-domain';
-import { Ctx, Roles } from '../auth/decorators.js';
+import { Ctx, Public, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { ZodPipe } from '../common/validation.js';
 import { BillsService } from './bills.service.js';
+import { PublicBills } from './public-bills.js';
 
 /**
  * The legislative team's Bills tool (design §5.14), for the teams a System Admin names and System Admins: bills in
@@ -58,6 +62,18 @@ export class BillsController {
   @Delete('watchlist/:billId')
   unwatch(@Ctx() ctx: RequestContext, @Param('billId') billId: string) {
     return this.bills.unwatch(ctx, billId);
+  }
+
+  /** Shows a watched bill on the public Legislation page (`basedOn: null`) or changes what the public sees of it. */
+  @Put('watchlist/:billId/public')
+  savePublic(@Ctx() ctx: RequestContext, @Param('billId') billId: string, @Body(new ZodPipe(publicBillSchema)) body: PublicBillInput) {
+    return this.bills.savePublic(ctx, billId, body);
+  }
+
+  /** Takes a bill off the public Legislation page. */
+  @Delete('watchlist/:billId/public')
+  withdrawPublic(@Ctx() ctx: RequestContext, @Param('billId') billId: string) {
+    return this.bills.withdrawPublic(ctx, billId);
   }
 
   @Post('watchlist/:billId/notes')
@@ -106,5 +122,37 @@ export class BillsAdminController {
   @Put()
   save(@Ctx() ctx: RequestContext, @Body(new ZodPipe(billSettingsSchema)) body: BillSettingsInput) {
     return this.bills.saveSettings(ctx, body);
+  }
+}
+
+/**
+ * The public Legislation page and scorecard (design §5.14, "Legislation and the scorecard"), for anyone: the bills the
+ * legislative team shows, and how each member of Congress voted on them against the party's positions. Served from the
+ * copy the worker keeps; nothing of the team's watchlist, tags, notes or names.
+ */
+@Controller('v1/public')
+@Public()
+export class PublicBillsController {
+  constructor(private readonly bills: PublicBills) {}
+
+  @Get('bills')
+  list(@Query('topic') topic?: string) {
+    if (topic !== undefined && topic !== '' && !isBillTopic(topic)) throw new BadRequestException('topic is science, ai or longevity');
+    return this.bills.list(topic ? (topic as Parameters<PublicBills['list']>[0]) : null);
+  }
+
+  @Get('bills/:billId')
+  bill(@Param('billId') billId: string) {
+    return this.bills.bill(billId);
+  }
+
+  @Get('scorecard')
+  scorecard() {
+    return this.bills.scorecard();
+  }
+
+  @Get('scorecard/:memberId')
+  member(@Param('memberId') memberId: string) {
+    return this.bills.member(memberId);
   }
 }
