@@ -13,6 +13,7 @@ import { MemberDirectory } from '../membership/member-directory.js';
 import { MAIL_TRANSPORT, type MailTransport } from './mail-transport.js';
 import { Mailer } from './mailer.js';
 import { NoticeSettingsService } from './notice-settings.js';
+import { SignInLinks } from './sign-in-links.js';
 
 /** Welcome emails a tick sends at most, one after another. */
 const WELCOMES_PER_TICK = 20;
@@ -22,8 +23,9 @@ const WELCOMES_PER_TICK = 20;
  * worker's tick, through the election notices' mail transport. Each is claimed in a transaction (`pending` →
  * `sending`) before it goes, so overlapping ticks never both send it, and one a worker claimed and never finished is
  * failed as `interrupted` rather than risk a second copy; a Membership Admin can ask again. It goes to the address the
- * admin entered, which is not verified yet: proving it is what the email leads to. One for a member who has signed
- * in meanwhile is not sent.
+ * admin entered, which is not verified yet: proving it is what the email leads to, and its button is Identity
+ * Platform's sign-in link for that address, made as it is sent, so one email does it (`SignInLinks`). One for a member
+ * who has signed in meanwhile is not sent.
  */
 @Injectable()
 export class WelcomeSender {
@@ -34,6 +36,7 @@ export class WelcomeSender {
     private readonly members: MemberDirectory,
     private readonly settings: NoticeSettingsService,
     private readonly mailer: Mailer,
+    private readonly signInLinks: SignInLinks,
     @Inject(MAIL_TRANSPORT) private readonly transport: MailTransport | null,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
@@ -87,12 +90,17 @@ export class WelcomeSender {
     const account = (await this.firebase.db.collection(Collections.accounts).doc(accountId).get()).data() as AccountRecord | undefined;
     if (!account?.primaryEmail) return { outcome: 'no_address' };
     if (account.claimedAt) return { outcome: 'signed_in' };
-    const [[member], links] = await Promise.all([this.members.findMany([accountId]), this.mailer.links(accountId)]);
+    const [[member], links, signInLink] = await Promise.all([
+      this.members.findMany([accountId]),
+      this.mailer.links(accountId),
+      this.signInLinks.forSetPassword(account.primaryEmail),
+    ]);
     const message = welcomeMessage({
       origin: this.config.webOrigin!,
       name: member?.preferredName || member?.legalName || null,
       contact,
       unsubscribe: links.page,
+      signInLink,
     });
     const result = await this.mailer.send(this.transport!, {
       to: account.primaryEmail,

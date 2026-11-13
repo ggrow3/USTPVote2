@@ -160,18 +160,40 @@ export function votedMessage(input: NoticeMessageInput): NoticeMessage {
 }
 
 /**
- * The welcome email to a member a Membership Admin added (design §5.13), sent where the deployment sends mail. It
- * leads to the page where they set their password, which first emails them a sign-in link to prove the address is
- * theirs; this email carries no link that signs anyone in.
+ * The welcome email to a member a Membership Admin added (design §5.13), sent where the deployment sends mail. With
+ * `signInLink`, Identity Platform's own email sign-in link for the address it goes to (the owner's decision of
+ * 2026-11-13: one email, not two), its button signs them in and opens the page where they set their password; the
+ * link works once and for some hours, and the page emails a new one after that. Without it (the worker could not get
+ * one), the button opens that page, which emails the sign-in link first.
  */
 export function welcomeMessage(input: {
   readonly origin: string;
   readonly name: string | null;
   readonly contact: string | null;
   readonly unsubscribe?: string | null;
+  readonly signInLink?: string | null;
 }): NoticeMessage {
   const site = `${input.origin}/`;
   const subject = 'Welcome to the US Transhumanist Party: set your password';
+  const page = `${input.origin}${SET_PASSWORD_PATH}`;
+  const how: Block[] = input.signInLink
+    ? [
+        { link: input.signInLink, label: 'Set your password', after: '.' },
+        {
+          p:
+            'The button signs you in with this email address, which shows it is yours, and then you choose your password. ' +
+            'Nobody at the party sets it or can see it. It works once, for a few hours: after that, open ' +
+            `${page} and enter this address, and we will email you a new link.`,
+        },
+      ]
+    : [
+        { link: page, label: 'Set your password', after: '.' },
+        {
+          p:
+            'Enter the address this email came to. We will email you a sign-in link, which shows the address is yours; open ' +
+            'it, then choose your password. Nobody at the party sets it or can see it.',
+        },
+      ];
   const blocks: Block[] = [
     greeting(input.name),
     {
@@ -179,14 +201,13 @@ export function welcomeMessage(input: {
         'A Membership Admin has added you as a member of the US Transhumanist Party. To vote in party elections and take ' +
         "part on the party's site, set your password the first time you come.",
     },
-    { link: `${input.origin}${SET_PASSWORD_PATH}`, label: 'Set your password', after: '.' },
-    {
-      p:
-        'Enter the address this email came to. We will email you a sign-in link, which shows the address is yours; open ' +
-        'it, then choose your password. Nobody at the party sets it or can see it.',
-    },
+    ...how,
     { hr: true },
-    { small: 'You are getting this email because a Membership Admin added this address to the party’s member list.' },
+    {
+      small:
+        'You are getting this email because a Membership Admin added this address to the party’s member list. Do not ' +
+        'forward it: its button signs in whoever opens it.',
+    },
     ...footer(input.contact, site, input, 'your membership'),
   ];
   return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };

@@ -134,6 +134,24 @@ resource "google_project_iam_member" "worker_auth_config_viewer" {
   member  = google_service_account.worker.member
 }
 
+# The welcome email to a member a Membership Admin added carries Identity Platform's email sign-in link for their
+# address (design §5.13): the worker asks for it as it sends (generateSignInWithEmailLink, accounts:sendOobCode with
+# returnOobLink). No predefined role holds only this; firebaseauth.admin would also let it change and delete users.
+resource "google_project_iam_custom_role" "sign_in_link_maker" {
+  project     = var.project_id
+  role_id     = "ustpSignInLinkMaker"
+  title       = "USTPVote sign-in link maker"
+  description = "Make Identity Platform's email links; the worker makes only added members' welcome sign-in links (design §5.13)."
+  permissions = ["firebaseauth.users.sendEmail"]
+  depends_on  = [google_project_service.this]
+}
+
+resource "google_project_iam_member" "worker_sign_in_link_maker" {
+  project = var.project_id
+  role    = google_project_iam_custom_role.sign_in_link_maker.name
+  member  = google_service_account.worker.member
+}
+
 resource "google_project_iam_member" "worker_secret_accessor" {
   project = var.project_id
   role    = "roles/secretmanager.secretAccessor"

@@ -27,6 +27,7 @@ import { IdentityPlatformReader, SesAccountReader } from './ses-account.js';
 import { SesEventQueue, sesMailEvent, SesTransport } from './ses.js';
 import { WelcomeEmails } from './welcome-emails.js';
 import { WeeklyDigest } from './weekly-digest.js';
+import { SignInLinks } from './sign-in-links.js';
 import { WelcomeSender } from './welcome-sender.js';
 
 /**
@@ -72,6 +73,7 @@ export const NOTIFICATION_WORKER_PROVIDERS: Provider[] = [
   NoticeSender,
   SendVerifier,
   WelcomeSender,
+  SignInLinks,
   { provide: SES_ACCOUNT, inject: [CONFIG], useFactory: (config: ServerConfig) => SesAccountReader.fromConfig(config) },
   { provide: IDENTITY_PLATFORM, inject: [CONFIG], useFactory: (config: ServerConfig) => IdentityPlatformReader.fromConfig(config) },
   { provide: DNS_TXT, useValue: dnsTxt },
