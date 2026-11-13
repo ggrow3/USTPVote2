@@ -25,6 +25,7 @@ import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { MemberDirectory } from '../membership/member-directory.js';
 import { CommunicationsRepository } from './communications.repository.js';
+import { EventsRepository } from './events.repository.js';
 
 /**
  * The share kit (design §10.9): ready-made posts for Active members to share from their own accounts, and how often
@@ -38,6 +39,7 @@ export class ShareKitService {
     private readonly repo: CommunicationsRepository,
     private readonly ledger: LedgerService,
     private readonly members: MemberDirectory,
+    private readonly events: EventsRepository,
   ) {}
 
   /** What an Active member is offered today, newest first. */
@@ -61,7 +63,9 @@ export class ShareKitService {
         ? (await this.repo.newsBySlug(item.slug))?.status === 'published'
         : item?.kind === 'kit'
           ? (await this.repo.findSharePost(item.shareId))?.status === 'published'
-          : false;
+          : item?.kind === 'event'
+            ? (await this.events.eventBySlug(item.slug))?.status === 'published'
+            : false;
     if (!shareable) throw new NotFoundException('nothing to share by that name');
     await this.repo.countShare(input.item as ShareCountsRecord['item'], input.target, new Date().toISOString());
   }

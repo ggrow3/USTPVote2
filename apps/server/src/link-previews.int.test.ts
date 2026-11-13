@@ -210,6 +210,52 @@ describe('link previews outside production', () => {
     expect((await get(api, '/candidates/cand-gone')).body).toBe(INDEX);
   });
 
+  it('previews a published event with when and where on its card, and not a draft', async () => {
+    const event = (slug: string, status: 'published' | 'draft') =>
+      api.firebase.db.collection(Collections.events).doc(`event-${slug}`).set({
+        eventId: `event-${slug}`,
+        slug,
+        status,
+        kind: 'debate',
+        title: 'Debate night: AI and the law',
+        summary: 'Two candidates debate how Congress should treat AI.',
+        body: '',
+        startsAt: '2031-03-06T01:00:00.000Z',
+        endsAt: '2031-03-06T02:30:00.000Z',
+        timeZone: 'America/New_York',
+        attendance: 'online',
+        joinUrl: 'https://www.youtube.com/live/abc',
+        joinLabel: 'YouTube Live',
+        place: '',
+        address: '',
+        speakers: ['Jo Smith', 'Sam Lee'],
+        partnerIds: [],
+        hashtags: [],
+        recording: null,
+        version: 2,
+        createdAt: '2026-11-01T12:00:00.000Z',
+        createdBy: 'admin',
+        updatedAt: '2026-11-01T12:00:00.000Z',
+        updatedBy: 'admin',
+        publishedAt: status === 'draft' ? null : '2026-11-01T12:00:00.000Z',
+        publishedBy: status === 'draft' ? null : 'admin',
+        editedAt: null,
+        cancelledAt: null,
+        cancelledBy: null,
+      });
+    await event('ai-debate', 'published');
+    await event('secret-debate', 'draft');
+    const html = (await get(api, '/events/ai-debate')).body;
+    expect(html).toContain('<title>Debate night: AI and the law · USTP Vote</title>');
+    expect(meta(html, 'description')).toBe('Two candidates debate how Congress should treat AI.');
+    expect(meta(html, 'og:image:alt')).toBe('Event · Debate night: Debate night: AI and the law');
+    const card = meta(html, 'og:image')!.replace(index.origin, '').replaceAll('&amp;', '&');
+    const png = await get(api, card);
+    expect(png.statusCode).toBe(200);
+    expect(png.headers['content-type']).toBe('image/png');
+    expect((await get(api, '/events/secret-debate')).body).toBe(INDEX);
+  });
+
   it('previews a published course', async () => {
     const html = (await get(api, '/course/transhumanism')).body;
     expect(meta(html, 'og:image:alt')).toMatch(/^Free course: /);
