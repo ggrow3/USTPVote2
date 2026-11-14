@@ -1,5 +1,5 @@
 import { deny, OK, refuse, type Check } from './check.js';
-import { administersSite, checkRoleChange, type Role } from './roles.js';
+import { administersSite, changesAuditingSiteAdmin, checkRoleChange, type Role } from './roles.js';
 
 interface ApprovalRule {
   readonly requesters: readonly Role[];
@@ -72,7 +72,7 @@ export function checkCanRequest(action: TwoPersonAction, requester: Actor, subje
  * Whether `changer` may grant or revoke `role` for `subject` (design §10.2). A role change needs no second admin: one
  * System Admin, signed in with MFA within the last 15 minutes, changes the roles of anyone but themselves, and it
  * takes effect at once. A Site Admin does the same for every role but System Admin, and never on a System Admin's
- * account (both refused as forbidden, 403). The API checks this before the change and again inside its transaction
+ * account, nor to make a Site Admin an Auditor or end that (all refused as forbidden, 403). The API checks this before the change and again inside its transaction
  * with the roles held then; the web app runs it, in the same order and with the same reasons, to explain a refusal
  * before sending. `roles` is null when the roles held are not known (an account ID typed in), which skips the checks
  * that need them.
@@ -89,6 +89,9 @@ export function checkCanChangeRole(
   if (!changer.roles.includes('system_admin')) {
     if (role === 'system_admin') return refuse('forbidden', 'system_admin is granted and revoked only by a system_admin');
     if (subject.roles?.includes('system_admin')) return refuse('forbidden', 'the roles of a system_admin are changed only by a system_admin');
+    if (subject.roles && changesAuditingSiteAdmin(subject.roles, change, role)) {
+      return refuse('forbidden', 'only a system_admin makes a site_admin an auditor, or ends it');
+    }
   }
   const fits = subject.roles ? checkRoleChange(subject.roles, change, role) : OK;
   if (!fits.ok) return fits;

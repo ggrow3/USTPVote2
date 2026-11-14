@@ -14,8 +14,13 @@ describe('roleChangeBlocker', () => {
     expect(roleChangeBlocker(siteAdmin, persona, 'grant', 'system_admin', null)).toBe(
       'System Admin is granted and revoked only by a System Admin.',
     );
-    expect(roleChangeBlocker(siteAdmin, { accountId: 'x', roles: ['course_admin', 'site_admin'] }, 'grant', 'election_admin', null)).toBe(
-      'An account may hold at most 2 roles, and this one already holds Course Administrator and Site Admin.',
+    expect(roleChangeBlocker(siteAdmin, { accountId: 'x', roles: ['course_admin', 'membership_admin'] }, 'grant', 'election_admin', null)).toBe(
+      'An account may hold at most 2 roles, and this one already holds Course Administrator and Membership Admin.',
+    );
+    // A Site Admin holds three more, and only a System Admin makes one an Auditor.
+    expect(roleChangeBlocker(siteAdmin, { accountId: 'x', roles: ['course_admin', 'site_admin'] }, 'grant', 'election_admin', null)).toBeNull();
+    expect(roleChangeBlocker(siteAdmin, { accountId: 'x', roles: ['site_admin'] }, 'grant', 'auditor', null)).toBe(
+      'Only a System Admin makes a Site Admin an Auditor, or ends it.',
     );
   });
 

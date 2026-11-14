@@ -196,7 +196,13 @@ describe('AuthGuard acting as a test persona', () => {
 
   async function actAs(
     persona: unknown,
-    { testing = true, mfa = true, roles = ['system_admin'], isPersona = true }: Partial<{ testing: boolean; mfa: boolean; roles: string[]; isPersona: boolean }> = {},
+    {
+      testing = true,
+      mfa = true,
+      roles = ['system_admin'],
+      isPersona = true,
+      siteAdminsRequired = true,
+    }: Partial<{ testing: boolean; mfa: boolean; roles: string[]; isPersona: boolean; siteAdminsRequired: boolean }> = {},
   ) {
     const verifyIdToken = vi.fn(
       async () =>
@@ -212,7 +218,7 @@ describe('AuthGuard acting as a test persona', () => {
         activeRoles: async (id: string) => (id === 'admin' ? roles : ['auditor']),
         isPersona: async () => isPersona,
       } as unknown as DirectoryService,
-      policy(false),
+      policy(false, siteAdminsRequired),
     );
     const request: { headers: Record<string, unknown>; method: string; url: string; ctx?: unknown } = {
       headers: { authorization: 'Bearer t', 'x-act-as': persona },
@@ -237,6 +243,17 @@ describe('AuthGuard acting as a test persona', () => {
   it('lets a Site Admin signed in with MFA act as a persona too', async () => {
     const { ctx } = await actAs(PERSONA, { roles: ['site_admin'] });
     expect(ctx).toMatchObject({ accountId: PERSONA, operator: 'admin' });
+  });
+
+  it('lets a Site Admin act as one without MFA while the Site Admins\' setting is off, and nobody else (design §4)', async () => {
+    const relaxed = { mfa: false, siteAdminsRequired: false };
+    const { ctx } = await actAs(PERSONA, { roles: ['site_admin'], ...relaxed });
+    expect(ctx).toMatchObject({ accountId: PERSONA, operator: 'admin', secondFactorWaived: true });
+    expect((await actAs(PERSONA, { roles: ['site_admin', 'election_admin'], ...relaxed })).ctx).toMatchObject({ operator: 'admin' });
+    await expect(actAs(PERSONA, { ...relaxed })).rejects.toThrow(/multi-factor/);
+    await expect(actAs(PERSONA, { roles: ['membership_admin'], ...relaxed })).rejects.toThrow(/multi-factor/);
+    // Signed in with it, nothing is marked.
+    expect((await actAs(PERSONA, { roles: ['site_admin'], siteAdminsRequired: false })).ctx).not.toHaveProperty('secondFactorWaived');
   });
 
   it('refuses when testing mode is off, without MFA, for anyone but a System or Site Admin, or for a real account', async () => {
@@ -344,13 +361,17 @@ describe('AuthGuard two-step requirement', () => {
     const relaxed = { siteAdminsRequired: false };
     expect(await admit('read', { roles: ['site_admin'], ...relaxed })).toBe(true);
     expect(await admit('people', { roles: ['site_admin'], ...relaxed })).toBe('waived');
-    // Another admin role keeps its own rule, the member requirement holds everyone, and System Admins always need one.
-    expect(await admit('people', { roles: ['site_admin', 'election_admin'], ...relaxed })).toMatchObject(refused);
-    expect(await admit('read', { roles: ['site_admin'], membersRequired: true, ...relaxed })).toMatchObject({
+    // Whatever other admin role they hold, and whether or not it is required of every member.
+    expect(await admit('people', { roles: ['site_admin', 'election_admin'], ...relaxed })).toBe('waived');
+    expect(await admit('read', { roles: ['site_admin'], membersRequired: true, ...relaxed })).toBe(true);
+    expect(await admit('people', { roles: ['site_admin'], membersRequired: true, ...relaxed })).toBe('waived');
+    // Nobody else gains by it: members while it is required of them, other admins, and System Admins always.
+    expect(await admit('read', { roles: [], membersRequired: true, ...relaxed })).toMatchObject({
       ...refused,
       message: 'this site requires two-step verification; set it up on your account page',
     });
     expect(await admit('people', { roles: ['system_admin'], ...relaxed })).toMatchObject(refused);
+    expect(await admit('read', { roles: ['system_admin'], membersRequired: true, ...relaxed })).toMatchObject(refused);
     expect(await admit('people', { roles: ['site_admin'], mfa: true, ...relaxed })).toBe(true);
   });
 

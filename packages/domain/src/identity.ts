@@ -84,13 +84,15 @@ export interface MfaPolicyChangedPayload {
  *   System Admins always, whatever the settings say; Site Admins unless their setting is off; everyone else while the
  *   member requirement is on.
  * - `admin`: the admin routes only, as for every other admin role.
- * - `none`: nowhere, for members without a role while the requirement is off, and for a Site Admin with no other admin
- *   role while theirs is off.
+ * - `none`: nowhere, for members without a role while the requirement is off, and for a Site Admin while theirs is
+ *   off, whatever other admin role they hold and whether or not the member requirement is on (the user's decision,
+ *   2026-11-14).
  */
 export type SecondFactorScope = 'everywhere' | 'admin' | 'none';
 
 export function secondFactorScope(roles: readonly Role[], policy: MfaPolicy): SecondFactorScope {
-  const held = policy.siteAdminsRequired ? roles : roles.filter((r) => r !== 'site_admin');
-  if (administersSite(held) || policy.membersRequired) return 'everywhere';
-  return held.length > 0 ? 'admin' : 'none';
+  if (roles.includes('system_admin')) return 'everywhere';
+  if (roles.includes('site_admin')) return policy.siteAdminsRequired ? 'everywhere' : 'none';
+  if (policy.membersRequired) return 'everywhere';
+  return roles.length > 0 ? 'admin' : 'none';
 }

@@ -74,15 +74,17 @@ export class AuthGuard implements CanActivate {
     const ownAccountId = await this.directory.accountIdForUid(principal.uid);
     // The sign-in log (design §10.7): the real person who signed in, even while they act as a test persona.
     await this.signInLog?.note(principal, ownAccountId, request);
-    const operator = personaId === undefined ? null : await this.operatorFor(request, principal, ownAccountId, personaId);
+    const acting = personaId === undefined ? null : await this.operatorFor(request, principal, ownAccountId, personaId);
+    const operator = acting?.operator ?? null;
     const accountId = personaId === undefined ? ownAccountId : personaId;
     let roles: Role[] = [];
-    let secondFactorWaived = false;
+    // A Site Admin acting as a persona without a second factor was let through as themselves (operatorFor).
+    let secondFactorWaived = acting?.waived ?? false;
     if (required.length > 0) {
       if (!accountId) throw new ForbiddenException('no account');
       roles = await this.directory.activeRoles(accountId);
-      if (this.config.adminMfaRequired && !principal.mfa) {
-        // Only a Site Admin whose role asks for no second factor, and who holds no admin role that does (design §4).
+      if (this.config.adminMfaRequired && !principal.mfa && !secondFactorWaived) {
+        // Only a Site Admin while the Site Admins' setting is off, whatever other admin role they hold (design §4).
         secondFactorWaived = roles.includes('site_admin') && secondFactorScope(roles, await this.mfaPolicy.current()) === 'none';
         if (!secondFactorWaived) {
           throw new ForbiddenException({ message: 'admin actions require multi-factor sign-in', type: PROBLEM_TYPES.mfaRequired });
@@ -100,13 +102,15 @@ export class AuthGuard implements CanActivate {
 
   /**
    * A sign-in without a second factor, on a route that is neither an admin route nor exempt: refused for a System Admin
-   * always, a Site Admin while the Site Admins' setting is on, and everyone while the member requirement is on (design §4). The roles are read fresh, and only when the
-   * requirement is off, so a new System Admin is held to it at once. Someone acting as a test persona already signed in
-   * with a second factor (operatorFor), so the login's own account is the one that counts.
+   * always, a Site Admin while the Site Admins' setting is on, and everyone else while the member requirement is on
+   * (design §4). The roles are read fresh, so a new System Admin is held to it at once, and are not read at all while
+   * both settings are on, when everyone is refused. Someone acting as a test persona was checked as themselves
+   * (operatorFor), so the login's own account is the one that counts.
    */
   private async requireSecondFactorWhereDue(ownAccountId: string | null): Promise<void> {
     const policy = await this.mfaPolicy.current();
-    const roles = policy.membersRequired || !ownAccountId ? [] : await this.directory.activeRoles(ownAccountId);
+    const everyone = policy.membersRequired && policy.siteAdminsRequired;
+    const roles = everyone || !ownAccountId ? [] : await this.directory.activeRoles(ownAccountId);
     if (secondFactorScope(roles, policy) !== 'everywhere') return;
     const message = roles.includes('system_admin')
       ? 'System Admins must sign in with two-step verification'
@@ -130,25 +134,29 @@ export class AuthGuard implements CanActivate {
 
   /**
    * Checks a request to act as a test persona (design §10.4): testing mode is on, the caller is a System or Site Admin
-   * signed in with MFA (a Site Admin too, whatever the Site Admins' setting lets them skip), and the target is a
-   * persona. Returns the caller's own accountId, the operator.
+   * signed in with MFA, or a Site Admin without it while the Site Admins' setting is off (`waived`), and the target is
+   * a persona. Returns the caller's own accountId, the operator.
    */
   private async operatorFor(
     request: FastifyRequest,
     principal: Principal,
     ownAccountId: string | null,
     personaId: string,
-  ): Promise<string> {
+  ): Promise<{ operator: string; waived: boolean }> {
     if (!this.config.testingMode) throw new ForbiddenException('testing mode is off on this deployment');
     if (!ownAccountId) throw new ForbiddenException('no account');
-    if (this.config.adminMfaRequired && !principal.mfa) {
-      throw new ForbiddenException({ message: 'acting as a test persona requires multi-factor sign-in', type: PROBLEM_TYPES.mfaRequired });
-    }
     const [roles, isPersona] = await Promise.all([this.directory.activeRoles(ownAccountId), this.directory.isPersona(personaId)]);
+    let waived = false;
+    if (this.config.adminMfaRequired && !principal.mfa) {
+      waived = roles.includes('site_admin') && secondFactorScope(roles, await this.mfaPolicy.current()) === 'none';
+      if (!waived) {
+        throw new ForbiddenException({ message: 'acting as a test persona requires multi-factor sign-in', type: PROBLEM_TYPES.mfaRequired });
+      }
+    }
     if (!administersSite(roles)) throw new ForbiddenException('only System and Site Admins can act as test personas');
     if (!isPersona) throw new ForbiddenException('not a test persona');
     // Persona accounts have no login of their own, so this log is what ties each persona action to a real person.
     this.logger.log(`${ownAccountId} acting as test persona ${personaId}: ${request.method} ${request.url.split('?', 1)[0]}`);
-    return ownAccountId;
+    return { operator: ownAccountId, waived };
   }
 }

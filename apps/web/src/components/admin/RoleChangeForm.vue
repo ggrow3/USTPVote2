@@ -126,6 +126,8 @@ async function submit() {
       <div class="text-caption text-grey-7">
         Takes effect as soon as you confirm; no second admin approves it. The change is recorded in the audit ledger.
         A person may hold at most two roles, an Auditor holds no other role, and a System Admin is not also a Site Admin.
+        A Site Admin is the exception: they may hold three more roles, Auditor among them, and only a System Admin makes
+        a Site Admin an Auditor or ends it.
         <template v-if="!systemAdmin">
           As a Site Admin you change every role but System Admin, for anyone who is not a System Admin.
         </template>

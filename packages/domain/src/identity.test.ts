@@ -43,13 +43,18 @@ describe('two-step verification policy', () => {
     }
   });
 
-  it('asks a Site Admin for nothing with their setting off, but for what their other roles and the member setting ask', () => {
+  it('asks a Site Admin for nothing with their setting off, whatever their other role and the member setting', () => {
     const relaxed = { ...off, siteAdminsRequired: false };
     expect(secondFactorScope(['site_admin'], relaxed)).toBe('none');
-    expect(secondFactorScope(['site_admin', 'membership_admin'], relaxed)).toBe('admin');
-    expect(secondFactorScope(['site_admin'], { ...relaxed, membersRequired: true })).toBe('everywhere');
+    expect(secondFactorScope(['site_admin', 'membership_admin'], relaxed)).toBe('none');
+    expect(secondFactorScope(['election_admin', 'site_admin'], relaxed)).toBe('none');
+    expect(secondFactorScope(['site_admin'], { ...relaxed, membersRequired: true })).toBe('none');
+    expect(secondFactorScope(['site_admin', 'course_admin'], { ...relaxed, membersRequired: true })).toBe('none');
+    // Nobody else gains by it.
     expect(secondFactorScope(['system_admin'], relaxed)).toBe('everywhere');
     expect(secondFactorScope(['election_admin'], relaxed)).toBe('admin');
+    expect(secondFactorScope([], { ...relaxed, membersRequired: true })).toBe('everywhere');
+    expect(secondFactorScope(['election_admin'], { ...relaxed, membersRequired: true })).toBe('everywhere');
   });
 
   it('keeps every other admin role to a second factor for the admin tools while the setting is off', () => {

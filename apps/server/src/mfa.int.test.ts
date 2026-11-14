@@ -222,7 +222,7 @@ describe('the two-step requirement for Site Admins (design §4)', () => {
     ]);
   });
 
-  it('leaves a Site Admin to their other admin role, and to the member requirement, while it is off', async () => {
+  it('asks a Site Admin for none while it is off, whatever their other admin role and the member requirement', async () => {
     const sa1 = await api.member(SA1_EMAIL, { mfa: true });
     const both = await api.member('both@example.test');
     const site = await api.member('site@example.test');
@@ -232,18 +232,29 @@ describe('the two-step requirement for Site Admins (design §4)', () => {
     expect((await put(sa1, { basedOn: 0, membersRequired: false, siteAdminsRequired: false })).status).toBe(200);
     api.app.get(MfaPolicyService).invalidate();
 
-    // A Membership Admin needs it for the admin tools, whatever their Site Admin role allows.
+    // Also a Membership Admin: the admin tools, a Membership Admin's own included, with one factor.
     expect((await useSite(both)).status).toBe(200);
-    expect((await api.call('GET', '/v1/admin/accounts', both)).body.type).toBe(PROBLEM_TYPES.mfaRequired);
-    expect((await api.call('GET', '/v1/me', both)).body.mfa).toEqual({ required: true, everywhere: false, signedInWithMfa: false });
+    expect((await api.call('GET', '/v1/admin/accounts', both)).status).toBe(200);
+    expect((await api.call('GET', '/v1/admin/members', both)).status).toBe(200);
+    expect((await api.call('GET', '/v1/me', both)).body.mfa).toEqual({ required: false, everywhere: false, signedInWithMfa: false });
 
-    // Required of every member: of Site Admins too.
+    // Required of every member: not of Site Admins, while of everyone else.
+    const member = await api.member('member@example.test');
     expect((await put(sa1, { basedOn: 1, membersRequired: true })).status).toBe(200);
     api.app.get(MfaPolicyService).invalidate();
-    expect(await useSite(site)).toMatchObject({
+    expect((await useSite(site)).status).toBe(200);
+    expect((await api.call('GET', '/v1/admin/accounts', site)).status).toBe(200);
+    expect((await api.call('GET', '/v1/me', site)).body.mfa).toEqual({ required: false, everywhere: false, signedInWithMfa: false });
+    expect(await useSite(member)).toMatchObject({
       status: 403,
       body: { detail: 'this site requires two-step verification; set it up on your account page' },
     });
+
+    // With the Site Admins' setting back on, they are held to it again.
+    expect((await put(sa1, { basedOn: 2, membersRequired: true, siteAdminsRequired: true })).status).toBe(200);
+    api.app.get(MfaPolicyService).invalidate();
+    expect((await useSite(site)).status).toBe(403);
+    expect((await api.call('GET', '/v1/admin/accounts', both)).body.type).toBe(PROBLEM_TYPES.mfaRequired);
   });
 });
 
@@ -263,34 +274,34 @@ describe('the testing tools for Site Admins (design §10.4)', () => {
   afterAll(() => testing.close());
   beforeEach(() => testing.app.get(MfaPolicyService).invalidate());
 
-  it('need a second factor even while the Site Admins\' setting lets them skip it elsewhere', async () => {
+  it('need a second factor of a Site Admin only while the Site Admins\' setting is on', async () => {
     const sa1 = await testing.member(SA1_EMAIL, { mfa: true });
     const site = await testing.member('site@example.test');
     const securedSite = await testing.member('secured-site@example.test', { mfa: true });
     await testing.grant(site.accountId, 'site_admin', sa1);
     await testing.grant(securedSite.accountId, 'site_admin', sa1);
-    const off = await testing.call('PUT', '/v1/admin/mfa-policy', sa1, { basedOn: 0, membersRequired: false, siteAdminsRequired: false });
-    expect(off.status).toBe(200);
-    testing.app.get(MfaPolicyService).invalidate();
     const personas = (await testing.call('POST', '/v1/testing/personas', sa1, {})).body as { label: string; accountId: string }[];
     const auditor = { 'x-act-as': personas.find((p) => p.label === 'Test Auditor')!.accountId };
 
-    // Without one: their own tools, but not the testing tools, and no acting as a persona.
-    expect((await testing.call('GET', '/v1/admin/accounts', site)).status).toBe(200);
-    for (const [method, path] of [
-      ['GET', '/v1/testing/personas'],
-      ['POST', '/v1/testing/personas'],
-      ['POST', '/v1/testing/demo-elections'],
-    ] as const) {
-      expect(await testing.call(method, path, site, method === 'POST' ? {} : undefined), path).toMatchObject({
-        status: 403,
-        body: { type: PROBLEM_TYPES.mfaRequired, detail: 'the testing tools require two-step verification' },
-      });
-    }
+    // On, without one: no testing tools, and no acting as a persona.
+    expect((await testing.call('GET', '/v1/testing/personas', site)).body.type).toBe(PROBLEM_TYPES.mfaRequired);
     expect(await testing.call('GET', '/v1/me', site, undefined, auditor)).toMatchObject({
       status: 403,
       body: { type: PROBLEM_TYPES.mfaRequired, detail: 'acting as a test persona requires multi-factor sign-in' },
     });
+
+    // Off, without one: the testing tools and acting as a persona, the persona's admin pages included.
+    const off = await testing.call('PUT', '/v1/admin/mfa-policy', sa1, { basedOn: 0, membersRequired: false, siteAdminsRequired: false });
+    expect(off.status).toBe(200);
+    testing.app.get(MfaPolicyService).invalidate();
+    expect((await testing.call('GET', '/v1/admin/accounts', site)).status).toBe(200);
+    expect((await testing.call('GET', '/v1/testing/personas', site)).status).toBe(200);
+    expect((await testing.call('POST', '/v1/testing/personas', site, {})).status).toBeLessThan(300);
+    expect((await testing.call('GET', '/v1/me', site, undefined, auditor)).body).toMatchObject({
+      roles: ['auditor'],
+      testing: { enabled: true, operator: site.accountId },
+    });
+    expect((await testing.call('GET', '/v1/admin/approvals', site, undefined, auditor)).status).toBe(200);
 
     // With one: both.
     expect((await testing.call('GET', '/v1/testing/personas', securedSite)).status).toBe(200);

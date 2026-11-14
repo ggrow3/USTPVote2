@@ -198,15 +198,44 @@ describe('role changes by a Site Admin', () => {
     expect(await rolesOf(sa2)).toEqual(['system_admin']);
     expect(await changeRole(site, site.accountId, 'site_admin', 'revoke')).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/own account/) } });
 
+    // Making an Auditor a Site Admin, or a Site Admin an Auditor, is a System Admin's to do, and to end.
     await api.grant(pat.accountId, 'auditor', sa1);
-    expect(await changeRole(site, pat.accountId, 'site_admin')).toMatchObject({ status: 409, body: { detail: /cannot be held together/ } });
+    const only = { status: 403, body: { detail: 'only a system_admin makes a site_admin an auditor, or ends it' } };
+    expect(await changeRole(site, pat.accountId, 'site_admin')).toMatchObject(only);
+    expect((await changeRole(sa1, pat.accountId, 'site_admin')).status).toBe(201);
+    expect(await changeRole(site, pat.accountId, 'auditor', 'revoke')).toMatchObject(only);
+    // Site Admin and three more, the roles an Auditor checks among them.
+    expect((await changeRole(site, pat.accountId, 'election_admin')).status).toBe(201);
+    expect((await changeRole(site, pat.accountId, 'membership_admin')).status).toBe(201);
+    expect(await rolesOf(pat)).toEqual(['auditor', 'election_admin', 'membership_admin', 'site_admin']);
+    expect(await changeRole(sa1, pat.accountId, 'course_admin')).toMatchObject({ status: 409, body: { detail: /at most 4 roles/ } });
+    // Site Admin goes last: the roles left would need it.
+    expect(await changeRole(sa1, pat.accountId, 'site_admin', 'revoke')).toMatchObject({
+      status: 409,
+      body: { detail: /revoke another role first/ },
+    });
+    expect((await changeRole(sa1, pat.accountId, 'auditor', 'revoke')).status).toBe(201);
+    expect((await changeRole(sa1, pat.accountId, 'site_admin', 'revoke')).status).toBe(201);
+    expect(await rolesOf(pat)).toEqual(['election_admin', 'membership_admin']);
+    const all = (await api.firebase.db.collection('audit_events').orderBy('seq').get()).docs.map((d) => d.data());
+    const changes = all.filter((e) => e.subject === pat.accountId && e.type.startsWith('role.'));
+    expect(changes.map((e) => `${e.type} ${(e.payload as { role: string }).role} by ${e.actor === sa1.accountId ? 'sa1' : 'site'}`)).toEqual([
+      'role.granted auditor by sa1',
+      'role.granted site_admin by sa1',
+      'role.granted election_admin by site',
+      'role.granted membership_admin by site',
+      'role.revoked auditor by sa1',
+      'role.revoked site_admin by sa1',
+    ]);
     expect(await changeRole(sa1, site.accountId, 'system_admin')).toMatchObject({
       status: 409,
       body: { detail: 'system_admin cannot be held together with site_admin' },
     });
     await api.grant(kim.accountId, 'membership_admin', sa1);
     await api.grant(kim.accountId, 'election_admin', sa1);
-    expect(await changeRole(site, kim.accountId, 'site_admin')).toMatchObject({ status: 409, body: { detail: /at most 2 roles/ } });
+    expect(await changeRole(site, kim.accountId, 'course_admin')).toMatchObject({ status: 409, body: { detail: /at most 2 roles/ } });
+    expect((await changeRole(site, kim.accountId, 'site_admin')).status).toBe(201);
+    expect((await changeRole(sa1, kim.accountId, 'course_admin')).status).toBe(201);
   });
 
   it('see the People list, but never delete an account or a test voter (403)', async () => {

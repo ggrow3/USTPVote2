@@ -113,7 +113,7 @@ export class DemoElectionsService {
 }
 
 /**
- * `POST /v1/testing/demo-elections`: System and Site Admins as themselves with a second factor (`requireTestingAccess`),
+ * `POST /v1/testing/demo-elections`: System and Site Admins as themselves (`requireTestingAccess`),
  * and only in testing mode (404 otherwise).
  */
 @Controller('v1/testing/demo-elections')

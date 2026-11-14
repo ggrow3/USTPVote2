@@ -1,6 +1,18 @@
 export type { Check, Outcome, Refusal, Refused } from './check.js';
 export { uuidv7, isUuidV7, uuidv7Timestamp } from './ids.js';
-export { ROLES, SITE_ADMIN_ROLES, MAX_ROLES_PER_ACCOUNT, administersSite, conflictingRoles, isRole, checkRoleChange, type SiteAdminRole } from './roles.js';
+export {
+  ROLES,
+  SITE_ADMIN_ROLES,
+  MAX_ROLES_PER_ACCOUNT,
+  SITE_ADMIN_MAX_ROLES,
+  maxRolesFor,
+  administersSite,
+  changesAuditingSiteAdmin,
+  conflictingRoles,
+  isRole,
+  checkRoleChange,
+  type SiteAdminRole,
+} from './roles.js';
 export type { Role } from './roles.js';
 export {
   COURSE_STATUSES,
