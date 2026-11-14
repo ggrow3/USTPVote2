@@ -2249,8 +2249,10 @@ application has asked since §5.2 took members outside the US); an address that 
     login rather than making a second one; it already holds the membership, so nothing changes for the api and no new
     identity is recorded. The page then says they sign in with Google from now on, with "Set a password as well" for
     anyone who wants both. A Google account already joined to another login is refused (`credential-already-in-use`).
-  The Account page no longer offers to link a provider the signed-in login already has. The page also serves anyone
-  who has forgotten their password. Where two-step verification is required of members (§4), the page
+  Every welcome email offers both, the password first: the user chose (2026-11-14) not to have a Membership Admin pick
+  one per member, in the form or the CSV, nor to lead with Google for Gmail addresses, since a Google account may use
+  any address and the member knows which they have. The Account page no longer offers to link a provider the
+  signed-in login already has. The page also serves anyone who has forgotten their password. Where two-step verification is required of members (§4), the page
   then points them to setting up the authenticator app, as the site does for anyone; claiming needs no second factor,
   since `POST /v1/accounts` answers without one.
 - **Why nobody can take an account by knowing an email address.** The api links an added account only to a sign-in
