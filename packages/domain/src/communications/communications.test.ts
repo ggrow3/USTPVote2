@@ -79,6 +79,9 @@ describe('the Communications Admin role', () => {
     expect(conflictingRoles(['auditor'], 'communications_admin')).toEqual(['auditor']);
     expect(checkRoleChange(['course_admin'], 'grant', 'communications_admin').ok).toBe(true);
     expect(checkRoleChange(['membership_admin', 'election_admin'], 'grant', 'communications_admin').ok).toBe(false);
+    // A Site Admin may be both, and hold it as a third or fourth role.
+    expect(conflictingRoles(['auditor', 'site_admin'], 'communications_admin')).toEqual([]);
+    expect(checkRoleChange(['site_admin', 'membership_admin', 'election_admin'], 'grant', 'communications_admin').ok).toBe(true);
   });
 
   it('makes ledger entries Auditors read, none of them public', () => {

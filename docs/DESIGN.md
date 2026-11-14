@@ -416,7 +416,8 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
     route**, always, whatever the settings below say, since they change roles, the sign-in switches and these settings;
     **Site Admins** likewise while the Site Admins' setting below is on, as it is by default, since they change roles too
     (`Site Admins must sign in with two-step verification`); **every other admin role** on the admin routes; **members without a role** nowhere, unless a System Admin turns on
-    the **member requirement**, which then holds everyone to it on every route. Two routes answer a sign-in without a
+    the **member requirement**, which then holds everyone to it on every route (but Site Admins while their setting is
+    off, below). Two routes answer a sign-in without a
     second factor (`@MfaExempt()`), so anyone can see where they stand and set one up: `GET /v1/me` and
     `POST /v1/accounts`; so does `POST /v1/page-visits` (§10.7), which records only the caller's own visit, so pages
     opened meanwhile still count. Public routes need no sign-in at all, and setting the factor up talks to Identity Platform
@@ -435,13 +436,15 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
     Site Admin", by a switch System Admins control)*: `siteAdminsRequired` in `mfa_policy/current`, on by default. System
     Admins switch it beside the member requirement (Admin › Sign-in methods, "Require it of Site Admins"; the same
     `PUT /v1/admin/mfa-policy`, which keeps it as it is when a page opened before it existed leaves it out; ledgered in
-    the same `mfa_policy.changed` entry). Off, the Site Admin role asks for no second factor, on any route, the admin
-    routes included: a Site Admin with no other admin role signs in and acts with one factor, role changes and the
-    site's settings included (the guard marks the request `secondFactorWaived`, and the checks that ask for a
-    multi-factor sign-in, such as `checkCanChangeRole`, count it as one). The 15-minute re-authentication for role
-    changes still applies. Everything else stays: another admin role the Site Admin holds asks for a second factor on
-    the admin routes as usual, the member requirement, while on, holds Site Admins as everyone, and System Admins always
-    need one. Turning it off is confirmed in a dialog that says Site Admins could then change roles with only a password.
+    the same `mfa_policy.changed` entry). Off, a Site Admin is asked for no second factor, on any route, the admin
+    routes included: they sign in and act with one factor, role changes and the site's settings included (the guard
+    marks the request `secondFactorWaived`, and the checks that ask for a multi-factor sign-in, such as
+    `checkCanChangeRole`, count it as one). The 15-minute re-authentication for role changes still applies. *(Changed
+    2026-11-14, the user's decision: "make site admin not require" it for these.)* Off, that holds **whatever else
+    would ask for one**: another admin role the Site Admin holds (its admin routes too), the testing tools and acting
+    as a test persona (§10.4), and the member requirement, which while on holds everyone but these Site Admins. Until
+    then each of the three still asked. System Admins always need one. Turning it off is confirmed in a dialog that
+    says so.
   - `GET /v1/me` reports `mfa.required` (a second factor is needed for something: a role, or the requirement),
     `mfa.everywhere` (for every route) and `mfa.signedInWithMfa`. In the web app, someone who needs it everywhere and
     has not used it sees a banner on every page but the hub and the Account page; pages that need a sign-in send them
@@ -3934,7 +3937,7 @@ results page, the CLI and the tests pass it that entry.
 | Read full ledger, run verifications | | | ● | | |
 | Grant/revoke roles (one admin, at once; §10.2) and see who holds them (§10.3) | | | | ● | ● (every role but System Admin, never a System Admin's) |
 | Delete an account the deployment lists (at once; §4); in testing mode, delete test voters (at once; §10.4) | | | | ● | |
-| In testing mode, the other testing tools: personas, acting as them (always with two-step verification), demo elections (§10.4) | | | | ● | ● |
+| In testing mode, the other testing tools: personas, acting as them, demo elections (§10.4) | | | | ● | ● |
 | Sign-in switches, the two-step requirement for members and whether Site Admins need two-step (§4), the API keys (§5.6) | | | | ● | |
 | The navigation settings (§10.5), the link hub and the home page quote (§10.5, §10.6), the email settings, setup check, email log, test emails and approving emails to members (§6.8, §10.12), the sign-in log and site analytics (§10.7), which teams have the Bills tool (§5.14), operations | | | | ● | ● |
 
@@ -3960,14 +3963,27 @@ the user's decision; §10.4).
 
 **Incompatible role pairs:** Auditor with any other role, and System Admin with Site Admin, which would add nothing.
 **At most two roles per person** *(added)* (`MAX_ROLES_PER_ACCOUNT`): one person may combine two of Membership Admin,
-Election Admin, System Admin and Site Admin, never three, so no one person both runs the membership, runs elections and
-controls who holds roles. `checkRoleChange` in
-`ustp-domain` applies both rules to every grant (a conflict is named first when a grant breaks both); a revocation is
-always allowed, so an account granted more before the limit can be brought within it. The role-change form shows the
+Election Admin and System Admin, never three, so no one person both runs the membership, runs elections and
+controls who holds roles. **A Site Admin is the exception to both** *(changed 2026-11-14, the user's decisions: "allow
+site admin to have 3 roles and the auditor role", three besides Site Admin, in any combination)*: a Site Admin may
+hold **Site Admin and three more roles** (`SITE_ADMIN_MAX_ROLES`, four in all), and **may be an Auditor too**, with
+Election Admin or Membership Admin beside it if granted. This gives up, for that person, the separation the two rules
+keep for everyone else: one Site Admin can run the membership, run elections, change roles and audit. What still
+holds: every two-person action needs two different people (`checkCanApprove`, "a different person"), so such a person
+never approves their own request; nobody changes their own roles; and every grant and revocation is ledgered
+(`role.granted`, `role.revoked`, with who did it). Making a Site Admin an Auditor, ending that, and making an
+Auditor a Site Admin are for **System Admins only** (403 for a Site Admin, `changesAuditingSiteAdmin`; my reading of
+"can be revoked by the system admin"), so Site Admins do not make one another the auditors of their own work. A
+System Admin is never a Site Admin, so is never an Auditor and keeps to two roles. `checkRoleChange` in
+`ustp-domain` applies the rules to every grant (a conflict is named first when a grant breaks both; the limit counts
+the role being granted, so someone with two roles can be made a Site Admin); a revocation is
+always allowed, so an account granted more before the limit can be brought within it, except that Site Admin is not
+revoked while the roles left need it (an Auditor with another role, or more than two): another role goes first (409,
+"revoke another role first"). The role-change form shows the
 refusal in words before sending, and the API refuses the grant (409). An Election Admin who is a candidate in an election may not
-act on that election (Q12; enforced on every edit, and nobody can add themselves as a candidate). All admin roles require MFA for the admin tools, and System and Site Admins on every page (§4). The first System Admin is bootstrapped once from deployment
+act on that election (Q12; enforced on every edit, and nobody can add themselves as a candidate). All admin roles require MFA for the admin tools, and System and Site Admins on every page, but Site Admins nowhere while their setting is off (§4). The first System Admin is bootstrapped once from deployment
 configuration and ledgered; the bootstrap grant keeps to the same rules, so an account that is an Auditor or already
-holds two roles is left as it is (logged) and becomes System Admin at a later sign-in once it holds one role.
+holds two roles, or is a Site Admin, is left as it is (logged) and becomes System Admin at a later sign-in once it holds one role.
 
 The admin console is in the web app's menu for whoever the navigation settings show it to: by default everyone
 (§5.2, §10.5). Signed out, it leads to sign-in and back; signed in with no role, to a page saying it is for party
@@ -4050,7 +4066,7 @@ when the account was created, the member status if there is a member record, and
   each account holds now, from the offices list (`GET /v1/admin/positions`, readable by every role; §6.4), as the
   Members tab shows them (§5.2), so an admin sees roles and offices side by side. The role-change form picks the person from
   the same list, typing an account ID stays as a fallback, and the form explains a refusal before sending it with the
-  API's own checks (`checkCanChangeRole` in `ustp-domain`: not for your own account, compatible with the roles held, at most two roles).
+  API's own checks (`checkCanChangeRole` in `ustp-domain`: not for your own account, compatible with the roles held, at most two roles, or four for a Site Admin).
   The form sits in the People tab, under the list ("Change roles" on a row fills it in), and asks for confirmation
   before sending, because the change takes effect at once. The API still decides.
 - **Delete account** *(added)*: each row says whether the deployment lists the account for deletion
@@ -4081,10 +4097,12 @@ different account on each side. Testing mode lets one System Admin do that alone
   keys, the room's model server and System Admins' roles stay with real System Admins.
 - **Who uses the testing tools** *(changed 2026-11-14, the user's decisions)*: System Admins and Site Admins, each as
   themselves, except deleting test voters, which stays with System Admins (403 for a Site Admin,
-  `checkCanDeleteTestVoters`). Every `/v1/testing` route and `X-Act-As` need a sign-in with a second factor, a Site
-  Admin's too even while the Site Admins' two-step setting (§4) lets them use their other tools without one (403
-  `mfa-required`: "the testing tools require two-step verification", "acting as a test persona requires multi-factor
-  sign-in"), because personas approve elections. The `/v1/testing` routes refuse while acting as a persona (403, "stop
+  `checkCanDeleteTestVoters`). Every `/v1/testing` route and `X-Act-As` need the second factor the admin routes need
+  (403 `mfa-required`, "acting as a test persona requires multi-factor sign-in"): always of a System Admin, and of a
+  Site Admin while the Site Admins' two-step setting (§4) is on. *(Changed again the same day, the user's decision:
+  earlier a Site Admin needed one here even with that setting off, because personas approve elections; now the
+  setting covers the testing tools too, so with it off a Site Admin makes and acts as personas with only a
+  password.)* The `/v1/testing` routes refuse while acting as a persona (403, "stop
   acting as a test persona first"), so the Test Site Admin, itself a Site Admin, never reaches them, and the web app
   shows no Testing tab while acting. The Testing tab's visibility for Site Admins is a navigation setting (§10.5),
   shown by default; on a deployment whose navigation was saved before, where it was locked off, a System Admin turns
@@ -4097,11 +4115,11 @@ different account on each side. Testing mode lets one System Admin do that alone
   transaction against `testing_personas`), so the ledger never names a persona as the one who changed a real
   account's roles; those stay with real System and Site Admins, recorded under their own names. Like any persona it is
   one account holding one role, so the at-most-two-roles rule and the System Admin–Site Admin incompatibility (§10.1)
-  apply to it as to any account, and the acting admin's own roles are untouched. Whoever acts as it has already
-  signed in with two-step verification (below), so the Site Admins' two-step switch (§4) does not change what it can
-  reach.
+  apply to it as to any account, and the acting admin's own roles are untouched. Whoever acts as it was checked
+  as themselves (below), so what it can reach does not depend on the Site Admins' two-step switch (§4).
 - **Acting:** a request with `X-Act-As: <persona accountId>` runs as that persona. The guard checks that testing mode
-  is on, that the caller is a System or Site Admin signed in with MFA whose token is not revoked, and that the target
+  is on, that the caller is a System or Site Admin signed in with MFA (or a Site Admin without it while the Site
+  Admins' two-step setting is off, §4) whose token is not revoked, and that the target
   is a persona; the request's account and roles are then the persona's, and the acting admin is kept as its `operator`.
   Every route behaves as it would for the persona, two-person checks included, so a rehearsal exercises the real
   rules, and ledger entries name the persona. The api logs each acting request with operator, persona, method and
@@ -5980,9 +5998,9 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET\|PUT /admin/certificate-settings` | System or Site Admin | the party's LinkedIn organization ID (digits) or none, which Add to profile names as the certificates' issuer (§10.8) |
 | `GET /admin/courses/{courseId}/package` (`?version=draft\|N`) · `GET /admin/course-map/package` | Course Admin | a course as its `ustp.course` file, the draft (the default) or a published version (404 for one it lacks); every course with the map as one `ustp.courses` file: each course's square, prerequisites and hide switch, its draft and the version learners take now, hidden courses and those never published included; both with the quiz answers (§10.8) |
 | `GET /admin/courses/{courseId}/learners` · `PUT /admin/courses/{courseId}/learners/{accountId}/messaging` · `GET\|POST /admin/courses/{courseId}/learners/{accountId}/messages` | Course Admin | the course's students and how they stand, without emails; turn a student's messaging on or off; read their conversation (marking it read) and answer as an instructor (409 while it is off) (§10.8) |
-| `GET\|POST /testing/personas` · header `X-Act-As` on any signed-in route | System or Site Admin with a second factor, as themselves, testing mode only (404 otherwise) | test personas and acting as them (§10.4) |
+| `GET\|POST /testing/personas` · header `X-Act-As` on any signed-in route | System or Site Admin, with the second factor their admin routes need (§4), as themselves, testing mode only (404 otherwise) | test personas and acting as them (§10.4) |
 | `POST /testing/personas/delete` | System Admin, testing mode only (404 otherwise) | delete test voters `{ voters }` at once, whatever elections hold them, their election records kept; answers the personas that remain (200; 403 to re-authenticate first, 404 naming any ID that is not a test voter; §10.4) |
-| `POST /testing/demo-elections` | System or Site Admin with a second factor, as themselves, testing mode only (404 otherwise, whatever the body) | make up a demo election at random and schedule it as a rehearsal, built by the Test Election Admin and approved by the Test Auditor; the scheduled election and its seed (201; 403 to re-authenticate first; §10.4) |
+| `POST /testing/demo-elections` | System or Site Admin, with the second factor their admin routes need (§4), as themselves, testing mode only (404 otherwise, whatever the body) | make up a demo election at random and schedule it as a rehearsal, built by the Test Election Admin and approved by the Test Auditor; the scheduled election and its seed (201; 403 to re-authenticate first; §10.4) |
 
 Errors use RFC 9457 problem details. Request bodies are validated against schemas shared with the web app.
 

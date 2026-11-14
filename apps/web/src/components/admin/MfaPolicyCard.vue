@@ -69,8 +69,8 @@ function confirmSave() {
       'Everyone who has not set it up will be asked to, on their account page, before they can do anything else on ' +
         'the site, voting and applying to join included. Nobody is signed out.',
     relaxing &&
-      'Site Admins with no other admin role will be able to sign in with only a password and still change roles and ' +
-        "the site's settings.",
+      'Site Admins will be able to sign in with only a password and still change roles and the site\'s settings, use ' +
+        'any other admin role they hold and the testing tools, even while it is required of every member.',
   ].filter(Boolean);
   dialog({
     title: requiring && relaxing ? 'Save these two-step settings?' : requiring ? 'Require two-step verification?' : 'Let Site Admins sign in without it?',
@@ -107,9 +107,9 @@ onMounted(load);
         <q-item-section>
           <q-item-label>Require it of Site Admins</q-item-label>
           <q-item-label caption>
-            On: Site Admins must use it on every page, as System Admins do. Off: a Site Admin with no other admin role
-            signs in without it, unless it is required of every member, and can then change roles and settings with only
-            a password.
+            On: Site Admins must use it on every page, as System Admins do. Off: a Site Admin signs in without it and
+            can change roles and settings with only a password. That covers any other admin role they hold and the
+            testing tools, and holds even while it is required of every member.
           </q-item-label>
         </q-item-section>
         <q-item-section side>

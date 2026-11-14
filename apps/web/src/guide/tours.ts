@@ -316,7 +316,7 @@ const auditor: readonly TourStep[] = [
     id: 'sign-in',
     title: 'Sign in',
     page: '/signin',
-    about: 'Sign in with the account a System Admin made an Auditor. An Auditor holds no other role.',
+    about: 'Sign in with the account a System Admin made an Auditor. An Auditor holds no other role, unless they are a Site Admin.',
     todo: SIGN_IN_TODO,
     notes: ['Already signed in? Press Next.'],
   },

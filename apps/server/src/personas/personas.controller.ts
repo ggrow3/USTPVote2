@@ -7,7 +7,7 @@ import { PersonasService } from './personas.service.js';
 import { requireTestingAccess } from './testing-access.js';
 
 /**
- * Test personas (design §10.4), for System and Site Admins as themselves with a second factor (`requireTestingAccess`),
+ * Test personas (design §10.4), for System and Site Admins as themselves (`requireTestingAccess`),
  * and only in testing mode (404 otherwise). Deleting test voters stays with System Admins (403 for a Site Admin).
  */
 @Controller('v1/testing/personas')

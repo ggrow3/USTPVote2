@@ -14,7 +14,7 @@ import { electionDocPath, sequenceId } from './collections.js';
 import { checkElectionDeletable, electionTransitionAuthority, isTerminal } from './election-state.js';
 import { isUuidV7, uuidv7, uuidv7Timestamp } from './ids.js';
 import { checkStatusChange, mayApply, type MemberStatus } from './membership/member-status.js';
-import { administersSite, checkRoleChange, conflictingRoles, MAX_ROLES_PER_ACCOUNT, ROLES } from './roles.js';
+import { administersSite, checkRoleChange, conflictingRoles, MAX_ROLES_PER_ACCOUNT, maxRolesFor, ROLES, SITE_ADMIN_MAX_ROLES, type Role } from './roles.js';
 import { ADMIN_PERSONAS, checkActingRoleChange, MAX_TEST_VOTERS } from './testing.js';
 
 describe('uuidv7', () => {
@@ -152,16 +152,52 @@ describe('roles', () => {
     expect(checkRoleChange(three, 'grant', 'auditor').ok).toBe(false);
   });
 
-  it('keeps the Site Admin apart from the Auditor and the System Admin, and within the two-role limit', () => {
-    expect(conflictingRoles(['auditor'], 'site_admin')).toEqual(['auditor']);
-    expect(conflictingRoles(['site_admin'], 'auditor')).toEqual(['site_admin']);
+  it('lets a Site Admin be an Auditor too, with any of the other roles beside it', () => {
+    expect(conflictingRoles(['auditor'], 'site_admin')).toEqual([]);
+    expect(conflictingRoles(['site_admin'], 'auditor')).toEqual([]);
+    expect(checkRoleChange(['site_admin', 'election_admin'], 'grant', 'auditor').ok).toBe(true);
+    expect(checkRoleChange(['site_admin', 'auditor'], 'grant', 'membership_admin').ok).toBe(true);
+    expect(checkRoleChange(['site_admin', 'auditor', 'membership_admin'], 'grant', 'election_admin').ok).toBe(true);
+    // Not without Site Admin, and never a System Admin, who is no Site Admin.
+    expect(checkRoleChange(['election_admin', 'membership_admin'], 'grant', 'auditor').ok).toBe(false);
+    expect(checkRoleChange(['auditor'], 'grant', 'system_admin')).toMatchObject({ ok: false, reason: /cannot be held together/ });
+  });
+
+  it('lets a Site Admin hold three roles besides Site Admin, and nobody else more than two', () => {
+    expect(SITE_ADMIN_MAX_ROLES).toBe(4);
+    expect(maxRolesFor(['site_admin'])).toBe(4);
+    expect(maxRolesFor(['election_admin', 'membership_admin'])).toBe(2);
+    expect(checkRoleChange(['site_admin', 'election_admin'], 'grant', 'course_admin').ok).toBe(true);
+    expect(checkRoleChange(['site_admin', 'election_admin', 'course_admin'], 'grant', 'auditor').ok).toBe(true);
+    expect(checkRoleChange(['site_admin', 'election_admin', 'course_admin', 'auditor'], 'grant', 'membership_admin')).toEqual({
+      ok: false,
+      reason: 'an account may hold at most 4 roles, and this one already holds site_admin, election_admin, course_admin and auditor',
+    });
+    // Making someone with two roles a Site Admin is itself within the limit.
+    expect(checkRoleChange(['election_admin', 'membership_admin'], 'grant', 'site_admin').ok).toBe(true);
+  });
+
+  it('does not revoke Site Admin while the roles left need it', () => {
+    expect(checkRoleChange(['site_admin', 'auditor'], 'revoke', 'site_admin').ok).toBe(true);
+    expect(checkRoleChange(['site_admin', 'election_admin', 'membership_admin'], 'revoke', 'site_admin').ok).toBe(true);
+    expect(checkRoleChange(['site_admin', 'auditor', 'election_admin'], 'revoke', 'site_admin')).toEqual({
+      ok: false,
+      reason: 'revoke another role first: auditor cannot be held together with election_admin without site_admin',
+    });
+    expect(checkRoleChange(['site_admin', 'election_admin', 'membership_admin', 'course_admin'], 'revoke', 'site_admin')).toEqual({
+      ok: false,
+      reason: 'revoke another role first: without site_admin an account may hold at most 2 roles',
+    });
+    expect(checkRoleChange(['site_admin', 'auditor', 'election_admin'], 'revoke', 'election_admin').ok).toBe(true);
+  });
+
+  it('keeps the Site Admin apart from the System Admin', () => {
     expect(checkRoleChange(['system_admin'], 'grant', 'site_admin')).toMatchObject({
       ok: false,
       reason: 'site_admin cannot be held together with system_admin',
     });
     expect(checkRoleChange(['site_admin'], 'grant', 'system_admin')).toMatchObject({ ok: false, reason: /cannot be held together/ });
     expect(checkRoleChange(['site_admin'], 'grant', 'membership_admin').ok).toBe(true);
-    expect(checkRoleChange(['site_admin', 'election_admin'], 'grant', 'course_admin')).toMatchObject({ ok: false, reason: /at most 2 roles/ });
   });
 
   it('counts System and Site Admins, and nobody else, as running the site', () => {
@@ -288,6 +324,21 @@ describe('role changes by a Site Admin', () => {
     expect(checkCanChangeRole(site, pat, 'grant', 'site_admin').ok).toBe(true);
     expect(checkCanChangeRole(site, { accountId: 'other', roles: ['site_admin'] }, 'revoke', 'site_admin').ok).toBe(true);
     expect(checkCanChangeRole({ ...site, roles: ['site_admin', 'membership_admin'] }, pat, 'grant', 'course_admin').ok).toBe(true);
+  });
+
+  it('leaves making a Site Admin an Auditor, and ending it, to System Admins', () => {
+    const only = { ok: false, reason: 'only a system_admin makes a site_admin an auditor, or ends it', refusal: 'forbidden' };
+    const other = (roles: Role[]) => ({ accountId: 'other', roles });
+    expect(checkCanChangeRole(site, other(['site_admin']), 'grant', 'auditor')).toEqual(only);
+    expect(checkCanChangeRole(site, other(['site_admin', 'auditor']), 'revoke', 'auditor')).toEqual(only);
+    expect(checkCanChangeRole(site, other(['auditor']), 'grant', 'site_admin')).toEqual(only);
+    const sa: Actor = { ...site, accountId: 'sa', roles: ['system_admin'] };
+    expect(checkCanChangeRole(sa, other(['site_admin']), 'grant', 'auditor').ok).toBe(true);
+    expect(checkCanChangeRole(sa, other(['site_admin', 'auditor']), 'revoke', 'auditor').ok).toBe(true);
+    expect(checkCanChangeRole(sa, other(['auditor']), 'grant', 'site_admin').ok).toBe(true);
+    // A Site Admin still ends the Site Admin role of an Auditor, and changes their other roles.
+    expect(checkCanChangeRole(site, other(['site_admin', 'auditor']), 'revoke', 'site_admin').ok).toBe(true);
+    expect(checkCanChangeRole(site, other(['site_admin', 'auditor']), 'grant', 'course_admin').ok).toBe(true);
   });
 
   it('refuses System Admin, and a System Admin’s roles, as forbidden', () => {
