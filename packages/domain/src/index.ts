@@ -221,9 +221,20 @@ export {
 export type { TwoPersonAction, Actor, PendingApproval } from './approvals.js';
 export { Collections, ElectionCollections, NOTICE_RECIPIENTS, electionDocPath, sequenceId } from './collections.js';
 export type { ElectionCollection } from './collections.js';
-export { SIGN_IN_PROVIDERS, DEFAULT_MFA_POLICY, isSignInProvider, mfaPolicySchema, secondFactorScope } from './identity.js';
+export {
+  SIGN_IN_PROVIDERS,
+  FEDERATED_PROVIDERS,
+  FEDERATED_PROVIDER_NAMES,
+  enabledFederatedProviders,
+  providerNames,
+  DEFAULT_MFA_POLICY,
+  isSignInProvider,
+  mfaPolicySchema,
+  secondFactorScope,
+} from './identity.js';
 export type {
   SignInProvider,
+  FederatedProvider,
   MfaPolicy,
   MfaPolicyRecord,
   MfaPolicyInput,

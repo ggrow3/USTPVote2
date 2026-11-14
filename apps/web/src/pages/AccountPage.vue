@@ -20,7 +20,7 @@ import MyEmailCard from '../notifications/MyEmailCard.vue';
 import InviteCard from '../referrals/InviteCard.vue';
 import NotificationEmailCard from '../inbox/NotificationEmailCard.vue';
 import { refreshMe, secondFactorMissing, session } from '../session.js';
-import { PROVIDER_LABELS, signInWithPassword, signInWithProvider, type FederatedProvider } from '../sign-in.js';
+import { federatedProvidersOf, PROVIDER_LABELS, signInWithPassword, signInWithProvider, type FederatedProvider } from '../sign-in.js';
 
 const $q = useQuasar();
 usePageTitle('Your account');
@@ -51,7 +51,11 @@ const mfaNotice = computed(() => {
 const identities = computed<readonly IdentityRecord[]>(() => me.value?.identities ?? []);
 const linkable = computed(() =>
   (['google.com', 'microsoft.com', 'apple.com'] as const).filter(
-    (p) => enabled.value?.[p] && !identities.value.some((i) => i.provider === p),
+    (p) =>
+      enabled.value?.[p] &&
+      !identities.value.some((i) => i.provider === p) &&
+      // Added to the signed-in login itself, as "Use Google instead" does (design §5.13): it is there already.
+      !(session.user && federatedProvidersOf(auth.currentUser).includes(p)),
   ),
 );
 /** The email login they are signed in with, whose password they can change here (design §4). */

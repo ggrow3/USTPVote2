@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_MFA_POLICY, isSignInProvider, mfaPolicySchema, secondFactorScope } from './identity.js';
+import { DEFAULT_MFA_POLICY, enabledFederatedProviders, isSignInProvider, mfaPolicySchema, providerNames, secondFactorScope } from './identity.js';
 import { isPublicLedgerEvent } from './ledger.js';
 import { LEDGER_EVENT_TYPES } from './ledger-events.js';
 import { ROLES, type Role } from './roles.js';
@@ -9,6 +9,19 @@ describe('sign-in providers', () => {
     expect(isSignInProvider('google.com')).toBe(true);
     expect(isSignInProvider('password')).toBe(true);
     for (const other of ['phone', 'anonymous', 'custom', '', null]) expect(isSignInProvider(other)).toBe(false);
+  });
+});
+
+describe('providers instead of a password (design §5.13)', () => {
+  it('are the federated ones switched on, in the site order', () => {
+    expect(enabledFederatedProviders({ 'google.com': true, 'microsoft.com': false, 'apple.com': true, password: true })).toEqual(['google.com', 'apple.com']);
+    expect(enabledFederatedProviders({ password: true })).toEqual([]);
+  });
+
+  it('are named as a sentence names them', () => {
+    expect(providerNames(['google.com'])).toBe('Google');
+    expect(providerNames(['google.com', 'microsoft.com'])).toBe('Google or Microsoft');
+    expect(providerNames(['google.com', 'microsoft.com', 'apple.com'])).toBe('Google, Microsoft or Apple');
   });
 });
 
