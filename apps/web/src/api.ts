@@ -95,6 +95,8 @@ const AUTH_MESSAGES: Record<string, string> = {
   'auth/invalid-recaptcha-token': "We couldn't confirm this sign-in came from a person. Reload the page and try again.",
   'auth/expired-action-code': 'This link has expired. Ask for a new one.',
   'auth/invalid-action-code': 'This link has been used already, or was not copied whole. Ask for a new one.',
+  'auth/credential-already-in-use': 'That account already signs in to another login here. Choose another, or set a password instead.',
+  'auth/popup-closed-by-user': 'The sign-in window was closed before it finished.',
 };
 
 export function errorMessage(error: unknown): string {

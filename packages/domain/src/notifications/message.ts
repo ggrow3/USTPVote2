@@ -3,6 +3,7 @@ import { UNSUBSCRIBE_PATH } from './mail-preferences.js';
 import { DEFAULT_NOTICE_TEXT, fillNoticeText, type NoticePlaceholder } from './notice-settings.js';
 import type { NoticeKind } from './notices.js';
 import { TEST_SUBJECT_PREFIX } from './receipts.js';
+import { providerNames, type FederatedProvider } from '../identity.js';
 import { SET_PASSWORD_PATH } from './welcome.js';
 
 /**
@@ -164,7 +165,8 @@ export function votedMessage(input: NoticeMessageInput): NoticeMessage {
  * `signInLink`, Identity Platform's own email sign-in link for the address it goes to (the owner's decision of
  * 2026-11-13: one email, not two), its button signs them in and opens the page where they set their password; the
  * link works once and for some hours, and the page emails a new one after that. Without it (the worker could not get
- * one), the button opens that page, which emails the sign-in link first.
+ * one), the button opens that page, which emails the sign-in link first. With `providers`, the sign-in methods switched
+ * on, it also offers signing in with one of them instead, for an address that is such an account (2026-11-14).
  */
 export function welcomeMessage(input: {
   readonly origin: string;
@@ -172,6 +174,8 @@ export function welcomeMessage(input: {
   readonly contact: string | null;
   readonly unsubscribe?: string | null;
   readonly signInLink?: string | null;
+  /** The providers switched on (design §4), offered instead of a password: "Or sign in with Google". */
+  readonly providers?: readonly FederatedProvider[];
 }): NoticeMessage {
   const site = `${input.origin}/`;
   const subject = 'Welcome to the US Transhumanist Party: set your password';
@@ -194,6 +198,17 @@ export function welcomeMessage(input: {
             'it, then choose your password. Nobody at the party sets it or can see it.',
         },
       ];
+  const providers = input.providers ?? [];
+  const instead: Block[] = providers.length
+    ? [
+        {
+          p:
+            `Or, if this address is your ${providerNames(providers)} account, sign in with ${providerNames(providers)} instead ` +
+            'and you will not need a password at all:',
+        },
+        { link: `${input.origin}/signin`, label: `Sign in with ${providerNames(providers)}`, after: '.' },
+      ]
+    : [];
   const blocks: Block[] = [
     greeting(input.name),
     {
@@ -202,6 +217,7 @@ export function welcomeMessage(input: {
         "part on the party's site, set your password the first time you come.",
     },
     ...how,
+    ...instead,
     { hr: true },
     {
       small:

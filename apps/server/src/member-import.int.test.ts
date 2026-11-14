@@ -202,6 +202,8 @@ describe('the added member signs in', () => {
     expect(link.searchParams.get('mode')).toBe('signIn');
     expect(link.searchParams.get('oobCode')).toBeTruthy();
     expect(link.searchParams.get('continueUrl')).toBe('http://localhost:5173/set-password');
+    // Or the sign-in methods switched on (all of them, with the emulators' defaults), instead of a password.
+    expect(outbox[0]!.text).toContain('Sign in with Google, Microsoft or Apple: http://localhost:5173/signin');
     expect(await welcome(added)).toMatchObject({ status: 'done', outcome: null, messageId: expect.any(String) });
     expect((await worker.tick()).body).toMatchObject({ welcomeEmailsSent: 0 });
 

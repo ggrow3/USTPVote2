@@ -13,6 +13,27 @@ export function isSignInProvider(value: unknown): value is SignInProvider {
   return typeof value === 'string' && (SIGN_IN_PROVIDERS as readonly string[]).includes(value);
 }
 
+/** The providers someone signs in with instead of a password, in the order the site offers them. */
+export const FEDERATED_PROVIDERS = ['google.com', 'microsoft.com', 'apple.com'] as const;
+export type FederatedProvider = (typeof FEDERATED_PROVIDERS)[number];
+
+export const FEDERATED_PROVIDER_NAMES: Readonly<Record<FederatedProvider, string>> = {
+  'google.com': 'Google',
+  'microsoft.com': 'Microsoft',
+  'apple.com': 'Apple',
+};
+
+/** The federated providers System Admins have switched on (design §4), in the site's order. */
+export function enabledFederatedProviders(enabled: Readonly<Partial<Record<SignInProvider, boolean>>>): FederatedProvider[] {
+  return FEDERATED_PROVIDERS.filter((p) => enabled[p] === true);
+}
+
+/** "Google", "Google or Microsoft", "Google, Microsoft or Apple". */
+export function providerNames(providers: readonly FederatedProvider[]): string {
+  const names = providers.map((p) => FEDERATED_PROVIDER_NAMES[p]);
+  return names.length <= 2 ? names.join(' or ') : `${names.slice(0, -1).join(', ')} or ${names.at(-1)}`;
+}
+
 // --- Two-step verification (design §4) -------------------------------------------------------------------------------
 
 /**

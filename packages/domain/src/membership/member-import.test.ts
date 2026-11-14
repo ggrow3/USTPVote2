@@ -294,5 +294,19 @@ describe('welcomeMessage', () => {
     expect(message.text).toContain('It works once, for a few hours: after that, open https://vote.example.org/set-password');
     expect(message.text).toContain('Do not forward it: its button signs in whoever opens it.');
     expect(message.text).not.toContain('We will email you a sign-in link, which shows');
+    expect(message.text).not.toContain('Sign in with');
+  });
+
+  it('offers the sign-in methods switched on instead of a password, for an address that is such an account', () => {
+    const google = welcomeMessage({ origin: 'https://vote.example.org', name: null, contact: null, providers: ['google.com'] });
+    expect(google.text).toContain(
+      'Or, if this address is your Google account, sign in with Google instead and you will not need a password at all:',
+    );
+    expect(google.text).toContain('Sign in with Google: https://vote.example.org/signin');
+    expect(google.html).toContain('href="https://vote.example.org/signin"');
+    const all = welcomeMessage({ origin: 'https://vote.example.org', name: null, contact: null, providers: ['google.com', 'microsoft.com', 'apple.com'] });
+    expect(all.text).toContain('Sign in with Google, Microsoft or Apple: https://vote.example.org/signin');
+    // The password stays the first way.
+    expect(google.text.indexOf('Set your password:')).toBeLessThan(google.text.indexOf('Sign in with Google:'));
   });
 });

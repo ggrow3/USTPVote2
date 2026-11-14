@@ -1,12 +1,14 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   Collections,
+  enabledFederatedProviders,
   isWelcomeInFlight,
   welcomeMessage,
   type AccountRecord,
   type WelcomeEmailRecord,
   type WelcomeOutcome,
 } from 'ustp-domain';
+import { SignInMethodsService } from '../auth/sign-in-methods.service.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { MemberDirectory } from '../membership/member-directory.js';
@@ -37,6 +39,7 @@ export class WelcomeSender {
     private readonly settings: NoticeSettingsService,
     private readonly mailer: Mailer,
     private readonly signInLinks: SignInLinks,
+    private readonly signInMethods: SignInMethodsService,
     @Inject(MAIL_TRANSPORT) private readonly transport: MailTransport | null,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
@@ -90,10 +93,11 @@ export class WelcomeSender {
     const account = (await this.firebase.db.collection(Collections.accounts).doc(accountId).get()).data() as AccountRecord | undefined;
     if (!account?.primaryEmail) return { outcome: 'no_address' };
     if (account.claimedAt) return { outcome: 'signed_in' };
-    const [[member], links, signInLink] = await Promise.all([
+    const [[member], links, signInLink, enabled] = await Promise.all([
       this.members.findMany([accountId]),
       this.mailer.links(accountId),
       this.signInLinks.forSetPassword(account.primaryEmail),
+      this.signInMethods.current(),
     ]);
     const message = welcomeMessage({
       origin: this.config.webOrigin!,
@@ -101,6 +105,9 @@ export class WelcomeSender {
       contact,
       unsubscribe: links.page,
       signInLink,
+      // Signing in with Google (or another provider switched on) instead claims the membership too, for an address
+      // that is such an account: the api links an added account to any sign-in that verifies its address (§5.13).
+      providers: enabledFederatedProviders(enabled),
     });
     const result = await this.mailer.send(this.transport!, {
       to: account.primaryEmail,
