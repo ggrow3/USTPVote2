@@ -234,10 +234,16 @@ describe('AuthGuard acting as a test persona', () => {
     expect(checkRevoked[1]).toBe(true);
   });
 
-  it('refuses when testing mode is off, without MFA, for anyone but a System Admin, or for a real account', async () => {
+  it('lets a Site Admin signed in with MFA act as a persona too', async () => {
+    const { ctx } = await actAs(PERSONA, { roles: ['site_admin'] });
+    expect(ctx).toMatchObject({ accountId: PERSONA, operator: 'admin' });
+  });
+
+  it('refuses when testing mode is off, without MFA, for anyone but a System or Site Admin, or for a real account', async () => {
     await expect(actAs(PERSONA, { testing: false })).rejects.toThrow(/testing mode is off/);
     await expect(actAs(PERSONA, { mfa: false })).rejects.toThrow(/multi-factor/);
-    await expect(actAs(PERSONA, { roles: ['membership_admin'] })).rejects.toThrow(/only System Admins/);
+    await expect(actAs(PERSONA, { roles: ['site_admin'], mfa: false })).rejects.toThrow(/multi-factor/);
+    await expect(actAs(PERSONA, { roles: ['membership_admin'] })).rejects.toThrow(/only System and Site Admins/);
     await expect(actAs(PERSONA, { isPersona: false })).rejects.toThrow(/not a test persona/);
     await expect(actAs('../accounts/x')).rejects.toThrow(/must be a test persona/);
   });

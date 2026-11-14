@@ -67,8 +67,8 @@ function demos({ testingMode = true, personas = [...ADMINS, ...voters(5)] } = {}
 }
 
 describe('the demo election endpoint', () => {
-  it('is for System Admins only (the guard answers 403 to anyone else, personas included)', () => {
-    expect(new Reflector().get(ROLES_KEY, DemoElectionsController)).toEqual(['system_admin']);
+  it('is for System and Site Admins (the guard answers 403 to anyone else; requireTestingAccess to personas)', () => {
+    expect(new Reflector().get(ROLES_KEY, DemoElectionsController)).toEqual(['system_admin', 'site_admin']);
   });
 
   it('does not exist without testing mode, whatever is sent', async () => {

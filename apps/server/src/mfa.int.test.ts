@@ -247,6 +247,60 @@ describe('the two-step requirement for Site Admins (design §4)', () => {
   });
 });
 
+describe('the testing tools for Site Admins (design §10.4)', () => {
+  // Testing mode on, as on dev, with the production two-step policy.
+  let testing: TestApi;
+  beforeAll(async () => {
+    process.env.ADMIN_MFA_REQUIRED = 'true';
+    process.env.TESTING_MODE = 'true';
+    try {
+      testing = await TestApi.start();
+    } finally {
+      process.env.ADMIN_MFA_REQUIRED = 'false';
+      delete process.env.TESTING_MODE;
+    }
+  });
+  afterAll(() => testing.close());
+  beforeEach(() => testing.app.get(MfaPolicyService).invalidate());
+
+  it('need a second factor even while the Site Admins\' setting lets them skip it elsewhere', async () => {
+    const sa1 = await testing.member(SA1_EMAIL, { mfa: true });
+    const site = await testing.member('site@example.test');
+    const securedSite = await testing.member('secured-site@example.test', { mfa: true });
+    await testing.grant(site.accountId, 'site_admin', sa1);
+    await testing.grant(securedSite.accountId, 'site_admin', sa1);
+    const off = await testing.call('PUT', '/v1/admin/mfa-policy', sa1, { basedOn: 0, membersRequired: false, siteAdminsRequired: false });
+    expect(off.status).toBe(200);
+    testing.app.get(MfaPolicyService).invalidate();
+    const personas = (await testing.call('POST', '/v1/testing/personas', sa1, {})).body as { label: string; accountId: string }[];
+    const auditor = { 'x-act-as': personas.find((p) => p.label === 'Test Auditor')!.accountId };
+
+    // Without one: their own tools, but not the testing tools, and no acting as a persona.
+    expect((await testing.call('GET', '/v1/admin/accounts', site)).status).toBe(200);
+    for (const [method, path] of [
+      ['GET', '/v1/testing/personas'],
+      ['POST', '/v1/testing/personas'],
+      ['POST', '/v1/testing/demo-elections'],
+    ] as const) {
+      expect(await testing.call(method, path, site, method === 'POST' ? {} : undefined), path).toMatchObject({
+        status: 403,
+        body: { type: PROBLEM_TYPES.mfaRequired, detail: 'the testing tools require two-step verification' },
+      });
+    }
+    expect(await testing.call('GET', '/v1/me', site, undefined, auditor)).toMatchObject({
+      status: 403,
+      body: { type: PROBLEM_TYPES.mfaRequired, detail: 'acting as a test persona requires multi-factor sign-in' },
+    });
+
+    // With one: both.
+    expect((await testing.call('GET', '/v1/testing/personas', securedSite)).status).toBe(200);
+    expect((await testing.call('GET', '/v1/me', securedSite, undefined, auditor)).body).toMatchObject({
+      roles: ['auditor'],
+      testing: { enabled: true, operator: securedSite.accountId },
+    });
+  });
+});
+
 describe('with the deployment switch off (emulators only)', () => {
   it('asks nobody for a second factor, even with the requirement on', async () => {
     const relaxed = await TestApi.start();

@@ -166,10 +166,11 @@ describe('role changes by a Site Admin', () => {
     expect(remove).toMatchObject({ status: 403, body: { detail: 'requires role system_admin' } });
     expect((await api.firebase.db.collection('accounts').doc(leaving.accountId).get()).exists).toBe(true);
     expect((await api.firebase.auth.getUser(leaving.uid)).uid).toBe(leaving.uid);
-    // Test voters too, and the testing tools, which stay with System Admins.
+    // The testing tools answer 404 here, with testing mode off, to Site Admins as to System Admins; with it on a Site
+    // Admin uses them but deletes no test voter (403, personas.int.test.ts).
     const voters = await api.call('POST', '/v1/testing/personas/delete', site, { voters: [kim.accountId] });
-    expect(voters).toMatchObject({ status: 403, body: { detail: 'requires role system_admin' } });
-    expect((await api.call('GET', '/v1/testing/personas', site)).status).toBe(403);
+    expect(voters).toMatchObject({ status: 404, body: { detail: 'testing mode is off on this deployment' } });
+    expect((await api.call('GET', '/v1/testing/personas', site)).status).toBe(404);
     // And the sign-in settings, the API keys and the room's model server.
     expect((await api.call('GET', '/v1/admin/sign-in-methods', site)).status).toBe(403);
     expect((await api.call('GET', '/v1/admin/mfa-policy', site)).status).toBe(403);

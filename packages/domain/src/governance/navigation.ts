@@ -97,7 +97,8 @@ export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   // The sign-in log and site analytics (design §10.7): System Admins, Site Admins and Auditors read the log; System and
   // Site Admins set analytics.
   security: ['system_admin', 'site_admin', 'auditor'],
-  testing: ['system_admin'],
+  // Test personas, acting as them and demo elections (design §10.4); deleting test voters stays with System Admins.
+  testing: ['system_admin', 'site_admin'],
   navigation: ['system_admin', 'site_admin'],
   // The home page hub: System and Site Admins, and Communications Admins, since its links are the party's social accounts.
   hub: ['system_admin', 'site_admin', 'communications_admin'],

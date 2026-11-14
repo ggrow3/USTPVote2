@@ -32,9 +32,9 @@ import { MembershipService } from '../membership/membership.service.js';
 
 /**
  * Test personas (design §10.4): synthetic accounts with no login, one per admin role plus numbered voters, that a
- * System Admin acts as to rehearse an election. Each is created in its own transaction with the same ledger entry its
- * real counterpart would get (`role.granted` or `member.status_changed`), naming the System Admin as the actor. Test
- * voters can be deleted again, each as an account is (`AccountsService.erase`).
+ * System or Site Admin acts as to rehearse an election. Each is created in its own transaction with the same ledger
+ * entry its real counterpart would get (`role.granted` or `member.status_changed`), naming that admin as the actor. Test
+ * voters can be deleted again, by a System Admin, each as an account is (`AccountsService.erase`).
  */
 @Injectable()
 export class PersonasService {

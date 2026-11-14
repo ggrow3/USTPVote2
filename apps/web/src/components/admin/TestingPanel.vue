@@ -6,14 +6,15 @@ import { personaStart } from '../../acting.js';
 import { api } from '../../api.js';
 import { roleLabel } from '../../approval-text.js';
 import { attempt, dialog } from '../../dialogs.js';
-import { actAs } from '../../session.js';
+import { actAs, hasRole } from '../../session.js';
 import DemoElectionCard from './DemoElectionCard.vue';
 
 /**
- * Testing mode (design §10.4): create test personas, act as them, and make a demo election. Shown to System Admins when
- * the deployment allows it.
+ * Testing mode (design §10.4): create test personas, act as them, and make a demo election. Shown to System and Site
+ * Admins when the deployment allows it; only System Admins delete test voters.
  */
 const router = useRouter();
+const deletesVoters = computed(() => hasRole('system_admin'));
 const personas = ref<PersonaSummary[] | null>(null);
 const voters = ref(5);
 const hasAdmins = computed(() => personas.value?.some((p) => p.kind !== 'voter') ?? false);
@@ -82,12 +83,13 @@ onMounted(load);
       <q-card-section>
         <h2 class="text-subtitle1">Test personas</h2>
         <p class="q-mt-sm q-mb-none">
-          This deployment lets System Admins rehearse elections and try every admin role. Test personas are accounts
+          This deployment lets System and Site Admins rehearse elections and try every admin role. Test personas are accounts
           with no login: one for each admin role but System Admin, and as many voters as you need. Act as one and the
           app shows and does exactly what that person could, so every two-person step is still done by two different
           accounts. Actions are recorded under the persona; the server log records that you were acting. The Test Site
           Admin changes the roles of test personas only, never a real account's. Open another browser tab to be a
-          second persona at the same time.
+          second persona at the same time. Acting as a persona needs two-step verification.<template v-if="!deletesVoters">
+          Only System Admins delete test voters.</template>
         </p>
       </q-card-section>
       <q-card-section v-if="personas && missingAdmins.length" class="ustp-actions">
@@ -108,7 +110,7 @@ onMounted(load);
             <div class="row no-wrap">
               <q-btn flat dense no-caps color="primary" label="Act as" :aria-label="`Act as ${p.label}`" @click="actAsPersona(p)" />
               <q-btn
-                v-if="p.kind === 'voter'"
+                v-if="p.kind === 'voter' && deletesVoters"
                 flat
                 dense
                 no-caps
@@ -136,7 +138,7 @@ onMounted(load);
         />
         <q-btn color="primary" no-caps label="Add voters" :disable="!(voters >= 1 && voters <= room)" @click="create(voters)" />
         <q-btn
-          v-if="testVoters.length > 1"
+          v-if="testVoters.length > 1 && deletesVoters"
           flat
           no-caps
           color="negative"
@@ -169,7 +171,8 @@ onMounted(load);
           </li>
           <li>To clear it away, the Test Election Admin deletes it from its page in the election editor.</li>
           <li>
-            Delete test voters you no longer need, above. Elections keep them on their rolls, with their ballots and results.
+            {{ deletesVoters ? 'Delete' : 'A System Admin deletes' }} test voters you no longer need, above. Elections keep
+            them on their rolls, with their ballots and results.
           </li>
         </ol>
         <p class="q-mt-sm q-mb-none">Create demo election, above, does steps 2 to 4 for you with an election made up at random.</p>
