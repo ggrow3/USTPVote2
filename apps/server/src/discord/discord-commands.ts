@@ -30,21 +30,20 @@ export class DiscordCommandSync {
   async sync(now: Date = new Date()): Promise<boolean> {
     const endpoint = this.config.discordInteractionsUrl;
     if (!this.discord || !endpoint) return false;
-    const version = await this.token.current();
-    if (!version) return false;
+    // The worker may read the token but not list the secret's versions, so the version's name comes with the token.
+    const token = await this.token.readVersion();
+    if (!token) return false;
 
     const ref = this.firebase.db.collection(Collections.discordState).doc('app');
     const state = (await ref.get()).data() as DiscordAppState | undefined;
     const fingerprint = discordCommandsFingerprint(endpoint);
-    if (state && state.tokenVersion === version.name && state.fingerprint === fingerprint) {
+    if (state && state.tokenVersion === token.name && state.fingerprint === fingerprint) {
       if (state.registered && state.endpointSet) return false;
       if (now.getTime() - Date.parse(state.triedAt) < DISCORD_SYNC_RETRY_MINUTES * 60_000) return false;
     }
 
-    const token = await this.token.read();
-    if (!token) return false;
-    const next = await this.tell(token, endpoint);
-    await ref.set({ tokenVersion: version.name, fingerprint, triedAt: now.toISOString(), ...next } satisfies DiscordAppState);
+    const next = await this.tell(token.value, endpoint);
+    await ref.set({ tokenVersion: token.name, fingerprint, triedAt: now.toISOString(), ...next } satisfies DiscordAppState);
     if (next.problem) this.logger.warn({ message: `Discord commands: ${next.problem}` });
     else this.logger.log({ message: 'Discord was told of the commands', commands: discordCommandsPayload().length });
     return true;
