@@ -241,6 +241,8 @@ export {
   enabledFederatedProviders,
   providerNames,
   DEFAULT_MFA_POLICY,
+  ADMIN_SIGN_IN_PROVIDER,
+  adminSignInRefused,
   isSignInProvider,
   mfaPolicySchema,
   secondFactorScope,

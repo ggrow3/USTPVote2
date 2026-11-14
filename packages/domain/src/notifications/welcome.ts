@@ -38,13 +38,26 @@ export interface WelcomeEmailRecord {
    * browser asked for and said was taken (`identity_platform`). Its `messageId` is then its record in the email log.
    */
   readonly via?: WelcomeVia;
+  /** For a member who will be a System or Site Admin: the email offers only signing in with Google, no password. */
+  readonly googleOnly?: boolean;
 }
 
 export type WelcomeVia = 'mail' | 'identity_platform';
 
 /** A welcome email waiting for the worker. */
-export function welcomeEmailRecord(accountId: string, requestedBy: string, at: string): WelcomeEmailRecord {
-  return { accountId, requestedBy, requestedAt: at, status: 'pending', claimedAt: null, doneAt: null, outcome: null, messageId: null, delivery: null };
+export function welcomeEmailRecord(accountId: string, requestedBy: string, at: string, googleOnly = false): WelcomeEmailRecord {
+  return {
+    accountId,
+    requestedBy,
+    requestedAt: at,
+    status: 'pending',
+    claimedAt: null,
+    doneAt: null,
+    outcome: null,
+    messageId: null,
+    delivery: null,
+    ...(googleOnly && { googleOnly }),
+  };
 }
 
 /** A welcome sign-in link the admin's browser says Identity Platform took: done when recorded. */

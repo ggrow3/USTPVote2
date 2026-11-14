@@ -445,6 +445,25 @@ published courses (added 2026-11-01), and is kept out of the api so neither can 
     as a test persona (§10.4), and the member requirement, which while on holds everyone but these Site Admins. Until
     then each of the three still asked. System Admins always need one. Turning it off is confirmed in a dialog that
     says so.
+  - **Google sign-in for System and Site Admins** *(added 2026-11-14, the user's decision: "require google account …
+    for site admins and system admin", enforced as Google sign-in only)*: `adminsGoogleRequired` in
+    `mfa_policy/current`, switched by System Admins beside the two settings above ("Require Google sign-in of System
+    and Site Admins"; the same `PUT`, ledgered in the same `mfa_policy.changed` entry). While on:
+    - a System or Site Admin signed in any other way is refused every admin route, and acting as a test persona
+      (403, problem type `/problems/google-required`, "System and Site Admins must sign in with Google";
+      `adminSignInRefused` in `ustp-domain`). Their other pages stay open; `GET /v1/me` reports
+      `signIn.googleRequired`, and the Administration page says to sign out and sign in with Google. Other admin
+      roles are not asked;
+    - System Admin and Site Admin are granted only to an account that has signed in with Google (an `account_identities`
+      record of provider `google.com`; 409 otherwise, "they sign in with Google once first"). Test personas, which
+      have no sign-in, are not asked;
+    - Sign in with Google cannot be switched off (409), until the requirement is.
+    It is **off by default, and turned on only by a System Admin who is signed in with Google themselves**, while
+    Google sign-in is switched on (409 otherwise) *(my decisions)*: on from the start, or turned on from a password
+    sign-in, it could shut every System Admin out of the admin tools, this setting among them. Once it is on, a
+    System Admin who has only a password is shut out until they sign in with Google with the same verified address.
+    The first System Admin's bootstrap (§10.1) is not checked. Two-step verification is asked as before: Google's
+    own second step does not count as the site's.
   - `GET /v1/me` reports `mfa.required` (a second factor is needed for something: a role, or the requirement),
     `mfa.everywhere` (for every route) and `mfa.signedInWithMfa`. In the web app, someone who needs it everywhere and
     has not used it sees a banner on every page but the hub and the Account page; pages that need a sign-in send them
@@ -2246,6 +2265,16 @@ application has asked since §5.2 took members outside the US); an address that 
   password: signing in with it verifies the address, so `POST /v1/accounts` links it to the added account as it does an
   emailed link. The site offers it wherever a password is asked for, naming only the providers System Admins have
   switched on (§4; on dev, Google alone):
+  - *(added 2026-11-14, the user's decision)* **a member who will be a System or Site Admin** is welcomed to
+    Google alone: the form for adding one member has a tick, "Will be a System or Site Admin" (`adminSignIn` on
+    `POST /v1/admin/members`; not in a file import). Their welcome email (`googleOnly` on its `welcome_emails`
+    record, kept when it is sent again) has the subject "… sign in with Google", one button to the sign-in page,
+    no "Set your password" and no sign-in link of its own, so nothing in it signs anyone in. Refused while Sign in
+    with Google is switched off (409); if it is switched off before the worker sends, the ordinary welcome goes.
+    Where the deployment sends no mail, nothing is sent (Identity Platform's link leads to setting a password) and
+    the form tells the admin to ask them to sign in with Google. The tick grants no role and is not remembered on
+    the account: nothing stops the member setting a password later from "Forgot password?", but while Google
+    sign-in is required of admins (§4) a password sign-in cannot use those roles;
   - the welcome email, under its "Set your password" button: "Or, if this address is your Google account, sign in with
     Google instead and you will not need a password at all", with a link to the sign-in page;
   - `/set-password` before the link: "Sign in with Google" beside "Email me a sign-in link";
@@ -5875,7 +5904,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/members` · `GET /admin/members/{accountId}/history` | Membership Admin | member list (paged), status history |
 | `GET /admin/members/{accountId}` · `POST /admin/members/{accountId}/details` | Membership Admin | member profile (record, applications with answers, history, whether the daily quote and joke is on); correct names, state, contact with a reason (§5.2, §4.1) |
 | `POST /admin/members/{accountId}/status` | Membership Admin | status changes |
-| `POST /admin/members` | Membership Admin | add one member, Active at once, with a reason; 400 naming each bad field, 409 for an address already on the site (§5.13) |
+| `POST /admin/members` | Membership Admin | add one member, Active at once, with a reason, `adminSignIn` for a welcome that offers only Google (§5.13); 400 naming each bad field, 409 for an address already on the site (§5.13) |
 | `POST /admin/member-imports/preview` · `POST /admin/member-imports` | Membership Admin | a CSV file's rows (at most 500) as read in the browser: what importing them would do, row by row, with the rows to add and those skipped counted by cause, writing nothing; import them with one reason, answering what was added and skipped with the same counts (§5.13) |
 | `POST /admin/members/{accountId}/welcome` | Membership Admin | send an added member's welcome email again before they sign in, or get the address for the browser to ask Identity Platform (§5.13) |
 | `POST /admin/members/{accountId}/welcome-link` | Membership Admin | record a welcome sign-in link the admin's browser just had Identity Platform send, in the email log as theirs and on the member's profile (204; 404 for an account no Membership Admin added; 409 while a welcome email of the site's own is on its way) (§5.13, §10.12) |
@@ -5981,7 +6010,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET /admin/audit/events` · `GET /admin/audit/verify` | Auditor | ledger (paged by seq); verification of chain, blocks, signatures and anchors |
 | `GET\|PUT /admin/sign-in-methods` | System Admin | auth switches (§4) |
 | `POST /admin/roles` | System Admin, Site Admin | grant or revoke a role, at once (returns the account's roles afterwards); a Site Admin every role but System Admin, never on a System Admin's account (403; §10.2) |
-| `GET\|PUT /admin/mfa-policy` | System Admin | whether members without a role, and whether Site Admins, must use two-step verification, with who saved it; save them from the version they were edited from (409 if someone saved since; `siteAdminsRequired` left out keeps its value), ledgered (§4) |
+| `GET\|PUT /admin/mfa-policy` | System Admin | whether members without a role, and whether Site Admins, must use two-step verification, and whether System and Site Admins must sign in with Google, with who saved it; save them from the version they were edited from (409 if someone saved since; `siteAdminsRequired` left out keeps its value), ledgered (§4) |
 | `GET /admin/accounts` (paged; `email` prefix, `role` filter) | System Admin, Site Admin | People list: accounts with member status, active roles and whether the deployment lists them for deletion, read-only (§10.3) |
 | `POST /admin/accounts/{accountId}/delete` | System Admin | permanently delete an account the deployment lists that no election has on its roll or among those who voted, with its logins, roles and membership, at once (204; 403 otherwise, and to a Site Admin; §4) |
 | `GET\|PUT\|DELETE /admin/anthropic-key` | System Admin | whether a key is set, its last four characters, who added it and when, and how each Claude check is switched; add a key in place of any before it, after trying it with Anthropic (400 not an API key, 422 refused, 502 Anthropic unreachable; nothing kept); remove it (404 if none); never returns the key; ledgered (§5.6) |

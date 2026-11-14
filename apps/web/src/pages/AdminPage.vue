@@ -78,6 +78,8 @@ const tabs = computed(() =>
 const officer = computed(() => !session.me || session.me.roles.length > 0);
 const email = computed(() => session.me?.account?.primaryEmail);
 const needsMfa = computed(() => !!session.me?.mfa.required && !session.me.mfa.signedInWithMfa);
+/** A System or Site Admin signed in another way while Google sign-in is required of them (design §4). */
+const needsGoogle = computed(() => !!session.me?.signIn?.googleRequired);
 const route = useRoute();
 const router = useRouter();
 /** Tabs that moved: the bylaws are edited in the Registration form tab now (design §5.2), so old links still reach them. */
@@ -125,6 +127,10 @@ onUnmounted(() => (guide.openTab = null));
       </template>
     </div>
     <template v-else>
+      <q-banner v-if="needsGoogle" class="bg-orange-2 text-black q-mb-md" rounded>
+        System and Site Admins must sign in with Google. Sign out, then choose “Sign in with Google” with the Google
+        account of your address.
+      </q-banner>
       <q-banner v-if="needsMfa" class="bg-orange-2 text-black q-mb-md" rounded>
         Admin tools need two-step verification. Set up an authenticator app on your
         <router-link to="/account">Account page</router-link>, then sign out and sign back in with its code.

@@ -176,8 +176,34 @@ export function welcomeMessage(input: {
   readonly signInLink?: string | null;
   /** The providers switched on (design §4), offered instead of a password: "Or sign in with Google". */
   readonly providers?: readonly FederatedProvider[];
+  /**
+   * For a member who will be a System or Site Admin (design §5.13): no password is offered, only signing in with
+   * Google, and the email carries no sign-in link of its own.
+   */
+  readonly googleOnly?: boolean;
 }): NoticeMessage {
   const site = `${input.origin}/`;
+  if (input.googleOnly) {
+    const subject = 'Welcome to the US Transhumanist Party: sign in with Google';
+    const blocks: Block[] = [
+      greeting(input.name),
+      {
+        p:
+          'A Membership Admin has added you as a member of the US Transhumanist Party. You are to help run the ' +
+          "party's site, and its administrators sign in with Google, so you have no password to set.",
+      },
+      { link: `${input.origin}/signin`, label: 'Sign in with Google', after: '.' },
+      {
+        p:
+          'Choose "Sign in with Google" there and use the Google account of the address this email came to. That ' +
+          'shows the address is yours and opens your membership.',
+      },
+      { hr: true },
+      { small: 'You are getting this email because a Membership Admin added this address to the party’s member list.' },
+      ...footer(input.contact, site, input, 'your membership'),
+    ];
+    return { subject, text: blocks.map(asText).join('\n\n'), html: asHtml(subject, subject, blocks) };
+  }
   const subject = 'Welcome to the US Transhumanist Party: set your password';
   const page = `${input.origin}${SET_PASSWORD_PATH}`;
   const how: Block[] = input.signInLink

@@ -1,6 +1,8 @@
-import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { Transaction } from 'firebase-admin/firestore';
 import {
+  ADMIN_SIGN_IN_PROVIDER,
+  administersSite,
   checkActingRoleChange,
   checkCanChangeRole,
   checkRoleChange,
@@ -8,12 +10,14 @@ import {
   type AccountSummary,
   type Actor,
   type ApprovalRequestRecord,
+  type IdentityRecord,
   type Role,
   type RoleAssignmentRecord,
   type RoleChangeInput,
 } from 'ustp-domain';
 import { requireAccount } from '../auth/decorators.js';
 import { DirectoryService, roleAssignmentId } from '../auth/directory.service.js';
+import { MfaPolicyService } from '../auth/mfa-policy.js';
 import { actorOf, type RequestContext } from '../auth/principal.js';
 import { assertCheck } from '../common/validation.js';
 import { CONFIG, type ServerConfig } from '../config.js';
@@ -47,6 +51,7 @@ export class RoleChanges implements ApprovalHandler {
     private readonly firebase: Firebase,
     private readonly directory: DirectoryService,
     private readonly ledger: LedgerService,
+    private readonly mfaPolicy: MfaPolicyService,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
@@ -56,11 +61,20 @@ export class RoleChanges implements ApprovalHandler {
     const actor = actorOf(ctx, this.config.adminMfaRequired);
     assertCheck(checkCanChangeRole(actor, { accountId: input.accountId, roles: null }, input.change, input.role), ForbiddenException);
     const payload: RoleChangePayload = { accountId: input.accountId, role: input.role, change: input.change };
+    const googleRequired = !!(await this.mfaPolicy.current()).adminsGoogleRequired;
     return this.firebase.db.runTransaction(async (tx) => {
       if (ctx.operator) {
         // Acting as a test persona: a real account's roles change under a real admin's name (design §10.4).
         const persona = await tx.get(this.firebase.db.collection(Collections.testingPersonas).doc(payload.accountId));
         assertCheck(checkActingRoleChange(true, persona.exists));
+      } else if (googleRequired && payload.change === 'grant' && administersSite([payload.role])) {
+        // They could not use the role otherwise (design §4). Personas have no sign-in at all, so are not asked.
+        const identities = await tx.get(this.firebase.db.collection(Collections.accountIdentities).where('accountId', '==', payload.accountId));
+        if (!identities.docs.some((d) => (d.data() as IdentityRecord).provider === ADMIN_SIGN_IN_PROVIDER)) {
+          throw new ConflictException(
+            `${payload.role} is for accounts that sign in with Google, and this one has not: they sign in with Google once first`,
+          );
+        }
       }
       const held = await this.assertAllowed(tx, payload, actor);
       await this.ledger.record(tx, [

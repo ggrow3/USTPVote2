@@ -44,7 +44,7 @@ const blankDetails = (): DetailsForm => ({
   postalCode: '',
   phone: '',
 });
-const one = reactive({ email: '', legalName: '', details: blankDetails(), usVoteEligible: '', reason: '' });
+const one = reactive({ email: '', legalName: '', details: blankDetails(), usVoteEligible: '', reason: '', adminSignIn: false });
 const errors = ref<FieldErrors>({});
 const busy = ref(false);
 const VOTE_OPTIONS = [
@@ -83,8 +83,8 @@ async function addOne() {
   errors.value = {};
   busy.value = true;
   try {
-    const result = await addMember({ ...text, reason: one.reason });
-    Object.assign(one, { email: '', legalName: '', details: blankDetails(), usVoteEligible: '', reason: one.reason });
+    const result = await addMember({ ...text, reason: one.reason, ...(one.adminSignIn && { adminSignIn: true }) });
+    Object.assign(one, { email: '', legalName: '', details: blankDetails(), usVoteEligible: '', reason: one.reason, adminSignIn: false });
     await finished(result);
   } catch (e) {
     errors.value = { _: errorMessage(e), ...apiFieldErrors(e) };
@@ -170,7 +170,8 @@ const outcome = ref<Outcome | null>(null);
 async function finished(result: MemberImportResult, from: string | null = null) {
   outcome.value = { result, from, sent: 0, failed: [], unlogged: [], sending: false };
   if (result.added.length) emit('added');
-  if (result.welcome === 'identity_platform') await sendLinks(result.added);
+  // Identity Platform's link leads to setting a password, which a member who is to sign in with Google does not get.
+  if (result.welcome === 'identity_platform' && !result.googleOnly) await sendLinks(result.added);
 }
 
 /**
@@ -266,6 +267,7 @@ async function sendLinks(members: readonly { email: string; accountId: string }[
           :error="!!errors.reason"
           :error-message="errors.reason"
         />
+        <q-checkbox v-model="one.adminSignIn" dense label="Will be a System or Site Admin: welcome them to sign in with Google, with no password to set" />
         <q-banner v-if="errors._" class="bg-negative text-white" rounded>{{ errors._ }}</q-banner>
         <div class="ustp-actions">
           <q-btn type="submit" color="primary" no-caps label="Add member" :loading="busy" />
@@ -362,7 +364,14 @@ async function sendLinks(members: readonly { email: string; accountId: string }[
         </q-item>
       </q-list>
       <template v-if="outcome.result.added.length">
-        <div v-if="outcome.result.welcome === 'mail'">
+        <div v-if="outcome.result.googleOnly && outcome.result.welcome === 'mail'">
+          They get a welcome email from the site within a few minutes that offers only signing in with Google.
+        </div>
+        <div v-else-if="outcome.result.googleOnly">
+          This site sends no email of its own, so nothing was sent. Ask them to open the site and choose “Sign in with
+          Google” with the Google account of this address.
+        </div>
+        <div v-else-if="outcome.result.welcome === 'mail'">
           Each gets a welcome email from the site within a few minutes, leading to the page where they set their password.
         </div>
         <div v-else>

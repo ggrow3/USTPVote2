@@ -101,6 +101,7 @@ describe('the two-step requirement for members (design §4)', () => {
     expect((await api.call('GET', '/v1/admin/mfa-policy', sa1)).body).toEqual({
       membersRequired: false,
       siteAdminsRequired: true,
+      adminsGoogleRequired: false,
       version: 0,
       updatedAt: null,
       updatedBy: null,

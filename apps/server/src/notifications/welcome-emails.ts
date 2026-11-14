@@ -41,8 +41,8 @@ export class WelcomeEmails {
   }
 
   /** Queues the welcome email for a member being added, in the adding transaction, when mail is how it goes. */
-  queue(tx: Transaction, delivery: WelcomeDelivery, accountId: string, requestedBy: string, at: string): void {
-    if (delivery === 'mail') tx.set(this.ref(accountId), welcomeEmailRecord(accountId, requestedBy, at));
+  queue(tx: Transaction, delivery: WelcomeDelivery, accountId: string, requestedBy: string, at: string, googleOnly = false): void {
+    if (delivery === 'mail') tx.set(this.ref(accountId), welcomeEmailRecord(accountId, requestedBy, at, googleOnly));
   }
 
   /** Reads an added member's latest welcome email in `tx`, for asking again; null if none was queued. */
@@ -54,7 +54,8 @@ export class WelcomeEmails {
   again(tx: Transaction, delivery: WelcomeDelivery, latest: WelcomeEmailRecord | null, accountId: string, requestedBy: string): void {
     if (delivery !== 'mail') return;
     if (latest && isWelcomeInFlight(latest, new Date())) throw new ConflictException('a welcome email is on its way already');
-    tx.set(this.ref(accountId), welcomeEmailRecord(accountId, requestedBy, new Date().toISOString()));
+    // Sent again as it first went: still with no password to set, for a member who will be an admin.
+    tx.set(this.ref(accountId), welcomeEmailRecord(accountId, requestedBy, new Date().toISOString(), latest?.googleOnly));
   }
 
   /**

@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import type { Transaction } from 'firebase-admin/firestore';
 import {
+  ADMIN_SIGN_IN_PROVIDER,
   bylawsInForce,
   checkNewMember,
   Collections,
@@ -24,6 +25,7 @@ import {
 import { requireAccount } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
 import { Firebase } from '../infra/firebase.js';
+import { SignInMethodsService } from '../auth/sign-in-methods.service.js';
 import { WelcomeEmails } from '../notifications/welcome-emails.js';
 import { MemberRepository } from './member.repository.js';
 import { Members } from './members.service.js';
@@ -49,6 +51,7 @@ export class MemberAdditions {
     private readonly repository: MemberRepository,
     private readonly membership: MembershipService,
     private readonly welcomes: WelcomeEmails,
+    private readonly signInMethods: SignInMethodsService,
   ) {}
 
   /** What importing these rows would do now; writes nothing. */
@@ -58,7 +61,10 @@ export class MemberAdditions {
 
   /** Adds one member from the form; its problems are field errors (400), an address already on the site 409. */
   async addOne(ctx: RequestContext, input: AddMemberInput): Promise<MemberImportResult> {
-    const { reason, ...text } = input;
+    const { reason, adminSignIn = false, ...text } = input;
+    if (adminSignIn && !(await this.signInMethods.isEnabled(ADMIN_SIGN_IN_PROVIDER))) {
+      throw new ConflictException('Sign in with Google is switched off, so nobody can be welcomed to sign in with it');
+    }
     const checked = checkNewMember(text);
     if (!checked.ok) {
       throw new BadRequestException({
@@ -66,10 +72,10 @@ export class MemberAdditions {
         errors: checked.problems.map((p) => ({ path: p.field ?? '', message: p.message })),
       });
     }
-    const result = await this.add(ctx, [{ ...text, line: 1 }], reason);
+    const result = await this.add(ctx, [{ ...text, line: 1 }], reason, adminSignIn);
     const skipped = result.skipped[0];
     if (skipped) throw new ConflictException(`${skipped.email} ${skipped.reasons.join('; ')}`);
-    return result;
+    return adminSignIn ? { ...result, googleOnly: true } : result;
   }
 
   /** Imports a file's rows: adds those the plan adds, and says why it skipped the rest. */
@@ -112,7 +118,7 @@ export class MemberAdditions {
     });
   }
 
-  private async add(ctx: RequestContext, rows: readonly MemberImportRow[], reason: string): Promise<MemberImportResult> {
+  private async add(ctx: RequestContext, rows: readonly MemberImportRow[], reason: string, googleOnly = false): Promise<MemberImportResult> {
     const actor = requireAccount(ctx);
     const plan = await this.preview(rows);
     const result: { added: MemberImportResult['added'][number][]; skipped: SkippedMemberRow[] } = {
@@ -122,7 +128,7 @@ export class MemberAdditions {
     const adding = plan.rows.filter((r) => r.add);
     const welcome = await this.welcomes.delivery();
     for (let i = 0; i < adding.length; i += PER_TRANSACTION) {
-      const done = await this.addSome(actor, adding.slice(i, i + PER_TRANSACTION), reason, welcome);
+      const done = await this.addSome(actor, adding.slice(i, i + PER_TRANSACTION), reason, welcome, googleOnly);
       result.added.push(...done.added);
       result.skipped.push(...done.skipped);
     }
@@ -131,7 +137,7 @@ export class MemberAdditions {
   }
 
   /** Adds up to PER_TRANSACTION planned rows in one transaction, skipping any address taken since the plan. */
-  private async addSome(actor: string, rows: readonly PlannedMemberRow[], reason: string, welcome: WelcomeDelivery) {
+  private async addSome(actor: string, rows: readonly PlannedMemberRow[], reason: string, welcome: WelcomeDelivery, googleOnly: boolean) {
     const db = this.firebase.db;
     return db.runTransaction(async (tx) => {
       // On the bylaws in force, or none while none are (design §5.2, §5.13).
@@ -163,7 +169,7 @@ export class MemberAdditions {
           claimedAt: null,
         };
         tx.create(db.collection(Collections.accounts).doc(accountId), account);
-        this.welcomes.queue(tx, welcome, accountId, actor, at);
+        this.welcomes.queue(tx, welcome, accountId, actor, at, googleOnly);
       }
       return {
         added: additions.map(({ row, accountId }) => ({ line: row.line, email: row.email, legalName: row.legalName, accountId })),

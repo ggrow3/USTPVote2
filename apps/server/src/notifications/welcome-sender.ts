@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
+  ADMIN_SIGN_IN_PROVIDER,
   Collections,
   enabledFederatedProviders,
   isWelcomeInFlight,
@@ -77,7 +78,7 @@ export class WelcomeSender {
   private async send(record: WelcomeEmailRecord, contact: string | null): Promise<boolean> {
     const claimedAt = new Date().toISOString();
     if (!(await this.move(record, 'pending', { status: 'sending', claimedAt }))) return false;
-    const result = await this.deliver(record.accountId, record.requestedBy, contact);
+    const result = await this.deliver(record.accountId, record.requestedBy, contact, !!record.googleOnly);
     await this.ref(record.accountId).update({
       status: 'done',
       claimedAt: null,
@@ -89,15 +90,23 @@ export class WelcomeSender {
   }
 
   /** Sends to the account's address, read here and stored nowhere else. */
-  private async deliver(accountId: string, requestedBy: string, contact: string | null): Promise<{ messageId: string } | { outcome: WelcomeOutcome }> {
+  private async deliver(
+    accountId: string,
+    requestedBy: string,
+    contact: string | null,
+    googleOnly: boolean,
+  ): Promise<{ messageId: string } | { outcome: WelcomeOutcome }> {
     const account = (await this.firebase.db.collection(Collections.accounts).doc(accountId).get()).data() as AccountRecord | undefined;
     if (!account?.primaryEmail) return { outcome: 'no_address' };
     if (account.claimedAt) return { outcome: 'signed_in' };
-    const [[member], links, signInLink, enabled] = await Promise.all([
+    const enabled = await this.signInMethods.current();
+    // For a member who will be an admin: Google only, and no sign-in link is made. If Google sign-in has been switched
+    // off since, the ordinary welcome goes, or they could not sign in at all.
+    const google = googleOnly && enabled[ADMIN_SIGN_IN_PROVIDER];
+    const [[member], links, signInLink] = await Promise.all([
       this.members.findMany([accountId]),
       this.mailer.links(accountId),
-      this.signInLinks.forSetPassword(account.primaryEmail),
-      this.signInMethods.current(),
+      google ? null : this.signInLinks.forSetPassword(account.primaryEmail),
     ]);
     const message = welcomeMessage({
       origin: this.config.webOrigin!,
@@ -108,6 +117,7 @@ export class WelcomeSender {
       // Signing in with Google (or another provider switched on) instead claims the membership too, for an address
       // that is such an account: the api links an added account to any sign-in that verifies its address (§5.13).
       providers: enabledFederatedProviders(enabled),
+      googleOnly: google,
     });
     const result = await this.mailer.send(this.transport!, {
       to: account.primaryEmail,
