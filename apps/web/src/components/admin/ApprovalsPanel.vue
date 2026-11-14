@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import type { ApprovalRequestRecord } from 'ustp-domain';
+import { isAwaitingDecision, type ApprovalRequestRecord } from 'ustp-domain';
 import { api } from '../../api.js';
 import { aRole, describeRequest, reviewLink } from '../../approval-text.js';
 import { askReason, attempt } from '../../dialogs.js';
@@ -23,7 +23,8 @@ const describe = describeRequest;
 
 async function load() {
   const ok = await attempt(async () => {
-    pending.value = await api<ApprovalRequestRecord[]>('GET', '/v1/admin/approvals?status=pending');
+    // The api leaves expired requests out; the filter covers a response from before it did.
+    pending.value = (await api<ApprovalRequestRecord[]>('GET', '/v1/admin/approvals?status=pending')).filter((r) => isAwaitingDecision(r));
   });
   listState.value = ok ? 'ready' : 'failed';
 }

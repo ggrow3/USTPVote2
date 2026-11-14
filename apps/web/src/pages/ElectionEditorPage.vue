@@ -210,6 +210,13 @@ function copyHash() {
 const me = computed(() => session.me?.account?.accountId);
 const state = computed(() => detail.value?.election.state);
 const rollApproved = computed(() => detail.value?.roll?.status === 'approved' && !!detail.value.election.rollSnapshotId);
+/** The roll's status; a roll whose request expired undecided stays `pending` on its record (design §10.2). */
+const rollStatus = computed(() => {
+  const roll = detail.value?.roll;
+  if (!roll) return '';
+  const waiting = detail.value!.pending.some((r) => r.id === roll.approvalId);
+  return roll.status === 'pending' && !waiting ? 'request expired' : roll.status;
+});
 const canCancel = computed(() => hasRole('election_admin') && ['draft', 'scheduled', 'open'].includes(state.value ?? ''));
 const roll = ref<RollView | null>(null);
 
@@ -503,7 +510,7 @@ onMounted(load);
               </div>
               <div v-else class="text-caption text-grey-7">No roll yet.</div>
             </div>
-            <q-badge v-if="detail.roll" :label="detail.roll.status" />
+            <q-badge v-if="detail.roll" :label="rollStatus" />
             <q-badge v-if="detail.roll?.signature" color="positive" label="signed" />
             <q-badge v-if="isRehearsalRoll(detail.roll?.criteria)" color="orange-2" text-color="black" label="Rehearsal roll: test voters only" />
             <q-btn v-if="canEdit" outline no-caps color="primary" label="Request roll snapshot" @click="requestRoll" />

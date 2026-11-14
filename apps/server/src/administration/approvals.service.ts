@@ -5,6 +5,7 @@ import {
   APPROVAL_TTL_DAYS,
   checkCanApprove,
   checkCanRequest,
+  isAwaitingDecision,
   Collections,
   TWO_PERSON_ACTIONS,
   type Actor,
@@ -57,8 +58,9 @@ export class ApprovalsService {
   }
 
   /**
-   * Records a request inside the caller's transaction. Refuses a second pending request for the same action and
-   * subject. Call after the transaction's own reads and before its writes.
+   * Records a request inside the caller's transaction. Refuses a second request for the same action and subject
+   * while one is waiting for a decision; one that expired undecided no longer stands in the way. Call after the
+   * transaction's own reads and before its writes.
    */
   async createRequest(tx: Transaction, input: NewRequest): Promise<ApprovalRequestRecord> {
     const db = this.firebase.db;
@@ -67,13 +69,14 @@ export class ApprovalsService {
         .collection(Collections.approvalRequests)
         .where('action', '==', input.action)
         .where('subject', '==', input.subject)
-        .where('status', '==', 'pending')
-        .limit(1),
+        .where('status', '==', 'pending'),
     );
-    if (!duplicate.empty) throw new ConflictException('a request for this is already waiting for a decision');
+    const now = new Date();
+    if (duplicate.docs.some((d) => isAwaitingDecision(d.data() as ApprovalRequestRecord, now))) {
+      throw new ConflictException('a request for this is already waiting for a decision');
+    }
 
     const ref = input.id ? db.collection(Collections.approvalRequests).doc(input.id) : db.collection(Collections.approvalRequests).doc();
-    const now = new Date();
     const record: ApprovalRequestRecord = {
       id: ref.id,
       action: input.action,
@@ -106,14 +109,20 @@ export class ApprovalsService {
     return this.firebase.db.collection(Collections.approvalRequests).doc().id;
   }
 
+  /**
+   * Requests by status, oldest first. `pending` means waiting for a decision: a request past its expiry keeps that
+   * status on its record (nothing rewrites it) but is left out. Every request expires `APPROVAL_TTL_DAYS` after it
+   * was made, so the query skips the expired by `requestedAt` (the index it already uses) and the filter is exact.
+   */
   async list(status: ApprovalStatus): Promise<ApprovalRequestRecord[]> {
-    const snap = await this.firebase.db
-      .collection(Collections.approvalRequests)
-      .where('status', '==', status)
-      .orderBy('requestedAt')
-      .limit(200)
-      .get();
-    return snap.docs.map((d) => d.data() as ApprovalRequestRecord);
+    const now = new Date();
+    let query = this.firebase.db.collection(Collections.approvalRequests).where('status', '==', status);
+    if (status === 'pending') {
+      query = query.where('requestedAt', '>', new Date(now.getTime() - APPROVAL_TTL_DAYS * 86_400_000).toISOString());
+    }
+    const snap = await query.orderBy('requestedAt').limit(200).get();
+    const requests = snap.docs.map((d) => d.data() as ApprovalRequestRecord);
+    return status === 'pending' ? requests.filter((r) => isAwaitingDecision(r, now)) : requests;
   }
 
   async decide(ctx: RequestContext, id: string, input: DecisionInput): Promise<ApprovalRequestRecord> {

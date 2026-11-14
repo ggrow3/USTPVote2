@@ -45,6 +45,18 @@ export interface PendingApproval {
   readonly subject?: string;
 }
 
+/**
+ * Whether a request is still waiting for a decision (design §10.2): `pending` and not yet at its expiry. Expiry is
+ * never written to the record, so a request past it keeps the status `pending`; everything that lists or counts
+ * waiting requests asks this instead of reading the status alone.
+ */
+export function isAwaitingDecision(
+  request: { readonly status: string; readonly expiresAt: string | Date },
+  now: Date = new Date(),
+): boolean {
+  return request.status === 'pending' && now < new Date(request.expiresAt);
+}
+
 export function checkCanRequest(action: TwoPersonAction, requester: Actor, subject?: string): Check {
   const rule: ApprovalRule = TWO_PERSON_ACTIONS[action];
   if (!requester.mfa) return deny('admin actions require multi-factor sign-in', 'mfaRequired');
@@ -119,7 +131,7 @@ export function checkCanDeleteTestVoters(deleter: Actor): Check {
 export function checkCanApprove(request: PendingApproval, approver: Actor, now: Date = new Date()): Check {
   const rule: ApprovalRule = TWO_PERSON_ACTIONS[request.action];
   if (request.status !== 'pending') return deny(`request is ${request.status}`);
-  if (now >= request.expiresAt) return deny('request has expired');
+  if (!isAwaitingDecision(request, now)) return deny('request has expired');
   if (approver.accountId === request.requestedBy) return deny('the approver must be a different person than the requester');
   if (request.subject !== undefined && approver.accountId === request.subject) {
     return deny('you cannot approve an action on your own account');

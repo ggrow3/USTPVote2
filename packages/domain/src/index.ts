@@ -213,6 +213,7 @@ export {
   APPROVAL_MAX_AUTH_AGE_SECONDS,
   APPROVAL_TTL_DAYS,
   checkCanRequest,
+  isAwaitingDecision,
   checkCanApprove,
   checkCanChangeRole,
   checkCanDeleteAccount,

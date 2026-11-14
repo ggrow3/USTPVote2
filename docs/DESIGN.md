@@ -3965,11 +3965,17 @@ decidedBy, decidedAt, reason, expiresAt}`.
 - The account an action affects (`subject`, when it is an account) may be neither requester nor approver.
 - The approver approves `payloadHash`; approval executes immediately (status `executed`), re-checking every
   precondition and acting on exactly that payload. Statuses: `pending` → `executed` | `rejected`.
-- Requests expire after 7 days (checked at decision time). Request and decision are ledgered, plus the executed
-  effect (e.g. `results.certified`) in the same transaction.
+- Requests expire after 7 days. Expiry is worked out from `expiresAt` wherever a request is read, never written: an
+  expired request keeps the status `pending` on its record, with no ledger entry of its own (`approval.requested`
+  already records when it was made, and so when it lapsed). From its expiry on it is no longer waiting for a
+  decision: the api leaves it out of the pending list (the Admin page's "Pending two-person requests", the home
+  card's count, the Offices tab) and out of an election's requests, refuses to approve or reject it (403, "request
+  has expired"), and lets the same action be requested again. A voter roll whose request expired stays `pending` on
+  its own record too; the election page shows it as "request expired", and a new roll request replaces it.
+  Request and decision are ledgered, plus the executed effect (e.g. `results.certified`) in the same transaction.
 - Implemented in M1 for role changes and generalized in M2b: each action has a handler that re-checks its
   preconditions inside the decision transaction and returns its ledger entries and writes. Only one request per
-  action and subject can be pending at a time. For election actions the approver must not be a candidate in that
+  action and subject can be waiting for a decision at a time. For election actions the approver must not be a candidate in that
   election.
 
 | Action | Requested by | Approved by |
@@ -5658,7 +5664,7 @@ Physically, registration collections are top-level and election data lives under
 | `anchors/{index}` | zero-padded integer | immutable | GCS URI, generation |
 | `signing_keys/{keyId}` | hash of key version | immutable | key version, public key PEM *(added)* |
 | `role_assignments/{accountId}_{role}` | composite | grant/revoke | grantedBy (approvedBy, approvalId only for two-person grants made before §10.2's change) |
-| `approval_requests/{id}` | auto | status only; pending ones go with a deleted election | two-person requests *(added)* |
+| `approval_requests/{id}` | auto | status only (an expired one stays `pending`, §10.2); pending ones go with a deleted election | two-person requests *(added)* |
 | `testing_personas/{accountId}` | accountId | immutable; a voter's deleted with its account (§10.4) | kind, label, number, createdBy; testing mode only (§10.4) *(added)* |
 | `anthropic_key/current` | `current` | replaced by each key a System Admin adds; deleted when the key is removed | who added the key in use and when, its Secret Manager version and last four characters; never the key, which only Secret Manager holds (§5.6) *(added)* |
 | `api_keys/{name}` | `fec`, `openstates`, `civic`, `congress` | replaced by each key a System Admin adds; deleted when it is removed | the same for a public-records service's key added in the app; never the key (§5.6) *(added)* |

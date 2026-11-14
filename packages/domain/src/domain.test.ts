@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { deleteTestVotersSchema } from './api.js';
 import {
   checkCanApprove,
+  isAwaitingDecision,
   checkCanChangeRole,
   checkCanDeleteAccount,
   checkCanDeleteTestVoters,
@@ -215,6 +216,17 @@ describe('two-person rule', () => {
     });
     expect(checkCanApprove(request, auditor, new Date('2026-10-28T00:00:00Z')).ok).toBe(false);
     expect(checkCanApprove({ ...request, status: 'approved' }, auditor, now).ok).toBe(false);
+  });
+
+  it('counts a request as waiting for a decision only while pending and before its expiry', () => {
+    const record = { status: 'pending', expiresAt: '2026-10-27T12:00:00.000Z' };
+    expect(isAwaitingDecision(record, now)).toBe(true);
+    expect(isAwaitingDecision(record, new Date('2026-10-27T11:59:59Z'))).toBe(true);
+    expect(isAwaitingDecision(record, new Date('2026-10-27T12:00:00Z'))).toBe(false);
+    expect(isAwaitingDecision(record, new Date('2026-11-14T00:00:00Z'))).toBe(false);
+    expect(isAwaitingDecision({ ...record, status: 'executed' }, now)).toBe(false);
+    expect(isAwaitingDecision({ ...record, status: 'rejected' }, now)).toBe(false);
+    expect(checkCanApprove(request, auditor, new Date('2026-10-27T12:00:00Z'))).toMatchObject({ ok: false, reason: 'request has expired' });
   });
 
   it('keeps role-change requests made before role changes needed one admin decidable, but takes no new ones', () => {

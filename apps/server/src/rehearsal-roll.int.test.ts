@@ -96,6 +96,30 @@ describe('a rehearsal roll', () => {
     expect(await verifyEcdsaP256(key.publicKeyPem, rollSigningInput(asMembers), record.roll.signature.signature)).toBe(false);
   });
 
+  it('stops waiting for a decision once its request expires, and can be requested again', async () => {
+    const electionId = await draft();
+    const url = `/v1/admin/elections/${electionId}`;
+    const roll = await api.call('POST', `${url}/roll`, sa1, { reason: 'Test', voters: 'test_voters' }, ea());
+    const waiting = async () => ({
+      list: ((await api.call('GET', '/v1/admin/approvals?status=pending', sa1, undefined, auditor())).body as { id: string }[]).map((r) => r.id),
+      election: ((await api.call('GET', url, sa1, undefined, ea())).body.pending as { id: string }[]).map((r) => r.id),
+    });
+    expect(await waiting()).toEqual({ list: [roll.body.approvalId], election: [roll.body.approvalId] });
+    expect((await api.call('POST', `${url}/roll`, sa1, { reason: 'again', voters: 'test_voters' }, ea())).status).toBe(409);
+
+    // Thirteen days on: six days past the request's expiry.
+    const ref = api.firebase.db.collection('approval_requests').doc(roll.body.approvalId);
+    await ref.update({ requestedAt: inDays(-13), expiresAt: inDays(-6) });
+    expect(await waiting()).toEqual({ list: [], election: [] });
+    expect(await decide(roll.body.approvalId)).toMatchObject({ status: 403, body: { detail: 'request has expired' } });
+
+    const again = await api.call('POST', `${url}/roll`, sa1, { reason: 'again', voters: 'test_voters' }, ea());
+    expect(again.status).toBe(201);
+    expect(await waiting()).toEqual({ list: [again.body.approvalId], election: [again.body.approvalId] });
+    expect((await decide(again.body.approvalId)).body.status).toBe('executed');
+    expect((await api.call('GET', url, sa1, undefined, ea())).body.roll).toMatchObject({ snapshotId: again.body.snapshotId, status: 'approved' });
+  });
+
   it('leaves an ordinary roll exactly as it was: every Active member, no criteria in the approval', async () => {
     const electionId = await draft();
     const roll = await api.call('POST', `/v1/admin/elections/${electionId}/roll`, sa1, { reason: 'real' }, ea());

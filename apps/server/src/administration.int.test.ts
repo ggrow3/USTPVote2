@@ -113,6 +113,56 @@ describe('role changes (one System Admin)', () => {
   });
 });
 
+describe('a two-person request past its expiry (design §10.2)', () => {
+  const request = (role: string, change: 'grant' | 'revoke' = 'grant') =>
+    api.firebase.db.runTransaction((tx) =>
+      api.app.get(ApprovalsService).createRequest(tx, {
+        action: `role.${change}`,
+        subject: pat.accountId,
+        payload: { accountId: pat.accountId, role, change },
+        reason: 'Test',
+        requestedBy: sa1.accountId,
+      }),
+    );
+  /** Moves a request back in time, as if it had been made `days` ago. */
+  const age = async (id: string, days: number) => {
+    const ref = api.firebase.db.collection('approval_requests').doc(id);
+    const made = (await ref.get()).data()!;
+    const back = (iso: string) => new Date(new Date(iso).getTime() - days * 86_400_000).toISOString();
+    await ref.update({ requestedAt: back(made.requestedAt), expiresAt: back(made.expiresAt) });
+  };
+  const pendingIds = async () =>
+    ((await api.call('GET', '/v1/admin/approvals?status=pending', sa2)).body as { id: string }[]).map((r) => r.id);
+
+  it('is no longer listed as pending, cannot be approved or rejected, and keeps its record', async () => {
+    const old = await request('election_admin');
+    const fresh = await request('membership_admin', 'revoke'); // one request per action and subject
+    await age(fresh.id, 6);
+    expect(await pendingIds()).toEqual([fresh.id, old.id]);
+
+    await age(old.id, 8);
+    expect(await pendingIds()).toEqual([fresh.id]);
+    for (const decision of ['approve', 'reject'] as const) {
+      expect(await decide(sa2, old.id, decision)).toMatchObject({ status: 403, body: { detail: 'request has expired' } });
+    }
+    expect(await rolesOf(pat)).toEqual([]);
+    // Expiry is never written: the record and the ledger stay as they were.
+    expect((await api.firebase.db.collection('approval_requests').doc(old.id).get()).data()).toMatchObject({ status: 'pending', decidedBy: null });
+    const events = (await api.firebase.db.collection('audit_events').orderBy('seq').get()).docs.map((d) => d.data().type);
+    expect(events.filter((t) => t.startsWith('approval.'))).toEqual(['approval.requested', 'approval.requested']);
+  });
+
+  it('no longer stands in the way of asking again', async () => {
+    const old = await request('election_admin');
+    await expect(request('election_admin')).rejects.toThrow(/already waiting for a decision/);
+    await age(old.id, 7);
+    const again = await request('election_admin');
+    expect(await pendingIds()).toEqual([again.id]);
+    expect((await decide(sa2, again.id, 'approve')).body).toMatchObject({ status: 'executed' });
+    expect(await rolesOf(pat)).toEqual(['election_admin']);
+  });
+});
+
 describe('role changes by a Site Admin', () => {
   let site: Member;
   let kim: Member;
