@@ -66,6 +66,8 @@ export const LEDGER_EVENT_TYPES = [
   'discord.settings_changed',
   'discord.token_changed',
   'discord.posted',
+  'discord.linked',
+  'discord.unlinked',
   'event.published',
   'event.changed',
   'event.cancelled',

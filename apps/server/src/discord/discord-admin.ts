@@ -8,6 +8,7 @@ import {
   Get,
   HttpCode,
   Inject,
+  Param,
   Injectable,
   NotFoundException,
   Post,
@@ -20,6 +21,8 @@ import {
   Collections,
   DISCORD_BOT_TOKEN_SECRET,
   discordCommandsStatus,
+  DISCORD_QUESTION_QUEUE_LIMIT,
+  discordQuestionSchema,
   discordSettingsSchema,
   discordTestSchema,
   discordTokenHint,
@@ -28,6 +31,9 @@ import {
   type DiscordAdminView,
   type DiscordAppState,
   type DiscordPostRecord,
+  type DiscordQuestionInput,
+  type DiscordQuestionRecord,
+  type DiscordStartHereRecord,
   type DiscordSettingsInput,
   type DiscordTestInput,
   type DiscordTestRecord,
@@ -44,10 +50,13 @@ import { Firebase } from '../infra/firebase.js';
 import { SECRET_STORE, type SecretStore, type SecretVersion } from '../infra/secret-store.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { DISCORD_API, type DiscordApi } from './discord-api.js';
+import { DiscordLinkRecords, DiscordLinks } from './discord-links.js';
 import { DiscordSettingsService } from './discord-settings.js';
 import { DiscordToken } from './discord-token.js';
 
 const RECENT_POSTS = 20;
+/** Posted questions shown under the waiting ones. */
+const POSTED_QUESTIONS = 5;
 
 /**
  * The Discord bot's page for Communications Admins (design §10.18): its switch, the channel for each kind of post, a
@@ -59,20 +68,29 @@ export class DiscordAdminService {
     private readonly firebase: Firebase,
     private readonly settings: DiscordSettingsService,
     private readonly token: DiscordToken,
+    private readonly linkRecords: DiscordLinkRecords,
+    private readonly links: DiscordLinks,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
   async view(): Promise<DiscordAdminView> {
     const db = this.firebase.db;
     this.settings.invalidate();
-    const [settings, version, tokenSnap, testSnap, posts, appSnap] = await Promise.all([
+    const [settings, version, tokenSnap, testSnap, posts, appSnap, links, linkBlocker, questionSnap, startHereSnap] = await Promise.all([
       this.settings.current(),
       this.tokenVersion(),
       db.collection(Collections.discordSettings).doc('token').get(),
       this.testRef().get(),
       db.collection(Collections.discordPosts).orderBy('createdAt', 'desc').limit(RECENT_POSTS).get(),
       db.collection(Collections.discordState).doc('app').get(),
+      this.linkRecords.summary(),
+      this.links.blocker(),
+      db.collection(Collections.discordQuestions).get(),
+      this.startHereRef().get(),
     ]);
+    const questions = questionSnap.docs.map((d) => d.data() as DiscordQuestionRecord);
+    const waiting = questions.filter((q) => q.status === 'waiting').sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const posted = questions.filter((q) => q.status !== 'waiting').sort((a, b) => (b.postedAt ?? '').localeCompare(a.postedAt ?? ''));
     const tokenRecord = tokenSnap.data() as DiscordTokenRecord | undefined;
     return {
       settings,
@@ -83,7 +101,74 @@ export class DiscordAdminService {
       test: (testSnap.data() as DiscordTestRecord | undefined) ?? null,
       recent: posts.docs.map((d) => d.data() as DiscordPostRecord),
       commands: discordCommandsStatus(this.config.discord === 'off' ? null : this.config.discordInteractionsUrl, appSnap.data() as DiscordAppState | undefined),
+      links,
+      linkBlocker,
+      questions: [...waiting, ...posted.slice(0, POSTED_QUESTIONS)],
+      startHere: (startHereSnap.data() as DiscordStartHereRecord | undefined) ?? null,
     };
+  }
+
+  /** Adds a question of the week to the end of the queue. */
+  async addQuestion(ctx: RequestContext, input: DiscordQuestionInput): Promise<DiscordAdminView> {
+    const actor = requireAccount(ctx);
+    const db = this.firebase.db;
+    const waiting = await db.collection(Collections.discordQuestions).where('status', '==', 'waiting').count().get();
+    if (waiting.data().count >= DISCORD_QUESTION_QUEUE_LIMIT) throw new ConflictException(`${DISCORD_QUESTION_QUEUE_LIMIT} questions are waiting already, a year of them: remove one first`);
+    const ref = db.collection(Collections.discordQuestions).doc();
+    const question: DiscordQuestionRecord = {
+      questionId: ref.id,
+      question: input.question,
+      answers: input.answers,
+      status: 'waiting',
+      createdAt: new Date().toISOString(),
+      createdBy: actor,
+      week: null,
+      postedAt: null,
+      messageId: null,
+      problem: null,
+    };
+    await ref.create(question);
+    return this.view();
+  }
+
+  /** Removes a question that has not been posted. */
+  async removeQuestion(questionId: string): Promise<DiscordAdminView> {
+    const ref = this.firebase.db.collection(Collections.discordQuestions).doc(questionId);
+    await this.firebase.db.runTransaction(async (tx) => {
+      const question = (await tx.get(ref)).data() as DiscordQuestionRecord | undefined;
+      if (!question) throw new NotFoundException('no such question');
+      if (question.status !== 'waiting') throw new ConflictException('this question was posted already; its poll is on Discord');
+      tx.delete(ref);
+    });
+    return this.view();
+  }
+
+  /** Queues the Start here message for the community channel; the worker posts and pins it, or brings it up to date, within a minute. */
+  async requestStartHere(ctx: RequestContext): Promise<DiscordAdminView> {
+    const actor = requireAccount(ctx);
+    if (this.config.discord === 'off') throw new ServiceUnavailableException('the Discord bot is switched off in this deployment');
+    if (!this.config.webOrigin) throw new ServiceUnavailableException("the site's own address is not set in this deployment (WEB_ORIGIN), and the message links to it");
+    const channelId = (await this.settings.current()).channels.community;
+    if (!channelId) throw new ConflictException('save a channel for the weekly posts and Start here first');
+    if (!(await this.token.current())) throw new ConflictException("the bot's token has not been added yet: a System Admin adds it under Admin › API keys");
+    const before = (await this.startHereRef().get()).data() as DiscordStartHereRecord | undefined;
+    const asked: DiscordStartHereRecord = {
+      status: 'waiting',
+      channelId,
+      messageId: before?.messageId ?? null,
+      postedIn: before?.postedIn ?? null,
+      pinned: before?.pinned ?? false,
+      problem: null,
+      requestedBy: actor,
+      requestedAt: new Date().toISOString(),
+      doneAt: null,
+    };
+    await this.startHereRef().set(asked);
+    return this.view();
+  }
+
+  private startHereRef() {
+    return this.firebase.db.collection(Collections.discordState).doc('start_here');
   }
 
   /** Queues a test post to a kind's channel; the worker sends it within a minute, whether or not the bot is switched on. */
@@ -232,6 +317,23 @@ export class DiscordAdminController {
   @HttpCode(200)
   test(@Ctx() ctx: RequestContext, @Body(new ZodPipe(discordTestSchema)) body: DiscordTestInput) {
     return this.admin.requestTest(ctx, body);
+  }
+
+  @Post('questions')
+  @HttpCode(200)
+  addQuestion(@Ctx() ctx: RequestContext, @Body(new ZodPipe(discordQuestionSchema)) body: DiscordQuestionInput) {
+    return this.admin.addQuestion(ctx, body);
+  }
+
+  @Delete('questions/:questionId')
+  removeQuestion(@Param('questionId') questionId: string) {
+    return this.admin.removeQuestion(questionId);
+  }
+
+  @Post('start-here')
+  @HttpCode(200)
+  startHere(@Ctx() ctx: RequestContext) {
+    return this.admin.requestStartHere(ctx);
   }
 }
 

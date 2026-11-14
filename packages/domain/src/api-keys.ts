@@ -9,8 +9,12 @@ import { deny, OK, type Check } from './check.js';
  * service is left out (the FEC falls back to its shared DEMO_KEY, which allows few lookups an hour). The Congress.gov
  * key has no deployment key of its own: without it the Bills page uses the FEC key in use, since any api.data.gov key
  * works for every service behind api.data.gov, and then DEMO_KEY.
+ *
+ * `discord` is of another kind but kept the same way: the client secret of the party's Discord application, which
+ * Discord's sign-in needs when a member links their Discord account (§10.18). It has no deployment key, and without it
+ * members cannot link. It is not the bot's token, which has a card of its own and which the api cannot read.
  */
-export const API_KEY_NAMES = ['fec', 'openstates', 'civic', 'congress'] as const;
+export const API_KEY_NAMES = ['fec', 'openstates', 'civic', 'congress', 'discord'] as const;
 export type ApiKeyName = (typeof API_KEY_NAMES)[number];
 
 /**
@@ -23,6 +27,7 @@ export const API_KEY_SECRETS: Readonly<Record<ApiKeyName, string>> = {
   openstates: 'app-openstates-api-key',
   civic: 'app-civic-api-key',
   congress: 'app-congress-api-key',
+  discord: 'app-discord-client-secret',
 };
 
 export const apiKeyNameSchema = z.enum(API_KEY_NAMES);
@@ -37,6 +42,7 @@ const SHAPES: Readonly<Record<ApiKeyName, { readonly pattern: RegExp; readonly s
   openstates: { pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, says: 'Open States keys look like 1b2c3d4e-0000-…, 36 characters' },
   civic: { pattern: /^AIza[0-9A-Za-z_-]{35}$/, says: 'Google API keys start with "AIza" and are 39 characters' },
   congress: { pattern: /^[A-Za-z0-9]{40}$/, says: 'api.data.gov keys are 40 letters and digits' },
+  discord: { pattern: /^[A-Za-z0-9_-]{24,64}$/, says: 'a Discord client secret is about 32 letters, digits, dashes and underscores, with no dots (the bot’s token has dots, and goes in its own card)' },
 };
 
 /**

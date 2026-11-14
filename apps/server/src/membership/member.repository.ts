@@ -84,6 +84,13 @@ export class MemberRepository {
     return (await query.get()).docs.map((d) => d.data() as MemberRecord);
   }
 
+  /** The accounts whose application was approved since `since` (an ISO time): they became Active from Applicant. */
+  async approvedSince(since: string): Promise<string[]> {
+    const snap = await this.firebase.db.collection(Collections.memberStatusHistory).where('at', '>=', since).get();
+    const approved = snap.docs.map((d) => d.data() as StatusHistoryRecord).filter((h) => h.from === 'applicant' && h.to === 'active');
+    return [...new Set(approved.map((h) => h.accountId))];
+  }
+
   /** Status history, newest first by ledger sequence number (design §11). */
   async history(accountId: string): Promise<StatusHistoryRecord[]> {
     const snap = await this.firebase.db

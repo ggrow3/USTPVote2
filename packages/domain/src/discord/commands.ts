@@ -15,6 +15,7 @@ export const DISCORD_COMMANDS = [
   { name: 'bills', description: 'Bills in Congress the party is following' },
   { name: 'courses', description: 'Courses you can take on the site' },
   { name: 'join', description: 'How to join the party' },
+  { name: 'link', description: 'Link your site account to get the Member role here' },
   { name: 'help', description: 'What this bot can do' },
 ] as const;
 
@@ -101,6 +102,7 @@ export type DiscordCommandData =
   | { readonly command: 'bills'; readonly bills: readonly PublicBillCard[] }
   | { readonly command: 'courses'; readonly map: CourseMap }
   | { readonly command: 'join' }
+  | { readonly command: 'link' }
   | { readonly command: 'help' };
 
 export interface DiscordReply {
@@ -166,6 +168,12 @@ export function discordCommandReply(data: DiscordCommandData, origin: string): D
         'Join the party',
         'Register on the site. Once your application is approved you can vote in party elections, take the courses and join teams.',
         '/register',
+      );
+    case 'link':
+      return made(
+        'Link your account',
+        'Sign in on the site, open your Account page and choose Connect Discord. Members who link get the Member role here, and its channels. Linking tells Discord, and everyone on this server, that you are a party member.',
+        '/account',
       );
     case 'help':
       return made('What this bot can do', DISCORD_COMMANDS.map((c) => `\`/${c.name}\`: ${c.description}`).join('\n'), '/');

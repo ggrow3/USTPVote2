@@ -95,6 +95,7 @@ import { ROOM_PROVIDERS } from '../room/providers.js';
 import { RoomAdminController, RoomController } from '../room/room.controller.js';
 import { COMMUNICATIONS_PROVIDERS } from '../communications/providers.js';
 import { DiscordAdminController, DiscordTokenController } from '../discord/discord-admin.js';
+import { MyDiscordController } from '../discord/discord-links.js';
 import { PublicDiscordController } from '../discord/discord-public.js';
 import { DISCORD_PROVIDERS } from '../discord/providers.js';
 import {
@@ -192,6 +193,7 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     DiscordAdminController,
     DiscordTokenController,
     PublicDiscordController,
+    MyDiscordController,
     PublicNavigationController,
     NavigationAdminController,
     PublicHomeQuoteController,
