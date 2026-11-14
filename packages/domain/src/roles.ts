@@ -4,7 +4,8 @@ import { deny, OK, type Check } from './check.js';
  * Course Administrators publish learning material only, and Communications Admins the party's news, press kit and share
  * kit (design §10.9); neither receives membership, election, ballot or audit powers. Site Admins have most of what System
  * Admins have, but delete no account and no test voter, change every role but System Admin, and leave the sign-in
- * settings, the API keys, the room's model server and the testing tools to System Admins (design §10.1).
+ * settings, the API keys and the room's model server to System Admins (design §10.1). In testing mode they use the
+ * testing tools but for deleting test voters, always with a second factor (design §10.4).
  */
 export const ROLES = [
   'membership_admin',

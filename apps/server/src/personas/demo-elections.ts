@@ -20,6 +20,7 @@ import { ZodPipe } from '../common/validation.js';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { ElectionsService } from '../elections/elections.service.js';
 import { PersonasService } from './personas.service.js';
+import { requireTestingAccess } from './testing-access.js';
 
 /** The written reason on every request and decision a demo makes; Auditors see it in the ledger and Approvals. */
 export const DEMO_REASON = 'Demo election, made up at random for testing (Admin → Testing)';
@@ -89,7 +90,7 @@ export class DemoElectionsService {
   }
 
   /**
-   * The request as the persona of this kind would make it, with the System Admin kept as its operator. A persona whose
+   * The request as the persona of this kind would make it, with the System or Site Admin kept as its operator. A persona whose
    * role was revoked is refused here, before anything is written, as the guard would refuse its own requests.
    */
   private actingAs(ctx: RequestContext, personas: readonly PersonaSummary[], kind: Exclude<PersonaKind, 'voter'>): RequestContext {
@@ -111,14 +112,18 @@ export class DemoElectionsService {
   }
 }
 
-/** `POST /v1/testing/demo-elections`: System Admins only, and only in testing mode (404 otherwise). */
+/**
+ * `POST /v1/testing/demo-elections`: System and Site Admins as themselves with a second factor (`requireTestingAccess`),
+ * and only in testing mode (404 otherwise).
+ */
 @Controller('v1/testing/demo-elections')
-@Roles('system_admin')
+@Roles('system_admin', 'site_admin')
 export class DemoElectionsController {
   constructor(private readonly demos: DemoElectionsService) {}
 
   @Post()
   create(@Ctx() ctx: RequestContext, @Body() body: unknown) {
+    requireTestingAccess(ctx);
     return this.demos.create(ctx, body);
   }
 }

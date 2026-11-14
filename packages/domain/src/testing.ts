@@ -3,9 +3,9 @@ import type { MemberStatus } from './membership/member-status.js';
 import type { Role } from './roles.js';
 
 /**
- * Testing mode (design §10.4). On a test deployment a System Admin can create test personas, synthetic accounts that
- * each hold one admin role or are an Active member, and act as any of them to rehearse an election end to end with
- * every two-person step done by a different account. Production never allows it.
+ * Testing mode (design §10.4). On a test deployment a System or Site Admin can create test personas, synthetic accounts
+ * that each hold one admin role or are an Active member, and act as any of them to rehearse an election end to end
+ * with every two-person step done by a different account. Production never allows it.
  */
 
 /** Sent with each request made as a persona; the value is the persona's accountId. */
@@ -23,9 +23,10 @@ export const PERSONA_KINDS = [
 export type PersonaKind = (typeof PERSONA_KINDS)[number];
 
 /**
- * One persona per admin role but System Admin, in role order. There is no System Admin persona, so the testing tools,
- * deleting accounts and System Admins' roles stay with real System Admins. The Test Site Admin changes the roles of test
- * personas only (checkActingRoleChange): a real account's roles change under a real admin's name.
+ * One persona per admin role but System Admin, in role order. There is no System Admin persona, so deleting accounts
+ * and System Admins' roles stay with real System Admins, and the testing tools with real System and Site Admins, never
+ * used while acting. The Test Site Admin changes the roles of test personas only (checkActingRoleChange): a real
+ * account's roles change under a real admin's name.
  */
 export const ADMIN_PERSONAS: readonly { readonly kind: Exclude<PersonaKind, 'voter'>; readonly label: string }[] = [
   { kind: 'membership_admin', label: 'Test Membership Admin' },
