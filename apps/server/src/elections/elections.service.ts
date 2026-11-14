@@ -14,6 +14,7 @@ import {
   ElectionCollections,
   electionPackageFrom,
   electionTransitionAuthority,
+  isAwaitingDecision,
   isRehearsalRoll,
   MAX_PACKAGE_CONTESTS,
   packageContestRecords,
@@ -359,7 +360,7 @@ export class ElectionsService {
         : [],
       advisories: draft ? definitionAdvisories(definition, await this.reader.positions(contests)) : [],
       roll: roll && withoutList(roll),
-      pending: pending.docs.map((d) => d.data() as ApprovalRequestRecord),
+      pending: pending.docs.map((d) => d.data() as ApprovalRequestRecord).filter((r) => isAwaitingDecision(r)),
     };
   }
 
