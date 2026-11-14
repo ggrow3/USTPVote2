@@ -13,6 +13,15 @@ describe('describeFormChange', () => {
     expect(help.length).toBeLessThan(130);
   });
 
+  it('lists the fields set differently, in the order of the form', () => {
+    expect(describeFormChange({ part: 'fields', to: { phone: 'hidden', city: 'optional', country: 'hidden', dateOfBirth: 'required' } })).toBe(
+      'Fields: Date of birth required, Country not shown, City optional, Phone not shown',
+    );
+    expect(describeFormChange({ part: 'fields', to: { keepInTouch: 'optional', country: 'required' } })).toBe(
+      'Fields: Country shown, Staying in touch box shown',
+    );
+  });
+
   it('counts the ideals and the intro paragraphs', () => {
     expect(describeFormChange({ part: 'ideals', to: ['One.'] })).toBe('Core Ideals: 1 ideal');
     expect(describeFormChange({ part: 'ideals', to: ['One.', 'Two.'] })).toBe('Core Ideals: 2 ideals');

@@ -3,8 +3,10 @@ import { sendEmailVerification } from 'firebase/auth';
 import { useQuasar } from 'quasar';
 import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import {
-  createApplicationSchema,
+  applicationFieldProblems,
+  applicationSchema,
   DEFAULT_COUNTRY,
+  DEFAULT_REGISTRATION_FIELDS,
   DEFAULT_REGISTRATION_FORM,
   mayApply,
   MINIMUM_MEMBER_AGE,
@@ -12,6 +14,7 @@ import {
   type ApplicationRecord,
   type BylawsRecord,
   type PublicRegistrationForm,
+  type RegistrationField,
   type SignInProvider,
 } from 'ustp-domain';
 import { focusElement, focusFirstInvalid, focusSoon, usePageTitle } from '../a11y.js';
@@ -64,6 +67,11 @@ const wordingError = ref<string | null>(null);
 const tips = computed(() =>
   wording.value?.tipsAddress ? { title: wording.value.tipsTitle, address: wording.value.tipsAddress } : null,
 );
+
+/** Which fields the application asks, as the Membership Admins set them: each required, optional or not shown. */
+const fields = computed(() => wording.value?.fields ?? DEFAULT_REGISTRATION_FIELDS);
+const shown = (...any: RegistrationField[]) => any.some((field) => fields.value[field] !== 'hidden');
+const labelled = (text: string, field: RegistrationField) => (fields.value[field] === 'required' ? text : `${text} (optional)`);
 
 // Step 2: the application.
 const bylaws = ref<BylawsRecord | null>(null);
@@ -256,7 +264,7 @@ async function submit() {
     errors.value = { _: 'You must agree to the bylaws to apply.' };
     return;
   }
-  const checked = validate(createApplicationSchema, {
+  const answers = {
     bylawsVersion: bylaws.value.version,
     bylawsHash: bylaws.value.contentHash,
     legalName: form.legalName,
@@ -276,11 +284,17 @@ async function submit() {
     referral: optional(form.referral),
     // The member's referral link they came by, if any (design §5.18).
     referralCode: keptReferral() ?? undefined,
-    newsletter: form.keepInTouch,
-    announcements: form.keepInTouch,
-  });
+    // No box, no consent.
+    newsletter: shown('keepInTouch') && form.keepInTouch,
+    announcements: shown('keepInTouch') && form.keepInTouch,
+  };
+  const checked = validate(applicationSchema(fields.value), answers);
   if (!checked.ok) {
-    errors.value = checked.errors;
+    // The schema stops at an unanswered question or an unticked confirmation before it reaches the fields' settings:
+    // check those as well, so every problem shows at once.
+    const typed = Object.fromEntries(Object.entries(answers).map(([key, value]) => [key, typeof value === 'string' ? value.trim() : value]));
+    const missing = applicationFieldProblems(typed as typeof answers, fields.value, new Date()).map((p) => [p.path, p.message]);
+    errors.value = { ...Object.fromEntries(missing), ...checked.errors };
     await focusFirstInvalid();
     return;
   }
@@ -522,15 +536,26 @@ async function submit() {
                     :error="!!errors.legalName"
                     :error-message="errors.legalName"
                   />
-                  <q-input v-model="form.preferredName" outlined dense label="Preferred name (optional)" autocomplete="nickname" />
                   <q-input
+                    v-if="shown('preferredName')"
+                    v-model="form.preferredName"
+                    outlined
+                    dense
+                    hide-bottom-space
+                    :label="labelled('Preferred name', 'preferredName')"
+                    autocomplete="nickname"
+                    :error="!!errors.preferredName"
+                    :error-message="errors.preferredName"
+                  />
+                  <q-input
+                    v-if="shown('dateOfBirth')"
                     v-model="form.dateOfBirth"
                     outlined
                     dense
                     hide-bottom-space
                     stack-label
                     type="date"
-                    label="Date of birth"
+                    :label="labelled('Date of birth', 'dateOfBirth')"
                     autocomplete="bday"
                     :hint="`Members must be at least ${MINIMUM_MEMBER_AGE}. Kept with your application only, for the membership review.`"
                     :error="!!errors.dateOfBirth"
@@ -541,20 +566,21 @@ async function submit() {
             </q-card-section>
           </q-card>
 
-          <q-card flat bordered>
+          <q-card v-if="shown('country', 'state', 'city', 'postalCode', 'phone')" flat bordered>
             <q-card-section>
               <fieldset class="ustp-fieldset">
                 <legend class="text-subtitle1">Where you live and how to reach you</legend>
                 <div class="text-caption text-grey-7">We never ask for your street address.</div>
                 <div class="ustp-form">
-                  <PlaceFields v-model="form" :errors="errors" own />
+                  <PlaceFields v-model="form" :errors="errors" :rules="fields" own />
                   <q-input
+                    v-if="shown('phone')"
                     v-model="form.phone"
                     outlined
                     dense
                     hide-bottom-space
                     type="tel"
-                    label="Phone (optional)"
+                    :label="labelled('Phone', 'phone')"
                     autocomplete="tel"
                     :error="!!errors.phone"
                     :error-message="errors.phone"
@@ -578,32 +604,71 @@ async function submit() {
             </q-card-section>
           </q-card>
 
-          <q-card flat bordered>
+          <q-card v-if="shown('statement', 'interests', 'skills', 'referral', 'volunteer', 'runForOffice')" flat bordered>
             <q-card-section>
               <fieldset class="ustp-fieldset">
                 <legend class="text-subtitle1">Your interest in USTP</legend>
                 <div class="ustp-form">
-                  <q-input v-model="form.statement" outlined dense autogrow type="textarea" label="Why do you want to join? (optional)" />
-                  <q-input v-model="form.interests" outlined dense autogrow type="textarea" label="Issues you care most about (optional)" />
                   <q-input
+                    v-if="shown('statement')"
+                    v-model="form.statement"
+                    outlined
+                    dense
+                    autogrow
+                    hide-bottom-space
+                    type="textarea"
+                    :label="labelled('Why do you want to join?', 'statement')"
+                    :error="!!errors.statement"
+                    :error-message="errors.statement"
+                  />
+                  <q-input
+                    v-if="shown('interests')"
+                    v-model="form.interests"
+                    outlined
+                    dense
+                    autogrow
+                    hide-bottom-space
+                    type="textarea"
+                    :label="labelled('Issues you care most about', 'interests')"
+                    :error="!!errors.interests"
+                    :error-message="errors.interests"
+                  />
+                  <q-input
+                    v-if="shown('skills')"
                     v-model="form.skills"
                     outlined
                     dense
                     autogrow
+                    hide-bottom-space
                     type="textarea"
-                    label="Skills or experience you could contribute (optional)"
+                    :label="labelled('Skills or experience you could contribute', 'skills')"
+                    :error="!!errors.skills"
+                    :error-message="errors.skills"
                   />
-                  <q-input v-model="form.referral" outlined dense label="How did you hear about USTP? (optional)" />
-                  <div class="ustp-options">
-                    <q-checkbox v-model="form.volunteer" label="I'd like to volunteer." />
-                    <q-checkbox v-model="form.runForOffice" label="I'm interested in running for party or public office." />
+                  <q-input
+                    v-if="shown('referral')"
+                    v-model="form.referral"
+                    outlined
+                    dense
+                    hide-bottom-space
+                    :label="labelled('How did you hear about USTP?', 'referral')"
+                    :error="!!errors.referral"
+                    :error-message="errors.referral"
+                  />
+                  <div v-if="shown('volunteer', 'runForOffice')" class="ustp-options">
+                    <q-checkbox v-if="shown('volunteer')" v-model="form.volunteer" label="I'd like to volunteer." />
+                    <q-checkbox
+                      v-if="shown('runForOffice')"
+                      v-model="form.runForOffice"
+                      label="I'm interested in running for party or public office."
+                    />
                   </div>
                 </div>
               </fieldset>
             </q-card-section>
           </q-card>
 
-          <q-card flat bordered>
+          <q-card v-if="shown('keepInTouch')" flat bordered>
             <q-card-section>
               <!-- One box, ticked to start in the US only: elsewhere a box ticked in advance is no consent (design §5.2). -->
               <fieldset class="ustp-fieldset">

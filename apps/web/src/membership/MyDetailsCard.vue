@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { useQuasar } from 'quasar';
 import { computed, reactive, ref } from 'vue';
-import { memberDetailsSchema } from 'ustp-domain';
+import { memberDetailsSchemaFor } from 'ustp-domain';
 import { focusFirstInvalid, focusSoon } from '../a11y.js';
 import { errorMessage } from '../api.js';
 import { apiFieldErrors, validate, type FieldErrors } from '../forms.js';
@@ -9,6 +9,7 @@ import { refreshMe, session } from '../session.js';
 import DetailsFields from './DetailsFields.vue';
 import { updateMyDetails } from './api.js';
 import { consentText, detailsForm, placeFacts, placeInput, type DetailsForm } from './member-text.js';
+import { usePlaceRules } from './place-rules.js';
 
 /**
  * The signed-in member's own details and email opt-ins (design §5.2), for the account page. The legal name is shown
@@ -22,6 +23,7 @@ const errors = ref<FieldErrors>({});
 const form = reactive({ details: null as DetailsForm | null, newsletter: false, announcements: false });
 let original = '';
 const NOT_GIVEN = 'Not given';
+const rules = usePlaceRules();
 
 function start() {
   if (!m.value) return;
@@ -47,7 +49,7 @@ async function save() {
     errors.value = { _: 'Nothing has changed.' };
     return;
   }
-  const checked = validate(memberDetailsSchema, {
+  const checked = validate(memberDetailsSchemaFor(rules.value), {
     preferredName: form.details.preferredName,
     ...placeInput(form.details),
     phone: form.details.phone,
@@ -106,7 +108,7 @@ async function save() {
 
     <q-card-section v-else-if="form.details">
       <q-form id="my-details-form" class="ustp-form" @submit.prevent="save">
-        <DetailsFields v-model="form.details" :errors="errors" own />
+        <DetailsFields v-model="form.details" :errors="errors" :rules="rules" own />
         <fieldset class="ustp-fieldset">
           <legend class="text-body2">Party email</legend>
           <div class="ustp-options">

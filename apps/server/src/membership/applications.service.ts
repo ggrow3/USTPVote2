@@ -1,9 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import {
   applicationDecidedNotice,
+  applicationFieldProblems,
   applicationReceivedNotice,
   applicationWaitingNotice,
   applicationWindowStart,
+  askedAnswers,
   checkApplicantEmail,
   decideApplication,
   submitApplication,
@@ -16,7 +18,7 @@ import {
 import { requireAccount } from '../auth/decorators.js';
 import { DirectoryService } from '../auth/directory.service.js';
 import type { RequestContext } from '../auth/principal.js';
-import { accepted, assertCheck } from '../common/validation.js';
+import { accepted, assertCheck, assertNoFieldProblems } from '../common/validation.js';
 import { InboxNotices } from '../inbox/inbox.service.js';
 import { ReferralCodes } from '../referrals/referrals.js';
 import { Firebase } from '../infra/firebase.js';
@@ -28,7 +30,7 @@ import { RegistrationFormService } from './registration-form.js';
 
 /**
  * Applications to join (design §5.2): submitted against the current bylaws and the registration form's current
- * wording, decided by a Membership Admin. The rules
+ * wording and field settings, decided by a Membership Admin. The rules
  * are the MembershipApplication aggregate's in `ustp-domain`; each application also changes its author's status. The
  * applicant is told that it arrived and what was decided, in the bell and by email, and the Membership Admins that one
  * waits (`application-notices.ts`).
@@ -57,7 +59,12 @@ export class MembershipApplications {
     const submitted = await this.firebase.db.runTransaction(async (tx) => {
       const now = new Date();
       const bylaws = await this.bylaws.currentBylaws(tx);
-      const formVersion = await this.form.version(tx);
+      const form = await this.form.inForce(tx);
+      // Held to the fields the form asks, when it is the form the applicant saw: an older version is refused below, as
+      // changed. What the form does not show is dropped, whatever was sent for it.
+      const asStands = input.formVersion === form.version;
+      if (asStands) assertNoFieldProblems(applicationFieldProblems(input, form.fields, now));
+      const answers = asStands ? askedAnswers(input, form.fields) : input;
       const recent = await this.applications.countSince(tx, accountId, applicationWindowStart(now));
       const current = await this.members.get(tx, accountId);
       const applicationId = this.applications.newId();
@@ -66,9 +73,9 @@ export class MembershipApplications {
         submitApplication({
           applicationId,
           accountId,
-          input,
+          input: answers,
           bylaws,
-          formVersion,
+          formVersion: form.version,
           recent,
           current,
           at: now.toISOString(),

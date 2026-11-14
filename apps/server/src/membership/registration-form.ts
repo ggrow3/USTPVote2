@@ -32,10 +32,10 @@ function record(data: Partial<RegistrationFormRecord> | undefined): Registration
 const publicForm = ({ updatedAt: _at, updatedBy: _by, ...form }: RegistrationFormRecord): PublicRegistrationForm => form;
 
 /**
- * The registration form's wording (design §5.2): the intro on the Register page, the two membership questions and the
- * Core Ideals. Not cached, unlike the home page quote: an application must answer the version stored now, and a
- * stale copy would have it refused until the cache ran out. Each saved version is kept, so the wording any
- * application answered can be read back.
+ * The registration form (design §5.2): the intro on the Register page, the two membership questions, the Core Ideals,
+ * and which fields the application asks. Not cached, unlike the home page quote: an application must answer the
+ * version stored now, and a stale copy would have it refused until the cache ran out. Each saved version is kept, so
+ * the wording any application answered can be read back.
  */
 @Injectable()
 export class RegistrationFormService {
@@ -56,10 +56,9 @@ export class RegistrationFormService {
     return record((await this.doc.get()).data() as RegistrationFormRecord | undefined);
   }
 
-  /** The current version, read in `tx`: what an application must have answered. */
-  async version(tx: Transaction): Promise<number> {
-    const snap = await tx.get(this.doc);
-    return (snap.get('version') as number | undefined) ?? 0;
+  /** The form in force, read in `tx`: the version an application must have answered, and the fields it is held to. */
+  async inForce(tx: Transaction): Promise<RegistrationFormRecord> {
+    return record((await tx.get(this.doc)).data() as RegistrationFormRecord | undefined);
   }
 
   /** A version as it was saved; 0 is the default. Null for a version nobody has saved. */
@@ -70,16 +69,17 @@ export class RegistrationFormService {
   }
 
   /**
-   * Saves the wording, tidied, if nobody saved since `basedOn`, keeping the new version and ledgering every part that
-   * changed. Both questions, the Core Ideals' heading and an ideal are needed, and a bonus link needs https:// (400).
+   * Saves the wording, tidied, and the fields' settings if nobody saved since `basedOn`, keeping the new version and
+   * ledgering every part that changed. Both questions, the Core Ideals' heading and an ideal are needed, and a bonus
+   * link needs https:// (400). A request without the fields' settings leaves them as they are.
    */
   async update(ctx: RequestContext, input: RegistrationFormInput): Promise<RegistrationFormRecord> {
     const actor = requireAccount(ctx);
     const { basedOn, ...form } = input;
-    const after = resolveRegistrationForm(form);
-    assertCheck(checkRegistrationForm(after), BadRequestException);
+    assertCheck(checkRegistrationForm(resolveRegistrationForm(form)), BadRequestException);
     return this.firebase.db.runTransaction(async (tx) => {
-      const before = record((await tx.get(this.doc)).data() as RegistrationFormRecord | undefined);
+      const before = await this.inForce(tx);
+      const after = resolveRegistrationForm({ ...form, fields: form.fields ?? before.fields });
       if (basedOn !== before.version) {
         throw new ConflictException('someone else changed the registration form since you opened it; reload to see their change');
       }

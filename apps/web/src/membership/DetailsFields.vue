@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { PlaceRules } from 'ustp-domain';
 import type { FieldErrors } from '../forms.js';
 import type { DetailsForm } from './member-text.js';
 import PlaceFields from './PlaceFields.vue';
@@ -11,6 +12,8 @@ const props = defineProps<{
   own?: boolean;
   /** City and ZIP code may be left out, as when a Membership Admin adds a member (design §5.13). */
   optionalContact?: boolean;
+  /** What the registration form requires of where someone lives (`usePlaceRules`); everything, when not given. */
+  rules?: PlaceRules;
 }>();
 const auto = (token: string) => (props.own ? token : 'off');
 </script>
@@ -26,7 +29,7 @@ const auto = (token: string) => (props.own ? token : 'off');
     :error="!!errors.preferredName"
     :error-message="errors.preferredName"
   />
-  <PlaceFields v-model="form" :errors="errors" :own="own" :optional-contact="optionalContact" />
+  <PlaceFields v-model="form" :errors="errors" :own="own" :optional-contact="optionalContact" :rules="rules" />
   <q-input
     v-model="form.phone"
     outlined

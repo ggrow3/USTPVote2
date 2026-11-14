@@ -228,7 +228,7 @@ export function storedPlace(input: PlaceInput): Pick<MemberRecord, 'country' | '
   const postalCode = input.postalCode ? (us ? normalizePostalCode(input.postalCode) : normalizePostcode(input.postalCode)) : null;
   return {
     country: input.country,
-    state: us ? (input.state ?? null) : null,
+    state: us ? input.state || null : null,
     region: us ? null : input.region || null,
     contact: { city: input.city || null, postalCode, phone: input.phone ? normalizePhone(input.phone) : null },
   };

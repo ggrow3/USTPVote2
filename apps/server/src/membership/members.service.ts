@@ -6,6 +6,8 @@ import {
   checkMemberStatusRequest,
   Collections,
   correctMemberDetails,
+  detailsPlaceRules,
+  placeProblems,
   preferencesOf,
   resignMembership,
   testVoterAdmission,
@@ -23,13 +25,14 @@ import {
 } from 'ustp-domain';
 import { requireAccount } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
-import { accepted, assertCheck } from '../common/validation.js';
+import { accepted, assertCheck, assertNoFieldProblems } from '../common/validation.js';
 import { Firebase } from '../infra/firebase.js';
 import { LedgerService } from '../ledger/ledger.service.js';
 import { WelcomeEmails } from '../notifications/welcome-emails.js';
 import { ApplicationRepository } from './application.repository.js';
 import { FirstStepsRepository } from './first-steps.repository.js';
 import { MemberRepository } from './member.repository.js';
+import { RegistrationFormService } from './registration-form.js';
 
 /**
  * Members and their status (design §5.1): resigning, the Membership Admin's status changes other than deciding an
@@ -45,7 +48,17 @@ export class Members {
     private readonly applications: ApplicationRepository,
     private readonly welcomes: WelcomeEmails,
     private readonly firstSteps: FirstStepsRepository,
+    private readonly form: RegistrationFormService,
   ) {}
+
+  /**
+   * Holds where someone lives to what the registration form requires (design §5.2): a state, city or ZIP code the
+   * application does not require is not required of a member later either.
+   */
+  private async assertPlace(input: MemberDetailsInput | MemberCorrectionInput): Promise<void> {
+    const { fields } = await this.form.current();
+    assertNoFieldProblems(placeProblems(input, detailsPlaceRules(fields)));
+  }
 
   /**
    * For deleting an account (design §4): reads in `tx` what membership keeps about it, its member record, status
@@ -121,6 +134,7 @@ export class Members {
   /** The signed-in member changes their own details and email opt-ins. */
   async updateOwnDetails(ctx: RequestContext, input: MemberDetailsInput): Promise<MemberRecord> {
     const accountId = requireAccount(ctx);
+    await this.assertPlace(input);
     return this.firebase.db.runTransaction(async (tx) => {
       const current = await this.members.get(tx, accountId);
       return this.recordDetails(tx, accepted(updateOwnDetails(current, { input, at: new Date().toISOString() })));
@@ -131,6 +145,7 @@ export class Members {
   async correctDetails(ctx: RequestContext, accountId: string, input: MemberCorrectionInput): Promise<MemberRecord> {
     const actor = requireAccount(ctx);
     assertCheck(checkMemberCorrectionRequest(actor, accountId));
+    await this.assertPlace(input);
     return this.firebase.db.runTransaction(async (tx) => {
       const current = await this.members.get(tx, accountId);
       return this.recordDetails(tx, accepted(correctMemberDetails(current, { input, actor })));

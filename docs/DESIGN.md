@@ -593,7 +593,7 @@ Every transition writes, in one transaction, the new status on `members/{account
   stored with the time consent was given. The browser and the api apply the same schema, the api with its own clock.
 - **Where they live** *(changed 2026-11-03)*. Allied Members can live outside the United States, so the application
   asks for the country first (`country`, an ISO 3166-1 alpha-2 code from `COUNTRIES` in `ustp-domain`, the United
-  States by default and when none is sent). In the US the state or territory, city and ZIP code are needed, as before.
+  States by default and when none is sent). In the US the state or territory, city and ZIP code are needed, as before, unless the form's field settings (below) make them optional or leave them out.
   Anywhere else none of them is: the applicant may give a state, province or region (`region`, free text, 100
   characters), a city, and a postcode (letters and digits with single spaces or dashes between them, 16 characters,
   stored in capitals). The record keeps `state` for the US only (null elsewhere) and `region` outside it only (null
@@ -650,6 +650,29 @@ Every transition writes, in one transaction, the new status on `members/{account
   from (409 if someone saved since; 400 if a heading, a question or every ideal is missing, a part is over its limit
   or the address is not `https://`). Each save that changes something is ledgered as `registration_form.changed` with
   each changed part and its new value; like the home page quote it is an internal setting, visible to Auditors only.
+- **The fields the application asks** *(added 2026-11-13)*. With the wording, Membership Admins set each field of the
+  application to **required**, **optional** or **not shown** (Admin → Registration form, "Fields the application
+  asks"): the preferred name, date of birth, state (the region outside the US), city, ZIP code or postcode, phone, the
+  four questions about the applicant's interest (why they want to join, issues, skills, how they heard of the party);
+  the country, which is shown or not, since it always has an answer; and the three boxes (volunteering, running for
+  office, staying in touch), shown or not, since a box cannot be required. The legal name, the bylaws, the age
+  confirmation and the two membership questions are always asked: rules hang off them. The default is the form as it
+  was before fields could be set (date of birth, country, state, city and ZIP code required; the rest optional).
+  Rules (`membership/registration-fields.ts` in `ustp-domain`): for the state, city and ZIP code, *required* binds in
+  the United States only, and elsewhere they stay optional as before; whatever is given is still checked (a
+  two-letter state, a 5-digit ZIP code, a real date of birth of an adult); a field that is not shown is not checked
+  and **nothing sent for it is kept**, so the record never holds what the form did not ask (the date of birth is then
+  null on the application, and age rests on the confirmation box, as the panel says); without the country every
+  applicant is taken to live in the United States, which the panel also says; without the staying-in-touch box no
+  consent is recorded. A section of the Register page with no field left is not shown. The settings are part of
+  `registration_form/current` (`fields`), so a change makes a new version like a change of wording: it is ledgered
+  (`registration_form.changed`, part `fields`, listing only the fields set differently) and an application filled in
+  against the older version is refused (409) and shows the new form. `POST /v1/registration/applications` is held
+  to the settings in force, read in the transaction with the version (400 naming each field, as the page's own check
+  does first). A save that sends no `fields` (a page loaded before they existed) leaves them as they are. **Members'
+  details afterwards follow the same rules** (`detailsPlaceRules`): a state, city or ZIP code the application does not
+  require is not required on the Account page or in a Membership Admin's correction either, and a field the
+  application does not show can still be filled in there, as optional.
 - Data minimization: the date of birth stays on the application, for the Membership Admin's review, and is never
   copied to `members/{accountId}`; the member record gets only what membership uses afterwards (name, country, state
   or region, city, ZIP code or postcode, phone, the consents, and the answers to the two membership questions).
@@ -5424,8 +5447,8 @@ Physically, registration collections are top-level and election data lives under
 | `mfa_policy/current` | `current` | replaced whole, by one System Admin | membersRequired (off by default), version, updatedAt, updatedBy (§4) *(added)* |
 | `members/{accountId}` | accountId | mutable | current status, legal and preferred name, country (absent: the US), state (US) or region (elsewhere), city + ZIP code or postcode + phone, email consents, the two membership answers (`usVoteEligible`, giving the class, and `agreesWithCoreIdeals`), bylaws version, memberSince; details change only as §5.2 says |
 | `member_status_history/{id}` | auto | append-only | from, to, reason, actor, ledger seq |
-| `applications/{applicationId}` | auto | status only | answers (incl. date of birth, attestations and the two membership questions, §5.2), bylaws version + hash, registration form version, and whose referral link the applicant came by (`referredBy`, §5.18) |
-| `registration_form/current` | `current` | replaced whole, by one Membership Admin | the registration form's wording: the page's heading, intro, both questions and their help, Core Ideals heading and list, bonus link, version, updatedAt, updatedBy (§5.2) *(added)* |
+| `applications/{applicationId}` | auto | status only | answers (incl. date of birth, null when the form does not ask it, attestations and the two membership questions, §5.2), bylaws version + hash, registration form version, and whose referral link the applicant came by (`referredBy`, §5.18) |
+| `registration_form/current` | `current` | replaced whole, by one Membership Admin | the registration form's wording: the page's heading, intro, both questions and their help, Core Ideals heading and list, bonus link, each field's setting (`fields`: required, optional or hidden), version, updatedAt, updatedBy (§5.2) *(added)* |
 | `registration_form_versions/{version}` | version | immutable | each saved version of that wording (§5.2) *(added)* |
 | `first_steps/current` | `current` | replaced whole, by one Membership Admin | the getting started list: each step's id, words, explanation, link and how it is ticked, in order; version, updatedAt, updatedBy (§5.16) *(added 2026-11-12)* |
 | `first_step_ticks/{accountId}` | accountId | replaced whole, by the member | the ids of the steps on that list the member ticked themselves, updatedAt (§5.16) *(added 2026-11-12)* |
@@ -5603,7 +5626,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /courses/{courseId}/claim` | M | the quizzes passed before signing in, kept in the browser (the version, and each lesson once with its answers): marked again against the version learners take now and recorded as attempts made now, issuing the certificate once every lesson is passed; how many passed, the progress and any certificate (409 for another version or until the prerequisites are passed) (§10.8) |
 | `PUT /courses/{courseId}/certificate` · `GET /courses/{courseId}/certificate.pdf` | M | the holder's certificate: the name on it (never an email address) and whether its public page shows it, either or both (404 without an active certificate, 409 to show a name that is an email address); the certificate as a PDF with its QR code (§10.8) |
 | `GET\|POST /courses/{courseId}/messages` | M | the learner's conversation with the instructors (reading marks their answers read); write to them, 403 while a Course Admin has not turned messaging on (§10.8) |
-| `GET /registration/form` · `GET /registration/form/{version}` | P | the registration form's wording, current or any saved version (0 is the default), without who changed it (§5.2) |
+| `GET /registration/form` · `GET /registration/form/{version}` | P | the registration form's wording and the settings of the fields it asks, current or any saved version (0 is the default), without who changed it (§5.2) |
 | `POST /registration/applications` · `GET /registration/applications/me` | M | apply (against the current bylaws and form version; 409 otherwise); status |
 | `POST /me/resign` | M | resign membership |
 | `POST /me/details` | M | own preferred name, country, state or region, city, ZIP code or postcode, phone and email opt-ins (§5.2) |
@@ -5624,7 +5647,7 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `POST /admin/bylaws` | Membership Admin | publish a bylaws version; `amends` must name the current version, and no election amending it may be scheduled, open or closed (409 otherwise, §6.6); with `adoptedIn`, exactly the text a certified election adopted |
 | `POST /admin/bylaws/checks` · `GET /admin/bylaws/checks/{checkId}` | Membership Admin | queue the advisory bylaws check of a draft (202; 409 while the admin's last one runs, 429 past 20 a day, 503 when off); read it until done (§5.4) |
 | `GET /admin/applications` · `POST /admin/applications/{id}/decision` | Membership Admin | registration triage |
-| `GET\|PUT /admin/registration-form` | Membership Admin | the registration form's wording with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 without the page's heading, a question, the Core Ideals' heading or an ideal, a part over its limit, or a bonus link that is not `https://`), each save kept as a version and ledgered (§5.2) |
+| `GET\|PUT /admin/registration-form` | Membership Admin | the registration form's wording with who saved it; save it whole from the version it was edited from (409 if someone saved since; 400 without the page's heading, a question, the Core Ideals' heading or an ideal, a part over its limit, a bonus link that is not `https://`, or a field set to something it cannot be), with the fields' settings (left as they are when not sent), each save kept as a version and ledgered (§5.2) |
 | `GET /admin/members` · `GET /admin/members/{accountId}/history` | Membership Admin | member list (paged), status history |
 | `GET /admin/members/{accountId}` · `POST /admin/members/{accountId}/details` | Membership Admin | member profile (record, applications with answers, history, whether the daily quote and joke is on); correct names, state, contact with a reason (§5.2, §4.1) |
 | `POST /admin/members/{accountId}/status` | Membership Admin | status changes |

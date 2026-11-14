@@ -82,8 +82,11 @@ export interface ApplicationRecord {
   readonly bylawsHash: string;
   readonly legalName: string;
   readonly preferredName: string | null;
-  /** `YYYY-MM-DD`. Only on the application, for the Membership Admin's review; never copied to the member. */
-  readonly dateOfBirth: string;
+  /**
+   * `YYYY-MM-DD`, or null when the form did not ask for it or it was left out. Only on the application, for the
+   * Membership Admin's review; never copied to the member.
+   */
+  readonly dateOfBirth: string | null;
   /**
    * What the applicant confirmed: the minimum age in force when they applied. Applications made before the Core Ideals
    * question also confirmed support for the platform, which is no longer asked.
