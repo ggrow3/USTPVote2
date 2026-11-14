@@ -153,8 +153,8 @@ onMounted(load);
       </q-item>
     </q-list>
     <q-card-section class="q-pt-none">
-      System Admins always need it, on every page, whatever this says. Every other admin role needs it for the admin
-      tools.
+      System Admins always need two-step verification, on every page, whatever this says. Every other admin role
+      needs it for the admin tools.
       <div v-if="policy.updatedAt" class="text-caption text-grey-7 q-mt-sm">
         Last changed {{ new Date(policy.updatedAt).toLocaleString() }}
         <template v-if="changedBy === 'you'">by you</template>
