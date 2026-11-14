@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { SET_PASSWORD_PATH } from 'ustp-domain';
+import { enabledFederatedProviders, providerNames, SET_PASSWORD_PATH, type FederatedProvider, type SignInProvider } from 'ustp-domain';
 import { focusFirstInvalid, usePageTitle } from '../a11y.js';
-import { errorMessage } from '../api.js';
+import { api, errorMessage } from '../api.js';
 import { APP_NAME } from '../app-name.js';
 import PageShell from '../components/PageShell.vue';
 import PasswordInput from '../components/PasswordInput.vue';
@@ -11,14 +11,18 @@ import TwoStepCodeCard from '../components/TwoStepCodeCard.vue';
 import { auth } from '../firebase.js';
 import { session, signOut } from '../session.js';
 import {
+  addProviderToLogin,
   completeEmailLink,
+  federatedProvidersOf,
   isDeadLink,
   PASSWORD_HINT,
   PasswordRejected,
   passwordProblem,
   pendingEmailLink,
+  PROVIDER_LABELS,
   sendEmailLink,
   setOwnPassword,
+  signInWithProvider,
 } from '../sign-in.js';
 import { useSignInFlow } from '../sign-in-flow.js';
 
@@ -27,7 +31,9 @@ import { useSignInFlow } from '../sign-in-flow.js';
  * address is proved first by an emailed sign-in link (Identity Platform's: the welcome email's button is one, and the
  * page sends another on request): signing in with it links the login to the added membership, since the api links an
  * account only to a verified address. Then they choose a password, under the sign-up rules, which also ends every other
- * session of that login.
+ * session of that login. Or, where System Admins have Google (or another provider) switched on, they sign in with it
+ * instead and need no password: before the link, by signing in with it; after it, by adding it to the login the link
+ * signed them in with (design §5.13, 2026-11-14).
  */
 usePageTitle('Set your password');
 const router = useRouter();
@@ -113,6 +119,47 @@ async function savePassword() {
   }
 }
 
+/** The sign-in methods switched on besides email (design §4), offered instead of a password. */
+const providers = ref<FederatedProvider[]>([]);
+onMounted(async () => {
+  const enabled = await api<Record<SignInProvider, boolean>>('GET', '/v1/sign-in-methods').catch(() => null);
+  providers.value = enabled ? enabledFederatedProviders(enabled) : [];
+});
+
+/** "Google", "Google or Microsoft": the providers by name, for the page's sentences. */
+const providerList = computed(() => providerNames(providers.value));
+
+/** Before the link: sign in with a provider, which claims an added membership for an address that is that account. */
+function signInWith(provider: FederatedProvider) {
+  return run(() => signInWithProvider(auth, provider));
+}
+
+/** The provider this login signs in with already, if any: then it needs no password. */
+const linkedWith = ref<FederatedProvider | null>(null);
+const usesProvider = computed<FederatedProvider | null>(() => {
+  if (!session.user) return null;
+  return linkedWith.value ?? federatedProvidersOf(auth.currentUser)[0] ?? null;
+});
+/** Signed in with a provider, a password is a choice they may still make, not the next step. */
+const alsoPassword = ref(false);
+const linking = ref<FederatedProvider | null>(null);
+
+/** After the link: sign in with a provider from now on, instead of choosing a password. */
+async function useInstead(provider: FederatedProvider) {
+  const user = auth.currentUser;
+  if (!user) return;
+  linking.value = provider;
+  error.value = null;
+  try {
+    await addProviderToLogin(user, provider);
+    linkedWith.value = provider;
+  } catch (e) {
+    error.value = errorMessage(e);
+  } finally {
+    linking.value = null;
+  }
+}
+
 async function freshLink() {
   const address = session.user?.email;
   if (!address) return;
@@ -162,10 +209,7 @@ async function freshLink() {
               you a sign-in link: opening it shows the address is yours, and then you choose your password. Nobody at
               the party sets it or can see it.
             </p>
-            <p class="text-caption text-grey-7">
-              The same works if you have forgotten your password. If you use Google, Microsoft or Apple with that address,
-              you can <router-link to="/signin">sign in with it</router-link> instead.
-            </p>
+            <p class="text-caption text-grey-7">The same works if you have forgotten your password.</p>
           </q-card-section>
           <q-card-section>
             <q-form class="ustp-form" @submit.prevent="sendLink">
@@ -174,6 +218,24 @@ async function freshLink() {
                 <q-btn type="submit" color="primary" no-caps label="Email me a sign-in link" :loading="busy" />
               </div>
             </q-form>
+          </q-card-section>
+          <q-card-section v-if="providers.length" class="ustp-stack">
+            <p class="text-body2 q-mb-none">
+              Or, if that address is your {{ providerList }} account, sign in with it
+              instead: you will not need a password.
+            </p>
+            <div class="ustp-actions">
+              <q-btn
+                v-for="p in providers"
+                :key="p"
+                outline
+                color="primary"
+                no-caps
+                :label="`Sign in with ${PROVIDER_LABELS[p]}`"
+                :disable="busy"
+                @click="signInWith(p)"
+              />
+            </div>
           </q-card-section>
         </q-card>
       </template>
@@ -206,6 +268,25 @@ async function freshLink() {
             <div class="ustp-actions">
               <q-btn v-if="member" color="primary" no-caps label="Go to your ballots" to="/ballot" />
               <q-btn flat no-caps color="primary" label="Your account" to="/account" />
+            </div>
+          </q-card-section>
+        </q-card>
+
+        <q-card v-else-if="usesProvider && !alsoPassword" flat bordered role="status">
+          <q-card-section class="ustp-stack">
+            <h2 class="text-subtitle1">You sign in with {{ PROVIDER_LABELS[usesProvider] }}</h2>
+            <p>
+              From now on, choose “Sign in with {{ PROVIDER_LABELS[usesProvider] }}” on the
+              <router-link to="/signin">sign-in page</router-link>. You do not need a password.
+            </p>
+            <p v-if="session.me?.mfa.everywhere && !session.me.mfa.signedInWithMfa">
+              This site also asks for two-step verification: set up an authenticator app on your
+              <router-link to="/account">Account page</router-link> next.
+            </p>
+            <div class="ustp-actions">
+              <q-btn v-if="member" color="primary" no-caps label="Go to your ballots" to="/ballot" />
+              <q-btn flat no-caps color="primary" label="Your account" to="/account" />
+              <q-btn flat no-caps color="primary" label="Set a password as well" @click="alsoPassword = true" />
             </div>
           </q-card-section>
         </q-card>
@@ -244,6 +325,26 @@ async function freshLink() {
                 <q-btn type="submit" color="primary" no-caps label="Set password" :loading="saving" />
               </div>
             </q-form>
+          </q-card-section>
+          <q-card-section v-if="providers.length && !usesProvider" class="ustp-stack">
+            <h2 class="text-subtitle1">Or use {{ providerList }} instead</h2>
+            <p class="text-body2 q-mb-none">
+              Sign in with {{ providerList }} from now on and you need no password. Choose
+              the account for {{ session.user?.email }} in the window that opens.
+            </p>
+            <div class="ustp-actions">
+              <q-btn
+                v-for="p in providers"
+                :key="p"
+                outline
+                color="primary"
+                no-caps
+                :label="`Use ${PROVIDER_LABELS[p]} instead`"
+                :loading="linking === p"
+                :disable="!!linking || saving"
+                @click="useInstead(p)"
+              />
+            </div>
           </q-card-section>
         </q-card>
       </template>
