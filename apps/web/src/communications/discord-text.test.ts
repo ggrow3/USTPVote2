@@ -1,6 +1,18 @@
 import { DEFAULT_DISCORD_SETTINGS, type DiscordAdminView, type DiscordTokenStatus } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
-import { commandsText, discordBlockers, discordStateText, postStatusText, testText, tokenStatusText } from './discord-text.js';
+import {
+  commandsText,
+  discordBlockers,
+  discordStateText,
+  linkBlockerText,
+  linkProblems,
+  linksText,
+  postStatusText,
+  questionStatusText,
+  startHereText,
+  testText,
+  tokenStatusText,
+} from './discord-text.js';
 
 const settings = { ...DEFAULT_DISCORD_SETTINGS, version: 0, updatedAt: null, updatedBy: null };
 const ready: Pick<DiscordAdminView, 'mode' | 'tokenSet' | 'canLink' | 'settings' | 'botName'> = {
@@ -60,5 +72,50 @@ describe("the bot's token, in words", () => {
     expect(tokenStatusText(set, 'en-US')).toBe('A token is set for the bot USTP Bot. It ends in WXYZ and was added on Nov 12, 2026 by Ada.');
     expect(tokenStatusText({ ...set, addedBy: null, hint: null }, 'en-US')).toContain('outside this app');
     expect(tokenStatusText({ ...none, unavailable: 'this server may not look at the secret yet' })).toBe('This server may not look at the secret yet.');
+  });
+});
+
+describe('linking and the weekly posts, for the admins', () => {
+  const none = { linked: 0, withRole: 0, notInServer: 0, refused: 0, celebrating: 0 };
+
+  it('says why members cannot link yet', () => {
+    expect(linkBlockerText(null)).toBeNull();
+    expect(linkBlockerText('no_secret')).toContain('client secret under Admin › API keys');
+    expect(linkBlockerText('no_application')).toContain('token');
+  });
+
+  it('counts linked members, never naming them', () => {
+    expect(linksText(none, true)).toBe('No member has connected Discord yet.');
+    expect(linksText({ ...none, linked: 3, withRole: 1, celebrating: 2 }, true)).toBe(
+      '3 members have connected Discord; 1 of them holds the Member role; 2 have chosen to be named in the Friday post.',
+    );
+    expect(linksText({ ...none, linked: 1 }, false)).toBe('1 member has connected Discord.');
+  });
+
+  it('says what stands between linked members and their role', () => {
+    expect(linkProblems(none, true)).toEqual([]);
+    expect(linkProblems(none, false)).toEqual(['No server and Member role are saved above, so no role is given.']);
+    const problems = linkProblems({ ...none, linked: 3, refused: 2, notInServer: 1 }, true);
+    expect(problems[0]).toContain('could not change the role for 2 members');
+    expect(problems[1]).toContain('1 linked member is not on the server');
+  });
+
+  it('says where the Start here message stands', () => {
+    const asked = { status: 'waiting' as const, channelId: '1', messageId: null, postedIn: null, pinned: false, problem: null, requestedBy: 'a', requestedAt: '2026-11-16T12:00:00.000Z', doneAt: null };
+    expect(startHereText(null)).toBe('It has not been posted yet.');
+    expect(startHereText(asked)).toContain('on its way');
+    expect(startHereText({ ...asked, status: 'posted', pinned: true, doneAt: '2026-11-16T12:01:00.000Z' }, 'en-US')).toMatch(/^It was posted or brought up to date .*, and is pinned\.$/);
+    expect(startHereText({ ...asked, status: 'posted', problem: 'it was posted, but not pinned: the bot may not pin in this channel: give it Pin Messages there', doneAt: '2026-11-16T12:01:00.000Z' }, 'en-US')).toContain(
+      ', but not pinned: the bot may not pin',
+    );
+    expect(startHereText({ ...asked, status: 'failed', problem: 'Discord knows no such channel' })).toBe('It was not posted: Discord knows no such channel.');
+  });
+
+  it('says where each question is in line', () => {
+    const q = { questionId: 'q', question: 'Q?', answers: ['A', 'B'], status: 'waiting' as const, createdAt: '', createdBy: 'a', week: null, postedAt: null, messageId: null, problem: null };
+    expect(questionStatusText(q, 0)).toBe('Next');
+    expect(questionStatusText(q, 1)).toBe('Waiting, number 2 in line');
+    expect(questionStatusText(q, 4)).toBe('Waiting, number 5 in line');
+    expect(questionStatusText({ ...q, status: 'posted', postedAt: '2026-11-18T16:00:00.000Z' }, -1, 'en-US')).toMatch(/^Posted /);
   });
 });

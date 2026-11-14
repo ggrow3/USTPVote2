@@ -114,7 +114,8 @@ export class WeeklyDigest {
     });
   }
 
-  private async content(since: string): Promise<DigestContent> {
+  /** What is new since `since`; also what the Discord bot's Monday post says (§10.18). */
+  async content(since: string): Promise<DigestContent> {
     const db = this.firebase.db;
     const [open, news, versions] = await Promise.all([
       this.elections.inState('open'),

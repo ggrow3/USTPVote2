@@ -11,6 +11,7 @@ export const KEY_TITLES: Readonly<Record<ApiKeyName, string>> = {
   openstates: 'Open States key',
   civic: 'Google Civic Information key',
   congress: 'Congress.gov and GovInfo key (api.data.gov)',
+  discord: 'Discord client secret',
 };
 
 /** What each key is for, and where a System Admin gets one. */
@@ -35,6 +36,11 @@ export const KEY_USES: Readonly<Record<ApiKeyName, { readonly text: string; read
     where: 'Get a free key at api.congress.gov',
     url: 'https://api.congress.gov/sign-up/',
   },
+  discord: {
+    text: 'Lets members link their Discord account on the Account page, which gives them the Member role on the party’s server. This is the application’s client secret, not the bot’s token, which has its own card.',
+    where: 'In Discord’s Developer Portal, open the party’s application, then OAuth2, then Reset Secret',
+    url: 'https://discord.com/developers/applications',
+  },
 };
 
 /** What the site does with no key at all for the service. */
@@ -43,6 +49,7 @@ const WITHOUT: Readonly<Record<ApiKeyName, string>> = {
   openstates: 'state legislators are left out of the Your area page',
   civic: 'the ballot’s contests are left out of the Candidates and Your area pages',
   congress: 'the Bills page uses the FEC key above when one is in use, and otherwise api.data.gov’s shared demo key, which allows only 30 requests an hour for the whole site',
+  discord: 'members cannot link their Discord account',
 };
 
 /** What each key looks like, under its field. */
@@ -51,6 +58,7 @@ const SHAPES: Readonly<Record<ApiKeyName, string>> = {
   openstates: '36 characters, like 1b2c3d4e-0000-….',
   civic: 'Starts with AIza.',
   congress: '40 letters and digits.',
+  discord: 'About 32 letters, digits, dashes and underscores, with no dots.',
 };
 
 const day = (iso: string, locale?: string) => new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' });
@@ -69,9 +77,12 @@ export function apiKeyStatusText(status: ApiKeyStatus, locale?: string): string 
 }
 
 export function apiKeyHintText(name: ApiKeyName, tried: boolean): string {
-  const trial = tried
-    ? 'A key is tried with its service before it is saved, and one the service does not accept is not kept.'
-    : 'With the emulators a key is saved without being tried.';
+  const trial =
+    name === 'discord'
+      ? 'It is saved without being tried: Discord has no way to try it alone, so a wrong one shows when a member next links.'
+      : tried
+        ? 'A key is tried with its service before it is saved, and one the service does not accept is not kept.'
+        : 'With the emulators a key is saved without being tried.';
   return `${SHAPES[name]} ${trial}`;
 }
 

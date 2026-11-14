@@ -159,7 +159,7 @@ this structure one at a time, without changing routes, documents or the ledger.
 | Bills | §5.14 | `bill_settings`, `bill_watch`, `bill_notes`, `bill_public`, `bill_roll_calls` |
 | Forum | §5.9 | `forum_posts`, `forum_comments`, `forum_votes`, `forum_reports` |
 | Members' room | §5.10 | `room_consents`, `room_messages`, `room_reactions`, `room_memory`, `room_jobs`, `room_state`, `room_voice`, `room_signals` |
-| Communications | §10.9, §10.16, §10.17, §10.18 | `news_posts`, `press_kit`, `press_assets`, `share_posts`, `share_counts`, `calendar_items`, `suggestions`, `suggestion_limits`, `bots`, `polls`, `poll_tallies`, `poll_marks`, `poll_limits`, `poll_address_counts`, `events`, `partners`, `discord_settings`, `discord_state`, `discord_posts` |
+| Communications | §10.9, §10.16, §10.17, §10.18 | `news_posts`, `press_kit`, `press_assets`, `share_posts`, `share_counts`, `calendar_items`, `suggestions`, `suggestion_limits`, `bots`, `polls`, `poll_tallies`, `poll_marks`, `poll_limits`, `poll_address_counts`, `events`, `partners`, `discord_settings`, `discord_state`, `discord_posts`, `discord_links`, `discord_link_states`, `discord_questions` |
 | Governance | §5.6, §10 | `role_assignments`, `approval_requests`, `testing_personas`, `navigation`, `anthropic_key`, `api_keys` |
 | Audit ledger | §8 | `audit_events`, `ledger_head`, `blocks`, `anchors`, `signing_keys` |
 | Notifications | §6.8, §5.13 | `notices` (with `recipients`), `notice_outbox`, `notice_settings`, `notice_receipts`, `notice_tests`, `welcome_emails`, `mail_messages`, `mail_suppressions`, `mail_preferences`, `broadcasts`, `broadcast_recipients`, `newsletter_subscribers`, `newsletter_limits` (§10.15) |
@@ -998,6 +998,9 @@ States' and Google Civic Information's. `ustp-domain` (`api-keys.ts`) holds thei
   and `app-civic-api-key`, which Terraform creates empty (`api_keys.tf`), apart from the deployment's keys so that
   Terraform never overwrites one added here. `api_keys/{name}` records who added it, when, its version and last four
   characters, as `anthropic_key/current` does.
+- **The Discord client secret** *(added 2026-11-14)* is a fifth card of the same kind (`discord`, secret
+  `app-discord-client-secret`): it has no deployment key, it is saved without being tried (Discord has no request that
+  tries it alone), and without it members cannot link their Discord account (§10.18).
 - **Who reads them.** Unlike the Anthropic key, the api reads these itself, since it is the api that asks the services:
   its account has `secretAccessor` as well as `secretVersionManager` on these three secrets alone. Their worst misuse is
   their rate limits. It reads them at most once a minute per instance, so a key added, replaced or removed counts
@@ -5488,8 +5491,8 @@ an invite link and an online count on the hub (§10.6). The app now runs the par
 for people who link their site account; **an activity feed, slash commands and engagement loops** first, and no AI
 assistant; **the bot before Projects** (volunteer projects members join, to be designed as their own section); and that
 the bot **names a member only if they opted in**, everyone else counting only in totals. It is built in stages; this
-section describes the first two, the activity feed and the slash commands *(added 2026-11-13)*, and lists the rest
-under "Not yet".
+section describes the first three, the activity feed, the slash commands *(added 2026-11-13)* and linking with the
+weekly posts *(added 2026-11-14)*, and lists the rest under "Not yet".
 
 - **What it posts.** One card per thing that happened: a title that links to its page on the site, and a line under
   it. News and press releases published; voting opened, voting closing within 24 hours (once, and not for a vote
@@ -5497,7 +5500,8 @@ under "Not yet".
   24 hours; a bill the legislative team shows on the Legislation page (§5.14), when it is first shown; a course
   published (once per course). Times are written as Discord's own timestamps, which each reader sees in their time
   zone. Links carry `utm_source=discord`, so the site's count of where visitors come from shows what Discord brings.
-- **What it never posts.** Who voted or has not, a member's name, anything said in the forum (§5.9), the members' room
+- **What it never posts.** Who voted or has not, a member's name (but for those who chose to be named in the Friday
+  post, under "Loops"), anything said in the forum (§5.9), the members' room
   (§5.10) or a private message (§10.13), and nothing from a rehearsal election (§10.4). The feed reads the ledger
   through an **allow-list** of entry types (`discordLedgerInterest`, in `packages/domain/src/discord/discord.ts`):
   `news.published`, `election.opened`, `results.computed`, `results.certified`, `event.published`, `event.cancelled`
@@ -5506,7 +5510,8 @@ under "Not yet".
   `allowed_mentions: {parse: []}`, so a title that says `@everyone` pings nobody.
 - **Who sets it.** Communications Admins, under Admin › Communications › Discord: the bot's switch (off until they
   switch it on), the channel for each of the five kinds of post (news, votes, events, legislation, courses; a kind with
-  no channel is not posted), a test post to each channel, and the last 20 posts with any Discord refused. Switched on,
+  no channel is not posted) and one for the weekly posts and Start here, a test post to each channel, the weekly
+  posts' switches and questions, the server and Member role, and the last 20 posts with any Discord refused. Switched on,
   the bot starts from that moment: nothing that happened while it was off is posted. System Admins add the bot's
   token under Admin › API keys, as they do the Anthropic API key (§5.6).
 - **The token.** Kept as the only live version of the `discord-bot-token` secret, which Terraform creates empty. The
@@ -5555,6 +5560,53 @@ under "Not yet".
   (`discord_min_instances = 1`) costs dollars. It is a help, not a promise: Cloud Run may stop the service anyway, and
   each release starts a new one; a command that arrives then goes unanswered, and the next ping starts the service.
   A service that does not answer the ping is logged and does not fail the tick.
+- **Linking** *(added 2026-11-14)*. A member connects their Discord account on the Account page ("Discord" card), and
+  the bot gives them the **Member role** on the party's server while their membership is Active. Before they start, the
+  card says what linking gives away: it tells Discord, and everyone on the server, that they are a party member.
+  - *The sign-in.* Discord's own (OAuth2 authorization code), asking for `identify` only: who they are there (ID and
+    name), not their email, servers or messages. `POST /me/discord/start` makes a one-time word (`state`, kept hashed
+    in `discord_link_states`, good once, for ten minutes and for that account) and gives the address at Discord;
+    Discord sends the member back to `/account/discord`, which checks the word against the one this tab started with
+    and hands the code to `POST /me/discord/link`. The api trades the code for a pass, asks Discord whose it is, and
+    gives the pass up (revokes it) at once. It keeps `discord_links/{discordUserId}`: the account, the Discord ID and
+    name, and nothing else. Discord's documentation advises against its shorter sign-in that needs no secret, so the
+    trade uses the application's **client secret**, which a System Admin adds under Admin › API keys (`discord`,
+    secret `app-discord-client-secret`, kept and read by the api as the public-records keys are, §5.6; it is not the
+    bot's token, which the api cannot read). The redirect address `{site}/account/discord` must be listed under
+    OAuth2 › Redirects in Discord's Developer Portal: the one thing set there by hand.
+  - *One to one.* A Discord account links to one site account and a site account to one Discord account (409
+    otherwise). Any account with a member record may link; only an Active member gets the role.
+  - *The role.* Communications Admins save the server's ID and the Member role's ID. A step of the worker's tick
+    looks at each link when it is made or ended and again every hour (every two minutes for a new link's first hour,
+    while the person may not have joined the server yet): Active and linked gets the role; a membership that lapses,
+    is suspended or resigned loses it within the hour; so does a member who unlinks, or whose account is deleted
+    (within a few minutes). A role held is given again once a day, since someone who left the server and came back
+    lost it. The bot needs Manage Roles, and its own role above the Member role; when Discord refuses, the admins'
+    page says how many links wait and why, never who. At most 20 links a tick. It works whether or not the bot's
+    switch is on. When the admins save another server or role, every link is looked at at once and given the new
+    one; the old role is not chased: its holders keep it until an admin removes it in Discord.
+  - *Unlinking and deletion.* The record loses its account, name and choice at once and stays, with the Discord ID
+    alone, until the worker has taken the role away; then it is deleted (after seven days anyway, if Discord keeps
+    refusing).
+  - *`/link`* in Discord answers with the Account page's address. The commands service still holds no credentials
+    and learns nothing of who ran it.
+- **Loops** *(added 2026-11-14)*. Three weekly posts, each with a switch of its own (all off at first), to one more
+  channel, "Weekly posts and Start here". Each goes on its day from 16:00 UTC, once, only while the bot is switched
+  on, and is not made late; a week with nothing to say gets none.
+  - *Monday, the week on the site*: what the weekly digest email says (§10.14) as links: votes open now, and news
+    posts and courses published in the last seven days.
+  - *Wednesday, the question of the week*: Communications Admins keep a queue of questions, each with two to ten
+    answers (Discord's limits: 300 characters a question, 55 an answer); the oldest waiting one is posted as a
+    **Discord poll**, one choice, open a week. People answer in Discord, and the site never learns who chose what.
+    The bot needs Send Polls.
+  - *Friday, what members did*: how many people's applications were approved and how many courses were finished that
+    week. It **names only members who ticked "Celebrate my milestones on Discord"** on their Account page (off unless
+    ticked; it needs a link), as a Discord mention that notifies nobody: new members by name, and who finished which
+    course. Nothing about votes, ever: who voted is never said, and turnout is on the results.
+  - *Start here*: a message saying how to join, how to link an account and where the open votes are. A
+    Communications Admin posts it; the bot pins it (it needs Pin Messages) and, asked again, changes the same message
+    in place. It goes whether or not the bot is switched on, as a test post does. Topic roles (longevity, AI policy
+    and so on) are Discord's own Onboarding, set up in Discord: no code.
 - **The deployment's switch.** `DISCORD`: `live` (the default outside the emulators), `stub` (emulators only: posts are
   recorded in `discord_outbox`) or `off`. Live does nothing until an admin switches the bot on and a token is added.
   Posts need the site's own address (`WEB_ORIGIN`) for their links.
@@ -5564,16 +5616,14 @@ under "Not yet".
   said there, which it should not do anyway.
 - **Ledger.** `discord.settings_changed` (each setting that changed, with its old and new value), by the Communications
   Admin; `discord.token_changed` (added or removed, never the token), by the System Admin; `discord.posted` (what it
-  was about, the channel and Discord's message ID), by `system`. For Auditors only, like the rest of §10.9. A test post
-  is not ledgered.
+  was about, the channel and Discord's message ID), by `system`; `discord.linked` and `discord.unlinked`, by the member,
+  without the Discord ID. For Auditors only, like the rest of §10.9. A test post, the Start here message's changes and
+  role changes are not ledgered: the roles follow from the membership and the link, whose changes are.
 - **Not yet.** *More commands*: `/rep` (who represents a ZIP code: the public lookup is limited per caller's address,
-  and every Discord user would share this service's), `/scorecard`, and `/link`, which comes with linking. *Tried
-  against Discord itself*: the commands were built against Discord's documentation and a stand-in. *Linking a Discord
-  account* on the Account page
-  (Discord's own sign-in; the page says plainly that linking tells Discord you are a member), which gives the Member
-  role and its channels, taken away when a membership lapses. *Loops*: a Monday digest post (the weekly digest's
-  content, §10.14), a question of the week as a Discord poll, a weekly "what members did" in totals, naming only
-  members who ticked "Celebrate my milestones on Discord". Each event also as a Discord scheduled event; turnout
+  and every Discord user would share this service's) and `/scorecard`. *Tried against Discord itself*: linking, the
+  role, the polls and the pin were built against Discord's documentation and a stand-in. *Noticing at once* when a
+  member joins the server or a membership changes (the bot keeps no connection open, so it looks hourly). Each event
+  also as a Discord scheduled event; turnout
   milestones from the public count; candidacies approved and offices filled. *Projects*: volunteer projects with open
   tasks, their "help wanted" posts and `/projects`, once Projects has its own section.
 
@@ -5716,12 +5766,16 @@ Physically, registration collections are top-level and election data lives under
 | `poll_limits/{YYYY-MM-DD}` | UTC day | created once; deleted the day after next | the day's random salt for counting addresses (§10.16) *(added)* |
 | `poll_address_counts/{day}_{pollId}_{hash}` | day, poll and a salted hash of the address | counters; deleted the day after next | day, pollId, count; no address (§10.16) *(added)* |
 | `bots/{botId}` | UUIDv7 | added, changed, checked, removed | name, site, handle, url, purpose, operator, runsOn, status, public, notes, checkedAt/By, version, created/updated by and at; never a token (§10.9) *(added)* |
-| `discord_settings/current` | fixed | saved by a Communications Admin | enabled, channels (a Discord channel ID or null for each of news, votes, events, legislation, courses), version, updatedAt/By (§10.18) *(added 2026-11-12)* |
+| `discord_settings/current` | fixed | saved by a Communications Admin | enabled, channels (a Discord channel ID or null for each of news, votes, events, legislation, courses, community), guildId, memberRoleId, loops (digest, question, members), version, updatedAt/By (§10.18) *(added 2026-11-12)* |
 | `discord_settings/token` | fixed | set when a System Admin adds the bot's token, deleted when they remove it | version (the Secret Manager version), hint (last four characters), botName, addedAt, addedBy, addedByName; never the token (§10.18) |
 | `discord_state/feed` | fixed | set when the bot is switched on, moved on by the worker | seq (the last ledger entry read), since (courses published from then are still to post) (§10.18) |
 | `discord_state/app` | fixed | set by the worker when it tells Discord of the commands | tokenVersion, fingerprint (the commands and the address it was done for), applicationId, publicKey, endpointSet, registered, problem, triedAt (§10.18) |
 | `discord_state/test` | fixed | set by a Communications Admin's test post, finished by the worker | kind, channelId, requestedBy/At, status (waiting, sent, failed), problem, doneAt (§10.18) |
 | `discord_posts/{what:id}` | what happened and to what | created once by the worker before it posts, then marked | kind, ref, title, text, url, status (sending, sent, failed), channelId, messageId, problem, createdAt, sentAt (§10.18) |
+| `discord_links/{discordUserId}` | the Discord account | created when a member links; changed by the member (celebrate) and the worker (the role); deleted once unlinked and the role is taken away | accountId (null once unlinked or the account is deleted), discordUserId, discordName, celebrate, linkedAt, role (none, given), roleAt, roleProblem, roleCheckAt, unlinkedAt (§10.18) *(added 2026-11-14)* |
+| `discord_link_states/{sha256(state)}` | the one-time word, hashed | created when a member starts linking, deleted when they come back | accountId, expiresAt (ten minutes) (§10.18) |
+| `discord_questions/{questionId}` | random | added by a Communications Admin, removed while waiting, marked when posted | question, answers, status (waiting, posted), createdAt/By, week, postedAt, messageId (§10.18) |
+| `discord_state/loops` · `discord_state/roles` · `discord_state/start_here` | fixed | the worker; a Communications Admin's request | the last week each weekly post was dealt with; the server and role the links were last looked at for; the Start here message: status, channelId, messageId, postedIn, pinned, problem, requestedBy/At, doneAt (§10.18) |
 | `events/{eventId}` | UUIDv7 | draft → published ⇄ cancelled (cancelled only before it ends); a draft never published may be deleted | kind, slug (fixed once published), title, summary, body, startsAt/endsAt (UTC), timeZone, attendance (online, in person, members' room), joinUrl, joinLabel, place, address, speakers, partnerIds, hashtags, recording, status, version (the calendars' SEQUENCE), created/updated/published/edited/cancelled by and at (§10.17) *(added)* |
 | `partners/{partnerId}` | UUIDv7 | added, changed, consent recorded ⇄ withdrawn, removed | name, description, website, notes (the team's), consent (from, note, recordedAt/By; null until given, the group named in public only while set), version, created/updated by and at (§10.17) *(added)* |
 
@@ -5874,6 +5928,8 @@ Auth legend: **P** public · **M** signed-in member · **V** on the election's r
 | `GET\|POST /admin/communications/polls` · `PUT\|DELETE …/polls/{pollId}` · `POST …/publish` · `POST …/close` | Communications Admin | every issue poll, drafts first, with its running results and share count; create a draft; change it from the version edited; publish; close early; delete it with its counts and marks; not ledgered (§10.16) |
 | `GET /public/discord/app` · `GET /public/discord/votes` | P | for the Discord bot's commands service (§10.18): the application's public key (null until the worker has read it from Discord), and the votes open now (ID, title, when each closes), soonest first, without rehearsals; cached for a minute |
 | `GET /admin/discord` · `PUT /admin/discord/settings` · `POST /admin/discord/test` | Communications Admin | the Discord bot: its switch, each kind's channel, whether a token is set, the last 20 posts; save (ledgered; 409 from an older copy); queue a test post to a kind's channel (409 without a saved channel or a token) (§10.18) *(added 2026-11-12)* |
+| `POST /admin/discord/questions` · `DELETE /admin/discord/questions/{id}` · `POST /admin/discord/start-here` | Communications Admin | the questions of the week: add one to the end of the queue (400 unless two to ten different answers within Discord's limits; 409 with 52 waiting), remove one not yet posted (409 once posted); queue the Start here message for the community channel (409 without that channel or a token) (§10.18) *(added 2026-11-14)* |
+| `GET /me/discord` · `POST /me/discord/start` · `POST /me/discord/link` · `PUT /me/discord` · `DELETE /me/discord` | signed in | the caller's Discord link: whether linking is set up, the link and where its role stands; start a sign-in at Discord (the address and a one-time word; 409 if already linked, 503 where linking is not set up); finish it with Discord's code and that word (409 for a word not started by this account, used or older than ten minutes, or a Discord account linked elsewhere; 422 a code Discord refuses; 502 Discord unreachable); choose to be named in the Friday post; unlink (§10.18) *(added 2026-11-14)* |
 | `GET\|PUT\|DELETE /admin/discord-token` | System Admin | the Discord bot's token: whether one is set, its last four characters, the bot's name and who added it, never the token; add (tried with Discord first: 400 not shaped like one, 422 refused, 502 Discord unreachable) or remove; ledgered (§10.18) |
 | `POST /mcp` (not under `/v1`; the `mcp` service, not the api) | P | the reporting MCP server's Streamable HTTP endpoint: read-only tools over the public endpoints above, election reports and course files (§3.4) |
 | `GET /admin/elections/{id}/roll` | Election Admin, Auditor | latest roll with member names, for review |
@@ -5945,6 +6001,7 @@ Errors use RFC 9457 problem details. Request bodies are validated against schema
 | *(tick step, M5)* | every tick | members' notifications by email, as each comes and the digests due, for at most 10 seconds after the election emails and admins' emails (§10.13) |
 | *(tick step, M5)* | every tick | the membership team's messages to members by email, for at most 10 seconds after the notifications (§10.13) *(added 2026-11-08)* |
 | *(tick step)* | every tick, last | the Discord bot: a waiting test post, then what is new since the last tick (ledger entries on its allow-list, courses published, votes closing and events starting within a day), at most 10 posts, each recorded once and ledgered (§10.18) *(added 2026-11-12)* |
+| *(tick step)* | every tick, after the posts | the Discord bot's weekly posts on their day (the week on the site, the question of the week as a poll, what members did), each once a week, and a waiting Start here message; then the Member role of at most 20 linked accounts whose look is due (§10.18) *(added 2026-11-14)* |
 | *(tick step)* | every tick, after the posts | the Discord bot's commands: when the token, the list of commands or the commands service's address is new, tells Discord the address and the commands and keeps the application's public key (`discord_state/app`); a refused try again after two minutes (§10.18) |
 | *(tick step, M4b)* | every tick | destroy the ballot-pool key version of certified and cancelled elections (§7.3); planned as a `destroy-pool-key` Cloud Task, which the tick made unnecessary |
 

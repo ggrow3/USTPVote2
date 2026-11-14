@@ -46,6 +46,8 @@ export const router = createRouter({
         { path: 'newsletter', component: () => import('./notifications/NewsletterPage.vue') },
         { path: 'newsletter/confirm', component: () => import('./notifications/NewsletterConfirmPage.vue') },
         { path: 'account', component: () => import('./pages/AccountPage.vue'), meta: { requiresAuth: true } },
+        // Where Discord sends a member back after they sign in there to link their account (§10.18).
+        { path: 'account/discord', component: () => import('./discord/DiscordLinkedPage.vue'), meta: { requiresAuth: true } },
         { path: 'notifications', component: () => import('./inbox/NotificationsPage.vue'), meta: { requiresAuth: true } },
         { path: 'messages', component: () => import('./inbox/MessagesPage.vue'), meta: { requiresAuth: true } },
         { path: 'messages/team/:threadId', component: () => import('./inbox/TeamThreadPage.vue'), meta: { requiresAuth: true } },

@@ -40,7 +40,7 @@ export class ApiKeys {
   /** The deployment's own key, from its settings; null when it has none (the FEC's DEMO_KEY is none). */
   deployment(name: ApiKeyName): string | null {
     if (name === 'fec') return this.config.fecApiKey === 'DEMO_KEY' ? null : this.config.fecApiKey;
-    if (name === 'congress') return null;
+    if (name === 'congress' || name === 'discord') return null;
     return name === 'openstates' ? this.config.openStatesApiKey : this.config.civicApiKey;
   }
 

@@ -17,6 +17,7 @@ import { resign as resignMembership } from '../membership/api.js';
 import { classOf, memberClassText } from '../membership/class-text.js';
 import MyDetailsCard from '../membership/MyDetailsCard.vue';
 import MyEmailCard from '../notifications/MyEmailCard.vue';
+import DiscordLinkCard from '../discord/DiscordLinkCard.vue';
 import InviteCard from '../referrals/InviteCard.vue';
 import NotificationEmailCard from '../inbox/NotificationEmailCard.vue';
 import { refreshMe, secondFactorMissing, session } from '../session.js';
@@ -237,6 +238,8 @@ function copyId() {
           <NotificationEmailCard />
 
           <ProfilePhotoCard v-if="me.member" />
+
+          <DiscordLinkCard v-if="me.member" />
 
           <DailyQuoteSettings />
         </template>

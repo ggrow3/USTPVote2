@@ -45,7 +45,7 @@ API-side limits are only checked by Google on the first apply.
 | | Create secrets; add versions to `tiebreak-seed-*` secrets only (IAM condition) | Tie-break seed per scheduling attempt (§6.1); it never reads a seed back |
 | | `secretVersionManager` on `anthropic-api-key` only: add, list and destroy versions, never read one | Keeps the key a System Admin adds under Admin › API keys (§5.6); it cannot read it back |
 | | `secretVersionManager` on `discord-bot-token` only: add, list and destroy versions, never read one | Keeps the Discord bot's token a System Admin adds under Admin › API keys (§10.18); it cannot read it back |
-| | `secretVersionManager` and `secretAccessor` on `app-fec-api-key`, `app-openstates-api-key`, `app-civic-api-key` and `app-congress-api-key` only | Keeps the public-records keys a System Admin adds under Admin › API keys (§5.6, §5.14), and reads them to ask those services |
+| | `secretVersionManager` and `secretAccessor` on `app-fec-api-key`, `app-openstates-api-key`, `app-civic-api-key`, `app-congress-api-key` and `app-discord-client-secret` only | Keeps the public-records keys a System Admin adds under Admin › API keys (§5.6, §5.14), and reads them to ask those services; likewise the Discord application's client secret, which a member's linking needs (§10.18) |
 | | `publicKeyViewer` on `ballot-pool` | Encrypts ballots locally to an election's public key; cannot decrypt (§7.3) |
 | | Read, write, delete objects in the photos bucket | Profile photos (§5.3) |
 | | Create and read objects in the videos bucket; never delete | Uploaded videos for lessons, news, the press kit and the hub, stored a part at a time and played back by byte range (§10.10) |
