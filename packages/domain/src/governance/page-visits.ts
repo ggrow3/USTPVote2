@@ -38,6 +38,7 @@ export const TRACKED_PAGES: readonly TrackedPage[] = [
   { id: 'unsubscribe', pattern: '/unsubscribe', label: 'Unsubscribe' },
   { id: 'newsletter', pattern: '/newsletter', label: 'Newsletter sign-up' },
   { id: 'newsletter-confirm', pattern: '/newsletter/confirm', label: 'Newsletter confirmation' },
+  { id: 'account-discord', pattern: '/account/discord', label: 'Account: back from Discord (recorded as Account)', recordAs: '/account' },
   { id: 'account', pattern: '/account', label: 'Account' },
   { id: 'notifications', pattern: '/notifications', label: 'Notifications' },
   { id: 'messages-team', pattern: '/messages/team/:threadId', label: 'A conversation with the membership team' },

@@ -56,7 +56,14 @@ export class DiscordSettingsService {
       if (basedOn !== before.version) {
         throw new ConflictException('someone else changed these settings since you opened them; reload to see their changes');
       }
-      const after = resolveDiscordSettings({ enabled: settings.enabled, channels: { ...before.channels, ...settings.channels } });
+      // A page opened before a setting existed saves without it, which keeps what was set.
+      const after = resolveDiscordSettings({
+        enabled: settings.enabled,
+        channels: { ...before.channels, ...settings.channels },
+        guildId: settings.guildId === undefined ? before.guildId : settings.guildId,
+        memberRoleId: settings.memberRoleId === undefined ? before.memberRoleId : settings.memberRoleId,
+        loops: settings.loops ?? before.loops,
+      });
       const changes = discordSettingsChanges(before, after);
       if (changes.length === 0) return before;
       const now = new Date().toISOString();

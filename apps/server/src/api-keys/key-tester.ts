@@ -15,7 +15,7 @@ const TIMEOUT_MS = 15_000;
  * FEC's first candidate, Open States' first state, Google's list of elections, Congress.gov's current Congress. What the service says is not passed on:
  * the panel says what to do.
  */
-const TRIALS: Readonly<Record<ApiKeyName, { readonly url: string; readonly header: string; readonly service: string; readonly refused: (status: number, body: string) => boolean }>> = {
+const TRIALS: Readonly<Partial<Record<ApiKeyName, { readonly url: string; readonly header: string; readonly service: string; readonly refused: (status: number, body: string) => boolean }>>> = {
   fec: { url: 'https://api.open.fec.gov/v1/candidates/?per_page=1', header: 'X-Api-Key', service: 'api.data.gov', refused: (s) => s === 401 || s === 403 },
   openstates: { url: 'https://v3.openstates.org/jurisdictions?classification=state&per_page=1', header: 'X-API-KEY', service: 'Open States', refused: (s) => s === 401 || s === 403 },
   congress: {
@@ -37,6 +37,8 @@ export class PublicApiKeyTester implements ApiKeyTester {
 
   async try(name: ApiKeyName, key: string): Promise<KeyTrial> {
     const trial = TRIALS[name];
+    // Discord's client secret has no request that tries it alone: a wrong one shows when a member next links.
+    if (!trial) return { ok: true };
     let res: Response;
     try {
       res = await this.fetchFn(trial.url, { signal: AbortSignal.timeout(TIMEOUT_MS), headers: { accept: 'application/json', [trial.header]: key } });

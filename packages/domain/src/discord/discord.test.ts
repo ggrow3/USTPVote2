@@ -174,7 +174,7 @@ describe('the settings', () => {
   });
 
   it('list what changed, for the ledger', () => {
-    const after = { enabled: true, channels: { ...DEFAULT_DISCORD_SETTINGS.channels, votes: '123456789012345678' } };
+    const after = { ...DEFAULT_DISCORD_SETTINGS, enabled: true, channels: { ...DEFAULT_DISCORD_SETTINGS.channels, votes: '123456789012345678' } };
     expect(discordSettingsChanges(DEFAULT_DISCORD_SETTINGS, after)).toEqual([
       { field: 'enabled', from: false, to: true },
       { field: 'channels.votes', from: null, to: '123456789012345678' },

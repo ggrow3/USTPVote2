@@ -60,6 +60,7 @@ describe('the public-records services’ keys (design §5.6)', () => {
         { name: 'openstates', source: 'none', addedAt: null, addedBy: null, hint: null, deploymentKey: false, unavailable: null },
         { name: 'civic', source: 'deployment', addedAt: null, addedBy: null, hint: null, deploymentKey: true, unavailable: null },
         { name: 'congress', source: 'none', addedAt: null, addedBy: null, hint: null, deploymentKey: false, unavailable: null },
+        { name: 'discord', source: 'none', addedAt: null, addedBy: null, hint: null, deploymentKey: false, unavailable: null },
       ],
       tried: false,
     });

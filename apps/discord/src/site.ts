@@ -80,6 +80,7 @@ export class Site {
       case 'courses':
         return { command, map: await this.get<CourseMap>('/v1/public/courses') };
       case 'join':
+      case 'link':
       case 'help':
         return { command };
     }

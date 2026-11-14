@@ -12,8 +12,11 @@ import type { LedgerEntry } from '../ledger-events.js';
 /** The Secret Manager secret that holds the bot's token; Terraform creates it empty. */
 export const DISCORD_BOT_TOKEN_SECRET = 'discord-bot-token';
 
-/** What the bot posts about, each to a channel of its own (or none). */
-export const DISCORD_FEED_KINDS = ['news', 'votes', 'events', 'legislation', 'courses'] as const;
+/**
+ * What the bot posts about, each to a channel of its own (or none). `community` is where its weekly posts and the
+ * Start here message go ("Loops").
+ */
+export const DISCORD_FEED_KINDS = ['news', 'votes', 'events', 'legislation', 'courses', 'community'] as const;
 export type DiscordFeedKind = (typeof DISCORD_FEED_KINDS)[number];
 
 /** How this deployment reaches Discord (`DISCORD`): for real, the emulators' stand-in that records posts, or not at all. */
@@ -24,11 +27,24 @@ export interface DiscordSettings {
   readonly enabled: boolean;
   /** The channel each kind of post goes to, as Discord's channel ID; null posts nothing of that kind. */
   readonly channels: Readonly<Record<DiscordFeedKind, string | null>>;
+  /** The party's server, as Discord's ID of it; with `memberRoleId`, what the bot needs to give linked members their role. */
+  readonly guildId: string | null;
+  /** The role linked Active members hold on the server; null gives no role. */
+  readonly memberRoleId: string | null;
+  /** The weekly posts, each with a switch of its own; all off until switched on. They go to the `community` channel. */
+  readonly loops: Readonly<Record<DiscordLoop, boolean>>;
 }
+
+/** The bot's weekly posts: the week's digest, a question as a Discord poll, and what members did. */
+export const DISCORD_LOOPS = ['digest', 'question', 'members'] as const;
+export type DiscordLoop = (typeof DISCORD_LOOPS)[number];
 
 export const DEFAULT_DISCORD_SETTINGS: DiscordSettings = {
   enabled: false,
-  channels: { news: null, votes: null, events: null, legislation: null, courses: null },
+  channels: { news: null, votes: null, events: null, legislation: null, courses: null, community: null },
+  guildId: null,
+  memberRoleId: null,
+  loops: { digest: false, question: false, members: false },
 };
 
 /** `discord_settings/current`; version 0 (never saved) is the defaults. */
@@ -41,11 +57,17 @@ export interface DiscordSettingsRecord extends DiscordSettings {
 
 /** The stored settings with anything missing taken from the defaults (a kind added later has no channel yet). */
 export function resolveDiscordSettings(
-  stored: (Partial<Omit<DiscordSettings, 'channels'>> & { readonly channels?: Partial<DiscordSettings['channels']> }) | undefined | null,
+  stored:
+    | (Partial<Omit<DiscordSettings, 'channels' | 'loops'>> & { readonly channels?: Partial<DiscordSettings['channels']>; readonly loops?: Partial<DiscordSettings['loops']> })
+    | undefined
+    | null,
 ): DiscordSettings {
   return {
     enabled: stored?.enabled ?? DEFAULT_DISCORD_SETTINGS.enabled,
     channels: { ...DEFAULT_DISCORD_SETTINGS.channels, ...stored?.channels },
+    guildId: stored?.guildId ?? null,
+    memberRoleId: stored?.memberRoleId ?? null,
+    loops: { ...DEFAULT_DISCORD_SETTINGS.loops, ...stored?.loops },
   };
 }
 
@@ -58,6 +80,8 @@ const channel = z
   .regex(DISCORD_ID, 'a channel ID is 17 to 20 digits: in Discord, switch on Developer Mode, right-click the channel and choose Copy Channel ID')
   .nullable();
 
+const snowflake = (what: string, how: string) => z.string().trim().regex(DISCORD_ID, `a ${what} ID is 17 to 20 digits: in Discord, switch on Developer Mode, ${how}`).nullable();
+
 /** `PUT /v1/admin/discord/settings`: the whole settings, and the version they were edited from. */
 export const discordSettingsSchema = z.strictObject({
   basedOn: z.number().int().min(0),
@@ -69,7 +93,12 @@ export const discordSettingsSchema = z.strictObject({
     legislation: channel,
     // A page opened before a kind existed saves without it, which keeps what was set.
     courses: channel.optional(),
+    community: channel.optional(),
   }),
+  // Likewise for what linking and the weekly posts added.
+  guildId: snowflake('server', 'right-click the server and choose Copy Server ID').optional(),
+  memberRoleId: snowflake('role', 'open Server Settings › Roles, right-click the role and choose Copy Role ID').optional(),
+  loops: z.strictObject({ digest: z.boolean(), question: z.boolean(), members: z.boolean() }).optional(),
 });
 export type DiscordSettingsInput = z.infer<typeof discordSettingsSchema>;
 
@@ -93,6 +122,11 @@ export function discordSettingsChanges(before: DiscordSettings, after: DiscordSe
     if (before.channels[kind] !== after.channels[kind]) {
       changes.push({ field: `channels.${kind}`, from: before.channels[kind], to: after.channels[kind] });
     }
+  }
+  if (before.guildId !== after.guildId) changes.push({ field: 'guildId', from: before.guildId, to: after.guildId });
+  if (before.memberRoleId !== after.memberRoleId) changes.push({ field: 'memberRoleId', from: before.memberRoleId, to: after.memberRoleId });
+  for (const loop of DISCORD_LOOPS) {
+    if (before.loops[loop] !== after.loops[loop]) changes.push({ field: `loops.${loop}`, from: before.loops[loop], to: after.loops[loop] });
   }
   return changes;
 }
@@ -373,6 +407,7 @@ export const DISCORD_KIND_LABELS: Readonly<Record<DiscordFeedKind, string>> = {
   events: 'Events',
   legislation: 'Bills in Congress',
   courses: 'Courses',
+  community: 'Weekly posts and Start here',
 };
 
 /** A kind's label inside a sentence ("bills in Congress"): its first letter lowered, names left alone. */
@@ -392,6 +427,13 @@ export interface DiscordAdminView {
   readonly recent: readonly DiscordPostRecord[];
   /** The slash commands: where Discord sends them, and whether it has been told. */
   readonly commands: import('./commands.js').DiscordCommandsStatus;
+  /** Linked accounts, in counts: never who. */
+  readonly links: import('./linking.js').DiscordLinksSummary;
+  /** Whether members can link yet, and if not what is missing. */
+  readonly linkBlocker: import('./linking.js').DiscordLinkBlocker | null;
+  /** The questions of the week still waiting, oldest (next) first, then the last few posted. */
+  readonly questions: readonly import('./loops.js').DiscordQuestionRecord[];
+  readonly startHere: import('./loops.js').DiscordStartHereRecord | null;
 }
 
 /** What Discord is sent for a post: one embed, and no mention in it pings anyone. */

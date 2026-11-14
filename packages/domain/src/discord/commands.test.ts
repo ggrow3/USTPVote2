@@ -53,7 +53,7 @@ const course = (over: Partial<CourseMapEntry>): CourseMapEntry => ({
 describe('the commands Discord is told of', () => {
   it('are chat commands with names and descriptions Discord accepts', () => {
     const payload = discordCommandsPayload();
-    expect(payload.map((c) => c.name)).toEqual(['vote', 'events', 'news', 'bills', 'courses', 'join', 'help']);
+    expect(payload.map((c) => c.name)).toEqual(['vote', 'events', 'news', 'bills', 'courses', 'join', 'link', 'help']);
     for (const command of payload) {
       expect(command.type).toBe(1);
       expect(command.name).toMatch(/^[a-z]{1,32}$/);
@@ -130,6 +130,9 @@ describe('a command’s answer', () => {
 
   it('answers join and help without reading anything', () => {
     expect(discordCommandReply({ command: 'join' }, ORIGIN).url).toBe(`${ORIGIN}/register?utm_source=discord`);
+    const link = discordCommandReply({ command: 'link' }, ORIGIN);
+    expect(link.url).toBe(`${ORIGIN}/account?utm_source=discord`);
+    expect(link.text).toContain('tells Discord');
     const help = discordCommandReply({ command: 'help' }, ORIGIN).text;
     for (const command of DISCORD_COMMANDS) expect(help).toContain(`\`/${command.name}\``);
   });

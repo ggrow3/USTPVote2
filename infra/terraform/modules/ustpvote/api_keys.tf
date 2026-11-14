@@ -10,7 +10,7 @@
 # (secretVersionManager). It reads them while running, about once a minute, so a change counts without a release.
 
 locals {
-  app_api_key_secrets = toset(["app-fec-api-key", "app-openstates-api-key", "app-civic-api-key", "app-congress-api-key"])
+  app_api_key_secrets = toset(["app-fec-api-key", "app-openstates-api-key", "app-civic-api-key", "app-congress-api-key", "app-discord-client-secret"])
 }
 
 resource "google_secret_manager_secret" "app_api_key" {

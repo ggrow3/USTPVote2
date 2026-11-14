@@ -40,6 +40,11 @@ export class MemberDirectory {
     return this.applications.referred(referrer);
   }
 
+  /** The accounts whose application was approved since `since`, for the Discord bot's weekly count of new members (design §10.18). */
+  approvedSince(since: string): Promise<string[]> {
+    return this.members.approvedSince(since);
+  }
+
   /** Every Active member's record now, for an admin's email to members (design §10.12), in no particular order. */
   active(): Promise<MemberRecord[]> {
     return this.members.active();

@@ -41,6 +41,7 @@ import { ElectionReader } from '../elections/election-reader.js';
 import { MemberDirectory } from '../membership/member-directory.js';
 import { Members } from '../membership/members.service.js';
 import { InboxRecords } from '../inbox/inbox.service.js';
+import { DiscordLinkRecords } from '../discord/discord-links.js';
 import { MailRecords } from '../notifications/mail-records.js';
 import { ReferralCodes } from '../referrals/referrals.js';
 import { EmailVerifiedSync } from './email-verified-sync.js';
@@ -76,6 +77,7 @@ export class AccountsService {
     private readonly inboxRecords: InboxRecords,
     private readonly emailSync: EmailVerifiedSync,
     private readonly referrals: ReferralCodes,
+    private readonly discordLinks: DiscordLinkRecords,
     @Inject(CONFIG) private readonly config: ServerConfig,
   ) {}
 
@@ -272,7 +274,8 @@ export class AccountsService {
   /**
    * A deleted account's sign-ins (by account, and by login for those seen before it had one), page visits, its
    * courses' progress, attempts, certificates and messages, the welcome email of an added member (§5.13), and the
-   * records of the email sent to it (§6.8), its notifications and messages (§10.13), and its referral code (§5.18).
+   * records of the email sent to it (§6.8), its notifications and messages (§10.13), its referral code (§5.18), and its
+   * link to a Discord account (§10.18).
    */
   async forgetActivity(accountId: string, uids: readonly string[]): Promise<void> {
     const db = this.firebase.db;
@@ -299,6 +302,8 @@ export class AccountsService {
       this.mailRecords.forgetAccount(accountId),
       this.inboxRecords.forgetAccount(accountId),
       this.referrals.forgetAccount(accountId),
+      // The link loses its account now; the worker takes the Member role away on Discord and deletes it (§10.18).
+      this.discordLinks.forgetAccount(accountId),
     ]);
   }
 

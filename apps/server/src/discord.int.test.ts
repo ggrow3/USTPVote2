@@ -48,8 +48,9 @@ const CHANNELS: Record<DiscordFeedKind, string> = {
   events: '100000000000000003',
   legislation: '100000000000000004',
   courses: '100000000000000005',
+  community: '100000000000000006',
 };
-const NO_CHANNELS = { news: null, votes: null, events: null, legislation: null, courses: null };
+const NO_CHANNELS = { news: null, votes: null, events: null, legislation: null, courses: null, community: null };
 
 const db = () => api.firebase.db;
 const view = async () => (await api.call('GET', '/v1/admin/discord', comms)).body as DiscordAdminView;
@@ -355,6 +356,10 @@ describe('the slash commands', () => {
       application: (t) => stub.application(t),
       setInteractionsUrl: (t, u) => stub.setInteractionsUrl(t, u),
       setCommands: (t, a, c) => stub.setCommands(t, a, c),
+      edit: (t, c, m, b) => stub.edit(t, c, m, b),
+      pin: (t, c, m) => stub.pin(t, c, m),
+      setRole: (t, g, u, r, h) => stub.setRole(t, g, u, r, h),
+      signIn: (a, s, c, r) => stub.signIn(a, s, c, r),
       ...discord,
     };
     const config = { ...worker.app.get<ServerConfig>(CONFIG), discordInteractionsUrl: endpoint };

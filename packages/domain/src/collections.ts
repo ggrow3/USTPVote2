@@ -178,10 +178,16 @@ export const Collections = {
   bots: 'bots',
   /** `discord_settings/current` and `discord_settings/token`: the Discord bot's switch and channels, and who added its token (design §10.18). */
   discordSettings: 'discord_settings',
-  /** `discord_state/feed`, `discord_state/test` and `discord_state/app`: how far the bot has read, a test post waiting for the worker, and what Discord was told of the commands (design §10.18). */
+  /** `discord_state/feed`, `discord_state/test`, `discord_state/app`, `discord_state/loops`, `discord_state/roles` and `discord_state/start_here`: how far the bot has read, a test post waiting for the worker, what Discord was told of the commands, the weekly posts made, the role links were looked at for, and the Start here message (design §10.18). */
   discordState: 'discord_state',
   /** `discord_posts/{id}`: each post the bot made, once (design §10.18). */
   discordPosts: 'discord_posts',
+  /** `discord_links/{discordUserId}`: a Discord account linked to a site account, and whether it holds the Member role (design §10.18). */
+  discordLinks: 'discord_links',
+  /** `discord_link_states/{sha256(state)}`: a Discord sign-in a member started, good once and for ten minutes. */
+  discordLinkStates: 'discord_link_states',
+  /** `discord_questions/{questionId}`: the questions of the week, waiting and posted (design §10.18). */
+  discordQuestions: 'discord_questions',
   /** `discord_outbox/{id}`: the emulators' stand-in for Discord, which records each post instead of sending it. */
   discordOutbox: 'discord_outbox',
   // issue polls (design §10.16): non-binding, apart from elections, never ledgered

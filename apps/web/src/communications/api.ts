@@ -14,6 +14,7 @@ import type {
   CreateSharePostInput,
   DiscordAdminView,
   DiscordFeedKind,
+  DiscordQuestionInput,
   DiscordSettingsInput,
   MemberSharePost,
   NewsPostRecord,
@@ -174,3 +175,8 @@ const DISCORD = '/v1/admin/discord';
 export const discordView = () => api<DiscordAdminView>('GET', DISCORD);
 export const saveDiscordSettings = (input: DiscordSettingsInput) => api<DiscordAdminView>('PUT', `${DISCORD}/settings`, input);
 export const sendDiscordTest = (kind: DiscordFeedKind) => api<DiscordAdminView>('POST', `${DISCORD}/test`, { kind });
+/** The questions of the week: add one to the end of the queue, or remove one not yet posted. */
+export const addDiscordQuestion = (input: DiscordQuestionInput) => api<DiscordAdminView>('POST', `${DISCORD}/questions`, input);
+export const removeDiscordQuestion = (questionId: string) => api<DiscordAdminView>('DELETE', `${DISCORD}/questions/${encodeURIComponent(questionId)}`);
+/** Posts and pins the Start here message, or brings it up to date. */
+export const postDiscordStartHere = () => api<DiscordAdminView>('POST', `${DISCORD}/start-here`);
