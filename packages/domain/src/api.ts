@@ -5,14 +5,17 @@ import { SIGN_IN_PROVIDERS } from './identity.js';
 import { MEMBER_STATUSES } from './membership/member-status.js';
 import { DEFAULT_COUNTRY, isCountryCode } from './membership/countries.js';
 import {
-  checkApplicantAge,
-  isCalendarDate,
-  MINIMUM_MEMBER_AGE,
-  normalizePhone,
-  normalizePostcode,
-  POSTCODE,
-  US_POSTAL_CODE,
-} from './membership/registration.js';
+  applicationFieldProblems,
+  DEFAULT_PLACE_RULES,
+  DEFAULT_REGISTRATION_FIELDS,
+  LENIENT_PLACE_RULES,
+  LENIENT_REGISTRATION_FIELDS,
+  placeProblems,
+  type FieldProblem,
+  type PlaceRules,
+  type RegistrationFormFields,
+} from './membership/registration-fields.js';
+import { MINIMUM_MEMBER_AGE, normalizePhone } from './membership/registration.js';
 import { ROLES } from './roles.js';
 import { MAX_TEST_VOTERS } from './testing.js';
 
@@ -38,8 +41,9 @@ const optionalText = (max: number) => z.string().trim().max(max).optional();
 /**
  * Where a member lives and how to reach them: the same rules on the application and on later changes (design
  * §5.2). The country comes first, the United States when none is given. In the US the state, city and ZIP code are
- * needed; elsewhere the region (a state, province or county), city and postcode are all optional. `state` is read
- * for the US only and `region` everywhere else. `checkPlace` applies the rules.
+ * needed unless the registration form's settings make them optional or leave them out; elsewhere the region (a state,
+ * province or county), city and postcode are all optional. `state` is read for the US only and `region` everywhere
+ * else. `placeProblems` applies the rules.
  */
 const place = {
   country: z.string().refine(isCountryCode, 'choose your country').default(DEFAULT_COUNTRY),
@@ -54,69 +58,62 @@ const phone = optionalText(32).refine(
   'enter a phone number with its area code, or with +country code outside the US',
 );
 
-interface PlaceInput {
-  readonly country: string;
-  readonly state?: string | undefined;
-  readonly city?: string | undefined;
-  readonly postalCode?: string | undefined;
+const report = (ctx: z.RefinementCtx, problems: readonly FieldProblem[]) => {
+  for (const { path, message } of problems) ctx.addIssue({ code: 'custom', path: [path], message });
+};
+
+const applicationObject = z.strictObject({
+  /** The bylaws version the applicant agreed to; null when none is in force (`bylawsInForce`, design §5.2). */
+  bylawsVersion: z.string().min(1).max(64).nullable(),
+  /** Hash of the bylaws text the applicant was shown and agreed to; null with no version. */
+  bylawsHash: hex32.nullable(),
+  legalName: z.string().trim().min(1, 'enter your legal name').max(200),
+  preferredName: optionalText(200),
+  /** `YYYY-MM-DD`; checked against MINIMUM_MEMBER_AGE and kept on the application only (design §5.2). */
+  dateOfBirth: optionalText(32),
+  attestsAge: z.literal(true, { error: `confirm that you are at least ${MINIMUM_MEMBER_AGE}` }),
+  /** The version of the registration form the applicant was shown; it must be the current one. */
+  formVersion: z.number().int().min(0),
+  /** Yes or No, and neither is refused: the answer decides the member's class (`memberClass`). */
+  usVoteEligible: z.boolean({ error: 'answer Yes or No' }),
+  /** Yes or No, and neither is refused (design §5.2). */
+  agreesWithCoreIdeals: z.boolean({ error: 'answer Yes or No' }),
+  ...place,
+  phone,
+  statement: optionalText(5000),
+  interests: optionalText(1000),
+  skills: optionalText(1000),
+  volunteer: z.boolean().optional(),
+  runForOffice: z.boolean().optional(),
+  referral: optionalText(200),
+  /**
+   * The code of the member's referral link the applicant came by, if any (design §5.18), as the browser kept it. A code
+   * that is no one's is ignored, never refused.
+   */
+  referralCode: z.string().max(32).optional(),
+  /**
+   * Opt-ins to party email; recorded with the time of consent. The Register page asks both at once with one box
+   * (design §5.2).
+   */
+  newsletter: z.boolean().optional(),
+  announcements: z.boolean().optional(),
+});
+
+/**
+ * An application held to the registration form's field settings (design §5.2): what they require is needed, and
+ * whatever is given must look right. The Register page checks with the settings it shows.
+ */
+export function applicationSchema(fields: RegistrationFormFields) {
+  return applicationObject.superRefine((input, ctx) => report(ctx, applicationFieldProblems(input, fields, new Date())));
 }
 
-function checkPlace(input: PlaceInput, ctx: z.RefinementCtx): void {
-  const issue = (path: keyof PlaceInput, message: string) => ctx.addIssue({ code: 'custom', path: [path], message });
-  if (input.country !== DEFAULT_COUNTRY) {
-    if (input.postalCode && !POSTCODE.test(normalizePostcode(input.postalCode))) {
-      issue('postalCode', 'enter a postcode of letters and digits, with spaces or dashes between them');
-    }
-    return;
-  }
-  if (!/^[A-Z]{2}$/.test(input.state ?? '')) issue('state', 'choose your state or territory (two-letter code)');
-  if (!input.city) issue('city', 'enter your city');
-  if (!US_POSTAL_CODE.test(input.postalCode ?? '')) issue('postalCode', 'enter a 5-digit ZIP code');
-}
-
-export const createApplicationSchema = z
-  .strictObject({
-    /** The bylaws version the applicant agreed to; null when none is in force (`bylawsInForce`, design §5.2). */
-    bylawsVersion: z.string().min(1).max(64).nullable(),
-    /** Hash of the bylaws text the applicant was shown and agreed to; null with no version. */
-    bylawsHash: hex32.nullable(),
-    legalName: z.string().trim().min(1, 'enter your legal name').max(200),
-    preferredName: optionalText(200),
-    /** `YYYY-MM-DD`; checked against MINIMUM_MEMBER_AGE and kept on the application only (design §5.2). */
-    dateOfBirth: z.string().trim().refine(isCalendarDate, 'enter your date of birth'),
-    attestsAge: z.literal(true, { error: `confirm that you are at least ${MINIMUM_MEMBER_AGE}` }),
-    /** The version of the registration form's wording the applicant was shown; it must be the current one. */
-    formVersion: z.number().int().min(0),
-    /** Yes or No, and neither is refused: the answer decides the member's class (`memberClass`). */
-    usVoteEligible: z.boolean({ error: 'answer Yes or No' }),
-    /** Yes or No, and neither is refused (design §5.2). */
-    agreesWithCoreIdeals: z.boolean({ error: 'answer Yes or No' }),
-    ...place,
-    phone,
-    statement: optionalText(5000),
-    interests: optionalText(1000),
-    skills: optionalText(1000),
-    volunteer: z.boolean().optional(),
-    runForOffice: z.boolean().optional(),
-    referral: optionalText(200),
-    /**
-     * The code of the member's referral link the applicant came by, if any (design §5.18), as the browser kept it. A code
-     * that is no one's is ignored, never refused.
-     */
-    referralCode: z.string().max(32).optional(),
-    /**
-     * Opt-ins to party email; recorded with the time of consent. The Register page asks both at once with one box
-     * (design §5.2).
-     */
-    newsletter: z.boolean().optional(),
-    announcements: z.boolean().optional(),
-  })
-  .superRefine((input, ctx) => {
-    checkPlace(input, ctx);
-    if (!isCalendarDate(input.dateOfBirth)) return;
-    const age = checkApplicantAge(input.dateOfBirth, new Date());
-    if (!age.ok) ctx.addIssue({ code: 'custom', path: ['dateOfBirth'], message: age.reason });
-  });
+/** An application to the form as it starts out, with nothing changed. */
+export const createApplicationSchema = applicationSchema(DEFAULT_REGISTRATION_FIELDS);
+/**
+ * `POST /v1/applications` as it arrives: nothing required beyond the fields always asked. The api then holds it to the
+ * settings in force, read with the form's version.
+ */
+export const applicationRequestSchema = applicationSchema(LENIENT_REGISTRATION_FIELDS);
 export type CreateApplicationInput = z.infer<typeof createApplicationSchema>;
 
 export const decisionSchema = z.strictObject({
@@ -144,30 +141,40 @@ export type ResignInput = z.infer<typeof resignSchema>;
  * `POST /v1/me/details`: a member's own preferred name, where they live, phone and email opt-ins (design §5.2). The
  * legal name is not here: a Membership Admin corrects it.
  */
-export const memberDetailsSchema = z
-  .strictObject({
-    preferredName: optionalText(200),
-    ...place,
-    phone,
-    newsletter: z.boolean(),
-    announcements: z.boolean(),
-  })
-  .superRefine(checkPlace);
+const memberDetailsObject = z.strictObject({
+  preferredName: optionalText(200),
+  ...place,
+  phone,
+  newsletter: z.boolean(),
+  announcements: z.boolean(),
+});
+/** A member's own details held to the place rules in force (`detailsPlaceRules`). */
+export function memberDetailsSchemaFor(rules: PlaceRules) {
+  return memberDetailsObject.superRefine((input, ctx) => report(ctx, placeProblems(input, rules)));
+}
+export const memberDetailsSchema = memberDetailsSchemaFor(DEFAULT_PLACE_RULES);
+/** The request as it arrives; the api then holds it to the rules in force. */
+export const memberDetailsRequestSchema = memberDetailsSchemaFor(LENIENT_PLACE_RULES);
 export type MemberDetailsInput = z.infer<typeof memberDetailsSchema>;
 
 /**
  * `POST /v1/admin/members/{accountId}/details`: a Membership Admin corrects a member's names, state or contact
  * details, with a reason (design §5.2). Never the email opt-ins, which are the member's to give.
  */
-export const memberCorrectionSchema = z
-  .strictObject({
-    legalName: z.string().trim().min(1, 'enter the legal name').max(200),
-    preferredName: optionalText(200),
-    ...place,
-    phone,
-    reason,
-  })
-  .superRefine(checkPlace);
+const memberCorrectionObject = z.strictObject({
+  legalName: z.string().trim().min(1, 'enter the legal name').max(200),
+  preferredName: optionalText(200),
+  ...place,
+  phone,
+  reason,
+});
+/** A correction held to the place rules in force (`detailsPlaceRules`). */
+export function memberCorrectionSchemaFor(rules: PlaceRules) {
+  return memberCorrectionObject.superRefine((input, ctx) => report(ctx, placeProblems(input, rules)));
+}
+export const memberCorrectionSchema = memberCorrectionSchemaFor(DEFAULT_PLACE_RULES);
+/** The request as it arrives; the api then holds it to the rules in force. */
+export const memberCorrectionRequestSchema = memberCorrectionSchemaFor(LENIENT_PLACE_RULES);
 export type MemberCorrectionInput = z.infer<typeof memberCorrectionSchema>;
 
 

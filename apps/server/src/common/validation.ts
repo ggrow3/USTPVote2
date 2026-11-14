@@ -7,7 +7,7 @@ import {
   NotFoundException,
   type PipeTransform,
 } from '@nestjs/common';
-import { PROBLEM_TYPES, type Check, type Outcome, type Refusal, type Refused } from 'ustp-domain';
+import { PROBLEM_TYPES, type Check, type FieldProblem, type Outcome, type Refusal, type Refused } from 'ustp-domain';
 import type { z } from 'zod';
 
 type HttpExceptionClass = new (body: object) => HttpException;
@@ -38,6 +38,14 @@ export class ZodPipe<S extends z.ZodType> implements PipeTransform<unknown, z.in
       errors: result.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })),
     });
   }
+}
+
+/**
+ * 400 when a request's fields break rules that depend on settings read at run time, which a fixed schema cannot hold:
+ * the same body as `ZodPipe` gives, so a form shows each message under its field.
+ */
+export function assertNoFieldProblems(problems: readonly FieldProblem[]): void {
+  if (problems.length) throw new BadRequestException({ message: 'invalid request', errors: problems });
 }
 
 /** Parses an optional query parameter with a schema; 400 if present and invalid. */
