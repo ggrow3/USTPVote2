@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import type { Query, Transaction } from 'firebase-admin/firestore';
 import {
+  adminSignInRefused,
   checkCanDeleteAccount,
   checkRoleChange,
   Collections,
@@ -91,7 +92,8 @@ export class AccountsService {
       const scope = this.config.adminMfaRequired ? secondFactorScope(roles, policy) : 'none';
       return { required: scope !== 'none', everywhere: scope === 'everywhere', signedInWithMfa };
     };
-    if (!accountId) return { account: null, identities: [], member: null, roles: [], mfa: mfa([]), testing, mail: null };
+    const signIn = (roles: readonly Role[]) => ({ googleRequired: adminSignInRefused(roles, ctx.principal.provider, policy) });
+    if (!accountId) return { account: null, identities: [], member: null, roles: [], mfa: mfa([]), signIn: signIn([]), testing, mail: null };
     const db = this.firebase.db;
     const [account, identities, member, roles, mail] = await Promise.all([
       db.collection(Collections.accounts).doc(accountId).get(),
@@ -106,6 +108,8 @@ export class AccountsService {
       member,
       roles,
       mfa: mfa(roles),
+      // Acting as a persona, it is the admin's own sign-in that was checked.
+      signIn: signIn(ctx.operator ? [] : roles),
       testing,
       mail,
     };

@@ -118,9 +118,21 @@ export class TestApi {
     return { email, uid, token: await signInWithMfa(email) };
   }
 
+  /** A user who signs in with Google: the Auth emulator takes the ID token's claims as given. */
+  async googleUser(email: string): Promise<User> {
+    const claims = encodeURIComponent(JSON.stringify({ sub: `google-${email}`, email, email_verified: true }));
+    const signedIn = await authEmulator<{ idToken: string; localId: string }>('v1/accounts:signInWithIdp', {
+      postBody: `id_token=${claims}&providerId=google.com`,
+      requestUri: 'http://localhost',
+      returnIdpCredential: true,
+      returnSecureToken: true,
+    });
+    return { email, uid: signedIn.localId, token: signedIn.idToken };
+  }
+
   /** A user with a USTP account. */
-  async member(email: string, { mfa = false } = {}): Promise<User & { accountId: string }> {
-    const user = mfa ? await this.userWithMfa(email) : await this.user(email);
+  async member(email: string, { mfa = false, google = false } = {}): Promise<User & { accountId: string }> {
+    const user = google ? await this.googleUser(email) : mfa ? await this.userWithMfa(email) : await this.user(email);
     const res = await this.call('POST', '/v1/accounts', user);
     if (res.status !== 201) throw new Error(`account creation failed: ${res.status} ${JSON.stringify(res.body)}`);
     return { ...user, accountId: res.body.accountId };

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_MFA_POLICY, enabledFederatedProviders, isSignInProvider, mfaPolicySchema, providerNames, secondFactorScope } from './identity.js';
+import { adminSignInRefused, DEFAULT_MFA_POLICY, enabledFederatedProviders, isSignInProvider, mfaPolicySchema, providerNames, secondFactorScope } from './identity.js';
 import { isPublicLedgerEvent } from './ledger.js';
 import { LEDGER_EVENT_TYPES } from './ledger-events.js';
 import { ROLES, type Role } from './roles.js';
@@ -30,7 +30,7 @@ describe('two-step verification policy', () => {
   const on = { ...DEFAULT_MFA_POLICY, membersRequired: true };
 
   it('is off for members and on for Site Admins by default', () => {
-    expect(DEFAULT_MFA_POLICY).toEqual({ membersRequired: false, siteAdminsRequired: true });
+    expect(DEFAULT_MFA_POLICY).toEqual({ membersRequired: false, siteAdminsRequired: true, adminsGoogleRequired: false });
     expect(secondFactorScope([], off)).toBe('none');
   });
 
@@ -67,6 +67,18 @@ describe('two-step verification policy', () => {
   it('requires everyone to use a second factor everywhere while the setting is on', () => {
     const everyone: Role[][] = [[], ...ROLES.map((r) => [r])];
     for (const roles of everyone) expect(secondFactorScope(roles, on)).toBe('everywhere');
+  });
+
+  it('refuses System and Site Admins the admin tools without Google, only while that is required', () => {
+    const required = { adminsGoogleRequired: true };
+    expect(adminSignInRefused(['system_admin'], 'password', required)).toBe(true);
+    expect(adminSignInRefused(['site_admin', 'auditor'], 'microsoft.com', required)).toBe(true);
+    expect(adminSignInRefused(['system_admin'], 'google.com', required)).toBe(false);
+    expect(adminSignInRefused(['membership_admin'], 'password', required)).toBe(false);
+    expect(adminSignInRefused([], 'password', required)).toBe(false);
+    expect(adminSignInRefused(['system_admin'], 'password', { adminsGoogleRequired: false })).toBe(false);
+    expect(adminSignInRefused(['system_admin'], 'password', {})).toBe(false);
+    expect(mfaPolicySchema.parse({ basedOn: 1, membersRequired: false, adminsGoogleRequired: true }).adminsGoogleRequired).toBe(true);
   });
 
   it('saves the settings only with the version they were edited from, the Site Admins’ left out by an older page', () => {

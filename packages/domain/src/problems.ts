@@ -7,6 +7,8 @@ export const PROBLEM_TYPES = {
   mfaRequired: '/problems/mfa-required',
   /** The sign-in is too old for this action: re-authenticate, then retry. */
   reauthRequired: '/problems/reauth-required',
+  /** The admin tools need a sign-in with Google (design §4): sign out, then sign in with Google. */
+  googleRequired: '/problems/google-required',
 } as const;
 
 export type ProblemCode = keyof typeof PROBLEM_TYPES;

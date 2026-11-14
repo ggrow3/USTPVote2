@@ -44,10 +44,23 @@ export interface MfaPolicy {
   /** Off by default: members without an admin role may sign in with one factor. */
   readonly membersRequired: boolean;
   /**
-   * On by default: Site Admins use a second factor on every page, as System Admins do. Off: the Site Admin role asks for
-   * none, so a Site Admin with no other admin role needs one only while `membersRequired` is on.
+   * On by default: Site Admins use a second factor on every page, as System Admins do. Off: a Site Admin needs none,
+   * whatever other admin role they hold and whether or not `membersRequired` is on.
    */
   readonly siteAdminsRequired: boolean;
+  /**
+   * Off by default (and on records saved before it existed): while on, System and Site Admins use the admin tools only
+   * signed in with Google (`adminSignInRefused`), and those roles are granted only to an account with a Google sign-in.
+   */
+  readonly adminsGoogleRequired?: boolean;
+}
+
+/** The sign-in System and Site Admins must use while `adminsGoogleRequired` is on (design §4). */
+export const ADMIN_SIGN_IN_PROVIDER: SignInProvider = 'google.com';
+
+/** Whether these roles are refused the admin tools with this sign-in: a System or Site Admin not signed in with Google, while it is required. */
+export function adminSignInRefused(roles: readonly Role[], provider: string, policy: Pick<MfaPolicy, 'adminsGoogleRequired'>): boolean {
+  return !!policy.adminsGoogleRequired && administersSite(roles) && provider !== ADMIN_SIGN_IN_PROVIDER;
 }
 
 /** `mfa_policy/current`; version 0 (never saved) is the default: the member requirement off, the Site Admins' on. */
@@ -58,16 +71,17 @@ export interface MfaPolicyRecord extends MfaPolicy {
   readonly updatedBy: string | null;
 }
 
-export const DEFAULT_MFA_POLICY: MfaPolicy = { membersRequired: false, siteAdminsRequired: true };
+export const DEFAULT_MFA_POLICY: MfaPolicy = { membersRequired: false, siteAdminsRequired: true, adminsGoogleRequired: false };
 
 /**
  * `PUT /v1/admin/mfa-policy`: the new settings, and the version they were edited from. Without `siteAdminsRequired` (a
- * page opened before it existed) the Site Admins' setting stays as it is.
+ * page opened before it existed) the Site Admins' setting stays as it is, and so with `adminsGoogleRequired`.
  */
 export const mfaPolicySchema = z.object({
   basedOn: z.number().int().min(0),
   membersRequired: z.boolean(),
   siteAdminsRequired: z.boolean().optional(),
+  adminsGoogleRequired: z.boolean().optional(),
 });
 export type MfaPolicyInput = z.infer<typeof mfaPolicySchema>;
 
@@ -76,6 +90,8 @@ export interface MfaPolicyChangedPayload {
   readonly version: number;
   readonly membersRequired: boolean;
   readonly siteAdminsRequired: boolean;
+  /** Absent on entries made before the setting existed. */
+  readonly adminsGoogleRequired?: boolean;
 }
 
 /**

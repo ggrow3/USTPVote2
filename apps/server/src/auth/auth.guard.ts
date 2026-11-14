@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
-import { ACT_AS_HEADER, administersSite, isUuidV7, PROBLEM_TYPES, secondFactorScope, type Role } from 'ustp-domain';
+import { ACT_AS_HEADER, administersSite, adminSignInRefused, isUuidV7, PROBLEM_TYPES, secondFactorScope, type Role } from 'ustp-domain';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { SignInLogService } from '../security/sign-in-log.js';
@@ -83,6 +83,8 @@ export class AuthGuard implements CanActivate {
     if (required.length > 0) {
       if (!accountId) throw new ForbiddenException('no account');
       roles = await this.directory.activeRoles(accountId);
+      // Acting as a persona, the admin was checked as themselves (operatorFor).
+      if (personaId === undefined) await this.requireGoogleWhereDue(roles, principal);
       if (this.config.adminMfaRequired && !principal.mfa && !secondFactorWaived) {
         // Only a Site Admin while the Site Admins' setting is off, whatever other admin role they hold (design §4).
         secondFactorWaived = roles.includes('site_admin') && secondFactorScope(roles, await this.mfaPolicy.current()) === 'none';
@@ -120,6 +122,15 @@ export class AuthGuard implements CanActivate {
     throw new ForbiddenException({ message, type: PROBLEM_TYPES.mfaRequired });
   }
 
+  /**
+   * The admin tools, for a System or Site Admin, only with a sign-in with Google while that is required (design §4).
+   * Their other pages, the Account page among them, stay open, so they can see why.
+   */
+  private async requireGoogleWhereDue(roles: readonly Role[], principal: Principal): Promise<void> {
+    if (!adminSignInRefused(roles, principal.provider, await this.mfaPolicy.current())) return;
+    throw new ForbiddenException({ message: 'System and Site Admins must sign in with Google', type: PROBLEM_TYPES.googleRequired });
+  }
+
   /** Where App Check is enforced, the request carries a valid App Check token. */
   private async verifyAppCheck(request: FastifyRequest): Promise<void> {
     if (!this.config.appCheckEnforced) return;
@@ -146,6 +157,7 @@ export class AuthGuard implements CanActivate {
     if (!this.config.testingMode) throw new ForbiddenException('testing mode is off on this deployment');
     if (!ownAccountId) throw new ForbiddenException('no account');
     const [roles, isPersona] = await Promise.all([this.directory.activeRoles(ownAccountId), this.directory.isPersona(personaId)]);
+    await this.requireGoogleWhereDue(roles, principal);
     let waived = false;
     if (this.config.adminMfaRequired && !principal.mfa) {
       waived = roles.includes('site_admin') && secondFactorScope(roles, await this.mfaPolicy.current()) === 'none';

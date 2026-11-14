@@ -151,6 +151,14 @@ export interface MeResponse {
     /** The current ID token was issued after a second factor. */
     readonly signedInWithMfa: boolean;
   };
+  /** Absent from an api older than the setting. */
+  readonly signIn?: {
+    /**
+     * This caller is a System or Site Admin, Google sign-in is required of those (design §4), and they are signed in
+     * another way: the admin tools refuse them until they sign in with Google.
+     */
+    readonly googleRequired: boolean;
+  };
   /** Testing mode (design §10.4). */
   readonly testing: {
     /** This deployment lets System Admins act as test personas. */

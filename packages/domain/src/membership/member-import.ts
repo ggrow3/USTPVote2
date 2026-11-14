@@ -77,7 +77,14 @@ export type MemberImportRow = z.infer<typeof memberImportRowSchema>;
 const reason = z.string().trim().min(1, 'a written reason is required').max(2000);
 
 /** `POST /v1/admin/members`: one member, and why they are added. */
-export const addMemberSchema = newMemberTextSchema.extend({ reason });
+export const addMemberSchema = newMemberTextSchema.extend({
+  reason,
+  /**
+   * The member will be made a System or Site Admin (design §5.13): their welcome offers only signing in with Google,
+   * and no password to set.
+   */
+  adminSignIn: z.boolean().optional(),
+});
 export type AddMemberInput = z.infer<typeof addMemberSchema>;
 
 /** `POST /v1/admin/member-imports/preview`: the file's rows, as the browser read them. */
@@ -352,6 +359,11 @@ export interface MemberImportResult {
    * browser asks Identity Platform to send each added address its sign-in link.
    */
   readonly welcome: WelcomeDelivery;
+  /**
+   * The one member added is to sign in with Google only (`adminSignIn`): the site's welcome email says so, and where
+   * Identity Platform would send its link, which leads to setting a password, nothing is sent.
+   */
+  readonly googleOnly?: boolean;
 }
 
 /** `POST /v1/admin/members/{accountId}/welcome`: the welcome sent again, or, without mail, the address to send it to. */

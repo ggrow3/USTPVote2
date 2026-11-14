@@ -190,6 +190,21 @@ describe('the added member signs in', () => {
     expect((await api.call('GET', `/v1/admin/members/${added}`, admin)).body.added.signedInAt).toEqual(expect.any(String));
   });
 
+  it('is welcomed to sign in with Google only, with no password or sign-in link, when they will be an admin', async () => {
+    const res = await add({ ...ada, email: 'grace@example.test', legalName: 'Grace Hopper', preferredName: 'Grace', reason: 'Roster', adminSignIn: true });
+    expect(res).toMatchObject({ status: 201, body: { googleOnly: true, welcome: 'mail' } });
+    const grace = res.body.added[0].accountId as string;
+    expect(await welcome(grace)).toMatchObject({ status: 'pending', googleOnly: true });
+    await worker.tick();
+    const [sent] = (await db().collection('notice_outbox').where('accountId', '==', grace).get()).docs.map((d) => d.data() as OutboxMessageRecord);
+    expect(sent).toMatchObject({ to: 'grace@example.test', subject: 'Welcome to the US Transhumanist Party: sign in with Google' });
+    expect(sent!.text).toContain('Sign in with Google: http://localhost:5173/signin');
+    expect(sent!.text).not.toMatch(/password to choose|Set your password|oobCode|set-password/);
+    // Sent again, it is the same email.
+    expect((await api.call('POST', `/v1/admin/members/${grace}/welcome`, admin)).status).toBe(200);
+    expect(await welcome(grace)).toMatchObject({ status: 'pending', googleOnly: true });
+  });
+
   it('is welcomed by the worker, once, unless signed in meanwhile', async () => {
     expect((await worker.tick()).body).toMatchObject({ welcomeEmailsSent: 1 });
     const outbox = (await db().collection('notice_outbox').where('accountId', '==', added).get()).docs.map((d) => d.data() as OutboxMessageRecord);

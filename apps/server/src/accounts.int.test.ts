@@ -33,6 +33,7 @@ describe('accounts', () => {
       member: null,
       roles: [],
       mfa: { required: false, everywhere: false, signedInWithMfa: false },
+      signIn: { googleRequired: false },
       testing: { enabled: false, operator: null },
       mail: null,
     });

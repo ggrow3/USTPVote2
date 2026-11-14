@@ -286,6 +286,15 @@ describe('welcomeMessage', () => {
     expect(message.html).not.toContain('oobCode');
   });
 
+  it('offers a member who will be an admin only signing in with Google, and no password', () => {
+    const message = welcomeMessage({ origin: 'https://vote.example.org', name: 'Ada', contact: null, googleOnly: true, signInLink: 'https://x/oobCode' });
+    expect(message.subject).toBe('Welcome to the US Transhumanist Party: sign in with Google');
+    expect(message.text).toContain('Sign in with Google: https://vote.example.org/signin');
+    expect(message.text).toContain('you have no password to set');
+    expect(message.text).not.toMatch(/Set your password|oobCode|set-password/);
+    expect(message.html).not.toContain('oobCode');
+  });
+
   it("puts Identity Platform's sign-in link behind the button when there is one, so one email does it all", () => {
     const signInLink = 'https://vote.example.org/email-action?mode=signIn&oobCode=abc&continueUrl=https%3A%2F%2Fvote.example.org%2Fset-password';
     const message = welcomeMessage({ origin: 'https://vote.example.org', name: 'Ada', contact: null, signInLink });

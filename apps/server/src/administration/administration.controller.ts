@@ -1,5 +1,6 @@
 import { Body, ConflictException, Controller, Get, Param, Post, Put, Query } from '@nestjs/common';
 import {
+  ADMIN_SIGN_IN_PROVIDER,
   Collections,
   decisionSchema,
   roleChangeSchema,
@@ -14,6 +15,7 @@ import {
 import { z } from 'zod';
 import { Ctx, Public, requireAccount, Roles } from '../auth/decorators.js';
 import type { RequestContext } from '../auth/principal.js';
+import { MfaPolicyService } from '../auth/mfa-policy.js';
 import { SignInMethodsService } from '../auth/sign-in-methods.service.js';
 import { parseQuery, ZodPipe } from '../common/validation.js';
 import { Firebase } from '../infra/firebase.js';
@@ -70,6 +72,7 @@ export class SignInMethodsController {
     private readonly firebase: Firebase,
     private readonly ledger: LedgerService,
     private readonly signInMethods: SignInMethodsService,
+    private readonly mfaPolicy: MfaPolicyService,
   ) {}
 
   @Get()
@@ -89,6 +92,9 @@ export class SignInMethodsController {
       if (Object.keys(changes).length === 0) return;
       if (SIGN_IN_PROVIDERS.every((p) => (changes[p] ?? enabled[p]) === false)) {
         throw new ConflictException('at least one sign-in method must stay enabled');
+      }
+      if (changes[ADMIN_SIGN_IN_PROVIDER] === false && (await this.mfaPolicy.current()).adminsGoogleRequired) {
+        throw new ConflictException('Sign in with Google is required of System and Site Admins; stop requiring it before switching it off');
       }
       if (changes[ctx.principal.provider] === false) {
         throw new ConflictException('you cannot disable the sign-in method you are using; sign in another way first');
