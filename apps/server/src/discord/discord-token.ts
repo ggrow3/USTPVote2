@@ -34,6 +34,19 @@ export class DiscordToken {
     }
   }
 
+  /**
+   * The token and the name of its version, for the worker alone, which may read the secret but not list its versions
+   * (so not `current`); null when none is set.
+   */
+  async readVersion(): Promise<{ readonly name: string; readonly value: string } | null> {
+    try {
+      return await this.secrets.readVersion(DISCORD_BOT_TOKEN_SECRET);
+    } catch (e) {
+      if (NO_TOKEN.has(grpcCode(e))) return null;
+      throw e;
+    }
+  }
+
   /** The token itself, for the worker alone (the api's account may not read it); null when none is set. */
   async read(): Promise<string | null> {
     try {

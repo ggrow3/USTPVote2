@@ -338,6 +338,15 @@ describe('a test post', () => {
 describe('the slash commands', () => {
   const ENDPOINT = 'https://discord.example.test/interactions';
   /** The worker's step, as a deployment with a commands service runs it (the emulators have none). */
+  /**
+   * The worker's account as Terraform makes it: it may read a secret's newest version but not list its versions
+   * (`secretAccessor`), so asking for the list is refused as Secret Manager refuses it.
+   */
+  const workerToken = () => {
+    const store = worker.app.get<SecretStore>(SECRET_STORE);
+    const denied = () => Promise.reject(Object.assign(new Error('PERMISSION_DENIED: secretmanager.versions.list'), { code: 7 }));
+    return new DiscordToken({ read: (id: string) => store.read(id), readVersion: (id: string) => store.readVersion(id), latest: denied } as unknown as SecretStore);
+  };
   const sync = (discord: Partial<DiscordApi> = {}, at = '2026-11-13T12:00:00.000Z', endpoint: string | null = ENDPOINT) => {
     const stub = worker.app.get<DiscordApi>(DISCORD_API);
     const api_: DiscordApi = {
@@ -349,7 +358,7 @@ describe('the slash commands', () => {
       ...discord,
     };
     const config = { ...worker.app.get<ServerConfig>(CONFIG), discordInteractionsUrl: endpoint };
-    return new DiscordCommandSync(worker.app.get(Firebase), worker.app.get(DiscordToken), api_, config).sync(new Date(at));
+    return new DiscordCommandSync(worker.app.get(Firebase), workerToken(), api_, config).sync(new Date(at));
   };
   const state = async () => (await db().collection(Collections.discordState).doc('app').get()).data() as DiscordAppState | undefined;
   const publicKey = async () => ((await api.call('GET', '/v1/public/discord/app')).body as DiscordAppView).publicKey;

@@ -12,6 +12,11 @@ export interface SecretStore {
   create(prefix: string, value: string): Promise<string>;
   /** The newest version's value. */
   read(id: string): Promise<string | null>;
+  /**
+   * The newest version's value and its name, in one call. For an account that may read a secret but not list its
+   * versions (`secretAccessor`), which `latest` needs.
+   */
+  readVersion(id: string): Promise<{ readonly name: string; readonly value: string } | null>;
   /** Deletes the secret and every version of it; a secret that is already gone is not an error. */
   delete(id: string): Promise<void>;
   /** The newest enabled version of an existing secret, without its value; null when it has none. */
@@ -69,11 +74,16 @@ export class SecretManagerStore implements SecretStore {
   }
 
   async read(id: string): Promise<string | null> {
+    return (await this.readVersion(id))?.value ?? null;
+  }
+
+  async readVersion(id: string): Promise<{ name: string; value: string } | null> {
+    // Secret Manager answers `versions/latest` with the name of the version it stood for.
     const [version] = await this.client.accessSecretVersion({
       name: `projects/${this.requireProject()}/secrets/${id}/versions/latest`,
     });
     const data = version.payload?.data;
-    return data ? Buffer.from(data).toString() : null;
+    return data && version.name ? { name: version.name, value: Buffer.from(data).toString() } : null;
   }
 
   async delete(id: string): Promise<void> {
@@ -131,6 +141,11 @@ export class EmulatorSecretStore implements SecretStore {
   async read(id: string): Promise<string | null> {
     const snap = await this.db.collection('emulator_secrets').doc(id).get();
     return (snap.data()?.value as string | undefined) ?? null;
+  }
+
+  async readVersion(id: string): Promise<{ name: string; value: string } | null> {
+    const data = (await this.db.collection('emulator_secrets').doc(id).get()).data();
+    return typeof data?.value === 'string' ? { name: `emulator_secrets/${id}/versions/${data.version ?? 1}`, value: data.value } : null;
   }
 
   async delete(id: string): Promise<void> {
