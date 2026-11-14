@@ -176,6 +176,14 @@ export const Collections = {
   suggestionLimits: 'suggestion_limits',
   /** `bots/{botId}`: the registry of the party's bots. */
   bots: 'bots',
+  /** `discord_settings/current` and `discord_settings/token`: the Discord bot's switch and channels, and who added its token (design §10.18). */
+  discordSettings: 'discord_settings',
+  /** `discord_state/feed`, `discord_state/test` and `discord_state/app`: how far the bot has read, a test post waiting for the worker, and what Discord was told of the commands (design §10.18). */
+  discordState: 'discord_state',
+  /** `discord_posts/{id}`: each post the bot made, once (design §10.18). */
+  discordPosts: 'discord_posts',
+  /** `discord_outbox/{id}`: the emulators' stand-in for Discord, which records each post instead of sending it. */
+  discordOutbox: 'discord_outbox',
   // issue polls (design §10.16): non-binding, apart from elections, never ledgered
   /** `polls/{pollId}`: the public issue polls Communications Admins write, drafts too. */
   polls: 'polls',

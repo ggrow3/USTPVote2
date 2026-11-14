@@ -14,7 +14,7 @@ Hosting are deployed by the [release workflow](#release-workflow), with the serv
 
 | Path | What |
 |---|---|
-| [`modules/ustpvote`](modules/ustpvote) | One environment. `main.tf` (APIs), `iam.tf`, `kms.tf`, `storage.tf`, `firestore.tf`, `run.tf`, `mcp.tf`, `scheduling.tf`, `binauthz.tf`, `release.tf`, `logging.tf`, `outputs.tf` |
+| [`modules/ustpvote`](modules/ustpvote) | One environment. `main.tf` (APIs), `iam.tf`, `kms.tf`, `storage.tf`, `firestore.tf`, `run.tf`, `mcp.tf`, `discord.tf`, `discord_commands.tf`, `scheduling.tf`, `binauthz.tf`, `release.tf`, `logging.tf`, `outputs.tf` |
 | [`envs/dev`](envs/dev) | `ustpvote2-dev`: anchors retention unlocked, Binary Authorization in dry run |
 | [`envs/staging`](envs/staging) | `ustpvote2-staging`: production settings except the retention lock |
 | [`envs/prod`](envs/prod) | `ustpvote2-prod`: Binary Authorization enforced, no human data access, retention lock stated explicitly |
@@ -44,6 +44,7 @@ API-side limits are only checked by Google on the first apply.
 | | Delete Identity Platform users (custom role `ustpLoginDeleter`: `firebaseauth.users.delete` only) | A System Admin deleting an account on `DELETABLE_ACCOUNT_EMAILS` deletes its logins first (§4) |
 | | Create secrets; add versions to `tiebreak-seed-*` secrets only (IAM condition) | Tie-break seed per scheduling attempt (§6.1); it never reads a seed back |
 | | `secretVersionManager` on `anthropic-api-key` only: add, list and destroy versions, never read one | Keeps the key a System Admin adds under Admin › API keys (§5.6); it cannot read it back |
+| | `secretVersionManager` on `discord-bot-token` only: add, list and destroy versions, never read one | Keeps the Discord bot's token a System Admin adds under Admin › API keys (§10.18); it cannot read it back |
 | | `secretVersionManager` and `secretAccessor` on `app-fec-api-key`, `app-openstates-api-key`, `app-civic-api-key` and `app-congress-api-key` only | Keeps the public-records keys a System Admin adds under Admin › API keys (§5.6, §5.14), and reads them to ask those services |
 | | `publicKeyViewer` on `ballot-pool` | Encrypts ballots locally to an election's public key; cannot decrypt (§7.3) |
 | | Read, write, delete objects in the photos bucket | Profile photos (§5.3) |
@@ -54,15 +55,16 @@ API-side limits are only checked by Google on the first apply.
 | | `signer` and `publicKeyViewer` on `audit-signing` | Only the worker signs ledger blocks and rolls (§8.3) |
 | | Create, get, decrypt with and destroy `ballot-pool` versions (custom role, on that key only) | One version per election, unwrapping at sealing, destruction after certification (§7.3, §13) |
 | | Create and read objects in the anchors bucket; never delete | Write-once anchors; overwriting needs delete, which it lacks (§8.4) |
-| | Access secrets | Tie-break seeds at tally (§9), the Anthropic API key for the bylaws, consistency and election setup checks, read each time it runs them (§5.4–§5.6, §6.9), the AWS key for election notices by SES (§6.8) |
+| | Access secrets | Tie-break seeds at tally (§9), the Anthropic API key for the bylaws, consistency and election setup checks, read each time it runs them (§5.4–§5.6, §6.9), the AWS key for election notices by SES (§6.8), the Discord bot's token each time it posts (§10.18) |
 | | Make Identity Platform email links (custom role `ustpSignInLinkMaker`: `firebaseauth.users.sendEmail` only) | The welcome email to a member a Membership Admin added carries the sign-in link for their address, so one email proves it and signs them in (§5.13). Such a link signs in whoever holds it, so only the internal-only worker may make one |
 | | Invoke `room-model` (while `room_model_enabled`) | Answers questions in the members' room with the self-hosted model (§5.10) |
 | `ustp-worker-invoker` | Invoke the worker | Identity of the Scheduler tick and of Cloud Tasks; nothing else |
 | `ustp-room-model` | Read and write objects in the room models bucket | The members' room's model loads its files from there; the pull job fetches them (§5.10) |
 | `ustp-mcp` | Nothing | The reporting MCP server (`mcp.tf`, design §3.4) reads only the public api, through the site, as any visitor does |
+| `ustp-discord` | Nothing | The Discord bot's commands service (`discord_commands.tf`, design §10.18) reads only the public api, through the site, as any visitor does; anyone may call it, and it answers only what Discord signed |
 | `ustp-release` | Push to the `ustpvote` Artifact Registry repository | The release workflow builds the server image |
 | | Sign attestations for `ustpvote-reviewed` (attestor key, note, occurrences) | Binary Authorization lets only attested images run |
-| | `run.developer` on `api`, `worker` and `mcp`; act as `ustp-api`, `ustp-worker` and `ustp-mcp` | Rolls the services onto a new image. It cannot change IAM, invokers or keys, nor read Firestore |
+| | `run.developer` on `api`, `worker`, `mcp` and `discord`; act as `ustp-api`, `ustp-worker`, `ustp-mcp` and `ustp-discord` | Rolls the services onto a new image. It cannot change IAM, invokers or keys, nor read Firestore |
 | | Cloud Datastore Index Admin, Firebase Rules Admin (project) | Deploys the Firestore indexes and rules before each roll-out and waits for the indexes. Definitions only: neither reads nor writes a document |
 | | Firebase Hosting Admin (project) | Deploys the web app after each roll-out; also lets the Firebase CLI find the default site, and the release read the Firebase web app's public config for the build (`firebase.projects.get`, `firebase.clients.get`) |
 | | Service Usage Consumer (project) | The Firebase CLI checks that the Firestore API is enabled, billed to the project. It cannot enable or disable an API |

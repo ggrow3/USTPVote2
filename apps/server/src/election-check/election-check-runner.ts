@@ -36,7 +36,7 @@ export class ElectionCheckRunner {
       async (check) => {
         if (!this.checker) throw new Error('the election setup check is not set up on the worker');
         const { definition, proposals, positions, bylaws, basis } = await this.materials.load(check.electionId);
-        if (!bylaws || !basis) throw new Error('no bylaws have been published, so there is nothing to check against');
+        if (!bylaws || !basis) throw new Error('no bylaws are in force, so there is nothing to check against');
         const output = await this.checker.check({ definition, proposals, positions, bylaws });
         const lines = splitLines(bylaws.text);
         const cited = [...new Set(output.findings.flatMap((f) => f.bylawsLines))].sort((a, b) => a - b);

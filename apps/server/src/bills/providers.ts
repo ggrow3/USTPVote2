@@ -5,6 +5,7 @@ import { BILL_SOURCE, PublicBillSource } from './bill-source.js';
 import { BillRepository } from './bill.repository.js';
 import { BillsService } from './bills.service.js';
 import { LocalBillSource } from './local-bill-source.js';
+import { PublicBillTitles } from './public-bill-titles.js';
 import { PublicBills } from './public-bills.js';
 import { LocalRollCallSource, PublicRollCallSource, ROLL_CALL_SOURCE } from './roll-call-source.js';
 
@@ -29,6 +30,7 @@ export const BILLS_PROVIDERS: Provider[] = [BillRepository, BillsService, Public
 
 /**
  * What the worker's tick needs: reading the public bills again every six hours (design §5.14, §13). The worker reads
- * the Congress.gov key as the api does, so it has its own `ApiKeys` (and Terraform gives it the key's secrets).
+ * the Congress.gov key as the api does, so it has its own `ApiKeys` (and Terraform gives it the key's secrets). The
+ * Discord bot reads a public bill's title through `PublicBillTitles` (§10.18).
  */
-export const BILLS_WORKER_PROVIDERS: Provider[] = [ApiKeys, BillRepository, PublicBills, ...SOURCES];
+export const BILLS_WORKER_PROVIDERS: Provider[] = [ApiKeys, BillRepository, PublicBills, PublicBillTitles, ...SOURCES];

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { BYLAWS_CHECK_SCOPES } from './bylaws-check.js';
+import { publishedBylawsText } from './bylaws.js';
 import { SIGN_IN_PROVIDERS } from './identity.js';
 import { MEMBER_STATUSES } from './membership/member-status.js';
 import { DEFAULT_COUNTRY, isCountryCode } from './membership/countries.js';
@@ -62,9 +63,10 @@ const report = (ctx: z.RefinementCtx, problems: readonly FieldProblem[]) => {
 };
 
 const applicationObject = z.strictObject({
-  bylawsVersion: z.string().min(1).max(64),
-  /** Hash of the bylaws text the applicant was shown and agreed to. */
-  bylawsHash: hex32,
+  /** The bylaws version the applicant agreed to; null when none is in force (`bylawsInForce`, design §5.2). */
+  bylawsVersion: z.string().min(1).max(64).nullable(),
+  /** Hash of the bylaws text the applicant was shown and agreed to; null with no version. */
+  bylawsHash: hex32.nullable(),
   legalName: z.string().trim().min(1, 'enter your legal name').max(200),
   preferredName: optionalText(200),
   /** `YYYY-MM-DD`; checked against MINIMUM_MEMBER_AGE and kept on the application only (design §5.2). */
@@ -187,7 +189,8 @@ export const bylawsVersionSchema = bylawsVersion;
 export const publishBylawsSchema = z.strictObject({
   version: bylawsVersion,
   title: z.string().trim().min(1).max(200),
-  text: z.string().min(1).max(500_000),
+  /** Blank (whitespace alone, published as `''`) means no bylaws are in force from then on (design §5.2). */
+  text: z.string().max(500_000).transform(publishedBylawsText),
   /** The current version this draft started from; must still be current when publishing (design §5.2). */
   amends: bylawsVersion.nullable().optional(),
   changeNote: optionalText(2000),

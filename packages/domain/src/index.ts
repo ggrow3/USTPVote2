@@ -158,6 +158,7 @@ export type { VoteValue, VoteTally } from './votes.js';
 export * from './forum/index.js';
 export * from './room/index.js';
 export * from './communications/index.js';
+export * from './discord/index.js';
 export * from './notifications/index.js';
 export * from './inbox/index.js';
 export * from './governance/index.js';
@@ -243,6 +244,7 @@ export type {
   TickResult,
 } from './ledger.js';
 export type * from './records.js';
+export { bylawsInForce, nextBylawsVersion, publishedBylawsText } from './bylaws.js';
 export { PROBLEM_TYPES } from './problems.js';
 export { LIKELIHOODS, MIN_FACE_CONFIDENCE, PHOTO_FLAGS, photoVerdict, isLikelihood } from './photos.js';
 export {

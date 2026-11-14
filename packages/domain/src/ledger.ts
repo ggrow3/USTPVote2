@@ -153,4 +153,6 @@ export interface TickResult {
   readonly roomExpired: number;
   /** Public bills read again from Congress.gov, with any new roll calls, every six hours (design §5.14). */
   readonly publicBillsRefreshed: number;
+  /** Posts the bot made on the party's Discord, a test post included (design §10.18). */
+  readonly discordPosts: number;
 }

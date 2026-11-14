@@ -248,7 +248,7 @@ watch(
               <dt>Status changed</dt>
               <dd>{{ dateTime(m.statusChangedAt) }}</dd>
               <dt>{{ detail.added ? 'Bylaws in force when added' : 'Bylaws agreed to' }}</dt>
-              <dd>Version {{ m.bylawsVersion }}</dd>
+              <dd>{{ m.bylawsVersion ? `Version ${m.bylawsVersion}` : 'None were in force' }}</dd>
               <template v-if="detail.added">
                 <dt>Added</dt>
                 <dd>By a Membership Admin, {{ dateTime(detail.added.at) }}</dd>

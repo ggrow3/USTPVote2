@@ -14,7 +14,7 @@ import {
   type SealedBlockRecord,
 } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
-import { readBylawsDocx } from './bylaws-docx.js';
+import { readDocxText } from './docx-text.js';
 import { electionDocxBytes, electionDocxFileName, type ElectionDocxInput, type ProposalText } from './election-docx.js';
 
 const SEED = '5eed'.repeat(16);
@@ -161,7 +161,7 @@ async function read(i: ElectionDocxInput) {
     [...m[0].matchAll(/<w:t[^>]*>([^<]*)<\/w:t>/g)].map((t) => t[1]).join(''),
   );
   const footer = await zip.file(/word\/footer\d*\.xml/)[0]!.async('string');
-  return { lines: (await readBylawsDocx(bytes)).text.split('\n'), stamp: stamp.filter(Boolean), xml, footer };
+  return { lines: (await readDocxText(bytes)).split('\n'), stamp: stamp.filter(Boolean), xml, footer };
 }
 
 /** Asserts that each expected line is in the document, in this order (other lines may come between). */

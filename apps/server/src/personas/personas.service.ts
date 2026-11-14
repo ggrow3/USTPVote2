@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Inject, Inj
 import type { Transaction } from 'firebase-admin/firestore';
 import {
   ADMIN_PERSONAS,
+  bylawsInForce,
   checkCanDeleteTestVoters,
   Collections,
   MAX_TEST_VOTERS,
@@ -31,9 +32,9 @@ import { MembershipService } from '../membership/membership.service.js';
 
 /**
  * Test personas (design §10.4): synthetic accounts with no login, one per admin role plus numbered voters, that a
- * System Admin acts as to rehearse an election. Each is created in its own transaction with the same ledger entry its
- * real counterpart would get (`role.granted` or `member.status_changed`), naming the System Admin as the actor. Test
- * voters can be deleted again, each as an account is (`AccountsService.erase`).
+ * System or Site Admin acts as to rehearse an election. Each is created in its own transaction with the same ledger
+ * entry its real counterpart would get (`role.granted` or `member.status_changed`), naming that admin as the actor. Test
+ * voters can be deleted again, by a System Admin, each as an account is (`AccountsService.erase`).
  */
 @Injectable()
 export class PersonasService {
@@ -79,13 +80,11 @@ export class PersonasService {
       if (existing.data().count + input.voters > MAX_TEST_VOTERS) {
         throw new BadRequestException(`a deployment holds at most ${MAX_TEST_VOTERS} test voters; it has ${existing.data().count}`);
       }
-      bylawsVersion = (await this.membership.currentBylaws())?.version ?? null;
-      if (!bylawsVersion) {
-        throw new ConflictException('publish bylaws before adding test voters: act as the Test Membership Admin and use Admin → Bylaws');
-      }
+      // On the bylaws in force, or none while none are (design §5.2).
+      bylawsVersion = bylawsInForce(await this.membership.currentBylaws())?.version ?? null;
     }
     for (const { kind, label } of ADMIN_PERSONAS) await this.createAdmin(operator, kind, label);
-    for (let i = 0; i < input.voters; i++) await this.createVoter(operator, bylawsVersion!);
+    for (let i = 0; i < input.voters; i++) await this.createVoter(operator, bylawsVersion);
     return this.list();
   }
 
@@ -135,7 +134,7 @@ export class PersonasService {
     });
   }
 
-  private async createVoter(operator: string, bylawsVersion: string): Promise<void> {
+  private async createVoter(operator: string, bylawsVersion: string | null): Promise<void> {
     const db = this.firebase.db;
     await db.runTransaction(async (tx) => {
       const voters = await tx.get(db.collection(Collections.testingPersonas).where('kind', '==', 'voter'));

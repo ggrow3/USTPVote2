@@ -12,6 +12,9 @@ import type {
   CreatePollInput,
   EventRecord,
   CreateSharePostInput,
+  DiscordAdminView,
+  DiscordFeedKind,
+  DiscordSettingsInput,
   MemberSharePost,
   NewsPostRecord,
   PartnerConsentInput,
@@ -165,3 +168,9 @@ export const savePoll = (pollId: string, input: UpdatePollInput) => api<AdminPol
 export const publishPollNow = (pollId: string, basedOn: number) => api<AdminPoll>('POST', `${ADMIN}/polls/${id(pollId)}/publish`, { basedOn });
 export const closePollNow = (pollId: string, basedOn: number) => api<AdminPoll>('POST', `${ADMIN}/polls/${id(pollId)}/close`, { basedOn });
 export const deletePoll = (pollId: string) => api<void>('DELETE', `${ADMIN}/polls/${id(pollId)}`);
+
+/** The Discord bot (design §10.18): where it posts, a test post, and what it posted lately. Communications Admins only. */
+const DISCORD = '/v1/admin/discord';
+export const discordView = () => api<DiscordAdminView>('GET', DISCORD);
+export const saveDiscordSettings = (input: DiscordSettingsInput) => api<DiscordAdminView>('PUT', `${DISCORD}/settings`, input);
+export const sendDiscordTest = (kind: DiscordFeedKind) => api<DiscordAdminView>('POST', `${DISCORD}/test`, { kind });

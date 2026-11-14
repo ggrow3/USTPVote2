@@ -157,10 +157,44 @@ describe('test personas', () => {
     expect((await api.call('POST', '/v1/admin/roles', sa1, real)).status).toBe(201);
   });
 
-  it('adds numbered voters as Active members once bylaws are published', async () => {
-    const early = await api.call('POST', '/v1/testing/personas', sa1, { voters: 2 });
-    expect(early).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/publish bylaws/) } });
+  it('lets a Site Admin create personas and act as them, ledgered under the Site Admin, but never while acting', async () => {
+    const site = await api.member('site@example.test');
+    await api.grant(site.accountId, 'site_admin', sa1);
+    const made = await api.call('POST', '/v1/testing/personas', site, {});
+    expect(made.status).toBe(201);
+    const personas = made.body as PersonaSummary[];
+    expect(personas.map((p) => p.createdBy)).toEqual(personas.map(() => site.accountId));
+    const grants = await api.firebase.db.collection('audit_events').where('type', '==', 'role.granted').where('actor', '==', site.accountId).get();
+    expect(grants.size).toBe(personas.length);
+    expect((await api.call('GET', '/v1/testing/personas', site)).body).toEqual(personas);
 
+    // Acting as a persona: its account and roles, the Site Admin kept as the operator.
+    const auditor = as(idOf(personas, 'Test Auditor'));
+    expect((await api.call('GET', '/v1/me', site, undefined, auditor)).body).toMatchObject({
+      roles: ['auditor'],
+      testing: { enabled: true, operator: site.accountId },
+    });
+    expect((await api.call('GET', '/v1/admin/audit/verify', site, undefined, auditor)).status).toBe(200);
+
+    // The testing tools are used as yourself: never while acting, not even as the Test Site Admin, a Site Admin itself.
+    const siteAdmin = as(idOf(personas, 'Test Site Admin'));
+    for (const [method, path, body] of [
+      ['GET', '/v1/testing/personas', undefined],
+      ['POST', '/v1/testing/personas', { voters: 1 }],
+      ['POST', '/v1/testing/demo-elections', {}],
+    ] as const) {
+      expect(await api.call(method, path, site, body, siteAdmin), path).toMatchObject({ status: 403, body: { detail: /stop acting/ } });
+      expect((await api.call(method, path, sa1, body, siteAdmin)).status, path).toBe(403);
+    }
+  });
+
+  it('adds test voters while no bylaws are in force, on none', async () => {
+    const early = (await api.call('POST', '/v1/testing/personas', sa1, { voters: 1 })).body as PersonaSummary[];
+    const voter = idOf(early, 'Test Voter 1');
+    expect((await api.call('GET', '/v1/me', sa1, undefined, as(voter))).body.member).toMatchObject({ status: 'active', bylawsVersion: null });
+  });
+
+  it('adds numbered voters as Active members on the bylaws in force', async () => {
     const personas = await personasWithVoters(2);
     expect(personas.filter((p) => p.kind === 'voter').map((p) => [p.label, p.number, p.roles, p.memberStatus])).toEqual([
       ['Test Voter 1', 1, [], 'active'],
@@ -224,7 +258,7 @@ describe('test personas', () => {
     const voter = idOf(personas, 'Test Voter 1');
     const pat = await api.member('pat@example.test');
 
-    expect((await api.call('GET', '/v1/me', pat, undefined, as(voter))).body.detail).toMatch(/only System Admins/);
+    expect((await api.call('GET', '/v1/me', pat, undefined, as(voter))).body.detail).toMatch(/only System and Site Admins/);
     expect((await api.call('GET', '/v1/me', sa1, undefined, as(sa2.accountId))).body.detail).toMatch(/not a test persona/);
     expect((await api.call('GET', '/v1/me', sa1, undefined, { 'x-act-as': 'nobody' })).status).toBe(400);
     expect((await api.call('DELETE', `/v1/me/identities/${sa1.uid}`, sa1, undefined, as(voter))).body.detail).toMatch(/stop acting/);
@@ -331,10 +365,10 @@ describe('deleting test voters (POST /v1/testing/personas/delete)', () => {
     }
     for (const voters of [[], [voter, voter], ['nobody']]) expect((await remove(voters)).status, JSON.stringify(voters)).toBe(400);
     expect((await remove([voter], pat)).status).toBe(403);
-    // A Site Admin deletes no test voter, and cannot act as a persona that might (design §10.1).
+    // A Site Admin deletes no test voter, as themselves or acting as a persona (design §10.1, §10.4).
     await api.grant(pat.accountId, 'site_admin', sa1);
-    expect(await remove([voter], pat)).toMatchObject({ status: 403, body: { detail: 'requires role system_admin' } });
-    expect(await remove([voter], pat, as(auditor))).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/only System Admins/) } });
+    expect(await remove([voter], pat)).toMatchObject({ status: 403, body: { detail: 'test voters are deleted by system_admin' } });
+    expect((await remove([voter], pat, as(auditor))).status).toBe(403);
     expect((await remove([voter], sa1, as(auditor))).status).toBe(403);
     for (const id of [voter, auditor, pat.accountId]) expect((await db().collection('accounts').doc(id).get()).exists).toBe(true);
     expect((await db().collection('testing_personas').doc(voter).get()).exists).toBe(true);

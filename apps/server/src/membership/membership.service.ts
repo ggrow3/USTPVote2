@@ -4,6 +4,7 @@ import { sha256Hex } from 'ustp-audit';
 import {
   adoptedBylaws,
   amendingContests,
+  bylawsInForce,
   Collections,
   type BylawsRecord,
   type BylawsVersionSummary,
@@ -60,6 +61,7 @@ export class MembershipService {
   /**
    * Publishes a new version. `amends` must name the version that is current when publishing (null for the first), so
    * a draft started from an older version cannot silently replace an amendment someone else published meanwhile.
+   * Blank text clears the bylaws (design §5.2): from then on none are in force, so it is refused while none are.
    */
   async publishBylaws(ctx: RequestContext, input: PublishBylawsInput): Promise<BylawsRecord> {
     const actor = requireAccount(ctx);
@@ -85,6 +87,7 @@ export class MembershipService {
             : 'no bylaws have been published yet, so there is nothing to amend',
         );
       }
+      if (!input.text && !bylawsInForce(current)) throw new ConflictException('the bylaws are already blank, so there is nothing to clear');
       // An election amending the current version holds it until certified or cancelled (design §6.6), so the lines
       // members vote on stay the lines in force.
       if (current) {

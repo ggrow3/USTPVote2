@@ -158,7 +158,7 @@ export class Members {
    */
   admitTestPersona(
     tx: Transaction,
-    persona: { readonly accountId: string; readonly label: string; readonly actor: string; readonly bylawsVersion: string },
+    persona: { readonly accountId: string; readonly label: string; readonly actor: string; readonly bylawsVersion: string | null },
   ): Promise<MemberRecord> {
     return this.record(tx, testVoterAdmission({ ...persona, at: new Date().toISOString() }));
   }

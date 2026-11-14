@@ -1,10 +1,11 @@
 # syntax=docker/dockerfile:1
 #
-# The server image: one image, three Cloud Run services (design §3.1, §3.4, §15). Terraform and the release workflow
+# The server image: one image, four Cloud Run services (design §3.1, §3.4, §10.18, §15). Terraform and the release workflow
 # run it as
 #   node dist/main-api.js                         api (the default command)
 #   node dist/main-worker.js                      worker
 #   node /app/apps/mcp/dist/main.js --http ...    mcp, the reporting MCP server
+#   node /app/apps/discord/dist/main.js ...       discord, the Discord bot's slash commands
 # from /app/apps/server, listening on $PORT. Build it from the repository root:
 #   docker build -f apps/server/Dockerfile -t ustp-server .
 
@@ -13,7 +14,8 @@ FROM node:26.13.0-trixie-slim@sha256:e4db4c914bf8ad241bd24804fc25d272d89bad97e68
 WORKDIR /src
 
 # Locked dependencies, no install scripts (spec §7; .npmrc sets ignore-scripts too). npm ci checks the lockfile against
-# every workspace's package.json, so all of them are copied, but only the server's and the MCP server's are installed.
+# every workspace's package.json, so all of them are copied, but only the server's, the MCP server's and the Discord
+# commands service's are installed.
 COPY package.json package-lock.json .npmrc tsconfig.base.json ./
 COPY packages/tally/package.json packages/tally/
 COPY packages/audit/package.json packages/audit/
@@ -22,9 +24,10 @@ COPY packages/verify/package.json packages/verify/
 COPY apps/server/package.json apps/server/
 COPY apps/web/package.json apps/web/
 COPY apps/mcp/package.json apps/mcp/
+COPY apps/discord/package.json apps/discord/
 RUN --mount=type=cache,target=/root/.npm \
     npm ci --ignore-scripts --include-workspace-root \
-      -w packages/tally -w packages/audit -w packages/domain -w packages/verify -w apps/server -w apps/mcp
+      -w packages/tally -w packages/audit -w packages/domain -w packages/verify -w apps/server -w apps/mcp -w apps/discord
 
 COPY packages/tally packages/tally
 COPY packages/audit packages/audit
@@ -32,16 +35,17 @@ COPY packages/domain packages/domain
 COPY packages/verify packages/verify
 COPY apps/server apps/server
 COPY apps/mcp apps/mcp
-RUN npm run build -w packages/tally -w packages/audit -w packages/domain -w packages/verify -w apps/server -w apps/mcp
+COPY apps/discord apps/discord
+RUN npm run build -w packages/tally -w packages/audit -w packages/domain -w packages/verify -w apps/server -w apps/mcp -w apps/discord
 
-# Reinstall with the server's and the MCP server's production dependencies only, then gather what runs into /out: the
+# Reinstall with the three services' production dependencies only, then gather what runs into /out: the
 # lockfile's node_modules (workspace packages are relative symlinks into packages/), each package's compiled dist, and
 # any workspace-local node_modules.
 RUN --mount=type=cache,target=/root/.npm \
-    npm ci --ignore-scripts --omit=dev -w apps/server -w apps/mcp \
+    npm ci --ignore-scripts --omit=dev -w apps/server -w apps/mcp -w apps/discord \
  && mkdir /out \
  && cp -a --parents package.json node_modules /out/ \
- && for ws in packages/tally packages/audit packages/domain packages/verify apps/server apps/mcp; do \
+ && for ws in packages/tally packages/audit packages/domain packages/verify apps/server apps/mcp apps/discord; do \
       cp -a --parents "$ws/package.json" "$ws/dist" /out/; \
       if [ -d "$ws/node_modules" ]; then cp -a --parents "$ws/node_modules" /out/; fi; \
     done

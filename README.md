@@ -17,8 +17,8 @@ results in the browser all work end to end against the Firebase emulators, in th
 and the web app. The `ustp-verify` CLI checks all of it independently from public data. Published results can also be
 downloaded as CSV or loaded into Google Sheets with `IMPORTDATA`, and the ballot and results as a Word file that Google
 Docs opens, with no Google integration; the results page and the Word file open with a printable synopsis, in the
-style of the party's own results documents. While drafting bylaws, a
-Membership Admin can run an advisory check by Claude (Anthropic) that highlights lines which may contradict the US
+style of the party's own results documents. While editing the bylaws, a
+Membership Admin can run an advisory check by Claude (Anthropic) that flags lines which may contradict the US
 Constitution, Transhumanist principles or the USTP Constitution; it is off in real projects until USTP agrees to it, and
 the emulators use a deterministic stand-in (design §5.4). In the same way, a voter on an election's roll (from the
 ballot) or an Election Admin or Auditor (from the election editor) can ask Claude, once per election, whether its

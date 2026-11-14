@@ -254,7 +254,7 @@ apps/web/src/
   a11y.ts dialogs.ts forms.ts *.css           UI kit every context uses
   accounts/      sign-in, account page, MFA, sign-in methods panel
   membership/    register, applications, members; profile photos and camera
-  bylaws/        bylaws pages, editor panel, bylaws check, Word files
+  bylaws/        bylaws pages, the bylaws check
   elections/     ballot list, vote, results, editor, contests, receipts, Word export
   offices/       offices panel
   candidacies/   the Candidates pages and map, the declaration form, the Candidacies panel, the Your area page and its

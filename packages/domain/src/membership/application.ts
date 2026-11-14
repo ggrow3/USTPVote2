@@ -1,4 +1,5 @@
 import type { CreateApplicationInput, DecisionInput } from '../api.js';
+import { bylawsInForce } from '../bylaws.js';
 import { OK, refuse, type Check, type Outcome } from '../check.js';
 import type { BylawsRecord } from '../records.js';
 import { memberStatusTransition, storedPlace, type StatusTransition } from './member.js';
@@ -32,8 +33,8 @@ export function applicationWindowStart(now: Date): string {
 }
 
 /**
- * A new application, which makes its author an applicant. It must agree to the *current* bylaws, identified by
- * version and content hash, and answer the registration form's *current* wording (`formVersion`); the account may
+ * A new application, which makes its author an applicant. It must agree to the bylaws in force (`bylawsInForce`),
+ * identified by version and content hash, or to none while none are (both null), and answer the registration form's *current* wording (`formVersion`); the account may
  * have made at most MAX_APPLICATIONS_PER_WINDOW (`recent`, counted from `applicationWindowStart`); and its member
  * status must allow applying (never applied, rejected or resigned). The caller has already checked the age,
  * attestations and contact formats, and held the answers to the form's field settings (`registration-fields.ts`). The two membership questions are recorded as answered: No to either never
@@ -52,10 +53,12 @@ export function submitApplication(args: {
   /** Whose referral link the applicant came by, from `input.referralCode` (design §5.18); null when none or no one's. */
   readonly referredBy?: string | null;
 }): Outcome<ApplicationChange> {
-  const { accountId, input, bylaws, current, at } = args;
-  if (!bylaws) return refuse('conflict', 'no bylaws have been published yet');
-  if (bylaws.version !== input.bylawsVersion || bylaws.contentHash !== input.bylawsHash) {
-    return refuse('conflict', 'the bylaws have changed; review the current version and agree again');
+  const { accountId, input, current, at } = args;
+  const bylaws = bylawsInForce(args.bylaws);
+  if ((bylaws?.version ?? null) !== input.bylawsVersion || (bylaws?.contentHash ?? null) !== input.bylawsHash) {
+    return bylaws
+      ? refuse('conflict', 'the bylaws have changed; review the current version and agree again')
+      : refuse('conflict', 'the bylaws have changed: none are in force now; review the application again');
   }
   if (input.formVersion !== args.formVersion) {
     return refuse('conflict', 'the application form has changed; read the questions again, then submit');
@@ -74,8 +77,8 @@ export function submitApplication(args: {
     accountId,
     status: 'pending',
     submittedAt: at,
-    bylawsVersion: bylaws.version,
-    bylawsHash: bylaws.contentHash,
+    bylawsVersion: bylaws?.version ?? null,
+    bylawsHash: bylaws?.contentHash ?? null,
     legalName: input.legalName,
     preferredName: input.preferredName || null,
     dateOfBirth: input.dateOfBirth || null,

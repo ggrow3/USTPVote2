@@ -1,28 +1,42 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { useQuasar } from 'quasar';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import {
+  bylawsInForce,
   checkRegistrationForm,
   DEFAULT_REGISTRATION_FORM,
+  nextBylawsVersion,
+  publishedBylawsText,
   REGISTRATION_FIELDS,
   REGISTRATION_FORM_LIMITS as L,
   registrationFormChanges,
   resolveRegistrationForm,
+  splitLines,
   tipsAddressProblem,
+  type BylawsCheckScope,
+  type BylawsRecord,
+  type BylawsVersionSummary,
   type RegistrationForm,
   type RegistrationFormFields,
   type RegistrationFormRecord,
 } from 'ustp-domain';
+import { focusElement } from '../a11y.js';
+import { useBylawsCheck } from '../bylaws-check.js';
+import BylawsCheckSection from '../components/admin/BylawsCheckSection.vue';
 import { attempt } from '../dialogs.js';
-import { registrationFormSettings, saveRegistrationForm } from './api.js';
+import { bylawsVersions, currentBylaws, publishBylaws, registrationFormSettings, saveRegistrationForm } from './api.js';
 import MembershipQuestions from './MembershipQuestions.vue';
 import { describeFormChange, FIELD_LABELS, settingOptions } from './registration-form-text.js';
 import RegistrationIntro from './RegistrationIntro.vue';
 
 /**
- * The registration form's wording (design §5.2): Membership Admins change the heading and intro on the Register page,
- * the two questions and their help, the Core Ideals, and the bonus link applicants get; and which fields the
- * application asks, each required, optional or not shown. What the answers mean stays as it is.
+ * The registration form (design §5.2): Membership Admins change the heading and intro on the Register page, the bylaws
+ * applicants agree to, the two questions and their help, the Core Ideals, and the bonus link applicants get; and which
+ * fields the application asks, each required, optional or not shown. What the answers mean stays as it is. The form
+ * and the bylaws are kept apart, each versioned and ledgered: saving changed bylaws publishes their next version, and
+ * blank bylaws mean the Register page shows none and nobody agrees to any.
  */
+const $q = useQuasar();
 
 type Draft = Omit<RegistrationForm, 'ideals' | 'fields'> & { ideals: string[]; fields: { -readonly [F in keyof RegistrationFormFields]: RegistrationFormFields[F] } };
 
@@ -44,6 +58,91 @@ const savedAt = computed(() => (saved.value?.updatedAt ? new Date(saved.value.up
 // The preview's own answers, so trying it changes nothing.
 const previewVoter = ref<boolean | null>(null);
 const previewIdeals = ref<boolean | null>(null);
+const previewAgreed = ref(false);
+
+/** The newest published bylaws version, blank or not; null before any is published. */
+const bylaws = ref<BylawsRecord | null>(null);
+const versions = ref<BylawsVersionSummary[]>([]);
+const bylawsLoaded = ref(false);
+const bylawsDraft = ref({ title: 'USTP Bylaws', text: '' });
+const bylawsField = ref<{ getNativeElement: () => HTMLTextAreaElement } | null>(null);
+/** The bylaws in force now: none while none are published or the newest is blank. */
+const inForce = computed(() => bylawsInForce(bylaws.value));
+/** The text as it would be published: whitespace alone is blank. */
+const bylawsText = computed(() => publishedBylawsText(bylawsDraft.value.text));
+const bylawsTitle = computed(() => bylawsDraft.value.title.trim());
+/** What saving would do to the bylaws: publish a new version, clear them, or nothing. */
+const bylawsChange = computed<'publish' | 'clear' | null>(() => {
+  if (!bylawsLoaded.value) return null;
+  if (!bylawsText.value) return inForce.value ? 'clear' : null;
+  return bylawsText.value !== inForce.value?.text || bylawsTitle.value !== inForce.value.title ? 'publish' : null;
+});
+const nextVersion = computed(() => nextBylawsVersion(bylaws.value?.version));
+const bylawsProblem = computed(() => {
+  if (!bylawsText.value) return null;
+  if (!bylawsTitle.value) return 'give the bylaws a title';
+  if (bylawsTitle.value.length > 200) return 'the bylaws title is over 200 characters';
+  if (bylawsText.value.length > 500_000) return 'the bylaws are over 500,000 characters';
+  return null;
+});
+const day = (iso: string) => new Date(iso).toLocaleDateString();
+/** Unsaved changes: each part of the wording, and the bylaws as one. */
+const unsaved = computed(() => changes.value.length + (bylawsChange.value ? 1 : 0));
+/** Why Save is off: a problem with whichever of the wording and the bylaws has changes. */
+const saveProblem = computed(() => (changes.value.length && problem.value) || (bylawsChange.value && bylawsProblem.value) || null);
+
+const checker = useBylawsCheck();
+const draftLines = computed(() => splitLines(bylawsDraft.value.text));
+
+function startCheck(scope: BylawsCheckScope) {
+  checker.start({ title: bylawsTitle.value || 'Bylaws', text: bylawsDraft.value.text, amends: inForce.value?.version ?? null, scope });
+}
+
+/** From a finding: select that line of the bylaws field and put focus there. */
+async function goToLine(line: number) {
+  const field = bylawsField.value?.getNativeElement();
+  if (!field) return;
+  const lines = bylawsDraft.value.text.split('\n');
+  const start = lines.slice(0, line - 1).reduce((n, l) => n + l.length + 1, 0);
+  await nextTick();
+  focusElement(field);
+  field.setSelectionRange(start, start + (lines[line - 1]?.length ?? 0));
+  field.scrollTop = ((line - 1) / Math.max(lines.length, 1)) * field.scrollHeight - field.clientHeight / 2;
+}
+
+async function loadBylaws() {
+  const [current, all] = await Promise.all([currentBylaws(), bylawsVersions()]);
+  bylaws.value = current;
+  versions.value = all;
+  const shown = bylawsInForce(current);
+  bylawsDraft.value = { title: shown?.title ?? current?.title ?? 'USTP Bylaws', text: shown?.text ?? '' };
+  bylawsLoaded.value = true;
+  checker.reset();
+}
+
+/** Bylaws versions are permanent, so say plainly what saving them does before it happens. */
+function confirmBylaws(): Promise<boolean> {
+  const version = nextVersion.value;
+  const permanent = 'Published versions are permanent and recorded in the audit ledger.';
+  const [title, message] =
+    bylawsChange.value === 'clear'
+      ? [
+          'Clear the bylaws?',
+          `This publishes version ${version} with no text. From then on the Register page shows no bylaws and applicants agree to none; members keep the version they agreed to. ${permanent}`,
+        ]
+      : [
+          `Publish bylaws version ${version}?`,
+          inForce.value
+            ? `It replaces version ${inForce.value.version}. New applicants must agree to it; members keep the version they agreed to. ${permanent}`
+            : `New applicants must agree to it. ${permanent}`,
+        ];
+  return new Promise((resolve) =>
+    $q
+      .dialog({ title, message, cancel: true, persistent: true })
+      .onOk(() => resolve(true))
+      .onCancel(() => resolve(false)),
+  );
+}
 
 /** Why a one-line or paragraph part cannot be saved, if it cannot. */
 function partError(part: 'title' | 'usVoterQuestion' | 'coreIdealsQuestion' | 'idealsTitle' | 'tipsTitle', max: number): string | undefined {
@@ -75,18 +174,36 @@ function moveIdeal(i: number, by: -1 | 1) {
 
 async function load() {
   await attempt(async () => {
-    saved.value = await registrationFormSettings();
-    draft.value = copy(saved.value);
+    const [form] = await Promise.all([registrationFormSettings(), loadBylaws()]);
+    saved.value = form;
+    draft.value = copy(form);
   });
 }
 
+/** Publishes changed bylaws first (once confirmed), then saves changed wording; each is its own record. */
 async function save() {
   if (!saved.value) return;
+  const publishing = bylawsChange.value;
+  if (publishing && !(await confirmBylaws())) return;
   const form = resolved.value;
+  const version = nextVersion.value;
+  const done = [
+    publishing === 'clear' && `Bylaws cleared (version ${version}): the Register page shows none from now on.`,
+    publishing === 'publish' && `Bylaws version ${version} published: new applicants agree to it from now on.`,
+    changes.value.length > 0 && 'Wording saved: the Register page shows it to everyone from now on.',
+  ]
+    .filter(Boolean)
+    .join(' ');
   await attempt(async () => {
-    saved.value = await saveRegistrationForm({ basedOn: saved.value!.version, ...form, ideals: [...form.ideals] });
-    draft.value = copy(saved.value);
-  }, 'Saved. The Register page shows it to everyone from now on.');
+    if (publishing) {
+      await publishBylaws({ version, title: bylawsTitle.value || bylaws.value!.title, text: bylawsText.value, amends: bylaws.value?.version ?? null });
+      await loadBylaws();
+    }
+    if (changes.value.length) {
+      saved.value = await saveRegistrationForm({ basedOn: saved.value!.version, ...form, ideals: [...form.ideals] });
+      draft.value = copy(saved.value);
+    }
+  }, done);
 }
 
 function restoreDefault() {
@@ -106,10 +223,11 @@ onMounted(load);
       </div>
     </div>
     <p>
-      The Register page's heading and the intro above its steps, the application's two membership questions and their
-      help, the Core Ideals shown before the second question, the link applicants get once they have applied, and
-      which fields the application asks. Each application records the version it answered, and is refused if the form
-      changed while it was being filled in, so the applicant reads the new form first.
+      The Register page's heading and the intro above its steps, the bylaws applicants agree to, the application's two
+      membership questions and their help, the Core Ideals shown before the second question, the link applicants get
+      once they have applied, and which fields the application asks. Each application records the versions of the
+      form and the bylaws it answered, and is refused if either changed while it was being filled in, so the
+      applicant reads the new ones first.
     </p>
     <p>
       What the answers mean stays as it is, whatever the wording: Yes to the first question makes a United States
@@ -141,6 +259,70 @@ onMounted(load);
           :error="!!tooLong(resolved.intro, L.intro)"
           :error-message="tooLong(resolved.intro, L.intro)"
         />
+      </q-card-section>
+
+      <q-separator />
+      <q-card-section class="ustp-form">
+        <h3 class="text-subtitle2">Bylaws applicants agree to</h3>
+        <div class="text-caption text-grey-7">
+          <template v-if="inForce">
+            In force: version {{ inForce.version }}, published {{ day(inForce.publishedAt) }} · SHA-256
+            <code>{{ inForce.contentHash.slice(0, 16) }}…</code> ·
+            <router-link :to="`/bylaws/${encodeURIComponent(inForce.version)}`">public page</router-link>.
+          </template>
+          <template v-else-if="bylaws">None in force: version {{ bylaws.version }} cleared them.</template>
+          <template v-else-if="bylawsLoaded">None published yet.</template>
+          Saving changed bylaws publishes them as version {{ nextVersion }}. Versions are permanent and recorded in the
+          audit ledger, and new applicants agree to the newest. Leave the text empty for no bylaws: the Register page
+          then shows none and applicants agree to none.
+        </div>
+        <q-input
+          v-model="bylawsDraft.title"
+          outlined
+          dense
+          counter
+          maxlength="200"
+          label="Title"
+          :error="!!bylawsText && !bylawsTitle"
+          error-message="Needed while there are bylaws"
+        />
+        <q-input
+          ref="bylawsField"
+          v-model="bylawsDraft.text"
+          type="textarea"
+          outlined
+          dense
+          label="Bylaws (optional)"
+          hint="Plain text, as applicants will read it. Empty means no bylaws."
+          :input-style="{ height: '22rem' }"
+          :error="bylawsText.length > 500_000"
+          error-message="Over 500,000 characters"
+        />
+        <BylawsCheckSection
+          v-if="bylawsText"
+          :check="checker.state.check"
+          :checked-lines="checker.state.checkedLines"
+          :requesting="checker.state.requesting"
+          :error="checker.state.error"
+          :gave-up="checker.state.gaveUp"
+          :draft-lines="draftLines"
+          :changes-since="inForce && bylawsChange ? inForce.version : null"
+          @check="startCheck"
+          @go-to-line="goToLine"
+        />
+        <q-expansion-item v-if="versions.length" dense dense-toggle icon="history" :label="`All versions (${versions.length})`">
+          <q-list separator>
+            <q-item v-for="v in versions" :key="v.version" :to="`/bylaws/${encodeURIComponent(v.version)}`">
+              <q-item-section>
+                <q-item-label>Version {{ v.version }} · {{ v.title }}</q-item-label>
+                <q-item-label caption>
+                  Published {{ day(v.publishedAt) }}<span v-if="v.amends"> · replaces {{ v.amends }}</span
+                  ><span v-if="v.changeNote"> · {{ v.changeNote }}</span>
+                </q-item-label>
+              </q-item-section>
+            </q-item>
+          </q-list>
+        </q-expansion-item>
       </q-card-section>
 
       <q-separator />
@@ -304,6 +486,18 @@ onMounted(load);
           <h4 class="text-h5 q-my-none">{{ resolved.title }}</h4>
           <RegistrationIntro :intro="resolved.intro" />
           <p v-if="!resolved.intro" class="text-grey-7 q-mb-none">No intro: the Register page starts with its steps.</p>
+          <q-card v-if="bylawsText" flat bordered>
+            <q-card-section>
+              <h4 class="text-subtitle1 q-my-none">{{ bylawsTitle }}</h4>
+            </q-card-section>
+            <q-separator />
+            <div class="q-pa-md bylaws-preview">{{ bylawsText }}</div>
+            <q-separator />
+            <q-card-section>
+              <q-checkbox v-model="previewAgreed" label="I have read these bylaws and agree to abide by them." />
+            </q-card-section>
+          </q-card>
+          <p v-else class="text-grey-7 q-mb-none">No bylaws: applicants see none and agree to none.</p>
           <MembershipQuestions
             v-model:us-vote-eligible="previewVoter"
             v-model:agrees-with-core-ideals="previewIdeals"
@@ -317,16 +511,18 @@ onMounted(load);
         </div>
       </q-card-section>
 
-      <q-card-section v-if="changes.length">
-        <h3 class="text-subtitle2">Not saved yet: {{ changes.length === 1 ? '1 change' : `${changes.length} changes` }}</h3>
+      <q-card-section v-if="changes.length || bylawsChange">
+        <h3 class="text-subtitle2">Not saved yet: {{ unsaved === 1 ? '1 change' : `${unsaved} changes` }}</h3>
         <ul class="q-mt-sm q-mb-none">
+          <li v-if="bylawsChange === 'publish'">Bylaws: publishes version {{ nextVersion }}, which new applicants agree to.</li>
+          <li v-else-if="bylawsChange === 'clear'">Bylaws: cleared (version {{ nextVersion }}, blank), so applicants agree to none.</li>
           <li v-for="c in changes" :key="c.part" class="form-change">{{ describeFormChange(c) }}</li>
         </ul>
       </q-card-section>
-      <q-card-section v-if="problem && changes.length" class="text-negative" role="alert">Can't save yet: {{ problem }}.</q-card-section>
+      <q-card-section v-if="saveProblem" class="text-negative" role="alert">Can't save yet: {{ saveProblem }}.</q-card-section>
       <q-card-section class="ustp-actions">
-        <q-btn color="primary" label="Save changes" :disable="!changes.length || !!problem" @click="save" />
-        <q-btn flat color="primary" label="Discard changes" :disable="!changes.length" @click="load" />
+        <q-btn color="primary" label="Save changes" :disable="!unsaved || !!saveProblem" @click="save" />
+        <q-btn flat color="primary" label="Discard changes" :disable="!unsaved" @click="load" />
         <q-btn flat color="primary" label="Restore the default" :disable="isDefault" @click="restoreDefault" />
       </q-card-section>
     </q-card>
@@ -371,5 +567,10 @@ onMounted(load);
 }
 .form-change {
   white-space: pre-line;
+}
+.bylaws-preview {
+  max-height: 16rem;
+  overflow-y: auto;
+  white-space: pre-wrap;
 }
 </style>

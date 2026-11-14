@@ -190,12 +190,15 @@ describe('a demo election', () => {
     expect(title).toMatch(/^\[Demo\] /);
   });
 
-  it('needs published bylaws to add its test voters, and leaves nothing behind when it cannot be made', async () => {
+  it('is made with no bylaws in force too, its test voters joining on none', async () => {
     await resetEmulators();
     [sa1] = await api.systemAdmins();
     const res = await createDemo();
-    expect(res).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/publish bylaws/) } });
-    expect((await db().collection('elections').get()).empty).toBe(true);
+    expect(res.status).toBe(201);
+    const voters = (await db().collection('testing_personas').where('kind', '==', 'voter').get()).docs.map((d) => d.id);
+    expect(voters).toHaveLength(5);
+    const members = await Promise.all(voters.map(async (id) => (await db().collection('members').doc(id).get()).data()));
+    expect(members.map((m) => m?.bylawsVersion)).toEqual([null, null, null, null, null]);
   });
 
   it('asks for a fresh sign-in before it writes anything, as the approvals it makes would', async () => {
@@ -205,7 +208,16 @@ describe('a demo election', () => {
     expect((await db().collection('elections').get()).empty).toBe(true);
   });
 
-  it('is made by System Admins only: not by other admins, members or a System Admin acting as a persona', async () => {
+  it('is made by a Site Admin too, ledgered as theirs', async () => {
+    const site = await api.member('site@example.test');
+    await api.grant(site.accountId, 'site_admin', sa1);
+    const res = await createDemo({}, site);
+    expect(res.status).toBe(201);
+    const scheduled = await entries(res.body.election.election.electionId, 'election.scheduled');
+    expect(scheduled).toHaveLength(1);
+  });
+
+  it('is made by System and Site Admins only: not by other admins, members or anyone acting as a persona', async () => {
     const pat = await api.member('pat@example.test');
     const ea = await api.member('ea@example.test');
     await api.grant(ea.accountId, 'election_admin', sa1);

@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    // A Node service: global fetch, node:http and node:crypto come from @types/node.
+    "types": ["node"]
+  },
+  "include": ["src"]
+}

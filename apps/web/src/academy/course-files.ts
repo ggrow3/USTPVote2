@@ -1,5 +1,5 @@
 import { coursePackageFileName, coursesPackageFileName, type CoursePackage, type CoursesPackage } from 'ustp-domain';
-import { saveFile } from '../bylaws-files.js';
+import { saveFile } from '../save-file.js';
 
 /**
  * Course files as the browser saves them (design §10.8): one course's `ustp.course` file from its Export JSON menu,

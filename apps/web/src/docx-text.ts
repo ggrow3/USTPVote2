@@ -1,41 +1,12 @@
-import {
-  AlignmentType,
-  BorderStyle,
-  Document,
-  Footer,
-  Header,
-  type IParagraphOptions,
-  Packer,
-  PageNumber,
-  Paragraph,
-  ShadingType,
-  Tab,
-  TextRun,
-} from 'docx';
 import JSZip from 'jszip';
-import { splitLines, type BylawsRecord } from 'ustp-domain';
-import { APP_NAME } from './app-name.js';
+import { splitLines } from 'ustp-domain';
+import { STAMP_STYLE } from './docx-stamp.js';
 
 /**
- * Word documents for the bylaws (design §5.2): reading the text out of a .docx so a Membership Admin can start a
- * version from the party's existing constitution, and writing a stamped copy of a published version to pass around.
- * The published text and its SHA-256 stay the record; a .docx is a convenience copy whose stamp says how to check it.
+ * A Word document's text read back, one line per paragraph (table cells too; line breaks inside a paragraph start new
+ * lines), with Word's automatic list numbers and bullets written out, and the stamp block left out. The election
+ * export's tests read what it wrote with it; nothing in the app reads Word files.
  */
-
-/** Paragraph style of the stamp block, so re-importing an exported copy yields only the bylaws text. */
-export const STAMP_STYLE = 'UstpStamp';
-
-export interface ImportedBylaws {
-  /** One line per paragraph (line breaks inside a paragraph start new lines), with list numbers written out. */
-  readonly text: string;
-  /** The first non-empty line, as a suggested title. */
-  readonly title: string | null;
-  readonly lines: number;
-  /** Paragraphs that had automatic Word numbering, now written into the text. */
-  readonly numberedLines: number;
-}
-
-// --- Reading ---------------------------------------------------------------------------------------------------------
 
 interface Level {
   readonly start: number;
@@ -54,7 +25,7 @@ interface NumberingDefinitions {
   readonly overrides: Map<string, Map<number, number>>;
 }
 
-export async function readBylawsDocx(data: ArrayBuffer | Uint8Array): Promise<ImportedBylaws> {
+export async function readDocxText(data: ArrayBuffer | Uint8Array): Promise<string> {
   const zip = await JSZip.loadAsync(data);
   const documentXml = await zip.file('word/document.xml')?.async('string');
   if (!documentXml) throw new Error('This is not a Word document (.docx): it has no word/document.xml.');
@@ -63,7 +34,6 @@ export async function readBylawsDocx(data: ArrayBuffer | Uint8Array): Promise<Im
 
   const counters = new Map<string, number[]>();
   const lines: string[] = [];
-  let numberedLines = 0;
   for (const p of paragraphs(documentXml)) {
     const style = attr(firstTag(p, 'w:pStyle'), 'w:val');
     if (style === STAMP_STYLE) continue;
@@ -71,20 +41,13 @@ export async function readBylawsDocx(data: ArrayBuffer | Uint8Array): Promise<Im
     const numId = attr(firstTag(numPr, 'w:numId'), 'w:val') ?? (style ? styleNumbering.get(style)?.numId : undefined);
     const ilvl = Number(attr(firstTag(numPr, 'w:ilvl'), 'w:val') ?? (style ? styleNumbering.get(style)?.ilvl : undefined) ?? 0);
     const label = numId && numId !== '0' ? listLabel(numbering, counters, numId, ilvl) : '';
-    if (label) numberedLines++;
     const text = paragraphText(p);
     const joined = label ? `${label} ${text}` : text;
     lines.push(...splitLines(joined).map((l) => l.replace(/ /g, ' ').trimEnd()));
   }
   while (lines.length > 0 && lines.at(-1) === '') lines.pop();
   while (lines.length > 0 && lines[0] === '') lines.shift();
-  const first = lines.find((l) => l.trim() !== '') ?? null;
-  return {
-    text: lines.join('\n'),
-    title: first && first.length <= 120 ? first.trim() : null,
-    lines: lines.length,
-    numberedLines,
-  };
+  return lines.join('\n');
 }
 
 /** Each `<w:p>` element's XML, in document order (tables included; nested paragraphs in text boxes stay inside theirs). */
@@ -245,118 +208,4 @@ function decodeXml(s: string): string {
     if (e.startsWith('#')) return String.fromCodePoint(Number(e.slice(1)));
     return { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'" }[e]!;
   });
-}
-
-// --- Writing ---------------------------------------------------------------------------------------------------------
-
-export interface StampOptions {
-  /** Where a reader can compare this copy with the published record. */
-  readonly verifyUrl: string;
-  readonly exportedAt: Date;
-}
-
-/** The stamp's ink, also used for running headers and footers. */
-export const INK = '1F3A5F';
-
-/** US Letter with one-inch margins, in twentieths of a point. */
-export const LETTER_PAGE = { size: { width: 12240, height: 15840 }, margin: { top: 1440, bottom: 1440, left: 1440, right: 1440 } };
-
-/** For a document's `styles.paragraphStyles`, so its stamp lines sit together as one block. */
-export const STAMP_PARAGRAPH_STYLE = { id: STAMP_STYLE, name: 'USTP stamp', basedOn: 'Normal', paragraph: { spacing: { after: 0 } } };
-
-/** One line of a stamp block: centred, boxed and shaded. */
-export function stampLine(text: string, options: { bold?: boolean; size?: number } = {}): Paragraph {
-  const side = { style: BorderStyle.SINGLE, size: 12, color: INK, space: 6 };
-  return new Paragraph({
-    style: STAMP_STYLE,
-    border: { top: side, bottom: side, left: side, right: side },
-    shading: { type: ShadingType.CLEAR, fill: 'EEF2F7', color: 'auto' },
-    alignment: AlignmentType.CENTER,
-    children: [new TextRun({ text, bold: options.bold, size: options.size, color: INK })],
-  });
-}
-
-/** One line of plain text as a paragraph, its tabs kept as Word tabs. */
-export function textParagraph(line: string, options: Omit<IParagraphOptions, 'children'> = {}): Paragraph {
-  const parts = line.split('\t');
-  const children = parts.flatMap((part, i) => [
-    ...(i > 0 ? [new TextRun({ children: [new Tab()] })] : []),
-    ...(part ? [new TextRun(part)] : []),
-  ]);
-  return new Paragraph({ ...options, children });
-}
-
-const day = (iso: string | Date) => new Date(iso).toISOString().slice(0, 10);
-
-/** A Word document for one published version: a stamp block, the text line by line, and a stamped header and footer. */
-export function bylawsDocument(b: BylawsRecord, options: StampOptions): Document {
-  const stamp = [
-    stampLine('UNITED STATES TRANSHUMANIST PARTY', { bold: true, size: 28 }),
-    stampLine(`Official copy · ${b.title}`, { bold: true }),
-    stampLine(`Version ${b.version} · published ${day(b.publishedAt)}${b.amends ? ` · amends version ${b.amends}` : ''}`),
-    ...(b.changeNote ? [stampLine(`Change: ${b.changeNote}`)] : []),
-    stampLine(`SHA-256 of the text: ${b.contentHash}`, { size: 16 }),
-    stampLine(`Exported ${day(options.exportedAt)}. Check this copy against the published record at ${options.verifyUrl}`, {
-      size: 16,
-    }),
-    new Paragraph({ style: STAMP_STYLE, children: [] }),
-  ];
-  return new Document({
-    creator: APP_NAME,
-    title: `${b.title}, version ${b.version}`,
-    subject: `Version ${b.version}${b.amends ? `, amending ${b.amends}` : ''}`,
-    keywords: `bylaws; version ${b.version}; sha256:${b.contentHash}`,
-    description: b.changeNote ?? undefined,
-    styles: {
-      paragraphStyles: [STAMP_PARAGRAPH_STYLE],
-    },
-    sections: [
-      {
-        properties: { page: LETTER_PAGE },
-        headers: {
-          default: new Header({
-            children: [
-              new Paragraph({
-                alignment: AlignmentType.RIGHT,
-                children: [
-                  new TextRun({
-                    text: `${b.title} · version ${b.version} · SHA-256 ${b.contentHash.slice(0, 16)}…`,
-                    size: 16,
-                    color: INK,
-                  }),
-                ],
-              }),
-            ],
-          }),
-        },
-        footers: {
-          default: new Footer({
-            children: [
-              new Paragraph({
-                alignment: AlignmentType.CENTER,
-                children: [
-                  new TextRun({
-                    size: 16,
-                    color: INK,
-                    children: [`Official copy of version ${b.version} · page `, PageNumber.CURRENT, ' of ', PageNumber.TOTAL_PAGES],
-                  }),
-                ],
-              }),
-            ],
-          }),
-        },
-        children: [...stamp, ...splitLines(b.text).map((line) => textParagraph(line))],
-      },
-    ],
-  });
-}
-
-export function bylawsDocxBytes(b: BylawsRecord, options: StampOptions): Promise<ArrayBuffer> {
-  return Packer.toArrayBuffer(bylawsDocument(b, options));
-}
-
-/** `USTP-Bylaws-v2026.2.docx` */
-export function bylawsDocxFileName(b: Pick<BylawsRecord, 'title' | 'version'>): string {
-  const title = b.title.replace(/[^A-Za-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'Bylaws';
-  return `${title}-v${b.version}.docx`;
 }

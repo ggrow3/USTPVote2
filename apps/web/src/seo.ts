@@ -21,7 +21,7 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   '/verify':
     "Check a U.S. Transhumanist Party ballot receipt against the election's published record, in your browser and from public data only.",
   '/guide': 'How to vote, run and audit a U.S. Transhumanist Party election on this site, page by page.',
-  '/bylaws/:version?': 'The bylaws of the U.S. Transhumanist Party, every published version, with a way to check a copy.',
+  '/bylaws/:version?': 'The bylaws of the U.S. Transhumanist Party, every published version, with its SHA-256 and what changed.',
   '/results/:id': 'Results of a U.S. Transhumanist Party election, from its published record, which anyone can verify.',
   '/offices': 'Who holds each U.S. Transhumanist Party office now, and how they came to hold it.',
   '/polls': 'Polls from the U.S. Transhumanist Party anyone may answer: say what you think, see what others think, and share the results.',

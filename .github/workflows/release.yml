@@ -157,6 +157,15 @@ jobs:
           for service in worker api mcp; do
             gcloud run services update "$service" --project="$PROJECT" --region="$REGION" --image="$IMAGE@$DIGEST" --quiet
           done
+          # The Discord bot's commands service (design §10.18) is not behind Hosting, so an environment may not have it
+          # yet (discord_commands.tf): it is rolled where it exists.
+          if gcloud run services describe discord --project="$PROJECT" --region="$REGION" --format='value(name)' >/dev/null 2>&1; then
+            gcloud run services update discord --project="$PROJECT" --region="$REGION" --image="$IMAGE@$DIGEST" --quiet
+            url=$(gcloud run services describe discord --project="$PROJECT" --region="$REGION" --format='value(status.url)')
+            curl -fsS --retry 5 --retry-all-errors "$url/health"
+          else
+            echo "::notice::There is no discord service here (or the release may not see it), so the Discord commands were not rolled."
+          fi
 
       - name: Check the api and the MCP server answer
         if: inputs.roll_out

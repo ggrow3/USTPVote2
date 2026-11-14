@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, Inject, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { sha256Hex } from 'ustp-audit';
 import {
+  bylawsInForce,
   checkConsistencyMaterial,
   checkConsistencyRequest,
   Collections,
@@ -158,7 +159,7 @@ export class ConsistencyChecksService {
     const checks = db.collection(Collections.consistencyChecks);
     const now = new Date();
     const [bylaws, today] = await Promise.all([
-      documents.includes('bylaws') ? this.membership.currentBylaws() : null,
+      documents.includes('bylaws') ? this.membership.currentBylaws().then(bylawsInForce) : null,
       checks.where('requestedAt', '>=', new Date(now.getTime() - 86_400_000).toISOString()).count().get(),
     ]);
     const record: ConsistencyCheckRecord = {

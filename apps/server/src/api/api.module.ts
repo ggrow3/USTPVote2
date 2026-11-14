@@ -94,6 +94,9 @@ import { FORUM_PROVIDERS } from '../forum/providers.js';
 import { ROOM_PROVIDERS } from '../room/providers.js';
 import { RoomAdminController, RoomController } from '../room/room.controller.js';
 import { COMMUNICATIONS_PROVIDERS } from '../communications/providers.js';
+import { DiscordAdminController, DiscordTokenController } from '../discord/discord-admin.js';
+import { PublicDiscordController } from '../discord/discord-public.js';
+import { DISCORD_PROVIDERS } from '../discord/providers.js';
 import {
   CommunicationsAdminController,
   PublicNewsController,
@@ -186,6 +189,9 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     MfaPolicyController,
     AnthropicKeyController,
     ApiKeysController,
+    DiscordAdminController,
+    DiscordTokenController,
+    PublicDiscordController,
     PublicNavigationController,
     NavigationAdminController,
     PublicHomeQuoteController,
@@ -250,6 +256,7 @@ import { LINK_PREVIEW_CONTROLLERS, LINK_PREVIEW_PROVIDERS } from '../link-previe
     ...FORUM_PROVIDERS,
     ...ROOM_PROVIDERS,
     ...COMMUNICATIONS_PROVIDERS,
+    ...DISCORD_PROVIDERS,
     ApprovalsService,
     NavigationService,
     HomeQuoteService,

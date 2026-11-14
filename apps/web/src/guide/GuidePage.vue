@@ -35,7 +35,7 @@ watch(
 const tours = TOUR_IDS.map((id) => TOURS[id]);
 const underWay = computed(() => (guide.progress ? { tour: TOURS[guide.progress.tour], step: guide.progress.step } : null));
 /** On a test deployment, a System Admin can rehearse every part alone as test personas (design §10.4). */
-const rehearsal = computed(() => !!session.me?.testing.enabled && hasRole('system_admin'));
+const rehearsal = computed(() => !!session.me?.testing.enabled && !session.me.testing.operator && hasRole('system_admin', 'site_admin'));
 
 async function start(tour: TourId, step = 0) {
   startTour(tour, step);

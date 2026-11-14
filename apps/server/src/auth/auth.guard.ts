@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
-import { ACT_AS_HEADER, isUuidV7, PROBLEM_TYPES, secondFactorScope, type Role } from 'ustp-domain';
+import { ACT_AS_HEADER, administersSite, isUuidV7, PROBLEM_TYPES, secondFactorScope, type Role } from 'ustp-domain';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { SignInLogService } from '../security/sign-in-log.js';
@@ -129,8 +129,9 @@ export class AuthGuard implements CanActivate {
   }
 
   /**
-   * Checks a request to act as a test persona (design §10.4): testing mode is on, the caller is a System Admin signed
-   * in with MFA, and the target is a persona. Returns the caller's own accountId, the operator.
+   * Checks a request to act as a test persona (design §10.4): testing mode is on, the caller is a System or Site Admin
+   * signed in with MFA (a Site Admin too, whatever the Site Admins' setting lets them skip), and the target is a
+   * persona. Returns the caller's own accountId, the operator.
    */
   private async operatorFor(
     request: FastifyRequest,
@@ -144,7 +145,7 @@ export class AuthGuard implements CanActivate {
       throw new ForbiddenException({ message: 'acting as a test persona requires multi-factor sign-in', type: PROBLEM_TYPES.mfaRequired });
     }
     const [roles, isPersona] = await Promise.all([this.directory.activeRoles(ownAccountId), this.directory.isPersona(personaId)]);
-    if (!roles.includes('system_admin')) throw new ForbiddenException('only System Admins can act as test personas');
+    if (!administersSite(roles)) throw new ForbiddenException('only System and Site Admins can act as test personas');
     if (!isPersona) throw new ForbiddenException('not a test persona');
     // Persona accounts have no login of their own, so this log is what ties each persona action to a real person.
     this.logger.log(`${ownAccountId} acting as test persona ${personaId}: ${request.method} ${request.url.split('?', 1)[0]}`);
