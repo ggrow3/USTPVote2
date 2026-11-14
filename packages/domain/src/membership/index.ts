@@ -65,6 +65,23 @@ export type {
   RegistrationFormChangedPayload,
   RegistrationFormInput,
 } from './registration-form.js';
+export {
+  FIELD_SETTINGS,
+  REGISTRATION_FIELDS,
+  REGISTRATION_FIELD_CHOICES,
+  DEFAULT_REGISTRATION_FIELDS,
+  LENIENT_REGISTRATION_FIELDS,
+  DEFAULT_PLACE_RULES,
+  LENIENT_PLACE_RULES,
+  resolveRegistrationFields,
+  registrationFieldChanges,
+  detailsPlaceRules,
+  countryAsked,
+  placeProblems,
+  applicationFieldProblems,
+  askedAnswers,
+} from './registration-fields.js';
+export type { FieldSetting, RegistrationField, RegistrationFormFields, PlaceRules, FieldProblem } from './registration-fields.js';
 export type * from './records.js';
 export { US_STATES, countryCode, placeOf, usStateCode, usStateName } from './places.js';
 export {

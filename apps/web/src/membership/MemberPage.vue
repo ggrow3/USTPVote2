@@ -2,7 +2,7 @@
 import { useQuasar } from 'quasar';
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
-import { adminStatusChanges, memberCorrectionSchema, type MailAddressState, type MemberDetail, type MemberStatus } from 'ustp-domain';
+import { adminStatusChanges, memberCorrectionSchemaFor, type MailAddressState, type MemberDetail, type MemberStatus } from 'ustp-domain';
 import { focusFirstInvalid, usePageTitle } from '../a11y.js';
 import { ApiError, errorMessage } from '../api.js';
 import PageShell from '../components/PageShell.vue';
@@ -13,6 +13,7 @@ import MemberOffices from '../offices/MemberOffices.vue';
 import { session } from '../session.js';
 import ApplicationAnswers from './ApplicationAnswers.vue';
 import DetailsFields from './DetailsFields.vue';
+import { usePlaceRules } from './place-rules.js';
 import { auth } from '../firebase.js';
 import { sendWelcomeLink } from '../sign-in.js';
 import { memberMailFlags, restoreMemberEmail, stopMemberEmail } from '../notifications/api.js';
@@ -140,6 +141,7 @@ async function sendWelcome() {
 
 // Correcting details: names, state and contact, never the member's email opt-ins.
 const correcting = ref(false);
+const rules = usePlaceRules();
 const saving = ref(false);
 const errors = ref<FieldErrors>({});
 const correction = reactive({ legalName: '', details: null as DetailsForm | null, reason: '' });
@@ -159,7 +161,7 @@ async function saveCorrection() {
     return;
   }
   if (!correction.details) return;
-  const checked = validate(memberCorrectionSchema, {
+  const checked = validate(memberCorrectionSchemaFor(rules.value), {
     legalName: correction.legalName,
     preferredName: correction.details.preferredName,
     ...placeInput(correction.details),
@@ -364,7 +366,7 @@ watch(
               :error="!!errors.legalName"
               :error-message="errors.legalName"
             />
-            <DetailsFields v-model="correction.details" :errors="errors" />
+            <DetailsFields v-model="correction.details" :errors="errors" :rules="rules" />
             <q-input
               v-model="correction.reason"
               outlined

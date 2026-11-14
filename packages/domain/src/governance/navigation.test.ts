@@ -64,7 +64,7 @@ describe('defaults', () => {
     expect(tabs('auditor')).toEqual(['elections', 'offices', 'approvals', 'audit', 'security']);
     expect(tabs('system_admin')).toEqual(['room', 'approvals', 'people', 'signin', 'claude', 'email', 'security', 'testing', 'navigation', 'hub', 'quote', 'bills']);
     // Site Admins: System Admins' tabs but Sign-in methods, API keys and Testing (design §10.1).
-    expect(tabs('site_admin')).toEqual(['room', 'approvals', 'people', 'email', 'security', 'navigation', 'hub', 'quote', 'bills']);
+    expect(tabs('site_admin')).toEqual(['room', 'approvals', 'people', 'email', 'security', 'testing', 'navigation', 'hub', 'quote', 'bills']);
     expect(tabs('course_admin')).toEqual(['course']);
     expect(tabs('communications_admin')).toEqual(['communications', 'hub']);
   });
@@ -202,8 +202,9 @@ describe('locked cells', () => {
     expect(guarded).toEqual(['system_admin:people', 'system_admin:navigation']);
   });
 
-  it('lock Sign-in methods, API keys and Testing off for Site Admins', () => {
-    for (const section of ['signin', 'claude', 'testing'] as const) expect(sectionLock('site_admin', section)).toBe('not_permitted');
+  it('lock Sign-in methods and API keys off for Site Admins, and leave Testing to the settings', () => {
+    for (const section of ['signin', 'claude'] as const) expect(sectionLock('site_admin', section)).toBe('not_permitted');
+    expect(sectionLock('site_admin', 'testing')).toBeNull();
     expect(sectionLock('site_admin', 'people')).toBeNull();
     expect(sectionLock('site_admin', 'navigation')).toBeNull();
   });

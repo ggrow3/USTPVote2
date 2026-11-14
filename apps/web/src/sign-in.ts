@@ -4,6 +4,7 @@ import {
   EmailAuthProvider,
   GoogleAuthProvider,
   isSignInWithEmailLink,
+  linkWithPopup,
   OAuthProvider,
   reauthenticateWithCredential,
   reauthenticateWithPopup,
@@ -54,6 +55,26 @@ export function providerFor(id: FederatedProvider, loginHint?: string | null): A
 
 export function signInWithProvider(auth: Auth, id: FederatedProvider) {
   return signInWithPopup(auth, providerFor(id));
+}
+
+/**
+ * Adds a provider's login to the login the person is signed in with (design §5.13): after the welcome email's link
+ * signs an added member in, "Use Google instead" means they sign in with Google from then on and need no password.
+ * Identity Platform keeps one login per email address, so this links Google to the same login (same uid), which already
+ * holds the membership; nothing else changes for the api. The window opens on the signed-in address.
+ */
+export async function addProviderToLogin(user: User, id: FederatedProvider): Promise<void> {
+  try {
+    await linkWithPopup(user, providerFor(id, user.email));
+  } catch (e) {
+    // Linked already: that is what was asked for.
+    if ((e as { code?: unknown } | null)?.code !== 'auth/provider-already-linked') throw e;
+  }
+}
+
+/** The providers the signed-in login can sign in with besides an emailed link or a password. */
+export function federatedProvidersOf(user: Pick<User, 'providerData'> | null): FederatedProvider[] {
+  return (user?.providerData ?? []).map((p) => p.providerId).filter(isFederatedProvider);
 }
 
 export function isFederatedProvider(id: string): id is FederatedProvider {

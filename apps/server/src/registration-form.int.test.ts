@@ -1,4 +1,4 @@
-import { Collections, DEFAULT_REGISTRATION_FORM, type RegistrationForm } from 'ustp-domain';
+import { Collections, DEFAULT_REGISTRATION_FIELDS, DEFAULT_REGISTRATION_FORM, type RegistrationForm } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { resetEmulators, TestApi, type User } from './testing/emulator.js';
 
@@ -144,5 +144,105 @@ describe('the registration form (design §5.2)', () => {
     expect(stale).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/application form has changed/) } });
     const res = await api.call('POST', '/v1/registration/applications', robin, application(1));
     expect(res).toMatchObject({ status: 201, body: { formVersion: 1, usVoteEligible: false, agreesWithCoreIdeals: true } });
+  });
+
+  describe('the fields it asks', () => {
+    const fields = (change: object) => ({ ...DEFAULT_REGISTRATION_FIELDS, ...change });
+    let robin: Member;
+    let base: object;
+    beforeEach(async () => {
+      const published = await api.call('POST', '/v1/admin/bylaws', admin, { version: '2026.1', title: 'USTP Bylaws', text: 'Article I.\n' });
+      robin = await api.member('robin@example.test');
+      base = {
+        bylawsVersion: published.body.version,
+        bylawsHash: published.body.contentHash,
+        legalName: 'Robin Applicant',
+        attestsAge: true,
+        usVoteEligible: true,
+        agreesWithCoreIdeals: true,
+      };
+    });
+    const apply = (answers: object) => api.call('POST', '/v1/registration/applications', robin, { ...base, ...answers });
+
+    it('are saved with the wording, ledgered as the fields that changed, and left alone by a request without them', async () => {
+      const res = await put(admin, { fields: fields({ city: 'optional', phone: 'hidden' }) });
+      expect(res).toMatchObject({ status: 200, body: { version: 1, fields: fields({ city: 'optional', phone: 'hidden' }) } });
+      expect((await ledger()).at(-1)).toMatchObject({
+        type: 'registration_form.changed',
+        payload: { version: 1, changes: [{ part: 'fields', to: { city: 'optional', phone: 'hidden' } }] },
+      });
+      expect((await api.call('GET', '/v1/registration/form')).body.fields).toMatchObject({ city: 'optional', phone: 'hidden', state: 'required' });
+
+      // A page loaded before fields could be set saves the wording only.
+      const { fields: _, ...wording } = DEFAULT_REGISTRATION_FORM;
+      const old = await api.call('PUT', '/v1/admin/registration-form', admin, { basedOn: 1, ...wording, intro: 'Join us.' });
+      expect(old).toMatchObject({ status: 200, body: { version: 2, intro: 'Join us.', fields: fields({ city: 'optional', phone: 'hidden' }) } });
+
+      expect((await put(admin, { fields: fields({ country: 'optional' }) }, 2)).status).toBe(400);
+      expect((await put(admin, { fields: fields({ volunteer: 'required' }) }, 2)).status).toBe(400);
+    });
+
+    it('hold an application to what they require, naming each field', async () => {
+      const missing = await apply({ formVersion: 0, state: 'CA' });
+      expect(missing.status).toBe(400);
+      expect(missing.body.errors.map((e: { path: string }) => e.path)).toEqual(['dateOfBirth', 'city', 'postalCode']);
+
+      await put(admin, { fields: fields({ dateOfBirth: 'optional', city: 'optional', postalCode: 'optional', phone: 'required' }) });
+      const phone = await apply({ formVersion: 1, state: 'CA' });
+      expect(phone).toMatchObject({ status: 400, body: { errors: [{ path: 'phone', message: 'enter your phone number' }] } });
+      // What is given is still checked.
+      expect((await apply({ formVersion: 1, state: 'CA', phone: '415 555 0100', postalCode: '9461' })).body.errors).toEqual([
+        { path: 'postalCode', message: 'enter a 5-digit ZIP code' },
+      ]);
+      const res = await apply({ formVersion: 1, state: 'CA', phone: '415 555 0100' });
+      expect(res).toMatchObject({ status: 201, body: { dateOfBirth: null, state: 'CA', contact: { city: null, postalCode: null } } });
+    });
+
+    it('keep nothing for a field that is not shown, and take everyone as in the United States without the country', async () => {
+      await put(admin, {
+        fields: fields({ country: 'hidden', state: 'hidden', city: 'hidden', postalCode: 'hidden', dateOfBirth: 'hidden', phone: 'hidden', volunteer: 'hidden', keepInTouch: 'hidden' }),
+      });
+      const res = await apply({
+        formVersion: 1,
+        country: 'DE',
+        region: 'Berlin',
+        city: 'Berlin',
+        postalCode: '10115',
+        dateOfBirth: '1990-04-01',
+        phone: '+49 30 1234567',
+        volunteer: true,
+        newsletter: true,
+        announcements: true,
+        statement: 'To help.',
+      });
+      expect(res).toMatchObject({
+        status: 201,
+        body: {
+          country: 'US',
+          state: null,
+          region: null,
+          dateOfBirth: null,
+          contact: { city: null, postalCode: null, phone: null },
+          volunteer: false,
+          communications: { newsletter: null, announcements: null },
+          statement: 'To help.',
+        },
+      });
+    });
+
+    it("hold a member's own details to the same rules afterwards", async () => {
+      const details = (where: object) => api.call('POST', '/v1/me/details', robin, { ...where, newsletter: false, announcements: false });
+      expect((await apply({ formVersion: 0, dateOfBirth: '1990-04-01', state: 'CA', city: 'Oakland', postalCode: '94612' })).status).toBe(201);
+      const refused = await details({ state: 'CA' });
+      expect(refused.status).toBe(400);
+      expect(refused.body.errors.map((e: { path: string }) => e.path)).toEqual(['city', 'postalCode']);
+
+      await put(admin, { fields: fields({ city: 'optional', postalCode: 'hidden' }) });
+      expect(await details({ state: 'CA' })).toMatchObject({ status: 201, body: { state: 'CA', contact: { city: null, postalCode: null } } });
+      // Not shown on the application, still theirs to give later, and checked when given.
+      expect((await details({ state: 'CA', postalCode: '9461' })).status).toBe(400);
+      expect(await details({ state: 'CA', postalCode: '94612' })).toMatchObject({ status: 201, body: { contact: { postalCode: '94612' } } });
+      expect((await details({})).body.errors).toEqual([{ path: 'state', message: 'choose your state or territory (two-letter code)' }]);
+    });
   });
 });

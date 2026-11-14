@@ -36,8 +36,8 @@ export function applicationWindowStart(now: Date): string {
  * A new application, which makes its author an applicant. It must agree to the bylaws in force (`bylawsInForce`),
  * identified by version and content hash, or to none while none are (both null), and answer the registration form's *current* wording (`formVersion`); the account may
  * have made at most MAX_APPLICATIONS_PER_WINDOW (`recent`, counted from `applicationWindowStart`); and its member
- * status must allow applying (never applied, rejected or resigned). The schema has already checked the age,
- * attestations and contact formats. The two membership questions are recorded as answered: No to either never
+ * status must allow applying (never applied, rejected or resigned). The caller has already checked the age,
+ * attestations and contact formats, and held the answers to the form's field settings (`registration-fields.ts`). The two membership questions are recorded as answered: No to either never
  * refuses an application (design §5.2).
  */
 export function submitApplication(args: {
@@ -81,7 +81,7 @@ export function submitApplication(args: {
     bylawsHash: bylaws?.contentHash ?? null,
     legalName: input.legalName,
     preferredName: input.preferredName || null,
-    dateOfBirth: input.dateOfBirth,
+    dateOfBirth: input.dateOfBirth || null,
     attestations: { minimumAge: MINIMUM_MEMBER_AGE },
     formVersion: input.formVersion,
     usVoteEligible: input.usVoteEligible,

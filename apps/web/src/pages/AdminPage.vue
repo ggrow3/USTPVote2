@@ -68,10 +68,10 @@ const PANELS: Record<AdminSection, Component> = {
 };
 
 usePageTitle('Administration');
-// Testing shows only where the deployment allows test personas (design §10.4).
+// Testing shows only where the deployment allows test personas, and never while acting as one (design §10.4).
 const tabs = computed(() =>
   shown.value.sections
-    .filter((name) => name !== 'testing' || !!session.me?.testing.enabled)
+    .filter((name) => name !== 'testing' || (!!session.me?.testing.enabled && !session.me.testing.operator))
     .map((name) => ({ name, label: SECTION_LABELS[name] })),
 );
 /** Every role is an admin role, so someone with none is not an officer. The menu can show them Admin (design §10.5). */

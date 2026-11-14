@@ -4,12 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const firebase = vi.hoisted(() => ({
   confirmPasswordReset: vi.fn(),
+  linkWithPopup: vi.fn(),
   sendPasswordResetEmail: vi.fn(),
   updatePassword: vi.fn(),
 }));
 vi.mock('firebase/auth', async (original) => ({ ...(await original<object>()), ...firebase }));
 
-const { changePassword, checkNewPassword, isDeadLink, PasswordRejected, resetPassword, sendPasswordReset } = await import('./sign-in.js');
+const { addProviderToLogin, changePassword, checkNewPassword, federatedProvidersOf, isDeadLink, PasswordRejected, resetPassword, sendPasswordReset } =
+  await import('./sign-in.js');
 
 const auth = {} as Auth;
 const GOOD = 'violet harbor lantern';
@@ -177,5 +179,31 @@ describe('isDeadLink (design §5.13)', () => {
     expect(isDeadLink({ code: 'auth/invalid-email' })).toBe(false);
     expect(isDeadLink(new Error('offline'))).toBe(false);
     expect(isDeadLink(null)).toBe(false);
+  });
+});
+
+describe('using Google instead of a password (design §5.13)', () => {
+  const user = { email: 'ada@example.test', providerData: [{ providerId: 'password' }] } as unknown as User;
+
+  it('adds the provider to the signed-in login, the window opening on its address', async () => {
+    await addProviderToLogin(user, 'google.com');
+    expect(firebase.linkWithPopup).toHaveBeenCalledTimes(1);
+    const [linked, provider] = firebase.linkWithPopup.mock.calls[0]!;
+    expect(linked).toBe(user);
+    expect((provider as { providerId: string; getCustomParameters(): object }).providerId).toBe('google.com');
+    expect((provider as { getCustomParameters(): object }).getCustomParameters()).toMatchObject({ login_hint: 'ada@example.test' });
+  });
+
+  it('takes a provider linked already as done, and lets anything else through', async () => {
+    firebase.linkWithPopup.mockRejectedValueOnce({ code: 'auth/provider-already-linked' });
+    await expect(addProviderToLogin(user, 'google.com')).resolves.toBeUndefined();
+    firebase.linkWithPopup.mockRejectedValueOnce({ code: 'auth/credential-already-in-use' });
+    await expect(addProviderToLogin(user, 'google.com')).rejects.toMatchObject({ code: 'auth/credential-already-in-use' });
+  });
+
+  it('knows which providers a login signs in with besides email', () => {
+    expect(federatedProvidersOf(null)).toEqual([]);
+    expect(federatedProvidersOf(user)).toEqual([]);
+    expect(federatedProvidersOf({ providerData: [{ providerId: 'password' }, { providerId: 'google.com' }] } as unknown as User)).toEqual(['google.com']);
   });
 });

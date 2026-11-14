@@ -150,6 +150,14 @@ describe('changes', () => {
     ]);
   });
 
+  it('give the fields set differently, last, each with its new setting', () => {
+    const after = form({ title: 'Join', fields: { ...DEFAULT_REGISTRATION_FORM.fields, city: 'optional', phone: 'hidden' } });
+    expect(registrationFormChanges(DEFAULT_REGISTRATION_FORM, after)).toEqual([
+      { part: 'title', to: 'Join' },
+      { part: 'fields', to: { city: 'optional', phone: 'hidden' } },
+    ]);
+  });
+
   it('see a reordered list of ideals, and nothing when nothing changed', () => {
     const reordered = form({ ideals: [...DEFAULT_REGISTRATION_FORM.ideals].reverse() });
     expect(registrationFormChanges(DEFAULT_REGISTRATION_FORM, reordered).map((c) => c.part)).toEqual(['ideals']);
@@ -162,5 +170,16 @@ describe('the settings request', () => {
     expect(registrationFormSchema.safeParse({ basedOn: 0, ...DEFAULT_REGISTRATION_FORM }).success).toBe(true);
     expect(registrationFormSchema.safeParse({ ...DEFAULT_REGISTRATION_FORM }).success).toBe(false);
     expect(registrationFormSchema.safeParse({ basedOn: 0, ...DEFAULT_REGISTRATION_FORM, extra: 1 }).success).toBe(false);
+  });
+
+  it("takes each field's own choices, every field or none", () => {
+    const { fields, ...wording } = DEFAULT_REGISTRATION_FORM;
+    const withFields = (change: object) => registrationFormSchema.safeParse({ basedOn: 0, ...wording, fields: { ...fields, ...change } }).success;
+    expect(registrationFormSchema.safeParse({ basedOn: 0, ...wording }).success).toBe(true);
+    expect(withFields({ city: 'hidden', country: 'hidden', keepInTouch: 'hidden' })).toBe(true);
+    expect(withFields({ country: 'optional' })).toBe(false);
+    expect(withFields({ volunteer: 'required' })).toBe(false);
+    expect(withFields({ street: 'required' })).toBe(false);
+    expect(registrationFormSchema.safeParse({ basedOn: 0, ...wording, fields: { city: 'hidden' } }).success).toBe(false);
   });
 });

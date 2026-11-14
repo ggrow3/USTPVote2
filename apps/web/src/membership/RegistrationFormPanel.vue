@@ -7,6 +7,7 @@ import {
   DEFAULT_REGISTRATION_FORM,
   nextBylawsVersion,
   publishedBylawsText,
+  REGISTRATION_FIELDS,
   REGISTRATION_FORM_LIMITS as L,
   registrationFormChanges,
   resolveRegistrationForm,
@@ -16,6 +17,7 @@ import {
   type BylawsRecord,
   type BylawsVersionSummary,
   type RegistrationForm,
+  type RegistrationFormFields,
   type RegistrationFormRecord,
 } from 'ustp-domain';
 import { focusElement } from '../a11y.js';
@@ -24,20 +26,21 @@ import BylawsCheckSection from '../components/admin/BylawsCheckSection.vue';
 import { attempt } from '../dialogs.js';
 import { bylawsVersions, currentBylaws, publishBylaws, registrationFormSettings, saveRegistrationForm } from './api.js';
 import MembershipQuestions from './MembershipQuestions.vue';
-import { describeFormChange } from './registration-form-text.js';
+import { describeFormChange, FIELD_LABELS, settingOptions } from './registration-form-text.js';
 import RegistrationIntro from './RegistrationIntro.vue';
 
 /**
  * The registration form (design §5.2): Membership Admins change the heading and intro on the Register page, the bylaws
- * applicants agree to, the two questions and their help, the Core Ideals, and the bonus link applicants get. What the
- * answers mean stays as it is. The wording and the bylaws are kept apart, each versioned and ledgered: saving changed
- * bylaws publishes their next version, and blank bylaws mean the Register page shows none and nobody agrees to any.
+ * applicants agree to, the two questions and their help, the Core Ideals, and the bonus link applicants get; and which
+ * fields the application asks, each required, optional or not shown. What the answers mean stays as it is. The form
+ * and the bylaws are kept apart, each versioned and ledgered: saving changed bylaws publishes their next version, and
+ * blank bylaws mean the Register page shows none and nobody agrees to any.
  */
 const $q = useQuasar();
 
-type Draft = { -readonly [K in keyof RegistrationForm]: RegistrationForm[K] extends readonly string[] ? string[] : RegistrationForm[K] };
+type Draft = Omit<RegistrationForm, 'ideals' | 'fields'> & { ideals: string[]; fields: { -readonly [F in keyof RegistrationFormFields]: RegistrationFormFields[F] } };
 
-const copy = (form: RegistrationForm): Draft => ({ ...form, ideals: [...form.ideals] });
+const copy = (form: RegistrationForm): Draft => ({ ...form, ideals: [...form.ideals], fields: { ...form.fields } });
 
 const saved = ref<RegistrationFormRecord | null>(null);
 /** The fields being edited; shown once the saved version has loaded into them. */
@@ -221,9 +224,10 @@ onMounted(load);
     </div>
     <p>
       The Register page's heading and the intro above its steps, the bylaws applicants agree to, the application's two
-      membership questions and their help, the Core Ideals shown before the second question, and the link applicants
-      get once they have applied. Each application records the versions of the wording and the bylaws it answered, and
-      is refused if either changed while it was being filled in, so the applicant reads the new ones first.
+      membership questions and their help, the Core Ideals shown before the second question, the link applicants get
+      once they have applied, and which fields the application asks. Each application records the versions of the
+      form and the bylaws it answered, and is refused if either changed while it was being filled in, so the
+      applicant reads the new ones first.
     </p>
     <p>
       What the answers mean stays as it is, whatever the wording: Yes to the first question makes a United States
@@ -442,6 +446,40 @@ onMounted(load);
       </q-card-section>
 
       <q-separator />
+      <q-card-section class="ustp-form">
+        <h3 class="text-subtitle2">Fields the application asks</h3>
+        <div class="text-body2">
+          Set each field to required, optional or not shown. The legal name, the bylaws, the age confirmation and the two
+          membership questions are always asked. For the state, city and ZIP code, required means required of people in
+          the United States: elsewhere they stay optional, since not every country has them. An answer to a field that
+          is not shown is never kept.
+        </div>
+        <div class="field-settings">
+          <q-select
+            v-for="field in REGISTRATION_FIELDS"
+            :key="field"
+            v-model="draft.fields[field]"
+            outlined
+            dense
+            emit-value
+            map-options
+            :options="settingOptions(field)"
+            :label="FIELD_LABELS[field]"
+          />
+        </div>
+        <div v-if="resolved.fields.country === 'hidden'" class="ustp-message text-body2" role="status">
+          Without the country, every applicant is taken to live in the United States, and people elsewhere cannot say so.
+        </div>
+        <div v-if="resolved.fields.dateOfBirth !== 'required'" class="ustp-message text-body2" role="status">
+          Without a date of birth, an applicant's age rests on the box they tick to confirm it.
+        </div>
+        <div class="text-caption text-grey-7">
+          Members' own details follow the same rules: what is not required here is not required on their Account page
+          either, where they can still fill in a field this form does not show.
+        </div>
+      </q-card-section>
+
+      <q-separator />
       <q-card-section>
         <h3 class="text-subtitle2 q-mb-sm">Preview</h3>
         <div class="form-preview ustp-stack">
@@ -469,6 +507,7 @@ onMounted(load);
           <p v-if="resolved.tipsAddress" class="q-mb-none">
             After applying: <a :href="resolved.tipsAddress">{{ resolved.tipsTitle }}</a>.
           </p>
+          <p class="text-grey-7 q-mb-none">The fields are not previewed here: open the Register page to see them.</p>
         </div>
       </q-card-section>
 
@@ -510,6 +549,12 @@ onMounted(load);
 .ideals-editor__actions {
   display: flex;
   padding-top: 4px;
+}
+/* One picker per field, as many across as fit. */
+.field-settings {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr));
+  gap: 12px 16px;
 }
 /* The form as applicants see it, set apart from the fields above. */
 .form-preview {

@@ -1,13 +1,13 @@
 import { Body, Controller, Get, HttpCode, NotFoundException, Param, Post, Put, Query } from '@nestjs/common';
 import {
   addMemberSchema,
-  createApplicationSchema,
+  applicationRequestSchema,
   decisionSchema,
   FIRST_STEP_ID,
   firstStepTickSchema,
   MEMBER_STATUSES,
-  memberCorrectionSchema,
-  memberDetailsSchema,
+  memberCorrectionRequestSchema,
+  memberDetailsRequestSchema,
   memberImportPreviewSchema,
   memberImportSchema,
   memberStatusSchema,
@@ -95,7 +95,7 @@ export class RegistrationController {
   }
 
   @Post('registration/applications')
-  apply(@Ctx() ctx: RequestContext, @Body(new ZodPipe(createApplicationSchema)) body: CreateApplicationInput) {
+  apply(@Ctx() ctx: RequestContext, @Body(new ZodPipe(applicationRequestSchema)) body: CreateApplicationInput) {
     return this.applications.submit(ctx, body);
   }
 
@@ -111,7 +111,7 @@ export class RegistrationController {
 
   /** The signed-in member's own details and email opt-ins (design §5.2). */
   @Post('me/details')
-  updateDetails(@Ctx() ctx: RequestContext, @Body(new ZodPipe(memberDetailsSchema)) body: MemberDetailsInput) {
+  updateDetails(@Ctx() ctx: RequestContext, @Body(new ZodPipe(memberDetailsRequestSchema)) body: MemberDetailsInput) {
     return this.members.updateOwnDetails(ctx, body);
   }
 }
@@ -216,7 +216,7 @@ export class MembershipAdminController {
   correctDetails(
     @Ctx() ctx: RequestContext,
     @Param('accountId') accountId: string,
-    @Body(new ZodPipe(memberCorrectionSchema)) body: MemberCorrectionInput,
+    @Body(new ZodPipe(memberCorrectionRequestSchema)) body: MemberCorrectionInput,
   ) {
     return this.members.correctDetails(ctx, accountId, body);
   }

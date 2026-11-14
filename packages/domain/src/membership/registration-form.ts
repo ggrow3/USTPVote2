@@ -1,12 +1,21 @@
 import { z } from 'zod';
 import { deny, OK, type Check } from '../check.js';
+import {
+  DEFAULT_REGISTRATION_FIELDS,
+  REGISTRATION_FIELD_CHOICES,
+  REGISTRATION_FIELDS,
+  registrationFieldChanges,
+  resolveRegistrationFields,
+  type RegistrationFormFields,
+} from './registration-fields.js';
 
 /**
  * The registration form's wording (design §5.2): the Register page's heading and the intro above its steps, the two
  * membership questions and their help text, the Core Ideals shown before the second question, and the bonus link
  * applicants get once they have applied. Membership Admins change the wording. What each answer means is fixed here,
  * since rules hang off it: Yes or No to the first makes a United States or an Allied Member, and the second records
- * agreement with the Core Ideals. Neither answer ever blocks an application.
+ * agreement with the Core Ideals. Neither answer ever blocks an application. With the wording go the settings of the
+ * fields the application asks (`registration-fields.ts`): each required, optional or not shown.
  */
 
 /** A member's class, from their answer to the first question. */
@@ -51,6 +60,8 @@ export interface RegistrationForm {
   readonly tipsTitle: string;
   /** Its `https://` address; empty shows no link. */
   readonly tipsAddress: string;
+  /** Which fields the application asks: each required, optional or not shown. */
+  readonly fields: RegistrationFormFields;
 }
 
 /** The parts of the form in the order the settings show them, as changes name them. */
@@ -65,6 +76,7 @@ export const REGISTRATION_FORM_PARTS = [
   'coreIdealsHelp',
   'tipsTitle',
   'tipsAddress',
+  'fields',
 ] as const satisfies readonly (keyof RegistrationForm)[];
 export type RegistrationFormPart = (typeof REGISTRATION_FORM_PARTS)[number];
 
@@ -105,6 +117,7 @@ export const DEFAULT_REGISTRATION_FORM: RegistrationForm = {
     '(Answer "Yes" or "No". You will not be rejected for membership due to a "No" answer and will still be able to participate in discussions. However, voting on platform planks and organizational structure may, at the Chairman\'s discretion, be limited to those members who answered "Yes" to this question, in order to ensure that the platform and party structure are representative of the views of those who hold core transhumanist ideals.)',
   tipsTitle: 'Tips for Advancing a Brighter Future',
   tipsAddress: '',
+  fields: DEFAULT_REGISTRATION_FIELDS,
 };
 
 const oneLine = (s: string) => s.replace(/\s+/g, ' ').trim();
@@ -126,7 +139,7 @@ type Stored = { readonly [K in keyof RegistrationForm]?: unknown };
 
 /** The wording in force from what was saved, tidied, with the default for anything missing. */
 export function resolveRegistrationForm(stored: Stored | null | undefined): RegistrationForm {
-  const text = (part: Exclude<RegistrationFormPart, 'ideals'>) => {
+  const text = (part: Exclude<RegistrationFormPart, 'ideals' | 'fields'>) => {
     const value = stored?.[part];
     return typeof value === 'string' ? value : DEFAULT_REGISTRATION_FORM[part];
   };
@@ -142,6 +155,7 @@ export function resolveRegistrationForm(stored: Stored | null | undefined): Regi
     coreIdealsHelp: oneLine(text('coreIdealsHelp')),
     tipsTitle: oneLine(text('tipsTitle')),
     tipsAddress: text('tipsAddress').trim(),
+    fields: resolveRegistrationFields(stored?.fields),
   };
 }
 
@@ -195,10 +209,15 @@ export function checkRegistrationForm(form: RegistrationForm): Check {
   return OK;
 }
 
-/** One part that changed, with its new value, as the ledger records it (`registration_form.changed`). */
-export type RegistrationFormChange = {
-  readonly [K in RegistrationFormPart]: { readonly part: K; readonly to: RegistrationForm[K] };
-}[RegistrationFormPart];
+type WordingPart = Exclude<RegistrationFormPart, 'fields'>;
+
+/**
+ * One part that changed, with its new value, as the ledger records it (`registration_form.changed`). For the fields,
+ * only those set differently, each with its new setting.
+ */
+export type RegistrationFormChange =
+  | { readonly [K in WordingPart]: { readonly part: K; readonly to: RegistrationForm[K] } }[WordingPart]
+  | { readonly part: 'fields'; readonly to: Partial<RegistrationFormFields> };
 
 /** `registration_form.changed`: the wording's new version and every part that changed in it. */
 export interface RegistrationFormChangedPayload {
@@ -206,20 +225,31 @@ export interface RegistrationFormChangedPayload {
   readonly changes: readonly RegistrationFormChange[];
 }
 
-const same = (a: RegistrationForm[RegistrationFormPart], b: RegistrationForm[RegistrationFormPart]) =>
+const same = (a: RegistrationForm[WordingPart], b: RegistrationForm[WordingPart]) =>
   typeof a === 'string' || typeof b === 'string' ? a === b : a.length === b.length && a.every((x, i) => x === b[i]);
 
-/** Every part that differs between two versions of the wording, in the settings' order. */
+/** Every part that differs between two versions of the form, in the settings' order. */
 export function registrationFormChanges(before: RegistrationForm, after: RegistrationForm): RegistrationFormChange[] {
-  return REGISTRATION_FORM_PARTS.filter((part) => !same(before[part], after[part])).map(
-    (part) => ({ part, to: after[part] }) as RegistrationFormChange,
-  );
+  return REGISTRATION_FORM_PARTS.flatMap((part): RegistrationFormChange[] => {
+    if (part === 'fields') {
+      const to = registrationFieldChanges(before.fields, after.fields);
+      return Object.keys(to).length ? [{ part, to }] : [];
+    }
+    return same(before[part], after[part]) ? [] : [{ part, to: after[part] } as RegistrationFormChange];
+  });
 }
 
 /** Raw parts are capped well above the limits, which apply once the whitespace is tidied. */
 const raw = (max: number) => z.string().max(max);
 
-/** `PUT /v1/admin/registration-form`: the whole wording, and the version it was edited from. */
+const fieldsSchema = z.strictObject(
+  Object.fromEntries(REGISTRATION_FIELDS.map((field) => [field, z.enum(REGISTRATION_FIELD_CHOICES[field] as [string, ...string[]])])),
+);
+
+/**
+ * `PUT /v1/admin/registration-form`: the whole wording, and the version it was edited from. The fields' settings come
+ * whole too; a request without them (a page loaded before fields could be set) leaves them as they are.
+ */
 export const registrationFormSchema = z.strictObject({
   basedOn: z.number().int().min(0),
   title: raw(1000),
@@ -232,5 +262,6 @@ export const registrationFormSchema = z.strictObject({
   coreIdealsHelp: raw(3000),
   tipsTitle: raw(1000),
   tipsAddress: raw(1000),
+  fields: fieldsSchema.optional(),
 });
 export type RegistrationFormInput = z.infer<typeof registrationFormSchema>;
