@@ -4,12 +4,13 @@ import { useRoute, useRouter } from 'vue-router';
 import { usePageTitle } from '../a11y.js';
 import PageShell from '../components/PageShell.vue';
 import { hasRole, holdsRole, session } from '../session.js';
-import { endTour, guide, startTour, stepAddress, stepDone, TOUR_IDS, type TourId } from './tour.js';
+import GuideRehearse from './GuideRehearse.vue';
+import { canRehearse, endTour, guide, startTour, stepAddress, stepDone, TOUR_IDS, type TourId } from './tour.js';
 import { TOURS } from './tours.js';
 
 /**
- * The Guide (design §10.11): the walkthroughs for a Voter, an Election Admin and an Auditor, every step readable here,
- * and a way to start each one, at its first step or any other.
+ * The Guide (design §10.11): the walkthroughs for a Voter, an Election Admin, an Auditor and a Site Admin, every step
+ * readable here, and a way to start each one, at its first step or any other.
  */
 usePageTitle('Guide');
 const route = useRoute();
@@ -21,6 +22,7 @@ const isTour = (value: unknown): value is TourId => (TOUR_IDS as readonly unknow
 function initial(): TourId {
   if (isTour(route.query.tour)) return route.query.tour;
   if (guide.progress) return guide.progress.tour;
+  if (holdsRole('site_admin')) return 'site_admin';
   if (holdsRole('auditor')) return 'auditor';
   if (hasRole('election_admin')) return 'election_admin';
   return 'voter';
@@ -34,8 +36,10 @@ watch(
 
 const tours = TOUR_IDS.map((id) => TOURS[id]);
 const underWay = computed(() => (guide.progress ? { tour: TOURS[guide.progress.tour], step: guide.progress.step } : null));
-/** On a test deployment, a System Admin can rehearse every part alone as test personas (design §10.4). */
+/** On a test deployment, a System or Site Admin can rehearse every part alone as test personas (design §10.4). */
 const rehearsal = computed(() => !!session.me?.testing.enabled && !session.me.testing.operator && hasRole('system_admin', 'site_admin'));
+/** The steps' "Testing alone?" boxes, also while acting as a test persona. */
+const rehearsing = computed(() => canRehearse(session.me));
 
 async function start(tour: TourId, step = 0) {
   startTour(tour, step);
@@ -50,8 +54,9 @@ async function start(tour: TourId, step = 0) {
       <h1 class="text-h5">Guide</h1>
       <p>
         Page by page, what to do on this site in an election, for each of the three people it takes: the voter, the Election
-        Admin who sets it up, and the Auditor who approves each step. Start a walkthrough and a panel at the foot of every
-        page says what to do there; Next opens the next page. Or read every step below.
+        Admin who sets it up, and the Auditor who approves each step. A Site Admin can do the Election Admin’s part or the
+        Auditor’s, and has a walkthrough of their own that runs a whole election. Start a walkthrough and a panel at the
+        foot of every page says what to do there; Next opens the next page. Or read every step below.
       </p>
       <q-banner v-if="underWay" class="bg-grey-3 text-black" rounded>
         You are on step {{ underWay.step + 1 }} of {{ underWay.tour.steps.length }} of the {{ underWay.tour.title }}
@@ -72,11 +77,17 @@ async function start(tour: TourId, step = 0) {
         <li>The Election Admin requests certification, and an Auditor approves it: the results are final.</li>
         <li>Anyone can check the results, and each voter their receipt, against the published record.</li>
       </ol>
+      <p>
+        A Site Admin may make the Election Admin’s requests or decide them as the Auditor, but whoever approves a request
+        is always someone other than whoever made it.
+      </p>
       <q-banner v-if="rehearsal" class="bg-grey-3 text-black" rounded>
-        This is a test deployment, so you can rehearse all three parts alone. In
+        This is a test deployment, so you can rehearse every part alone. In
         <router-link :to="{ path: '/admin', query: { tab: 'testing' } }">Admin › Testing</router-link>, “Create demo
         election” sets up a rehearsal, and “Act as” makes this browser tab a test persona: the Test Election Admin, the Test
-        Auditor or a Test Voter. Each tab follows its own walkthrough.
+        Auditor or a Test Voter. Nobody decides their own requests, so each step that waits on an approval has a
+        “Testing alone?” box: when to act as the Test Auditor, what to press, and how to switch back. Each tab follows its
+        own walkthrough.
       </q-banner>
 
       <h2 class="text-subtitle1">Walkthroughs</h2>
@@ -112,6 +123,7 @@ async function start(tour: TourId, step = 0) {
               <ul v-if="s.notes?.length" class="text-caption q-mb-sm">
                 <li v-for="(note, j) in s.notes" :key="j">{{ note }}</li>
               </ul>
+              <GuideRehearse v-if="rehearsing && s.rehearse?.length" :items="s.rehearse" :level="4" />
               <q-btn flat dense no-caps color="primary" label="Start here" @click="start(t.id, i)">
                 <span class="sr-only">: {{ s.title }}</span>
               </q-btn>

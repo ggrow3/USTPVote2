@@ -1,9 +1,10 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DEFAULT_NAVIGATION, SECTION_ROLES } from 'ustp-domain';
+import { DEFAULT_NAVIGATION, SECTION_ROLES, shownTo, type Role } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
 import {
   atPlace,
+  canRehearse,
   electionOfPath,
   endTour,
   goToStep,
@@ -27,8 +28,8 @@ const steps = TOUR_IDS.flatMap((id) => TOURS[id].steps.map((step) => ({ tour: TO
 const unnamed = (page: string) => page.replace(/:\w+/g, ':');
 
 describe('the walkthroughs', () => {
-  it('cover a Voter, an Election Admin and an Auditor, each step named once in its tour', () => {
-    expect(TOUR_IDS.map((id) => TOURS[id].id)).toEqual(['voter', 'election_admin', 'auditor']);
+  it('cover a Voter, an Election Admin, an Auditor and a Site Admin, each step named once in its tour', () => {
+    expect(TOUR_IDS.map((id) => TOURS[id].id)).toEqual(['voter', 'election_admin', 'auditor', 'site_admin']);
     for (const id of TOUR_IDS) {
       const ids = TOURS[id].steps.map((s) => s.id);
       expect(ids.length, id).toBeGreaterThan(5);
@@ -60,15 +61,39 @@ describe('the walkthroughs', () => {
     }
   });
 
-  it('use only admin tabs their role is shown by default', () => {
+  it('use only admin sections their role is shown by default', () => {
     for (const { tour, step } of steps) {
       for (const tab of [step.tab, step.pick?.tab]) {
         if (!tab) continue;
         expect(tour.role, `${tour.id} ${step.id}`).not.toBeNull();
-        expect(SECTION_ROLES[tab], `${tour.id} ${step.id}`).toContain(tour.role);
-        expect(DEFAULT_NAVIGATION.sections[tour.role!][tab], `${tour.id} ${step.id}`).toBe(true);
+        // A Site Admin is shown every section another role but System Admin is (design §10.1), as the console shows them.
+        const shown = shownTo(DEFAULT_NAVIGATION, { membership: 'no_membership', roles: [tour.role!] }).sections;
+        expect(shown, `${tour.id} ${step.id}`).toContain(tab);
+        if (tour.role !== 'site_admin') expect(SECTION_ROLES[tab], `${tour.id} ${step.id}`).toContain(tour.role);
       }
     }
+  });
+
+  // Nobody decides their own requests (design §10.2), so rehearsing alone needs the Test Auditor at each of these.
+  it('say when to act as the Test Auditor at every step that waits on an approval, and how to switch back', () => {
+    const waiting = ['roll', 'approvals', 'schedule', 'open', 'certify'];
+    for (const id of ['election_admin', 'site_admin'] as const) {
+      for (const stepId of waiting) {
+        const rehearse = TOURS[id].steps.find((s) => s.id === stepId)?.rehearse?.join(' ') ?? '';
+        expect(rehearse, `${id} ${stepId}`).toContain('Test Auditor');
+        expect(rehearse, `${id} ${stepId}`).toMatch(/“Act as”|“Switch persona”/);
+        expect(rehearse, `${id} ${stepId}`).toContain('“Approve”');
+        expect(rehearse, `${id} ${stepId}`).toMatch(/“Stop acting”|switch back/);
+      }
+    }
+    // A Site Admin makes the requests as themselves, so starts acting from Admin › Testing and stops with the yellow bar.
+    for (const stepId of waiting) {
+      const rehearse = TOURS.site_admin.steps.find((s) => s.id === stepId)!.rehearse!.join(' ');
+      expect(rehearse, stepId).toContain('Admin › Testing');
+      expect(rehearse, stepId).toContain('“Stop acting”');
+    }
+    // The testing tools are where a Site Admin's walkthrough sends them, so Site Admins are shown them by default.
+    expect(DEFAULT_NAVIGATION.sections.site_admin.testing).toBe(true);
   });
 
   /** The web app's own source, but the Guide and the tests, with its spacing and `&amp;` as a page shows them. */
@@ -85,7 +110,14 @@ describe('the walkthroughs', () => {
     .replace(/\s+/g, ' ');
 
   it('quote labels the pages still show', () => {
-    const texts = steps.flatMap(({ step }) => [step.title, step.about, ...step.todo, ...(step.notes ?? []), step.pick?.how ?? '']);
+    const texts = steps.flatMap(({ step }) => [
+      step.title,
+      step.about,
+      ...step.todo,
+      ...(step.notes ?? []),
+      ...(step.rehearse ?? []),
+      step.pick?.how ?? '',
+    ]);
     const quoted = [...new Set(texts.flatMap((text) => [...text.matchAll(/“([^”]+)”/g)].map((m) => m[1]!)))];
     expect(quoted.length).toBeGreaterThan(40);
     for (const label of quoted) expect(appText.includes(label), label).toBe(true);
@@ -117,6 +149,24 @@ describe('stepDone', () => {
     expect(stepDone(TOURS.voter.steps[0]!, true)).toBe(true);
     expect(stepDone(TOURS.voter.steps[0]!, false)).toBe(false);
     expect(stepDone(TOURS.voter.steps[1]!, true)).toBe(false);
+  });
+});
+
+describe('canRehearse', () => {
+  const me = (roles: Role[], enabled = true, operator: string | null = null) => ({ roles, testing: { enabled, operator } });
+
+  it('is a System or Site Admin on a test deployment, or someone acting as a test persona there', () => {
+    expect(canRehearse(me(['site_admin']))).toBe(true);
+    expect(canRehearse(me(['system_admin']))).toBe(true);
+    // Acting as the Test Auditor, the roles are the persona's; only System and Site Admins act.
+    expect(canRehearse(me(['auditor'], true, 'operator-1'))).toBe(true);
+  });
+
+  it('is nobody where testing is off, nor an Election Admin or Auditor as themselves', () => {
+    expect(canRehearse(me(['site_admin'], false))).toBe(false);
+    expect(canRehearse(me(['election_admin']))).toBe(false);
+    expect(canRehearse(me(['auditor']))).toBe(false);
+    expect(canRehearse(null)).toBe(false);
   });
 });
 

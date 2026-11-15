@@ -1,14 +1,14 @@
 import { reactive } from 'vue';
-import type { AdminSection, Role } from 'ustp-domain';
+import { administersSite, type AdminSection, type Role } from 'ustp-domain';
 import { TOURS } from './tours.js';
 
 /**
- * The Guide's walkthroughs (design §10.11): page by page, what a Voter, an Election Admin and an Auditor do on the
- * site, from signing in to a certified election. Starting one keeps a panel at the foot of every page with the step
- * the person is on; Next opens the next step's page. The content is in `tours.ts`; this is the bookkeeping.
+ * The Guide's walkthroughs (design §10.11): page by page, what a Voter, an Election Admin, an Auditor and a Site Admin
+ * do on the site, from signing in to a certified election. Starting one keeps a panel at the foot of every page with
+ * the step the person is on; Next opens the next step's page. The content is in `tours.ts`; this is the bookkeeping.
  */
 
-export const TOUR_IDS = ['voter', 'election_admin', 'auditor'] as const;
+export const TOUR_IDS = ['voter', 'election_admin', 'auditor', 'site_admin'] as const;
 export type TourId = (typeof TOUR_IDS)[number];
 
 /** A page, or an admin console tab, as a walkthrough step names it. */
@@ -35,6 +35,12 @@ export interface TourStep extends StepPlace {
   readonly todo: readonly string[];
   /** When it goes differently, and who acts next. */
   readonly notes?: readonly string[];
+  /**
+   * Testing alone (design §10.4): what someone rehearsing every part by themselves does at this step, in order, where
+   * it waits on another person, above all a second person's approval: which test persona to switch this tab to, what
+   * to press as them, and how to switch back. Shown only to people who can act as test personas (`canRehearse`).
+   */
+  readonly rehearse?: readonly string[];
 }
 
 export interface Tour {
@@ -65,6 +71,21 @@ export function stepAddress(step: TourStep, election: string | null): StepAddres
   const place = stepPlace(step, election);
   const path = place.page.replace(ELECTION, encodeURIComponent(election ?? ''));
   return place.tab ? { path, query: { tab: place.tab } } : { path };
+}
+
+/** What the Guide needs to know of the person signed in (`GET /v1/me`). */
+export interface Rehearser {
+  /** The roles held, or the test persona's while acting as one. */
+  readonly roles: readonly Role[];
+  readonly testing: { readonly enabled: boolean; readonly operator: string | null };
+}
+
+/**
+ * Whether the steps' "Testing alone?" notes are for this person (design §10.4, §10.11): on a test deployment, a System
+ * or Site Admin, who can act as the test personas, or someone acting as one now, which only they can do.
+ */
+export function canRehearse(me: Rehearser | null | undefined): boolean {
+  return !!me?.testing.enabled && (!!me.testing.operator || administersSite(me.roles));
 }
 
 /** Signing in, for someone already signed in: the step is done, so the walkthrough stays on the page shown. */

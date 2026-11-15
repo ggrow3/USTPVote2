@@ -1,8 +1,8 @@
 import type { Tour, TourId, TourStep } from './tour.js';
 
 /**
- * The walkthroughs' content (design §10.11): one step per page or admin tab, in the order the person does them. Labels
- * the pages show are quoted with “ ” exactly as the pages write them, so the test can find each one in the app.
+ * The walkthroughs' content (design §10.11): one step per page or admin section, in the order the person does them.
+ * Labels the pages show are quoted with “ ” exactly as the pages write them, so the test can find each one in the app.
  */
 
 const SIGN_IN_TODO = [
@@ -18,7 +18,40 @@ const TWO_STEP_TODO = [
   'Press “Turn on”. Then sign out and sign back in, entering a code from the app when asked.',
 ];
 
+/**
+ * Signing in as a System or Site Admin, who may be required to sign in with Google (design §4): signed in another way,
+ * the admin tools stay closed.
+ */
+const SITE_ADMIN_SIGN_IN_TODO = [
+  'If this site requires Google sign-in of System and Site Admins, press “Continue with” Google and choose the Google account of your own address.',
+  'Otherwise press “Continue with” Google, Microsoft or Apple, or use the “Email & password” or “Email me a link” tab, and press “Sign in” or “Send link”.',
+  'If your account has an authenticator app, enter the 6-digit code it shows and press “Verify”.',
+];
+
 const ADMIN_ELECTIONS = { page: '/admin', tab: 'elections', title: 'Admin › Elections' } as const;
+
+/**
+ * Testing alone (design §10.4): nobody decides their own requests, so someone rehearsing alone switches this tab to the
+ * Test Auditor, decides the request as it in Admin › Approvals, and switches back. `request` is the request as the
+ * Approvals list names it. A Site Admin starts as themselves; someone following the Election Admin's walkthrough may be
+ * acting as the Test Election Admin, or be a Site Admin acting as an Election Admin themselves.
+ */
+function approveAsTestAuditor(request: string, from: 'site_admin' | 'election_admin'): string[] {
+  const become =
+    from === 'site_admin'
+      ? 'Open Admin › Testing and press “Act as” beside Test Auditor. The yellow bar at the top now says you are acting as it.'
+      : 'Make this tab the Test Auditor. Acting as the Test Election Admin, press “Switch persona” in the yellow bar at the top and choose Test Auditor. As yourself, a Site Admin, open Admin › Testing and press “Act as” beside Test Auditor.';
+  const back =
+    from === 'site_admin'
+      ? 'Press “Stop acting” in the yellow bar: you are yourself again.'
+      : 'Switch back the way you came: “Switch persona” and Test Election Admin, or “Stop acting”.';
+  return [
+    become,
+    `Open Approvals in the admin menu. On ${request}, press “Approve”, write a reason and press OK.`,
+    back,
+    'Press Open in this walkthrough’s panel to come back to the election, and carry on.',
+  ];
+}
 
 /** Steps on an election's own pages are reached from the elections list, until the walkthrough has seen one. */
 const PICK_FROM_LIST = {
@@ -165,6 +198,73 @@ const voter: readonly TourStep[] = [
   },
 ];
 
+// Steps the Election Admin's and the Site Admin's walkthroughs share: running an election is the same work for both.
+
+/** Starting an election in Admin › Elections. */
+const NEW_ELECTION_TODO = [
+  'Press “New election”. Give it a “Title”, choose “Secret ballot” or “Open roll-call”, and set when voting opens and closes.',
+  'Press “Create draft”: the election editor opens.',
+  'Or press “Import JSON” to start from a ustp.election file. “Download sample ballot” gives one with a question of every kind, to change first.',
+];
+
+/** Building the ballot, in the editor. */
+const BUILD_STEP: TourStep = {
+  id: 'build',
+  title: 'Build the ballot',
+  page: '/admin/elections/:election',
+  pick: { ...PICK_FROM_LIST, how: 'Open the election from the list in Admin › Elections, or create one with “New election”.' },
+  about: 'The ballot is built as voters will read it. Changes save themselves until scheduling freezes it.',
+  todo: [
+    'In the ballot’s details, check the “Ballot title”, description, voting window and secrecy. “More settings” holds the anonymity threshold.',
+    'Under “Add a question:”, press “Yes / No / Abstain” for a proposal, or “Choose one”, “Choose several” or “Rank in order” for a contest.',
+    'Fill in each question: its options (link a candidate’s member account when it is offered), or the “Text members vote on”. “More rules” sets what it takes to pass, the quorum and the office its winners take up.',
+    'Watch for “All changes saved” in the save bar.',
+  ],
+  notes: [
+    'You cannot stand in an election you administer, and a candidate in an election cannot administer it.',
+    'Forum proposals are put on a draft’s ballot from Admin › Forum, with “Put on a ballot”.',
+    'Questions from a ustp.election file, such as the sample ballot, are added after the ballot’s own with “Import JSON” beside “Download as JSON”.',
+  ],
+};
+
+/** The ballot as voters will see it. */
+const PREVIEW_STEP: TourStep = {
+  id: 'preview',
+  title: 'Preview the ballot',
+  page: '/admin/elections/:election/preview',
+  pick: PICK_FROM_LIST,
+  about: 'The ballot as voters will see it once voting opens, as the draft stands now.',
+  todo: ['Try the questions: nothing you choose here is sent.', 'Press “Back to the editor” when you are done.'],
+  notes: ['In the editor, “Preview as voter” opens this page; the ballot also downloads as Word or JSON.'],
+};
+
+/** What still stops scheduling. */
+const READY_STEP: TourStep = {
+  id: 'ready',
+  title: 'Check it is ready',
+  page: '/admin/elections/:election',
+  pick: PICK_FROM_LIST,
+  about: 'The editor lists what still stops scheduling, and offers advisory checks.',
+  todo: [
+    'Read the banner at the top: “Not ready to schedule yet:” lists what to fix.',
+    'If you like, press “Check against the bylaws” (a minute or two) and “Check consistency with Claude”. Their notes are advice and never stop scheduling.',
+    'The “Where this election is” card shows every step to come and who it waits on.',
+  ],
+};
+
+/** The results page, once certified. */
+const RESULTS_STEP: TourStep = {
+  id: 'results',
+  title: 'The published results',
+  page: '/results/:election',
+  pick: PICK_FROM_LIST,
+  about: 'The results page anyone can open and check, with the certification once it is approved.',
+  todo: [
+    'Check it says the results are certified, and that every step under “How these results were checked” passes.',
+    'Share the page’s address, or use “Download CSV”, “Download as Word” or the “Google Sheets formula”.',
+  ],
+};
+
 const electionAdmin: readonly TourStep[] = [
   {
     id: 'sign-in',
@@ -188,60 +288,28 @@ const electionAdmin: readonly TourStep[] = [
     page: '/admin',
     tab: 'elections',
     about: 'Every election and its state, and where you start a new one.',
-    todo: [
-      'Press “New election”. Give it a “Title”, choose “Secret ballot” or “Open roll-call”, and set when voting opens and closes.',
-      'Press “Create draft”: the election editor opens.',
-      'Or press “Import JSON” to start from a ustp.election file. “Download sample ballot” gives one with a question of every kind, to change first.',
-    ],
+    todo: NEW_ELECTION_TODO,
     notes: ['To work on an election already listed, press it.', 'To tie a contest to an office, define the office first in Admin › Offices.'],
-  },
-  {
-    id: 'build',
-    title: 'Build the ballot',
-    page: '/admin/elections/:election',
-    pick: { ...PICK_FROM_LIST, how: 'Open the election from the list in Admin › Elections, or create one with “New election”.' },
-    about: 'The ballot is built as voters will read it. Changes save themselves until scheduling freezes it.',
-    todo: [
-      'In the ballot’s details, check the “Ballot title”, description, voting window and secrecy. “More settings” holds the anonymity threshold.',
-      'Under “Add a question:”, press “Yes / No / Abstain” for a proposal, or “Choose one”, “Choose several” or “Rank in order” for a contest.',
-      'Fill in each question: its options (link a candidate’s member account when it is offered), or the “Text members vote on”. “More rules” sets what it takes to pass, the quorum and the office its winners take up.',
-      'Watch for “All changes saved” in the save bar.',
-    ],
-    notes: [
-      'You cannot stand in an election you administer, and a candidate in an election cannot administer it.',
-      'Forum proposals are put on a draft’s ballot from Admin › Forum, with “Put on a ballot”.',
-      'Questions from a ustp.election file, such as the sample ballot, are added after the ballot’s own with “Import JSON” beside “Download as JSON”.',
+    rehearse: [
+      'To rehearse as a test persona, open Admin › Testing as yourself and press “Act as” beside Test Election Admin, then carry on with this walkthrough as it.',
+      'An Auditor approves the roll, the scheduling and the certification, and nobody approves their own requests: the steps that wait on an Auditor say when to switch this tab to the Test Auditor and back.',
     ],
   },
-  {
-    id: 'preview',
-    title: 'Preview the ballot',
-    page: '/admin/elections/:election/preview',
-    pick: PICK_FROM_LIST,
-    about: 'The ballot as voters will see it once voting opens, as the draft stands now.',
-    todo: ['Try the questions: nothing you choose here is sent.', 'Press “Back to the editor” when you are done.'],
-    notes: ['In the editor, “Preview as voter” opens this page; the ballot also downloads as Word or JSON.'],
-  },
-  {
-    id: 'ready',
-    title: 'Check it is ready',
-    page: '/admin/elections/:election',
-    pick: PICK_FROM_LIST,
-    about: 'The editor lists what still stops scheduling, and offers advisory checks.',
-    todo: [
-      'Read the banner at the top: “Not ready to schedule yet:” lists what to fix.',
-      'If you like, press “Check against the bylaws” (a minute or two) and “Check consistency with Claude”. Their notes are advice and never stop scheduling.',
-      'The “Where this election is” card shows every step to come and who it waits on.',
-    ],
-  },
+  BUILD_STEP,
+  PREVIEW_STEP,
+  READY_STEP,
   {
     id: 'roll',
     title: 'Request the voter roll',
     page: '/admin/elections/:election',
     pick: PICK_FROM_LIST,
     about: 'A snapshot of every Active member now. An Auditor approves it before the election can be scheduled.',
-    todo: ['On the “Voter roll” card, press “Request roll snapshot”, give a reason and send it.', 'An Auditor approves it next; the worker signs the roll within a minute after.'],
+    todo: [
+      'On the “Voter roll” card, press “Request roll snapshot”, give a reason and send it.',
+      'An Auditor, or a Site Admin, approves it next; the worker signs the roll within a minute after.',
+    ],
     notes: ['On a test deployment, “Request rehearsal roll” takes test voters only, for practice.'],
+    rehearse: approveAsTestAuditor('“approve a rehearsal roll” (or “approve the voter roll”)', 'election_admin'),
   },
   {
     id: 'approvals',
@@ -253,7 +321,8 @@ const electionAdmin: readonly TourStep[] = [
       'Find your request and see that it is waiting. “Review” opens what it is about.',
       'Come back to the editor once an Auditor has decided it.',
     ],
-    notes: ['You cannot decide your own requests: an Auditor does.', 'Requests expire after 7 days.'],
+    notes: ['You cannot decide your own requests: an Auditor or a Site Admin does.', 'Requests expire after 7 days.'],
+    rehearse: approveAsTestAuditor('your request', 'election_admin'),
   },
   {
     id: 'schedule',
@@ -264,9 +333,10 @@ const electionAdmin: readonly TourStep[] = [
     todo: [
       'Once the roll is approved and nothing stops scheduling, press “Request scheduling” and give a reason.',
       'Do not edit the ballot after that: any edit voids the request.',
-      'Wait for an Auditor to approve it. The election is then scheduled.',
+      'Wait for an Auditor or a Site Admin to approve it. The election is then scheduled.',
     ],
     notes: ['Voting must still open in the future when the Auditor approves.'],
+    rehearse: approveAsTestAuditor('“schedule the election”', 'election_admin'),
   },
   {
     id: 'open',
@@ -281,6 +351,10 @@ const electionAdmin: readonly TourStep[] = [
     notes: [
       'About a day before voting closes, those who have not voted get a reminder.',
       'To stop a scheduled or open election, press “Cancel election” with a reason: an Auditor must approve it. A draft is cancelled at once.',
+    ],
+    rehearse: [
+      'To vote as test voters on a rehearsal roll: press “Switch persona” in the yellow bar and choose a Test Voter (as yourself, “Act as” in Admin › Testing), then press “Vote now” on its ballot. Switch to the next voter the same way.',
+      'To cancel the election instead: after “Cancel election”, switch this tab to the Test Auditor, open Approvals in the admin menu, press “Approve” on “cancel the election”, write a reason and press OK, then switch back.',
     ],
   },
   {
@@ -297,18 +371,9 @@ const electionAdmin: readonly TourStep[] = [
     notes: [
       'A cancelled election nobody voted in can be deleted for good: “Delete election”, with a reason and a recent sign-in.',
     ],
+    rehearse: approveAsTestAuditor('“certify the results”', 'election_admin'),
   },
-  {
-    id: 'results',
-    title: 'The published results',
-    page: '/results/:election',
-    pick: PICK_FROM_LIST,
-    about: 'The results page anyone can open and check, with the certification once it is approved.',
-    todo: [
-      'Check it says the results are certified, and that every step under “How these results were checked” passes.',
-      'Share the page’s address, or use “Download CSV”, “Download as Word” or the “Google Sheets formula”.',
-    ],
-  },
+  RESULTS_STEP,
 ];
 
 const auditor: readonly TourStep[] = [
@@ -342,6 +407,11 @@ const auditor: readonly TourStep[] = [
       'Approve and Reject are greyed out on your own requests and on requests about your own account.',
       'If your sign-in is more than 15 minutes old, the site first asks you to confirm it is you and for an authenticator code.',
       'Requests expire after 7 days.',
+      'Site Admins decide these requests too, but never their own.',
+    ],
+    rehearse: [
+      'Nothing waiting? The requests come from the Test Election Admin: press “Switch persona” in the yellow bar, choose Test Election Admin and make one in the election editor, such as “Request rehearsal roll”.',
+      'Then press “Switch persona” again and choose Test Auditor to decide it here.',
     ],
   },
   {
@@ -450,6 +520,141 @@ const auditor: readonly TourStep[] = [
   },
 ];
 
+/**
+ * A Site Admin acts as every role but System Admin (design §10.1), so runs a whole election: the Election Admin's part
+ * as themselves, and the Auditor's for requests someone else made. Only their own requests wait on another person.
+ */
+const siteAdmin: readonly TourStep[] = [
+  {
+    id: 'sign-in',
+    title: 'Sign in',
+    page: '/signin',
+    about:
+      'Sign in with the account a System Admin made a Site Admin. A Site Admin acts as every role but System Admin without being granted it, the Election Admin and the Auditor among them.',
+    todo: SITE_ADMIN_SIGN_IN_TODO,
+    notes: [
+      'Signed in another way while Google is required, the Administration page says “System and Site Admins must sign in with Google”: sign out, and sign in again with Google.',
+      'Already signed in? Press Next.',
+    ],
+  },
+  {
+    id: 'two-step',
+    title: 'Two-step verification',
+    page: '/account',
+    about:
+      'Whether a Site Admin needs two-step verification is a System Admin’s switch, “Require it of Site Admins”. On, as it starts, you need it on every page, as System Admins do. Off, you need it nowhere: not for approvals, nor for the testing tools.',
+    todo: [
+      'If the “Two-step verification” card says “You need two-step verification on every page.”, press “Set up an authenticator app”.',
+      'Scan the code with an authenticator app on your phone, then enter the 6-digit code it shows and a “Name for this device”.',
+      'Press “Turn on”. Then sign out and sign back in, entering a code from the app when asked.',
+    ],
+    notes: [
+      'No such notice on the card? Two-step verification is off for Site Admins on this site: press Next, or set it up anyway.',
+      'While it is required, every page but this one brings you back here until you sign in with a code.',
+      'Approvals need a sign-in in the last 15 minutes: when yours is older, the site first asks you to confirm it is you.',
+    ],
+  },
+  {
+    id: 'elections',
+    title: 'Admin › Elections',
+    page: '/admin',
+    tab: 'elections',
+    about: 'Every election and its state. You create and change them as an Election Admin does, with no Election Admin role granted.',
+    todo: NEW_ELECTION_TODO,
+    notes: ['To work on an election already listed, press it.', 'To tie a contest to an office, define the office first in Admin › Offices.'],
+    rehearse: [
+      'Get the test personas ready first: open Admin › Testing and press “Create admin personas” if none are listed, then “Add voters” for the test voters of a rehearsal roll.',
+      'No Testing in your admin menu? A System Admin shows it to Site Admins in Admin › Navigation.',
+      'You build the election and make every request as yourself. Nobody approves their own requests, so each step that waits on an approval says when to act as the Test Auditor and when to stop.',
+    ],
+  },
+  BUILD_STEP,
+  PREVIEW_STEP,
+  READY_STEP,
+  {
+    id: 'roll',
+    title: 'Request the voter roll',
+    page: '/admin/elections/:election',
+    pick: PICK_FROM_LIST,
+    about:
+      'A snapshot of every Active member now. Someone other than you approves it, an Auditor or another Site Admin, before the election can be scheduled.',
+    todo: [
+      'On the “Voter roll” card, press “Request roll snapshot”, give a reason and send it. On a test deployment, “Request rehearsal roll” takes test voters only.',
+      'Wait for an Auditor or another Site Admin to approve it. The worker signs the roll within a minute after.',
+    ],
+    notes: ['You cannot approve your own request: Admin › Approvals says “You requested this; another admin must decide.”'],
+    rehearse: approveAsTestAuditor('“approve a rehearsal roll” (or “approve the voter roll”)', 'site_admin'),
+  },
+  {
+    id: 'approvals',
+    title: 'Admin › Approvals',
+    page: '/admin',
+    tab: 'approvals',
+    about: 'Every two-person request waiting for a decision. You decide them as an Auditor does, all but your own.',
+    todo: [
+      'Find your request and see that it is waiting: it says “You requested this; another admin must decide.” “Review” opens what it is about.',
+      'Requests someone else made, you may decide: check them as the Auditor walkthrough says, then press “Approve” or “Reject” and give a reason.',
+    ],
+    notes: [
+      'You never decide a request about your own account, nor one in an election you stand in.',
+      'If your sign-in is more than 15 minutes old, the site first asks you to confirm it is you.',
+      'Requests expire after 7 days. Role changes are not here: make them in Admin › People, where they take effect at once.',
+    ],
+    rehearse: approveAsTestAuditor('your request', 'site_admin'),
+  },
+  {
+    id: 'schedule',
+    title: 'Request scheduling',
+    page: '/admin/elections/:election',
+    pick: PICK_FROM_LIST,
+    about:
+      'Scheduling freezes this exact ballot and roll once someone else approves it. Voting then opens by itself at the set time.',
+    todo: [
+      'Once the roll is approved and nothing stops scheduling, press “Request scheduling” and give a reason.',
+      'Do not edit the ballot after that: any edit voids the request.',
+      'Wait for an Auditor or another Site Admin to approve it. The election is then scheduled.',
+    ],
+    notes: ['Voting must still open in the future when the request is approved.'],
+    rehearse: approveAsTestAuditor('“schedule the election”', 'site_admin'),
+  },
+  {
+    id: 'open',
+    title: 'While voting is open',
+    page: '/admin/elections/:election',
+    pick: PICK_FROM_LIST,
+    about: 'The worker opens voting at the opening time and emails everyone on the roll that it is time to vote.',
+    todo: [
+      'Watch the “Email to voters” card: how many on the roll each email went to.',
+      'Press “Send test email” to see one in your own inbox. If some failed, the card offers to resend to them.',
+    ],
+    notes: [
+      'About a day before voting closes, those who have not voted get a reminder.',
+      'To stop a scheduled or open election, press “Cancel election” with a reason: someone else must approve it. A draft is cancelled at once.',
+    ],
+    rehearse: [
+      'To vote as test voters on a rehearsal roll: open Admin › Testing, press “Act as” beside a Test Voter, then “Vote now” on its ballot. “Switch persona” in the yellow bar moves to the next voter. Press “Stop acting” when they have voted.',
+      'To cancel the election instead: after “Cancel election”, press “Act as” beside Test Auditor in Admin › Testing, open Approvals in the admin menu, press “Approve” on “cancel the election”, write a reason and press OK, then press “Stop acting”.',
+    ],
+  },
+  {
+    id: 'certify',
+    title: 'Request certification',
+    page: '/admin/elections/:election',
+    pick: PICK_FROM_LIST,
+    about: 'When voting closes, the worker seals and counts the ballots and publishes provisional results, usually within a minute.',
+    todo: [
+      'On the “Results” card, press “View results” and read them.',
+      'Back in the editor, press “Request certification” with a reason: someone else certifies exactly these provisional results.',
+      'Once approved, the results are certified, and winners of contests that fill an office start their terms.',
+    ],
+    notes: [
+      'A cancelled election nobody voted in can be deleted for good: “Delete election”, with a reason and a recent sign-in.',
+    ],
+    rehearse: approveAsTestAuditor('“certify the results”', 'site_admin'),
+  },
+  RESULTS_STEP,
+];
+
 export const TOURS: Readonly<Record<TourId, Tour>> = {
   voter: {
     id: 'voter',
@@ -471,5 +676,12 @@ export const TOURS: Readonly<Record<TourId, Tour>> = {
     who: 'The officer who approves each step an Election Admin asks for, and checks the ledger.',
     role: 'auditor',
     steps: auditor,
+  },
+  site_admin: {
+    id: 'site_admin',
+    title: 'Site Admin',
+    who: 'A Site Admin running a whole election: the Election Admin’s part as themselves, the approvals by someone else.',
+    role: 'site_admin',
+    steps: siteAdmin,
   },
 };
