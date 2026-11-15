@@ -5,24 +5,27 @@ import { usePageTitle } from '../a11y.js';
 import PageShell from '../components/PageShell.vue';
 import { hasRole, holdsRole, session } from '../session.js';
 import GuideRehearse from './GuideRehearse.vue';
-import { canRehearse, endTour, guide, startTour, stepAddress, stepDone, TOUR_IDS, type TourId } from './tour.js';
+import { canRehearse, endTour, guide, startTour, stepAddress, stepDone, TOUR_IDS, toursFor, type TourId } from './tour.js';
 import { TOURS } from './tours.js';
 
 /**
- * The Guide (design §10.11): the walkthroughs for a Voter, an Election Admin, an Auditor and a Site Admin, every step
- * readable here, and a way to start each one, at its first step or any other.
+ * The Guide (design §10.11): the walkthroughs for a Voter, an Election Admin, an Auditor and, to a Site Admin only, a Site
+ * Admin, every step readable here, and a way to start each one, at its first step or any other.
  */
 usePageTitle('Guide');
 const route = useRoute();
 const router = useRouter();
 
-const isTour = (value: unknown): value is TourId => (TOUR_IDS as readonly unknown[]).includes(value);
+/** The walkthroughs this person is shown: the Site Admin's only to a Site Admin. */
+const shown = computed(() => toursFor(session.me?.roles ?? []));
+const isTour = (value: unknown): value is TourId => (TOUR_IDS as readonly unknown[]).includes(value) && shown.value.includes(value as TourId);
+const siteAdmin = computed(() => shown.value.includes('site_admin'));
 
 /** The walkthrough asked for, else the one under way, else the one for the person's role. */
 function initial(): TourId {
   if (isTour(route.query.tour)) return route.query.tour;
-  if (guide.progress) return guide.progress.tour;
-  if (holdsRole('site_admin')) return 'site_admin';
+  if (guide.progress && isTour(guide.progress.tour)) return guide.progress.tour;
+  if (siteAdmin.value) return 'site_admin';
   if (holdsRole('auditor')) return 'auditor';
   if (hasRole('election_admin')) return 'election_admin';
   return 'voter';
@@ -34,8 +37,13 @@ watch(
   (tour) => isTour(tour) && (chosen.value = tour),
 );
 
-const tours = TOUR_IDS.map((id) => TOURS[id]);
-const underWay = computed(() => (guide.progress ? { tour: TOURS[guide.progress.tour], step: guide.progress.step } : null));
+// Someone who stops being shown the walkthrough on display (signing out, or acting as a test persona) sees the Voter's.
+watch(shown, (now) => !now.includes(chosen.value) && (chosen.value = 'voter'));
+
+const tours = computed(() => shown.value.map((id) => TOURS[id]));
+const underWay = computed(() =>
+  guide.progress && isTour(guide.progress.tour) ? { tour: TOURS[guide.progress.tour], step: guide.progress.step } : null,
+);
 /** On a test deployment, a System or Site Admin can rehearse every part alone as test personas (design §10.4). */
 const rehearsal = computed(() => !!session.me?.testing.enabled && !session.me.testing.operator && hasRole('system_admin', 'site_admin'));
 /** The steps' "Testing alone?" boxes, also while acting as a test persona. */
@@ -55,8 +63,9 @@ async function start(tour: TourId, step = 0) {
       <p>
         Page by page, what to do on this site in an election, for each of the three people it takes: the voter, the Election
         Admin who sets it up, and the Auditor who approves each step. A Site Admin can do the Election Admin’s part or the
-        Auditor’s, and has a walkthrough of their own that runs a whole election. Start a walkthrough and a panel at the
-        foot of every page says what to do there; Next opens the next page. Or read every step below.
+        Auditor’s<template v-if="siteAdmin">, and you have a walkthrough of your own, the Site Admin’s, that runs a whole
+        election</template>. Start a walkthrough and a panel at the foot of every page says what to do there; Next opens the
+        next page. Or read every step below.
       </p>
       <q-banner v-if="underWay" class="bg-grey-3 text-black" rounded>
         You are on step {{ underWay.step + 1 }} of {{ underWay.tour.steps.length }} of the {{ underWay.tour.title }}

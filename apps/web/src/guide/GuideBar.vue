@@ -4,7 +4,7 @@ import { useRoute, useRouter } from 'vue-router';
 import { announce } from '../a11y.js';
 import { session } from '../session.js';
 import GuideRehearse from './GuideRehearse.vue';
-import { atPlace, canRehearse, endTour, foldPanel, goToStep, guide, noteElection, stepAddress, stepDone, stepPlace } from './tour.js';
+import { atPlace, canRehearse, endTour, foldPanel, goToStep, guide, noteElection, stepAddress, stepDone, stepPlace, toursFor } from './tour.js';
 import { TOURS } from './tours.js';
 
 /**
@@ -14,7 +14,10 @@ import { TOURS } from './tours.js';
 const route = useRoute();
 const router = useRouter();
 
-const tour = computed(() => (guide.progress ? TOURS[guide.progress.tour] : null));
+/** The walkthrough under way, if this person is shown it: the Site Admin's is not, once they are no Site Admin. */
+const tour = computed(() =>
+  guide.progress && toursFor(session.me?.roles ?? []).includes(guide.progress.tour) ? TOURS[guide.progress.tour] : null,
+);
 const index = computed(() => guide.progress?.step ?? 0);
 const step = computed(() => tour.value?.steps[index.value] ?? null);
 const count = computed(() => tour.value?.steps.length ?? 0);

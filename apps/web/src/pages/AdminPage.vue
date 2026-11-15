@@ -165,7 +165,7 @@ const shownSection = computed(() => tabs.value.find((t) => t.name === tab.value)
     </div>
     <template v-else>
       <q-banner v-if="needsGoogle" class="bg-orange-2 text-black q-mb-md" rounded>
-        System and Site Admins must sign in with Google. Sign out, then choose “Sign in with Google” with the Google
+        System and Site Admins must sign in with Google. Sign out, then choose “Continue with Google” with the Google
         account of your address.
       </q-banner>
       <q-banner v-if="needsMfa" class="bg-orange-2 text-black q-mb-md" rounded>

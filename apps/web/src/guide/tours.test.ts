@@ -17,6 +17,7 @@ import {
   stepDone,
   stepPlace,
   TOUR_IDS,
+  toursFor,
   type TourStep,
 } from './tour.js';
 import { TOURS } from './tours.js';
@@ -169,6 +170,16 @@ describe('canRehearse', () => {
     expect(canRehearse(me(['election_admin']))).toBe(false);
     expect(canRehearse(me(['auditor']))).toBe(false);
     expect(canRehearse(null)).toBe(false);
+  });
+});
+
+describe('toursFor', () => {
+  it('shows the Site Admin walkthrough to Site Admins only', () => {
+    expect(toursFor(['site_admin'])).toEqual(['voter', 'election_admin', 'auditor', 'site_admin']);
+    expect(toursFor(['site_admin', 'auditor'])).toContain('site_admin');
+    for (const roles of [[], ['system_admin'], ['election_admin'], ['auditor'], ['membership_admin', 'election_admin']] as Role[][]) {
+      expect(toursFor(roles), roles.join(',') || 'no role').toEqual(['voter', 'election_admin', 'auditor']);
+    }
   });
 });
 
