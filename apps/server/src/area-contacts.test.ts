@@ -61,6 +61,14 @@ function fakeRecords(seen: Seen[], down: string[] = [], sos?: Record<string, unk
       }
       return json({ results: q.get('office') === 'S' ? [] : [{ candidate_id: 'P00000001', name: 'DOE, JANE', party_full: null }] });
     }
+    if (url.endsWith('/legislators-social-media.json')) {
+      if (down.includes('social')) return json({ error: 'down' }, 503);
+      return json([
+        { id: { bioguide: 'L000593' }, social: { twitter: 'RepMikeLevin', twitter_id: '1', facebook: 'RepMikeLevin', youtube_id: 'UCabc' } },
+        { id: { bioguide: 'P000145' }, social: { twitter: 'not a name' } },
+        { id: {} },
+      ]);
+    }
     if (host === 'unitedstates.github.io') {
       const term = (type: string, district: number | undefined, extra = {}) => [{ type, state: 'CA', district, party: 'Democrat', ...extra }];
       return json([
@@ -133,6 +141,34 @@ describe('the public records for a member’s area', () => {
     const asked = seen.length;
     await source.forArea('CA', [CA49, SD38, AD76], 2026, HOLDERS);
     expect(seen).toHaveLength(asked);
+  });
+
+  it('gives members of Congress their official accounts, and lists them without when the accounts list does not answer', async () => {
+    const source = new PublicContactSource({ fec: 'k', openStates: null, civic: null }, fakeRecords([]));
+    const holders = (await source.forArea('CA', [CA49], 2026, HOLDERS)).contacts.filter((c) => c.role === 'holder');
+    expect(holders.map((c) => [c.name, c.social])).toEqual([
+      ['Alex Padilla', []],
+      [
+        'Mike Levin',
+        [
+          { network: 'x', handle: '@RepMikeLevin', url: 'https://x.com/RepMikeLevin' },
+          { network: 'facebook', handle: 'RepMikeLevin', url: 'https://www.facebook.com/RepMikeLevin' },
+          { network: 'youtube', handle: 'YouTube', url: 'https://www.youtube.com/channel/UCabc' },
+        ],
+      ],
+    ]);
+
+    const seen: Seen[] = [];
+    const partly = new PublicContactSource({ fec: 'k', openStates: null, civic: null }, fakeRecords(seen, ['social']));
+    const first = await partly.forArea('CA', [CA49], 2026, HOLDERS);
+    expect(first.feeds.congress).toBe('ok');
+    expect(first.contacts.filter((c) => c.role === 'holder').map((c) => [c.name, c.social])).toEqual([
+      ['Alex Padilla', []],
+      ['Mike Levin', []],
+    ]);
+    // A failure is not kept: the list is asked again next time.
+    await partly.forArea('CA', [CA49], 2026, HOLDERS);
+    expect(seen.filter((r) => r.url.endsWith('/legislators-social-media.json'))).toHaveLength(2);
   });
 
   it('asks for President in a presidential year, and leaves state legislators out without a key', async () => {

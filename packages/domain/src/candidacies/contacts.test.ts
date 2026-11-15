@@ -17,6 +17,7 @@ import {
   OFFICES_OF_KIND,
   removeAreaContact,
   seatNotUp,
+  socialAccounts,
   type AreaContact,
   type CandidateArea,
   type District,
@@ -223,5 +224,28 @@ describe('the Your area page', () => {
     expect(fecDisplayName("O'BRIEN-SMITH, MARY MRS.")).toBe("Mary O'Brien-Smith");
     expect(fecDisplayName('DE LA CRUZ, ANA III')).toBe('Ana De La Cruz III');
     expect(fecDisplayName('WRITE IN')).toBe('Write In');
+  });
+});
+
+describe('official social media accounts (design §5.12)', () => {
+  it('reads a record’s accounts, in the networks’ order, leaving out names that are no part of an address', () => {
+    expect(
+      socialAccounts({ twitter: 'RepExample', twitter_id: '1', facebook: 'rep.example', instagram: 'repexample', youtube: 'RepEx', youtube_id: 'UC123', mastodon: '@rep@Mastodon.social' }),
+    ).toEqual([
+      { network: 'x', handle: '@RepExample', url: 'https://x.com/RepExample' },
+      { network: 'facebook', handle: 'rep.example', url: 'https://www.facebook.com/rep.example' },
+      { network: 'instagram', handle: '@repexample', url: 'https://www.instagram.com/repexample' },
+      { network: 'youtube', handle: 'RepEx', url: 'https://www.youtube.com/channel/UC123' },
+      { network: 'mastodon', handle: '@rep@Mastodon.social', url: 'https://mastodon.social/@rep' },
+    ]);
+    expect(socialAccounts({ youtube: 'OldName' })).toEqual([{ network: 'youtube', handle: 'OldName', url: 'https://www.youtube.com/user/OldName' }]);
+    expect(socialAccounts({ twitter: 'a/b?c', facebook: 7, mastodon: 'rep@nowhere', instagram: '' })).toEqual([]);
+  });
+
+  it('are kept from the record when an admin enters the same person', () => {
+    const { record } = addAreaContact(areaContactContent(areaContactInputSchema.parse(INPUT), CA49), 'c1', 'admin', AT);
+    const entered = areaContactView(record);
+    const fromRecord: AreaContact = { ...entered, contactId: 'congress:X', source: 'congress', social: socialAccounts({ twitter: 'RepExample' }) };
+    expect(mergeContacts([fromRecord], [entered])[0]).toMatchObject({ source: 'admin', social: [{ network: 'x', handle: '@RepExample' }] });
   });
 });

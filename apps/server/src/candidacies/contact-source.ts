@@ -8,6 +8,7 @@ import {
   mergeStateList,
   nameKey,
   NATION_ID,
+  socialAccounts,
   STATE_FIPS,
   type AreaContact,
   type BallotCandidate,
@@ -20,6 +21,7 @@ import {
   type DistrictKind,
   type PublicOffice,
   type SeatNotUp,
+  type SocialAccount,
 } from 'ustp-domain';
 import type { ContactKeys } from '../api-keys/api-keys.js';
 
@@ -58,6 +60,8 @@ export const CONTACT_SOURCE = Symbol('ContactSource');
 
 const FEC = 'https://api.open.fec.gov/v1/candidates/';
 const LEGISLATORS = 'https://unitedstates.github.io/congress-legislators/legislators-current.json';
+/** The same project's list of each member's official social media accounts, by Bioguide ID. */
+const LEGISLATORS_SOCIAL = 'https://unitedstates.github.io/congress-legislators/legislators-social-media.json';
 const OPEN_STATES = 'https://v3.openstates.org/people.geo';
 const CIVIC = 'https://www.googleapis.com/civicinfo/v2/voterinfo';
 const TIMEOUT_MS = 15_000;
@@ -147,6 +151,11 @@ interface Legislator {
     readonly url?: string;
     readonly contact_form?: string;
   }[];
+}
+
+interface LegislatorSocial {
+  readonly id?: { readonly bioguide?: string };
+  readonly social?: Readonly<Record<string, unknown>>;
 }
 
 interface OpenStatesPerson {
@@ -552,9 +561,25 @@ export class PublicContactSource implements ContactSource {
     });
   }
 
-  /** The state's senators and the representatives of its districts. */
+  /**
+   * Each member of Congress's official accounts, by Bioguide ID. The list is an extra: when it does not answer, the
+   * members are listed without accounts, and it is asked again next time.
+   */
+  private async congressSocial(): Promise<ReadonlyMap<string, SocialAccount[]>> {
+    try {
+      return await this.kept('congress-social', async () => {
+        const list = await this.json<LegislatorSocial[]>(LEGISLATORS_SOCIAL);
+        return new Map(list.flatMap((l): [string, SocialAccount[]][] => (l.id?.bioguide && l.social ? [[l.id.bioguide, socialAccounts(l.social)]] : [])));
+      });
+    } catch (e) {
+      this.logger.warn(`congress social accounts unavailable: ${e instanceof Error ? e.message : String(e)}`);
+      return new Map();
+    }
+  }
+
+  /** The state's senators and the representatives of its districts, each with their official accounts. */
   private async congress(state: string, house: readonly District[]): Promise<AreaContact[][]> {
-    const everyone = await this.kept('congress', () => this.json<Legislator[]>(LEGISLATORS));
+    const [everyone, social] = await Promise.all([this.kept('congress', () => this.json<Legislator[]>(LEGISLATORS)), this.congressSocial()]);
     const person = (l: Legislator, office: PublicOffice, district: ContactDistrict): AreaContact => {
       const term = l.terms.at(-1)!;
       return {
@@ -569,6 +594,7 @@ export class PublicContactSource implements ContactSource {
         email: null,
         contactUrl: https(term.contact_form),
         website: https(term.url),
+        social: social.get(l.id.bioguide) ?? [],
         sourceUrl: `https://bioguide.congress.gov/search/bio/${encodeURIComponent(l.id.bioguide)}`,
         election: null,
         incumbent: false,
@@ -758,7 +784,15 @@ function localFederal(state: string, house: readonly District[], electionYear: n
     const rep = { ...LOCAL_BASE, office: 'us_house', officeTitle: houseTitle(state), district: contactDistrict(d), name: 'Hal House', party: 'Democrat' } as const;
     const seat = d.geoid.slice(2);
     contacts.push(
-      { ...rep, contactId: `congress:H${d.geoid}00`, source: 'congress', role: 'holder', contactUrl: 'https://house.example/contact', website: 'https://house.example' },
+      {
+        ...rep,
+        contactId: `congress:H${d.geoid}00`,
+        source: 'congress',
+        role: 'holder',
+        contactUrl: 'https://house.example/contact',
+        website: 'https://house.example',
+        social: socialAccounts({ twitter: 'RepHalHouse', facebook: 'RepHalHouse', youtube_id: 'UC0000000000000000000000' }),
+      },
       { ...rep, contactId: `fec:H0${state}${seat}001`, source: 'fec', role: 'candidate', election: String(electionYear), incumbent: true },
       { ...rep, contactId: `fec:H0${state}${seat}002`, source: 'fec', role: 'candidate', name: 'Cass Challenger', party: 'Republican', election: String(electionYear) },
     );

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { refuse, type Outcome } from '../check.js';
 import type { LedgerEvent } from '../ledger-events.js';
 import { isCalendarDate } from '../membership/registration.js';
+import type { SocialNetwork } from '../governance/hub.js';
 import type { CandidateArea } from './area.js';
 import type { EmailTemplate } from './email-templates.js';
 import type { ContactPhoto, ContactProfile } from './profiles.js';
@@ -38,6 +39,42 @@ export type ContactSource = ContactFeed | 'admin';
 export type ContactFeedState = 'ok' | 'off' | 'unavailable';
 
 export const CONTACT_LIMITS = { name: 120, party: 60, officeTitle: 120, email: 254, url: 500 } as const;
+
+/** One official social media account of a person, as a public record lists it (design §5.12). */
+export interface SocialAccount {
+  readonly network: SocialNetwork;
+  /** The account's name there, as people write it: `@RepExample`. */
+  readonly handle: string;
+  readonly url: string;
+}
+
+const SOCIAL_HANDLE = /^[A-Za-z0-9_.-]{1,100}$/;
+
+/**
+ * The accounts in a record's `{ twitter, facebook, instagram, youtube, youtube_id, mastodon }` (the congress-legislators
+ * project's social media list), in the networks' order. A name that could not be part of an address is left out;
+ * Mastodon's is `@name@server`.
+ */
+export function socialAccounts(social: Readonly<Record<string, unknown>>): SocialAccount[] {
+  const name = (key: string): string | null => {
+    const value = social[key];
+    return typeof value === 'string' && SOCIAL_HANDLE.test(value) ? value : null;
+  };
+  const [twitter, facebook, instagram, youtube, youtubeId] = ['twitter', 'facebook', 'instagram', 'youtube', 'youtube_id'].map(name);
+  const accounts: (SocialAccount | null)[] = [
+    twitter ? { network: 'x', handle: `@${twitter}`, url: `https://x.com/${twitter}` } : null,
+    facebook ? { network: 'facebook', handle: facebook, url: `https://www.facebook.com/${facebook}` } : null,
+    instagram ? { network: 'instagram', handle: `@${instagram}`, url: `https://www.instagram.com/${instagram}` } : null,
+    youtubeId
+      ? { network: 'youtube', handle: youtube ?? 'YouTube', url: `https://www.youtube.com/channel/${youtubeId}` }
+      : youtube
+        ? { network: 'youtube', handle: youtube, url: `https://www.youtube.com/user/${youtube}` }
+        : null,
+  ];
+  const mastodon = typeof social.mastodon === 'string' ? /^@([A-Za-z0-9_]{1,60})@([a-z0-9.-]{3,100})$/i.exec(social.mastodon) : null;
+  if (mastodon) accounts.push({ network: 'mastodon', handle: mastodon[0], url: `https://${mastodon[2]!.toLowerCase()}/@${mastodon[1]}` });
+  return accounts.filter((a): a is SocialAccount => a !== null);
+}
 
 /** What the office is called when a feed does not say. */
 export const DEFAULT_OFFICE_TITLES: Readonly<Record<PublicOffice, string>> = {
@@ -77,6 +114,8 @@ export interface AreaContact {
   /** A web form for writing to them, where they have one instead of (or as well as) an address. */
   readonly contactUrl: string | null;
   readonly website: string | null;
+  /** Their official social media accounts, where a record lists them: members of Congress, from the congress-legislators project. */
+  readonly social?: readonly SocialAccount[];
   /** The public record it comes from (the FEC filing, the Congress biography, the Open States page); null for an admin's. */
   readonly sourceUrl: string | null;
   /** For candidates: the election day (`YYYY-MM-DD`), or the year the FEC lists them for (`2026`); null for holders. */
@@ -125,7 +164,10 @@ export interface SeatNotUp {
 export const seatNotUp = (notUp: readonly SeatNotUp[], seat: { readonly office: PublicOffice; readonly district: Pick<District, 'kind' | 'geoid'> }): boolean =>
   notUp.some((s) => s.office === seat.office && s.kind === seat.district.kind && s.geoid === seat.district.geoid);
 
-/** `GET /v1/candidacies/area/contacts`: everything the Your area page shows. */
+/**
+ * `GET /v1/candidacies/area/contacts` (the member's own area) and `POST /v1/public/candidates/area/contacts` (a ZIP
+ * code anyone types): everything the Your area page shows.
+ */
 export interface AreaContactsView {
   readonly area: CandidateArea;
   /** The federal general election the FEC's lists are for. */
@@ -341,7 +383,7 @@ export function nameKey(name: string): string {
 /**
  * The feeds' people and the admins' entries together. An entry for the same person (role, office, district and name)
  * takes the place of the feed's, so an admin can add the email address a public record lacks; what the entry leaves
- * empty (party, contact form, website) and the record's link, incumbency, photo and profile are kept from the record.
+ * empty (party, contact form, website) and the record's link, accounts, incumbency, photo and profile are kept from the record.
  */
 export function mergeContacts(found: readonly AreaContact[], entered: readonly AreaContact[]): AreaContact[] {
   const key = (c: AreaContact) => `${c.role}|${c.office}|${c.district.kind}:${c.district.geoid}|${nameKey(c.name)}`;
@@ -358,6 +400,7 @@ export function mergeContacts(found: readonly AreaContact[], entered: readonly A
         email: c.email ?? record.email,
         contactUrl: c.contactUrl ?? record.contactUrl,
         website: c.website ?? record.website,
+        social: record.social,
         sourceUrl: record.sourceUrl,
         incumbent: c.incumbent || record.incumbent,
         photo: record.photo,

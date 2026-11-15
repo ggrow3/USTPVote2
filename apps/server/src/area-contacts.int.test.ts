@@ -1,5 +1,6 @@
 import type { AreaContactRecord, AreaContactsView, EmailTemplate, LedgerEntry } from 'ustp-domain';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { AREA_LOOKUP_RATE, PublicAreaCandidatesController } from './candidacies/candidacies.controller.js';
 import { resetEmulators, TestApi, type User } from './testing/emulator.js';
 
 // DISTRICTS=local (testing/emulator.ts): a ZIP code is in the first district of each kind, and one ending in 5 in both
@@ -36,6 +37,7 @@ async function entries(type: string): Promise<LedgerEntry[]> {
 
 beforeEach(async () => {
   await resetEmulators();
+  api.app.get(PublicAreaCandidatesController).forget();
   [sa1] = await api.systemAdmins();
   comms = await api.member('comms@example.test');
   ada = await api.member('ada@example.test');
@@ -96,6 +98,50 @@ describe('the Your area page', () => {
     expect(v.area.basis).toBe('no_zip');
     expect(v.contacts.every((c) => c.district.kind === 'state' || c.district.kind === 'nation')).toBe(true);
     expect((await api.call('GET', '/v1/candidacies/area/contacts')).status).toBe(401);
+  });
+});
+
+describe('the Your area page for a ZIP code anyone types', () => {
+  const lookUp = (zip: unknown, headers: Record<string, string> = {}) => api.call('POST', '/v1/public/candidates/area/contacts', undefined, { zip }, headers);
+
+  it('lists who holds and who runs there, with accounts, the communications team’s entries and the emails, and keeps no ZIP code', async () => {
+    expect((await add(COUNTY)).status).toBe(201);
+    const res = await lookUp('94601');
+    expect(res.status).toBe(200);
+    const v = res.body as AreaContactsView;
+    expect(v.area).toMatchObject({ state: 'CA', basis: 'zip' });
+    expect(v.feeds).toEqual({ fec: 'ok', congress: 'ok', openstates: 'ok', civic: 'ok', sos: 'ok' });
+    const listed = names(v);
+    expect(listed).toContain('congress holder us_senate@06 Sam Senator');
+    expect(listed).toContain('congress holder us_house@0601 Hal House');
+    expect(listed).toContain('fec candidate us_house@0601 Cass Challenger');
+    expect(listed).toContain('openstates holder state_upper@06001 Uma Upper');
+    expect(listed).toContain('admin holder county@06001 Cora County');
+    // One congressional district for this ZIP code: nobody of the second.
+    expect(listed.some((n) => n.includes('@0602 '))).toBe(false);
+    const hal = v.contacts.find((c) => c.role === 'holder' && c.name === 'Hal House')!;
+    expect(hal.social?.map((s) => [s.network, s.handle])).toEqual([
+      ['x', '@RepHalHouse'],
+      ['facebook', 'RepHalHouse'],
+      ['youtube', 'YouTube'],
+    ]);
+    expect(v.templates.map((t) => t.templateId)).toEqual(['starting-stance', 'starting-meeting', 'starting-questions']);
+    expect(JSON.stringify(v)).not.toContain('94601');
+    // A member's own area has the accounts too.
+    expect((await view(ada)).contacts.find((c) => c.role === 'holder' && c.name === 'Hal House')!.social).toHaveLength(3);
+  });
+
+  it('checks the ZIP code, and counts lookups per address with the Candidates page’s', async () => {
+    expect((await lookUp('9460')).status).toBe(400);
+    expect((await lookUp('00000')).status).toBe(404);
+    expect((await api.call('POST', '/v1/public/candidates/area/contacts', undefined, { zip: '94601', state: 'CA' })).status).toBe(400);
+
+    api.app.get(PublicAreaCandidatesController).forget();
+    const from = { 'x-forwarded-for': '203.0.113.7' };
+    expect((await api.call('POST', '/v1/public/candidates/area', undefined, { zip: '94601' }, from)).status).toBe(200);
+    for (let i = 1; i < AREA_LOOKUP_RATE.visits; i++) expect((await lookUp('94601', from)).status).toBe(200);
+    expect((await lookUp('94601', from)).status).toBe(429);
+    expect((await lookUp('94601', { 'x-forwarded-for': '203.0.113.8' })).status).toBe(200);
   });
 });
 
