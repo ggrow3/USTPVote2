@@ -1,3 +1,4 @@
+import { effectiveRoles } from 'ustp-domain';
 import type {
   AdminSection,
   ApprovalRequestRecord,
@@ -227,9 +228,13 @@ export function electionsStatus(elections: readonly ElectionRecord[]): string {
   return parts.filter(Boolean).join(' · ') || 'No elections in progress.';
 }
 
-/** Two-person requests this person could decide: their role approves it, and it is neither theirs nor about them. */
+/**
+ * Two-person requests this person could decide: a role they act with approves it (a Site Admin acts as an Auditor,
+ * design §10.1), and it is neither theirs nor about them.
+ */
 export function approvalsStatus(requests: readonly ApprovalRequestRecord[], accountId: string | undefined, roles: readonly Role[]): string {
-  const mine = requests.filter((r) => roles.includes(r.approverRole) && r.requestedBy !== accountId && r.subject !== accountId);
+  const acting = effectiveRoles(roles);
+  const mine = requests.filter((r) => acting.includes(r.approverRole) && r.requestedBy !== accountId && r.subject !== accountId);
   return mine.length ? `${count(mine.length, 'request')} waiting for your decision` : 'Nothing waiting for your decision.';
 }
 

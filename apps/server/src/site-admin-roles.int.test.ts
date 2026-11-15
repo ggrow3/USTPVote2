@@ -2,8 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { resetEmulators, TestApi, type User } from './testing/emulator.js';
 
 /**
- * A Site Admin does what every other role but System Admin does, without being granted it (design §10.1), except
- * deciding a two-person request, which takes the Auditor role itself (§10.2).
+ * A Site Admin does what every other role but System Admin does, without being granted it (design §10.1), deciding
+ * two-person requests included, though never their own (§10.2).
  */
 let api: TestApi;
 beforeAll(async () => {
@@ -87,28 +87,28 @@ describe('a Site Admin', () => {
     });
   });
 
-  it('requests a two-person action, and neither they nor another Site Admin decides it: an Auditor does', async () => {
+  it('requests a two-person action, which another Site Admin or an Auditor decides, never the requester', async () => {
     const url = `/v1/admin/elections/${await draft(site)}`;
     const roll = await api.call('POST', `${url}/roll`, site, { reason: 'roll for 2026' });
     expect(roll).toMatchObject({ status: 201, body: { status: 'pending', count: 1 } });
     const id = roll.body.approvalId as string;
 
     expect(await decide(site, id)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/different person/) } });
-    const refusal = 'roll.approve must be approved by someone granted auditor: a site_admin requests it, and does not decide it';
-    expect(await decide(site2, id)).toMatchObject({ status: 403, body: { detail: refusal } });
-    expect(await decide(site2, id, 'reject')).toMatchObject({ status: 403, body: { detail: refusal } });
+    expect(await decide(site, id, 'reject')).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/different person/) } });
     expect((await api.call('GET', url, site)).body.roll.status).toBe('pending');
 
-    expect((await decide(auditor, id)).body).toMatchObject({ status: 'executed', decidedBy: auditor.accountId });
+    // Another Site Admin decides it, as an Auditor would, and the ledger names them.
+    expect((await decide(site2, id)).body).toMatchObject({ status: 'executed', decidedBy: site2.accountId });
     expect((await api.call('GET', url, site)).body.roll.status).toBe('approved');
-  });
+    const decided = await api.firebase.db.collection('audit_events').where('type', '==', 'approval.decided').get();
+    expect(decided.docs.map((d) => d.data().actor)).toEqual([site2.accountId]);
 
-  it('decides another person’s request once a System Admin has made them an Auditor, never their own', async () => {
-    await api.grant(site2.accountId, 'auditor', sa1);
-    const theirs = await api.call('POST', `/v1/admin/elections/${await draft(site)}/roll`, site, { reason: 'roll' });
-    expect((await decide(site2, theirs.body.approvalId)).body.status).toBe('executed');
-    const own = await api.call('POST', `/v1/admin/elections/${await draft(site2)}/roll`, site2, { reason: 'roll' });
-    expect(await decide(site2, own.body.approvalId)).toMatchObject({ status: 403, body: { detail: expect.stringMatching(/different person/) } });
+    // An Auditor decides a Site Admin's request, and a Site Admin an Election Admin's.
+    const second = await api.call('POST', `/v1/admin/elections/${await draft(site)}/roll`, site, { reason: 'roll' });
+    expect((await decide(auditor, second.body.approvalId)).body.status).toBe('executed');
+    const third = await api.call('POST', `/v1/admin/elections/${await draft(ea)}/roll`, ea, { reason: 'roll' });
+    expect(await decide(ea, third.body.approvalId)).toMatchObject({ status: 403 });
+    expect((await decide(site, third.body.approvalId, 'reject')).body.status).toBe('rejected');
   });
 
   it('can be given the membership inbox’s conversations and the social calendar’s items', async () => {

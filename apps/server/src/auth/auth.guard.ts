@@ -100,7 +100,7 @@ export class AuthGuard implements CanActivate {
       await this.requireSecondFactorWhereDue(ownAccountId);
     }
 
-    const ctx: RequestContext = { principal, accountId, roles, heldRoles, operator, ...(secondFactorWaived && { secondFactorWaived }) };
+    const ctx: RequestContext = { principal, accountId, roles, operator, ...(secondFactorWaived && { secondFactorWaived }) };
     request.ctx = ctx;
     return true;
   }

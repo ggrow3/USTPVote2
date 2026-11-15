@@ -3962,7 +3962,7 @@ results page, the CLI and the tests pass it that entry.
 | Create/edit draft elections, contests, proposals; delete a cancelled election nobody voted in, or a finished rehearsal in testing mode (at once; §6.1) | | ● | | | ● |
 | Request roll snapshot, scheduling, certification, cancellation | | ● | | | ● |
 | Define or change offices (at once; §6.4); request an appointment to an office or the end of a term (§6.4) | ● | ● | | | ● |
-| Approve roll, scheduling, certification, cancellation, an appointment to an office, ending a term of office | | | ● | | only once a System Admin has made them an Auditor (below) |
+| Approve roll, scheduling, certification, cancellation, an appointment to an office, ending a term of office | | | ● | | ● (never their own request) |
 | Read full ledger, run verifications | | | ● | | ● |
 | Grant/revoke roles (one admin, at once; §10.2) and see who holds them (§10.3) | | | | ● | ● (every role but System Admin, never a System Admin's) |
 | Delete an account the deployment lists (at once; §4); in testing mode, delete test voters (at once; §10.4) | | | | ● | |
@@ -4005,26 +4005,23 @@ navigation settings (§10.5) follow the same rule, so a Site Admin sees the othe
   a System Admin's account (§10.2); deleting an account (§4) and deleting test voters (§10.4); the sign-in switches,
   the two-step requirement for members, whether Site Admins need two-step and whether admins must sign in with Google
   (§4); the API keys (§5.6); the room's model server (§5.10); and making a Site Admin an Auditor, ending it, or making
-  an Auditor a Site Admin (below). Those routes name System Admin alone, and no rule makes a Site Admin one.
-- **Deciding a two-person request takes the role itself** *(the more cautious of two readings, chosen without asking;
-  the other is a one-line change, below)*. A Site Admin **requests** every two-person action (§10.2) as an Election or
-  Membership Admin, but approves or rejects one only when the Auditor role was **granted** to them, which only a
-  System Admin does for a Site Admin. `checkCanApprove` reads the approver's roles held (`Actor.heldRoles`, kept
-  beside the roles acted with by the guard), and answers a Site Admin without it 403: "… must be approved by someone
-  granted auditor: a site_admin requests it, and does not decide it". Why: Site Admins make one another (they grant
-  Site Admin), so if acting as an Auditor were enough, any two Site Admins, or one person with two accounts they made
-  themselves, could request and approve a roll, a schedule or a certification between them, and the Auditor would no
-  longer be an independent check on an election. With the rule, every decision still comes from someone deliberately
-  made an Auditor, and is still a different person than the requester. Everything else an Auditor does, a Site Admin
-  does: read the whole ledger, run the verifications, read the sign-in log, and see every election, its roll and its
-  requests. To let Site Admins decide requests too, `checkCanApprove` would read `roles` in place of `heldRoles`; the
-  two-different-people check would still hold.
+  an Auditor a Site Admin (below; it now changes only what that person holds, since a Site Admin acts as an Auditor
+  anyway). Those routes name System Admin alone, and no rule makes a Site Admin one.
+- **Two-person requests** *(the user's decision, 2026-11-15: "let site admins approve 2 person requests too")*. A Site
+  Admin **requests** every two-person action (§10.2) as an Election or Membership Admin and **decides** one as an
+  Auditor, with no Auditor role granted. What still holds is the rule itself: the approver is a different person than
+  the requester and is not the account the action is about (`checkCanApprove`), with a sign-in no older than 15
+  minutes, so one Site Admin never requests and approves alone. What this gives up: two Site Admins can request and
+  approve a roll, a schedule, a certification or a cancellation between them, and since Site Admins grant Site Admin,
+  one person who made a second account a Site Admin could do both halves; an Auditor is no longer the only check on
+  an election. Every request, decision and role grant is ledgered with who did it. (Before this decision the same
+  day's first version kept deciding to people granted Auditor.)
 - **Who is told, and who can be given work.** Notices about a role's work (a new application or a reported message for
   Membership Admins, a conversation nobody has taken) go to the people granted the role, not to every Site Admin. A
   Site Admin can be given a membership conversation or a social calendar item, and is told once it is theirs
   (`DirectoryService.roleTeam`: the role's holders and the Site Admins).
-- **Other roles granted to a Site Admin** now add little: Auditor adds deciding requests, and any other adds that
-  role's notices, its start page and the links it hides (§10.5). The limits below are unchanged.
+- **Other roles granted to a Site Admin** now add little: that role's notices, its start page and the links it hides
+  (§10.5). The limits below are unchanged.
 - An Election Admin who is a candidate may not act on that election (Q12): that holds for a Site Admin acting as one.
 
 **Incompatible role pairs:** Auditor with any other role, and System Admin with Site Admin, which would add nothing.
@@ -4063,8 +4060,8 @@ to the console.
 decidedBy, decidedAt, reason, expiresAt}`.
 
 - Approver ≠ requester (by `accountId`), holds `approverRole` at decision time, signed in with MFA within 15 minutes.
-  The role must be one granted to the approver: a Site Admin, who acts as every role but System Admin elsewhere
-  (§10.1), requests these actions but decides one only as an Auditor a System Admin made (*added 2026-11-15*).
+  A Site Admin acts as every role but System Admin (§10.1), so both requests these actions and decides them, never
+  one they requested themselves (*added 2026-11-15*).
 - The account an action affects (`subject`, when it is an account) may be neither requester nor approver.
 - The approver approves `payloadHash`; approval executes immediately (status `executed`), re-checking every
   precondition and acting on exactly that payload. Statuses: `pending` → `executed` | `rejected`.
@@ -4081,7 +4078,7 @@ decidedBy, decidedAt, reason, expiresAt}`.
   action and subject can be waiting for a decision at a time. For election actions the approver must not be a candidate in that
   election.
 
-In the table, a Site Admin counts as each requester, and as the approver only with the Auditor role granted.
+In the table, a Site Admin counts as each requester and as the approver, never both for one request.
 
 | Action | Requested by | Approved by |
 |---|---|---|
@@ -4181,7 +4178,7 @@ different account on each side. Testing mode lets one System Admin do that alone
   demo elections; the one thing that can stand between a Site Admin and the tab is that saved setting.)*
 - **The Test Site Admin** *(added 2026-11-13, the user's decision)*: acting as it, a System or Site Admin sees and does what a
   Site Admin does (§10.1) and nothing more: the console shows the Site Admin's tabs, which since 2026-11-15 include the
-  other roles' (it requests two-person actions and decides none, like any Site Admin), and no Testing tab, every
+  other roles' (it requests and decides two-person actions like any Site Admin), and no Testing tab, every
   `/v1/testing` route answers 403, deleting an account or a test voter answers 403, and so does any change to a System
   Admin's roles or to System Admin. Its role changes are for **test personas only**: `POST /v1/admin/roles` while
   acting refuses any other account (403, `checkActingRoleChange` in `ustp-domain`, checked inside the change's
@@ -5887,7 +5884,7 @@ number, not time.
 
 Auth legend: **P** public · **M** signed-in member · **V** on the election's roll · role names for admin.
 A Site Admin may call every route that names a role other than System Admin alone, whether or not the row lists Site
-Admin (§10.1, *added 2026-11-15*); deciding an approval request also takes the Auditor role granted (§10.2).
+Admin (§10.1, *added 2026-11-15*), deciding an approval request among them (§10.2).
 
 | Method & path | Auth | Purpose |
 |---|---|---|

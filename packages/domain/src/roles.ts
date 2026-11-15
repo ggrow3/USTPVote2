@@ -6,8 +6,7 @@ import { deny, OK, type Check } from './check.js';
  * Admins have, but delete no account and no test voter, change every role but System Admin, and leave the sign-in
  * settings, the API keys and the room's model server to System Admins (design §10.1). In testing mode they use the
  * testing tools but for deleting test voters (design §10.4). A Site Admin also does what every other role but System
- * Admin does, without being granted it (`effectiveRoles`), except deciding a two-person request, which takes the role
- * itself (`checkCanApprove`).
+ * Admin does, without being granted it (`effectiveRoles`), deciding two-person requests included.
  */
 export const ROLES = [
   'membership_admin',
@@ -38,9 +37,9 @@ export const SITE_ADMIN_ACTS_AS: readonly Role[] = ROLES.filter((r) => r !== 'sy
 /**
  * The roles an account acts with, from the roles it holds: for a Site Admin, every role but System Admin; for anyone
  * else, the roles held. This is the one rule that gives Site Admins the other roles' tools: the API checks its role
- * routes against it, and the web app its tabs and buttons. What asks for a role actually granted keeps reading the
- * roles held: deciding a two-person request (`checkCanApprove`), changing roles (`checkRoleChange`), and who is told
- * about a role's work.
+ * routes against it, the two-person rule its requesters and approvers, and the web app its tabs and buttons. What asks
+ * for a role actually granted keeps reading the roles held: changing roles (`checkRoleChange`), and who is told about
+ * a role's work.
  */
 export function effectiveRoles(held: readonly Role[]): Role[] {
   if (!held.includes('site_admin')) return [...held];

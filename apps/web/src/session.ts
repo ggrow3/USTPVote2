@@ -132,10 +132,7 @@ export function hasRole(...roles: Role[]): boolean {
   return roles.some((r) => acting.includes(r));
 }
 
-/**
- * Whether one of these roles was granted to them. Deciding a two-person request asks for this (design §10.2): a Site
- * Admin requests as an Election Admin, and approves only once a System Admin has made them an Auditor.
- */
+/** Whether one of these roles was granted to them, whatever else a Site Admin acts as. */
 export function holdsRole(...roles: Role[]): boolean {
   return roles.some((r) => state.me?.roles.includes(r));
 }

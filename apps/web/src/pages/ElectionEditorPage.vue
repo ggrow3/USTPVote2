@@ -29,7 +29,7 @@ import BallotBuilder from '../elections/BallotBuilder.vue';
 import ElectionWorkflow from '../elections/ElectionWorkflow.vue';
 import QuestionView from '../elections/QuestionView.vue';
 import VotingNoticeCard from '../notifications/VotingNoticeCard.vue';
-import { hasRole, holdsRole, session } from '../session.js';
+import { hasRole, session } from '../session.js';
 
 const $q = useQuasar();
 const route = useRoute();
@@ -338,7 +338,7 @@ async function deleteElection() {
 
 /** An approver reviewing this page can decide pending requests here. */
 function canDecide(r: ApprovalRequestRecord): boolean {
-  return holdsRole(r.approverRole) && r.requestedBy !== me.value;
+  return hasRole(r.approverRole) && r.requestedBy !== me.value;
 }
 
 async function decide(r: ApprovalRequestRecord, decision: 'approve' | 'reject') {

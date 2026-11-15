@@ -257,24 +257,21 @@ describe('two-person rule', () => {
     expect(effectiveRoles([])).toEqual([]);
   });
 
-  it('lets a Site Admin request as an Election Admin, and decide only with the Auditor role granted', () => {
+  it('lets a Site Admin request as an Election Admin and decide as an Auditor, never their own request', () => {
     const acting = effectiveRoles(['site_admin']);
-    const site: Actor = { accountId: 'site1', roles: acting, heldRoles: ['site_admin'], mfa: true, authAgeSeconds: 60 };
+    const site: Actor = { accountId: 'site1', roles: acting, mfa: true, authAgeSeconds: 60 };
     const other: Actor = { ...site, accountId: 'site2' };
     for (const action of ['roll.approve', 'election.schedule', 'election.certify', 'election.cancel', 'position.modify', 'position.appoint'] as const) {
       expect(checkCanRequest(action, site).ok).toBe(true);
     }
-    // Two Site Admins cannot between them request and approve: neither holds Auditor.
+    // Another Site Admin decides it, and so does a Site Admin an Election Admin's request; never the requester.
     const theirs: PendingApproval = { ...request, requestedBy: 'site1' };
-    expect(checkCanApprove(theirs, other, now)).toEqual({
-      ok: false,
-      reason: 'election.certify must be approved by someone granted auditor: a site_admin requests it, and does not decide it',
-    });
-    expect(checkCanApprove(request, site, now)).toMatchObject({ ok: false, reason: /someone granted auditor/ });
-    // A Site Admin a System Admin made an Auditor decides another person's request, never their own.
-    const auditing: Actor = { ...other, heldRoles: ['auditor', 'site_admin'] };
-    expect(checkCanApprove(theirs, auditing, now).ok).toBe(true);
-    expect(checkCanApprove({ ...theirs, requestedBy: 'site2' }, auditing, now)).toMatchObject({ ok: false, reason: /different person/ });
+    expect(checkCanApprove(theirs, other, now).ok).toBe(true);
+    expect(checkCanApprove(request, site, now).ok).toBe(true);
+    expect(checkCanApprove(theirs, site, now)).toMatchObject({ ok: false, reason: /different person/ });
+    // Nor a request about their own account, nor with a stale sign-in.
+    expect(checkCanApprove({ ...theirs, subject: 'site2' }, other, now)).toMatchObject({ ok: false, reason: /own account/ });
+    expect(checkCanApprove(theirs, { ...other, authAgeSeconds: 16 * 60 }, now)).toMatchObject({ ok: false, reason: /sign in again/ });
     // An Auditor decides a Site Admin's request.
     expect(checkCanApprove(theirs, auditor, now).ok).toBe(true);
     // Acting as every other role gives none of System Admins' own powers.
