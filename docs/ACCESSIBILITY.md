@@ -444,6 +444,22 @@ election) open with focus on Cancel.
   opens it. The folded part is hidden with `display: none`, never removed, so the status line that focus moves to
   after "Run the check" and the polite announcements work as before; a check running or finished while folded shows
   in the line.
+- **Added 2026-11-15, the admin console's side menu** (design §10.1; against the emulators on private ports as
+  admin1@example.test (System Admin) and as v2@example.test made a Membership Admin, with two applications waiting; at
+  1366, 1100, 1024 and 375 px, dark, and 1366 px light): the tab row is now a `nav` named "Admin sections" beside the
+  section, a `section` named for the section shown. Each heading (Membership, Elections, Community, Outreach, System)
+  names the `ul` of its rows; each row is a link to the section's address (`/admin?tab=…`), the one shown with
+  `aria-current="page"`, bold, on an orange pill (light: `#aa4600` on primary at 10%, 5.10; dark: the accent on the
+  accent at 14% over the card, 4.82; it takes no hover wash, which would bring the dark one under 4.5), so it is never
+  colour alone. Icons are hidden from screen readers, so a row is read by its name; Applications adds its count ("2
+  waiting"). Picking a row replaces the address (the history did not grow). Rows are 40 px tall. The menu sticks under
+  the header and scrolls on its own when the window is shorter than it. Under 1024 px it is a 44 px outlined button
+  ("Admin sections: Members", the count of applications waiting with it when another section is shown) with
+  `aria-haspopup="dialog"` and `aria-expanded`, opening a modal dialog named "Administration" down the left edge, the
+  full height of the screen: its X is "Close the menu", focus goes to the section shown, Escape, the X or a tap outside
+  close it, and picking a row closes it on that section. At 375 px nothing scrolls sideways (the page is 375 px wide
+  with the drawer shut and open); at 1366 and 1100 px the page is no wider than the window. The card is 256 px wider
+  than before at desktop widths (`PageShell width="console"`), so a section keeps the room the tabs gave it.
 
 ### Contrast figures
 
@@ -465,6 +481,7 @@ home's picture (`PageShell`, white or `#1d1d1d`), so text on those pages has the
 | Links in page content, dark page / a page's card | `#ff6900` on `#121212` / `#1d1d1d` | 6.49 / 5.84 |
 | Links in light banners, both themes (`orange-2` / `orange-1` / `grey-3`) | `#aa4600` on `#ffe0b2` / `#fff3e0` / `#eeeeee` | 4.62 / 5.34 / 5.05 |
 | Menu bar: white links on black; the current page's underline (accent) on black | `#fff` / `#ff6900` on `#000` | 21.0 / 7.27 |
+| Admin side menu: the section shown, light (primary darkened 10% on primary at 10% over white) / dark (the accent on the accent at 14% over the card); headings, light (black at 60%) / dark (white at 70%) | `#aa4600` on `#f8ede6` / `#ff6900` on `#3d2819`; `#666` on `#fff` / `#bbb` on `#1d1d1d` | 5.10 / 4.82; 5.74 / 8.80 |
 | White on positive (badges, Approve, success banners and toasts); positive text on white | `#2e7d32` | 5.13 |
 | Positive text on the dark page / a dark card | `#81c784` on `#121212` / `#1d1d1d` | 9.31 / 8.38 |
 | White on negative | `#fff` on `#c10015` | 6.41 |
@@ -692,7 +709,9 @@ Android if time allows), on staging or the emulators:
 4. Verify: "Checking your receipt…" and the result summary are read; each step's status is read before its text.
 5. Errors: a wrong password, an invalid form field and an API error toast are each read once.
 6. Dialogs from the Dialog plugin (reasons, codes, confirmations): name and prompt label read; focus returns afterwards.
-7. Admin console: tab and panel relationship, row action names, the status-history dialog.
+7. Admin console: the "Admin sections" navigation, each heading read with its list, the section shown announced as
+   the current page, and the section's region named for it; at 375 px the menu button's name and expanded state, the
+   drawer read as "Administration" with focus on the section shown; row action names, the status-history dialog.
 8. Zoom to 200 % and 400 % (desktop) and large text on iOS: no clipped controls.
 9. The menu bar at 320 px: More is read as a collapsed or expanded button in the "Main" navigation, and its list's
    links follow it, the current page announced.

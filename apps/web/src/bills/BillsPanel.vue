@@ -86,7 +86,7 @@ async function save() {
       </q-card>
       <p class="text-grey-8">
         {{ keySourceText(settings.keySource) }}
-        <router-link to="/admin?tab=claude">Open the API keys tab</router-link>
+        <router-link to="/admin?tab=claude">Open the API keys section</router-link>
       </p>
     </template>
   </div>
