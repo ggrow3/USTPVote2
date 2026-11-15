@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { usePageTitle } from '../a11y.js';
 import PageShell from '../components/PageShell.vue';
@@ -10,7 +10,7 @@ import { TOURS } from './tours.js';
 
 /**
  * The Guide (design §10.11): the walkthroughs for a Voter, an Election Admin, an Auditor and, to a Site Admin only, a Site
- * Admin, every step readable here, and a way to start each one, at its first step or any other.
+ * Admin's two (an election, and every section of the admin console), every step readable here, and a way to start each one, at its first step or any other.
  */
 usePageTitle('Guide');
 const route = useRoute();
@@ -34,7 +34,12 @@ const chosen = ref<TourId>(initial());
 // The walkthrough's "All steps" button links here with its tour, perhaps while this page is open.
 watch(
   () => route.query.tour,
-  (tour) => isTour(tour) && (chosen.value = tour),
+  (tour) => {
+    if (!isTour(tour)) return;
+    chosen.value = tour;
+    // A link on this page to a walkthrough (the paragraph's, to the Site Admin's every-section one) brings its tab up.
+    void nextTick(() => document.getElementById(`guide-tab-${tour}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' }));
+  },
 );
 
 // Someone who stops being shown the walkthrough on display (signing out, or acting as a test persona) sees the Voter's.
@@ -63,8 +68,10 @@ async function start(tour: TourId, step = 0) {
       <p>
         Page by page, what to do on this site in an election, for each of the three people it takes: the voter, the Election
         Admin who sets it up, and the Auditor who approves each step. A Site Admin can do the Election Admin’s part or the
-        Auditor’s<template v-if="siteAdmin">, and you have a walkthrough of your own, the Site Admin’s, that runs a whole
-        election</template>. Start a walkthrough and a panel at the foot of every page says what to do there; Next opens the
+        Auditor’s<template v-if="siteAdmin">, and you have two walkthroughs of your own: the Site Admin’s, which runs a whole
+        election, and
+        <router-link :to="{ path: '/guide', query: { tour: 'site_admin_site' } }">Site Admin: every section</router-link>,
+        which goes through the whole admin console, one section at a time</template>. Start a walkthrough and a panel at the foot of every page says what to do there; Next opens the
         next page. Or read every step below.
       </p>
       <q-banner v-if="underWay" class="bg-grey-3 text-black" rounded>
