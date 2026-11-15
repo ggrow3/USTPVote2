@@ -29,6 +29,7 @@ export const APPROVAL_TTL_DAYS = 7;
 
 export interface Actor {
   readonly accountId: string;
+  /** The roles they act with: for a Site Admin, every role but System Admin (`effectiveRoles`). */
   readonly roles: readonly Role[];
   /** The ID token was issued after a second factor. */
   readonly mfa: boolean;
@@ -131,6 +132,12 @@ export function checkCanDeleteTestVoters(deleter: Actor): Check {
   return OK;
 }
 
+/**
+ * Whether `approver` may decide a two-person request (design §10.2): a different person than the requester, never the
+ * account it is about, and acting with the approver's role. A Site Admin acts as an Auditor (design §10.1, the user's
+ * decision 2026-11-15), so decides any request but their own: two Site Admins can request and approve between them,
+ * one person never.
+ */
 export function checkCanApprove(request: PendingApproval, approver: Actor, now: Date = new Date()): Check {
   const rule: ApprovalRule = TWO_PERSON_ACTIONS[request.action];
   if (request.status !== 'pending') return deny(`request is ${request.status}`);

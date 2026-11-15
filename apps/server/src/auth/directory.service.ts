@@ -91,6 +91,16 @@ export class DirectoryService {
     return lists.flat().sort((a, b) => a.name.localeCompare(b.name));
   }
 
+  /**
+   * Who can be given a role's work, by name: its holders and the Site Admins, who act as every role but System Admin
+   * (design §10.1). Notices about the role's work go to its holders alone (`roleHolders`).
+   */
+  async roleTeam(role: Role): Promise<{ accountId: string; name: string }[]> {
+    const [holders, siteAdmins] = await Promise.all([this.roleHolders(role), this.roleHolders('site_admin')]);
+    const extra = siteAdmins.filter((a) => !holders.some((h) => h.accountId === a.accountId));
+    return [...holders, ...extra].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   /** Who holds a role now, by name (or email, for an account without one), in name order. */
   async roleHolders(role: Role): Promise<{ accountId: string; name: string }[]> {
     const db = this.firebase.db;

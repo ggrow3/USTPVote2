@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { deny, OK, refuse, type Check } from '../check.js';
 import { MEMBER_STATUSES, type MemberStatus } from '../membership/member-status.js';
-import { administersSite, ROLES, type Role } from '../roles.js';
+import { administersSite, effectiveRoles, ROLES, type Role } from '../roles.js';
 
 /**
  * What the web app shows each person (design §10.5): the main-menu links and admin console sections each membership
@@ -59,7 +59,8 @@ export const SIGNED_IN_AUDIENCES = AUDIENCES.filter((a): a is SignedInAudience =
 /**
  * The roles the API lets use each section (its `@Roles` on the routes the section calls; design §10.1, §12). A section
  * is never shown to another role: those cells are locked off. Site Admins have System Admins' sections but Sign-in
- * methods, API keys and Testing.
+ * methods and API keys in their own column, and on top of it see every section another role but System Admin is shown
+ * (`shownTo`), since the API lets them use those too (`effectiveRoles`).
  */
 export const SECTION_ROLES: Readonly<Record<AdminSection, readonly Role[]>> = {
   applications: ['membership_admin'],
@@ -407,7 +408,10 @@ export function navigationChanges(before: NavigationSettings, after: NavigationS
   ];
 }
 
-/** Whoever is looking: their membership state (signed out, none, or a status) and the roles they hold. */
+/**
+ * Whoever is looking: their membership state (signed out, none, or a status) and the roles they hold, as granted (a
+ * Site Admin's other roles are worked out here).
+ */
 export interface Viewer {
   readonly membership: MembershipAudience;
   readonly roles: readonly Role[];
@@ -418,18 +422,24 @@ export function membershipAudience(signedIn: boolean, status: MemberStatus | nul
   return status ?? 'no_membership';
 }
 
-/** The audiences a viewer belongs to: their membership state, then each role they hold (none while signed out). */
+/**
+ * The audiences a viewer belongs to: their membership state, then each role they act with (none while signed out). A
+ * Site Admin acts with every role but System Admin (`effectiveRoles`), so sees what each of those roles is shown.
+ */
 function audiencesOf(viewer: Viewer): Audience[] {
-  return viewer.membership === 'signed_out' ? ['signed_out'] : [viewer.membership, ...ROLES.filter((r) => viewer.roles.includes(r))];
+  if (viewer.membership === 'signed_out') return ['signed_out'];
+  const roles = effectiveRoles(viewer.roles);
+  return [viewer.membership, ...ROLES.filter((r) => roles.includes(r))];
 }
 
 /**
  * What a viewer sees: everything any of their audiences sees (roles add to what membership shows), less any link a role
- * they hold hides from them, whatever their membership state or another role shows them.
+ * they hold hides from them, whatever their membership state or another role shows them. Only a role granted to them
+ * hides a link: a Site Admin gains what the other roles are shown, and loses nothing those roles hide.
  */
 export function shownTo(settings: NavigationSettings, viewer: Viewer): { menu: MenuLink[]; sections: AdminSection[] } {
   const audiences = audiencesOf(viewer);
-  const hidden = (l: MenuLink) => audiences.some((a) => isRole(a) && settings.hiddenFrom[a][l]);
+  const hidden = (l: MenuLink) => viewer.membership !== 'signed_out' && viewer.roles.some((r) => settings.hiddenFrom[r][l]);
   return {
     menu: MENU_LINKS.filter((l) => audiences.some((a) => settings.menu[a][l]) && !hidden(l)),
     sections: ADMIN_SECTIONS.filter((s) => audiences.some((a) => isRole(a) && settings.sections[a][s])),

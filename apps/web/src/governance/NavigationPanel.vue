@@ -148,7 +148,8 @@ onMounted(load);
       Choose which menu links and admin sections each membership state and staff role sees, and the page each starts on
       after signing in. A person sees everything their membership state and each of their roles is given: roles add to
       membership. A staff role can also hide a menu link from the people who hold it, whatever their membership or
-      another role gives them: choose Hidden in its column. This changes what is shown, not what is allowed: the API
+      another role gives them: choose Hidden in its column. A Site Admin also sees every link and section shown to
+      another role but System Admin, since they can use them. This changes what is shown, not what is allowed: the API
       still checks every request, and pages reached by their address still explain themselves.
     </p>
 

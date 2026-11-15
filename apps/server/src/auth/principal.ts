@@ -32,7 +32,10 @@ export interface RequestContext {
   readonly principal: Principal;
   /** The caller's USTP account, or null before `POST /v1/accounts`. */
   readonly accountId: string | null;
-  /** Active roles; loaded only for routes that require a role. */
+  /**
+   * The roles the caller acts with; loaded only for routes that require a role. For a Site Admin, every role but System
+   * Admin (`effectiveRoles`, design §10.1); for anyone else, the roles they hold.
+   */
   readonly roles: readonly Role[];
   /**
    * In testing mode, the System Admin's own accountId when they act as a test persona (design §10.4); `accountId`

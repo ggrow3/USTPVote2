@@ -98,6 +98,9 @@ describe('home status lines', () => {
     const pending = [request('auditor'), request('auditor', 'me'), request('auditor', 'ea', 'me'), request('system_admin')];
     expect(approvalsStatus(pending, 'me', ['auditor'])).toBe('1 request waiting for your decision');
     expect(approvalsStatus(pending, 'me', ['election_admin'])).toBe('Nothing waiting for your decision.');
+    // A Site Admin acts as an Auditor (design §10.1), so decides any request but their own.
+    expect(approvalsStatus(pending, 'me', ['site_admin'])).toBe('1 request waiting for your decision');
+    expect(approvalsStatus([request('auditor', 'me')], 'me', ['site_admin'])).toBe('Nothing waiting for your decision.');
   });
 
   it('count applications and photos waiting for review', () => {

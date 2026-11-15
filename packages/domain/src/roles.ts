@@ -5,7 +5,8 @@ import { deny, OK, type Check } from './check.js';
  * kit (design §10.9); neither receives membership, election, ballot or audit powers. Site Admins have most of what System
  * Admins have, but delete no account and no test voter, change every role but System Admin, and leave the sign-in
  * settings, the API keys and the room's model server to System Admins (design §10.1). In testing mode they use the
- * testing tools but for deleting test voters (design §10.4).
+ * testing tools but for deleting test voters (design §10.4). A Site Admin also does what every other role but System
+ * Admin does, without being granted it (`effectiveRoles`), deciding two-person requests included.
  */
 export const ROLES = [
   'membership_admin',
@@ -25,6 +26,24 @@ export type SiteAdminRole = (typeof SITE_ADMIN_ROLES)[number];
 /** Whether these roles include System Admin or Site Admin. */
 export function administersSite(roles: readonly Role[]): boolean {
   return SITE_ADMIN_ROLES.some((r) => roles.includes(r));
+}
+
+/**
+ * The roles a Site Admin acts as without holding them (design §10.1, the user's decision 2026-11-15: "site admin should
+ * be able to do everything every other role except what system admin can do"): every role but System Admin.
+ */
+export const SITE_ADMIN_ACTS_AS: readonly Role[] = ROLES.filter((r) => r !== 'system_admin' && r !== 'site_admin');
+
+/**
+ * The roles an account acts with, from the roles it holds: for a Site Admin, every role but System Admin; for anyone
+ * else, the roles held. This is the one rule that gives Site Admins the other roles' tools: the API checks its role
+ * routes against it, the two-person rule its requesters and approvers, and the web app its tabs and buttons. What asks
+ * for a role actually granted keeps reading the roles held: changing roles (`checkRoleChange`), and who is told about
+ * a role's work.
+ */
+export function effectiveRoles(held: readonly Role[]): Role[] {
+  if (!held.includes('site_admin')) return [...held];
+  return ROLES.filter((r) => held.includes(r) || SITE_ADMIN_ACTS_AS.includes(r)).sort();
 }
 
 /** The most roles one person may hold at once (design §10.1), unless they are a Site Admin. */
