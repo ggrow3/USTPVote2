@@ -11,9 +11,10 @@ export interface MenuGroup {
 }
 
 /**
- * In menu order, which is also the order the console picks the first section in when the address names none: so a
- * Membership Admin opens on Applications, an Election Admin and an Auditor on Elections, a System or Site Admin on
- * Approvals, a Communications Admin on Communications and a Course Administrator on their course.
+ * In menu order, which is also the order the console picks the first section in when the address names none (after
+ * any favourites): so a Membership Admin or a Site Admin opens on Applications, an Election Admin and an Auditor on
+ * Elections, a System Admin on Approvals, a Communications Admin on Communications and a Course Administrator on their
+ * course.
  */
 export const MENU_GROUPS: readonly MenuGroup[] = [
   { label: 'Membership', sections: ['applications', 'members', 'inbox', 'registration', 'first_steps', 'photos', 'teams'] },

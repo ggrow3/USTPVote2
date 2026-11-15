@@ -4070,9 +4070,9 @@ applications waiting. Each section keeps its address, `/admin?tab=<section>` (`?
 Registration form), and each row is a link to it, so a section opens in a new tab too; picking one replaces the
 address, as the tabs it replaced did, rather than adding to the history, and a section once opened keeps its state
 while another is shown. With no section in the address the console opens the menu's first: the first favourite, or
-without any, Applications for a
-Membership Admin, Elections for an Election Admin or an Auditor, Approvals for a System or Site Admin, Communications
-for a Communications Admin and Course administration for a Course Administrator. Under 1024 px wide the menu folds
+without any, Applications for a Membership Admin or a Site Admin (who is shown every other role's sections), Elections
+for an Election Admin or an Auditor, Approvals for a System Admin, Communications for a Communications Admin and Course
+administration for a Course Administrator. Under 1024 px wide the menu folds
 into a button naming the section shown, which opens it as a drawer from the left edge with a close (X) button, focus on
 the section shown; picking a row, the X, Escape or a tap outside closes it. The menu only orders and groups what the
 navigation settings show (§10.5); the API decides what each role may do.

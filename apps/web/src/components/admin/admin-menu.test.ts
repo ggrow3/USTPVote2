@@ -1,4 +1,4 @@
-import { ADMIN_SECTIONS, DEFAULT_NAVIGATION, ROLES, type AdminSection, type Role } from 'ustp-domain';
+import { ADMIN_SECTIONS, DEFAULT_NAVIGATION, ROLES, shownTo, type AdminSection, type Role } from 'ustp-domain';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MENU_GROUPS, menuFor, readFavourites, saveFavourites, toggleFavourite } from './admin-menu.js';
 
@@ -18,18 +18,19 @@ describe('the admin side menu', () => {
     expect(menuFor([])).toEqual([]);
   });
 
-  it('keeps each role’s default sections, and opens on the one the role is mostly for', () => {
+  it('keeps the sections each role is shown by default, and opens on the one the role is mostly for', () => {
+    // A Site Admin is shown every other role's sections but System Admin's own (design §10.1), Applications first.
     const opens: Record<Role, AdminSection> = {
       membership_admin: 'applications',
       election_admin: 'elections',
       auditor: 'elections',
       system_admin: 'approvals',
-      site_admin: 'approvals',
+      site_admin: 'applications',
       course_admin: 'course',
       communications_admin: 'communications',
     };
     for (const role of ROLES) {
-      const given = ADMIN_SECTIONS.filter((s) => DEFAULT_NAVIGATION.sections[role][s]);
+      const given = shownTo(DEFAULT_NAVIGATION, { membership: 'no_membership', roles: [role] }).sections;
       const listed = menuFor(given).flatMap((g) => g.sections.map((s) => s.name));
       expect([...listed].sort(), role).toEqual([...given].sort());
       expect(listed[0], role).toBe(opens[role]);
