@@ -48,7 +48,6 @@ export const AUDIENCE_CAPTIONS: Readonly<Record<Audience, string>> = {
 export const MENU_LABELS: Readonly<Record<MenuLink, string>> = {
   register: 'Register',
   ballot: 'Ballot',
-  verify: 'Verify',
   offices: 'Offices',
   candidates: 'Candidates',
   teams: 'Teams',
@@ -65,7 +64,6 @@ export const MENU_LABELS: Readonly<Record<MenuLink, string>> = {
 export const MENU_CAPTIONS: Readonly<Record<MenuLink, string>> = {
   register: 'Create a login and apply; the application and membership status',
   ballot: 'Cast votes, see results',
-  verify: 'Check a vote receipt',
   offices: 'The public page of who holds each office',
   candidates: 'Members running for public office, on a map; members declare theirs',
   teams: 'Join a team, see who is on each; leads run theirs (Active members only)',

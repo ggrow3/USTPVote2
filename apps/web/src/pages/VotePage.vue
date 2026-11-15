@@ -253,7 +253,7 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
             <q-card-section>
               <div class="text-caption text-grey-7 q-mb-sm">
                 Your receipt: one commitment per contest. Once your ballot is sealed — when enough others have voted, or
-                when voting closes — the Verify page checks that each one is in the published record. Anyone who sees the
+                when voting closes — “Verify a receipt” on Your ballots checks that each one is in the published record. Anyone who sees the
                 full receipt can tell how you voted, so keep it to yourself.
               </div>
               <q-markup-table flat dense>
@@ -275,13 +275,14 @@ const contestTitle = (contestId: string) => contests.value.find((c) => c.contest
               <q-btn color="primary" no-caps icon="download" label="Download receipt" @click="downloadReceipt(receipt)" />
               <q-toggle :model-value="kept" label="Keep a copy in this browser" @update:model-value="toggleKeep" />
               <q-space />
-              <q-btn flat no-caps icon="fact_check" label="Verify" :to="`/verify?election=${electionId}`">
+              <q-btn flat no-caps icon="fact_check" label="Verify" :to="{ path: '/ballot', query: { verify: electionId } }">
                 <span class="sr-only"> this receipt</span>
               </q-btn>
             </q-card-section>
           </template>
           <q-card-section v-else class="text-caption text-grey-7">
-            This browser has no copy of your receipt. If you downloaded it, open it on the Verify page after voting closes.
+            This browser has no copy of your receipt. If you downloaded it, open it under “Verify a receipt” on Your ballots after
+            voting closes.
           </q-card-section>
         </q-card>
 

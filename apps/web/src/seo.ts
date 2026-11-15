@@ -18,8 +18,6 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   '/register': 'Apply to become a member of the U.S. Transhumanist Party.',
   '/courses': 'Free courses from the U.S. Transhumanist Party: a map of which comes after which, with lessons, quizzes and certificates.',
   '/course/:courseId': 'A free course from the U.S. Transhumanist Party: lessons, quizzes and a certificate.',
-  '/verify':
-    "Check a U.S. Transhumanist Party ballot receipt against the election's published record, in your browser and from public data only.",
   '/guide': 'How to vote, run and audit a U.S. Transhumanist Party election on this site, page by page.',
   '/bylaws/:version?': 'The bylaws of the U.S. Transhumanist Party, every published version, with its SHA-256 and what changed.',
   '/results/:id': 'Results of a U.S. Transhumanist Party election, from its published record, which anyone can verify.',

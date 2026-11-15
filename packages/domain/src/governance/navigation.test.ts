@@ -38,9 +38,9 @@ function edit(base: NavigationSettings, change: (s: { -readonly [K in keyof Navi
 const viewer = (membership: Viewer['membership'], ...roles: Role[]): Viewer => ({ membership, roles });
 
 describe('defaults', () => {
-  it('show Register, Ballot, Verify, Offices, Candidates, News, Legislation, Course and Admin to everyone, Teams, Forum, Room and Bills to Active members, and Sign in while signed out', () => {
-    const all = ['register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'legislation', 'course', 'admin'];
-    const withTeams = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'bills', 'news', 'legislation', 'course', 'admin'];
+  it('show Register, Ballot, Offices, Candidates, News, Legislation, Course and Admin to everyone, Teams, Forum, Room and Bills to Active members, and Sign in while signed out', () => {
+    const all = ['register', 'ballot', 'offices', 'candidates', 'news', 'legislation', 'course', 'admin'];
+    const withTeams = ['register', 'ballot', 'offices', 'candidates', 'teams', 'forum', 'room', 'bills', 'news', 'legislation', 'course', 'admin'];
     expect(shownTo(DEFAULT_NAVIGATION, viewer('signed_out')).menu).toEqual([...all, 'signin']);
     for (const membership of ['no_membership', ...MEMBER_STATUSES] as const) {
       expect(shownTo(DEFAULT_NAVIGATION, viewer(membership)).menu).toEqual(membership === 'active' ? withTeams : all);
@@ -48,12 +48,12 @@ describe('defaults', () => {
     expect(shownTo(DEFAULT_NAVIGATION, viewer('active', 'election_admin')).menu).toEqual(withTeams);
     expect(shownTo(DEFAULT_NAVIGATION, viewer('applicant', 'membership_admin')).menu).toEqual(all);
     // Bills is for the legislative team: System Admins see its link too, other roles only as Active members (design §5.14).
-    expect(shownTo(DEFAULT_NAVIGATION, viewer('applicant', 'system_admin')).menu).toEqual(['register', 'ballot', 'verify', 'offices', 'candidates', 'bills', 'news', 'legislation', 'course', 'admin']);
+    expect(shownTo(DEFAULT_NAVIGATION, viewer('applicant', 'system_admin')).menu).toEqual(['register', 'ballot', 'offices', 'candidates', 'bills', 'news', 'legislation', 'course', 'admin']);
   });
 
-  it('let every role keep Ballot, Verify, Offices, Candidates, News and Course without a membership', () => {
+  it('let every role keep Ballot, Offices, Candidates, News and Course without a membership', () => {
     for (const role of ROLES) {
-      expect(DEFAULT_NAVIGATION.menu[role]).toMatchObject({ ballot: true, verify: true, offices: true, candidates: true, news: true, course: true, register: false });
+      expect(DEFAULT_NAVIGATION.menu[role]).toMatchObject({ ballot: true, offices: true, candidates: true, news: true, course: true, register: false });
     }
   });
 
@@ -234,7 +234,7 @@ describe('locked cells', () => {
   it('keep signed-out visitors a way to sign in: Sign in, Register, Ballot or Admin', () => {
     const only = (link: (typeof SIGN_IN_WAYS)[number]) =>
       edit(DEFAULT_NAVIGATION, (s) => {
-        for (const l of MENU_LINKS) s.menu.signed_out[l] = l === link || l === 'verify';
+        for (const l of MENU_LINKS) s.menu.signed_out[l] = l === link || l === 'candidates';
       });
     for (const link of SIGN_IN_WAYS) expect(checkNavigationSettings(only(link))).toEqual({ ok: true });
     const stranded = edit(DEFAULT_NAVIGATION, (s) => {
@@ -268,8 +268,8 @@ describe('what a person sees', () => {
     for (const a of AUDIENCES) for (const l of MENU_LINKS) s.menu[a][l] = false;
     s.menu.applicant.register = true;
     s.menu.active.ballot = true;
-    s.menu.active.verify = true;
-    s.menu.election_admin.verify = true;
+    s.menu.active.candidates = true;
+    s.menu.election_admin.candidates = true;
     s.sections.election_admin.offices = false;
   });
   const resolved = resolveNavigation(settings);
@@ -281,7 +281,7 @@ describe('what a person sees', () => {
 
   it('adds each role they hold, taking nothing away unless a role hides it', () => {
     expect(shownTo(resolved, viewer('active', 'election_admin'))).toEqual({
-      menu: ['ballot', 'verify', 'admin'],
+      menu: ['ballot', 'candidates', 'admin'],
       sections: ['elections', 'forum', 'approvals'],
     });
     expect(shownTo(resolved, viewer('applicant', 'membership_admin', 'election_admin')).sections).toEqual([
@@ -415,18 +415,18 @@ describe('links a role hides', () => {
   });
 
   it('leave a start page the role hides off its choices, and send people starting on one to home', () => {
-    const starts = edit(DEFAULT_NAVIGATION, (s) => (s.startsOn.election_admin = 'verify'));
-    expect(startPageFor(starts, viewer('active', 'election_admin'))).toBe('verify');
+    const starts = edit(DEFAULT_NAVIGATION, (s) => (s.startsOn.election_admin = 'candidates'));
+    expect(startPageFor(starts, viewer('active', 'election_admin'))).toBe('candidates');
     const hidden = edit(starts, (s) => {
-      s.menu.election_admin.verify = false;
-      s.hiddenFrom.election_admin.verify = true;
+      s.menu.election_admin.candidates = false;
+      s.hiddenFrom.election_admin.candidates = true;
     });
-    expect(startPageOptions(resolveNavigation(hidden), 'election_admin')).not.toContain('verify');
-    expect(checkNavigationSettings(hidden)).toMatchObject({ ok: false, reason: expect.stringMatching(/election_admin cannot start on verify/) });
-    // The Active member column still shows Verify, but the role they hold hides it.
+    expect(startPageOptions(resolveNavigation(hidden), 'election_admin')).not.toContain('candidates');
+    expect(checkNavigationSettings(hidden)).toMatchObject({ ok: false, reason: expect.stringMatching(/election_admin cannot start on candidates/) });
+    // The Active member column still shows Candidates, but the role they hold hides it.
     expect(startPageFor(hidden, viewer('active', 'election_admin'))).toBe('home');
     // Another role held that hides the page a first role starts on sends them home too.
-    const other = edit(starts, (s) => (s.hiddenFrom.system_admin.verify = true));
+    const other = edit(starts, (s) => (s.hiddenFrom.system_admin.candidates = true));
     expect(startPageFor(resolveNavigation(other), viewer('active', 'election_admin', 'system_admin'))).toBe('home');
   });
 
@@ -487,12 +487,11 @@ describe('start pages', () => {
   });
 
   it('offer home, account and what the audience sees', () => {
-    expect(startPageOptions(DEFAULT_NAVIGATION, 'applicant')).toEqual(['home', 'account', 'register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'legislation', 'course']);
+    expect(startPageOptions(DEFAULT_NAVIGATION, 'applicant')).toEqual(['home', 'account', 'register', 'ballot', 'offices', 'candidates', 'news', 'legislation', 'course']);
     expect(startPageOptions(DEFAULT_NAVIGATION, 'election_admin')).toEqual([
       'home',
       'account',
       'ballot',
-      'verify',
       'offices',
       'candidates',
       'news',
@@ -535,7 +534,6 @@ describe('saved settings', () => {
     expect(resolveNavigation(stored).menu.signed_out).toEqual({
       register: true,
       ballot: false,
-      verify: true,
       offices: true,
       candidates: true,
       teams: false,
@@ -562,15 +560,15 @@ describe('saved settings', () => {
     const before = edit(DEFAULT_NAVIGATION, (s) => {
       for (const a of AUDIENCES) delete s.menu[a].offices;
       s.menu.applicant.ballot = false;
-      s.startsOn.active = 'verify';
+      s.startsOn.active = 'candidates';
     });
     const resolved = resolveNavigation(before);
     for (const a of AUDIENCES) expect(resolved.menu[a].offices).toBe(DEFAULT_NAVIGATION.menu[a].offices);
     expect(resolved.menu.applicant.ballot).toBe(false);
-    expect(resolved.startsOn.active).toBe('verify');
+    expect(resolved.startsOn.active).toBe('candidates');
     expect(navigationChanges(DEFAULT_NAVIGATION, resolved)).toEqual([
       { audience: 'applicant', link: 'ballot', shown: false },
-      { audience: 'active', startsOn: 'verify' },
+      { audience: 'active', startsOn: 'candidates' },
     ]);
     expect(checkNavigationSettings(resolved)).toEqual({ ok: true });
   });
@@ -582,6 +580,17 @@ describe('saved settings', () => {
     const hidden = edit(starts, (s) => (s.menu.active.offices = false));
     expect(checkNavigationSettings(hidden)).toMatchObject({ ok: false, reason: expect.stringMatching(/active cannot start on offices/) });
     expect(resolveNavigation(hidden).startsOn.active).toBe('home');
+  });
+
+  it('drop the Verify link, now a card on Your ballots, from settings saved while it was a row', () => {
+    const stored = edit(DEFAULT_NAVIGATION, (s) => {
+      for (const a of AUDIENCES) (s.menu[a] as Record<string, boolean>).verify = true;
+      (s.hiddenFrom.system_admin as Record<string, boolean>).verify = true;
+      (s.startsOn as Record<string, string>).active = 'verify';
+    });
+    const resolved = resolveNavigation(stored);
+    expect(resolved).toEqual(DEFAULT_NAVIGATION);
+    expect(Object.keys(resolved.menu.active)).not.toContain('verify');
   });
 
   it('fill in anything missing from the defaults, such as a section added since', () => {
@@ -596,7 +605,7 @@ describe('saved settings', () => {
         s.menu.applicant.ballot = false;
         for (const sec of ['elections', 'offices', 'forum', 'approvals'] satisfies AdminSection[]) s.sections.election_admin[sec] = false;
         s.sections.system_admin.offices = true;
-        s.startsOn.active = 'verify';
+        s.startsOn.active = 'candidates';
       }),
     );
     expect(navigationChanges(DEFAULT_NAVIGATION, after)).toEqual([
@@ -607,7 +616,7 @@ describe('saved settings', () => {
       { audience: 'election_admin', section: 'forum', shown: false },
       { audience: 'election_admin', section: 'approvals', shown: false },
       { audience: 'system_admin', section: 'offices', shown: true },
-      { audience: 'active', startsOn: 'verify' },
+      { audience: 'active', startsOn: 'candidates' },
     ]);
     expect(navigationChanges(after, after)).toEqual([]);
   });

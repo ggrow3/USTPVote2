@@ -471,6 +471,17 @@ election) open with focus on Cancel.
   star is the headings' grey (5.74 on white, 8.80 on the dark card); a filled star is primary on the light card (4.94)
   and the accent on the dark one (5.84). Starring in the drawer leaves it open. Favourites survive a reload and open
   first at `/admin`; nothing scrolls sideways at 375 px.
+- **Added 2026-11-15, Verify a receipt folded into Your ballots** (design §10.5; against the emulators on private ports
+  as v1@example.test after casting "Bylaws Amendments (demo)" with "Keep a copy in this browser" on; 1366 and 375 px,
+  dark): the Verify page and its menu link are gone, and the check is a card at the foot of Your ballots, folded as
+  the consistency check is: its `h2` holds a native `button` with `aria-expanded` and `aria-controls`, read with its
+  line ("Verify a receipt" and "Check that your vote was counted. One receipt is saved in this browser.", or where the
+  last check stands), at least 48 px tall (73 px at 375 px, where the line wraps), the `section` named by
+  the title alone, its icons hidden from screen readers. Opened, its controls and results are what the page's were, one
+  heading level down (the election `h3`, each contest `h4`). The ballot's "Verify" button and the old `/verify?election=`
+  address open it with that election's receipt picked, bring it into view once the list above it is drawn, and put
+  focus on its button. A check run while it is folded keeps its result in the line. At 375 px nothing scrolls sideways
+  and the menu bar fits Register, Ballot and Offices before More.
 
 ### Contrast figures
 
@@ -728,6 +739,8 @@ Android if time allows), on staging or the emulators:
 8. Zoom to 200 % and 400 % (desktop) and large text on iOS: no clipped controls.
 9. The menu bar at 320 px: More is read as a collapsed or expanded button in the "Main" navigation, and its list's
    links follow it, the current page announced.
+   Your ballots: "Verify a receipt" read as a collapsed or expanded button with its line, and after following the
+   ballot's "Verify" button, focus on it, opened, with the receipt picked.
 10. The link hub: the icon row's links read by their names in their navigation, each section's links in their list,
     the theme button's pressed state; in Admin → Link hub, a row's switch and buttons read with its link's name, and
     the "Saved: …" toast after each change.

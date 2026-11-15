@@ -73,21 +73,12 @@ export function homeCards(
     cards.push({
       key: 'ballot',
       title: 'Your ballots',
-      text: 'Elections you are on the voter roll for: vote, and see the results.',
+      text: 'Elections you are on the voter roll for: vote, see the results, and verify your receipt.',
       to: '/ballot',
       action: 'Open your ballots',
     });
   }
   if (shown.menu.includes('register')) cards.push({ key: 'register', to: '/register', ...REGISTER[membership] });
-  if (shown.menu.includes('verify')) {
-    cards.push({
-      key: 'verify',
-      title: 'Verify a vote',
-      text: 'Check that a ballot you cast was counted, from the receipt you saved.',
-      to: '/verify',
-      action: 'Verify a receipt',
-    });
-  }
   if (shown.menu.includes('offices')) {
     cards.push({
       key: 'offices',
@@ -179,8 +170,7 @@ export interface VisitorLink {
 
 const VISITOR_LINKS: readonly VisitorLink[] = [
   { key: 'register', before: 'New to USTP? ', label: 'Register as a member', after: ': creating your login is the first step.', to: '/register' },
-  { key: 'ballot', before: 'Members: ', label: 'see your ballots and vote', after: '.', to: '/ballot' },
-  { key: 'verify', before: 'Voted already? ', label: 'Verify your receipt', after: ' to check that your vote was counted.', to: '/verify' },
+  { key: 'ballot', before: 'Members: ', label: 'see your ballots and vote', after: ', and verify your receipt afterwards.', to: '/ballot' },
   { key: 'offices', before: 'Who leads the party? ', label: 'See who holds each office', after: ', elected or appointed.', to: '/offices' },
   { key: 'candidates', before: 'Running for office? ', label: 'See the party’s candidates', after: ' and where they run.', to: '/candidates' },
   { key: 'teams', before: 'Members: ', label: 'join a team', after: ' and work with others between elections.', to: '/teams' },

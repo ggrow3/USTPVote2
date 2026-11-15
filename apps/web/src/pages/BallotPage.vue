@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import type { VoterElection } from 'ustp-domain';
 import { usePageTitle } from '../a11y.js';
 import { api } from '../api.js';
 import PageShell from '../components/PageShell.vue';
 import { attempt } from '../dialogs.js';
 import { ballotCard, ballotLists, finishedVotesShown, rememberFinishedVotesShown, secrecyText, votingWindow } from '../elections/ballot-list.js';
+import VerifyReceiptCard from '../elections/VerifyReceiptCard.vue';
 import { session } from '../session.js';
 
 usePageTitle('Your ballots');
@@ -18,6 +20,8 @@ onMounted(async () => {
   failed.value = !(await attempt(async () => {
     elections.value = await api<VoterElection[]>('GET', '/v1/elections');
   }));
+  // Once the list above it is drawn, so the card stays where it was brought.
+  if (verifyAsked.value) await showVerify();
 });
 
 const lists = computed(() => ballotLists(elections.value ?? []));
@@ -29,6 +33,30 @@ watch(showFinished, (shown) => rememberFinishedVotesShown(shown));
 const cards = computed(() =>
   [...lists.value.current, ...(showFinished.value ? lists.value.finished : [])].map((e) => ({ e, card: ballotCard(e) })),
 );
+
+/**
+ * Checking a receipt, folded at the foot of the page (design §10.5). A link with `?verify` (from a cast ballot, an
+ * email or the old Verify page's address) opens it, with `?verify=<election>` picking that election's saved receipt,
+ * and brings it into view.
+ */
+const route = useRoute();
+const verifyAsked = computed(() => route.query.verify !== undefined);
+const verifyElection = computed(() => {
+  const asked = String(route.query.verify ?? '');
+  return asked && asked !== '1' ? asked : null;
+});
+const verifyOpen = ref(verifyAsked.value);
+/** Opens the card and moves to it, focus on its heading's button, as the person asked for it by the link. */
+async function showVerify(): Promise<void> {
+  verifyOpen.value = true;
+  await nextTick();
+  const card = document.getElementById('verify');
+  card?.scrollIntoView({ block: 'start' });
+  card?.querySelector<HTMLElement>('.verify-toggle')?.focus({ preventScroll: true });
+}
+watch(verifyAsked, (asked) => {
+  if (asked && elections.value) void showVerify();
+});
 </script>
 
 <template>
@@ -94,6 +122,7 @@ const cards = computed(() =>
       </template>
       <div v-else-if="failed" class="text-grey-7">Could not load your ballots.</div>
       <div v-else class="text-grey-7">Loading…</div>
+      <VerifyReceiptCard v-model:open="verifyOpen" :election="verifyElection" />
     </div>
   </PageShell>
 </template>
