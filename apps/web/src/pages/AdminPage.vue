@@ -2,7 +2,7 @@
 import { computed, onMounted, onUnmounted, ref, watch, watchEffect, type Component } from 'vue';
 import { useQuasar } from 'quasar';
 import { queueBadge, type AdminSection } from 'ustp-domain';
-import { menuFor } from '../components/admin/admin-menu.js';
+import { menuFor, readFavourites, saveFavourites, toggleFavourite } from '../components/admin/admin-menu.js';
 import AdminSideMenu from '../components/admin/AdminSideMenu.vue';
 import ApiKeysPanel from '../claude-key/ApiKeysPanel.vue';
 import ApprovalsPanel from '../components/admin/ApprovalsPanel.vue';
@@ -70,11 +70,22 @@ const PANELS: Record<AdminSection, Component> = {
 };
 
 usePageTitle('Administration');
+/** The sections this person has starred, kept in this browser for their account. */
+const accountId = computed(() => session.me?.account?.accountId ?? null);
+const favourites = ref<AdminSection[]>(readFavourites(accountId.value));
+watch(accountId, (now) => (favourites.value = readFavourites(now)));
+function star(section: AdminSection): void {
+  favourites.value = toggleFavourite(favourites.value, section);
+  saveFavourites(accountId.value, favourites.value);
+}
 // Testing shows only where the deployment allows test personas, and never while acting as one (design §10.4).
 const groups = computed(() =>
-  menuFor(shown.value.sections.filter((name) => name !== 'testing' || (!!session.me?.testing.enabled && !session.me.testing.operator))),
+  menuFor(
+    shown.value.sections.filter((name) => name !== 'testing' || (!!session.me?.testing.enabled && !session.me.testing.operator)),
+    favourites.value,
+  ),
 );
-/** The sections in the side menu's order, so the first one opens when the address names none. */
+/** The sections in the side menu's order, favourites first, so the first one opens when the address names none. */
 const tabs = computed(() => groups.value.flatMap((g) => g.sections));
 /** Every role is an admin role, so someone with none is not an officer. The menu can show them Admin (design §10.5). */
 const officer = computed(() => !session.me || session.me.roles.length > 0);
@@ -186,7 +197,7 @@ const shownSection = computed(() => tabs.value.find((t) => t.name === tab.value)
           </q-badge>
         </q-btn>
         <nav v-else class="admin-console__nav" aria-label="Admin sections">
-          <AdminSideMenu :groups="groups" :current="tab" :pending="pending" id-prefix="admin-menu" />
+          <AdminSideMenu :groups="groups" :current="tab" :pending="pending" :favourites="favourites" id-prefix="admin-menu" @star="star" />
         </nav>
         <!-- Each section's panel is kept once opened, as the tabs kept theirs. -->
         <section
@@ -214,7 +225,15 @@ const shownSection = computed(() => tabs.value.find((t) => t.name === tab.value)
             <span id="admin-drawer-title" class="admin-drawer__title">Administration</span>
           </div>
           <nav ref="drawerNav" class="admin-drawer__nav" aria-label="Admin sections">
-            <AdminSideMenu :groups="groups" :current="tab" :pending="pending" id-prefix="admin-drawer" @chosen="drawer = false" />
+            <AdminSideMenu
+              :groups="groups"
+              :current="tab"
+              :pending="pending"
+              :favourites="favourites"
+              id-prefix="admin-drawer"
+              @chosen="drawer = false"
+              @star="star"
+            />
           </nav>
         </q-card>
       </q-dialog>
@@ -226,7 +245,7 @@ const shownSection = computed(() => tabs.value.find((t) => t.name === tab.value)
 /* The side menu beside the section shown, as the Cloud console's (design §10.1). */
 .admin-console {
   display: grid;
-  grid-template-columns: 232px minmax(0, 1fr);
+  grid-template-columns: 248px minmax(0, 1fr);
   gap: 24px;
   align-items: start;
 }

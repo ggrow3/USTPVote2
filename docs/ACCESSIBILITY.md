@@ -458,8 +458,19 @@ election) open with focus on Cancel.
   `aria-haspopup="dialog"` and `aria-expanded`, opening a modal dialog named "Administration" down the left edge, the
   full height of the screen: its X is "Close the menu", focus goes to the section shown, Escape, the X or a tap outside
   close it, and picking a row closes it on that section. At 375 px nothing scrolls sideways (the page is 375 px wide
-  with the drawer shut and open); at 1366 and 1100 px the page is no wider than the window. The card is 256 px wider
+  with the drawer shut and open); at 1366 and 1100 px the page is no wider than the window. The card is 272 px wider
   than before at desktop widths (`PageShell width="console"`), so a section keeps the room the tabs gave it.
+- **Added 2026-11-15, favourites in the admin side menu** (design §10.1; against the emulators on private ports as
+  admin1@example.test, at 1366 px and 375 px, dark): each row has a star, a `button` beside the row's link rather than
+  in it, named "Add People to favourites" or "Remove People from favourites". Starring moves the row under a
+  Favourites heading (its own `ul`, named by it) at the top, and focus goes to the star at its new place, now named
+  for taking it off; unstarring puts it back in its group, focus following again. Unstarred stars are hidden by opacity
+  until the row is pointed at or something in it has focus, so a keyboard user tabbing from the link meets the star
+  and sees it; on a touch screen (`hover: none`) every star shows. Each star is 24 × 24 px, on the row's right end,
+  which the row keeps clear (the menu column grew from 232 to 248 px for it). The outline
+  star is the headings' grey (5.74 on white, 8.80 on the dark card); a filled star is primary on the light card (4.94)
+  and the accent on the dark one (5.84). Starring in the drawer leaves it open. Favourites survive a reload and open
+  first at `/admin`; nothing scrolls sideways at 375 px.
 
 ### Contrast figures
 
@@ -711,7 +722,9 @@ Android if time allows), on staging or the emulators:
 6. Dialogs from the Dialog plugin (reasons, codes, confirmations): name and prompt label read; focus returns afterwards.
 7. Admin console: the "Admin sections" navigation, each heading read with its list, the section shown announced as
    the current page, and the section's region named for it; at 375 px the menu button's name and expanded state, the
-   drawer read as "Administration" with focus on the section shown; row action names, the status-history dialog.
+   drawer read as "Administration" with focus on the section shown; a star read with its section's name, and after
+   pressing it, focus on the same star under its new heading with its new name; row action names, the status-history
+   dialog.
 8. Zoom to 200 % and 400 % (desktop) and large text on iOS: no clipped controls.
 9. The menu bar at 320 px: More is read as a collapsed or expanded button in the "Main" navigation, and its list's
    links follow it, the current page announced.
