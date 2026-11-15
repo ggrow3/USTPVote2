@@ -368,8 +368,8 @@ async function sendLinks(members: readonly { email: string; accountId: string }[
           They get a welcome email from the site within a few minutes that offers only signing in with Google.
         </div>
         <div v-else-if="outcome.result.googleOnly">
-          This site sends no email of its own, so nothing was sent. Ask them to open the site and choose “Sign in with
-          Google” with the Google account of this address.
+          This site sends no email of its own, so nothing was sent. Ask them to open the site’s sign-in page and choose
+          “Continue with Google” with the Google account of this address.
         </div>
         <div v-else-if="outcome.result.welcome === 'mail'">
           Each gets a welcome email from the site within a few minutes, leading to the page where they set their password.
