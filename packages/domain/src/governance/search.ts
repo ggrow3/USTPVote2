@@ -22,6 +22,7 @@ export const SITEMAP_PAGES = [
   '/legislation',
   '/scorecard',
   '/races',
+  '/representatives',
 ] as const;
 
 /**

@@ -17,6 +17,7 @@ import type {
   PersonView,
   PublicCandidacy,
   RaceView,
+  RepresentativesView,
 } from 'ustp-domain';
 import { api } from '../api.js';
 
@@ -68,6 +69,16 @@ export function zipCandidates(zip: string): Promise<AreaCandidatesView> {
 /** The Your area page: who holds and who runs for each office in the member's area, and the email templates that suit them. */
 export function areaContacts(): Promise<AreaContactsView> {
   return api<AreaContactsView>('GET', '/v1/candidacies/area/contacts');
+}
+
+/** The Representatives page for the signed-in member's own area: who holds each office there, and how to reach them (design §5.19). */
+export function myRepresentatives(): Promise<RepresentativesView> {
+  return api<RepresentativesView>('GET', '/v1/candidacies/area/representatives');
+}
+
+/** The Representatives page for a ZIP code anyone types. The ZIP code goes in the body, out of request logs. */
+export function zipRepresentatives(zip: string): Promise<RepresentativesView> {
+  return api<RepresentativesView>('POST', '/v1/public/representatives/area', { zip });
 }
 
 export function declareCandidacy(input: CandidacyInput): Promise<MyCandidacy> {

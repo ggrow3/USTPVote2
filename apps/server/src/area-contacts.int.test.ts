@@ -85,6 +85,9 @@ describe('the Your area page', () => {
       ['starting-stance', 0],
       ['starting-meeting', 0],
       ['starting-questions', 0],
+      // The Representatives page's call scripts are in the same list (design §5.19).
+      ['starting-call-research', 0],
+      ['starting-call-meeting', 0],
     ]);
     expect(JSON.stringify(v)).not.toContain('94615');
   });
@@ -150,7 +153,8 @@ describe('email templates', () => {
   const list = async (by: User = comms) => (await api.call('GET', '/v1/admin/email-templates', by)).body as EmailTemplate[];
 
   it('start with three ready-made ones; Membership and Communications Admins both add, change and remove them, ledgered', async () => {
-    expect((await list(memb)).map((t) => t.name)).toEqual(['Where they stand on longevity and science', 'Ask for a meeting', 'Questions for a candidate']);
+    const CALLS = ['Call to support research on aging', 'Call to ask for a meeting'];
+    expect((await list(memb)).map((t) => t.name)).toEqual(['Where they stand on longevity and science', 'Ask for a meeting', 'Questions for a candidate', ...CALLS]);
 
     const added = await api.call('POST', '/v1/admin/email-templates', memb, TEMPLATE);
     expect(added.status).toBe(201);
@@ -165,12 +169,14 @@ describe('email templates', () => {
       ['Where they stand on longevity and science', 0],
       ['Meet us', 1],
       ['Questions for a candidate', 0],
+      ['Call to support research on aging', 0],
+      ['Call to ask for a meeting', 0],
       ['Invite to a forum', 2],
     ]);
 
     expect((await api.call('DELETE', '/v1/admin/email-templates/starting-questions', comms)).status).toBe(204);
     expect((await api.call('DELETE', '/v1/admin/email-templates/starting-questions', memb)).status).toBe(404);
-    expect((await list()).map((t) => t.name)).toEqual(['Where they stand on longevity and science', 'Meet us', 'Invite to a forum']);
+    expect((await list()).map((t) => t.name)).toEqual(['Where they stand on longevity and science', 'Meet us', ...CALLS, 'Invite to a forum']);
 
     const ledgered = await entries('email_template.changed');
     expect(ledgered.map((e) => [e.actor, e.payload.change, e.payload.version])).toEqual([
@@ -201,6 +207,6 @@ describe('email templates', () => {
       expect((await put({ template: { ...TEMPLATE, body: 'D' }, basedOn: 1 }, template.templateId, by)).status).toBe(403);
       expect((await api.call('DELETE', `/v1/admin/email-templates/${template.templateId}`, by)).status).toBe(403);
     }
-    expect((await list()).map((t) => t.version)).toEqual([0, 0, 0, 1]);
+    expect((await list()).map((t) => t.version)).toEqual([0, 0, 0, 0, 0, 1]);
   });
 });

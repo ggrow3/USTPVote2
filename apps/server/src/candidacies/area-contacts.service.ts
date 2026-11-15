@@ -20,6 +20,7 @@ import {
   type AreaContactRecord,
   type AreaContactsView,
   type CandidateArea,
+  type RepresentativesView,
   type EmailTemplate,
   type EmailTemplateInput,
   type EmailTemplateListRecord,
@@ -87,6 +88,39 @@ export class AreaContactsService {
       notUp: found.notUp,
       feeds: found.feeds,
       profiles: profiled.state,
+    };
+  }
+
+  /** The Representatives page for the caller's own area (design §5.19): who holds each office there now. */
+  async representatives(accountId: string): Promise<RepresentativesView> {
+    return this.holders((await this.candidacies.placed(accountId)).area);
+  }
+
+  /** The Representatives page for a ZIP code anyone types; the ZIP code is not kept. */
+  async zipRepresentatives(zip: string): Promise<RepresentativesView> {
+    return this.holders(await this.candidacies.zipArea(zip));
+  }
+
+  /**
+   * Who holds each office of an area, from public records and the communications team's entries, with the emails and
+   * call scripts for reaching them. Only the records of people in office are asked.
+   */
+  private async holders(area: CandidateArea): Promise<RepresentativesView> {
+    const [found, entered, saved] = await Promise.all([
+      this.source.forHolders(area.state, area.basis === 'zip' ? area.districts : []),
+      this.entered(area),
+      this.repo.templateList(),
+    ]);
+    const profiled = await this.profiles.withProfiles(found.contacts);
+    return {
+      area,
+      representatives: mergeContacts(
+        profiled.people,
+        entered.filter((c) => c.role === 'holder'),
+      ),
+      feeds: found.feeds,
+      profiles: profiled.state,
+      templates: emailTemplateList(saved),
     };
   }
 

@@ -61,10 +61,18 @@ function fakeRecords(seen: Seen[], down: string[] = [], sos?: Record<string, unk
       }
       return json({ results: q.get('office') === 'S' ? [] : [{ candidate_id: 'P00000001', name: 'DOE, JANE', party_full: null }] });
     }
+    if (url.endsWith('/legislators-social-media.json')) {
+      if (down.includes('social')) return json({ error: 'down' }, 503);
+      return json([
+        { id: { bioguide: 'L000593' }, social: { twitter: 'RepMikeLevin', twitter_id: '1', facebook: 'RepMikeLevin', youtube_id: 'UCabc' } },
+        { id: { bioguide: 'P000145' }, social: { twitter: 'not a name' } },
+        { id: {} },
+      ]);
+    }
     if (host === 'unitedstates.github.io') {
       const term = (type: string, district: number | undefined, extra = {}) => [{ type, state: 'CA', district, party: 'Democrat', ...extra }];
       return json([
-        { id: { bioguide: 'L000593' }, name: { first: 'Mike', last: 'Levin', official_full: 'Mike Levin' }, terms: term('rep', 49, { url: 'https://levin.house.gov' }) },
+        { id: { bioguide: 'L000593' }, name: { first: 'Mike', last: 'Levin', official_full: 'Mike Levin' }, terms: term('rep', 49, { url: 'https://levin.house.gov', phone: '202-225-3906' }) },
         { id: { bioguide: 'X000001' }, name: { first: 'Other', last: 'Rep' }, terms: term('rep', 50) },
         { id: { bioguide: 'P000145' }, name: { first: 'Alex', last: 'Padilla' }, terms: term('sen', undefined, { contact_form: 'https://www.padilla.senate.gov/contact/' }) },
         { id: { bioguide: 'T000001' }, name: { first: 'Tex', last: 'Senator' }, terms: [{ type: 'sen', state: 'TX', party: 'Republican' }] },
@@ -81,6 +89,7 @@ function fakeRecords(seen: Seen[], down: string[] = [], sos?: Record<string, unk
         jurisdiction: { classification },
         current_role: { title, org_classification: org },
         links: [{ url: 'http://insecure.example' }],
+        offices: id === 's38' ? [{ classification: 'district', voice: '760-642-0809' }, { classification: 'capitol', voice: '916-651-4038' }] : [{ classification: 'capitol', voice: 'ask the clerk' }],
       });
       return json({
         results: [
@@ -133,6 +142,51 @@ describe('the public records for a member’s area', () => {
     const asked = seen.length;
     await source.forArea('CA', [CA49, SD38, AD76], 2026, HOLDERS);
     expect(seen).toHaveLength(asked);
+  });
+
+  it('for the Representatives page: only who holds office, with phone numbers and official accounts, the FEC not asked', async () => {
+    const seen: Seen[] = [];
+    const source = new PublicContactSource({ fec: 'fec-key', openStates: 'os-key', civic: 'civic-key' }, fakeRecords(seen));
+    const { contacts, feeds, ballot, notUp } = await source.forHolders('CA', [CA49, SD38, AD76, COUNTY, CITY]);
+    expect(feeds).toEqual({ fec: 'off', congress: 'ok', openstates: 'ok', civic: 'off', sos: 'off' });
+    expect([ballot, notUp]).toEqual([[], []]);
+    expect(contacts.map((c) => `${c.source} ${c.role} ${c.office}@${c.district.geoid} ${c.name} ${c.phone}`)).toEqual([
+      'congress holder us_senate@06 Alex Padilla null',
+      'congress holder us_house@0649 Mike Levin 202-225-3906',
+      // The capitol office's number, over the district office's; a number nobody can dial is left out.
+      'openstates holder state_upper@06038 Catherine Blakespear 916-651-4038',
+      'openstates holder state_lower@06076 Darshana Patel null',
+    ]);
+    expect(contacts[1]!.social).toEqual([
+      { network: 'x', handle: '@RepMikeLevin', url: 'https://x.com/RepMikeLevin' },
+      { network: 'facebook', handle: 'RepMikeLevin', url: 'https://www.facebook.com/RepMikeLevin' },
+      { network: 'youtube', handle: 'YouTube', url: 'https://www.youtube.com/channel/UCabc' },
+    ]);
+    expect(contacts[0]!.social).toEqual([]);
+    expect(seen.map((r) => new URL(r.url).host).sort()).toEqual(['unitedstates.github.io', 'unitedstates.github.io', 'v3.openstates.org', 'v3.openstates.org']);
+    expect(seen.find((r) => r.url.includes('openstates'))!.url).toContain('include=links&include=offices');
+
+    // Without the accounts list the members are still listed, and the list is asked again next time.
+    const again: Seen[] = [];
+    const partly = new PublicContactSource({ fec: 'k', openStates: null, civic: null }, fakeRecords(again, ['social']));
+    const first = await partly.forHolders('CA', [CA49]);
+    expect(first.feeds).toMatchObject({ congress: 'ok', openstates: 'off' });
+    expect(first.contacts.map((c) => [c.name, c.social])).toEqual([
+      ['Alex Padilla', []],
+      ['Mike Levin', []],
+    ]);
+    await partly.forHolders('CA', [CA49]);
+    expect(again.filter((r) => r.url.endsWith('/legislators-social-media.json'))).toHaveLength(2);
+
+    const local = await new LocalContactSource().forHolders('CA', [CA49, SD38, AD76]);
+    expect(local.feeds).toEqual({ fec: 'off', congress: 'ok', openstates: 'ok', civic: 'off', sos: 'off' });
+    expect(local.contacts.map((c) => `${c.role} ${c.name} ${c.phone ?? null} ${c.social?.length ?? 0}`)).toEqual([
+      'holder Sam Senator 202-555-0101 0',
+      'holder Sky Senator null 0',
+      'holder Hal House 202-555-0149 3',
+      'holder Uma Upper 916-555-0138 0',
+      'holder Lou Lower null 0',
+    ]);
   });
 
   it('asks for President in a presidential year, and leaves state legislators out without a key', async () => {

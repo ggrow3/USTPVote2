@@ -296,6 +296,7 @@ function withdraw(c: MyCandidacy) {
           who represents you.
         </div>
         <q-btn flat no-caps color="primary" icon="ballot" label="Every state’s races for Congress, a page each" to="/races" class="q-mt-xs" />
+        <q-btn flat no-caps color="primary" icon="record_voice_over" label="Your representatives, and how to reach them" to="/representatives" class="q-mt-xs" />
       </div>
 
       <q-card v-if="session.user && (active || mine.length)" flat bordered>

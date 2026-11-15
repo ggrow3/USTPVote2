@@ -81,6 +81,12 @@ export class CandidaciesController {
     return this.contacts.myCandidates(requireAccount(ctx));
   }
 
+  /** The Representatives page: who holds each office in the caller's area, and how to reach them (design §5.19). */
+  @Get('area/representatives')
+  areaRepresentatives(@Ctx() ctx: RequestContext) {
+    return this.contacts.representatives(requireAccount(ctx));
+  }
+
   @Post()
   declare(@Ctx() ctx: RequestContext, @Body(new ZodPipe(candidacyInputSchema)) body: CandidacyInput) {
     return this.candidacies.declare(requireAccount(ctx), body);
@@ -215,6 +221,35 @@ export class PublicAreaCandidatesController {
     const { ip } = clientAddress(request.headers['x-forwarded-for'], request.socket?.remoteAddress, this.config.trustedProxyHops);
     if (!this.limiter.take(`address:${ip ?? 'unknown'}`)) throw new HttpException('too many lookups; try again in a minute', HttpStatus.TOO_MANY_REQUESTS);
     return this.contacts.zipCandidates(body.zip);
+  }
+
+  /** Forgets this instance's lookup counts (tests). */
+  forget(): void {
+    this.limiter.forget();
+  }
+}
+
+/**
+ * Who represents the people of a ZIP code, for anyone on the Representatives page (design §5.19): public records and
+ * the communications team's entries, with the emails and call scripts. Limited like the Candidates page's lookup, with
+ * a count of its own; neither the address nor the ZIP code is kept.
+ */
+@Controller('v1/public/representatives')
+@Public()
+export class PublicRepresentativesController {
+  private readonly limiter = new VisitRateLimiter(AREA_LOOKUP_RATE);
+
+  constructor(
+    private readonly contacts: AreaContactsService,
+    @Inject(CONFIG) private readonly config: ServerConfig,
+  ) {}
+
+  @Post('area')
+  @HttpCode(200)
+  area(@Body(new ZodPipe(areaLookupSchema)) body: AreaLookupInput, @Req() request: FastifyRequest) {
+    const { ip } = clientAddress(request.headers['x-forwarded-for'], request.socket?.remoteAddress, this.config.trustedProxyHops);
+    if (!this.limiter.take(`address:${ip ?? 'unknown'}`)) throw new HttpException('too many lookups; try again in a minute', HttpStatus.TOO_MANY_REQUESTS);
+    return this.contacts.zipRepresentatives(body.zip);
   }
 
   /** Forgets this instance's lookup counts (tests). */

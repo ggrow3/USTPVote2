@@ -9,9 +9,11 @@ import {
   placeholderValues,
   PUBLIC_OFFICES,
   TEMPLATE_AUDIENCES,
+  TEMPLATE_CHANNELS,
   type EmailPlaceholder,
   type EmailTemplate,
   type EmailTemplateInput,
+  type TemplateChannel,
 } from 'ustp-domain';
 import { focusFirstInvalid } from '../a11y.js';
 import { errorMessage } from '../api.js';
@@ -25,14 +27,20 @@ import { AUDIENCE_TEXT, BLANK_EMAIL, OFFICE_HEADINGS, templateSuitsText } from '
  * The emails members send from the Your area page (design §5.12): a list that Membership Admins (Admin › Candidacies)
  * and Communications Admins (Admin › Communications) both keep. In the Write dialog a member picks one of those that
  * suit the person; the page fills in the words in braces, and the member can change the text before sending it from
- * their own email app. Every add, change and removal is ledgered.
+ * their own email app. The list also holds the Representatives page's call scripts (design §5.19): what a member reads
+ * out when they call a representative's office. Every add, change and removal is ledgered.
  */
 const templates = ref<EmailTemplate[] | null>(null);
 const error = ref<string | null>(null);
 const editing = ref(false);
 /** The template being edited; null for a new one. */
 const current = ref<EmailTemplate | null>(null);
-const form = reactive<EmailTemplateInput>({ name: '', offices: [], audience: 'anyone', subject: '', body: '' });
+const form = reactive<EmailTemplateInput>({ channel: 'email', name: '', offices: [], audience: 'anyone', subject: '', body: '' });
+
+const CHANNEL_TEXT: Readonly<Record<TemplateChannel, string>> = { email: 'Email', call: 'Call script' };
+const channelOptions = TEMPLATE_CHANNELS.map((value) => ({ value, label: CHANNEL_TEXT[value] }));
+/** What a call script starts from: who is calling, from where. */
+const BLANK_CALL = 'Hello, my name is {myName}. I live in {district}, and I am calling {name} {asRole}.\n\n';
 const errors = ref<FieldErrors>({});
 
 const PLACEHOLDER_HELP: Readonly<Record<EmailPlaceholder, string>> = {
@@ -55,7 +63,7 @@ const preview = computed(() => {
   const person = { name: 'Alex Example', officeTitle: DEFAULT_OFFICE_TITLES[office], role } as const;
   const values = placeholderValues(person, 'Congressional District 49, California', 'Ada Brooks');
   return {
-    caption: `Ada Brooks writing to Alex Example, ${role === 'holder' ? 'their' : 'a candidate for'} ${person.officeTitle}.`,
+    caption: `Ada Brooks ${form.channel === 'call' ? 'calling' : 'writing to'} Alex Example, ${role === 'holder' ? 'their' : 'a candidate for'} ${person.officeTitle}.`,
     subject: fillTemplate(form.subject, values),
     body: fillTemplate(form.body, values),
   };
@@ -71,10 +79,14 @@ async function load() {
 }
 onMounted(load);
 
-function edit(template: EmailTemplate | null) {
+function edit(template: EmailTemplate | null, channel: TemplateChannel = 'email') {
   current.value = template;
-  const { name, offices, audience, subject, body } = template ?? { name: '', offices: [], audience: 'anyone' as const, ...BLANK_EMAIL };
-  Object.assign(form, { name, offices: [...offices], audience, subject, body });
+  const blank =
+    channel === 'call'
+      ? { channel, name: '', offices: [], audience: 'holder' as const, subject: '', body: BLANK_CALL }
+      : { channel, name: '', offices: [], audience: 'anyone' as const, ...BLANK_EMAIL };
+  const { name, offices, audience, subject, body } = template ?? blank;
+  Object.assign(form, { channel: template?.channel ?? channel, name, offices: [...offices], audience, subject, body });
   errors.value = {};
   editing.value = true;
 }
@@ -115,19 +127,20 @@ async function remove(template: EmailTemplate) {
 <template>
   <div class="ustp-content">
     <p class="text-grey-7">
-      The emails members can send from the Your area page. When a member writes to someone, they choose from the
-      templates that suit that person, in this order, and the first is filled in to start; they can change the text
-      before they send it from their own email app. Membership Admins and Communications Admins both keep this list.
+      The emails people can send from the Your area and Representatives pages, and the scripts they can read out when
+      they call a representative’s office. When someone writes to or calls a person, they choose from the templates of
+      that kind that suit the person, in this order, and the first is filled in to start; an email can be changed
+      before it is sent from their own email app. Membership Admins and Communications Admins both keep this list.
     </p>
     <q-banner v-if="error" class="bg-orange-1 text-black" rounded>{{ error }}</q-banner>
     <div v-else-if="!templates" class="text-grey-7">Loading…</div>
     <template v-else>
-      <div v-if="!templates.length" class="text-grey-7">No templates: members start from a blank email.</div>
+      <div v-if="!templates.length" class="text-grey-7">No templates: people start from a blank email, and calls have no script.</div>
       <q-list v-else bordered separator class="rounded-borders">
         <q-item v-for="t in templates" :key="t.templateId">
           <q-item-section>
             <q-item-label>{{ t.name }}</q-item-label>
-            <q-item-label caption>{{ templateSuitsText(t) }} · {{ t.version === 0 ? 'ready-made' : `version ${t.version}` }}</q-item-label>
+            <q-item-label caption>{{ CHANNEL_TEXT[t.channel] }} · {{ templateSuitsText(t) }} · {{ t.version === 0 ? 'ready-made' : `version ${t.version}` }}</q-item-label>
           </q-item-section>
           <q-item-section side>
             <q-btn flat dense no-caps color="primary" label="Edit" :aria-label="`Edit ${t.name}`" @click="edit(t)" />
@@ -140,15 +153,25 @@ async function remove(template: EmailTemplate) {
           no-caps
           color="primary"
           icon="add"
-          label="New template"
+          label="New email"
           :disable="templates.length >= EMAIL_TEMPLATE_LIMITS.templates"
           @click="edit(null)"
+        />
+        <q-btn
+          outline
+          no-caps
+          color="primary"
+          icon="call"
+          label="New call script"
+          class="q-ml-sm"
+          :disable="templates.length >= EMAIL_TEMPLATE_LIMITS.templates"
+          @click="edit(null, 'call')"
         />
       </div>
 
       <q-card v-if="editing" flat bordered>
         <q-card-section>
-          <h2 class="text-subtitle1 q-my-none">{{ current ? current.name : 'New template' }}</h2>
+          <h2 class="text-subtitle1 q-my-none">{{ current ? current.name : form.channel === 'call' ? 'New call script' : 'New email' }}</h2>
         </q-card-section>
         <q-card-section class="q-pt-none">
           <q-form class="ustp-form" novalidate @submit.prevent="save">
@@ -162,6 +185,7 @@ async function remove(template: EmailTemplate) {
               :error-message="errors.name"
             />
             <div class="ustp-row">
+              <q-select v-model="form.channel" outlined dense emit-value map-options :options="channelOptions" label="Kind" :disable="!!current" />
               <q-select v-model="form.audience" outlined dense emit-value map-options :options="audienceOptions" label="For" />
               <q-select
                 v-model="form.offices"
@@ -179,6 +203,7 @@ async function remove(template: EmailTemplate) {
               />
             </div>
             <q-input
+              v-if="form.channel === 'email'"
               v-model="form.subject"
               outlined
               dense
@@ -192,7 +217,7 @@ async function remove(template: EmailTemplate) {
               outlined
               type="textarea"
               autogrow
-              label="Email"
+              :label="form.channel === 'call' ? 'What to say' : 'Email'"
               :maxlength="EMAIL_TEMPLATE_LIMITS.body"
               :error="!!errors.body"
               :error-message="errors.body"
@@ -218,7 +243,7 @@ async function remove(template: EmailTemplate) {
               <div class="text-caption text-grey-7">{{ preview.caption }}</div>
             </q-card-section>
             <q-card-section class="q-pt-none">
-              <div class="text-weight-medium">{{ preview.subject }}</div>
+              <div v-if="form.channel === 'email'" class="text-weight-medium">{{ preview.subject }}</div>
               <div class="templates-preview">{{ preview.body }}</div>
             </q-card-section>
           </q-card>

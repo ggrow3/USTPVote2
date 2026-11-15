@@ -11,6 +11,7 @@ import {
   isPublicLedgerEvent,
   placeholderValues,
   removeEmailTemplate,
+  STARTING_CALL_SCRIPTS,
   STARTING_EMAIL_TEMPLATES,
   templateProblem,
   templatesFor,
@@ -19,7 +20,7 @@ import {
 } from '../index.js';
 
 const AT = '2026-11-01T12:00:00.000Z';
-const INPUT: EmailTemplateInput = { name: 'Invite to a forum', offices: ['county', 'local'], audience: 'anyone', subject: 'An invitation', body: 'Dear {name},\n\n{myName}' };
+const INPUT: EmailTemplateInput = { channel: 'email', name: 'Invite to a forum', offices: ['county', 'local'], audience: 'anyone', subject: 'An invitation', body: 'Dear {name},\n\n{myName}' };
 
 function value<T>(outcome: { ok: true; value: T } | { ok: false; reason: string }): T {
   if (!outcome.ok) throw new Error(outcome.reason);
@@ -28,14 +29,14 @@ function value<T>(outcome: { ok: true; value: T } | { ok: false; reason: string 
 
 describe('email templates', () => {
   it('start as three ready-made templates, until the list is saved', () => {
-    expect(emailTemplateList(null)).toBe(STARTING_EMAIL_TEMPLATES);
+    expect(emailTemplateList(null)).toEqual([...STARTING_EMAIL_TEMPLATES, ...STARTING_CALL_SCRIPTS]);
     expect(STARTING_EMAIL_TEMPLATES.map((t) => [t.name, t.audience, t.version])).toEqual([
       ['Where they stand on longevity and science', 'anyone', 0],
       ['Ask for a meeting', 'holder', 0],
       ['Questions for a candidate', 'candidate', 0],
     ]);
     for (const { templateId: _id, version: _v, ...t } of STARTING_EMAIL_TEMPLATES) expect(emailTemplateInputSchema.parse(t)).toEqual(t);
-    expect(emailTemplateList({ templates: [], updatedAt: AT, updatedBy: 'a' })).toEqual([]);
+    expect(emailTemplateList({ templates: [], callScripts: true, updatedAt: AT, updatedBy: 'a' })).toEqual([]);
   });
 
   it('allow only the placeholders the page fills in, a one-line name and subject, and known offices', () => {
@@ -118,5 +119,48 @@ describe('email templates', () => {
       'Dear Mike Levin, I write as my U.S. Representative from Congressional District 49, California. Ada {other}',
     );
     expect(placeholderValues({ name: 'Eli Stern', officeTitle: 'U.S. Representative', role: 'candidate' }, 'x', 'Ada').asRole).toBe('as a candidate for U.S. Representative');
+  });
+});
+
+describe('call scripts (design §5.19)', () => {
+  const SCRIPT: EmailTemplateInput = { channel: 'call', name: 'Call about a bill', offices: [], audience: 'holder', subject: '', body: 'Hello, I am {myName}, calling {name}.' };
+  const holder = { office: 'us_house', role: 'holder' } as const;
+
+  it('are templates without a subject, offered for calls only, to people in office', () => {
+    expect(emailTemplateInputSchema.parse({ ...SCRIPT, subject: undefined })).toEqual(SCRIPT);
+    expect(emailTemplateInputSchema.safeParse({ ...SCRIPT, subject: 'A subject' }).success).toBe(false);
+    // An email still needs its subject, and is an email unless it says otherwise.
+    expect(emailTemplateInputSchema.safeParse({ ...INPUT, subject: '' }).success).toBe(false);
+    expect(emailTemplateInputSchema.parse({ ...INPUT, channel: undefined }).channel).toBe('email');
+    for (const { templateId: _id, version: _v, ...t } of STARTING_CALL_SCRIPTS) expect(emailTemplateInputSchema.parse(t)).toEqual(t);
+
+    const list = emailTemplateList(null);
+    expect(templatesFor(list, holder, 'call').map((t) => t.name)).toEqual(['Call to support research on aging', 'Call to ask for a meeting']);
+    expect(templatesFor(list, { office: 'us_house', role: 'candidate' }, 'call')).toEqual([]);
+    expect(templatesFor(list, holder).every((t) => t.channel === 'email')).toBe(true);
+    // No two templates share a name, so each can be changed.
+    expect(new Set(list.map((t) => t.name.toLowerCase())).size).toBe(list.length);
+  });
+
+  it('join a list saved before they existed, until the list is next saved with them', () => {
+    const { channel: _channel, ...old } = { ...INPUT, templateId: 't1', version: 1 };
+    const before = emailTemplateList({ templates: [old as EmailTemplate], updatedAt: AT, updatedBy: 'a' });
+    expect(before.map((t) => [t.templateId, t.channel])).toEqual([
+      ['t1', 'email'],
+      ['starting-call-research', 'call'],
+      ['starting-call-meeting', 'call'],
+    ]);
+    const { record } = value(removeEmailTemplate(before, 'starting-call-meeting', 'a', AT));
+    expect(record.callScripts).toBe(true);
+    expect(emailTemplateList(record).map((t) => t.templateId)).toEqual(['t1', 'starting-call-research']);
+  });
+
+  it('are hashed with their channel; an email’s hash is as it always was', () => {
+    const { channel: _channel, ...email } = INPUT;
+    expect(emailTemplateHash(INPUT)).toBe(emailTemplateHash({ ...email, channel: 'email' }));
+    expect(emailTemplateHash(SCRIPT)).not.toBe(emailTemplateHash({ ...SCRIPT, channel: 'email' }));
+    const added = value(addEmailTemplate(emailTemplateList(null), SCRIPT, 't9', 'a', AT));
+    expect(added.template).toMatchObject({ channel: 'call', version: 1 });
+    expect(added.event.payload).toMatchObject({ change: 'added', contentHash: emailTemplateHash(SCRIPT) });
   });
 });

@@ -180,6 +180,27 @@ export function officesText(groups: readonly { readonly office: PublicOffice; re
 }
 
 /**
+ * What the Representatives page (design §5.19) says about the area it shows: whose representatives these are and where
+ * the area comes from, with the link to the Account page as on the Candidates page. Never the ZIP code on the record;
+ * `typed`, the ZIP code someone typed on the page, is theirs to see.
+ */
+export function representativesAreaText(area: Pick<CandidateArea, 'state' | 'basis'>, typed: string | null = null): { readonly text: string; readonly link: string | null } {
+  const state = stateName(area.state);
+  const shared = 'A ZIP code can reach into more than one district of a kind, so someone listed for a district here may not be your own representative.';
+  if (area.basis === 'zip') {
+    return typed !== null
+      ? { text: `${state}, and the districts ZIP code ${typed} reaches into. ${shared}`, link: null }
+      : { text: `${state}, and the districts the ZIP code on your membership record reaches into. ${shared}`, link: 'Moved? Change your ZIP code on your Account page.' };
+  }
+  const only = `Only the people who represent all of ${state}: `;
+  if (area.basis === 'unavailable') return { text: `${only}the Census Bureau’s district lookup is not answering, so the districts could not be worked out. Try again later.`, link: null };
+  if (typed !== null) return { text: `${only}the Census draws no area for ZIP code ${typed}.`, link: null };
+  return area.basis === 'no_zip'
+    ? { text: `${only}your membership record has no ZIP code.`, link: 'Add it on your Account page to see your own districts.' }
+    : { text: `${only}the Census draws no area for the ZIP code on your membership record in ${state} (a PO box’s ZIP code has none).`, link: 'Check it on your Account page.' };
+}
+
+/**
  * What a page says when a public record is missing; nothing when it answered. A record that is off (the ballot where
  * this site has no key for it or between elections, the state's list outside California, people in office where they
  * are not asked for) is worth no note, except Open States, which this site can be connected to.

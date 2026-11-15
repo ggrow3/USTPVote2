@@ -15,8 +15,10 @@ import {
   mergeStateList,
   nextFederalElectionYear,
   OFFICES_OF_KIND,
+  phoneLink,
   removeAreaContact,
   seatNotUp,
+  socialAccounts,
   type AreaContact,
   type CandidateArea,
   type District,
@@ -223,5 +225,47 @@ describe('the Your area page', () => {
     expect(fecDisplayName("O'BRIEN-SMITH, MARY MRS.")).toBe("Mary O'Brien-Smith");
     expect(fecDisplayName('DE LA CRUZ, ANA III')).toBe('Ana De La Cruz III');
     expect(fecDisplayName('WRITE IN')).toBe('Write In');
+  });
+});
+
+describe('ways to reach a representative (design §5.19)', () => {
+  it('reads a record’s official accounts, in the networks’ order, leaving out names that are no part of an address', () => {
+    expect(
+      socialAccounts({ twitter: 'RepExample', twitter_id: '1', facebook: 'rep.example', instagram: 'repexample', youtube: 'RepEx', youtube_id: 'UC123', mastodon: '@rep@Mastodon.social' }),
+    ).toEqual([
+      { network: 'x', handle: '@RepExample', url: 'https://x.com/RepExample' },
+      { network: 'facebook', handle: 'rep.example', url: 'https://www.facebook.com/rep.example' },
+      { network: 'instagram', handle: '@repexample', url: 'https://www.instagram.com/repexample' },
+      { network: 'youtube', handle: 'RepEx', url: 'https://www.youtube.com/channel/UC123' },
+      { network: 'mastodon', handle: '@rep@Mastodon.social', url: 'https://mastodon.social/@rep' },
+    ]);
+    expect(socialAccounts({ youtube: 'OldName' })).toEqual([{ network: 'youtube', handle: 'OldName', url: 'https://www.youtube.com/user/OldName' }]);
+    expect(socialAccounts({ twitter: 'a/b?c', facebook: 7, mastodon: 'rep@nowhere', instagram: '' })).toEqual([]);
+  });
+
+  it('dials US numbers only, without their extension', () => {
+    expect(phoneLink('202-225-3906')).toBe('tel:+12022253906');
+    expect(phoneLink('(916) 651-4038 ext. 12')).toBe('tel:+19166514038');
+    expect(phoneLink('1 202 225 3906')).toBe('tel:+12022253906');
+    expect(phoneLink('225-3906')).toBeNull();
+    expect(phoneLink('call the office')).toBeNull();
+  });
+
+  it('an admin’s entry may have a phone number, which a record’s entry for the same person keeps unless the admin gives one', () => {
+    const entered = areaContactInputSchema.parse({ ...INPUT, phone: ' 619-555-0100 ' });
+    expect(entered.phone).toBe('619-555-0100');
+    expect(areaContactInputSchema.parse(INPUT).phone).toBeNull();
+    expect(areaContactInputSchema.safeParse({ ...INPUT, phone: '555-0100' }).success).toBe(false);
+
+    const { record } = addAreaContact(areaContactContent(entered, CA49), 'c1', 'admin', AT);
+    expect(areaContactView(record).phone).toBe('619-555-0100');
+    // An entry saved before phone numbers were kept has none.
+    const { phone: _phone, ...old } = record;
+    const shown = areaContactView(old);
+    expect(shown.phone).toBeNull();
+
+    const fromRecord: AreaContact = { ...shown, contactId: 'congress:X', source: 'congress', phone: '202-555-0149', social: socialAccounts({ twitter: 'RepExample' }) };
+    expect(mergeContacts([fromRecord], [shown])[0]).toMatchObject({ source: 'admin', phone: '202-555-0149', social: [{ network: 'x' }] });
+    expect(mergeContacts([fromRecord], [areaContactView(record)])[0]).toMatchObject({ phone: '619-555-0100' });
   });
 });

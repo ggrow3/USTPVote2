@@ -71,6 +71,8 @@ export const router = createRouter({
           meta: { requiresAuth: true },
         },
         { path: 'candidates/:id', component: () => import('./candidacies/CandidatePage.vue') },
+        // Who represents someone now and how to reach them (design §5.19): a member's own area, or any ZIP code typed.
+        { path: 'representatives', component: () => import('./candidacies/RepresentativesPage.vue') },
         // Race pages and people's pages (design §5.17): public, listed in search, each with its own link preview.
         { path: 'races', component: () => import('./candidacies/RacesPage.vue') },
         { path: 'races/:state', component: () => import('./candidacies/RacePage.vue') },
