@@ -275,11 +275,15 @@ describe('AuthGuard two-step requirement', () => {
     admin() {}
     @Roles('system_admin', 'site_admin')
     people() {}
+    @Roles('system_admin')
+    signIn() {}
+    @Roles('auditor')
+    audit() {}
   }
 
   /** What the guard does with a sign-in: true, 'waived' when it let a Site Admin in without a second factor, or the refusal's body. */
   async function admit(
-    handler: 'read' | 'me' | 'admin' | 'people',
+    handler: 'read' | 'me' | 'admin' | 'people' | 'signIn' | 'audit',
     {
       roles = [] as Role[],
       mfa = false,
@@ -287,6 +291,7 @@ describe('AuthGuard two-step requirement', () => {
       siteAdminsRequired = true,
       mfaSwitch = true,
       accountId = 'a1' as string | null,
+      seen = undefined as { ctx?: RequestContext } | undefined,
     } = {},
   ): Promise<unknown> {
     const token = { uid: 'u1', firebase: { sign_in_provider: 'password', ...(mfa && { sign_in_second_factor: 'totp' }) } };
@@ -307,12 +312,30 @@ describe('AuthGuard two-step requirement', () => {
     } as unknown as ExecutionContext;
     try {
       const admitted = await guard.canActivate(context);
+      if (seen) seen.ctx = request.ctx;
       return admitted && request.ctx?.secondFactorWaived ? 'waived' : admitted;
     } catch (e) {
       return (e as HttpException).getResponse();
     }
   }
   const refused = { type: PROBLEM_TYPES.mfaRequired };
+
+  it("admits a Site Admin to every other role's routes but System Admins' own, keeping the roles they hold apart", async () => {
+    const seen: { ctx?: RequestContext } = {};
+    expect(await admit('admin', { roles: ['site_admin'], mfa: true, seen })).toBe(true);
+    expect(seen.ctx?.roles).toEqual(['auditor', 'communications_admin', 'course_admin', 'election_admin', 'membership_admin', 'site_admin']);
+    expect(seen.ctx?.heldRoles).toEqual(['site_admin']);
+    expect(actorOf(seen.ctx!, true)).toMatchObject({ roles: seen.ctx!.roles, heldRoles: ['site_admin'] });
+    expect(await admit('audit', { roles: ['site_admin'], mfa: true })).toBe(true);
+    expect(await admit('signIn', { roles: ['site_admin'], mfa: true })).toMatchObject({ message: 'requires role system_admin' });
+    // Their second factor is asked for as before, and waived only while their setting is off.
+    expect(await admit('admin', { roles: ['site_admin'] })).toMatchObject({ type: PROBLEM_TYPES.mfaRequired });
+    expect(await admit('admin', { roles: ['site_admin'], siteAdminsRequired: false })).toBe('waived');
+    // Nobody else gains a role: an Election Admin stays out of the Auditors' routes.
+    expect(await admit('audit', { roles: ['election_admin'], mfa: true, seen })).toMatchObject({ message: 'requires role auditor' });
+    expect(await admit('admin', { roles: ['election_admin'], mfa: true, seen })).toBe(true);
+    expect(seen.ctx).toMatchObject({ roles: ['election_admin'], heldRoles: ['election_admin'] });
+  });
 
   it('lets members without a role in with one factor while the requirement is off', async () => {
     expect(await admit('read')).toBe(true);

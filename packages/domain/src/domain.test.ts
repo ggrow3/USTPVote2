@@ -14,7 +14,18 @@ import { electionDocPath, sequenceId } from './collections.js';
 import { checkElectionDeletable, electionTransitionAuthority, isTerminal } from './election-state.js';
 import { isUuidV7, uuidv7, uuidv7Timestamp } from './ids.js';
 import { checkStatusChange, mayApply, type MemberStatus } from './membership/member-status.js';
-import { administersSite, checkRoleChange, conflictingRoles, MAX_ROLES_PER_ACCOUNT, maxRolesFor, ROLES, SITE_ADMIN_MAX_ROLES, type Role } from './roles.js';
+import {
+  administersSite,
+  checkRoleChange,
+  conflictingRoles,
+  effectiveRoles,
+  MAX_ROLES_PER_ACCOUNT,
+  maxRolesFor,
+  ROLES,
+  SITE_ADMIN_ACTS_AS,
+  SITE_ADMIN_MAX_ROLES,
+  type Role,
+} from './roles.js';
 import { ADMIN_PERSONAS, checkActingRoleChange, MAX_TEST_VOTERS } from './testing.js';
 
 describe('uuidv7', () => {
@@ -234,6 +245,41 @@ describe('two-person rule', () => {
   it('accepts a distinct approver with the right role and a fresh MFA sign-in', () => {
     expect(checkCanRequest('election.certify', electionAdmin).ok).toBe(true);
     expect(checkCanApprove(request, auditor, now).ok).toBe(true);
+  });
+
+  it('gives a Site Admin every role but System Admin, and nobody else more than they hold', () => {
+    expect(SITE_ADMIN_ACTS_AS).toEqual(['membership_admin', 'election_admin', 'auditor', 'course_admin', 'communications_admin']);
+    expect(effectiveRoles(['site_admin'])).toEqual(ROLES.filter((r) => r !== 'system_admin').sort());
+    expect(effectiveRoles(['site_admin'])).not.toContain('system_admin');
+    expect(effectiveRoles(['auditor', 'site_admin'])).toEqual(effectiveRoles(['site_admin']));
+    for (const role of ROLES.filter((r) => r !== 'site_admin')) expect(effectiveRoles([role])).toEqual([role]);
+    expect(effectiveRoles(['election_admin', 'system_admin'])).toEqual(['election_admin', 'system_admin']);
+    expect(effectiveRoles([])).toEqual([]);
+  });
+
+  it('lets a Site Admin request as an Election Admin, and decide only with the Auditor role granted', () => {
+    const acting = effectiveRoles(['site_admin']);
+    const site: Actor = { accountId: 'site1', roles: acting, heldRoles: ['site_admin'], mfa: true, authAgeSeconds: 60 };
+    const other: Actor = { ...site, accountId: 'site2' };
+    for (const action of ['roll.approve', 'election.schedule', 'election.certify', 'election.cancel', 'position.modify', 'position.appoint'] as const) {
+      expect(checkCanRequest(action, site).ok).toBe(true);
+    }
+    // Two Site Admins cannot between them request and approve: neither holds Auditor.
+    const theirs: PendingApproval = { ...request, requestedBy: 'site1' };
+    expect(checkCanApprove(theirs, other, now)).toEqual({
+      ok: false,
+      reason: 'election.certify must be approved by someone granted auditor: a site_admin requests it, and does not decide it',
+    });
+    expect(checkCanApprove(request, site, now)).toMatchObject({ ok: false, reason: /someone granted auditor/ });
+    // A Site Admin a System Admin made an Auditor decides another person's request, never their own.
+    const auditing: Actor = { ...other, heldRoles: ['auditor', 'site_admin'] };
+    expect(checkCanApprove(theirs, auditing, now).ok).toBe(true);
+    expect(checkCanApprove({ ...theirs, requestedBy: 'site2' }, auditing, now)).toMatchObject({ ok: false, reason: /different person/ });
+    // An Auditor decides a Site Admin's request.
+    expect(checkCanApprove(theirs, auditor, now).ok).toBe(true);
+    // Acting as every other role gives none of System Admins' own powers.
+    expect(checkCanDeleteTestVoters(site)).toMatchObject({ ok: false, reason: 'test voters are deleted by system_admin' });
+    expect(checkCanChangeRole(site, { accountId: 'x', roles: [] }, 'grant', 'system_admin')).toMatchObject({ ok: false });
   });
 
   it('refuses self-approval even when the requester also holds the approver role', () => {

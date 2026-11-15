@@ -4,7 +4,7 @@ import { isAwaitingDecision, type ApprovalRequestRecord } from 'ustp-domain';
 import { api } from '../../api.js';
 import { aRole, describeRequest, reviewLink } from '../../approval-text.js';
 import { askReason, attempt } from '../../dialogs.js';
-import { hasRole, session } from '../../session.js';
+import { hasRole, holdsRole, session } from '../../session.js';
 
 const pending = ref<ApprovalRequestRecord[]>([]);
 /** An empty list only means "nothing pending" once a load has succeeded. */
@@ -15,7 +15,7 @@ const me = computed(() => session.me?.account?.accountId);
 function blocker(r: ApprovalRequestRecord): string | null {
   if (r.requestedBy === me.value) return 'You requested this; another admin must decide.';
   if (r.subject === me.value) return 'This affects your own account.';
-  if (!hasRole(r.approverRole)) return `Needs ${aRole(r.approverRole)} to decide.`;
+  if (!holdsRole(r.approverRole)) return `Needs ${aRole(r.approverRole)} to decide.`;
   return null;
 }
 

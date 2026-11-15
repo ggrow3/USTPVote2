@@ -3,6 +3,8 @@ export { uuidv7, isUuidV7, uuidv7Timestamp } from './ids.js';
 export {
   ROLES,
   SITE_ADMIN_ROLES,
+  SITE_ADMIN_ACTS_AS,
+  effectiveRoles,
   MAX_ROLES_PER_ACCOUNT,
   SITE_ADMIN_MAX_ROLES,
   maxRolesFor,

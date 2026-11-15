@@ -63,8 +63,11 @@ describe('defaults', () => {
     expect(tabs('election_admin')).toEqual(['elections', 'offices', 'forum', 'approvals']);
     expect(tabs('auditor')).toEqual(['elections', 'offices', 'approvals', 'audit', 'security']);
     expect(tabs('system_admin')).toEqual(['room', 'approvals', 'people', 'signin', 'claude', 'email', 'security', 'testing', 'navigation', 'hub', 'quote', 'bills']);
-    // Site Admins: System Admins' tabs but Sign-in methods, API keys and Testing (design §10.1).
-    expect(tabs('site_admin')).toEqual(['room', 'approvals', 'people', 'email', 'security', 'testing', 'navigation', 'hub', 'quote', 'bills']);
+    // Site Admins' own column: System Admins' tabs but Sign-in methods and API keys (design §10.1).
+    const own = ADMIN_SECTIONS.filter((s) => DEFAULT_NAVIGATION.sections.site_admin[s]);
+    expect(own).toEqual(['room', 'approvals', 'people', 'email', 'security', 'testing', 'navigation', 'hub', 'quote', 'bills']);
+    // What a Site Admin sees: that, and every section another role but System Admin is shown.
+    expect(tabs('site_admin')).toEqual(ADMIN_SECTIONS.filter((s) => s !== 'signin' && s !== 'claude'));
     expect(tabs('course_admin')).toEqual(['course']);
     expect(tabs('communications_admin')).toEqual(['communications', 'hub']);
   });
@@ -321,6 +324,38 @@ describe('links a role hides', () => {
     expect(resolved.hiddenFrom).toEqual(DEFAULT_NAVIGATION.hiddenFrom);
     expect(resolved.menu.applicant.ballot).toBe(false);
     expect(shownTo(resolved, viewer('no_membership', 'system_admin')).menu).toContain('register');
+  });
+
+  it('show a Site Admin what any role but System Admin is shown, and hide from them only what Site Admins hide', () => {
+    const settings = resolveNavigation(
+      edit(DEFAULT_NAVIGATION, (s) => {
+        s.sections.membership_admin.applications = false;
+        s.sections.site_admin.testing = false;
+        s.menu.course_admin.teams = true;
+        s.menu.election_admin.forum = false;
+        s.hiddenFrom.election_admin.forum = true;
+        s.hiddenFrom.system_admin.register = true;
+        s.menu.system_admin.register = false;
+      }),
+    );
+    const seen = shownTo(settings, viewer('no_membership', 'site_admin'));
+    // A section no role is shown is not shown to them either; one a role still shows them is.
+    expect(seen.sections).not.toContain('applications');
+    expect(seen.sections).not.toContain('testing');
+    expect(seen.sections).toEqual(expect.arrayContaining(['members', 'elections', 'audit', 'course', 'communications']));
+    // Never System Admins' own sections.
+    expect(seen.sections).not.toContain('signin');
+    expect(seen.sections).not.toContain('claude');
+    // A link another role adds is added; a link another role hides stays, since they do not hold that role.
+    expect(seen.menu).toContain('teams');
+    expect(shownTo(settings, viewer('active', 'site_admin')).menu).toContain('forum');
+    expect(shownTo(settings, viewer('active', 'election_admin')).menu).not.toContain('forum');
+    expect(seen.menu).toContain('register');
+    // A role they were granted hides its links from them as from anyone.
+    expect(shownTo(settings, viewer('active', 'site_admin', 'election_admin')).menu).not.toContain('forum');
+    // They start where Site Admins start, not where the first of the other roles does.
+    const starts = resolveNavigation(edit(DEFAULT_NAVIGATION, (s) => ((s.startsOn.membership_admin = 'admin/applications'), (s.startsOn.site_admin = 'admin/people'))));
+    expect(startPageFor(starts, viewer('active', 'site_admin'))).toBe('admin/people');
   });
 
   it('take the link away from anyone holding the role, whatever their membership shows them', () => {

@@ -29,7 +29,13 @@ export const APPROVAL_TTL_DAYS = 7;
 
 export interface Actor {
   readonly accountId: string;
+  /** The roles they act with: for a Site Admin, every role but System Admin (`effectiveRoles`). */
   readonly roles: readonly Role[];
+  /**
+   * The roles granted to the account itself, where that is not `roles`: a Site Admin's. Deciding a two-person request
+   * takes the approver's role held, not one a Site Admin only acts as (`checkCanApprove`).
+   */
+  readonly heldRoles?: readonly Role[];
   /** The ID token was issued after a second factor. */
   readonly mfa: boolean;
   /** Seconds since the ID token's `auth_time`. */
@@ -131,6 +137,12 @@ export function checkCanDeleteTestVoters(deleter: Actor): Check {
   return OK;
 }
 
+/**
+ * Whether `approver` may decide a two-person request (design §10.2): a different person than the requester, never the
+ * account it is about, and holding the approver's role itself. A Site Admin acts as every role but System Admin
+ * elsewhere, but not here: they decide a request only once a System Admin has made them an Auditor (design §10.1), so
+ * two Site Admins cannot between them both request and approve.
+ */
 export function checkCanApprove(request: PendingApproval, approver: Actor, now: Date = new Date()): Check {
   const rule: ApprovalRule = TWO_PERSON_ACTIONS[request.action];
   if (request.status !== 'pending') return deny(`request is ${request.status}`);
@@ -139,7 +151,14 @@ export function checkCanApprove(request: PendingApproval, approver: Actor, now: 
   if (request.subject !== undefined && approver.accountId === request.subject) {
     return deny('you cannot approve an action on your own account');
   }
-  if (!approver.roles.includes(rule.approver)) return deny(`${request.action} must be approved by ${rule.approver}`);
+  if (!(approver.heldRoles ?? approver.roles).includes(rule.approver)) {
+    const acting = approver.roles.includes(rule.approver);
+    return deny(
+      acting
+        ? `${request.action} must be approved by someone granted ${rule.approver}: a site_admin requests it, and does not decide it`
+        : `${request.action} must be approved by ${rule.approver}`,
+    );
+  }
   if (!approver.mfa) return deny('approvals require multi-factor sign-in', 'mfaRequired');
   if (approver.authAgeSeconds > APPROVAL_MAX_AUTH_AGE_SECONDS) return deny('sign in again to approve', 'reauthRequired');
   return OK;

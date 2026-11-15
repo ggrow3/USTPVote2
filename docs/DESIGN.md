@@ -3951,19 +3951,19 @@ results page, the CLI and the tests pass it that entry.
 
 | Capability | Membership Admin | Election Admin | Auditor | System Admin | Site Admin |
 |---|:-:|:-:|:-:|:-:|:-:|
-| Triage applications and photos; add members, one or from a CSV file (§5.13); view member profiles; change member status; correct member details; change the registration form's wording (§5.2) | ● | | | | |
-| Write to members and answer them as the membership team, in the membership inbox, giving, noting and closing its conversations; see the emails the site sent a member, on their record (§10.13) | ● | | | | |
-| Create, rename, archive and restore teams; name and remove their leads; change anything on any team (§5.7) | ● | | | | |
-| Moderate the forum: remove and restore posts and comments, lock and pin threads, see and close reports (§5.9) | ● | | | | |
-| Put a forum proposal on a draft election's ballot (§5.9) | | ● | | | |
-| In the members' room, having accepted its terms: delete any message or memory item, change any action item, switch the assistant off and on (§5.10) | ● | | | | |
+| Triage applications and photos; add members, one or from a CSV file (§5.13); view member profiles; change member status; correct member details; change the registration form's wording (§5.2) | ● | | | | ● |
+| Write to members and answer them as the membership team, in the membership inbox, giving, noting and closing its conversations; see the emails the site sent a member, on their record (§10.13) | ● | | | | ● |
+| Create, rename, archive and restore teams; name and remove their leads; change anything on any team (§5.7) | ● | | | | ● |
+| Moderate the forum: remove and restore posts and comments, lock and pin threads, see and close reports (§5.9) | ● | | | | ● |
+| Put a forum proposal on a draft election's ballot (§5.9) | | ● | | | ● |
+| In the members' room, having accepted its terms: delete any message or memory item, change any action item, switch the assistant off and on (§5.10) | ● | | | | ● |
 | Open or close the members' room for everyone (Admin › Members' room; §5.10) | ● | | | ● | ● |
 | Switch the members' room's model server on or off, which decides its GPU cost (§5.10) | | | | ● | |
-| Create/edit draft elections, contests, proposals; delete a cancelled election nobody voted in, or a finished rehearsal in testing mode (at once; §6.1) | | ● | | | |
-| Request roll snapshot, scheduling, certification, cancellation | | ● | | | |
-| Define or change offices (at once; §6.4); request an appointment to an office or the end of a term (§6.4) | ● | ● | | | |
-| Approve roll, scheduling, certification, cancellation, an appointment to an office, ending a term of office | | | ● | | |
-| Read full ledger, run verifications | | | ● | | |
+| Create/edit draft elections, contests, proposals; delete a cancelled election nobody voted in, or a finished rehearsal in testing mode (at once; §6.1) | | ● | | | ● |
+| Request roll snapshot, scheduling, certification, cancellation | | ● | | | ● |
+| Define or change offices (at once; §6.4); request an appointment to an office or the end of a term (§6.4) | ● | ● | | | ● |
+| Approve roll, scheduling, certification, cancellation, an appointment to an office, ending a term of office | | | ● | | only once a System Admin has made them an Auditor (below) |
+| Read full ledger, run verifications | | | ● | | ● |
 | Grant/revoke roles (one admin, at once; §10.2) and see who holds them (§10.3) | | | | ● | ● (every role but System Admin, never a System Admin's) |
 | Delete an account the deployment lists (at once; §4); in testing mode, delete test voters (at once; §10.4) | | | | ● | |
 | In testing mode, the other testing tools: personas, acting as them, demo elections (§10.4) | | | | ● | ● |
@@ -3974,7 +3974,8 @@ results page, the CLI and the tests pass it that entry.
 map, publish them, see how each student stands and turn each student's messages with the instructors on or off, the
 instructors being themselves (§10.8). **Communications Admins** publish the party's news, press kit and share kit,
 plan its social media and read suggestions from the public, and also edit the Link hub (§10.9). Neither has any
-membership, election, ballot or audit power, and Course Administrators see no learner's email.
+membership, election, ballot or audit power, and Course Administrators see no learner's email. Site Admins do what
+both do (below).
 
 **Site Admins** *(added 2026-11-08, the owner's decisions)* have most of what System Admins have, as the last four rows
 of the table show, and wherever this document gives System Admins a power those rows do not keep for them alone, Site
@@ -3989,6 +3990,42 @@ verification on every page (§4), unless a System Admin switches that off for Si
 owner's decision; §4), have the Bills tool (§5.14), and are never made by the bootstrap (§4). In testing mode a System
 or Site Admin can act as a Test Site Admin persona, which changes the roles of test personas only (*added 2026-11-13*,
 the user's decision; §10.4).
+
+**A Site Admin does what every other role does** *(added 2026-11-15, the user's decision: "site admin should be able
+to do everything every other role except what system admin can do")*. A Site Admin acts as a Membership Admin, an
+Election Admin, an Auditor, a Course Administrator and a Communications Admin without being granted any of them, and
+as any role added later, but never as a System Admin. It is one rule in one place: `effectiveRoles` in `ustp-domain`
+turns the roles an account holds into the roles it acts with (`SITE_ADMIN_ACTS_AS`: every role but System Admin, for
+an account that holds Site Admin; the roles held, for anyone else). The API's guard checks every role route against
+the roles acted with (`@Roles`, §4; `ctx.roles`), so no route was edited, and the web app's `hasRole` and the
+navigation settings (§10.5) follow the same rule, so a Site Admin sees the other roles' tabs, links and buttons.
+`GET /v1/me`, the People list and the ledger still show the roles **held**, which for such a person is Site Admin.
+
+- **What stays with System Admins**, exactly as before: granting and revoking System Admin and changing the roles of
+  a System Admin's account (§10.2); deleting an account (§4) and deleting test voters (§10.4); the sign-in switches,
+  the two-step requirement for members, whether Site Admins need two-step and whether admins must sign in with Google
+  (§4); the API keys (§5.6); the room's model server (§5.10); and making a Site Admin an Auditor, ending it, or making
+  an Auditor a Site Admin (below). Those routes name System Admin alone, and no rule makes a Site Admin one.
+- **Deciding a two-person request takes the role itself** *(the more cautious of two readings, chosen without asking;
+  the other is a one-line change, below)*. A Site Admin **requests** every two-person action (§10.2) as an Election or
+  Membership Admin, but approves or rejects one only when the Auditor role was **granted** to them, which only a
+  System Admin does for a Site Admin. `checkCanApprove` reads the approver's roles held (`Actor.heldRoles`, kept
+  beside the roles acted with by the guard), and answers a Site Admin without it 403: "… must be approved by someone
+  granted auditor: a site_admin requests it, and does not decide it". Why: Site Admins make one another (they grant
+  Site Admin), so if acting as an Auditor were enough, any two Site Admins, or one person with two accounts they made
+  themselves, could request and approve a roll, a schedule or a certification between them, and the Auditor would no
+  longer be an independent check on an election. With the rule, every decision still comes from someone deliberately
+  made an Auditor, and is still a different person than the requester. Everything else an Auditor does, a Site Admin
+  does: read the whole ledger, run the verifications, read the sign-in log, and see every election, its roll and its
+  requests. To let Site Admins decide requests too, `checkCanApprove` would read `roles` in place of `heldRoles`; the
+  two-different-people check would still hold.
+- **Who is told, and who can be given work.** Notices about a role's work (a new application or a reported message for
+  Membership Admins, a conversation nobody has taken) go to the people granted the role, not to every Site Admin. A
+  Site Admin can be given a membership conversation or a social calendar item, and is told once it is theirs
+  (`DirectoryService.roleTeam`: the role's holders and the Site Admins).
+- **Other roles granted to a Site Admin** now add little: Auditor adds deciding requests, and any other adds that
+  role's notices, its start page and the links it hides (§10.5). The limits below are unchanged.
+- An Election Admin who is a candidate may not act on that election (Q12): that holds for a Site Admin acting as one.
 
 **Incompatible role pairs:** Auditor with any other role, and System Admin with Site Admin, which would add nothing.
 **At most two roles per person** *(added)* (`MAX_ROLES_PER_ACCOUNT`): one person may combine two of Membership Admin,
@@ -4026,6 +4063,8 @@ to the console.
 decidedBy, decidedAt, reason, expiresAt}`.
 
 - Approver ≠ requester (by `accountId`), holds `approverRole` at decision time, signed in with MFA within 15 minutes.
+  The role must be one granted to the approver: a Site Admin, who acts as every role but System Admin elsewhere
+  (§10.1), requests these actions but decides one only as an Auditor a System Admin made (*added 2026-11-15*).
 - The account an action affects (`subject`, when it is an account) may be neither requester nor approver.
 - The approver approves `payloadHash`; approval executes immediately (status `executed`), re-checking every
   precondition and acting on exactly that payload. Statuses: `pending` → `executed` | `rejected`.
@@ -4041,6 +4080,8 @@ decidedBy, decidedAt, reason, expiresAt}`.
   preconditions inside the decision transaction and returns its ledger entries and writes. Only one request per
   action and subject can be waiting for a decision at a time. For election actions the approver must not be a candidate in that
   election.
+
+In the table, a Site Admin counts as each requester, and as the approver only with the Auditor role granted.
 
 | Action | Requested by | Approved by |
 |---|---|---|
@@ -4135,9 +4176,12 @@ different account on each side. Testing mode lets one System Admin do that alone
   acting as a test persona first"), so the Test Site Admin, itself a Site Admin, never reaches them, and the web app
   shows no Testing tab while acting. The Testing tab's visibility for Site Admins is a navigation setting (§10.5),
   shown by default; on a deployment whose navigation was saved before, where it was locked off, a System Admin turns
-  it on in Admin › Navigation. Other admins and members get 403.
+  it on in Admin › Navigation. Other admins and members get 403. *(Checked 2026-11-15, when Site Admins were given the
+  other roles' tools: nothing was missing here. A Site Admin already makes personas, acts as each of them and makes
+  demo elections; the one thing that can stand between a Site Admin and the tab is that saved setting.)*
 - **The Test Site Admin** *(added 2026-11-13, the user's decision)*: acting as it, a System or Site Admin sees and does what a
-  Site Admin does (§10.1) and nothing more: the console shows the Site Admin's tabs and no Testing tab, every
+  Site Admin does (§10.1) and nothing more: the console shows the Site Admin's tabs, which since 2026-11-15 include the
+  other roles' (it requests two-person actions and decides none, like any Site Admin), and no Testing tab, every
   `/v1/testing` route answers 403, deleting an account or a test voter answers 403, and so does any change to a System
   Admin's roles or to System Admin. Its role changes are for **test personas only**: `POST /v1/admin/roles` while
   acting refuses any other account (403, `checkActingRoleChange` in `ustp-domain`, checked inside the change's
@@ -4276,6 +4320,12 @@ page itself, `/`, is the party's link hub (§10.6).
   column. Every role can hide every menu link but Admin (which follows its sections) and Sign in (visitors only), and
   a hidden link is never also shown to the role. They are kept as `hiddenFrom`, per role and link, beside `menu`.
   Signed out, only the signed-out column applies. A test persona (§10.4) is shown what the persona would be.
+  *(Added 2026-11-15)* **A Site Admin** is also shown every link and section shown to any other role but System
+  Admin, since they can use them (§10.1; `shownTo` works the roles out with `effectiveRoles`): no saved setting needs
+  changing for the other roles' tabs to appear. Only a role granted to them hides a link from them, and they start on
+  the Site Admins' start page. To keep a section from Site Admins it has to be hidden from the role it belongs to;
+  the Site Admin column still decides the sections that are Site Admins' own (People, Navigation, Testing and so on),
+  and its other cells stay locked.
 - **Locked cells.** Admin sections exist only for roles: a membership state alone has none. A section is locked off
   for every role the API does not let use it (`SECTION_ROLES`, the `@Roles` of the routes it calls; a server unit
   test compares the two route by route). Offices and Approvals are open to every role, since every admin may read
@@ -5836,6 +5886,8 @@ number, not time.
 ## 12. API surface (`/v1`)
 
 Auth legend: **P** public · **M** signed-in member · **V** on the election's roll · role names for admin.
+A Site Admin may call every route that names a role other than System Admin alone, whether or not the row lists Site
+Admin (§10.1, *added 2026-11-15*); deciding an approval request also takes the Auditor role granted (§10.2).
 
 | Method & path | Auth | Purpose |
 |---|---|---|

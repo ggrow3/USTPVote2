@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import type { FastifyRequest } from 'fastify';
-import { ACT_AS_HEADER, administersSite, adminSignInRefused, isUuidV7, PROBLEM_TYPES, secondFactorScope, type Role } from 'ustp-domain';
+import { ACT_AS_HEADER, administersSite, adminSignInRefused, effectiveRoles, isUuidV7, PROBLEM_TYPES, secondFactorScope, type Role } from 'ustp-domain';
 import { CONFIG, type ServerConfig } from '../config.js';
 import { Firebase } from '../infra/firebase.js';
 import { SignInLogService } from '../security/sign-in-log.js';
@@ -23,7 +23,7 @@ import { SignInMethodsService } from './sign-in-methods.service.js';
 
 /**
  * Applied to every API route (design §4): App Check, a verified ID token from an enabled provider, for admin routes a
- * role plus multi-factor sign-in, and multi-factor sign-in on every route for System Admins, and for everyone while the
+ * role (for a Site Admin, any role but System Admin; design §10.1) plus multi-factor sign-in, and multi-factor sign-in on every route for System Admins, and for everyone while the
  * member requirement is on. Routes marked @Public() skip it.
  */
 @Injectable()
@@ -78,16 +78,19 @@ export class AuthGuard implements CanActivate {
     const operator = acting?.operator ?? null;
     const accountId = personaId === undefined ? ownAccountId : personaId;
     let roles: Role[] = [];
+    let heldRoles: Role[] = [];
     // A Site Admin acting as a persona without a second factor was let through as themselves (operatorFor).
     let secondFactorWaived = acting?.waived ?? false;
     if (required.length > 0) {
       if (!accountId) throw new ForbiddenException('no account');
-      roles = await this.directory.activeRoles(accountId);
+      heldRoles = await this.directory.activeRoles(accountId);
+      // A Site Admin uses every role's routes but System Admins' own (design §10.1).
+      roles = effectiveRoles(heldRoles);
       // Acting as a persona, the admin was checked as themselves (operatorFor).
-      if (personaId === undefined) await this.requireGoogleWhereDue(roles, principal);
+      if (personaId === undefined) await this.requireGoogleWhereDue(heldRoles, principal);
       if (this.config.adminMfaRequired && !principal.mfa && !secondFactorWaived) {
         // Only a Site Admin while the Site Admins' setting is off, whatever other admin role they hold (design §4).
-        secondFactorWaived = roles.includes('site_admin') && secondFactorScope(roles, await this.mfaPolicy.current()) === 'none';
+        secondFactorWaived = heldRoles.includes('site_admin') && secondFactorScope(heldRoles, await this.mfaPolicy.current()) === 'none';
         if (!secondFactorWaived) {
           throw new ForbiddenException({ message: 'admin actions require multi-factor sign-in', type: PROBLEM_TYPES.mfaRequired });
         }
@@ -97,7 +100,7 @@ export class AuthGuard implements CanActivate {
       await this.requireSecondFactorWhereDue(ownAccountId);
     }
 
-    const ctx: RequestContext = { principal, accountId, roles, operator, ...(secondFactorWaived && { secondFactorWaived }) };
+    const ctx: RequestContext = { principal, accountId, roles, heldRoles, operator, ...(secondFactorWaived && { secondFactorWaived }) };
     request.ctx = ctx;
     return true;
   }

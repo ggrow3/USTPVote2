@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { usePageTitle } from '../a11y.js';
 import PageShell from '../components/PageShell.vue';
-import { hasRole, session } from '../session.js';
+import { hasRole, holdsRole, session } from '../session.js';
 import { endTour, guide, startTour, stepAddress, stepDone, TOUR_IDS, type TourId } from './tour.js';
 import { TOURS } from './tours.js';
 
@@ -21,7 +21,7 @@ const isTour = (value: unknown): value is TourId => (TOUR_IDS as readonly unknow
 function initial(): TourId {
   if (isTour(route.query.tour)) return route.query.tour;
   if (guide.progress) return guide.progress.tour;
-  if (hasRole('auditor')) return 'auditor';
+  if (holdsRole('auditor')) return 'auditor';
   if (hasRole('election_admin')) return 'election_admin';
   return 'voter';
 }

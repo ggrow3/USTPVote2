@@ -32,8 +32,13 @@ export interface RequestContext {
   readonly principal: Principal;
   /** The caller's USTP account, or null before `POST /v1/accounts`. */
   readonly accountId: string | null;
-  /** Active roles; loaded only for routes that require a role. */
+  /**
+   * The roles the caller acts with; loaded only for routes that require a role. For a Site Admin, every role but System
+   * Admin (`effectiveRoles`, design §10.1); for anyone else, the roles they hold.
+   */
   readonly roles: readonly Role[];
+  /** The active roles granted to the account itself, where that is not `roles`: what deciding a two-person request asks for. */
+  readonly heldRoles?: readonly Role[];
   /**
    * In testing mode, the System Admin's own accountId when they act as a test persona (design §10.4); `accountId`
    * and `roles` are then the persona's. Null otherwise.
@@ -51,6 +56,7 @@ export function actorOf(ctx: RequestContext, adminMfaRequired: boolean, nowMs: n
   return {
     accountId: ctx.accountId ?? '',
     roles: ctx.roles,
+    ...(ctx.heldRoles && { heldRoles: ctx.heldRoles }),
     // With the MFA requirement switched off (emulators only), or waived for this Site Admin, treat the sign-in as multi-factor.
     mfa: ctx.principal.mfa || !adminMfaRequired || ctx.secondFactorWaived === true,
     authAgeSeconds: Math.max(0, Math.floor(nowMs / 1000) - ctx.principal.authTime),
