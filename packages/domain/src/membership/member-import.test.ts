@@ -291,6 +291,8 @@ describe('welcomeMessage', () => {
     expect(message.subject).toBe('Welcome to the US Transhumanist Party: sign in with Google');
     expect(message.text).toContain('Sign in with Google: https://vote.example.org/signin');
     expect(message.text).toContain('you have no password to set');
+    // The sign-in page's button reads "Continue with Google".
+    expect(message.text).toContain('Choose "Continue with Google" there');
     expect(message.text).not.toMatch(/Set your password|oobCode|set-password/);
     expect(message.html).not.toContain('oobCode');
   });

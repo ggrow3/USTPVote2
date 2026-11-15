@@ -195,7 +195,7 @@ export function welcomeMessage(input: {
       { link: `${input.origin}/signin`, label: 'Sign in with Google', after: '.' },
       {
         p:
-          'Choose "Sign in with Google" there and use the Google account of the address this email came to. That ' +
+          'Choose "Continue with Google" there and use the Google account of the address this email came to. That ' +
           'shows the address is yours and opens your membership.',
       },
       { hr: true },

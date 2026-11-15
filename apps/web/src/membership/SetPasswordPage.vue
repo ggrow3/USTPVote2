@@ -276,7 +276,7 @@ async function freshLink() {
           <q-card-section class="ustp-stack">
             <h2 class="text-subtitle1">You sign in with {{ PROVIDER_LABELS[usesProvider] }}</h2>
             <p>
-              From now on, choose “Sign in with {{ PROVIDER_LABELS[usesProvider] }}” on the
+              From now on, choose “Continue with {{ PROVIDER_LABELS[usesProvider] }}” on the
               <router-link to="/signin">sign-in page</router-link>. You do not need a password.
             </p>
             <p v-if="session.me?.mfa.everywhere && !session.me.mfa.signedInWithMfa">
