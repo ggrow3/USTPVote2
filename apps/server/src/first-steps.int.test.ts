@@ -38,13 +38,14 @@ describe('the getting started list’s settings (design §5.16)', () => {
     expect((await mine(ada)).body).toEqual({ memberSince: '2026-11-01T00:00:00.000Z', done: [], steps: DEFAULT_FIRST_STEPS.steps, ticked: [] });
   });
 
-  it('are read and changed by Membership Admins only', async () => {
+  it('are read and changed by Membership Admins, and by Site Admins, who act as one (design §10.1)', async () => {
     const site = await api.member('site@example.test');
     await api.grant(site.accountId, 'site_admin', sa1);
-    for (const who of [sa1, site, ada]) {
+    for (const who of [sa1, ada]) {
       expect((await api.call('GET', '/v1/admin/first-steps', who)).status).toBe(403);
       expect((await put(who, [bylaws])).status).toBe(403);
     }
+    expect((await api.call('GET', '/v1/admin/first-steps', site)).status).toBe(200);
     expect((await put(undefined, [bylaws])).status).toBe(401);
     expect((await mine(ada)).body.steps).toEqual(DEFAULT_FIRST_STEPS.steps);
   });
