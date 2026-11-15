@@ -40,6 +40,10 @@
 .ustp-page--wide .ustp-page__sheet {
   max-width: 1176px;
 }
+/* The admin console: the voting home's width for the section, plus its side menu (AdminPage.vue). */
+.ustp-page--console .ustp-page__sheet {
+  max-width: calc(1176px + 256px);
+}
 
 /*
  * Text on a page, set for reading rather than Quasar's 14px: 16px with more leading, captions at 14px, a larger and

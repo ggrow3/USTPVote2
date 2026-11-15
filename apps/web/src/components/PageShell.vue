@@ -6,8 +6,11 @@ import HomeBackdrop from './HomeBackdrop.vue';
  * on one card lifted off the picture, as the voting home's cards are. `layout.css` ("Page") has the styles.
  */
 defineProps<{
-  /** `narrow` for a short form on its own (sign in); `wide` for the admin console, whose tables and tabs need room. */
-  width?: 'narrow' | 'wide';
+  /**
+   * `narrow` for a short form on its own (sign in); `wide` for pages whose tables and maps need room; `console` for the
+   * admin console, as wide again as its side menu, so a section keeps the room `wide` gives.
+   */
+  width?: 'narrow' | 'wide' | 'console';
 }>();
 </script>
 
