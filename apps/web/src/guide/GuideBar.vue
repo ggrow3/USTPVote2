@@ -3,7 +3,8 @@ import { computed, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { announce } from '../a11y.js';
 import { session } from '../session.js';
-import { atPlace, endTour, foldPanel, goToStep, guide, noteElection, stepAddress, stepDone, stepPlace } from './tour.js';
+import GuideRehearse from './GuideRehearse.vue';
+import { atPlace, canRehearse, endTour, foldPanel, goToStep, guide, noteElection, stepAddress, stepDone, stepPlace } from './tour.js';
 import { TOURS } from './tours.js';
 
 /**
@@ -27,6 +28,8 @@ const pick = computed(() => (step.value && stepPlace(step.value, election.value)
 const atPick = computed(() => !!pick.value && atPlace(pick.value, route.path, guide.openTab));
 const placeTitle = computed(() => pick.value?.title ?? step.value?.title ?? '');
 const done = computed(() => !!step.value && stepDone(step.value, !!session.user));
+/** The step's "Testing alone?" box, for someone who can act as test personas on a test deployment (design §10.4). */
+const rehearse = computed(() => (canRehearse(session.me) ? (step.value?.rehearse ?? []) : []));
 
 // The election of each election page opened, so later steps open its pages.
 watch(() => route.path, noteElection, { immediate: true });
@@ -91,6 +94,7 @@ function finish(completed: boolean) {
             <li v-for="(note, i) in step.notes" :key="i">{{ note }}</li>
           </ul>
         </template>
+        <GuideRehearse v-if="rehearse.length" :items="rehearse" :level="3" />
       </div>
       <div class="ustp-guide-bar__actions">
         <q-btn flat no-caps icon="arrow_back" label="Back" :disable="index === 0" @click="show(index - 1)" />
