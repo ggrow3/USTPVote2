@@ -54,7 +54,9 @@ export const router = createRouter({
         { path: 'messages/:threadId', component: () => import('./inbox/MessagesPage.vue'), meta: { requiresAuth: true } },
         { path: 'ballot', component: () => import('./pages/BallotPage.vue'), meta: { requiresAuth: true } },
         { path: 'ballot/:id', component: () => import('./pages/VotePage.vue'), meta: { requiresAuth: true } },
-        { path: 'verify', component: () => import('./pages/VerifyPage.vue') },
+        // Checking a receipt is a folded card on Your ballots now (design §10.5): old links, emails and receipts' "open
+        // the Verify page" land there, opened, with the election they name picked.
+        { path: 'verify', redirect: (to) => `/ballot?verify=${encodeURIComponent(String(to.query.election ?? '') || '1')}` },
         // Walkthroughs for a Voter, an Election Admin and an Auditor, page by page, for everyone (design §10.11).
         { path: 'guide', component: () => import('./guide/GuidePage.vue') },
         { path: 'bylaws/:version?', component: () => import('./pages/BylawsPage.vue') },

@@ -10,7 +10,7 @@ import { administersSite, effectiveRoles, ROLES, type Role } from '../roles.js';
  */
 
 /** The menu bar's links in menu order, then the header's Sign in button (which only signed-out visitors can use). */
-export const MENU_LINKS = ['register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'bills', 'news', 'legislation', 'course', 'admin', 'signin'] as const;
+export const MENU_LINKS = ['register', 'ballot', 'offices', 'candidates', 'teams', 'forum', 'room', 'bills', 'news', 'legislation', 'course', 'admin', 'signin'] as const;
 export type MenuLink = (typeof MENU_LINKS)[number];
 
 /** The admin console's sections (tabs), in tab order. */
@@ -127,7 +127,6 @@ export const START_PAGES: readonly StartPage[] = [
   'account',
   'register',
   'ballot',
-  'verify',
   'offices',
   'candidates',
   'teams',
@@ -223,10 +222,11 @@ function defaultSection(role: Role, section: AdminSection): boolean {
 }
 
 /**
- * The menu as it was before these settings (design §5.2): Register, Ballot, Verify and Admin for everyone, each page
- * explaining itself to people it is not for, and Sign in while signed out; admin sections by role. Offices, the public
- * list of who holds each office, came later and is for everyone too, as is Candidates (members running for public
- * office, design §5.8). Roles add Ballot, Verify, Offices and Candidates, so a staff member with no membership keeps
+ * The menu as it was before these settings (design §5.2): Register, Ballot and Admin for everyone, each page
+ * explaining itself to people it is not for, and Sign in while signed out; admin sections by role. (Verify was a link
+ * too until checking a receipt became a folded card on Your ballots, design §10.5.) Offices, the public list of who
+ * holds each office, came later and is for everyone too, as is Candidates (members running for public office, design
+ * §5.8). Roles add Ballot, Offices and Candidates, so a staff member with no membership keeps
  * them, and Admin (from their sections). Signing in lands on Register with no membership, as it did, and on the home
  * page otherwise. Teams, the forum and the members' room are for Active members only (design §5.7, §5.9, §5.10); News is for everyone (design §10.9), as is
  * Legislation, the public bills and scorecard (design §5.14).
@@ -238,12 +238,12 @@ export const DEFAULT_NAVIGATION: NavigationSettings = {
     AUDIENCES.map((a) => [
       a,
       isRole(a)
-        ? links('ballot', 'verify', 'offices', 'candidates', 'news', 'legislation', 'course', 'admin', ...(administersSite([a]) ? (['bills'] as const) : []))
+        ? links('ballot', 'offices', 'candidates', 'news', 'legislation', 'course', 'admin', ...(administersSite([a]) ? (['bills'] as const) : []))
         : a === 'signed_out'
-          ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'legislation', 'course', 'admin', 'signin')
+          ? links('register', 'ballot', 'offices', 'candidates', 'news', 'legislation', 'course', 'admin', 'signin')
           : a === 'active'
-            ? links('register', 'ballot', 'verify', 'offices', 'candidates', 'teams', 'forum', 'room', 'bills', 'news', 'legislation', 'course', 'admin')
-            : links('register', 'ballot', 'verify', 'offices', 'candidates', 'news', 'legislation', 'course', 'admin'),
+            ? links('register', 'ballot', 'offices', 'candidates', 'teams', 'forum', 'room', 'bills', 'news', 'legislation', 'course', 'admin')
+            : links('register', 'ballot', 'offices', 'candidates', 'news', 'legislation', 'course', 'admin'),
     ]),
   ) as Record<Audience, Record<MenuLink, boolean>>,
   hiddenFrom: Object.fromEntries(ROLES.map((r) => [r, links()])) as Record<Role, Record<MenuLink, boolean>>,

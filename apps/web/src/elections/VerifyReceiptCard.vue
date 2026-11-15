@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
-import { useRoute } from 'vue-router';
+import { computed, ref, watch } from 'vue';
 import {
   checkReceiptPart,
   sealedBlockProblems,
@@ -13,15 +12,31 @@ import {
   type SealedBlockRecord,
   type SigningKeyRecord,
 } from 'ustp-domain';
-import { announce, usePageTitle } from '../a11y.js';
+import { announce } from '../a11y.js';
 import { api, ApiError, errorMessage } from '../api.js';
-import PageShell from '../components/PageShell.vue';
 import { savedReceipts } from '../receipts.js';
 
-const route = useRoute();
-usePageTitle('Verify a receipt');
+/**
+ * Checking a ballot receipt (design §7.5), folded to one line at the foot of Your ballots until the person opens it
+ * (§10.5). It checks, in the browser and from public data only, that each part of the ballot was sealed into the
+ * election's published record, that the sealed block is in the signed audit ledger, and that the ledger is anchored
+ * outside the database. The receipt never leaves the browser: only its commitments are looked up.
+ */
+const props = defineProps<{
+  /** The election whose saved receipt to pick first, from a link (`/ballot?verify=<election>`). */
+  election?: string | null;
+}>();
+const open = defineModel<boolean>('open', { default: false });
+
 const saved = savedReceipts();
-const chosen = ref<string | null>(null);
+const chosen = ref<string | null>(saved.find((r) => r.electionId === props.election)?.electionId ?? saved[0]?.electionId ?? null);
+watch(
+  () => props.election,
+  (now) => {
+    const match = saved.find((r) => r.electionId === now);
+    if (match) chosen.value = match.electionId;
+  },
+);
 const pasted = ref('');
 const file = ref<File | null>(null);
 const checking = ref(false);
@@ -30,11 +45,6 @@ const record = ref<PublicElection | null>(null);
 const results = ref<PartCheck[] | null>(null);
 /** Closed elections: whether the published sealed blocks recompute (null: not published yet). */
 const blocksCheck = ref<{ ok: boolean; detail: string } | null>(null);
-
-onMounted(() => {
-  const wanted = String(route.query.election ?? '');
-  chosen.value = saved.find((r) => r.electionId === wanted)?.electionId ?? saved[0]?.electionId ?? null;
-});
 
 const receiptOptions = saved.map((r) => ({ label: `${r.title} — cast ${new Date(r.castAt).toLocaleString()}`, value: r.electionId }));
 
@@ -115,50 +125,69 @@ const summary = computed(() => {
   if (r.every((p) => p.status === 'verified')) return { cls: 'bg-positive text-white', text: 'Every part of your ballot is in the published record.' };
   return { cls: 'bg-grey-3 text-black', text: 'Nothing is wrong so far; some steps cannot be checked yet.' };
 });
+/** The folded line: what the card is for, or where the last check stands. */
+const line = computed(() =>
+  checking.value
+    ? 'Checking…'
+    : summary.value
+      ? summary.value.text
+      : saved.length
+        ? `Check that your vote was counted. ${saved.length === 1 ? 'One receipt is' : `${saved.length} receipts are`} saved in this browser.`
+        : 'Check that your vote was counted, from the receipt you saved.',
+);
 </script>
 
 <template>
-  <PageShell>
-    <div class="ustp-content">
-      <h1 class="text-h5">Verify a receipt</h1>
-      <p>
+  <q-card id="verify" flat bordered tag="section" aria-labelledby="verify-heading" class="verify-card">
+    <!-- The heading holds the toggle, so it is still a heading to move by; its one line is read with it. -->
+    <h2 class="text-body2">
+      <button type="button" class="verify-toggle" :aria-expanded="open" aria-controls="verify-details" @click="open = !open">
+        <q-spinner v-if="checking" size="18px" aria-hidden="true" class="verify-toggle__lead" />
+        <q-icon v-else name="fact_check" size="18px" aria-hidden="true" class="verify-toggle__lead" />
+        <span class="verify-toggle__text">
+          <span id="verify-heading" class="text-weight-medium">Verify a receipt</span>
+          <span class="text-caption text-grey-7">{{ line }}</span>
+        </span>
+        <q-icon name="expand_more" size="20px" aria-hidden="true" class="verify-toggle__icon" />
+      </button>
+    </h2>
+
+    <!-- Hidden, never removed, so a check running while folded keeps its place and its result. -->
+    <div v-show="open" id="verify-details" class="ustp-stack q-px-md q-pb-md">
+      <p class="q-mb-none">
         Checks, in this browser and from public data only, that each part of your ballot was sealed into the election's
         published record, that the sealed block is in the signed audit ledger, and that the ledger is anchored outside the
         database. Your receipt never leaves this browser: only the commitments are looked up.
       </p>
 
-      <q-card v-if="saved.length" flat bordered>
-        <q-card-section class="ustp-row">
-          <q-select v-model="chosen" :options="receiptOptions" emit-value map-options outlined dense label="Saved in this browser" />
-          <q-btn color="primary" label="Check" :loading="checking" :disable="!chosen" @click="check('saved')">
-            <span class="sr-only"> the saved receipt</span>
-          </q-btn>
-        </q-card-section>
-      </q-card>
-      <q-card flat bordered>
-        <q-card-section class="ustp-row">
-          <q-file v-model="file" outlined dense accept=".json,application/json" label="Open a downloaded receipt" />
-          <q-btn color="primary" label="Check" :loading="checking" :disable="!file" @click="check('file')">
-            <span class="sr-only"> the receipt file</span>
-          </q-btn>
-        </q-card-section>
-        <q-expansion-item dense label="…or paste one">
-          <q-card-section class="ustp-form">
-            <q-input v-model="pasted" type="textarea" outlined dense autogrow label="Receipt (JSON)" />
-            <div class="ustp-actions">
-              <q-btn color="primary" label="Check" :loading="checking" :disable="!pasted.trim()" @click="check('paste')">
-                <span class="sr-only"> the pasted receipt</span>
-              </q-btn>
-            </div>
-          </q-card-section>
-        </q-expansion-item>
-      </q-card>
+      <div v-if="saved.length" class="ustp-row">
+        <q-select v-model="chosen" :options="receiptOptions" emit-value map-options outlined dense label="Saved in this browser" />
+        <q-btn color="primary" label="Check" :loading="checking" :disable="!chosen" @click="check('saved')">
+          <span class="sr-only"> the saved receipt</span>
+        </q-btn>
+      </div>
+      <div class="ustp-row">
+        <q-file v-model="file" outlined dense accept=".json,application/json" label="Open a downloaded receipt" />
+        <q-btn color="primary" label="Check" :loading="checking" :disable="!file" @click="check('file')">
+          <span class="sr-only"> the receipt file</span>
+        </q-btn>
+      </div>
+      <q-expansion-item dense label="…or paste one" class="verify-paste">
+        <div class="ustp-form q-pt-sm">
+          <q-input v-model="pasted" type="textarea" outlined dense autogrow label="Receipt (JSON)" />
+          <div class="ustp-actions">
+            <q-btn color="primary" label="Check" :loading="checking" :disable="!pasted.trim()" @click="check('paste')">
+              <span class="sr-only"> the pasted receipt</span>
+            </q-btn>
+          </div>
+        </div>
+      </q-expansion-item>
 
       <q-banner v-if="error" class="bg-negative text-white" rounded>{{ error }}</q-banner>
 
       <template v-if="results && record">
         <div>
-          <h2 class="text-h6">{{ record.election.title }}</h2>
+          <h3 class="text-subtitle1">{{ record.election.title }}</h3>
           <div class="text-caption text-grey-7">
             {{ record.election.state }} · {{ record.ballotsSealed }} ballots sealed in {{ record.sealedBlocks.length }}
             {{ record.sealedBlocks.length === 1 ? 'block' : 'blocks' }}
@@ -171,7 +200,7 @@ const summary = computed(() => {
         <q-card v-for="r in results" :key="r.contestId" flat bordered>
           <q-card-section class="ustp-header">
             <div>
-              <h3 class="text-subtitle1">{{ titleOf(r.contestId) }}</h3>
+              <h4 class="text-subtitle2 q-my-none">{{ titleOf(r.contestId) }}</h4>
               <div class="text-caption text-grey-7"><code>{{ r.commitment }}</code></div>
             </div>
             <q-badge :color="STATUS[r.status].color" :label="STATUS[r.status].label" />
@@ -193,5 +222,56 @@ const summary = computed(() => {
         </q-card>
       </template>
     </div>
-  </PageShell>
+  </q-card>
 </template>
+
+<style scoped>
+/* A link to `/ballot?verify` scrolls here: clear of the fixed header. */
+.verify-card {
+  scroll-margin-top: 96px;
+}
+.verify-toggle {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 6px 16px;
+  border: 0;
+  border-radius: inherit;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.verify-toggle:hover {
+  background: rgba(128, 128, 128, 0.08);
+}
+/* It spans the card, so its ring goes inside, as rows' do. */
+.verify-toggle:focus-visible {
+  outline-offset: -2px;
+}
+.verify-toggle__text {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 10px;
+}
+.verify-toggle__icon {
+  transition: transform 0.2s;
+}
+.verify-toggle[aria-expanded='true'] .verify-toggle__icon {
+  transform: rotate(180deg);
+}
+@media (prefers-reduced-motion: reduce) {
+  .verify-toggle__icon {
+    transition: none;
+  }
+}
+/* The paste field's header in line with the fields above it. */
+.verify-paste :deep(.q-item) {
+  padding-left: 0;
+}
+</style>

@@ -569,7 +569,7 @@ function linksOf({ election, origin }: NoticeMessageInput) {
   return {
     ballot: `${origin}/ballot/${id}`,
     calendar: `${origin}/v1/public/elections/${id}/calendar.ics`,
-    verify: `${origin}/verify`,
+    verify: `${origin}/ballot?verify=1`,
     site: `${origin}/`,
   };
 }
@@ -610,7 +610,7 @@ function checking(verify: string): Block[] {
     {
       link: verify,
       before: 'Once voting has closed, ',
-      label: 'open the Verify page',
+      label: 'open “Verify a receipt” on Your ballots',
       after: ' and load the receipt. Your browser checks that your ballot is in the published, signed record. The receipt never leaves your browser.',
     },
   ];
@@ -651,7 +651,8 @@ function asText(block: Block): string {
   if ('strong' in block) return block.strong;
   if ('ballot' in block) return `Open your ballot (you will be asked to sign in): ${block.ballot}`;
   if ('link' in block) {
-    // "Once voting has closed, open the Verify page, https://…/verify, and load …" or "Add …: https://…".
+    // "Once voting has closed, open “Verify a receipt” on Your ballots, https://…/ballot?verify=1, and load …" or
+    // "Add …: https://…".
     return block.before
       ? `${block.before}${block.label}, ${block.link},${block.after}`
       : `${block.label}${block.after.replace(/\.$/, '')}: ${block.link}`;

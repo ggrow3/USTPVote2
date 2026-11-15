@@ -98,7 +98,7 @@ describe('navigation settings (design §10.5)', () => {
     expect(forbidden).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/does not let that role use it/) } });
     const lockOut = await put(sa1, edit((s) => (s.sections.system_admin.navigation = false)));
     expect(lockOut).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/lock them out/) } });
-    const hiddenStart = await put(sa1, edit((s) => ((s.menu.active.verify = false), (s.startsOn.active = 'verify'))));
+    const hiddenStart = await put(sa1, edit((s) => ((s.menu.active.candidates = false), (s.startsOn.active = 'candidates'))));
     expect(hiddenStart).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/not shown to them/) } });
     const signedIn = await put(sa1, edit((s) => (s.menu.active.signin = true)));
     expect(signedIn).toMatchObject({ status: 409, body: { detail: expect.stringMatching(/they are signed in/) } });

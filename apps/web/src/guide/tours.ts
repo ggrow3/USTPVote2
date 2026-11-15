@@ -173,9 +173,10 @@ const voter: readonly TourStep[] = [
   {
     id: 'verify',
     title: 'Verify your receipt',
-    page: '/verify',
+    page: '/ballot',
     about: 'Checks, in your browser and from public data only, that every part of your ballot is in the published record.',
     todo: [
+      'Open “Verify a receipt” at the foot of Your ballots, or press “Verify” beside a receipt on the ballot page.',
       'Pick your receipt under “Saved in this browser”, “Open a downloaded receipt”, or paste it, then press “Check”.',
       'Read the steps for each contest: from your commitment, through the sealed block and the audit ledger, to the anchor outside the database.',
     ],
@@ -515,9 +516,10 @@ const auditor: readonly TourStep[] = [
   {
     id: 'verify',
     title: 'Check a voter’s receipt',
-    page: '/verify',
+    page: '/ballot',
     about: 'Voters are told to bring their receipt to an Auditor when something does not check out.',
     todo: [
+      'Open “Verify a receipt” at the foot of Your ballots.',
       'Open the receipt file (“Open a downloaded receipt”) or paste it, and press “Check”.',
       'See which step fails: the commitment, the sealed block, the ledger entry, its signature or the anchor.',
     ],

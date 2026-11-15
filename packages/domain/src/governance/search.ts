@@ -15,7 +15,6 @@ export const SITEMAP_PAGES = [
   '/course/transhumanism',
   '/bylaws',
   '/offices',
-  '/verify',
   '/polls',
   '/events',
   '/partners',

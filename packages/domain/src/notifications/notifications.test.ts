@@ -60,20 +60,20 @@ describe('votingOpenMessage', () => {
     expect(votingOpenMessage(input({ name: null })).text.startsWith('Hello,\n\n')).toBe(true);
   });
 
-  it('links the ballot, the calendar event and the Verify page, by what they open', () => {
+  it('links the ballot, the calendar event and Verify a receipt on Your ballots, by what they open', () => {
     const ballot = `${ORIGIN}/ballot/${ELECTION.electionId}`;
     const calendar = `${ORIGIN}/v1/public/elections/${ELECTION.electionId}/calendar.ics`;
     for (const body of [message.text, message.html]) {
       expect(body).toContain(ballot);
       expect(body).toContain(calendar);
-      expect(body).toContain(`${ORIGIN}/verify`);
+      expect(body).toContain(`${ORIGIN}/ballot?verify=1`);
     }
     expect(message.text).toContain(`Open your ballot (you will be asked to sign in): ${ballot}`);
     expect(message.text).toContain(`Add the voting window to your calendar (an .ics file): ${calendar}`);
-    expect(message.text).toContain(`Once voting has closed, open the Verify page, ${ORIGIN}/verify, and load the receipt.`);
+    expect(message.text).toContain(`Once voting has closed, open “Verify a receipt” on Your ballots, ${ORIGIN}/ballot?verify=1, and load the receipt.`);
     expect(message.html).toContain(`<a href="${ballot}" style="color:#bd4e00">Open your ballot for “Officers 2026”</a>`);
     expect(message.html).toContain(`<a href="${calendar}" style="color:#bd4e00">Add the voting window to your calendar</a>`);
-    expect(message.html).toContain('<a href="https://vote.example.org/verify" style="color:#bd4e00">open the Verify page</a>');
+    expect(message.html).toContain('<a href="https://vote.example.org/ballot?verify=1" style="color:#bd4e00">open “Verify a receipt” on Your ballots</a>');
   });
 
   it('gives the window in every zone, Eastern first, with the deadline up front', () => {
@@ -186,7 +186,7 @@ describe('votedMessage', () => {
 
   it('tells someone who did not vote what to do, and how to check a vote afterwards', () => {
     expect(message.text).toContain('If you did not vote, someone may have signed in as you');
-    expect(message.text).toContain('https://vote.example.org/verify');
+    expect(message.text).toContain('https://vote.example.org/ballot?verify=1');
     expect(message.text).toContain('elections@example.org');
   });
 

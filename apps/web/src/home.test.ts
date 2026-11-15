@@ -3,12 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { approvalsStatus, ballotStatus, electionsStatus, homeCards, visitorCard, waitingStatus } from './home.js';
 
 describe('the signed-out card', () => {
-  it('holds the sign-in form, then Register, Verify and Offices, by default', () => {
-    const card = visitorCard(['register', 'ballot', 'verify', 'offices', 'course', 'admin', 'signin']);
+  it('holds the sign-in form, then Register and Offices, by default', () => {
+    const card = visitorCard(['register', 'ballot', 'offices', 'course', 'admin', 'signin']);
     expect(card.signIn).toBe(true);
-    expect(card.links.map((l) => l.key)).toEqual(['register', 'verify', 'offices', 'course']);
-    expect(card.links[2]).toMatchObject({ label: 'See who holds each office', to: '/offices' });
-    expect(card.links[3]).toMatchObject({ label: 'Explore the courses', to: '/courses' });
+    expect(card.links.map((l) => l.key)).toEqual(['register', 'offices', 'course']);
+    expect(card.links[1]).toMatchObject({ label: 'See who holds each office', to: '/offices' });
+    expect(card.links[2]).toMatchObject({ label: 'Explore the courses', to: '/courses' });
     expect(card.links[0]).toMatchObject({ label: 'Register as a member', to: '/register' });
   });
 
@@ -29,16 +29,15 @@ describe('the signed-out card', () => {
 });
 
 describe('home cards', () => {
-  it('follow what the person is shown: ballot first, then membership, verify, offices, admin sections and the account', () => {
+  it('follow what the person is shown: ballot first, then membership, offices, admin sections and the account', () => {
     const cards = homeCards(
-      { menu: ['register', 'ballot', 'verify', 'offices', 'course', 'admin'], sections: ['elections', 'offices', 'approvals'] },
+      { menu: ['register', 'ballot', 'offices', 'course', 'admin'], sections: ['elections', 'offices', 'approvals'] },
       'active',
       false,
     );
     expect(cards.map((c) => c.key)).toEqual([
       'ballot',
       'register',
-      'verify',
       'offices',
       'course',
       'admin/elections',
@@ -63,7 +62,7 @@ describe('home cards', () => {
   });
 
   it('leave out sections without the Admin link, and Testing outside testing mode', () => {
-    expect(homeCards({ menu: ['verify'], sections: ['people'] }, 'no_membership', false).map((c) => c.key)).toEqual(['verify', 'account']);
+    expect(homeCards({ menu: ['offices'], sections: ['people'] }, 'no_membership', false).map((c) => c.key)).toEqual(['offices', 'account']);
     expect(homeCards({ menu: ['admin'], sections: ['people', 'testing'] }, 'no_membership', false).map((c) => c.key)).toEqual([
       'admin/people',
       'account',
