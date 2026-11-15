@@ -93,7 +93,7 @@ describe('the voting-open notice', () => {
     expect(first!.text).toContain('Replies to this email are not read; write to [contact for election questions, to be confirmed].');
     expect(first!.text).toContain(`http://localhost:5173/ballot/${election.electionId}`);
     expect(first!.text).toContain(`http://localhost:5173/v1/public/elections/${election.electionId}/calendar.ics`);
-    expect(first!.text).toContain('http://localhost:5173/verify');
+    expect(first!.text).toContain('http://localhost:5173/ballot?verify=1');
     expect(first!.html).toContain('Open your ballot for “Officers”');
 
     // The provider's reports (acted out by the outbox) came in the same tick.
