@@ -2291,7 +2291,10 @@ application has asked since §5.2 took members outside the US); an address that 
     Google alone: the form for adding one member has a tick, "Will be a System or Site Admin" (`adminSignIn` on
     `POST /v1/admin/members`; not in a file import). Their welcome email (`googleOnly` on its `welcome_emails`
     record, kept when it is sent again) has the subject "… sign in with Google", one button to the sign-in page,
-    no "Set your password" and no sign-in link of its own, so nothing in it signs anyone in. Refused while Sign in
+    no "Set your password" and no sign-in link of its own, so nothing in it signs anyone in. *(Added 2026-11-15, the
+    user's request.)* It also links the Guide's two Site Admin walkthroughs (§10.11), every section of the admin
+    console and running an election (`/guide?tour=site_admin_site`, `/guide?tour=site_admin`), and the Guide itself,
+    saying that until they hold the Site Admin role, and for System Admins, the links open the other walkthroughs. Refused while Sign in
     with Google is switched off (409); if it is switched off before the worker sends, the ordinary welcome goes.
     Where the deployment sends no mail, nothing is sent (Identity Platform's link leads to setting a password) and
     the form tells the admin to ask them to sign in with Google. The tick grants no role and is not remembered on
@@ -5146,7 +5149,16 @@ page.
   part as test personas (§10.4). The Guide opens on the walkthrough for the person's role: a Site Admin's, an
   Auditor's, an Election Admin's, else the Voter's. The Site Admin walkthrough is shown only to someone holding Site
   Admin (or acting as the Test Site Admin), on the Guide page and in the panel *(the user's decision, 2026-11-15)*;
-  everyone else sees the other three, and a link to it opens the one for their role.
+  everyone else sees the other three, and a link to it opens the one for their role. Site Admin: every section *(added
+  2026-11-15, the user's request for a step-by-step guide to the whole app for Site Admins, as part of the Guide and
+  linked from it)*: after signing in and two-step verification, the admin console itself (the side menu, its
+  favourites, and what stays with System Admins: Sign-in methods, API keys, the room's model server, deleting accounts
+  and test voters, and System Admins' accounts, §10.1), then one step for each admin section a Site Admin is shown by
+  default, in the side menu's order, from Applications to Testing, each saying what the section is for, what to do
+  there in order and what to know first (what cannot be undone, what waits on a second person, what the member sees),
+  and last the voting home as members see it. Its Elections step points to the Site Admin walkthrough rather than
+  repeat it. It is shown, like that one, only to a Site Admin, as a tab of the Guide page, which links to it in its
+  opening paragraph (`/guide?tour=site_admin_site`).
 - **Testing alone** *(added 2026-11-15)*. Nobody decides their own requests (§10.2), so someone rehearsing an election
   by themselves on a test deployment must be a second person at each step that waits on an approval: the voter roll,
   Admin › Approvals, scheduling, cancelling and certification in the Election Admin's and the Site Admin's walkthroughs.
@@ -5176,7 +5188,8 @@ page.
   nothing (each page still decides what the person may do). Its page visits are counted (§10.7).
 - **Keeping it true.** The walkthroughs' text lives in `apps/web/src/guide/tours.ts` and quotes the pages' labels
   between “ and ”; a unit test checks every quoted label is still in the web app's source (the "Testing alone?" boxes'
-  among them), every step's page is a route and every admin section one its role is shown by default (a Site Admin's
+  among them), every step's page is a route, every admin section one its role is shown by default, the every-section
+  walkthrough has exactly one step for each section a Site Admin is shown by default, in the side menu's order (a Site Admin's
   as the console works them out, from every other role but System Admin), and that every step waiting on an approval
   in the Election Admin's and the Site Admin's walkthroughs says when to act as the Test Auditor and how to switch
   back, so a renamed button or moved page fails the build until the Guide follows it.

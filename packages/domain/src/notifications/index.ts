@@ -157,6 +157,8 @@ export {
   WELCOME_STATUSES,
   WELCOME_OUTCOMES,
   SET_PASSWORD_PATH,
+  ADMIN_GUIDE_TOURS,
+  GUIDE_PATH,
   welcomeEmailRecord,
   welcomeLinkSent,
   isWelcomeInFlight,

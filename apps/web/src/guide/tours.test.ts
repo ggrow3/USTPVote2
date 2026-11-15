@@ -1,6 +1,6 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DEFAULT_NAVIGATION, SECTION_ROLES, shownTo, type Role } from 'ustp-domain';
+import { ADMIN_GUIDE_TOURS, DEFAULT_NAVIGATION, GUIDE_PATH, SECTION_ROLES, shownTo, type Role } from 'ustp-domain';
 import { describe, expect, it } from 'vitest';
 import {
   atPlace,
@@ -12,6 +12,7 @@ import {
   noteElection,
   parseProgress,
   routePattern,
+  SITE_ADMIN_TOURS,
   startTour,
   stepAddress,
   stepDone,
@@ -20,6 +21,7 @@ import {
   toursFor,
   type TourStep,
 } from './tour.js';
+import { MENU_GROUPS } from '../components/admin/admin-menu.js';
 import { TOURS } from './tours.js';
 
 const SRC = join(import.meta.dirname, '..');
@@ -29,8 +31,8 @@ const steps = TOUR_IDS.flatMap((id) => TOURS[id].steps.map((step) => ({ tour: TO
 const unnamed = (page: string) => page.replace(/:\w+/g, ':');
 
 describe('the walkthroughs', () => {
-  it('cover a Voter, an Election Admin, an Auditor and a Site Admin, each step named once in its tour', () => {
-    expect(TOUR_IDS.map((id) => TOURS[id].id)).toEqual(['voter', 'election_admin', 'auditor', 'site_admin']);
+  it('cover a Voter, an Election Admin, an Auditor and a Site Admin (an election, and every section), each step named once in its tour', () => {
+    expect(TOUR_IDS.map((id) => TOURS[id].id)).toEqual(['voter', 'election_admin', 'auditor', 'site_admin', 'site_admin_site']);
     for (const id of TOUR_IDS) {
       const ids = TOURS[id].steps.map((s) => s.id);
       expect(ids.length, id).toBeGreaterThan(5);
@@ -123,11 +125,38 @@ describe('the walkthroughs', () => {
     ]);
     const quoted = [...new Set(texts.flatMap((text) => [...text.matchAll(/“([^”]+)”/g)].map((m) => m[1]!)))];
     expect(quoted.length).toBeGreaterThan(40);
-    for (const label of quoted) expect(appText.includes(label), label).toBe(true);
+    expect(quoted.filter((label) => !appText.includes(label))).toEqual([]);
   });
 });
 
 const step = (page: string, extra: Partial<TourStep> = {}): TourStep => ({ id: 's', title: 'A step', page, about: '', todo: ['x'], ...extra });
+
+describe('the Site Admin’s walkthrough of every section', () => {
+  const tabs = TOURS.site_admin_site.steps.flatMap((s) => (s.tab ? [s.tab] : []));
+
+  it('has a step for every admin section a Site Admin is shown by default, each once, in the side menu’s order', () => {
+    const shown = shownTo(DEFAULT_NAVIGATION, { membership: 'no_membership', roles: ['site_admin'] }).sections;
+    const inMenuOrder = MENU_GROUPS.flatMap((g) => g.sections).filter((s) => shown.includes(s));
+    expect(tabs).toEqual(inMenuOrder);
+  });
+
+  it('says what stays with System Admins', () => {
+    // Sign-in methods and API keys are System Admins' alone (design §10.1).
+    for (const section of ['signin', 'claude'] as const) expect(tabs).not.toContain(section);
+    const text = TOURS.site_admin_site.steps.flatMap((s) => [s.about, ...s.todo, ...(s.notes ?? [])]).join(' ');
+    expect(text).toContain('Sign-in methods and API keys');
+    expect(text).toContain('Only System Admins delete accounts.');
+    expect(text).toContain('Only System Admins delete test voters.');
+  });
+});
+
+describe('the welcome email to a member who will be an admin', () => {
+  it('links walkthroughs the Guide has, the Site Admin’s two, at the Guide’s address', () => {
+    expect(GUIDE_PATH).toBe('/guide');
+    expect(ADMIN_GUIDE_TOURS.map((t) => t.tour).sort()).toEqual([...SITE_ADMIN_TOURS].sort());
+    for (const { tour } of ADMIN_GUIDE_TOURS) expect(TOUR_IDS).toContain(tour);
+  });
+});
 
 describe('stepAddress', () => {
   const cast = step('/ballot/:election', { pick: { page: '/ballot', title: 'Your ballots', how: 'Pick it.' } });
@@ -174,9 +203,10 @@ describe('canRehearse', () => {
 });
 
 describe('toursFor', () => {
-  it('shows the Site Admin walkthrough to Site Admins only', () => {
-    expect(toursFor(['site_admin'])).toEqual(['voter', 'election_admin', 'auditor', 'site_admin']);
+  it('shows the Site Admin walkthroughs to Site Admins only', () => {
+    expect(toursFor(['site_admin'])).toEqual(['voter', 'election_admin', 'auditor', 'site_admin', 'site_admin_site']);
     expect(toursFor(['site_admin', 'auditor'])).toContain('site_admin');
+    expect(toursFor(['site_admin', 'auditor'])).toContain('site_admin_site');
     for (const roles of [[], ['system_admin'], ['election_admin'], ['auditor'], ['membership_admin', 'election_admin']] as Role[][]) {
       expect(toursFor(roles), roles.join(',') || 'no role').toEqual(['voter', 'election_admin', 'auditor']);
     }

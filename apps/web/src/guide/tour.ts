@@ -8,15 +8,18 @@ import { TOURS } from './tours.js';
  * the step the person is on; Next opens the next step's page. The content is in `tours.ts`; this is the bookkeeping.
  */
 
-export const TOUR_IDS = ['voter', 'election_admin', 'auditor', 'site_admin'] as const;
+export const TOUR_IDS = ['voter', 'election_admin', 'auditor', 'site_admin', 'site_admin_site'] as const;
 export type TourId = (typeof TOUR_IDS)[number];
+
+/** The Site Admin's two: running an election, and every section of the admin console. */
+export const SITE_ADMIN_TOURS: readonly TourId[] = ['site_admin', 'site_admin_site'];
 
 /**
  * The walkthroughs someone is shown, from the roles they hold (or the test persona's while acting as one): the Site
  * Admin's only to a Site Admin (the user's decision, 2026-11-15); the others to everyone.
  */
 export function toursFor(roles: readonly Role[]): TourId[] {
-  return TOUR_IDS.filter((id) => id !== 'site_admin' || roles.includes('site_admin'));
+  return TOUR_IDS.filter((id) => !SITE_ADMIN_TOURS.includes(id) || roles.includes('site_admin'));
 }
 
 /** A page, or an admin console tab, as a walkthrough step names it. */

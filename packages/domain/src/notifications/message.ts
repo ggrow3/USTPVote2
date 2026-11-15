@@ -4,7 +4,7 @@ import { DEFAULT_NOTICE_TEXT, fillNoticeText, type NoticePlaceholder } from './n
 import type { NoticeKind } from './notices.js';
 import { TEST_SUBJECT_PREFIX } from './receipts.js';
 import { providerNames, type FederatedProvider } from '../identity.js';
-import { SET_PASSWORD_PATH } from './welcome.js';
+import { ADMIN_GUIDE_TOURS, GUIDE_PATH, SET_PASSWORD_PATH } from './welcome.js';
 
 /**
  * The election notices' emails (design §6.8), as plain text and simple HTML with the same content: real text, no
@@ -178,7 +178,7 @@ export function welcomeMessage(input: {
   readonly providers?: readonly FederatedProvider[];
   /**
    * For a member who will be a System or Site Admin (design §5.13): no password is offered, only signing in with
-   * Google, and the email carries no sign-in link of its own.
+   * Google, and the email carries no sign-in link of its own. It links the Guide's Site Admin walkthroughs (§10.11).
    */
   readonly googleOnly?: boolean;
 }): NoticeMessage {
@@ -198,6 +198,19 @@ export function welcomeMessage(input: {
           'Choose "Continue with Google" there and use the Google account of the address this email came to. That ' +
           'shows the address is yours and opens your membership.',
       },
+      { h2: 'Finding your way around' },
+      {
+        p:
+          'Once you hold the Site Admin role, the Guide on the site walks you through the work, page by page. Start a ' +
+          'walkthrough and a panel at the foot of every page says what to do there.',
+      },
+      ...ADMIN_GUIDE_TOURS.map(({ tour, label }) => ({ link: `${input.origin}${GUIDE_PATH}?tour=${tour}`, label, after: '.' })),
+      {
+        p:
+          'Until a System or Site Admin has given you the role, and for System Admins, those links open the Guide’s ' +
+          'walkthroughs for a Voter, an Election Admin and an Auditor.',
+      },
+      { link: `${input.origin}${GUIDE_PATH}`, label: 'Open the Guide', after: '.' },
       { hr: true },
       { small: 'You are getting this email because a Membership Admin added this address to the party’s member list.' },
       ...footer(input.contact, site, input, 'your membership'),

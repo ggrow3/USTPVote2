@@ -297,6 +297,17 @@ describe('welcomeMessage', () => {
     expect(message.html).not.toContain('oobCode');
   });
 
+  it('links the Guide’s Site Admin walkthroughs in the email to a member who will be an admin, and in no other', () => {
+    const input = { origin: 'https://vote.example.org', name: 'Ada', contact: null };
+    const message = welcomeMessage({ ...input, googleOnly: true });
+    expect(message.text).toContain('Every section of the admin console, step by step: https://vote.example.org/guide?tour=site_admin_site');
+    expect(message.text).toContain('Running an election from start to finish: https://vote.example.org/guide?tour=site_admin');
+    expect(message.text).toContain('Open the Guide: https://vote.example.org/guide');
+    expect(message.html).toContain('href="https://vote.example.org/guide?tour=site_admin_site"');
+    expect(message.html).toContain('href="https://vote.example.org/guide?tour=site_admin"');
+    expect(welcomeMessage(input).text).not.toContain('/guide');
+  });
+
   it("puts Identity Platform's sign-in link behind the button when there is one, so one email does it all", () => {
     const signInLink = 'https://vote.example.org/email-action?mode=signIn&oobCode=abc&continueUrl=https%3A%2F%2Fvote.example.org%2Fset-password';
     const message = welcomeMessage({ origin: 'https://vote.example.org', name: 'Ada', contact: null, signInLink });

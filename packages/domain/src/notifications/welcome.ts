@@ -80,5 +80,16 @@ export function isWelcomeInFlight(record: Pick<WelcomeEmailRecord, 'status' | 'c
   return record.status === 'sending' && !!record.claimedAt && Date.parse(record.claimedAt) > now.getTime() - NOTICE_CLAIM_MINUTES * 60_000;
 }
 
+/**
+ * The Guide's walkthroughs for a Site Admin (design §10.11), as the welcome email to a member who will be an admin
+ * links them: `tour` is the walkthrough's name in the Guide's address (`/guide?tour=…`), which the web app's tests hold
+ * to the walkthroughs it has.
+ */
+export const GUIDE_PATH = '/guide';
+export const ADMIN_GUIDE_TOURS = [
+  { tour: 'site_admin_site', label: 'Every section of the admin console, step by step' },
+  { tour: 'site_admin', label: 'Running an election from start to finish' },
+] as const;
+
 /** The page where an added member sets their password, and where the welcome emails lead. */
 export const SET_PASSWORD_PATH = '/set-password';
