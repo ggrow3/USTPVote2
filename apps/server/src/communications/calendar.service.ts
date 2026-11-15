@@ -41,9 +41,9 @@ export class CalendarService {
     return (await this.repo.calendar(since)).sort((a, b) => a.scheduledFor.localeCompare(b.scheduledFor));
   }
 
-  /** The Communications Admins who could be asked to post an item. */
+  /** The Communications Admins, and the Site Admins who act as one (design §10.1), who could be asked to post an item. */
   async team(): Promise<TeamMate[]> {
-    return this.directory.roleHolders('communications_admin');
+    return this.directory.roleTeam('communications_admin');
   }
 
   async create(actor: string, input: CreateCalendarItemInput): Promise<CalendarItemRecord> {
@@ -73,7 +73,7 @@ export class CalendarService {
   /** An item is assigned to someone on the team, or to nobody in particular. */
   private async assertAssignee(content: Pick<CalendarContent, 'assignee'>): Promise<void> {
     if (content.assignee && !(await this.team()).some((m) => m.accountId === content.assignee)) {
-      throw new BadRequestException('assign it to a Communications Admin, or to nobody in particular');
+      throw new BadRequestException('assign it to a Communications Admin or a Site Admin, or to nobody in particular');
     }
   }
 

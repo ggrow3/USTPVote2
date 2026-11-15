@@ -1,6 +1,6 @@
 import { onIdTokenChanged, signOut as firebaseSignOut, type User } from 'firebase/auth';
 import { reactive, readonly, watch } from 'vue';
-import type { MeResponse, Role } from 'ustp-domain';
+import { effectiveRoles, type MeResponse, type Role } from 'ustp-domain';
 import { acting, setActing, type ActingAs } from './acting.js';
 import { api } from './api.js';
 import { auth } from './firebase.js';
@@ -123,7 +123,17 @@ export async function signOut(): Promise<void> {
   await firebaseSignOut(auth);
 }
 
+/**
+ * Whether they act with any of these roles: one they hold or, for a Site Admin, any role but System Admin (design
+ * §10.1). It decides which tools the pages show; the API checks the same rule.
+ */
 export function hasRole(...roles: Role[]): boolean {
+  const acting = effectiveRoles(state.me?.roles ?? []);
+  return roles.some((r) => acting.includes(r));
+}
+
+/** Whether one of these roles was granted to them, whatever else a Site Admin acts as. */
+export function holdsRole(...roles: Role[]): boolean {
   return roles.some((r) => state.me?.roles.includes(r));
 }
 

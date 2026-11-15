@@ -116,9 +116,9 @@ export class MembershipInboxService {
     return { threads: threads.map((t) => this.summary(t, names)), next, counts };
   }
 
-  /** The Membership Admins, to assign a conversation to. */
+  /** The Membership Admins, and the Site Admins who act as one (design §10.1), to assign a conversation to. */
   team(): Promise<InboxTeamMember[]> {
-    return this.directory.roleHolders('membership_admin');
+    return this.directory.roleTeam('membership_admin');
   }
 
   private async teamView(thread: MembershipThreadRecord): Promise<InboxThreadView> {
@@ -239,7 +239,7 @@ export class MembershipInboxService {
   /** Assigns a conversation to one Membership Admin, who is told, or back to the whole team. */
   async assign(callerId: string, threadId: string, accountId: string | null): Promise<InboxThreadView> {
     if (accountId && !(await this.team()).some((a) => a.accountId === accountId)) {
-      throw new ConflictException('only a Membership Admin can be given a conversation');
+      throw new ConflictException('only a Membership Admin or a Site Admin can be given a conversation');
     }
     const thread = await this.firebase.db.runTransaction(async (tx) => {
       const current = await this.inbox.thread(threadId, tx);
@@ -338,7 +338,7 @@ export class MembershipInboxService {
 
   /** Whoever the conversation is assigned to, or every Membership Admin, but never the member themselves. */
   private async notifyTeam(thread: MembershipThreadRecord, started: boolean): Promise<void> {
-    const to = thread.assignedTo ? [thread.assignedTo] : (await this.team()).map((a) => a.accountId);
+    const to = thread.assignedTo ? [thread.assignedTo] : (await this.directory.roleHolders('membership_admin')).map((a) => a.accountId);
     const name = (await this.names([thread.accountId])).get(thread.accountId) ?? 'A member';
     await this.notices.notify(
       to.filter((id) => id !== thread.accountId),

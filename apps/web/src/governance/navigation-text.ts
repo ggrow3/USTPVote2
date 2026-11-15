@@ -40,7 +40,7 @@ export const AUDIENCE_CAPTIONS: Readonly<Record<Audience, string>> = {
   election_admin: 'Elections, offices',
   auditor: 'Approvals, the ledger',
   system_admin: 'Roles, settings',
-  site_admin: 'Roles, most settings',
+  site_admin: 'Roles, most settings, every other role’s tools',
   course_admin: 'Course content',
   communications_admin: 'News, press, social',
 };
