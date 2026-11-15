@@ -8,7 +8,6 @@ import {
   mergeStateList,
   nameKey,
   NATION_ID,
-  phoneLink,
   socialAccounts,
   STATE_FIPS,
   type AreaContact,
@@ -53,12 +52,6 @@ export interface ContactSource {
    * is on the ballot. No Open States and no ballot from Google, which is asked by ZIP code only.
    */
   forState(state: string, house: readonly District[], electionYear: number): Promise<AreaRecords>;
-  /**
-   * Who holds the offices of an area now, for the Representatives page (design §5.19): the state's senators, the
-   * representatives of its House districts and, with a key, its state legislators, each with their office's phone
-   * number and official accounts where the records give them. No candidates, so the FEC and the ballot are not asked.
-   */
-  forHolders(state: string, districts: readonly District[]): Promise<AreaRecords>;
   /** Who runs for President, from the FEC, in a presidential year; nobody in others. */
   forNation(electionYear: number): Promise<AreaRecords>;
 }
@@ -67,7 +60,7 @@ export const CONTACT_SOURCE = Symbol('ContactSource');
 
 const FEC = 'https://api.open.fec.gov/v1/candidates/';
 const LEGISLATORS = 'https://unitedstates.github.io/congress-legislators/legislators-current.json';
-/** The same project's list of each member's official accounts, by Bioguide ID. */
+/** The same project's list of each member's official social media accounts, by Bioguide ID. */
 const LEGISLATORS_SOCIAL = 'https://unitedstates.github.io/congress-legislators/legislators-social-media.json';
 const OPEN_STATES = 'https://v3.openstates.org/people.geo';
 const CIVIC = 'https://www.googleapis.com/civicinfo/v2/voterinfo';
@@ -157,8 +150,6 @@ interface Legislator {
     readonly party?: string;
     readonly url?: string;
     readonly contact_form?: string;
-    /** Their Washington office's. */
-    readonly phone?: string;
   }[];
 }
 
@@ -178,8 +169,6 @@ interface OpenStatesPerson {
   readonly jurisdiction?: { readonly classification?: string };
   readonly current_role?: { readonly title?: string; readonly org_classification?: string };
   readonly links?: readonly { readonly url?: string }[];
-  /** Their capitol and district offices, each with a phone number where the legislature lists one. */
-  readonly offices?: readonly { readonly classification?: string; readonly voice?: string }[];
 }
 
 interface CivicCandidate {
@@ -265,11 +254,6 @@ const NO_LIST: StateList = { contacts: [], notUp: [], current: false };
 /** Only `https://` addresses are passed on, since the page links to them. */
 const https = (url: string | undefined | null) => (url && /^https:\/\//.test(url) && url.length <= CONTACT_LIMITS.url ? url : null);
 const emailAddress = (v: string | undefined | null) => (v && v.length <= CONTACT_LIMITS.email && /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(v) ? v : null);
-/** A phone number a `tel:` link can dial, as the record writes it. */
-const phoneNumber = (v: string | undefined | null) => {
-  const t = v?.replace(/\s+/g, ' ').trim();
-  return t && t.length <= CONTACT_LIMITS.phone && phoneLink(t) ? t : null;
-};
 const text = (v: string | undefined | null, max: number) => {
   const t = v?.replace(/\s+/g, ' ').trim();
   return t ? t.slice(0, max) : null;
@@ -416,19 +400,6 @@ export class PublicContactSource implements ContactSource {
     ]);
     if (feeds.sos === 'ok' && !list.current) feeds.sos = 'off';
     return { contacts: mergeStateList(lists.flat(), list.contacts, list.notUp), ballot: [], notUp: list.notUp, feeds };
-  }
-
-  async forHolders(state: string, districts: readonly District[]): Promise<AreaRecords> {
-    const keys = typeof this.keys === 'function' ? await this.keys() : this.keys;
-    const feeds: Record<ContactFeed, ContactFeedState> = { fec: 'off', congress: 'ok', openstates: keys.openStates ? 'ok' : 'off', civic: 'off', sos: 'off' };
-    const ask = this.asker(feeds);
-    const house = districts.filter((d) => d.kind === 'congressional');
-    const legislature = districts.filter((d) => (d.kind === 'state_upper' || d.kind === 'state_lower') && d.point);
-    const lists = await Promise.all([
-      ask('congress', async () => (await this.congress(state, house)).flat(), []),
-      ...(feeds.openstates === 'ok' ? legislature.map((d) => ask('openstates', () => this.openStates(keys.openStates!, d), [])) : []),
-    ]);
-    return { contacts: lists.flat(), ballot: [], notUp: [], feeds };
   }
 
   async forNation(electionYear: number): Promise<AreaRecords> {
@@ -606,7 +577,7 @@ export class PublicContactSource implements ContactSource {
     }
   }
 
-  /** The state's senators and the representatives of its districts. */
+  /** The state's senators and the representatives of its districts, each with their official accounts. */
   private async congress(state: string, house: readonly District[]): Promise<AreaContact[][]> {
     const [everyone, social] = await Promise.all([this.kept('congress', () => this.json<Legislator[]>(LEGISLATORS)), this.congressSocial()]);
     const person = (l: Legislator, office: PublicOffice, district: ContactDistrict): AreaContact => {
@@ -623,7 +594,6 @@ export class PublicContactSource implements ContactSource {
         email: null,
         contactUrl: https(term.contact_form),
         website: https(term.url),
-        phone: phoneNumber(term.phone),
         social: social.get(l.id.bioguide) ?? [],
         sourceUrl: `https://bioguide.congress.gov/search/bio/${encodeURIComponent(l.id.bioguide)}`,
         election: null,
@@ -646,7 +616,7 @@ export class PublicContactSource implements ContactSource {
     const chambers = office === 'state_upper' ? ['upper', 'legislature'] : ['lower'];
     const { lat, lng } = district.point!;
     return this.kept(`openstates:${district.kind}:${district.geoid}`, async () => {
-      const body = await this.json<{ results?: OpenStatesPerson[] }>(`${OPEN_STATES}?${new URLSearchParams({ lat: String(lat), lng: String(lng) })}&include=links&include=offices`, {
+      const body = await this.json<{ results?: OpenStatesPerson[] }>(`${OPEN_STATES}?${new URLSearchParams({ lat: String(lat), lng: String(lng) })}&include=links`, {
         'X-API-KEY': apiKey,
       });
       return (body.results ?? [])
@@ -654,8 +624,6 @@ export class PublicContactSource implements ContactSource {
         .map((p): AreaContact => {
           const title = p.current_role?.title?.trim() || DEFAULT_OFFICE_TITLES[office];
           const image = https(p.image);
-          // The capitol office's number first, as the one answered through the session.
-          const offices = [...(p.offices ?? [])].sort((a, b) => Number(b.classification === 'capitol') - Number(a.classification === 'capitol'));
           return {
             contactId: `openstates:${p.id}`,
             source: 'openstates',
@@ -668,7 +636,6 @@ export class PublicContactSource implements ContactSource {
             email: p.email?.includes('@') ? p.email : null,
             contactUrl: null,
             website: https(p.links?.[0]?.url),
-            phone: offices.map((o) => phoneNumber(o.voice)).find((n) => n !== null) ?? null,
             sourceUrl: https(p.openstates_url),
             election: null,
             incumbent: false,
@@ -809,7 +776,7 @@ function localFederal(state: string, house: readonly District[], electionYear: n
   const contacts: AreaContact[] = NO_SENATE.has(state)
     ? []
     : [
-        { ...senate, contactId: `congress:S${fips}0001`, source: 'congress', role: 'holder', name: 'Sam Senator', party: 'Democrat', phone: '202-555-0101' },
+        { ...senate, contactId: `congress:S${fips}0001`, source: 'congress', role: 'holder', name: 'Sam Senator', party: 'Democrat' },
         { ...senate, contactId: `congress:S${fips}0002`, source: 'congress', role: 'holder', name: 'Sky Senator', party: 'Republican' },
         { ...senate, contactId: `fec:S0${state}00001`, source: 'fec', role: 'candidate', name: 'Sid Hopeful', party: 'Independent', election: String(electionYear) },
       ];
@@ -824,7 +791,6 @@ function localFederal(state: string, house: readonly District[], electionYear: n
         role: 'holder',
         contactUrl: 'https://house.example/contact',
         website: 'https://house.example',
-        phone: '202-555-0149',
         social: socialAccounts({ twitter: 'RepHalHouse', facebook: 'RepHalHouse', youtube_id: 'UC0000000000000000000000' }),
       },
       { ...rep, contactId: `fec:H0${state}${seat}001`, source: 'fec', role: 'candidate', election: String(electionYear), incumbent: true },
@@ -867,11 +833,6 @@ export class LocalContactSource implements ContactSource {
     if (state !== 'CA') feeds.sos = 'off';
     const contacts = mergeStateList(localFederal(state, house, electionYear), state === 'CA' ? localGovernorRace(electionYear) : [], []);
     return { contacts, ballot: [], notUp: [], feeds };
-  }
-
-  async forHolders(state: string, districts: readonly District[]): Promise<AreaRecords> {
-    const { contacts } = await this.forArea(state, districts, new Date().getUTCFullYear(), { zip: null, holders: true });
-    return { contacts: contacts.filter((c) => c.role === 'holder'), ballot: [], notUp: [], feeds: { ...localFeeds(), fec: 'off', civic: 'off', sos: 'off' } };
   }
 
   async forNation(electionYear: number): Promise<AreaRecords> {
@@ -917,7 +878,6 @@ export class LocalContactSource implements ContactSource {
           name: upper ? 'Uma Upper' : 'Lou Lower',
           party: 'Democratic',
           email: upper ? 'uma@legislature.example' : 'lou@legislature.example',
-          phone: upper ? '916-555-0138' : null,
         });
       }
     }

@@ -63,7 +63,8 @@ export const router = createRouter({
         // Members running for public office, for everyone; declaring and editing need a sign-in (design §5.8).
         { path: 'candidates', component: () => import('./candidacies/CandidatesPage.vue') },
         { path: 'candidates/declare', component: () => import('./candidacies/CandidacyFormPage.vue'), meta: { requiresAuth: true } },
-        { path: 'candidates/area', component: () => import('./candidacies/AreaPage.vue'), meta: { requiresAuth: true } },
+        // Your area (design §5.12): a member's own area, or the area of a ZIP code anyone types.
+        { path: 'candidates/area', component: () => import('./candidacies/AreaPage.vue') },
         {
           path: 'candidates/:candidacyId/edit',
           component: () => import('./candidacies/CandidacyFormPage.vue'),
@@ -71,8 +72,6 @@ export const router = createRouter({
           meta: { requiresAuth: true },
         },
         { path: 'candidates/:id', component: () => import('./candidacies/CandidatePage.vue') },
-        // Who represents someone now and how to reach them (design §5.19): a member's own area, or any ZIP code typed.
-        { path: 'representatives', component: () => import('./candidacies/RepresentativesPage.vue') },
         // Race pages and people's pages (design §5.17): public, listed in search, each with its own link preview.
         { path: 'races', component: () => import('./candidacies/RacesPage.vue') },
         { path: 'races/:state', component: () => import('./candidacies/RacePage.vue') },

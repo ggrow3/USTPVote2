@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { OFFICE_DISTRICTS, PUBLIC_OFFICES, templateProblem, type District } from 'ustp-domain';
 import {
   areaText,
-  representativesAreaText,
   ballotLabelText,
   BLANK_EMAIL,
   districtPeopleText,
@@ -167,30 +166,5 @@ describe('candidacy wording', () => {
     expect(firstShown(sixteen, true)).toBe(sixteen);
     expect(firstShown([0, 1], false)).toEqual([0, 1]);
     expect([showMoreText(16, false), showMoreText(16, true), showMoreText(5, false)]).toEqual(['Show 12 more', 'Show fewer', 'Show 1 more']);
-  });
-});
-
-describe('the Representatives page’s note about its area', () => {
-  it('says whose districts these are, never the ZIP code on the record, and where to change it', () => {
-    const own = representativesAreaText({ state: 'CA', basis: 'zip' });
-    expect(own.text).toMatch(/^California, and the districts the ZIP code on your membership record reaches into\./);
-    expect(own.link).toBe('Moved? Change your ZIP code on your Account page.');
-    const typed = representativesAreaText({ state: 'CA', basis: 'zip' }, '92130');
-    expect(typed.text).toMatch(/^California, and the districts ZIP code 92130 reaches into\./);
-    expect(typed.link).toBeNull();
-    expect(typed.text).toContain('may not be your own representative');
-  });
-
-  it('says why only the whole state’s people are listed', () => {
-    expect(representativesAreaText({ state: 'NY', basis: 'no_zip' })).toEqual({
-      text: 'Only the people who represent all of New York: your membership record has no ZIP code.',
-      link: 'Add it on your Account page to see your own districts.',
-    });
-    expect(representativesAreaText({ state: 'NY', basis: 'unplaced' }).link).toBe('Check it on your Account page.');
-    expect(representativesAreaText({ state: 'NY', basis: 'unplaced' }, '10000')).toEqual({
-      text: 'Only the people who represent all of New York: the Census draws no area for ZIP code 10000.',
-      link: null,
-    });
-    expect(representativesAreaText({ state: 'NY', basis: 'unavailable' }, '10001').text).toContain('is not answering');
   });
 });

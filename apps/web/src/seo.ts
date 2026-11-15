@@ -34,8 +34,8 @@ const DESCRIPTIONS: Readonly<Record<string, string>> = {
   '/legislation/:billId': 'A bill in Congress the U.S. Transhumanist Party follows: why it matters, how far it has gone and how Congress voted on it.',
   '/scorecard': 'How each member of Congress voted on the science, AI and longevity bills the U.S. Transhumanist Party follows, against the party’s positions.',
   '/scorecard/:memberId': 'How a member of Congress voted on the science, AI and longevity bills the U.S. Transhumanist Party follows, against the party’s positions.',
-  '/representatives':
-    'Find who represents you in Congress and your state legislature by ZIP code, and reach them: email templates, call scripts, contact forms and official accounts.',
+  '/candidates/area':
+    'Type a ZIP code to see who represents it in Congress and the state legislature and who is running there, with their websites, contact forms and official accounts, and write to them.',
   '/races': 'Who is running for Congress, and for President in a presidential year, in every state and House seat, and who holds each seat now.',
   '/races/:state': 'Who is running in this state for the U.S. Senate and the U.S. House, and for President in a presidential year, and who holds those seats now.',
   '/races/:state/:district': 'Who is running for this seat in the U.S. House, and who holds it now, from public records, with the Transhumanist Party’s own candidates first.',

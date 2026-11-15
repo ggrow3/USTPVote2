@@ -41,7 +41,6 @@ const blank = () => ({
   email: '',
   contactUrl: '',
   website: '',
-  phone: '',
   electionDate: '',
 });
 const form = reactive(blank());
@@ -121,7 +120,6 @@ function open(e: AreaContactRecord) {
     email: e.email ?? '',
     contactUrl: e.contactUrl ?? '',
     website: e.website ?? '',
-    phone: e.phone ?? '',
     electionDate: e.electionDate ?? '',
   });
   errors.value = {};
@@ -247,17 +245,6 @@ onMounted(load);
             :error-message="errors.contactUrl"
           />
           <q-input v-model="form.website" outlined dense label="Website (optional)" placeholder="https://…" :error="!!errors.website" :error-message="errors.website" />
-          <q-input
-            v-model="form.phone"
-            outlined
-            dense
-            type="tel"
-            label="Office phone number (optional)"
-            hint="For calls from the Representatives page"
-            :maxlength="CONTACT_LIMITS.phone"
-            :error="!!errors.phone"
-            :error-message="errors.phone"
-          />
           <q-input
             v-if="form.role === 'candidate'"
             v-model="form.electionDate"

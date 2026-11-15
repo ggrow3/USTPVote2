@@ -56,7 +56,6 @@ export const TRACKED_PAGES: readonly TrackedPage[] = [
   { id: 'candidates-area', pattern: '/candidates/area', label: 'Your area' },
   { id: 'candidacy-edit', pattern: '/candidates/:candidacyId/edit', label: 'Edit a candidacy' },
   { id: 'candidate', pattern: '/candidates/:id', label: 'A candidate' },
-  { id: 'representatives', pattern: '/representatives', label: 'Your representatives' },
   { id: 'races', pattern: '/races', label: 'Races' },
   { id: 'race-state', pattern: '/races/:state', label: 'A state’s races' },
   { id: 'race-seat', pattern: '/races/:state/:district', label: 'A House seat’s race' },

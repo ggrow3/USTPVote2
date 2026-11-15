@@ -67,7 +67,7 @@ describe('outside production', () => {
       ['https://vote.example.org/legislation', undefined],
       ['https://vote.example.org/scorecard', undefined],
       ['https://vote.example.org/races', undefined],
-      ['https://vote.example.org/representatives', undefined],
+      ['https://vote.example.org/candidates/area', undefined],
       ['https://vote.example.org/bylaws/2026.1', '2026-10-01T12:00:00.000Z'],
       [`https://vote.example.org/results/${certified.electionId}`, '2026-10-20T18:00:00.000Z'],
     ]);

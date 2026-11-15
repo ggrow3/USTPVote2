@@ -81,12 +81,6 @@ export class CandidaciesController {
     return this.contacts.myCandidates(requireAccount(ctx));
   }
 
-  /** The Representatives page: who holds each office in the caller's area, and how to reach them (design §5.19). */
-  @Get('area/representatives')
-  areaRepresentatives(@Ctx() ctx: RequestContext) {
-    return this.contacts.representatives(requireAccount(ctx));
-  }
-
   @Post()
   declare(@Ctx() ctx: RequestContext, @Body(new ZodPipe(candidacyInputSchema)) body: CandidacyInput) {
     return this.candidacies.declare(requireAccount(ctx), body);
@@ -202,8 +196,10 @@ export class PublicCandidaciesController {
 export const AREA_LOOKUP_RATE = { visits: 20, windowMs: 60_000 } as const;
 
 /**
- * Who runs where a ZIP code is, for anyone on the Candidates page (design §5.12): public records only. Like the page
- * visits it needs no App Check token; the caller's address limits how often, and neither it nor the ZIP code is kept.
+ * Who runs where a ZIP code is, for anyone on the Candidates page (design §5.12): public records only. And the Your
+ * area page for a ZIP code anyone types: who holds and who runs for each office there, the communications team's
+ * entries and the email templates too, as a member sees for their own area. Like the page visits they need no App Check
+ * token; the caller's address limits how often, both lookups counted together, and neither it nor the ZIP code is kept.
  */
 @Controller('v1/public/candidates')
 @Public()
@@ -218,38 +214,20 @@ export class PublicAreaCandidatesController {
   @Post('area')
   @HttpCode(200)
   area(@Body(new ZodPipe(areaLookupSchema)) body: AreaLookupInput, @Req() request: FastifyRequest) {
-    const { ip } = clientAddress(request.headers['x-forwarded-for'], request.socket?.remoteAddress, this.config.trustedProxyHops);
-    if (!this.limiter.take(`address:${ip ?? 'unknown'}`)) throw new HttpException('too many lookups; try again in a minute', HttpStatus.TOO_MANY_REQUESTS);
+    this.take(request);
     return this.contacts.zipCandidates(body.zip);
   }
 
-  /** Forgets this instance's lookup counts (tests). */
-  forget(): void {
-    this.limiter.forget();
-  }
-}
-
-/**
- * Who represents the people of a ZIP code, for anyone on the Representatives page (design §5.19): public records and
- * the communications team's entries, with the emails and call scripts. Limited like the Candidates page's lookup, with
- * a count of its own; neither the address nor the ZIP code is kept.
- */
-@Controller('v1/public/representatives')
-@Public()
-export class PublicRepresentativesController {
-  private readonly limiter = new VisitRateLimiter(AREA_LOOKUP_RATE);
-
-  constructor(
-    private readonly contacts: AreaContactsService,
-    @Inject(CONFIG) private readonly config: ServerConfig,
-  ) {}
-
-  @Post('area')
+  @Post('area/contacts')
   @HttpCode(200)
-  area(@Body(new ZodPipe(areaLookupSchema)) body: AreaLookupInput, @Req() request: FastifyRequest) {
+  areaContacts(@Body(new ZodPipe(areaLookupSchema)) body: AreaLookupInput, @Req() request: FastifyRequest) {
+    this.take(request);
+    return this.contacts.zipView(body.zip);
+  }
+
+  private take(request: FastifyRequest): void {
     const { ip } = clientAddress(request.headers['x-forwarded-for'], request.socket?.remoteAddress, this.config.trustedProxyHops);
     if (!this.limiter.take(`address:${ip ?? 'unknown'}`)) throw new HttpException('too many lookups; try again in a minute', HttpStatus.TOO_MANY_REQUESTS);
-    return this.contacts.zipRepresentatives(body.zip);
   }
 
   /** Forgets this instance's lookup counts (tests). */

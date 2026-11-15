@@ -38,9 +38,9 @@ export type ContactSource = ContactFeed | 'admin';
  */
 export type ContactFeedState = 'ok' | 'off' | 'unavailable';
 
-export const CONTACT_LIMITS = { name: 120, party: 60, officeTitle: 120, email: 254, url: 500, phone: 30 } as const;
+export const CONTACT_LIMITS = { name: 120, party: 60, officeTitle: 120, email: 254, url: 500 } as const;
 
-/** One official account of a person, as a public record lists it, for the Representatives page (design §5.19). */
+/** One official social media account of a person, as a public record lists it (design §5.12). */
 export interface SocialAccount {
   readonly network: SocialNetwork;
   /** The account's name there, as people write it: `@RepExample`. */
@@ -74,17 +74,6 @@ export function socialAccounts(social: Readonly<Record<string, unknown>>): Socia
   const mastodon = typeof social.mastodon === 'string' ? /^@([A-Za-z0-9_]{1,60})@([a-z0-9.-]{3,100})$/i.exec(social.mastodon) : null;
   if (mastodon) accounts.push({ network: 'mastodon', handle: mastodon[0], url: `https://${mastodon[2]!.toLowerCase()}/@${mastodon[1]}` });
   return accounts.filter((a): a is SocialAccount => a !== null);
-}
-
-/**
- * A phone number as a `tel:` link dials it: `+1` and the ten digits of a US number, any extension left off; null when
- * it is not one.
- */
-export function phoneLink(phone: string): string | null {
-  const digits = phone.replace(/\s*(ext|x)\.?\s*\d+\s*$/i, '').replace(/\D/g, '');
-  if (digits.length === 10) return `tel:+1${digits}`;
-  if (digits.length === 11 && digits.startsWith('1')) return `tel:+${digits}`;
-  return null;
 }
 
 /** What the office is called when a feed does not say. */
@@ -125,9 +114,7 @@ export interface AreaContact {
   /** A web form for writing to them, where they have one instead of (or as well as) an address. */
   readonly contactUrl: string | null;
   readonly website: string | null;
-  /** Their office's phone number, where a record or an admin gives one (design §5.19): Washington's for Congress, the capitol's for a state legislator. */
-  readonly phone?: string | null;
-  /** Their official accounts, where a record lists them (Congress, from the congress-legislators project). */
+  /** Their official social media accounts, where a record lists them: members of Congress, from the congress-legislators project. */
   readonly social?: readonly SocialAccount[];
   /** The public record it comes from (the FEC filing, the Congress biography, the Open States page); null for an admin's. */
   readonly sourceUrl: string | null;
@@ -177,7 +164,10 @@ export interface SeatNotUp {
 export const seatNotUp = (notUp: readonly SeatNotUp[], seat: { readonly office: PublicOffice; readonly district: Pick<District, 'kind' | 'geoid'> }): boolean =>
   notUp.some((s) => s.office === seat.office && s.kind === seat.district.kind && s.geoid === seat.district.geoid);
 
-/** `GET /v1/candidacies/area/contacts`: everything the Your area page shows. */
+/**
+ * `GET /v1/candidacies/area/contacts` (the member's own area) and `POST /v1/public/candidates/area/contacts` (a ZIP
+ * code anyone types): everything the Your area page shows.
+ */
 export interface AreaContactsView {
   readonly area: CandidateArea;
   /** The federal general election the FEC's lists are for. */
@@ -191,21 +181,6 @@ export interface AreaContactsView {
   /** Whether Wikipedia and Wikidata answered. */
   readonly profiles: ContactFeedState;
   /** The email templates, in the list's order, for the page to offer those that suit each person and fill them in. */
-  readonly templates: readonly EmailTemplate[];
-}
-
-/**
- * `GET /v1/candidacies/area/representatives` (the member's own area) and `POST /v1/public/representatives/area` (a ZIP
- * code anyone types): the Representatives page (design §5.19). Who holds each office of the area now, from public
- * records and the communications team's entries, with the email templates and call scripts for reaching them.
- */
-export interface RepresentativesView {
-  readonly area: CandidateArea;
-  /** People in office, each with every way to reach them the records give. */
-  readonly representatives: readonly AreaContact[];
-  readonly feeds: Readonly<Record<ContactFeed, ContactFeedState>>;
-  readonly profiles: ContactFeedState;
-  /** Emails and call scripts, in the list's order. */
   readonly templates: readonly EmailTemplate[];
 }
 
@@ -262,8 +237,6 @@ export const areaContactInputSchema = z
     email: optionalText(CONTACT_LIMITS.email).refine((v) => v === null || z.email().safeParse(v).success, 'enter an email address, or leave it empty'),
     contactUrl: optionalAddress,
     website: optionalAddress,
-    /** Their office's phone number, for the Representatives page's calls. */
-    phone: optionalText(CONTACT_LIMITS.phone).refine((v) => v === null || phoneLink(v) !== null, 'enter a US phone number with its area code, or leave it empty'),
     /** The election day, for someone running; none for someone in office. */
     electionDate: z.string().nullable().default(null),
   })
@@ -296,8 +269,6 @@ export interface AreaContactContent {
   readonly email: string | null;
   readonly contactUrl: string | null;
   readonly website: string | null;
-  /** Absent on an entry saved before phone numbers were kept. */
-  readonly phone?: string | null;
   readonly electionDate: string | null;
 }
 
@@ -369,7 +340,6 @@ export function areaContactView(record: AreaContactRecord): AreaContact {
     email: record.email,
     contactUrl: record.contactUrl,
     website: record.website,
-    phone: record.phone ?? null,
     sourceUrl: null,
     election: record.electionDate,
     incumbent: false,
@@ -413,8 +383,7 @@ export function nameKey(name: string): string {
 /**
  * The feeds' people and the admins' entries together. An entry for the same person (role, office, district and name)
  * takes the place of the feed's, so an admin can add the email address a public record lacks; what the entry leaves
- * empty (party, contact form, website, phone number) and the record's link, accounts, incumbency, photo and profile are
- * kept from the record.
+ * empty (party, contact form, website) and the record's link, accounts, incumbency, photo and profile are kept from the record.
  */
 export function mergeContacts(found: readonly AreaContact[], entered: readonly AreaContact[]): AreaContact[] {
   const key = (c: AreaContact) => `${c.role}|${c.office}|${c.district.kind}:${c.district.geoid}|${nameKey(c.name)}`;
@@ -431,7 +400,6 @@ export function mergeContacts(found: readonly AreaContact[], entered: readonly A
         email: c.email ?? record.email,
         contactUrl: c.contactUrl ?? record.contactUrl,
         website: c.website ?? record.website,
-        phone: c.phone ?? record.phone ?? null,
         social: record.social,
         sourceUrl: record.sourceUrl,
         incumbent: c.incumbent || record.incumbent,
