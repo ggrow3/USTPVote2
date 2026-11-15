@@ -38,7 +38,8 @@ import { PROFILE_SOURCE, type ProfileSource } from './profile-source.js';
 const electionYearNow = () => nextFederalElectionYear(new Date().toISOString().slice(0, 10));
 
 /**
- * The Your area page (design §5.12): for a signed-in member, who holds each office in their area and who runs for it,
+ * The Your area page (design §5.12): for a signed-in member in their own area, and for anyone in the area of a ZIP code
+ * they type, who holds each office there and who runs for it,
  * from public records and from what Communications Admins enter, with the email templates Membership Admins and
  * Communications Admins keep. Admins' entries and templates are ledgered in the transaction that saves them. Also the
  * Candidates page's people in an area: in the member's own area, who holds and who runs for each office, from public
@@ -61,6 +62,12 @@ export class AreaContactsService {
     return { ...everyone, templates: emailTemplateList(saved) };
   }
 
+  /** The Your area page for a ZIP code anyone types: the same people and emails as a member's own area; the ZIP code is not kept. */
+  async zipView(zip: string): Promise<AreaContactsView> {
+    const [everyone, saved] = await Promise.all([this.everyoneIn(await this.candidacies.zipArea(zip), zip), this.repo.templateList()]);
+    return { ...everyone, templates: emailTemplateList(saved) };
+  }
+
   /**
    * The Candidates page's people in the caller's own area: who holds and who runs for each office there, as on the Your
    * area page (the member sees the admins' entries there too).
@@ -73,6 +80,11 @@ export class AreaContactsService {
   /** Everyone in the caller's area, from public records and admins' entries. */
   private async everyone(accountId: string): Promise<Omit<AreaContactsView, 'templates'>> {
     const { area, zip } = await this.candidacies.placed(accountId);
+    return this.everyoneIn(area, zip);
+  }
+
+  /** Everyone in an area, from public records (the ballot by `zip`, where there is one) and admins' entries. */
+  private async everyoneIn(area: CandidateArea, zip: string | null): Promise<Omit<AreaContactsView, 'templates'>> {
     const electionYear = electionYearNow();
     const [found, entered] = await Promise.all([
       this.source.forArea(area.state, area.basis === 'zip' ? area.districts : [], electionYear, { zip, holders: true }),

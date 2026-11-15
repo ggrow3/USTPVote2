@@ -63,7 +63,8 @@ export const router = createRouter({
         // Members running for public office, for everyone; declaring and editing need a sign-in (design §5.8).
         { path: 'candidates', component: () => import('./candidacies/CandidatesPage.vue') },
         { path: 'candidates/declare', component: () => import('./candidacies/CandidacyFormPage.vue'), meta: { requiresAuth: true } },
-        { path: 'candidates/area', component: () => import('./candidacies/AreaPage.vue'), meta: { requiresAuth: true } },
+        // Your area (design §5.12): a member's own area, or the area of a ZIP code anyone types.
+        { path: 'candidates/area', component: () => import('./candidacies/AreaPage.vue') },
         {
           path: 'candidates/:candidacyId/edit',
           component: () => import('./candidacies/CandidacyFormPage.vue'),

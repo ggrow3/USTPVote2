@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import {
   CONTACT_FEEDS,
   areaSections,
@@ -24,7 +24,7 @@ import PageShell from '../components/PageShell.vue';
 import { confirmAction } from '../communications/admin-forms.js';
 import { attempt } from '../dialogs.js';
 import { session } from '../session.js';
-import { areaContacts, publicCandidacies } from './api.js';
+import { areaContacts, publicCandidacies, zipAreaContacts } from './api.js';
 import BallotContests from './BallotContests.vue';
 import {
   areaText,
@@ -45,7 +45,8 @@ import OfficeGrid from './OfficeGrid.vue';
 import PartyCandidates from './PartyCandidates.vue';
 
 /**
- * Your area (design §5.12): for a signed-in member, the people where they live in three groups (§5.8): the Transhumanist
+ * Your area (design §5.12): for a signed-in member in their own area, and for anyone in the area of a ZIP code they
+ * type (kept in the page only: never in the address or the browser's storage), the people there in three groups (§5.8): the Transhumanist
  * Party's candidates there; their representatives, who holds each office now; and everyone else running, from public
  * records and from the party's communications team. Each representative and other candidate has an email the member
  * can edit and send from their own email app: they pick one of the templates that suit the person, which the page fills
@@ -55,8 +56,17 @@ import PartyCandidates from './PartyCandidates.vue';
  * listed at the end.
  */
 usePageTitle('Your area');
-const view = ref<AreaContactsView | null>(null);
+/** The member's own area; null until loaded, and for a visitor or a member with no US area on record. */
+const own = ref<AreaContactsView | null>(null);
 const error = ref<string | null>(null);
+const loading = ref(false);
+/** A ZIP code someone typed, and its area. */
+const zipInput = ref('');
+const typed = ref<{ readonly zip: string; readonly view: AreaContactsView } | null>(null);
+const zipError = ref<string | null>(null);
+const zipPending = ref(false);
+/** What the page shows: the typed ZIP code's area, else the member's own. */
+const view = computed(() => typed.value?.view ?? own.value);
 /** Members' approved candidacies, of which the area's are the party's candidates there. */
 const candidacies = ref<PublicCandidacy[] | null>(null);
 const candidaciesError = ref<string | null>(null);
@@ -67,21 +77,54 @@ const abroad = computed(() => {
   return member && countryOf(member) !== DEFAULT_COUNTRY ? countryName(countryOf(member)) : null;
 });
 
-onMounted(async () => {
-  if (abroad.value) return;
-  const listed = publicCandidacies().then(
+onMounted(() =>
+  publicCandidacies().then(
     (list) => (candidacies.value = list),
     (e) => (candidaciesError.value = errorMessage(e)),
-  );
-  try {
-    view.value = await areaContacts();
-  } catch (e) {
-    error.value = errorMessage(e);
-  }
-  await listed;
-});
+  ),
+);
 
-const note = computed(() => (view.value ? areaText(view.value.area) : null));
+// A member's own area, once the session knows who they are; a visitor types a ZIP code instead.
+watch(
+  () => (abroad.value ? null : (session.me?.member?.accountId ?? null)),
+  async (accountId) => {
+    own.value = null;
+    error.value = null;
+    if (!accountId) return;
+    loading.value = true;
+    try {
+      const found = await areaContacts();
+      if ((session.me?.member?.accountId ?? null) === accountId) own.value = found;
+    } catch (e) {
+      error.value = errorMessage(e);
+    } finally {
+      loading.value = false;
+    }
+  },
+  { immediate: true },
+);
+
+/** Looks up the area of the typed ZIP code, and shows it. */
+async function lookUp() {
+  const zip = zipInput.value.trim();
+  if (!/^[0-9]{5}$/.test(zip)) {
+    zipError.value = 'Enter a five-digit ZIP code.';
+    return;
+  }
+  zipError.value = null;
+  zipPending.value = true;
+  try {
+    typed.value = { zip, view: await zipAreaContacts(zip) };
+  } catch (e) {
+    zipError.value = errorMessage(e);
+  } finally {
+    zipPending.value = false;
+  }
+}
+
+/** "in your area", or "in ZIP code 92130" for a typed one. */
+const whereText = computed(() => (typed.value ? `in ZIP code ${typed.value.zip}` : 'in your area'));
+const note = computed(() => (view.value ? areaText(view.value.area, typed.value?.zip ?? null) : null));
 const feedNotes = computed(() =>
   view.value
     ? [...CONTACT_FEEDS.map((f) => feedNote(f, view.value!.feeds[f])), profilesNote(view.value.profiles)].filter((n): n is string => n !== null)
@@ -101,6 +144,8 @@ const mapLoaded = ref(false);
 /** Google can refuse the key after the map has loaded; then the page shows no map. */
 const mapReady = computed(() => mapLoaded.value && !mapsRefused.value);
 const chosen = ref<string | null>(null);
+// Another area has other districts.
+watch(view, () => (chosen.value = null));
 const mapped = computed(() => (view.value?.area.districts ?? []).filter((d) => d.point));
 /** The member's state, as its offices' cards name it. */
 const stateDistrict = computed(() => (view.value ? (contactDistricts(view.value.area).find((d) => d.kind === 'state') ?? null) : null));
@@ -155,7 +200,8 @@ const templateOptions = computed(() => [
 /** The text of a template (or the blank email) filled in for the person. */
 function filledFor(contact: AreaContact, template: Pick<EmailTemplate, 'subject' | 'body'>) {
   const me = session.me?.member;
-  const values = placeholderValues(contact, districtText(contact), me ? candidateName(me) : '');
+  // A visitor fills in their own name.
+  const values = placeholderValues(contact, districtText(contact), me ? candidateName(me) : '[your name]');
   return { subject: fillTemplate(template.subject, values), body: fillTemplate(template.body, values) };
 }
 
@@ -190,26 +236,58 @@ async function copy() {
       <div>
         <h1 class="text-h5 q-mb-xs">Your area</h1>
         <div class="text-grey-7">
-          The Transhumanist Party’s candidates where you live, your representatives, and everyone else running there. Write
-          to any of your representatives or the other candidates: the email is filled in for you to change as you like,
-          and goes from your own email app. This site does not send it or keep a copy.
+          The Transhumanist Party’s candidates where you live, your representatives, and everyone else running there, with
+          their websites, contact forms and official social media accounts. Write to any of your representatives or the
+          other candidates: the email is filled in for you to change as you like, and goes from your own email app. This
+          site does not send it or keep a copy.
         </div>
       </div>
 
-      <div v-if="abroad" class="text-grey-7">
-        Your membership record says you live in {{ abroad }}, so there are no US offices to list for you here. The
-        <router-link to="/candidates">Candidates page</router-link> lists every state’s candidates, and any US ZIP code’s.
-        If you have moved, change where you live on your <router-link to="/account">Account page</router-link>.
-      </div>
-      <q-banner v-else-if="error" class="bg-orange-1 text-black" rounded>{{ error }}</q-banner>
-      <div v-else-if="!view" class="text-grey-7">Loading…</div>
-      <template v-else>
+      <q-card flat bordered>
+        <q-card-section>
+          <div v-if="abroad" class="text-grey-7 q-mb-sm">
+            Your membership record says you live in {{ abroad }}, so there are no US offices to list for you. Type any US
+            ZIP code to see its area. If you have moved, change where you live on your
+            <router-link to="/account">Account page</router-link>.
+          </div>
+          <div v-else-if="!session.user" class="text-grey-7 q-mb-sm">
+            Type your ZIP code to see your area. It is used once to find your districts and is not kept.
+            <router-link to="/signin">Sign in</router-link> as a member and this page opens on your own area.
+          </div>
+          <div v-else-if="typed && own" class="q-mb-sm">
+            Showing ZIP code {{ typed.zip }}.
+            <q-btn flat dense no-caps color="primary" label="Back to my own area" @click="typed = null" />
+          </div>
+          <div v-else-if="own" class="text-grey-7 q-mb-sm">Showing your own area, from your membership record. To see another, type its ZIP code.</div>
+          <div v-else-if="!loading" class="text-grey-7 q-mb-sm">Type a ZIP code to see its area.</div>
+          <form class="row items-start no-wrap q-gutter-x-sm" @submit.prevent="lookUp">
+            <q-input
+              v-model="zipInput"
+              outlined
+              dense
+              label="ZIP code"
+              inputmode="numeric"
+              autocomplete="postal-code"
+              maxlength="5"
+              :error="zipError !== null"
+              :error-message="zipError ?? undefined"
+              hide-bottom-space
+              class="area-zip__input"
+            />
+            <q-btn type="submit" :outline="!!own" :unelevated="!own" no-caps color="primary" label="Show this area" :loading="zipPending" />
+          </form>
+        </q-card-section>
+      </q-card>
+
+      <q-banner v-if="error && !typed" class="bg-orange-1 text-black" rounded>{{ error }}</q-banner>
+      <div v-else-if="loading && !view" class="text-grey-7">Loading…</div>
+      <template v-if="view">
         <div v-if="note">
           <div class="text-grey-7">
             {{ note.text }}
             <router-link v-if="note.link" to="/account">{{ note.link }}</router-link>
           </div>
-          <div v-if="view.area.districts.length" class="row q-gutter-xs q-mt-xs" role="list" aria-label="Your districts">
+          <div v-if="view.area.districts.length" class="row q-gutter-xs q-mt-xs" role="list" :aria-label="typed ? 'The districts there' : 'Your districts'">
             <q-chip
               v-for="d in view.area.districts"
               :key="districtKey(d)"
@@ -243,7 +321,7 @@ async function copy() {
         </div>
         <q-banner v-for="n in feedNotes" :key="n" dense rounded class="bg-grey-3 text-black">{{ n }}</q-banner>
         <section v-if="sections" aria-labelledby="area-party-heading">
-          <h2 id="area-party-heading" class="text-h6 q-my-sm">Transhumanist Party candidates in your area</h2>
+          <h2 id="area-party-heading" class="text-h6 q-my-sm">Transhumanist Party candidates {{ whereText }}</h2>
           <div class="text-grey-7 q-mb-sm">
             Members of the party running for office here, in their own words. A Membership Admin reviews each candidacy
             before it appears; being listed is not an endorsement.
@@ -251,13 +329,13 @@ async function copy() {
           <q-banner v-if="candidaciesError" class="bg-orange-1 text-black" rounded>{{ candidaciesError }}</q-banner>
           <div v-else-if="!candidacies" class="text-grey-7">Loading…</div>
           <PartyCandidates v-else-if="sections.party.length" :candidacies="sections.party" :holders="sections.holders" />
-          <div v-else class="text-grey-7">No Transhumanist Party candidates in your area yet.</div>
+          <div v-else class="text-grey-7">No Transhumanist Party candidates {{ whereText }} yet.</div>
           <q-btn flat no-caps color="primary" icon="campaign" label="All of the party’s candidates" to="/candidates" class="q-mt-xs" />
         </section>
 
         <section v-if="sections" aria-labelledby="area-representatives-heading">
-          <h2 id="area-representatives-heading" class="text-h6 q-my-sm">Your representatives</h2>
-          <div class="text-grey-7 q-mb-sm">Who holds each office where you vote, now.</div>
+          <h2 id="area-representatives-heading" class="text-h6 q-my-sm">{{ typed ? `Representatives ${whereText}` : 'Your representatives' }}</h2>
+          <div class="text-grey-7 q-mb-sm">Who holds each office {{ typed ? 'there' : 'where you vote' }}, now.</div>
           <OfficeGrid
             :groups="sections.representatives"
             part="holders"
@@ -277,7 +355,7 @@ async function copy() {
         </section>
 
         <section v-if="sections" aria-labelledby="area-running-heading">
-          <h2 id="area-running-heading" class="text-h6 q-my-sm">Others running in your area</h2>
+          <h2 id="area-running-heading" class="text-h6 q-my-sm">Others running {{ whereText }}</h2>
           <div class="text-grey-7 q-mb-sm">
             Everyone else running for these offices, from public records and the party’s communications team. None of
             them has been reviewed or endorsed by the party.
@@ -364,6 +442,9 @@ async function copy() {
 </template>
 
 <style scoped>
+.area-zip__input {
+  width: 9em;
+}
 .area-email {
   width: 640px;
   max-width: 100%;

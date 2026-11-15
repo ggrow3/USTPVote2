@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { personPath, type AreaContact, type PersonMarks } from 'ustp-domain';
+import { NETWORK_NAMES, personPath, type AreaContact, type PersonMarks } from 'ustp-domain';
+import { hubIcon } from '../governance/hub-icons.js';
 import { personCaption } from './candidacy-text.js';
 import PersonBadges from './PersonBadges.vue';
 import PersonDialog, { type PersonLink } from './PersonDialog.vue';
@@ -10,8 +11,8 @@ import PersonProfile from './PersonProfile.vue';
  * One person on the Candidates or Your area page (design §5.12), kept to two lines so a whole area fits on a screen:
  * a small photo where the records have one, their name and what they are to the member (the party's candidate, their
  * representative), then party, source and election, with their links as small icons, each named in full on hover and
- * for screen readers: their own page here (design §5.17), their site, email address, contact form, public record and
- * who to credit for the photo. *About*
+ * for screen readers: their own page here (design §5.17), their site, email address, contact form, official social
+ * media accounts, public record and who to credit for the photo. *About*
  * unfolds their biography and experience; their photo or name opens them larger, with the area they represent (or
  * would) drawn. The default slot takes the item's side, such as the Your area page's Write button.
  */
@@ -43,6 +44,7 @@ const links = computed<PersonLink[]>(() => {
     p.website ? { icon: 'language', label: `Website: ${p.website.replace(/^https:\/\//, '').replace(/\/$/, '')}`, href: p.website, away: true } : null,
     props.showEmail && p.email ? { icon: 'mail', label: `Email ${p.email}`, href: `mailto:${p.email}`, away: false } : null,
     p.contactUrl ? { icon: 'contact_mail', label: 'Contact form', href: p.contactUrl, away: true } : null,
+    ...(p.social ?? []).map((s) => ({ icon: hubIcon(s.network), label: `${NETWORK_NAMES[s.network]}: ${s.handle}`, href: s.url, away: true })),
     p.sourceUrl ? { icon: 'fact_check', label: 'Public record', href: p.sourceUrl, away: true } : null,
     photo.value ? { icon: 'photo_camera', label: photo.value.credit, href: photo.value.creditUrl, away: true } : null,
   ].filter((l): l is PersonLink => l !== null);

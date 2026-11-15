@@ -70,6 +70,11 @@ export function areaContacts(): Promise<AreaContactsView> {
   return api<AreaContactsView>('GET', '/v1/candidacies/area/contacts');
 }
 
+/** The Your area page for a ZIP code anyone types. The ZIP code goes in the body, out of request logs. */
+export function zipAreaContacts(zip: string): Promise<AreaContactsView> {
+  return api<AreaContactsView>('POST', '/v1/public/candidates/area/contacts', { zip });
+}
+
 export function declareCandidacy(input: CandidacyInput): Promise<MyCandidacy> {
   return api<MyCandidacy>('POST', '/v1/candidacies', input);
 }

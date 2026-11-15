@@ -196,8 +196,10 @@ export class PublicCandidaciesController {
 export const AREA_LOOKUP_RATE = { visits: 20, windowMs: 60_000 } as const;
 
 /**
- * Who runs where a ZIP code is, for anyone on the Candidates page (design §5.12): public records only. Like the page
- * visits it needs no App Check token; the caller's address limits how often, and neither it nor the ZIP code is kept.
+ * Who runs where a ZIP code is, for anyone on the Candidates page (design §5.12): public records only. And the Your
+ * area page for a ZIP code anyone types: who holds and who runs for each office there, the communications team's
+ * entries and the email templates too, as a member sees for their own area. Like the page visits they need no App Check
+ * token; the caller's address limits how often, both lookups counted together, and neither it nor the ZIP code is kept.
  */
 @Controller('v1/public/candidates')
 @Public()
@@ -212,9 +214,20 @@ export class PublicAreaCandidatesController {
   @Post('area')
   @HttpCode(200)
   area(@Body(new ZodPipe(areaLookupSchema)) body: AreaLookupInput, @Req() request: FastifyRequest) {
+    this.take(request);
+    return this.contacts.zipCandidates(body.zip);
+  }
+
+  @Post('area/contacts')
+  @HttpCode(200)
+  areaContacts(@Body(new ZodPipe(areaLookupSchema)) body: AreaLookupInput, @Req() request: FastifyRequest) {
+    this.take(request);
+    return this.contacts.zipView(body.zip);
+  }
+
+  private take(request: FastifyRequest): void {
     const { ip } = clientAddress(request.headers['x-forwarded-for'], request.socket?.remoteAddress, this.config.trustedProxyHops);
     if (!this.limiter.take(`address:${ip ?? 'unknown'}`)) throw new HttpException('too many lookups; try again in a minute', HttpStatus.TOO_MANY_REQUESTS);
-    return this.contacts.zipCandidates(body.zip);
   }
 
   /** Forgets this instance's lookup counts (tests). */
