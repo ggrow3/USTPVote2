@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { nextTick, ref } from 'vue';
 import { queueBadge, type AdminSection } from 'ustp-domain';
 import { useRoute } from 'vue-router';
 import type { ShownGroup } from './admin-menu.js';
@@ -6,26 +7,37 @@ import type { ShownGroup } from './admin-menu.js';
 /**
  * The admin console's sections as a side menu (design §10.1): a heading per group, a row per section with its icon,
  * and the section shown highlighted. Each row is a link to the section's address (`?tab=`), so it can be opened in a
- * new tab; choosing one replaces the address, as the tabs did, rather than adding to the history.
+ * new tab; choosing one replaces the address, as the tabs did, rather than adding to the history. A star beside each
+ * row adds it to the person's favourites, at the top, or takes it off.
  */
-defineProps<{
+const props = defineProps<{
   groups: readonly ShownGroup[];
   current: string;
   /** Applications waiting for a decision, shown on Applications. */
   pending: number;
   /** Prefix for the headings' ids, so the menu can be on the page twice (beside the section, and in the drawer). */
   idPrefix: string;
+  favourites: readonly AdminSection[];
 }>();
-const emit = defineEmits<{ chosen: [section: AdminSection] }>();
+const emit = defineEmits<{ chosen: [section: AdminSection]; star: [section: AdminSection] }>();
 const route = useRoute();
+const root = ref<HTMLElement | null>(null);
+const starred = (section: AdminSection) => props.favourites.includes(section);
+
+/** The row moves to or from Favourites, so its star is drawn anew: focus follows it there, as its new name says. */
+async function star(section: AdminSection): Promise<void> {
+  emit('star', section);
+  await nextTick();
+  root.value?.querySelector<HTMLElement>(`[data-star="${section}"]`)?.focus();
+}
 </script>
 
 <template>
-  <div class="admin-menu">
+  <div ref="root" class="admin-menu">
     <template v-for="g in groups" :key="g.label">
       <div :id="`${idPrefix}-${g.label.toLowerCase()}`" class="admin-menu__heading">{{ g.label }}</div>
       <ul class="admin-menu__list" :aria-labelledby="`${idPrefix}-${g.label.toLowerCase()}`">
-        <li v-for="s in g.sections" :key="s.name">
+        <li v-for="s in g.sections" :key="s.name" class="admin-menu__row">
           <q-item
             :to="{ query: { ...route.query, tab: s.name } }"
             replace
@@ -45,6 +57,19 @@ const route = useRoute();
               </q-badge>
             </q-item-section>
           </q-item>
+          <!-- Beside the link, not in it: a button inside a link is neither. -->
+          <q-btn
+            flat
+            round
+            dense
+            size="sm"
+            class="admin-menu__star"
+            :class="{ 'admin-menu__star--on': starred(s.name) }"
+            :icon="starred(s.name) ? 'star' : 'star_border'"
+            :aria-label="starred(s.name) ? `Remove ${s.label} from favourites` : `Add ${s.label} to favourites`"
+            :data-star="s.name"
+            @click="star(s.name)"
+          />
         </li>
       </ul>
     </template>
@@ -75,10 +100,14 @@ const route = useRoute();
   padding: 0;
   list-style: none;
 }
+/* The star sits over the row's right end, which the row keeps clear for it. */
+.admin-menu__row {
+  position: relative;
+}
 .admin-menu__item {
   min-height: 40px;
   margin: 1px 0;
-  padding: 4px 12px;
+  padding: 4px 40px 4px 12px;
   border-radius: 999px;
   font-size: 0.9375rem;
   line-height: 1.3;
@@ -110,5 +139,37 @@ const route = useRoute();
 }
 .admin-menu__item--active > :deep(.q-focus-helper) {
   display: none;
+}
+/*
+ * A section's star shows while its row is pointed at or has focus, as the Cloud console's do, and always once starred
+ * or where there is no hovering (a touch screen). Hidden by opacity, so it stays in the tab order and shows on focus.
+ */
+.admin-menu__star {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  color: rgba(0, 0, 0, 0.6);
+  opacity: 0;
+}
+.body--dark .admin-menu__star {
+  color: rgba(255, 255, 255, 0.7);
+}
+.admin-menu__row:hover .admin-menu__star,
+.admin-menu__row:focus-within .admin-menu__star,
+.admin-menu__star--on {
+  opacity: 1;
+}
+@media (hover: none) {
+  .admin-menu__star {
+    opacity: 1;
+  }
+}
+/* A starred section's star in the site's orange: primary on the light card, the accent on the dark one. */
+.admin-menu__star--on {
+  color: var(--q-primary);
+}
+.body--dark .admin-menu__star--on {
+  color: var(--q-accent);
 }
 </style>
