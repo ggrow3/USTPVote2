@@ -84,6 +84,8 @@ describe('the walkthroughs', () => {
         expect(rehearse, `${id} ${stepId}`).toMatch(/“Act as”|“Switch persona”/);
         expect(rehearse, `${id} ${stepId}`).toContain('“Approve”');
         expect(rehearse, `${id} ${stepId}`).toMatch(/“Stop acting”|switch back/);
+        // A persona has no login, so an approval's fresh sign-in is the person's own (APPROVAL_MAX_AUTH_AGE_SECONDS).
+        expect(rehearse, `${id} ${stepId}`).toMatch(/“Confirm it is you”|confirm it is you with your own sign-in/);
       }
     }
     // A Site Admin makes the requests as themselves, so starts acting from Admin › Testing and stops with the yellow bar.

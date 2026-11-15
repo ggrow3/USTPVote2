@@ -34,8 +34,12 @@ const ADMIN_ELECTIONS = { page: '/admin', tab: 'elections', title: 'Admin › El
  * Testing alone (design §10.4): nobody decides their own requests, so someone rehearsing alone switches this tab to the
  * Test Auditor, decides the request as it in Admin › Approvals, and switches back. `request` is the request as the
  * Approvals list names it. A Site Admin starts as themselves; someone following the Election Admin's walkthrough may be
- * acting as the Test Election Admin, or be a Site Admin acting as an Election Admin themselves.
+ * acting as the Test Election Admin, or be a Site Admin acting as an Election Admin themselves. An approval needs a
+ * sign-in in the last 15 minutes, and a persona has no login: the site asks the person acting to confirm their own.
  */
+const CONFIRM_AS_YOURSELF =
+  'If the site asks you to “Confirm it is you”, it means you, not the Test Auditor, which has no login: enter your own password, or sign in with Google again, and your authenticator code if you have one.';
+
 function approveAsTestAuditor(request: string, from: 'site_admin' | 'election_admin'): string[] {
   const become =
     from === 'site_admin'
@@ -48,6 +52,7 @@ function approveAsTestAuditor(request: string, from: 'site_admin' | 'election_ad
   return [
     become,
     `Open Approvals in the admin menu. On ${request}, press “Approve”, write a reason and press OK.`,
+    CONFIRM_AS_YOURSELF,
     back,
     'Press Open in this walkthrough’s panel to come back to the election, and carry on.',
   ];
@@ -319,7 +324,7 @@ const electionAdmin: readonly TourStep[] = [
     about: 'Every two-person request waiting for a decision, yours among them.',
     todo: [
       'Find your request and see that it is waiting. “Review” opens what it is about.',
-      'Come back to the editor once an Auditor has decided it.',
+      'Come back to the editor once an Auditor or a Site Admin has decided it.',
     ],
     notes: ['You cannot decide your own requests: an Auditor or a Site Admin does.', 'Requests expire after 7 days.'],
     rehearse: approveAsTestAuditor('your request', 'election_admin'),
@@ -354,7 +359,7 @@ const electionAdmin: readonly TourStep[] = [
     ],
     rehearse: [
       'To vote as test voters on a rehearsal roll: press “Switch persona” in the yellow bar and choose a Test Voter (as yourself, “Act as” in Admin › Testing), then press “Vote now” on its ballot. Switch to the next voter the same way.',
-      'To cancel the election instead: after “Cancel election”, switch this tab to the Test Auditor, open Approvals in the admin menu, press “Approve” on “cancel the election”, write a reason and press OK, then switch back.',
+      'To cancel the election instead: after “Cancel election”, switch this tab to the Test Auditor, open Approvals in the admin menu, press “Approve” on “cancel the election”, write a reason and press OK (and confirm it is you with your own sign-in if asked), then switch back.',
     ],
   },
   {
@@ -633,7 +638,7 @@ const siteAdmin: readonly TourStep[] = [
     ],
     rehearse: [
       'To vote as test voters on a rehearsal roll: open Admin › Testing, press “Act as” beside a Test Voter, then “Vote now” on its ballot. “Switch persona” in the yellow bar moves to the next voter. Press “Stop acting” when they have voted.',
-      'To cancel the election instead: after “Cancel election”, press “Act as” beside Test Auditor in Admin › Testing, open Approvals in the admin menu, press “Approve” on “cancel the election”, write a reason and press OK, then press “Stop acting”.',
+      'To cancel the election instead: after “Cancel election”, press “Act as” beside Test Auditor in Admin › Testing, open Approvals in the admin menu, press “Approve” on “cancel the election”, write a reason and press OK (and confirm it is you with your own sign-in if asked), then press “Stop acting”.',
     ],
   },
   {

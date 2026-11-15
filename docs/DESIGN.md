@@ -5117,7 +5117,9 @@ page.
   Each of those steps has a "Testing alone?" box saying when to switch the tab to the Test Auditor, what to press as
   it and how to switch back: a Site Admin, who makes the requests as themselves, presses "Act as" beside Test Auditor
   in Admin › Testing, approves the request in Admin › Approvals and presses "Stop acting" in the testing bar; someone
-  acting as the Test Election Admin uses the bar's "Switch persona" both ways. The same tab keeps its walkthrough, so
+  acting as the Test Election Admin uses the bar's "Switch persona" both ways. A persona has no login, so when the
+  approval needs a fresh sign-in (§10.2: one in the last 15 minutes) the box says that "Confirm it is you" asks for
+  their own password or Google sign-in, and their authenticator code. The same tab keeps its walkthrough, so
   its panel's Open button brings them back to the election, which the editor then loads afresh. The box also says how
   to get the personas ready (and that a System Admin shows Site Admins the Testing section in Admin › Navigation when
   their saved settings hide it), and how to vote as the test voters of a rehearsal roll; on the Auditor's Approvals
