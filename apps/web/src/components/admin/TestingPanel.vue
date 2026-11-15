@@ -6,7 +6,7 @@ import { personaStart } from '../../acting.js';
 import { api } from '../../api.js';
 import { roleLabel } from '../../approval-text.js';
 import { attempt, dialog } from '../../dialogs.js';
-import { actAs, hasRole } from '../../session.js';
+import { actAs, hasRole, session } from '../../session.js';
 import DemoElectionCard from './DemoElectionCard.vue';
 
 /**
@@ -15,6 +15,11 @@ import DemoElectionCard from './DemoElectionCard.vue';
  */
 const router = useRouter();
 const deletesVoters = computed(() => hasRole('system_admin'));
+/**
+ * Whether acting as a persona needs a second factor of this person (design §4, §10.4): always for a System Admin, and
+ * for a Site Admin only while System Admins require it of Site Admins. The api checks the same rule (operatorFor).
+ */
+const needsSecondFactor = computed(() => !!session.me?.mfa.required);
 const personas = ref<PersonaSummary[] | null>(null);
 const voters = ref(5);
 const hasAdmins = computed(() => personas.value?.some((p) => p.kind !== 'voter') ?? false);
@@ -88,7 +93,8 @@ onMounted(load);
           app shows and does exactly what that person could, so every two-person step is still done by two different
           accounts. Actions are recorded under the persona; the server log records that you were acting. The Test Site
           Admin changes the roles of test personas only, never a real account's. Open another browser tab to be a
-          second persona at the same time. Acting as a persona needs two-step verification.<template v-if="!deletesVoters">
+          second persona at the same time.<template v-if="needsSecondFactor"> Acting as a persona needs two-step
+          verification.</template><template v-if="!deletesVoters">
           Only System Admins delete test voters.</template>
         </p>
       </q-card-section>

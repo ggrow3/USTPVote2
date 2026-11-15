@@ -11,6 +11,14 @@ import { TOURS } from './tours.js';
 export const TOUR_IDS = ['voter', 'election_admin', 'auditor', 'site_admin'] as const;
 export type TourId = (typeof TOUR_IDS)[number];
 
+/**
+ * The walkthroughs someone is shown, from the roles they hold (or the test persona's while acting as one): the Site
+ * Admin's only to a Site Admin (the user's decision, 2026-11-15); the others to everyone.
+ */
+export function toursFor(roles: readonly Role[]): TourId[] {
+  return TOUR_IDS.filter((id) => id !== 'site_admin' || roles.includes('site_admin'));
+}
+
 /** A page, or an admin console tab, as a walkthrough step names it. */
 export interface StepPlace {
   /** A route of router.ts; `:election` stands for the election the walkthrough is following. */
