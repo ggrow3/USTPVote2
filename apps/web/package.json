@@ -21,21 +21,21 @@
     "firebase": "^13.1.0",
     "jszip": "^3.10.2",
     "qrcode": "^1.5.4",
-    "quasar": "^2.35.2",
+    "quasar": "^2.35.4",
     "ustp-audit": "^0.1.0",
     "ustp-domain": "^0.1.0",
     "ustp-tally": "^0.1.0",
-    "vue": "^3.5.44",
-    "vue-router": "^5.4.0",
+    "vue": "^3.5.45",
+    "vue-router": "^5.5.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
     "@quasar/vite-plugin": "^2.0.2",
     "@types/google.maps": "^3.66.6",
     "@types/qrcode": "^1.5.6",
-    "@vitejs/plugin-vue": "^6.0.10",
+    "@vitejs/plugin-vue": "^6.0.11",
     "sass-embedded": "^1.106.1",
-    "vite": "^8.3.5",
-    "vue-tsc": "3.3.13"
+    "vite": "^8.3.8",
+    "vue-tsc": "3.3.14"
   }
 }
